@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
-// HomePage keeps all three tab bodies permanently mounted (see HomePage.tsx) -- so a `screen`-wide
+// HomePage keeps both tab bodies permanently mounted (see HomePage.tsx) -- so a `screen`-wide
 // *ByRole/*ByLabelText query has to walk the entire document and run jsdom's getComputedStyle over it to
 // decide what's in the accessibility tree. Measured in the gate container: tens of milliseconds per
 // screen-wide accessibility-tree query (~40ms for `getByRole("heading", {name})`, ~100ms for
@@ -40,13 +40,12 @@ function guidedSection() {
 // user.click's act() has already settled. That has to be observed with an awaited assertion, and it
 // has to be observed on something that actually changes with the switch.
 //
-// Content-based waits can't do it here, which is the trap this file kept falling into: because all
-// three tab bodies stay permanently mounted (see HomePage.tsx) and only *ByRole queries filter on
-// accessibility-tree visibility, `findByText("No recent projects yet.")` resolves off
-// RecentProjectsPanel's own mount-time fetch in the still-hidden Open Project body, and
-// `findByDisplayValue("wild-draft")` matches the still-mounted symbol input -- both are already
-// satisfied before any navigation happens, so neither proves the tab switched and the synchronous
-// aria-current/heading reads that followed them were racing the navigation outright.
+// Content-based waits can't do it here, which is the trap this file kept falling into: because both
+// tab bodies stay permanently mounted (see HomePage.tsx) and only *ByRole queries filter on
+// accessibility-tree visibility, a findByText off ProjectsPanel's own mount-time fetch in the
+// still-hidden Projects body, or a findByDisplayValue matching the still-mounted symbol input, would
+// both be satisfied before any navigation happens, so neither proves the tab switched and the
+// synchronous aria-current/heading reads that followed them would be racing the navigation outright.
 //
 // aria-current on the Sections nav is the switch itself, and HomePage sets it from the same
 // `activeTab` render that toggles each body's `display`, so awaiting it also synchronises every
@@ -56,70 +55,53 @@ async function expectActiveSection(name: string): Promise<void> {
     await waitFor(() => expect(sectionsNav().getByRole("button", {name})).toHaveAttribute("aria-current", "page"));
 }
 
-// One budget for the whole file, because all four tests are in one cost class rather than three cheap ones
-// and a heavy one: each renders the entire routed app (renderRoutedApp -> HomePage with all three tab bodies
-// permanently mounted) and then drives a chain of real userEvent interactions across that tree with real
-// timers. Measured in this container at idle:
-// 3.5s / 3.6s / 2.5s / 7.0s -- a 2.8x spread, not a difference in kind. The rest of this lane likewise pins an
-// explicit per-test budget on every test of every such suite (45000ms in the ProjectDashboardPage/
-// navigation-guard/validation suites, 90000ms for happyPath and routing's back/forward).
-//
-// The number has to satisfy one ordering invariant, the one setupTests.ts's asyncUtilTimeout is chosen for:
-// the per-assertion cap must expire *before* the whole-test budget, or a starved assertion is reported as an
-// anonymous "Exceeded timeout of N ms for a test" instead of naming itself. Note what that actually requires,
-// because an earlier revision of this comment got it wrong and four commits were built on the error: the
-// budget must exceed this test's real work plus *one* 15000ms cap, not the sum of all eight
-// asyncUtilTimeout-governed awaits it chains. A test fails at the first await that exhausts its cap, so no
-// passing run can ever absorb eight of them; "8 x 15000ms = 120000ms of cap alone" was arithmetic for a
-// scenario that cannot occur, and doubling the budget to clear it was not a fix for anything.
-//
-// So: 7.0s of real work at idle. Oversubscribing the container's 2-CPU quota with spinner processes stretches
-// that to 49.4s (four spinners, i.e. roughly 3x the demand the gate itself puts on the lane, where
-// --maxWorkers=2 means two jsdom workers plus a mostly-idle Jest main process against two cores). 120000ms is
-// ~2.4x that worst reproduced figure with a full 15000ms assertion cap on top, and it holds the invariant.
-//
-// It is deliberately not larger. The lane's gate failures were never this budget running out -- they were
-// worker processes dying against a container limit V8 could not see (see the note at the top of this file and
-// jest.config.mjs), which is why the previous 15000 -> 60000 -> 90000 -> 120000 -> 240000 escalation moved
-// nothing. Padding past the point where the number is derived from a measurement only delays the report on a
-// run that is already red.
+// One budget for the whole file -- see the equivalent note this replaces for the historical measurements
+// this number is derived from; the shape of the suite (render the entire routed app, drive a chain of
+// real userEvent interactions with real timers) hasn't changed with the tab redesign.
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
-    it("defaults to Design & Build and switches between tabs, keeping aria-current on the active one", async () => {
+    it("defaults to Design Game and switches between tabs, keeping aria-current on the active one", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
-        expect(sectionsNav().getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
+        expect(sectionsNav().getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
 
-        await user.click(sectionsNav().getByRole("button", {name: "Open Project"}));
+        await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
 
-        await expectActiveSection("Open Project");
-        expect(await screen.findByText("No recent projects yet.")).toBeInTheDocument();
-        expect(screen.getByLabelText("Project path", {exact: false})).toBeInTheDocument();
-        expect(sectionsNav().getByRole("button", {name: "Design & Build"})).not.toHaveAttribute("aria-current");
+        await expectActiveSection("Projects");
+        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
+        expect(screen.getByLabelText("Location", {exact: false})).toBeInTheDocument();
+        expect(sectionsNav().getByRole("button", {name: "Design Game"})).not.toHaveAttribute("aria-current");
 
-        await user.click(sectionsNav().getByRole("button", {name: "Advanced Tools"}));
-        await expectActiveSection("Advanced Tools");
-        expect(screen.getByRole("heading", {name: "Advanced Tools"})).toBeInTheDocument();
-        // No second, independent Blueprint Editor draft here -- Advanced Tools links back to the one
-        // canonical Design & Build editor instead (see HomePage.tsx's own doc comment).
-        expect(screen.getByRole("button", {name: "Go to Design & Build"})).toBeInTheDocument();
-
-        await user.click(screen.getByRole("button", {name: "Go to Design & Build"}));
-        await expectActiveSection("Design & Build");
-        expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
+        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
+        await expectActiveSection("Design Game");
+        expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
     });
 
-    it("opens a project from the Open Project tab's form", async () => {
+    it("opens an already-registered project from the Projects tab's registry list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {
+                        location: "/games/a",
+                        name: "A",
+                        type: "tsPackage",
+                        capabilities: [],
+                        origin: "managed",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                ],
+            }),
             "/api/home/projects/open": () => ({
                 ok: true,
                 status: 200,
@@ -129,10 +111,9 @@ describe("HomePage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await user.click(sectionsNav().getByRole("button", {name: "Open Project"}));
-        await expectActiveSection("Open Project");
-        await user.type(screen.getByLabelText("Project path", {exact: false}), "/games/a");
-        await user.click(screen.getByRole("button", {name: "Open"}));
+        await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
+        await expectActiveSection("Projects");
+        await user.click(await screen.findByRole("button", {name: "Open"}));
 
         await waitFor(() => {
             expect(calls).toContainEqual(
@@ -144,10 +125,10 @@ describe("HomePage", () => {
         });
     });
 
-    it("preserves a Design & Build draft across Design -> Open -> Design (tabs stay mounted, never unmounted)", async () => {
+    it("preserves a Design Game draft across Design -> Projects -> Design (tabs stay mounted, never unmounted)", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
@@ -157,17 +138,17 @@ describe("HomePage", () => {
         await user.click(screen.getByRole("tab", {name: "Symbols"}));
         await user.type(guidedSection().getByLabelText("New symbol id"), "wild-draft");
 
-        await user.click(sectionsNav().getByRole("button", {name: "Open Project"}));
-        await expectActiveSection("Open Project");
-        expect(await screen.findByText("No recent projects yet.")).toBeInTheDocument();
+        await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
+        await expectActiveSection("Projects");
+        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
 
         // SectionedFormEditor's own activeSection state isn't reset by this outer tab switch (it never
         // unmounts, only its display toggles, same as every other Home tab body) -- Symbols is still the
         // active section here, no need to click it again.
-        await user.click(sectionsNav().getByRole("button", {name: "Design & Build"}));
-        await expectActiveSection("Design & Build");
+        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
+        await expectActiveSection("Design Game");
         // The switch back has landed (expectActiveSection above), so the draft assertion is now the only
-        // thing left to prove: Design & Build's body was never unmounted, only CSS-hidden, so the
+        // thing left to prove: Design Game's body was never unmounted, only CSS-hidden, so the
         // "wild-draft" value its controlled input holds survived the round trip verbatim. guidedSection()
         // re-queries the tabpanel by role, so this also re-asserts that the guided editor's Symbols panel
         // is genuinely back in the accessibility tree rather than reading a hidden node.
@@ -177,10 +158,24 @@ describe("HomePage", () => {
     // The heaviest test in the file: it chains the most sequential real userEvent interactions (dirty the
     // draft, open the modal, Stay, restore, re-open, Leave, land on the project), which is why it sets the
     // upper end of the measurements behind the file-wide budget above.
-    it("asks for confirmation before leaving a dirty Design & Build draft to open a project, and Cancel preserves it", async () => {
+    it("asks for confirmation before leaving a dirty Design Game draft to open a project, and Cancel preserves it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {
+                        location: "/games/a",
+                        name: "A",
+                        type: "tsPackage",
+                        capabilities: [],
+                        origin: "managed",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                ],
+            }),
             "/api/home/projects/open": () => ({
                 ok: true,
                 status: 200,
@@ -208,29 +203,28 @@ describe("HomePage", () => {
         await user.type(guidedSection().getByLabelText("New symbol id"), "wild-draft");
         await user.click(guidedSection().getByRole("button", {name: "Add symbol"}));
 
-        await user.click(sectionsNav().getByRole("button", {name: "Open Project"}));
-        await expectActiveSection("Open Project");
-        await user.type(screen.getByLabelText("Project path", {exact: false}), "/games/a");
-        // The Open Project tab body is never unmounted either, so this submit button stays the very same
-        // node for the whole test -- resolved once here so the second submit below doesn't have to pay
+        await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
+        await expectActiveSection("Projects");
+        // The Projects tab body is never unmounted either, so this row's Open button stays the very same
+        // node for the whole test -- resolved once here so the second click below doesn't have to pay
         // for another screen-wide role query.
-        const openButton = screen.getByRole("button", {name: "Open"});
+        const openButton = await screen.findByRole("button", {name: "Open"});
         await user.click(openButton);
 
-        expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
+        expect(await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?")).toBeInTheDocument();
 
         // Cancel ("Stay") -- useOpenProject's guardedAction defers the API call itself until confirmed
         // (see openProjectGuard.test.tsx for a dedicated check that it never fired), so we're still on
-        // Home, on the Open Project tab (never navigated to /project), and the draft is exactly where it
+        // Home, on the Projects tab (never navigated to /project), and the draft is exactly where it
         // was.
         await user.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Stay"}));
         await waitFor(() =>
-            expect(screen.queryByText("You have unsaved changes in Design & Build. Leave and lose them?")).not.toBeInTheDocument(),
+            expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument(),
         );
-        expect(sectionsNav().getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
-        await user.click(sectionsNav().getByRole("button", {name: "Design & Build"}));
-        await expectActiveSection("Design & Build");
-        // Same as the first draft-restore assertion above: Design & Build's tab body was never unmounted
+        expect(sectionsNav().getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
+        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
+        await expectActiveSection("Design Game");
+        // Same as the first draft-restore assertion above: Design Game's tab body was never unmounted
         // (only CSS-hidden), so the committed "wild-draft" symbol input was preserved verbatim. This is
         // scoped to the now-visible guided section rather than left as a screen-wide findByDisplayValue:
         // display-value queries don't filter on accessibility-tree visibility, so a screen-wide one would
@@ -239,10 +233,10 @@ describe("HomePage", () => {
         expect(guidedSection().getByDisplayValue("wild-draft")).toBeInTheDocument();
 
         // Confirming ("Leave") this time actually opens the project.
-        await user.click(sectionsNav().getByRole("button", {name: "Open Project"}));
-        await expectActiveSection("Open Project");
+        await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
+        await expectActiveSection("Projects");
         await user.click(openButton);
-        expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
+        expect(await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?")).toBeInTheDocument();
         await user.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Leave"}));
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());

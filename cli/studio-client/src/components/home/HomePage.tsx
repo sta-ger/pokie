@@ -1,72 +1,71 @@
-import {Button, Divider, Stack, Text, Title} from "@mantine/core";
+import {Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {BlueprintEditorPage} from "../blueprintEditor/BlueprintEditorPage";
 import {DesignNavigationGuardProvider} from "../../context/DesignNavigationGuardContext";
 import {useDesignNavigationGuard} from "../../hooks/useDesignNavigationGuard";
-import {QuickActions} from "../common/QuickActions";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
-import {BuildFromBlueprintPanel} from "./BuildFromBlueprintPanel";
-import {CreateProjectForm} from "./CreateProjectForm";
 import {DocumentationLinks} from "./DocumentationLinks";
-import {InitProjectForm} from "./InitProjectForm";
-import {OpenProjectForm} from "./OpenProjectForm";
-import {RecentProjectsPanel} from "./RecentProjectsPanel";
+import {ProjectsPanel} from "./ProjectsPanel";
 
-export type HomeTab = "design" | "open" | "advanced";
+export type HomeTab = "design" | "projects";
 
 const HOME_TABS: NavTabItem<HomeTab>[] = [
-    {value: "design", label: "Design & Build"},
-    {value: "open", label: "Open Project"},
-    {value: "advanced", label: "Advanced Tools"},
+    {value: "design", label: "Design Game"},
+    {value: "projects", label: "Projects"},
 ];
 
 function isHomeTab(value: string | undefined): value is HomeTab {
     return HOME_TABS.some((tab) => tab.value === value);
 }
 
-// Task-oriented Home: 3 tabs instead of the previous 6 flat, module-named ones. "Design & Build" is the
-// primary happy path (open-or-create a blueprint -> configure the game model -> validate -> build ->
-// land in the Project Dashboard) and is the default tab; "Open Project" merges what were two separate
-// "ways to open an already-built project" tabs (Recent Projects, Open Existing Project) into one; every
-// other tool (hand-coded scaffold, init-in-place, build-from-an-existing-blueprint-file) moves to
-// "Advanced Tools" -- still fully functional, just not featured.
+// Task-oriented Home: 2 areas. "Design Game" is the primary happy path -- Blank/Random/Existing (the
+// guided BlueprintEditorPage's own "New Blueprint" dialog, see NewBlueprintDialog) -> configure the game
+// model -> validate -> build -> land in the Project Dashboard -- and is the default tab. "Projects" is
+// every already-known project (managed or registered, see ProjectsPanel/StudioProjectRegistrationService)
+// plus "Import Project", which detects/previews/validates a target before ever registering it, and routes
+// a detected PAR sheet into Design Game's own PAR Sheet Import/Export panel instead (see ProjectsPanel's
+// own `handleGoToDesignGame` doc comment) since there's no "open" story for a PAR sheet the way there is
+// for a runnable package.
 //
-// There used to be a second, independent, always-mounted `<BlueprintEditorPage />` instance here too (the
-// "raw"/non-guided Blueprint Editor) -- since HomePage keeps every tab body permanently mounted (see
-// below), that meant two entirely separate useBlueprintEditor() drafts alive at once, with no relationship
-// to each other: edits in one were invisible to the other, and it was possible to have two different
-// unsaved blueprints in memory simultaneously. Design & Build's own JSON mode and Load/Save-by-path
-// (tucked behind its "Show advanced options" disclosure, see BlueprintEditorPage's own `guided` doc
-// comment) already cover everything the raw editor offered, so Advanced Tools now just links over to it
-// instead of mounting a second instance -- one canonical editor, one draft.
+// "Advanced Tools" (hand-coded scaffold, init-in-place, build-from-an-existing-blueprint-file) has been
+// removed entirely -- those flows scaffolded/built via GamePackageCreator/GamePackageScaffolder/
+// GamePackageGenerator directly from Home, duplicating what the CLI itself already does better: run
+// `pokie init [name]` for a prepared, immediately valid package, or `pokie create [name]` for an
+// editable Blueprint Project. There used to be a second, independent, always-mounted
+// `<BlueprintEditorPage />` instance here too (the "raw"/non-guided Blueprint Editor) -- since HomePage
+// keeps every tab body permanently mounted (see below), that meant two entirely separate
+// useBlueprintEditor() drafts alive at once, with no relationship to each other. Design Game's own JSON
+// mode and Load/Save-by-path (tucked behind its "Show advanced options" disclosure, see
+// BlueprintEditorPage's own `guided` doc comment) already cover everything the raw editor offered.
 //
 // The active tab comes from the URL (`/home/:tab`, see routes.tsx), not local state, so refresh/back-
 // forward/direct links land on the right section -- an unrecognized or missing `:tab` (e.g. this page
-// rendered directly in a test outside a matching route) falls back to "design". All 3 tab bodies stay
+// rendered directly in a test outside a matching route) falls back to "design". Both tab bodies stay
 // permanently mounted (hidden via CSS, never unmounted) so switching tabs never destroys in-progress
 // Blueprint Editor state -- same "don't unmount, hide" principle ProjectDashboardPage's own tabs rely on,
 // applied directly to the tab bodies here since BlueprintEditorPage's state is non-trivial.
 //
 // `location.state?.initialBlueprintPath` is how Project Overview's "Configure Game Model" link (see
 // ProjectDashboardPage's onConfigureGameModel) sends the user back here already on the right tab with
-// the right blueprint loading.
+// the right blueprint loading. `location.state?.initialParSheetPath` is the same idea for Projects' own
+// "Import Project" -> PAR sheet routing (see ProjectsPanel's `handleGoToDesignGame`).
 export function HomePage() {
     const navigate = useNavigate();
     const {tab} = useParams<{tab: string}>();
     const activeTab: HomeTab = isHomeTab(tab) ? tab : "design";
-    const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Design & Build";
+    const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Design Game";
     useDocumentTitle(`${activeTabLabel} · POKIE Studio`);
 
-    const location = useLocation() as {state?: {initialBlueprintPath?: string}};
+    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
+    const initialParSheetPath = location.state?.initialParSheetPath;
 
     const designRef = useRef<HTMLDivElement>(null);
-    const openRef = useRef<HTMLDivElement>(null);
-    const advancedRef = useRef<HTMLDivElement>(null);
-    const panelRefs: Record<HomeTab, typeof designRef> = {design: designRef, open: openRef, advanced: advancedRef};
+    const projectsRef = useRef<HTMLDivElement>(null);
+    const panelRefs: Record<HomeTab, typeof designRef> = {design: designRef, projects: projectsRef};
     useEffect(() => {
         panelRefs[activeTab].current?.focus();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,82 +86,25 @@ export function HomePage() {
             <DesignNavigationGuardProvider value={guardedAction}>
                 <Stack gap="lg">
                     <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
-                        <BlueprintEditorPage guided initialPath={initialBlueprintPath} onDirtyChange={setIsDesignDirty} />
+                        <BlueprintEditorPage
+                            guided
+                            initialPath={initialBlueprintPath}
+                            initialParSheetPath={initialParSheetPath}
+                            onDirtyChange={setIsDesignDirty}
+                        />
                     </div>
 
-                    <div ref={openRef} tabIndex={-1} style={{display: activeTab === "open" ? undefined : "none"}}>
+                    <div ref={projectsRef} tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
                         <Stack gap="md">
-                            <Title order={2}>Open a Project</Title>
+                            <Title order={2}>Projects</Title>
                             <Text c="dimmed" size="sm">
-                                Open an already-built project to inspect, validate, simulate, or deploy it.
+                                Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn&apos;t
+                                know about yet.
                             </Text>
-                            <RecentProjectsPanel />
-                            <Divider label="Or open by path" labelPosition="left" />
-                            <OpenProjectForm />
+                            <ProjectsPanel />
                         </Stack>
                     </div>
 
-                    <div ref={advancedRef} tabIndex={-1} style={{display: activeTab === "advanced" ? undefined : "none"}}>
-                        <Stack gap="lg">
-                            <Title order={2}>Advanced Tools</Title>
-                            <Text c="dimmed" size="sm">
-                                Everything outside the guided Design &amp; Build flow: scaffolding hand-coded games, initializing an
-                                existing directory in place, and building from a blueprint file directly.
-                            </Text>
-
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Scaffold a hand-coded game
-                                </Title>
-                                <Text c="dimmed" size="sm" mb="sm">
-                                    Generates hand-written TypeScript game logic (no blueprint/game model) -- for building game logic
-                                    by hand rather than declaratively.
-                                </Text>
-                                <CreateProjectForm />
-                            </div>
-
-                            <Divider />
-
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Initialize an existing directory
-                                </Title>
-                                <InitProjectForm />
-                            </div>
-
-                            <Divider />
-
-                            <div>
-                                <Title order={4} mb="xs">
-                                    Build from an existing blueprint file
-                                </Title>
-                                <Text c="dimmed" size="sm" mb="sm">
-                                    Skips the guided editor -- builds directly from a blueprint JSON file already on disk.
-                                </Text>
-                                <BuildFromBlueprintPanel />
-                            </div>
-
-                            <Divider />
-
-                            <div>
-                                <Title order={4} mb="xs">
-                                    JSON mode &amp; Load/Save by path
-                                </Title>
-                                <Text c="dimmed" size="sm" mb="sm">
-                                    Design &amp; Build is the one Blueprint Editor -- JSON mode and Load/Save-by-path live there, behind
-                                    its own &quot;Show advanced options&quot; toggle, so there&apos;s no separate raw editor with its own
-                                    unsaved draft.
-                                </Text>
-                                <QuickActions>
-                                    <Button variant="default" onClick={() => navigate("/home/design")}>
-                                        Go to Design &amp; Build
-                                    </Button>
-                                </QuickActions>
-                            </div>
-                        </Stack>
-                    </div>
-
-                    <Divider />
                     <DocumentationLinks />
                 </Stack>
             </DesignNavigationGuardProvider>

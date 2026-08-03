@@ -84,7 +84,7 @@ type ApplyView =
     | {status: "ok"};
 
 // Guided Layout & symbols -> Win model/paytable -> Mechanics/features -> Bet modes -> Validate -> Apply
-// editor for the *current project's* own source blueprint. Reuses the Home "Design & Build" editor's
+// editor for the *current project's* own source blueprint. Reuses the Home "Design Game" editor's
 // own field components/useBlueprintEditor draft-state hook and the existing blueprint validate/load/
 // save/build services as-is -- no new backend routes, no re-implemented domain math (see
 // GameBlueprintValidator/GamePackageGenerator for the real rules). Draft/apply/discard, stale-response

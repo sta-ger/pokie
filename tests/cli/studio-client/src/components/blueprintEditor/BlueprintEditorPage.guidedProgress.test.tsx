@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
-// The guided Design & Build flow shows a read-only StepProgressList (Configure -> Validate -> Build)
+// The guided Design Game flow shows a read-only StepProgressList (Configure -> Validate -> Build)
 // instead of a Mantine Stepper -- there is nothing to click ahead to, since `stepIndex`/status is purely
 // derived from `validationView` (see BlueprintEditorPage.tsx's own doc comment and
 // StepProgressList.tsx's). This covers the state transitions and the aria-current/aria-disabled
@@ -13,7 +13,7 @@ function fetchWithValidateResult(validateJson: unknown): FetchLike {
     return (url, init) => {
         const [path] = url.split("?");
         const method = init?.method ?? "GET";
-        if (path === "/api/home/recent-projects") {
+        if (path === "/api/home/projects/registry") {
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
         }
         if (path === "/api/home/blueprints/validate" && method === "POST") {
@@ -28,7 +28,7 @@ function progressItem(label: string): HTMLElement {
     return within(list).getByText(label, {exact: false}).closest("li") as HTMLElement;
 }
 
-describe("Guided Design & Build: read-only progress list", () => {
+describe("Guided Design Game: read-only progress list", () => {
     it("has no clickable step buttons -- unlike the interactive Steppers elsewhere in Studio", () => {
         renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
         // The progress list's items are plain <li>s, not <button>s (Mantine's Stepper.Step always

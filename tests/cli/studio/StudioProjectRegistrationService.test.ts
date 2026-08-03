@@ -125,6 +125,46 @@ describe("StudioProjectRegistrationService", () => {
         });
     });
 
+    describe("previewImport", () => {
+        it("resolves and describes a recognized target without registering it", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/existing/bundle": outcomeLibraryProject("/existing/bundle")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            const result = await service.previewImport("/existing/bundle");
+
+            expect(result).toEqual({
+                status: "recognized",
+                location: path.resolve("/existing/bundle"),
+                type: "outcomeLibrary",
+                capabilities: ["outcomeLibrary.read"],
+                suggestedName: "bundle",
+            });
+            expect(await registry.list()).toEqual([]);
+        });
+
+        it("strips the file extension from the suggested name for a file-kind project (blueprint/parWorkbook/wasm)", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/existing/game.json": blueprintProject("/existing/game.json")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            const result = await service.previewImport("/existing/game.json");
+
+            expect(result.status).toBe("recognized");
+            expect(result.status === "recognized" && result.suggestedName).toBe("game");
+        });
+
+        it("reports \"unrecognized\" rather than throwing when the path isn't any known POKIE project type", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            const result = await service.previewImport("/not/a/project");
+
+            expect(result).toEqual({status: "unrecognized", path: path.resolve("/not/a/project")});
+        });
+    });
+
     describe("list", () => {
         it("marks an entry \"missing\" once its location no longer exists on disk, without dropping it", async () => {
             const registry = new InMemoryStudioProjectRegistry();

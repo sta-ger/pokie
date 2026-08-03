@@ -51,9 +51,6 @@ import {
 } from "./outcomeLibrary/validateOutcomeLibraryGenerateEstimateRequest.js";
 import {validateOutcomeLibraryGenerateRequest, OutcomeLibraryGenerateRequestInput} from "./outcomeLibrary/validateOutcomeLibraryGenerateRequest.js";
 import type {StudioDiagnosticsView} from "./StudioDiagnosticsView.js";
-import {validateBuildRequest, BuildRequestInput} from "./home/validateBuildRequest.js";
-import {validateCreateProjectRequest, CreateProjectRequestInput} from "./home/validateCreateProjectRequest.js";
-import {validateInitProjectRequest, InitProjectRequestInput} from "./home/validateInitProjectRequest.js";
 import {validateOpenProjectRequest, OpenProjectRequestInput} from "./home/validateOpenProjectRequest.js";
 import {loadProjectDashboardContext} from "./loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
@@ -67,6 +64,8 @@ import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
 import {StudioRuntimeManager, StudioRuntimeSessionResult, StudioRuntimeSpinResult, StudioRuntimeStartResult} from "./runtime/StudioRuntimeManager.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
+import {validateProjectLocationRequest, ProjectLocationRequestInput} from "./validateProjectLocationRequest.js";
+import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} from "./validateProjectRegistrationRequest.js";
 import {validateRuntimeSessionRequest, RuntimeSessionRequestInput} from "./runtime/validateRuntimeSessionRequest.js";
 import {validateRuntimeSpinRequest, RuntimeSpinRequestInput} from "./runtime/validateRuntimeSpinRequest.js";
 import {validateStartRuntimeRequest, StartRuntimeRequestInput, ValidatedStartRuntimeRequest} from "./runtime/validateStartRuntimeRequest.js";
@@ -346,23 +345,23 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/home/projects/create") {
-            await this.handleHomeCreateProject(req, res);
+        if (method === "GET" && url.pathname === "/api/home/projects/registry") {
+            this.sendJson(res, 200, await this.projectRegistrationService.list());
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/home/projects/init") {
-            await this.handleHomeInitProject(req, res);
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/preview") {
+            await this.handleHomeProjectRegistryPreview(req, res);
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/home/projects/build/preview") {
-            await this.handleHomeBuildPreview(req, res);
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/register") {
+            await this.handleHomeProjectRegistryRegister(req, res);
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/home/projects/build") {
-            await this.handleHomeBuildProject(req, res);
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/remove") {
+            await this.handleHomeProjectRegistryRemove(req, res);
             return;
         }
 
@@ -778,66 +777,54 @@ export class StudioServer implements StudioServerHandling {
     // plain-data result back as-is with a 2xx status, letting the DTO's own `status` field (ok/error/
     // invalid/load-error) carry the domain-level outcome. This mirrors GET /api/project/validate
     // returning 200 with a report that may itself say invalid:false — a well-formed request that
-    // legitimately failed at the domain level is not a failed HTTP request. None of these ever spawn
-    // `pokie create`/`init`/`build` as a subprocess or duplicate their logic — StudioHomeService drives
-    // the exact same underlying services directly.
-    private async handleHomeCreateProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // legitimately failed at the domain level is not a failed HTTP request.
+
+    // Import Project's own "detect" step -- read-only, never registers anything (see
+    // StudioProjectRegistrationService.previewImport's own doc comment). Always 200, even for
+    // "unrecognized" -- that's an ordinary outcome of pointing detection at an arbitrary path, not a
+    // failed request.
+    private async handleHomeProjectRegistryPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
         try {
-            validated = validateCreateProjectRequest((body ?? {}) as CreateProjectRequestInput);
+            validated = validateProjectLocationRequest((body ?? {}) as ProjectLocationRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        const result = await this.homeService.createProject(validated);
+        this.sendJson(res, 200, await this.projectRegistrationService.previewImport(validated.location));
+    }
+
+    // Import Project's own "register" step -- always origin "external" (see
+    // StudioProjectRegistrationService.registerExternal's own doc comment); a managed project is only
+    // ever registered internally by Studio itself.
+    private async handleHomeProjectRegistryRegister(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateProjectRegistrationRequest((body ?? {}) as ProjectRegistrationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.projectRegistrationService.registerExternal(validated.location, validated.name);
         this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }
 
-    private async handleHomeInitProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    private async handleHomeProjectRegistryRemove(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
         try {
-            validated = validateInitProjectRequest((body ?? {}) as InitProjectRequestInput);
+            validated = validateProjectLocationRequest((body ?? {}) as ProjectLocationRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        const result = await this.homeService.initProject(validated);
-        this.sendJson(res, 200, result);
-    }
-
-    // Never writes anything (see StudioHomeService.previewBuild()) — always 200, even for a
-    // "load-error"/"invalid" result, same reasoning as GET /api/project/validate returning 200 with a
-    // report that may itself say invalid:false: this is a read of the blueprint's current state, not
-    // a failed request.
-    private async handleHomeBuildPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateBuildRequest((body ?? {}) as BuildRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        this.sendJson(res, 200, this.homeService.previewBuild(validated));
-    }
-
-    private async handleHomeBuildProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateBuildRequest((body ?? {}) as BuildRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        const result = await this.homeService.buildProject(validated);
-        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+        await this.projectRegistrationService.remove(validated.location);
+        this.sendJson(res, 200, {status: "ok"});
     }
 
     private async handleHomeOpenProject(req: IncomingMessage, res: ServerResponse): Promise<void> {

@@ -25,7 +25,7 @@ async function validate(user: ReturnType<typeof userEvent.setup>): Promise<void>
     await user.click(screen.getByRole("button", {name: "Validate"}));
 }
 
-describe("Guided Design & Build: validation staleness and build gating", () => {
+describe("Guided Design Game: validation staleness and build gating", () => {
     it("editing after a successful validate clears 'Ready to build' and disables Build again", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url, init) => {

@@ -3,8 +3,7 @@ export type BlueprintBuildRequestInput = {blueprint?: unknown; outDir?: unknown;
 export type ValidatedBlueprintBuildRequest = {blueprint: unknown; outDir?: string; sourcePath?: string};
 
 // Shared by both POST /api/home/blueprints/build-preview and POST /api/home/blueprints/build — same
-// request shape either way (see validateBuildRequest.ts's own analogous path-based pair, and
-// StudioBlueprintService.previewBuild()/build()).
+// request shape either way (see StudioBlueprintService.previewBuild()/build()).
 export function validateBlueprintBuildRequest(input: BlueprintBuildRequestInput): ValidatedBlueprintBuildRequest {
     const {blueprint, outDir, sourcePath} = input;
     if (blueprint === undefined) {

@@ -6,14 +6,14 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 describe("Routable Home/Project sections: refresh and direct-link", () => {
     it("a direct link to a non-default Home tab renders that tab, not the default", () => {
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/open"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        expect(screen.getByRole("heading", {name: "Open a Project"})).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
-        expect(screen.queryByRole("heading", {name: "Design & Build Your Game"})).not.toBeInTheDocument();
+        expect(screen.getByRole("heading", {name: "Projects"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
+        expect(screen.queryByRole("heading", {name: "Design Your Game"})).not.toBeInTheDocument();
     });
 
     it("a direct link to a non-default Project tab renders that tab, not Overview", async () => {
@@ -39,12 +39,12 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
 
     it("an unrecognized :tab falls back to the default section instead of erroring", () => {
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
 
-        expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
+        expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
     });
 });
 
@@ -52,7 +52,7 @@ describe("Routable Home sections: browser back/forward", () => {
     it("back and forward navigate between previously-visited sections", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
         // renderRoutedApp now mounts a real data router (createMemoryRouter), so router.navigate(-1)/(1)
@@ -60,22 +60,16 @@ describe("Routable Home sections: browser back/forward", () => {
         // buttons use, no sibling test component needed.
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
 
-        await user.click(screen.getByRole("button", {name: "Open Project"}));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page"));
-
-        await user.click(screen.getByRole("button", {name: "Advanced Tools"}));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Advanced Tools"})).toHaveAttribute("aria-current", "page"));
+        await user.click(screen.getByRole("button", {name: "Projects"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page"));
 
         router.navigate(-1);
-        await waitFor(() => expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page"));
-
-        router.navigate(-1);
-        await waitFor(() => expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page"));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
 
         router.navigate(1);
-        await waitFor(() => expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page"));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page"));
         // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed
         // even the project's raised 60000ms testTimeout, same reasoning as happyPath.test.tsx's own
         // explicit timeout.

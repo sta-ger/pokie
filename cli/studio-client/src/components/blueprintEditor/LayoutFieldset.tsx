@@ -6,7 +6,7 @@ import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {FieldWarningText} from "../common/FieldWarningText";
 import {PageSection} from "../common/PageSection";
 
-// Reels/rows -- split out of MetadataFieldset so the guided Design & Build editor can put "how many
+// Reels/rows -- split out of MetadataFieldset so the guided Design Game editor can put "how many
 // reels/rows" in its own Layout section alongside PaylinesEditor, rather than next to the manifest
 // fields. A reel-count change also resizes paylines/reel strips/reel strip generation to match, exactly
 // as it did when this lived in MetadataFieldset. `issues` defaults to `[]` -- the raw editor never passes

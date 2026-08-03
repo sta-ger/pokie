@@ -8,11 +8,11 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 // history transition, so these tests drive it the same way a real browser would: router.navigate(-1) for
 // Back, and a direct router.navigate("/project/...") for a typed/linked URL. Home tab switches are driven
 // through the UI itself, since those must never even reach the blocker.
-const CONFIRM_TEXT = "You have unsaved changes in Design & Build. Leave and lose them?";
+const CONFIRM_TEXT = "You have unsaved changes in Design Game. Leave and lose them?";
 
 function createProjectFetch() {
     return createRoutedFakeFetch({
-        "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         "/api/project/context": () => ({
             ok: true,
             status: 200,
@@ -30,15 +30,14 @@ async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Pr
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
     // alone doesn't dirty the blueprint (the field is just local uncommitted input state until "Add
     // symbol" actually mutates the blueprint) -- same setup HomePage.test.tsx's own dirty-confirm test
-    // uses. There is exactly one BlueprintEditorPage instance on Home now (the guided Design & Build
-    // tab's own) -- Advanced Tools no longer mounts a second, independent raw editor.
+    // uses. There is exactly one BlueprintEditorPage instance on Home (the guided Design Game tab's own).
     await user.click(screen.getByRole("tab", {name: "Symbols"}));
     await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
     await user.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
 describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
-    it("blocks browser Back navigation away from Home while the Design & Build draft is dirty", async () => {
+    it("blocks browser Back navigation away from Home while the Design Game draft is dirty", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createProjectFetch();
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
@@ -49,11 +48,11 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         // The blocked transition hasn't been resolved yet -- still on Home, draft untouched.
-        expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
         expect(router.state.location.pathname).toBe("/home/design");
     }, 60000);
 
-    it("blocks a direct navigation to /project/* while the Design & Build draft is dirty", async () => {
+    it("blocks a direct navigation to /project/* while the Design Game draft is dirty", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createProjectFetch();
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
@@ -63,7 +62,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         router.navigate("/project/overview");
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
         expect(router.state.location.pathname).toBe("/home/design");
     }, 60000);
 
@@ -81,7 +80,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(router.state.location.pathname).toBe("/home/design");
-        expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 
@@ -108,28 +107,24 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // the 2-entry history stack, and a single step *forward* lands straight back on Home instead of
         // a leftover duplicate entry sitting in between.
         router.navigate(1);
-        await waitFor(() => expect(screen.getByRole("button", {name: "Design & Build"})).toHaveAttribute("aria-current", "page"));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
     }, 60000);
 
     // Many sequential real userEvent interactions -- same reasoning as above.
     it("switching Home's own tabs never prompts, even while the draft is dirty", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         await dirtyTheDesignDraft(user);
 
-        await user.click(screen.getByRole("button", {name: "Open Project"}));
+        await user.click(screen.getByRole("button", {name: "Projects"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open Project"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
 
-        await user.click(screen.getByRole("button", {name: "Advanced Tools"}));
-        expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Advanced Tools"})).toHaveAttribute("aria-current", "page");
-
-        await user.click(screen.getByRole("button", {name: "Design & Build"}));
+        await user.click(screen.getByRole("button", {name: "Design Game"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
@@ -137,7 +132,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
     it("registers a native beforeunload listener only while the draft is dirty", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
         const addSpy = jest.spyOn(window, "addEventListener");
         const removeSpy = jest.spyOn(window, "removeEventListener");
@@ -177,7 +172,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
     it("blocks a raw hash edit that bypasses the router's own tracked history", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 

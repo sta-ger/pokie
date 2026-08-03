@@ -1,12 +1,10 @@
 import {
     buildBlueprint,
-    buildProject,
     buildReplayDownloadUrl,
     buildReportDownloadUrl,
     cancelReplay,
     cancelSimulation,
     closeProject,
-    createProject,
     createRuntimeSession,
     exportParSheet,
     FetchLike,
@@ -19,16 +17,18 @@ import {
     getRuntimeState,
     getSimulation,
     importParSheet,
-    initProject,
     inspectProject,
+    listProjectRegistry,
     listReplays,
     listReports,
     listRecentProjects,
     loadBlueprint,
     openProject,
     previewBlueprintBuild,
-    previewBuild,
+    previewProjectImport,
     previewReelStripGeneration,
+    registerProjectImport,
+    removeProjectRegistryEntry,
     restartRuntime,
     runReplay,
     saveBlueprint,
@@ -79,184 +79,125 @@ describe("studio-client apiClient", () => {
         });
     });
 
-    describe("createProject", () => {
-        it("POSTs the request and returns the scaffold result", async () => {
-            const body = {
-                status: "ok",
-                projectRoot: "/a/sample-slot",
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                createdFiles: ["package.json"],
-                updatedFiles: [],
-                skippedFiles: [],
-            };
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+    describe("listProjectRegistry", () => {
+        it("GETs /api/home/projects/registry and returns the list", async () => {
+            const entries = [
+                {
+                    location: "/a",
+                    name: "A",
+                    type: "tsPackage",
+                    capabilities: [],
+                    origin: "managed",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "ok",
+                },
+            ];
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: entries}));
 
-            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot"});
+            const result = await listProjectRegistry(fetchImpl);
+
+            expect(calls).toEqual([{url: "/api/home/projects/registry", init: undefined}]);
+            expect(result).toEqual(entries);
+        });
+    });
+
+    describe("previewProjectImport", () => {
+        it("POSTs the location and returns a recognized preview", async () => {
+            const body = {status: "recognized", location: "/a", type: "tsPackage", capabilities: ["multiMode"], suggestedName: "a"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await previewProjectImport(fetchImpl, "/a");
 
             expect(calls).toEqual([
                 {
-                    url: "/api/home/projects/create",
-                    init: {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({destinationDir: "/a", name: "sample-slot"}),
-                    },
+                    url: "/api/home/projects/registry/preview",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({location: "/a"})},
                 },
             ]);
             expect(result).toEqual(body);
         });
 
-        it("includes gameId/gameName/version overrides in the body when given", async () => {
+        it("returns an unrecognized result rather than throwing", async () => {
+            const body = {status: "unrecognized", path: "/not-a-project"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            expect(await previewProjectImport(fetchImpl, "/not-a-project")).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"location" is required.'}}));
+
+            await expect(previewProjectImport(fetchImpl, "")).rejects.toThrow('"location" is required.');
+        });
+    });
+
+    describe("registerProjectImport", () => {
+        it("POSTs the location/name and returns the registered entry", async () => {
+            const body = {
+                status: "ok",
+                entry: {
+                    location: "/a",
+                    name: "a",
+                    type: "tsPackage",
+                    capabilities: [],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "ok",
+                },
+            };
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await registerProjectImport(fetchImpl, "/a", "a");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/projects/registry/register",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({location: "/a", name: "a"})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("omits name from the body when not given", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok"}}));
 
-            await createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot", gameId: "cf", gameName: "CF", version: "2.0.0"});
+            await registerProjectImport(fetchImpl, "/a");
 
-            expect(calls[0].init?.body).toBe(
-                JSON.stringify({destinationDir: "/a", name: "sample-slot", gameId: "cf", gameName: "CF", version: "2.0.0"}),
-            );
+            expect(calls[0].init?.body).toBe(JSON.stringify({location: "/a", name: undefined}));
         });
 
-        it("returns a domain-level error result rather than throwing", async () => {
-            const body = {status: "error", error: '"sample-slot" already exists.'};
+        it("returns an unrecognized result rather than throwing", async () => {
+            const body = {status: "unrecognized", path: "/not-a-project"};
             const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
 
-            const result = await createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot"});
-
-            expect(result).toEqual(body);
+            expect(await registerProjectImport(fetchImpl, "/not-a-project")).toEqual(body);
         });
 
         it("throws the server's own error message for a malformed request", async () => {
-            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"name" is required.'}}));
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"location" is required.'}}));
 
-            await expect(createProject(fetchImpl, {destinationDir: "/a", name: ""})).rejects.toThrow('"name" is required.');
-        });
-
-        it("falls back to a generic message when the error body isn't parseable JSON", async () => {
-            const fetchImpl: FetchLike = () =>
-                Promise.resolve({ok: false, status: 500, json: () => Promise.reject(new Error("not json"))});
-
-            await expect(createProject(fetchImpl, {destinationDir: "/a", name: "sample-slot"})).rejects.toThrow(/HTTP 500/);
+            await expect(registerProjectImport(fetchImpl, "")).rejects.toThrow('"location" is required.');
         });
     });
 
-    describe("initProject", () => {
-        it("POSTs the directory and returns the scaffold result", async () => {
-            const body = {
-                status: "ok",
-                projectRoot: "/a",
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                createdFiles: ["tsconfig.json"],
-                updatedFiles: ["package.json"],
-                skippedFiles: [],
-            };
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
+    describe("removeProjectRegistryEntry", () => {
+        it("POSTs the location", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok"}}));
 
-            const result = await initProject(fetchImpl, {directory: "/a"});
+            await removeProjectRegistryEntry(fetchImpl, "/a");
 
             expect(calls).toEqual([
                 {
-                    url: "/api/home/projects/init",
-                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({directory: "/a"})},
+                    url: "/api/home/projects/registry/remove",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({location: "/a"})},
                 },
             ]);
-            expect(result).toEqual(body);
-        });
-
-        it("returns a domain-level error result rather than throwing", async () => {
-            const body = {status: "error", error: "No \"package.json\" found."};
-            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
-
-            expect(await initProject(fetchImpl, {directory: "/a"})).toEqual(body);
         });
 
         it("throws the server's own error message for a malformed request", async () => {
-            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"directory" is required.'}}));
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"location" is required.'}}));
 
-            await expect(initProject(fetchImpl, {directory: ""})).rejects.toThrow('"directory" is required.');
-        });
-    });
-
-    describe("previewBuild", () => {
-        it("POSTs the blueprint path/outDir and returns the preview", async () => {
-            const body = {
-                status: "ok",
-                warnings: [],
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                reels: 5,
-                rows: 3,
-                symbolsCount: 7,
-                blueprintHash: "sha256:abc",
-                expectedFiles: ["package.json"],
-            };
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body}));
-
-            const result = await previewBuild(fetchImpl, {blueprintPath: "./blueprint.json", outDir: "./out"});
-
-            expect(calls).toEqual([
-                {
-                    url: "/api/home/projects/build/preview",
-                    init: {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({blueprintPath: "./blueprint.json", outDir: "./out"}),
-                    },
-                },
-            ]);
-            expect(result).toEqual(body);
-        });
-
-        it("returns an invalid/load-error result rather than throwing", async () => {
-            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "load-error", error: "not found"}}));
-
-            expect(await previewBuild(fetchImpl, {blueprintPath: "./missing.json"})).toEqual({status: "load-error", error: "not found"});
-        });
-
-        it("throws the server's own error message for a malformed request", async () => {
-            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprintPath" is required.'}}));
-
-            await expect(previewBuild(fetchImpl, {blueprintPath: ""})).rejects.toThrow('"blueprintPath" is required.');
-        });
-    });
-
-    describe("buildProject", () => {
-        it("POSTs the blueprint path/outDir and returns the build result", async () => {
-            const body = {
-                status: "ok",
-                projectRoot: "/out",
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                createdFiles: ["package.json"],
-                buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "sha256:abc", game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}},
-                unchanged: false,
-                warnings: [],
-            };
-            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
-
-            const result = await buildProject(fetchImpl, {blueprintPath: "./blueprint.json", outDir: "./out"});
-
-            expect(calls).toEqual([
-                {
-                    url: "/api/home/projects/build",
-                    init: {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({blueprintPath: "./blueprint.json", outDir: "./out"}),
-                    },
-                },
-            ]);
-            expect(result).toEqual(body);
-        });
-
-        it("returns a conflict/error result rather than throwing", async () => {
-            const body = {status: "error", error: "already exists and contains file(s)"};
-            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
-
-            expect(await buildProject(fetchImpl, {blueprintPath: "./blueprint.json", outDir: "./out"})).toEqual(body);
-        });
-
-        it("throws the server's own error message for a malformed request", async () => {
-            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprintPath" is required.'}}));
-
-            await expect(buildProject(fetchImpl, {blueprintPath: ""})).rejects.toThrow('"blueprintPath" is required.');
+            await expect(removeProjectRegistryEntry(fetchImpl, "")).rejects.toThrow('"location" is required.');
         });
     });
 

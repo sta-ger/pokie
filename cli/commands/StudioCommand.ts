@@ -24,7 +24,7 @@ export type StudioCommandDependencies = {
     createServer?: (options: StudioServerOptions) => StudioServerHandling;
     openBrowser?: typeof openBrowser;
     contextResolver?: StudioContextResolving;
-    // Drives the Home nav's Create/Init/Build/Open/Recent-Projects flows — see StudioHomeService.
+    // Drives the Home nav's Open/Recent-Projects flows — see StudioHomeService.
     homeService?: StudioHomeService;
     // Drives the Blueprint Editor's five /api/home/blueprints/* endpoints — see StudioBlueprintService.
     blueprintService?: StudioBlueprintService;
@@ -60,11 +60,6 @@ export class StudioCommand implements CliCommandHandling {
             dependencies.homeService ??
             new StudioHomeService(
                 pokieVersion,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,

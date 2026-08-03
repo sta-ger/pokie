@@ -4,7 +4,7 @@ import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient
 import {renderRoutedApp} from "../testUtils/renderRoutedApp";
 
 // Exercises the full human-centered happy path end to end, across a real cross-page navigation: land on
-// Home's default "Design & Build" tab -> edit the game model -> validate -> build -> auto-navigate into
+// Home's default "Design Game" tab -> edit the game model -> validate -> build -> auto-navigate into
 // the Project Dashboard -> run a simulation -> open the resulting report via Overview's recommended
 // next-action. Every screen/hook/API call used here is the app's real, already-tested production code --
 // this test only wires a fake fetch across the whole scenario, it doesn't re-implement any of it.
@@ -29,6 +29,9 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({mode: "home"})});
             }
 
+            if (path === "/api/home/projects/registry" && method === "GET") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+            }
             if (path === "/api/home/blueprints/validate" && method === "POST") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
             }
@@ -220,9 +223,9 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
 
         renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
-        // 1. Land on Home's default "Design & Build" tab -- the guided open-or-create + configure entry.
+        // 1. Land on Home's default "Design Game" tab -- the guided open-or-create + configure entry.
         // Awaited rather than immediate: "/" resolves the server mode first, so Home appears a tick later.
-        expect(await screen.findByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
+        expect(await screen.findByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
 
         // 2. Configure the game model -- add a symbol. The guided editor's own fields are split into
         // named sections (SectionedFormEditor) -- Symbols is one of them, so it needs its own tab click
@@ -241,12 +244,12 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
 
         // 5. Building's success action lands us in the Project Dashboard (the same "Open in Studio"
         // bridge the app already uses everywhere a build succeeds) -- via the same guarded-navigation
-        // confirm every other "leave a dirty Design & Build draft" exit uses (see openProjectGuard.test.tsx):
+        // confirm every other "leave a dirty Design Game draft" exit uses (see openProjectGuard.test.tsx):
         // the symbol added in step 2 was never saved to a source blueprint file, and building a package is
         // a distinct fact from that (see BlueprintBuildPanel's own `onBuilt` doc comment), so the draft is
         // still genuinely dirty here.
         await user.click(openInStudio);
-        expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
+        expect(await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Leave"}));
         expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 

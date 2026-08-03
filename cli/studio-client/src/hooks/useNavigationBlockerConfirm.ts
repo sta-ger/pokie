@@ -14,7 +14,7 @@ export type NavigationBlockerConfirmModal = {
 // undismissable confirm modal (withCloseButton/closeOnEscape/closeOnClickOutside are all off below) --
 // otherwise Escape/click-outside/the close button would dismiss the modal without running either
 // proceed() or reset(), leaving blocker.state stuck at "blocked" forever. Shared by
-// useDesignNavigationGuard (a dirty Home Design & Build draft) and ProjectDashboardPage (a dirty
+// useDesignNavigationGuard (a dirty Home Design Game draft) and ProjectDashboardPage (a dirty
 // Mechanics Editor draft) -- same predicate-driven useBlocker + modal shape; each caller supplies its
 // own "what counts as leaving the guarded area" predicate and its own message. `onLeave` runs right
 // before `blocker.proceed()`, for a caller that needs to clear its own dirty-state the instant the user

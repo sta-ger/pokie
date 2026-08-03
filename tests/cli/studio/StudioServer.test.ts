@@ -31,17 +31,18 @@ import http, {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
-import {GamePackageCreating} from "../../../cli/scaffold/GamePackageCreating.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
 import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
+import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
+import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
@@ -64,16 +65,6 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
 async function del(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url, {method: "DELETE"});
     return {status: response.status, body: await response.json()};
-}
-
-function createStubCreator(result: ScaffoldResult): GamePackageCreating & {calls: Array<{parentDir: string; name: string}>} {
-    return {
-        calls: [],
-        create(parentDir: string, name: string): ScaffoldResult {
-            this.calls.push({parentDir, name});
-            return result;
-        },
-    };
 }
 
 // Same fakes as materializeRuntimePackage.ts's own boundary tests (see
@@ -283,7 +274,6 @@ describe("StudioServer", () => {
     let studioRoot: string;
     let server: StudioServer;
     let baseUrl: string;
-    let creator: ReturnType<typeof createStubCreator>;
     let loadGame: jest.Mock;
     let inspect: jest.Mock;
     let validate: jest.Mock;
@@ -306,21 +296,11 @@ describe("StudioServer", () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-test-"));
         writeStudioAssets(studioRoot);
 
-        creator = createStubCreator(scaffoldResult);
         loadGame = jest.fn();
         inspect = jest.fn();
         validate = jest.fn();
 
-        const homeService = new StudioHomeService(
-            "1.0.0",
-            undefined,
-            creator,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            loadGame,
-        );
+        const homeService = new StudioHomeService("1.0.0", undefined, loadGame);
         server = new StudioServer({
             pokieVersion: "1.0.0",
             host: "127.0.0.1",
@@ -401,37 +381,6 @@ describe("StudioServer", () => {
         expect(body).toEqual([]);
     });
 
-    it("creates a project via the injected GamePackageCreating without switching Studio's context", async () => {
-        const {status, body} = await post(`${baseUrl}/api/home/projects/create`, {destinationDir: process.cwd(), name: "sample-slot"});
-
-        expect(status).toBe(201);
-        expect(body).toEqual({
-            status: "ok",
-            projectRoot: scaffoldResult.projectRoot,
-            manifest: scaffoldResult.manifest,
-            createdFiles: scaffoldResult.createdFiles,
-            updatedFiles: scaffoldResult.updatedFiles,
-            skippedFiles: scaffoldResult.skippedFiles,
-        });
-        expect(creator.calls).toEqual([{parentDir: process.cwd(), name: "sample-slot"}]);
-
-        // Create only scaffolds and records a recent project — it never transitions Studio into
-        // Project mode itself; that only happens via the separate "Open in Studio" action (POST
-        // /api/home/projects/open), same as Open Existing Project.
-        const context = await get(`${baseUrl}/api/context`);
-        expect(context.body).toEqual({mode: "home"});
-
-        const recent = await get(`${baseUrl}/api/home/recent-projects`);
-        expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(scaffoldResult.projectRoot);
-    });
-
-    it("rejects creating a project with a missing name", async () => {
-        const {status, body} = await post(`${baseUrl}/api/home/projects/create`, {destinationDir: process.cwd()});
-
-        expect(status).toBe(400);
-        expect(body).toEqual({error: '"name" is required.'});
-    });
-
     it("opens a valid project via the injected loadGame and switches to project mode", async () => {
         const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
         loadGame.mockResolvedValue(createFakeGame(manifest));
@@ -490,18 +439,7 @@ describe("StudioServer", () => {
 
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             const materializingLoadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
-            const materializingHomeService = new StudioHomeService(
-                "1.0.0",
-                undefined,
-                creator,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                materializingLoadGame,
-                undefined,
-                resolveRuntimePackageRoot,
-            );
+            const materializingHomeService = new StudioHomeService("1.0.0", undefined, materializingLoadGame, undefined, resolveRuntimePackageRoot);
             const materializingServer = new StudioServer({
                 pokieVersion: "1.0.0",
                 host: "127.0.0.1",
@@ -544,18 +482,7 @@ describe("StudioServer", () => {
             const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
 
             const diagnosticLoadGame = jest.fn();
-            const diagnosticHomeService = new StudioHomeService(
-                "1.0.0",
-                undefined,
-                creator,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                diagnosticLoadGame,
-                undefined,
-                resolveRuntimePackageRoot,
-            );
+            const diagnosticHomeService = new StudioHomeService("1.0.0", undefined, diagnosticLoadGame, undefined, resolveRuntimePackageRoot);
             const diagnosticServer = new StudioServer({
                 pokieVersion: "1.0.0",
                 host: "127.0.0.1",
@@ -672,12 +599,7 @@ describe("StudioServer", () => {
                 "1.0.0",
                 undefined,
                 undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                pathResolver as unknown as ConstructorParameters<typeof StudioHomeService>[8],
+                pathResolver as unknown as ConstructorParameters<typeof StudioHomeService>[3],
             );
             locationServer = new StudioServer({
                 pokieVersion: "1.0.0",
@@ -966,7 +888,126 @@ describe("StudioServer", () => {
         });
     });
 
-    describe("Home nav: Init/Build (real collaborators against real temp directories)", () => {
+    describe("Home nav: Projects registry (GET .../registry, POST .../preview, /register, /remove)", () => {
+        let registryStudioRoot: string;
+        let registryServer: StudioServer;
+        let registryBaseUrl: string;
+
+        function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
+            return {
+                resolve: (targetPath: string) => Promise.resolve(byPath[path.resolve(targetPath)]),
+            };
+        }
+
+        beforeEach(async () => {
+            registryStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-registry-test-"));
+            writeStudioAssets(registryStudioRoot);
+
+            const homeService = new StudioHomeService("1.0.0");
+            registryServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: registryStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", registryStudioRoot, homeService),
+                projectRegistrationService: new StudioProjectRegistrationService(
+                    new InMemoryStudioProjectRegistry(),
+                    fakeResolver({
+                        "/projects/sample-slot": {
+                            type: "tsPackage",
+                            rootPath: path.resolve("/projects/sample-slot"),
+                            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+                            provenance: '"package.json" declares a "pokie.entry" field',
+                        },
+                        "/existing/game.par.xlsx": {
+                            type: "parWorkbook",
+                            rootPath: path.resolve("/existing/game.par.xlsx"),
+                            capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                            provenance: "recognized PAR sheet workbook",
+                        },
+                    }),
+                ),
+            });
+            const address = await registryServer.start();
+            registryBaseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await registryServer.stop();
+            fs.rmSync(registryStudioRoot, {recursive: true, force: true});
+        });
+
+        it("starts with an empty registry", async () => {
+            const {status, body} = await get(`${registryBaseUrl}/api/home/projects/registry`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual([]);
+        });
+
+        it("previews a recognized target without registering it", async () => {
+            const {status, body} = await post(`${registryBaseUrl}/api/home/projects/registry/preview`, {location: "/projects/sample-slot"});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({
+                status: "recognized",
+                location: path.resolve("/projects/sample-slot"),
+                type: "tsPackage",
+                capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+                suggestedName: "sample-slot",
+            });
+            expect((await get(`${registryBaseUrl}/api/home/projects/registry`)).body).toEqual([]);
+        });
+
+        it("previews a PAR workbook target as its own recognized type -- routing it is left to the caller", async () => {
+            const {status, body} = await post(`${registryBaseUrl}/api/home/projects/registry/preview`, {location: "/existing/game.par.xlsx"});
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({status: "recognized", type: "parWorkbook"});
+        });
+
+        it("reports unrecognized rather than erroring for a path that resolves to no known project type", async () => {
+            const {status, body} = await post(`${registryBaseUrl}/api/home/projects/registry/preview`, {location: "/not/a/project"});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "unrecognized", path: path.resolve("/not/a/project")});
+        });
+
+        it("rejects a preview request with no location field", async () => {
+            const {status, body} = await post(`${registryBaseUrl}/api/home/projects/registry/preview`, {});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: '"location" is required.'});
+        });
+
+        it("registers a recognized target as origin external and makes it show up in the list", async () => {
+            const registered = await post(`${registryBaseUrl}/api/home/projects/registry/register`, {location: "/projects/sample-slot", name: "Sample Slot"});
+
+            expect(registered.status).toBe(201);
+            expect(registered.body).toMatchObject({status: "ok", entry: {location: path.resolve("/projects/sample-slot"), name: "Sample Slot", origin: "external"}});
+
+            const {body} = await get(`${registryBaseUrl}/api/home/projects/registry`);
+            expect(body).toEqual([expect.objectContaining({location: path.resolve("/projects/sample-slot"), name: "Sample Slot"})]);
+        });
+
+        it("returns unrecognized (200) rather than erroring when registering a path with no known project type", async () => {
+            const {status, body} = await post(`${registryBaseUrl}/api/home/projects/registry/register`, {location: "/not/a/project"});
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "unrecognized", path: path.resolve("/not/a/project")});
+        });
+
+        it("removes a registered entry", async () => {
+            await post(`${registryBaseUrl}/api/home/projects/registry/register`, {location: "/projects/sample-slot"});
+
+            const {status} = await post(`${registryBaseUrl}/api/home/projects/registry/remove`, {location: "/projects/sample-slot"});
+
+            expect(status).toBe(200);
+            expect((await get(`${registryBaseUrl}/api/home/projects/registry`)).body).toEqual([]);
+        });
+    });
+
+    describe("Home nav: Blueprint editor endpoints (real collaborators against real temp directories)", () => {
         let homeStudioRoot: string;
         let homeServer: StudioServer | undefined;
         let homeBaseUrl: string;
@@ -1011,137 +1052,6 @@ describe("StudioServer", () => {
             await homeServer?.stop();
             fs.rmSync(homeStudioRoot, {recursive: true, force: true});
             fs.rmSync(workDir, {recursive: true, force: true});
-        });
-
-        it("rejects init with a missing directory field", async () => {
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/init`, {});
-
-            expect(status).toBe(400);
-            expect(body).toEqual({error: '"directory" is required.'});
-        });
-
-        it("initializes an existing npm project via the real GamePackageScaffolder and records it as recent", async () => {
-            fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "sample-slot", version: "0.1.0"}));
-
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/init`, {directory: workDir});
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "ok", manifest: {id: "sample-slot"}});
-            expect(fs.existsSync(path.join(workDir, "tsconfig.json"))).toBe(true);
-
-            const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
-            expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(workDir);
-        });
-
-        it("returns a clear, safe error when initializing a directory with no package.json", async () => {
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/init`, {directory: workDir});
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "error"});
-            expect((body as {error: string}).error).toContain("No \"package.json\" found");
-            expect(JSON.stringify(body)).not.toContain("\\n    at ");
-        });
-
-        it("previews a valid blueprint without writing anything", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint());
-
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {blueprintPath});
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({
-                status: "ok",
-                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                reels: 3,
-                rows: 3,
-                symbolsCount: 2,
-                warnings: [],
-            });
-            expect(typeof (body as {blueprintHash: string}).blueprintHash).toBe("string");
-            expect(fs.readdirSync(workDir)).toEqual(["blueprint.json"]);
-        });
-
-        it("previews a blueprint that is valid but warnings-only", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 15}));
-
-            const {body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {blueprintPath});
-
-            expect((body as {status: string}).status).toBe("ok");
-            expect((body as {warnings: Array<{code: string}>}).warnings[0].code).toBe("blueprint-reels-suspicious");
-        });
-
-        it("previews an invalid blueprint with its structural errors", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 0}));
-
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {blueprintPath});
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "invalid"});
-            expect((body as {errors: Array<{code: string}>}).errors[0].code).toBe("blueprint-reels-invalid");
-        });
-
-        it("returns a safe load-error for a blueprint file that doesn't exist", async () => {
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build/preview`, {
-                blueprintPath: path.join(workDir, "does-not-exist.json"),
-            });
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "load-error"});
-        });
-
-        it("builds a real package via the real GamePackageGenerator and records it as recent", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint());
-            const outDir = path.join(workDir, "out");
-
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
-
-            expect(status).toBe(201);
-            expect(body).toMatchObject({status: "ok", manifest: {id: "sample-slot"}});
-            expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
-
-            const recent = await get(`${homeBaseUrl}/api/home/recent-projects`);
-            expect((recent.body as Array<{projectRoot: string}>)[0].projectRoot).toBe(outDir);
-        });
-
-        it("rejects building an invalid blueprint with a structured invalid result and writes nothing", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 0}));
-            const outDir = path.join(workDir, "out");
-
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "invalid"});
-            expect(fs.existsSync(outDir)).toBe(false);
-        });
-
-        it("refuses to build into a directory that already has content, whatever put it there", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint());
-            const outDir = path.join(workDir, "out");
-            fs.mkdirSync(outDir, {recursive: true});
-            fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify({name: "someone-elses-project"}));
-
-            const {status, body} = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
-
-            expect(status).toBe(200);
-            expect(body).toMatchObject({status: "error"});
-            expect((body as {error: string}).error).toContain("already exists and is not empty");
-        });
-
-        it("opens a just-built project via the Home Open action, transitioning Studio's context in place", async () => {
-            const blueprintPath = writeBlueprintFile(buildBlueprint());
-            const outDir = path.join(workDir, "out");
-            const built = await post(`${homeBaseUrl}/api/home/projects/build`, {blueprintPath, outDir});
-            const projectRoot = (built.body as {projectRoot: string}).projectRoot;
-
-            // The built package's entry module (dist/index.js) is plain, already-compiled JS with no
-            // further build step — genuinely loadable via the real loadPokieGame, no stub needed,
-            // proving the "Open in Studio" action works end-to-end after a real build.
-            const opened = await post(`${homeBaseUrl}/api/home/projects/open`, {projectRoot});
-
-            expect(opened.status).toBe(200);
-            expect((opened.body as {context: unknown}).context).toEqual({mode: "project", projectRoot});
-
-            const context = await get(`${homeBaseUrl}/api/context`);
-            expect(context.body).toEqual({mode: "project", projectRoot});
         });
 
         describe("POST /api/home/blueprints/validate", () => {
@@ -1858,16 +1768,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                homeService: new StudioHomeService(
-                    "1.0.0",
-                    undefined,
-                    creator,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    slowLoadGame,
-                ),
+                homeService: new StudioHomeService("1.0.0", undefined, slowLoadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: slowLoadGame,
                 initialContext: {mode: "project", projectRoot: "/tmp/sample-slot"},
@@ -1896,16 +1797,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
-                homeService: new StudioHomeService(
-                    "1.0.0",
-                    undefined,
-                    creator,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    failingLoadGame,
-                ),
+                homeService: new StudioHomeService("1.0.0", undefined, failingLoadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: failingLoadGame,
                 initialContext: {mode: "project", projectRoot: "/tmp/broken-game"},
@@ -1946,16 +1838,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: fixtureStudioRoot,
-                homeService: new StudioHomeService(
-                    "1.0.0",
-                    undefined,
-                    creator,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    loadGame,
-                ),
+                homeService: new StudioHomeService("1.0.0", undefined, loadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", fixtureStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame,
                 gamePackageInspector: new GamePackageInspector(),
@@ -2258,11 +2141,6 @@ describe("StudioServer", () => {
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
@@ -2308,11 +2186,6 @@ describe("StudioServer", () => {
                 studioRoot: projectStudioRoot,
                 homeService: new StudioHomeService(
                     "1.0.0",
-                    undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
@@ -2398,11 +2271,6 @@ describe("StudioServer", () => {
                 studioRoot: projectStudioRoot,
                 homeService: new StudioHomeService(
                     "1.0.0",
-                    undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
@@ -2682,11 +2550,6 @@ describe("StudioServer", () => {
                 studioRoot: reportsStudioRoot,
                 homeService: new StudioHomeService(
                     "1.0.0",
-                    undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
@@ -3187,11 +3050,6 @@ describe("StudioServer", () => {
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
@@ -3237,11 +3095,6 @@ describe("StudioServer", () => {
                 studioRoot: projectStudioRoot,
                 homeService: new StudioHomeService(
                     "1.0.0",
-                    undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
                     undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
@@ -3295,11 +3148,6 @@ describe("StudioServer", () => {
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
-                    createStubCreator(scaffoldResult),
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
                     () => Promise.resolve(createPlayableFakeGame(manifest)),
                 ),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
@@ -3351,7 +3199,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: replayStudioRoot,
-                homeService: new StudioHomeService("1.0.0", undefined, createStubCreator(scaffoldResult)),
+                homeService: new StudioHomeService("1.0.0"),
                 blueprintService: new StudioBlueprintService("1.0.0", replayStudioRoot, new StudioHomeService("1.0.0")),
                 initialContext: {mode: "project", projectRoot: fixtureRoot},
                 replayService: new StudioReplayExecutionService(new InMemoryStudioReplayRepository()),
@@ -3389,7 +3237,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: runtimeStudioRoot,
-                homeService: new StudioHomeService("1.0.0", undefined, createStubCreator(scaffoldResult)),
+                homeService: new StudioHomeService("1.0.0"),
                 blueprintService: new StudioBlueprintService("1.0.0", runtimeStudioRoot, new StudioHomeService("1.0.0")),
                 initialContext,
             });

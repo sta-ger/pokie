@@ -46,12 +46,12 @@ function expectStepsInOrder(steps: HTMLElement[]): void {
 }
 
 describe("Studio route table baseline", () => {
-    it("an entirely unrecognized path falls back to Design & Build, not a blank/error screen", () => {
-        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+    it("an entirely unrecognized path falls back to Design Game, not a blank/error screen", () => {
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/does-not-exist/at-all"]});
 
-        expect(screen.getByRole("heading", {name: "Design & Build Your Game"})).toBeInTheDocument();
+        expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
     });
 
     it("bare /project redirects to /project/overview, never rendering a tab-less dashboard", async () => {
@@ -65,32 +65,34 @@ describe("Studio route table baseline", () => {
 });
 
 describe("Home (/home/:tab) tab inventory baseline", () => {
-    it("lists exactly Design & Build, Open Project, Advanced Tools, in that order, ungrouped", () => {
-        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+    it("lists exactly Design Game, Projects, in that order, ungrouped", () => {
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         const nav = screen.getByRole("navigation", {name: "Sections"});
         const tabButtons = within(nav).getAllByRole("button");
-        expect(tabButtons.map((button) => button.textContent)).toEqual(["Design & Build", "Open Project", "Advanced Tools"]);
-        // None of Home's 3 tabs are grouped under a visible section label (unlike the Project Dashboard's
-        // "Advanced" grouping below) -- there is no section header text anywhere in the nav.
+        expect(tabButtons.map((button) => button.textContent)).toEqual(["Design Game", "Projects"]);
+        // Neither of Home's 2 tabs is grouped under a visible section label (unlike the Project
+        // Dashboard's "Advanced" grouping below) -- there is no section header text anywhere in the nav.
         expect(within(nav).queryByText("Advanced")).not.toBeInTheDocument();
     });
 
-    it("Design & Build is the default tab, and Advanced Tools hosts every other non-featured tool plus a link back to the one canonical Blueprint Editor", () => {
-        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+    it("Design Game is the default tab, and Projects hosts the managed/registered list plus Import Project -- Advanced Tools is gone entirely", () => {
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        expect(screen.getByRole("button", {name: "Advanced Tools"})).toHaveAttribute("aria-current", "page");
-        expect(screen.getByRole("heading", {name: "Scaffold a hand-coded game"})).toBeInTheDocument();
-        expect(screen.getByRole("heading", {name: "Initialize an existing directory"})).toBeInTheDocument();
-        expect(screen.getByRole("heading", {name: "Build from an existing blueprint file"})).toBeInTheDocument();
-        // No second, independent Blueprint Editor draft -- Design & Build is the one canonical editor
-        // (see HomePage.tsx's own doc comment), and Advanced Tools just links back to it.
-        expect(screen.getByRole("heading", {name: "JSON mode & Load/Save by path"})).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Go to Design & Build"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("heading", {name: "Projects", level: 2})).toBeInTheDocument();
+        expect(screen.getByText("Import Project")).toBeInTheDocument();
+        // The hand-coded scaffold/init-in-place/build-from-blueprint-file tools that used to live behind
+        // Advanced Tools are gone entirely -- init is now directed to the CLI (`pokie init`/`pokie create`),
+        // not duplicated in Studio.
+        expect(screen.queryByRole("heading", {name: "Scaffold a hand-coded game"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("heading", {name: "Initialize an existing directory"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("heading", {name: "Build from an existing blueprint file"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Advanced Tools"})).not.toBeInTheDocument();
     });
 });
 
@@ -125,18 +127,18 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
 });
 
 describe("New Blueprint action surface baseline", () => {
-    it("the one canonical (Design & Build) Blueprint Editor instance exposes a 'New Blueprint' action", () => {
-        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+    it("the one canonical (Design Game) Blueprint Editor instance exposes a 'New Blueprint' action", () => {
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        // Exactly one -- there is no longer a second, independent Blueprint Editor instance under
-        // Advanced Tools (see HomePage.tsx's own doc comment).
+        // Exactly one -- there is no longer a second, independent Blueprint Editor instance (Advanced
+        // Tools has been removed entirely -- see HomePage.tsx's own doc comment).
         expect(screen.getAllByRole("button", {name: "New Blueprint", hidden: true})).toHaveLength(1);
     });
 
     it("the guided instance offers a 'Show advanced options' disclosure for JSON mode / load-save by path", () => {
-        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
@@ -582,10 +584,10 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
 
-    it("Design & Build: a failed Build Package call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
+    it("Design Game: a failed Build Package call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
             // Matches StudioBlueprintService.build()'s own GamePackageGenerator.generate() rejection
             // shape for an output directory it can't write to -- reported as a 200 {status: "error"}
@@ -619,10 +621,7 @@ describe("Scoped path-action error remediation baseline", () => {
         await user.click(screen.getByRole("button", {name: "Validate"}));
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
 
-        // "Output directory (optional)" also labels Build from an existing blueprint file's own field
-        // (Advanced Tools, permanently mounted alongside every other Home tab) -- index 0 is this guided
-        // instance's own, which renders first (HomePage.tsx).
-        await user.type(screen.getAllByLabelText("Output directory (optional)")[0], "./no/such/dir");
+        await user.type(screen.getByLabelText("Output directory (optional)"), "./no/such/dir");
         await user.click(screen.getByRole("button", {name: "Build Package"}));
 
         const alerts = await screen.findAllByRole("alert");
@@ -632,111 +631,6 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
 
-    it("Advanced Tools / Create Project: a failed create call is turned into destination-directory-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
-            "/api/home/projects/create": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir/my-slot-game'"},
-            }),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
-
-        await user.click(screen.getByRole("button", {name: "Create"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "The destination directory could not be found. Check the path and try again.")).toBe(
-            true,
-        );
-        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
-    });
-
-    it("Advanced Tools / Initialize: a required-field rejection is turned into project-directory-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
-            // Matches validateInitProjectRequest's own rejection shape for a missing "directory" --
-            // GamePackageScaffolder.scaffold's raw fs failures share this same "error" status/subject.
-            "/api/home/projects/init": () => ({ok: true, status: 200, body: {status: "error", error: '"directory" is required.'}}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
-
-        await user.click(screen.getByRole("button", {name: "Initialize"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(
-            alerts.some((alert) => alert.textContent === "The project directory is missing or invalid. Provide a valid value and try again."),
-        ).toBe(true);
-        expect(alerts.some((alert) => alert.textContent === '"directory" is required.')).toBe(false);
-    });
-
-    it("Advanced Tools / Build from Blueprint: a failed Preview call is turned into blueprint-file-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
-            "/api/home/projects/build/preview": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "load-error", error: "ENOENT: no such file or directory, open './missing.json'"},
-            }),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
-
-        await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./missing.json");
-        await user.click(screen.getByRole("button", {name: "Preview"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "The blueprint file could not be found. Check the path and try again.")).toBe(true);
-        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
-    });
-
-    it("Advanced Tools / Build from Blueprint: a failed Build call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
-            // Direct Build now performs a read-only destination preflight before its write. Keeping the
-            // preflight successful and empty isolates the following ENOENT result from the write itself.
-            "/api/home/projects/build/preview": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    warnings: [],
-                    manifest: {id: "my-slot", name: "My Slot", version: "1.0.0"},
-                    reels: 5,
-                    rows: 3,
-                    symbolsCount: 3,
-                    blueprintHash: "sha256:preview",
-                    expectedFiles: [],
-                    projectRoot: "/no/such/dir",
-                    destinationHasContent: false,
-                    createFiles: [],
-                    updateFiles: [],
-                    deleteFiles: [],
-                },
-            }),
-            "/api/home/projects/build": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"},
-            }),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/advanced"]});
-
-        await user.type(screen.getByLabelText("Blueprint JSON path", {exact: false}), "./blueprint.json");
-        // Home keeps tabs mounted; the second field belongs to Advanced Tools / Build from Blueprint.
-        // Fill the actual request's outDir so this remains an end-to-end scoped-path scenario.
-        await user.type(screen.getAllByLabelText("Output directory (optional)")[1], "./no/such/dir");
-        await user.click(screen.getByRole("button", {name: "Build"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
-            true,
-        );
-        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
-    });
 });
 
 describe("Advanced tab inferable-empty-input baseline", () => {
@@ -757,59 +651,50 @@ describe("Advanced tab inferable-empty-input baseline", () => {
     });
 });
 
-// The remaining describe blocks extend this baseline to Home's own 3 tabs (Design & Build, Open
-// Project, Advanced Tools -- which hosts Create/Init/Build-from-blueprint plus a link back to Design &
-// Build) with the same "whole-surface inventory" material the Advanced-tab blocks above pin: the
-// Stepper/progress control, every path/text field's placeholder (or lack of one), the one and only
-// `disabled`-gated action in this whole group, and a raw-error-surface trigger neither
-// BlueprintEditorPage.*.test.tsx nor CreateProjectForm/InitProjectForm/BuildFromBlueprintPanel.test.tsx
-// nor openProjectGuard.test.tsx already demonstrates end to end -- see
-// docs/studio-phase2-inventory.md's own Design & Build / Advanced Tools / Open Project sections for the
-// full, line-cited enumeration this only spot-checks executably.
+// The remaining describe blocks extend this baseline to Home's own 2 tabs (Design Game, Projects --
+// Advanced Tools has been removed entirely, see HomePage.tsx's own doc comment) with the same
+// "whole-surface inventory" material the Advanced-tab blocks above pin: every path/text field's
+// placeholder (or lack of one), and a raw-error-surface trigger neither BlueprintEditorPage.*.test.tsx
+// nor openProjectGuard.test.tsx already demonstrates end to end.
 
-describe("Design & Build / Advanced Tools / Open Project: path-field placeholder baseline", () => {
-    it("no path/text field across this entire group carries a placeholder -- unlike 6 of the 7 Advanced project tabs", () => {
-        const {fetchImpl} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
+describe("Design Game / Projects: path-field placeholder baseline", () => {
+    it("no path/text field on Design Game carries a placeholder, unlike Projects' own Import Project location field", () => {
+        const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        for (const label of [
-            "Load from path",
-            "Save to path",
-            "Output directory (optional)",
-            "Destination directory",
-            "Package name",
-            "Existing project directory",
-            "Blueprint JSON path",
-            "Project path",
-        ]) {
-            // getAllByLabelText (not getByLabelText: "Output directory (optional)" labels two distinct
-            // fields, BlueprintBuildPanel's and BuildFromBlueprintPanel's) finds inputs on Home's other,
-            // currently-hidden (CSS display:none, still mounted -- see HomePage's own "hide, don't
-            // unmount" doc comment) tabs too, unlike getByRole's default hidden-element filtering.
+        for (const label of ["Load from path", "Save to path", "Output directory (optional)"]) {
+            // getAllByLabelText finds inputs on Home's other, currently-hidden (CSS display:none, still
+            // mounted -- see HomePage's own "hide, don't unmount" doc comment) tab too, unlike
+            // getByRole's default hidden-element filtering.
             for (const field of screen.getAllByLabelText(label, {exact: false})) {
                 expect(field).not.toHaveAttribute("placeholder");
             }
         }
+
+        // Unlike every Design Game field above, Projects' own Import Project location field does carry
+        // an illustrative placeholder -- it's the one path field in this group meant to be filled with
+        // an arbitrary, previously-unknown location rather than a value the app can infer or remember.
+        expect(screen.getByLabelText("Location", {exact: false})).toHaveAttribute("placeholder", "./my-game");
     });
 });
 
-describe("Design & Build: Load/Save raw-error-surface baseline", () => {
+describe("Design Game: Load/Save raw-error-surface baseline", () => {
     it("Load from path / Save to path have no required-field gating at all -- a blank path is sent straight to the server, whose raw rejection is turned into subject-specific inline remediation, never rendered verbatim", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
-            "/api/home/recent-projects": () => ({ok: true, status: 200, body: []}),
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             // Matches the exact server-side rejection validateLoadBlueprintRequest.ts throws for a
             // blank/whitespace path -- StudioServer maps that thrown Error to this 400 shape.
             "/api/home/blueprints/load": () => ({ok: false, status: 400, body: {error: '"path" is required.'}}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        // Load/Save are tucked behind Design & Build's own "Show advanced options" disclosure.
+        // Load/Save are tucked behind Design Game's own "Show advanced options" disclosure.
         await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
 
-        // Unlike every required PathInput/TextInput elsewhere in this group (Project path, Destination
-        // directory, ...), "Load from path" carries no `required` prop -- so clicking Load with a blank
-        // field isn't silently blocked by native HTML validation; it actually reaches the server.
+        // Unlike every required PathInput/TextInput elsewhere in this group, "Load from path" carries no
+        // `required` prop -- so clicking Load with a blank field isn't silently blocked by native HTML
+        // validation; it actually reaches the server.
         await user.click(screen.getByRole("button", {name: "Load"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/blueprints/load")).toBe(true));
@@ -824,20 +709,19 @@ describe("Design & Build: Load/Save raw-error-surface baseline", () => {
     });
 });
 
-describe("Open Project: required-field baseline", () => {
-    it("'Open' relies entirely on native HTML required-field validation, not a disabled button or an app-level message -- clicking it with a blank path makes zero API calls and shows zero feedback", async () => {
+describe("Projects: Import Project required-field baseline", () => {
+    it("'Detect' is a no-op (no API call, no feedback) for a blank/whitespace-only location, unlike every path field elsewhere in this group", async () => {
         const user = userEvent.setup();
-        const {fetchImpl, calls} = createRoutedFakeFetch({"/api/home/recent-projects": () => ({ok: true, status: 200, body: []})});
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/open"]});
+        const {fetchImpl, calls} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        const openButton = screen.getByRole("button", {name: "Open"});
-        expect(openButton).not.toBeDisabled();
+        const detectButton = await screen.findByRole("button", {name: "Detect"});
+        expect(detectButton).not.toBeDisabled();
 
-        await user.click(openButton);
+        await user.click(detectButton);
 
-        expect(calls.some((call) => call.url === "/api/home/projects/open")).toBe(false);
+        expect(calls.some((call) => call.url === "/api/home/projects/registry/preview")).toBe(false);
         expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-        expect(screen.queryByText("Opening…")).not.toBeInTheDocument();
     });
 });
 

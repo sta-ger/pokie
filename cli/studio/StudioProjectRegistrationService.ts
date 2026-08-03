@@ -9,6 +9,7 @@ import type {StudioProjectRegistrationResult} from "./StudioProjectRegistrationR
 import type {StudioProjectRegistry} from "./StudioProjectRegistry.js";
 import type {StudioProjectOrigin, StudioProjectRegistryEntry} from "./StudioProjectRegistryEntry.js";
 import type {StudioProjectRegistryView} from "./StudioProjectRegistryView.js";
+import type {StudioProjectImportPreviewResult} from "./StudioProjectImportPreviewResult.js";
 
 // The file name FileStudioProjectRegistry's persisted registry lives under, inside whatever app-data
 // directory PokiePathResolver.resolveAppDataDirectory() resolves -- shared between
@@ -92,6 +93,27 @@ export class StudioProjectRegistrationService {
 
     public async remove(location: string): Promise<void> {
         await this.registry.remove(path.resolve(location));
+    }
+
+    // The Import Project flow's own "detect" step — resolves `location` exactly like registerExternal
+    // does, but never upserts the registry, so a caller can show what a path resolves to (type,
+    // capabilities, suggested name) and let the user confirm before it's actually registered. A
+    // "parWorkbook" preview is recognized here the same as any other type -- routing a PAR sheet to the
+    // Blueprint Editor's own import flow instead of registering it is a decision the caller (Studio's
+    // Projects UI) makes from this result, not something this service special-cases.
+    public async previewImport(location: string): Promise<StudioProjectImportPreviewResult> {
+        const resolvedPath = path.resolve(location);
+        const project = await this.resolveProject.resolve(resolvedPath);
+        if (!project) {
+            return {status: "unrecognized", path: resolvedPath};
+        }
+        return {
+            status: "recognized",
+            location: project.rootPath,
+            type: project.type,
+            capabilities: project.capabilities,
+            suggestedName: defaultProjectName(project.rootPath, project.type),
+        };
     }
 
     // A one-time, best-effort sync of Home's own recent-projects list (see

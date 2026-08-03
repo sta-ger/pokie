@@ -1,9 +1,6 @@
 import {validateApplyProjectBlueprintRequest} from "../../../cli/studio/blueprint/validateApplyProjectBlueprintRequest.js";
 import {validateLoadBlueprintRequest} from "../../../cli/studio/blueprint/validateLoadBlueprintRequest.js";
 import {validateSaveBlueprintRequest} from "../../../cli/studio/blueprint/validateSaveBlueprintRequest.js";
-import {validateCreateProjectRequest} from "../../../cli/studio/home/validateCreateProjectRequest.js";
-import {validateInitProjectRequest} from "../../../cli/studio/home/validateInitProjectRequest.js";
-import {validateBuildRequest} from "../../../cli/studio/home/validateBuildRequest.js";
 import {validateOpenProjectRequest} from "../../../cli/studio/home/validateOpenProjectRequest.js";
 import {validateDeploymentRunRequest} from "../../../cli/studio/deployment/validateDeploymentRunRequest.js";
 import {validateStakeEngineExportRequest} from "../../../cli/studio/stakeengine/validateStakeEngineExportRequest.js";
@@ -27,18 +24,6 @@ import {validateFairnessVerifyRequest} from "../../../cli/studio/fairness/valida
 // isolated per-file test suite doesn't make visible on its own.
 
 describe("Contract baseline: New Blueprint (New / Open / Apply-to-project)", () => {
-    it("Create Project (scaffold a hand-coded game) requires destinationDir + name only; gameId/gameName/version are optional overrides", () => {
-        expect(validateCreateProjectRequest({destinationDir: "/games/a", name: "A Slot"})).toEqual({
-            destinationDir: "/games/a",
-            name: "A Slot",
-            gameId: undefined,
-            gameName: undefined,
-            version: undefined,
-        });
-        expect(() => validateCreateProjectRequest({name: "A Slot"})).toThrow('"destinationDir" is required.');
-        expect(() => validateCreateProjectRequest({destinationDir: "/games/a"})).toThrow('"name" is required.');
-    });
-
     it("Open Project takes only a projectRoot -- no blueprint, mode, or credentials", () => {
         expect(validateOpenProjectRequest({projectRoot: "/games/a"})).toEqual({projectRoot: "/games/a"});
         expect(() => validateOpenProjectRequest({})).toThrow('"projectRoot" is required.');
@@ -58,7 +43,7 @@ describe("Contract baseline: New Blueprint (New / Open / Apply-to-project)", () 
     });
 });
 
-describe("Contract baseline: Design & Build / Raw Editor (Load / Save / Build) vs. Advanced Tools' Init/Build-from-blueprint", () => {
+describe("Contract baseline: Design Game (Load / Save)", () => {
     it("Load takes only a path; Save additionally takes an overwrite flag (defaulting to false) -- neither is scoped to the active project", () => {
         expect(validateLoadBlueprintRequest({path: "./blueprint.json"})).toEqual({path: "./blueprint.json"});
         expect(() => validateLoadBlueprintRequest({})).toThrow('"path" is required.');
@@ -77,26 +62,14 @@ describe("Contract baseline: Design & Build / Raw Editor (Load / Save / Build) v
     // checks that `blueprint` is present at all (`=== undefined`), never its shape, and
     // StudioBlueprintService.save() itself never calls validate() either -- it serializes and writes
     // whatever was sent, valid or not. A blueprint that would fail Validate/Build outright can still be
-    // saved to disk via this same Load/Save pair the Design & Build and Raw Editor UIs share. Frozen
-    // behavior, not something this baseline changes.
+    // saved to disk via this same Load/Save pair Design Game's own guided editor uses. Frozen behavior,
+    // not something this baseline changes.
     it("Save accepts a blueprint of any shape -- it is never validated at this layer or by the service that writes it, unlike Build", () => {
         expect(() => validateSaveBlueprintRequest({path: "x", blueprint: "not-a-blueprint-object"})).not.toThrow();
         expect(() => validateSaveBlueprintRequest({path: "x", blueprint: {}})).not.toThrow();
         expect(() => validateSaveBlueprintRequest({path: "x", blueprint: null})).not.toThrow();
     });
 
-    it("Build-from-blueprint-file (Advanced Tools) and the Blueprint Editor's own Build panel share one request shape: blueprintPath required, outDir optional", () => {
-        expect(validateBuildRequest({blueprintPath: "./blueprint.json"})).toEqual({blueprintPath: "./blueprint.json"});
-        expect(validateBuildRequest({blueprintPath: "./blueprint.json", outDir: "out"})).toEqual({blueprintPath: "./blueprint.json", outDir: "out"});
-        expect(() => validateBuildRequest({})).toThrow('"blueprintPath" is required.');
-        expect(() => validateBuildRequest({blueprintPath: "./blueprint.json", outDir: "  "})).toThrow('"outDir" must be a non-empty string when given.');
-    });
-
-    it("Init Project (Advanced Tools) takes only a directory -- no name/gameId/gameName/version overrides Create Project accepts", () => {
-        expect(validateInitProjectRequest({directory: "."})).toEqual({directory: "."});
-        expect(() => validateInitProjectRequest({})).toThrow('"directory" is required.');
-        expect("name" in validateInitProjectRequest({directory: "."})).toBe(false);
-    });
 });
 
 describe("Contract baseline: Runtime retry/debug", () => {
