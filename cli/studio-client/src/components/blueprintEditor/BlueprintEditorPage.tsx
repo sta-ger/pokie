@@ -271,9 +271,8 @@ export function BlueprintEditorPage({
     };
 
     // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
-    // blueprintEditorState.ts's own doc comment). The very first run of this effect (component mount) is
-    // a no-op beyond resetting to "idle" -- there's no *prior* validation result to go stale yet, and
-    // (guided) nothing has actually been edited to autosave or auto-validate. Every run after that:
+    // blueprintEditorState.ts's own doc comment). Every run of this effect, including the very first
+    // (component mount):
     //   - resets validationView, uniformly making *any* revision bump stale a previous validation result
     //     -- section statuses (describeSectionStatus already returns "neutral" for "idle"), the guided
     //     progress list/NextStepCallout ("Ready to build" only shows for "ok"), and guided Build-gating
@@ -281,28 +280,43 @@ export function BlueprintEditorPage({
     //     Guided mode resets to "stale" (not "idle") when the *previous* result was itself a completed
     //     check ("ok"/"invalid"/already-"stale") -- see BlueprintValidationView's own doc comment for why
     //     that's a more truthful state than "never checked" here; every other case (never validated yet,
-    //     or non-guided) still resets to plain "idle", exactly as before this pass.
-    //   - (guided only) autosaves the current draft to this tab's own recovery slot, and (re)schedules a
-    //     debounced auto-validate -- freshness-aware validation running on every edit, not only an
-    //     explicit "Validate" click. The non-guided/raw editor keeps its previous manual-only contract.
+    //     or non-guided) still resets to plain "idle", exactly as before this pass. The very first run's
+    //     own `prev` is always the initial {status: "idle"}, so this step alone is a no-op then.
+    //   - (guided only) schedules a debounced auto-validate -- freshness-aware validation running on
+    //     every edit *and*, this step's own addition, on the guided editor's very first open, so a
+    //     freshly opened blueprint is validated without requiring an edit first (see this step's own
+    //     "runs on initial open/load" contract). Skipped on the very first run when `initialPath` is set:
+    //     that mount is about to be wholesale-replaced within a tick or two by handleLoad's own
+    //     initialPath effect below, whose *own* revision bump reaches this same branch again (this time
+    //     not the first run) and reschedules against the real, loaded content -- validating the
+    //     throwaway starter blueprint first would only flash a misleading result and waste a request.
+    //     Every run except the very first one also autosaves the current draft to this tab's own
+    //     recovery slot first -- skipped on mount for the same reason persistedDraft itself is only ever
+    //     read once, at mount (see persistedDraft's own doc comment): saving here, before the user has
+    //     had any chance to act on a RecoveryNotice still offering an *earlier* draft, would silently
+    //     clobber it with whatever this fresh mount starts showing (the blank starter, or -- a moment
+    //     later -- initialPath's own load). The non-guided/raw editor keeps its previous manual-only
+    //     contract throughout.
     // handleChooseBlank/handleUseRandomBlueprint set validationView explicitly too (see their own doc
     // comments) purely to avoid a one-frame stale-validation flash between their own replace and this
     // effect running; every other bump still relies on this alone.
-    const hasSkippedInitialRevisionEffectRef = useRef(false);
+    const hasRunRevisionEffectRef = useRef(false);
     const autoValidateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => {
-        if (!hasSkippedInitialRevisionEffectRef.current) {
-            hasSkippedInitialRevisionEffectRef.current = true;
-            setValidationView({status: "idle"});
-            return;
-        }
+        const isInitialMount = !hasRunRevisionEffectRef.current;
+        hasRunRevisionEffectRef.current = true;
         setValidationView((prev) =>
             guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"},
         );
         if (!guided) {
             return;
         }
-        savePersistedBlueprintDraft(editor.state.blueprint);
+        if (isInitialMount && initialPath) {
+            return;
+        }
+        if (!isInitialMount) {
+            savePersistedBlueprintDraft(editor.state.blueprint);
+        }
         if (autoValidateTimerRef.current !== undefined) {
             clearTimeout(autoValidateTimerRef.current);
         }
@@ -472,6 +486,24 @@ export function BlueprintEditorPage({
     // longer makes (see BlueprintBuildPanel's own `onBuilt` doc comment).
     const handleRestoreBuilt = (blueprintToRestore: unknown): void => {
         editor.loadFrom(blueprintToRestore);
+    };
+
+    // A successful Build materializes a real runtime package from exactly the blueprint content this
+    // render's own `blueprint` closure describes (see BlueprintBuildPanel's own `onBuilt` doc comment) --
+    // a distinct event from editing or loading, but one this step's own freshness contract still covers:
+    // "invalidate/revalidate ... when runtime materialization occurs". Re-running guided validation here
+    // (guarded by handleValidate's own revision/requestId staleness check -- same guard an auto-validate
+    // from the revision-bump effect above relies on) keeps the displayed result provably current with
+    // the exact revision that was just materialized, rather than silently continuing to trust whatever
+    // "ok" result merely *authorized* the build to start. `builtSnapshot` itself is never invalidated
+    // here -- it must keep describing exactly what was materialized regardless of what a later validate
+    // finds, the same "never touched" contract handleRestoreBuilt's own doc comment already relies on.
+    const handleBuilt = (snapshot: BuiltBlueprintSnapshot): void => {
+        setBuiltSnapshot(snapshot);
+        if (guided) {
+            setValidationView((prev) => (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev));
+            handleValidate();
+        }
     };
 
     useEffect(() => {
@@ -724,7 +756,7 @@ export function BlueprintEditorPage({
                 blueprint={blueprint}
                 sourcePath={blueprintPath}
                 builtSnapshot={builtSnapshot}
-                onBuilt={setBuiltSnapshot}
+                onBuilt={handleBuilt}
                 onRestoreBuilt={handleRestoreBuilt}
                 blocked={guided ? guidedBuildBlocked : validationView.status === "invalid"}
                 blockedMessage={guided ? guidedBuildBlockedMessage : undefined}

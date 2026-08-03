@@ -356,3 +356,119 @@ describe("Guided Design Game: validation staleness and build gating", () => {
         expect(screen.getAllByText(/Second reels warning\./).length).toBeGreaterThan(0);
     }, 60000);
 });
+
+// This step's own freshness contract: guided validation must run on initial open/load (not only after
+// an explicit "Validate" click or an edit), and an external source change (Load) or a runtime
+// materialization event (Build) must both make a previously-current result stale and trigger a fresh,
+// guarded revalidate -- never leaving a stale "ok" in place once the source it described has moved on.
+describe("Guided Design Game: automatic freshness triggers (open, external change, materialization)", () => {
+    it("validates a freshly opened blueprint automatically, with no explicit Validate click", async () => {
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        // Nothing has run yet the instant this mounts -- the auto-validate below is genuinely debounced
+        // (see AUTO_VALIDATE_DEBOUNCE_MS), not a synchronous side effect of render.
+        expect(screen.getByText("Configure your game model")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+
+        // No user action at all -- the guided editor's own debounced auto-validate (see
+        // BlueprintEditorPage's own revision-bump effect) now also fires once on mount, not only after
+        // an edit.
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+    }, 60000);
+
+    it("loading a different blueprint (an external source change) automatically re-validates it and reaches 'Ready to build' again with no further click", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/load" && init?.method === "POST") {
+                return respond({status: "ok", path: "/games/other.json", blueprint: {manifest: {id: "other", name: "Other", version: "0.1.0"}}});
+            }
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/other.json", displayPath: "/games/other.json", entries: []});
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/other.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+
+        await waitFor(() => expect(screen.queryByText("Ready to build")).not.toBeInTheDocument());
+        // No further click -- Load's own revision bump reschedules the exact same debounced auto-validate
+        // an edit gets, so the freshly loaded blueprint reaches "Ready to build" again on its own.
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+    }, 60000);
+
+    it("a successful Build (runtime materialization) makes the displayed validation stale and triggers a guarded revalidate", async () => {
+        const user = userEvent.setup();
+        let validateCalls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                validateCalls += 1;
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/build-preview" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    warnings: [],
+                    manifest: {id: "materialize", name: "Materialize", version: "0.1.0"},
+                    reels: 5,
+                    rows: 3,
+                    symbolsCount: 0,
+                    blueprintHash: "abc123",
+                    expectedFiles: ["build-info.json"],
+                    projectRoot: "/games/materialize",
+                    destinationHasContent: false,
+                    createFiles: ["build-info.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
+                });
+            }
+            if (path === "/api/home/blueprints/build" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    projectRoot: "/games/materialize",
+                    manifest: {id: "materialize", name: "Materialize", version: "0.1.0"},
+                    createdFiles: ["build-info.json"],
+                    buildInfo: {blueprintHash: "abc123", pokieVersion: "1.0.0", generatedAt: new Date(0).toISOString(), files: []},
+                    unchanged: false,
+                    warnings: [],
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(validateCalls).toBeGreaterThanOrEqual(1);
+        const validateCallsBeforeBuild = validateCalls;
+
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await screen.findByText(/Last built/);
+
+        // The build materialized a real runtime package from this exact revision -- that must trigger
+        // its own guarded revalidate (not just reuse whatever "ok" merely authorized the build to
+        // start), and the displayed result must still land on "Ready to build" once it settles.
+        await waitFor(() => expect(validateCalls).toBeGreaterThan(validateCallsBeforeBuild));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+    }, 60000);
+});

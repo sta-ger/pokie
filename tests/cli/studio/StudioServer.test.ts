@@ -1088,6 +1088,23 @@ describe("StudioServer", () => {
                 expect(body).toMatchObject({status: "invalid"});
                 expect((body as {errors: Array<{code: string}>}).errors[0].code).toBe("blueprint-reels-invalid");
             });
+
+            // The Blueprint Editor's own guided freshness contract (see BlueprintEditorPage's own
+            // revision-bump/handleValidate doc comments) relies on this endpoint never answering from a
+            // stale, previously-computed result -- there is no server-side validation cache to go stale
+            // in the first place: every request is judged strictly on the exact blueprint it carries,
+            // regardless of what an earlier request on the same connection asked about.
+            it("never reflects a previous call's own blueprint -- each request is judged strictly on its own body", async () => {
+                const broken = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint({reels: 0})});
+                expect(broken.body).toMatchObject({status: "invalid"});
+
+                const fixed = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint()});
+                expect(fixed.status).toBe(200);
+                expect(fixed.body).toEqual({status: "ok", warnings: []});
+
+                const brokenAgain = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint({reels: 0})});
+                expect(brokenAgain.body).toMatchObject({status: "invalid"});
+            });
         });
 
         describe("POST /api/home/blueprints/load", () => {
