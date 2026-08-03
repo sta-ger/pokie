@@ -1145,6 +1145,77 @@ describe("StudioServer", () => {
             });
         });
 
+        describe("POST /api/home/blueprints/check-source", () => {
+            it("rejects a body with no path field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {blueprintHash: "abc"});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"path" is required.'});
+            });
+
+            it("rejects a body with no blueprintHash field", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {path: blueprintPath});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprintHash" is required and must be a non-empty string.'});
+            });
+
+            it("reports 'unchanged' when the on-disk content's hash matches the given hash", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {
+                    path: blueprintPath,
+                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "unchanged"});
+            });
+
+            // The Blueprint Editor's own external-change detection (see BlueprintEditorPage's own
+            // background source-check poll) relies on this: a persisted source mutated by something
+            // other than this same caller's own Load/Save round trip (a hand edit, another tool) is
+            // reported as "changed", carrying the fresh content back so the caller never needs a second
+            // round trip just to see what changed.
+            it("reports 'changed' with the fresh blueprint/hash once the on-disk content no longer matches the given hash", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+                const staleHash = computeGameBlueprintHash(buildBlueprint());
+                const mutated = buildBlueprint({rows: 4});
+                fs.writeFileSync(blueprintPath, JSON.stringify(mutated));
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {
+                    path: blueprintPath,
+                    blueprintHash: staleHash,
+                });
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "changed", blueprint: mutated, blueprintHash: computeGameBlueprintHash(mutated)});
+            });
+
+            it("returns a safe load-error for a missing file", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {
+                    path: path.join(workDir, "does-not-exist.json"),
+                    blueprintHash: "abc",
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect(JSON.stringify(body)).not.toContain("\\n    at ");
+            });
+
+            it("returns a safe load-error for a path inside Studio's own internal directory", async () => {
+                const insidePath = path.join(homeStudioRoot, "index.html");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {path: insidePath, blueprintHash: "abc"});
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect((body as {error: string}).error).toContain("internal directory");
+            });
+        });
+
         describe("POST /api/home/blueprints/random", () => {
             it("rejects a non-integer seed", async () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/random`, {seed: "not-a-number"});
@@ -1202,7 +1273,7 @@ describe("StudioServer", () => {
                 });
 
                 expect(status).toBe(201);
-                expect(body).toEqual({status: "ok", path: filePath});
+                expect(body).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
                 const written = fs.readFileSync(filePath, "utf-8");
                 expect(written.endsWith("\n")).toBe(true);
                 expect(Object.keys(JSON.parse(written))).toEqual(["manifest", "reels", "rows", "symbols", "paytable"]);
@@ -1304,7 +1375,7 @@ describe("StudioServer", () => {
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
 
                 expect(status).toBe(201);
-                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot"});
+                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
                 expect(fs.existsSync(expectedPath)).toBe(true);
 
                 const entries = await managedRegistry.list();

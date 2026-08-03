@@ -1,7 +1,7 @@
 import {Anchor, Button, Collapse, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
-import {loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
+import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {errorMessage} from "../../domain/errorMessage";
@@ -61,6 +61,14 @@ const VALIDATE_STEP_STATUS: Record<BlueprintValidationView["status"], StepProgre
 // BlueprintValidationView's own doc comment) never lingers long enough to read as broken. Only ever
 // scheduled in guided mode -- the raw/non-guided editor keeps its existing manual-only "Validate" button.
 const AUTO_VALIDATE_DEBOUNCE_MS = 600;
+
+// The guided editor's own background check for the opened Blueprint source changing *externally* (see
+// sourceVersionRef's own doc comment below) -- same 500ms interval useSimulationPoll/useReplayPoll/
+// useProjectContext already use for their own real, setTimeout-based polling (see this project's own
+// jest setupTests.ts doc comment), just uncapped in duration: unlike those (each polling a bounded job
+// to completion), there's no natural end condition here beyond this page unmounting or the watched
+// source itself being cleared (a New/Random/PAR-import replace, or an Undo).
+const SOURCE_CHECK_POLL_MS = 500;
 
 function describeGuidedProgress(status: BlueprintValidationView["status"]): StepProgressItem[] {
     const configureStatus: StepProgressStatus = status === "idle" ? "current" : "completed";
@@ -270,6 +278,29 @@ export function BlueprintEditorPage({
             .finally(() => validateGuard.end());
     };
 
+    // Always the *latest* handleValidate closure -- kept up to date every render so the background
+    // source-check poll below (whose own recursive setTimeout chain is set up once, at mount, and would
+    // otherwise keep calling back into whichever handleValidate closure happened to exist that one time)
+    // always revalidates against the editor's current blueprint/revision, not a stale mount-time snapshot.
+    const handleValidateRef = useRef(handleValidate);
+    useEffect(() => {
+        handleValidateRef.current = handleValidate;
+    });
+
+    // The path + content-hash of the persisted Blueprint source this session currently believes it's
+    // watching for external changes -- set together with `blueprintPath` on a successful Load or Save
+    // (this exact content is now known to match what's on disk), and cleared (`undefined`) by every
+    // wholesale replace that leaves `blueprintPath` describing something this ref's own hash no longer
+    // corresponds to (New/Random/PAR-import/Undo -- see each handler's own assignment below). The
+    // background poll effect below only ever calls checkBlueprintSource while this is set, and treats a
+    // resolved check's own object identity (captured as `watched` at request-send time) as its staleness
+    // guard: once a newer Load/Save/change-detection has replaced `sourceVersionRef.current` with a
+    // different object, an earlier, now-late response for the *previous* one is recognized as no longer
+    // describing what's open and is discarded -- the same "requestedRevision !== revisionRef.current"-
+    // style guard handleValidate's own isStale() uses, just keyed on this ref's identity instead of a
+    // revision number, since a source-check response doesn't carry (or need) one of its own.
+    const sourceVersionRef = useRef<{path: string; hash: string} | undefined>(undefined);
+
     // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
     // blueprintEditorState.ts's own doc comment). Every run of this effect, including the very first
     // (component mount):
@@ -338,6 +369,83 @@ export function BlueprintEditorPage({
         [],
     );
 
+    // Detects the persisted Blueprint source (whatever sourceVersionRef above is currently watching)
+    // changing *externally* -- a hand edit, another Studio tab, a CLI command, anything that isn't this
+    // same editor's own Load/Save round trip -- so that a stale-on-disk baseline is never silently kept
+    // authorizing Build. Runs continuously in the background for as long as this page (guided mode only,
+    // matching every other freshness trigger here -- see handleBuilt's own `if (guided)`) is mounted,
+    // recursively self-scheduling via setTimeout the same way useSimulationPoll/useReplayPoll's own
+    // `poll()` does, rather than `setInterval` -- so a slow in-flight check request (or the app tab going
+    // backgrounded/throttled) can never stack up overlapping requests.
+    //
+    // A "changed" result invalidates exactly the two things this step's own freshness contract names:
+    // the prior validation result (bumped to "stale", the same truthful "checked, then changed" state a
+    // revision-bump/Build already produce) and the materialized runtime cache (`builtSnapshot` -- see its
+    // own doc comment for why any record of "this exact content was successfully built" must not survive
+    // the baseline it was built against moving out from under it) -- then kicks off a fresh
+    // handleValidate() of the *current* in-editor content, never the changed file's own content: this
+    // deliberately does not reload/replace the editor's blueprint (an in-progress, unsaved edit must
+    // never be silently clobbered by a background check), only re-establishes whether that content is
+    // still known-valid against a freshness contract that has, in fact, moved on.
+    //
+    // `watched` is captured once, at request-send time, and compared by identity (not by value) against
+    // `sourceVersionRef.current` when the response arrives -- see that ref's own doc comment for why an
+    // identity mismatch (a newer Load/Save, or a previous, faster-resolving check already having detected
+    // and applied this same change) means this response no longer describes what's open and must be
+    // discarded outright, the same "late response for the pre-change source" guard handleValidate's own
+    // isStale() already gives every validate request.
+    const sourceCheckCancelledRef = useRef(false);
+    const sourceCheckTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    useEffect(() => {
+        if (!guided) {
+            return undefined;
+        }
+        sourceCheckCancelledRef.current = false;
+
+        function scheduleNextCheck(): void {
+            if (sourceCheckCancelledRef.current) {
+                return;
+            }
+            sourceCheckTimerRef.current = setTimeout(runCheck, SOURCE_CHECK_POLL_MS);
+        }
+
+        function runCheck(): void {
+            if (sourceCheckCancelledRef.current) {
+                return;
+            }
+            const watched = sourceVersionRef.current;
+            if (watched === undefined) {
+                scheduleNextCheck();
+                return;
+            }
+            checkBlueprintSource(fetchImpl, watched.path, watched.hash)
+                .then((result) => {
+                    if (sourceCheckCancelledRef.current || sourceVersionRef.current !== watched) {
+                        return;
+                    }
+                    if (result.status === "changed") {
+                        sourceVersionRef.current = {path: watched.path, hash: result.blueprintHash};
+                        setBuiltSnapshot(undefined);
+                        setValidationView((prev) =>
+                            prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev,
+                        );
+                        handleValidateRef.current();
+                    }
+                })
+                .catch(() => undefined)
+                .finally(scheduleNextCheck);
+        }
+
+        scheduleNextCheck();
+        return () => {
+            sourceCheckCancelledRef.current = true;
+            if (sourceCheckTimerRef.current !== undefined) {
+                clearTimeout(sourceCheckTimerRef.current);
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [guided]);
+
     // Captures whatever's in the editor right now, right before a New-flow replace (Blank or Generate
     // random) overwrites it -- what handleUndoReplace restores from. `wasClean` records whether *this*
     // draft itself was a safe checkpoint (freshly loaded/saved) so restoring it doesn't misreport
@@ -369,6 +477,7 @@ export function BlueprintEditorPage({
         editor.newBlueprint();
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
+        sourceVersionRef.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setValidationView({status: "idle"});
@@ -391,6 +500,7 @@ export function BlueprintEditorPage({
         editor.loadFrom(blueprint);
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
+        sourceVersionRef.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setValidationView({status: "idle"});
@@ -411,6 +521,10 @@ export function BlueprintEditorPage({
         editor.loadFrom(undoSnapshot.blueprint);
         setBlueprintPath(undoSnapshot.path);
         overwriteConfirmedForPath.current = undoSnapshot.overwriteConfirmedForPath;
+        // The snapshot itself doesn't carry a content hash for `undoSnapshot.path` -- background source-
+        // change detection (see sourceVersionRef's own doc comment) simply stays off for this path until
+        // the next Load/Save re-establishes a known-good baseline for it.
+        sourceVersionRef.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setBuiltSnapshot(undoSnapshot.builtSnapshot);
@@ -433,6 +547,10 @@ export function BlueprintEditorPage({
                     // A freshly loaded blueprint has nothing to do with whatever the *previous* draft was
                     // last built into -- see builtSnapshot's own doc comment.
                     setBuiltSnapshot(undefined);
+                    // This exact content is now known to match `result.path` on disk -- the background
+                    // source-check poll starts watching it from here (see sourceVersionRef's own doc
+                    // comment).
+                    sourceVersionRef.current = {path: result.path, hash: result.blueprintHash};
                 }
             })
             .catch((error: unknown) => setLoadView({status: "error", message: errorMessage(error)}))
@@ -469,6 +587,10 @@ export function BlueprintEditorPage({
         editor.loadFrom(importedBlueprint);
         setBlueprintPath(sourcePath);
         overwriteConfirmedForPath.current = undefined;
+        // `sourcePath` is the .xlsx workbook, not a JSON blueprint file checkBlueprintSource can read --
+        // background source-change detection stays off until a JSON Load/Save gives it a real path to
+        // watch (see sourceVersionRef's own doc comment).
+        sourceVersionRef.current = undefined;
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         // Same reasoning as handleLoad's own success branch -- see builtSnapshot's own doc comment.
@@ -530,6 +652,9 @@ export function BlueprintEditorPage({
                     setBlueprintPath(result.path);
                     overwriteConfirmedForPath.current = result.path;
                     markClean(savedRevision);
+                    // This exact content is now known to match `result.path` on disk -- see
+                    // sourceVersionRef's own doc comment.
+                    sourceVersionRef.current = {path: result.path, hash: result.blueprintHash};
                 }
             })
             .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}))
@@ -561,17 +686,22 @@ export function BlueprintEditorPage({
         const savedRevision = editor.state.revision;
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath.current === blueprintPath;
+        // Kept as `{raw, view}` pairs (rather than mapping straight to `describeSaveResult`/
+        // `describeSaveManagedResult`, which drop `blueprintHash`) so the success branch below can still
+        // read the just-written content's own hash off `raw` for sourceVersionRef -- see its own doc
+        // comment.
         const request = alreadyOwnsPath
-            ? saveBlueprint(fetchImpl, blueprintPath, editor.state.blueprint, true).then(describeSaveResult)
-            : saveManagedBlueprint(fetchImpl, editor.state.blueprint).then(describeSaveManagedResult);
+            ? saveBlueprint(fetchImpl, blueprintPath, editor.state.blueprint, true).then((raw) => ({raw, view: describeSaveResult(raw)}))
+            : saveManagedBlueprint(fetchImpl, editor.state.blueprint).then((raw) => ({raw, view: describeSaveManagedResult(raw)}));
         request
-            .then((result) => {
-                setManagedSaveView(result);
-                if (result.status === "ok") {
-                    setBlueprintPath(result.path);
-                    overwriteConfirmedForPath.current = result.path;
+            .then(({raw, view}) => {
+                setManagedSaveView(view);
+                if (view.status === "ok" && raw.status === "ok") {
+                    setBlueprintPath(view.path);
+                    overwriteConfirmedForPath.current = view.path;
                     markClean(savedRevision);
                     clearPersistedBlueprintDraft();
+                    sourceVersionRef.current = {path: view.path, hash: raw.blueprintHash};
                 }
             })
             .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))

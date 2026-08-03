@@ -384,18 +384,39 @@ describe("Guided Design Game: automatic freshness triggers (open, external chang
         expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
 
-    it("loading a different blueprint (an external source change) automatically re-validates it and reaches 'Ready to build' again with no further click", async () => {
+    it("an externally modified persisted Blueprint source is detected with no Load action, invalidating validation and the materialized build so a guarded revalidate of the current content replaces them", async () => {
         const user = userEvent.setup();
+        let validateCalls = 0;
+        let checkSourceCalls = 0;
+        let lastCheckSourceBody: {path?: string; blueprintHash?: string} | undefined;
+        let resolveCheckSource: ((value: unknown) => void) | undefined;
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                validateCalls += 1;
                 return respond({status: "ok", warnings: []});
             }
-            if (path === "/api/home/blueprints/load" && init?.method === "POST") {
-                return respond({status: "ok", path: "/games/other.json", blueprint: {manifest: {id: "other", name: "Other", version: "0.1.0"}}});
+            if (path === "/api/home/blueprints/load" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    path: "/games/watched.json",
+                    blueprint: {manifest: {id: "watched", name: "Watched", version: "0.1.0"}},
+                    blueprintHash: "hash-1",
+                });
             }
             if (path === "/api/home/fs/browse") {
-                return respond({status: "ok", resolvedPath: "/games/other.json", displayPath: "/games/other.json", entries: []});
+                return respond({status: "ok", resolvedPath: "/games/watched.json", displayPath: "/games/watched.json", entries: []});
+            }
+            if (path === "/api/home/blueprints/check-source" && method === "POST") {
+                checkSourceCalls += 1;
+                lastCheckSourceBody = JSON.parse(String(init?.body ?? "{}")) as {path?: string; blueprintHash?: string};
+                // Held open (rather than resolved immediately) so this test controls exactly when the
+                // background poll's own in-flight check "arrives" -- the assertion right below it proves
+                // the check itself already went out with no Load/Validate click involved.
+                return new Promise((resolve) => {
+                    resolveCheckSource = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                });
             }
             return respond([]);
         };
@@ -404,14 +425,107 @@ describe("Guided Design Game: automatic freshness triggers (open, external chang
         await validate(user);
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
 
+        // Open a path-backed blueprint -- this is the "persisted Blueprint source" the test then mutates
+        // out from under the editor, without ever clicking Load again.
         await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
-        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/other.json");
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/watched.json");
         await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
-
-        await waitFor(() => expect(screen.queryByText("Ready to build")).not.toBeInTheDocument());
-        // No further click -- Load's own revision bump reschedules the exact same debounced auto-validate
-        // an edit gets, so the freshly loaded blueprint reaches "Ready to build" again on its own.
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // The background check against the persisted source's own hash starts entirely on its own -- no
+        // further user action (a poll, not a Load) triggers it.
+        await waitFor(() => expect(checkSourceCalls).toBeGreaterThan(0));
+        expect(lastCheckSourceBody).toEqual({path: "/games/watched.json", blueprintHash: "hash-1"});
+        const validateCallsBeforeChange = validateCalls;
+
+        resolveCheckSource?.({
+            status: "changed",
+            blueprint: {manifest: {id: "watched", name: "Watched", version: "0.2.0"}},
+            blueprintHash: "hash-2",
+        });
+
+        // Detecting the mutation invalidates the previously-"ok" validation (and, per this step's own
+        // freshness contract, the materialized runtime cache the same way -- see BlueprintEditorPage's
+        // own source-check-poll doc comment for why builtSnapshot is cleared identically) and kicks off
+        // its own guarded revalidate of the *current* in-editor content -- never the changed file's own
+        // content -- reaching "Ready to build" again once that settles, entirely on its own.
+        await waitFor(() => expect(validateCalls).toBeGreaterThan(validateCallsBeforeChange));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+    }, 60000);
+
+    it("a late check-source response for a previously opened source cannot authorize Build once a different blueprint has since been opened", async () => {
+        const user = userEvent.setup();
+        let resolveFirstCheck: ((value: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/load" && method === "POST") {
+                const body = JSON.parse(String(init?.body ?? "{}")) as {path?: string};
+                if (body.path === "/games/first.json") {
+                    return respond({
+                        status: "ok",
+                        path: "/games/first.json",
+                        blueprint: {manifest: {id: "first", name: "First", version: "0.1.0"}},
+                        blueprintHash: "hash-first",
+                    });
+                }
+                return respond({
+                    status: "ok",
+                    path: "/games/second.json",
+                    blueprint: {manifest: {id: "second", name: "Second", version: "0.1.0"}},
+                    blueprintHash: "hash-second",
+                });
+            }
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/second.json", displayPath: "/games/second.json", entries: []});
+            }
+            if (path === "/api/home/blueprints/check-source" && method === "POST") {
+                if (resolveFirstCheck === undefined) {
+                    return new Promise((resolve) => {
+                        resolveFirstCheck = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                    });
+                }
+                // Every check after the first (i.e. any poll against "second.json") reports no change --
+                // this test is only interested in what the *first* (pre-change) source's own late response
+                // does once it finally arrives.
+                return respond({status: "unchanged"});
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/first.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // The background poll's own check-source request for "first.json" is now in flight but
+        // deliberately held open.
+        await waitFor(() => expect(resolveFirstCheck).toBeDefined());
+
+        // Load a different blueprint before that in-flight check ever resolves.
+        const loadField = screen.getByLabelText("Load from path", {exact: false});
+        await user.clear(loadField);
+        await user.type(loadField, "/games/second.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // The stale response for the pre-change ("first.json") source now finally arrives, reporting a
+        // change -- it must not touch anything, since it no longer describes what's open.
+        resolveFirstCheck?.({
+            status: "changed",
+            blueprint: {manifest: {id: "stale", name: "Stale", version: "9.9.9"}},
+            blueprintHash: "stale-hash",
+        });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 200);
+        });
+
+        expect(screen.getByText("Ready to build")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
 

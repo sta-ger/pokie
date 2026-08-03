@@ -32,6 +32,7 @@ import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "../home/StudioBuildResult.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
 import type {StudioBlueprintApplyView} from "./StudioBlueprintApplyView.js";
+import type {StudioBlueprintCheckView} from "./StudioBlueprintCheckView.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintRandomView} from "./StudioBlueprintRandomView.js";
 import type {StudioBlueprintSaveManagedView} from "./StudioBlueprintSaveManagedView.js";
@@ -168,6 +169,25 @@ export class StudioBlueprintService {
         }
     }
 
+    // The Studio boundary an already-open editor polls (see BlueprintEditorPage's own background
+    // source-check) to cheaply detect a persisted Blueprint source changing *externally* — a hand edit,
+    // another Studio tab, a CLI command, anything that isn't this same caller's own Load/Save round trip
+    // — without that caller needing to keep re-fetching and diffing the full content itself. Reuses
+    // load() as-is rather than a lighter-weight stat-only check: computeGameBlueprintHash is a pure,
+    // cheap function of already-parsed JSON, so there is no meaningfully faster path than "read + parse
+    // + hash" here, and reusing load() means every one of its safety checks (studioRoot containment,
+    // missing file, malformed JSON) is inherited for free instead of re-implemented.
+    public checkSource(rawPath: string, knownHash: string): StudioBlueprintCheckView {
+        const loaded = this.load(rawPath);
+        if (loaded.status === "load-error") {
+            return loaded;
+        }
+        if (loaded.blueprintHash === knownHash) {
+            return {status: "unchanged"};
+        }
+        return {status: "changed", blueprint: loaded.blueprint, blueprintHash: loaded.blueprintHash};
+    }
+
     // Refuses to overwrite a file that already exists unless the request explicitly says `overwrite:
     // true` — reported as "conflict", never a silent overwrite. The editor is expected to show this to
     // the user and, once they confirm, resend the same request with `overwrite: true`.
@@ -188,7 +208,7 @@ export class StudioBlueprintService {
         try {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
             fs.writeFileSync(resolved, serializeGameBlueprint(blueprint));
-            return {status: "ok", path: resolved};
+            return {status: "ok", path: resolved, blueprintHash: computeGameBlueprintHash(blueprint)};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
@@ -220,7 +240,7 @@ export class StudioBlueprintService {
         try {
             fs.mkdirSync(resolved.directory, {recursive: true});
             fs.writeFileSync(targetPath, serializeGameBlueprint(blueprint));
-            return {status: "ok", path: targetPath, name};
+            return {status: "ok", path: targetPath, name, blueprintHash: computeGameBlueprintHash(blueprint)};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }

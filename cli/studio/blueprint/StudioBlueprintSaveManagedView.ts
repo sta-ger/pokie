@@ -5,8 +5,11 @@
 // same entry in StudioProjectRegistry without re-deriving it from the blueprint a second time.
 // "invalid-name"/"unavailable" mirror PokiePathResolver.resolveIndependentProjectDirectory's own
 // unusable-default-location outcomes; "error" covers an fs failure once a usable directory was found.
+//
+// "blueprintHash" on "ok" mirrors StudioBlueprintSaveView's own field of the same name — see its doc
+// comment for why a caller keeps this as its next "known-good" snapshot for the path just written.
 export type StudioBlueprintSaveManagedView =
-    | {status: "ok"; path: string; name: string}
+    | {status: "ok"; path: string; name: string; blueprintHash: string}
     | {status: "invalid-name"; error: string}
     | {status: "unavailable"; error: string}
     | {status: "error"; error: string};

@@ -6,6 +6,7 @@ import type {
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     StudioBlueprintApplyView,
+    StudioBlueprintCheckView,
     StudioBlueprintLoadView,
     StudioBlueprintRandomView,
     StudioBlueprintSaveManagedView,
@@ -230,6 +231,22 @@ export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise
         throw new Error(await extractErrorMessage(response, "Failed to load blueprint"));
     }
     return (await response.json()) as StudioBlueprintLoadView;
+}
+
+// Backs BlueprintEditorPage's own background source-check -- see
+// StudioBlueprintService.checkSource()'s own doc comment. Never throws for "load-error" (an expected,
+// safe-to-show domain outcome, e.g. the file having since been deleted) -- only a malformed request
+// itself throws, same convention as every other apiClient function here.
+export async function checkBlueprintSource(fetchImpl: FetchLike, path: string, blueprintHash: string): Promise<StudioBlueprintCheckView> {
+    const response = await fetchImpl("/api/home/blueprints/check-source", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path, blueprintHash}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to check the blueprint source"));
+    }
+    return (await response.json()) as StudioBlueprintCheckView;
 }
 
 export type GenerateRandomBlueprintRequest = {seed?: number; preset?: "default" | "variant"; name?: string};

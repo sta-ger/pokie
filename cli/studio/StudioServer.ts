@@ -16,6 +16,7 @@ import {validateApplyProjectBlueprintRequest, ApplyProjectBlueprintRequestInput}
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
+import {validateCheckBlueprintSourceRequest, CheckBlueprintSourceRequestInput} from "./blueprint/validateCheckBlueprintSourceRequest.js";
 import {validateBlueprintRandomRequest, BlueprintRandomRequestInput} from "./blueprint/validateBlueprintRandomRequest.js";
 import {validateParSheetExportRequest, ParSheetExportRequestInput} from "./blueprint/validateParSheetExportRequest.js";
 import {validateParSheetImportRequest, ParSheetImportRequestInput} from "./blueprint/validateParSheetImportRequest.js";
@@ -402,6 +403,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/blueprints/load") {
             await this.handleBlueprintLoad(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/check-source") {
+            await this.handleBlueprintCheckSource(req, res);
             return;
         }
 
@@ -975,6 +981,23 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, this.blueprintService.load(validated.path));
+    }
+
+    // Backs BlueprintEditorPage's own background source-check (see StudioBlueprintService.checkSource's
+    // own doc comment) -- a caller that already loaded/saved a path and holds its own blueprintHash asks
+    // whether the persisted source has since changed externally, without re-sending or re-diffing the
+    // full content itself.
+    private async handleBlueprintCheckSource(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateCheckBlueprintSourceRequest((body ?? {}) as CheckBlueprintSourceRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.checkSource(validated.path, validated.blueprintHash));
     }
 
     private async handleBlueprintRandom(req: IncomingMessage, res: ServerResponse): Promise<void> {
