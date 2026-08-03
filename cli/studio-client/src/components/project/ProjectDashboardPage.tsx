@@ -116,12 +116,32 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
-// Whether `tab` is actually reachable for the loaded project -- solely a function of its resolved
-// capabilities, never of whether the dashboard merely finished loading. A tab with no
-// `requiredCapabilities` (Overview) is always supported; everything else needs the project to be
-// "loaded" (a "loading"/"error"/"empty" header has no capabilities to check at all) and to carry at
+// Game Model's own reachability isn't a plain capability match like every other tab -- it's offered
+// whenever this project's game model is introspectable at all, which is true either because the project
+// carries BLUEPRINT_BUILD_CAPABILITY (a "blueprint" project, editable in place) or because Inspect found
+// "generated" provenance with a real, known source path (an introspectable-but-not-editable package/WASM
+// project that was nonetheless *built from* a tracked blueprint -- see GameModelView/MechanicsEditorTab's
+// own doc comments for how that source is loaded read-only). Mirrors the exact same "generated" +
+// known-source check `blueprintSource` below uses for Overview's own "Configure Game Model" link.
+function canViewGameModel(header: ProjectHeaderView, inspection: InspectionResultView): boolean {
+    if (header.status !== "loaded") {
+        return false;
+    }
+    if (header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
+        return true;
+    }
+    return inspection.status === "loaded" && inspection.provenance.status === "generated" && inspection.provenance.source !== "(unknown)";
+}
+
+// Whether `tab` is actually reachable for the loaded project. Game Model is special-cased to
+// `gameModelViewable` (see canViewGameModel above) rather than a plain capability match; every other tab
+// with no `requiredCapabilities` (Overview) is always supported, and everything else needs the project to
+// be "loaded" (a "loading"/"error"/"empty" header has no capabilities to check at all) and to carry at
 // least one of the capabilities it lists.
-function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): boolean {
+function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView, gameModelViewable: boolean): boolean {
+    if (tab.value === "mechanicsEditor") {
+        return gameModelViewable;
+    }
     if (tab.requiredCapabilities === undefined) {
         return true;
     }
@@ -129,13 +149,13 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): b
 }
 
 // The nav items NavTabs actually renders -- each filtered solely by isTabSupported above (a project
-// this Studio can't edit as a Blueprint has nothing for Game Model to show but an "unsupported"
+// whose game model isn't introspectable at all has nothing for Game Model to show but an "unsupported"
 // diagnostic, so it isn't offered as a destination at all; same for every runtime-dependent section
 // against a project that isn't actually runnable). "deployment"/"stakeEngineExport" are deliberately
 // never in this list (see ALL_PROJECT_TABS' own doc comment) -- both stay reachable through Build/Export,
 // just not as their own calm-workspace entries.
-function visibleProjectTabs(header: ProjectHeaderView): NavTabItem<ProjectTab>[] {
-    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && isTabSupported(tab, header));
+function visibleProjectTabs(header: ProjectHeaderView, gameModelViewable: boolean): NavTabItem<ProjectTab>[] {
+    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && isTabSupported(tab, header, gameModelViewable));
 }
 
 // The explicit diagnostic a deep link to an unsupported operation shows instead of ever mounting that
@@ -707,13 +727,16 @@ export function ProjectDashboardPage() {
         runtime.running ||
         deployment.runLoading;
 
+    const gameModelViewable = canViewGameModel(header, inspection);
+    const canEditGameModel = header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
+
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
     // Whether the active tab's own workflow component should actually mount -- a deep link to an
     // unsupported operation (e.g. /project/simulation for a project that can't run in-process) shows
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
     // own hooks/fetches.
-    const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
+    const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header, gameModelViewable);
     const projectName = header.status === "loaded" ? header.name : "Project";
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -811,7 +834,7 @@ export function ProjectDashboardPage() {
 
     if (header.status === "empty") {
         return (
-            <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
+            <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header, gameModelViewable)} active={activeTab} onSelect={setActiveTab} />}>
                 <Text>
                     No active project. <Anchor href="#/home/design">Go to Home</Anchor>.
                 </Text>
@@ -821,7 +844,7 @@ export function ProjectDashboardPage() {
 
     return (
         <AppShellLayout
-            navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
+            navbar={<NavTabs items={visibleProjectTabs(header, gameModelViewable)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
@@ -1033,7 +1056,7 @@ export function ProjectDashboardPage() {
                             // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
                             // all of its own draft state locally (via useBlueprintEditor), so a genuine project
                             // switch is handled by a full remount rather than page-level cleanup.
-                                <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={handleMechanicsEditorDirtyChange} />
+                                <MechanicsEditorTab key={projectKey ?? "no-project"} canEdit={canEditGameModel} onDirtyChange={handleMechanicsEditorDirtyChange} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as OutcomeLibrariesTab's own key above -- CertificationTab owns

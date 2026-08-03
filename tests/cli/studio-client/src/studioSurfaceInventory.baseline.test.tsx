@@ -157,6 +157,60 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         expect(within(nav).queryByRole("button", {name: "Game Model"})).not.toBeInTheDocument();
     });
 
+    // P3-POLISH-16: unlike the test above (no capability *and* no tracked source at all), a tsPackage/WASM
+    // project built *from* a tracked blueprint (Inspect's own "generated" provenance with a real source
+    // path) is introspectable even without BLUEPRINT_BUILD_CAPABILITY -- Game Model is offered read-only,
+    // never editable, for it. See GameModelView/MechanicsEditorTab's own doc comments.
+    it("shows Game Model, read-only, for an introspectable-but-not-editable tsPackage project built from a tracked blueprint", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "loaded", projectRoot: "/games/my-slot", game: {id: "my-slot", name: "My Slot", version: "1.0.0"}, type: "tsPackage", capabilities: ["runtime.execute"]},
+            }),
+            "/api/project/inspect": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    packageRoot: "/games/my-slot",
+                    valid: true,
+                    generated: true,
+                    buildInfo: {
+                        schemaVersion: 1,
+                        generatedBy: "pokie build",
+                        pokieVersion: "1.3.0",
+                        generatedAt: "2026-01-01T00:00:00.000Z",
+                        blueprintHash: "sha256:blueprint",
+                        source: "/games/my-slot-source/blueprint.json",
+                        game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+                    },
+                },
+            }),
+            "/api/home/blueprints/load": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    path: "/games/my-slot-source/blueprint.json",
+                    blueprint: {manifest: {id: "my-slot", name: "My Slot", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"]},
+                    blueprintHash: "sha256:loaded",
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        const nav = screen.getByRole("navigation", {name: "Sections"});
+        await user.click(within(nav).getByRole("button", {name: "Game Model"}));
+
+        expect(await screen.findByText("Id: my-slot")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Edit"})).not.toBeInTheDocument();
+        expect(screen.getByText(/doesn't support editing its game model directly/)).toBeInTheDocument();
+    });
+
     it("lists only Overview for a read-only/package-exchange project (e.g. an outcome library), hiding every runtime-dependent section", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,

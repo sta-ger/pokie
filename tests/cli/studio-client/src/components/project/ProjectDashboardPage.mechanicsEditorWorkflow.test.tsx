@@ -69,9 +69,13 @@ function stepperStep(label: string, description?: string): RegExp {
     return description === undefined ? new RegExp(label) : new RegExp(`${label}.*${description}`);
 }
 
+// Game Model now defaults to a read-only view (see GameModelView) -- every workflow test in this file
+// exercises the guided *editor*, so this helper also clicks into Edit mode before returning, same as it
+// always implicitly did back when the editor was the only thing Game Model showed.
 async function goToMechanicsEditorTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Game Model"}));
+    await user.click(await screen.findByRole("button", {name: "Edit"}));
     await screen.findByLabelText("Reels");
 }
 
@@ -461,6 +465,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         await screen.findByRole("button", {name: "Re-run Inspect"});
 
         await user.click(screen.getByRole("button", {name: "Game Model"}));
+        await user.click(await screen.findByRole("button", {name: "Edit"}));
         await screen.findByLabelText("Reels");
         await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
 
@@ -786,6 +791,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
 
             await user.click(screen.getByRole("button", {name: "Game Model"}));
+            await user.click(await screen.findByRole("button", {name: "Edit"}));
             await screen.findByLabelText("Reels");
             await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
             expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
@@ -934,6 +940,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await waitFor(() => expect(screen.getAllByText(/running at/).length).toBeGreaterThan(0));
 
             await user.click(screen.getByRole("button", {name: "Game Model"}));
+            await user.click(await screen.findByRole("button", {name: "Edit"}));
             await makeADirtyEdit(user);
 
             await user.click(screen.getByRole("button", {name: "Close project"}));
