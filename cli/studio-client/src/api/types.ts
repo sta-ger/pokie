@@ -260,6 +260,15 @@ export type StudioReelStripGenerationView = {
 // POST /api/project/blueprint/apply call is built from (see StudioBlueprintApplyView).
 export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown; blueprintHash: string} | {status: "load-error"; error: string};
 
+// POST /api/home/blueprints/check-source's own DTO — see cli/studio/blueprint/StudioBlueprintCheckView.ts's
+// own doc comment. Lets a caller that already holds a loaded/saved path's own blueprintHash cheaply ask
+// whether the persisted source has since changed externally; "changed" carries the fresh content/hash
+// straight back so a caller detecting drift never needs a second round trip just to see what changed.
+export type StudioBlueprintCheckView =
+    | {status: "unchanged"}
+    | {status: "changed"; blueprint: unknown; blueprintHash: string}
+    | {status: "load-error"; error: string};
+
 // What produced a randomly generated blueprint and with which algorithm — see
 // cli/studio/blueprint/StudioBlueprintRandomView.ts's own doc comment. Same seed + same
 // generatorVersion always reproduces the same blueprint.
@@ -279,10 +288,23 @@ export type StudioBlueprintRandomView = {
 
 // POST /api/home/blueprints/save's own DTO — see cli/studio/blueprint/StudioBlueprintSaveView.ts's own
 // doc comment. "conflict" means the file already exists and the request needs `overwrite: true` to
-// replace it.
+// replace it. "blueprintHash" on "ok" is the just-written content's own hash — a caller uses it the same
+// way it would use StudioBlueprintLoadView's own blueprintHash, e.g. as the next known-good snapshot for
+// StudioBlueprintCheckView.
 export type StudioBlueprintSaveView =
-    | {status: "ok"; path: string}
+    | {status: "ok"; path: string; blueprintHash: string}
     | {status: "conflict"; path: string; error: string}
+    | {status: "error"; error: string};
+
+// POST /api/home/blueprints/save-managed's own DTO — see
+// cli/studio/blueprint/StudioBlueprintSaveManagedView.ts's own doc comment. Unlike StudioBlueprintSaveView
+// above, there's no "conflict" outcome (the path is always one Studio itself picked, never a user-chosen
+// one that might already hold someone else's file) — "invalid-name"/"unavailable" cover a path this
+// service couldn't resolve a usable destination for at all.
+export type StudioBlueprintSaveManagedView =
+    | {status: "ok"; path: string; name: string; blueprintHash: string}
+    | {status: "invalid-name"; error: string}
+    | {status: "unavailable"; error: string}
     | {status: "error"; error: string};
 
 // POST /api/project/blueprint/apply's own DTO — see cli/studio/blueprint/StudioBlueprintApplyView.ts's

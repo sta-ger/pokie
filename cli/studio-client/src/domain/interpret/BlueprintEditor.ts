@@ -1,5 +1,6 @@
 import type {
     StudioBlueprintLoadView,
+    StudioBlueprintSaveManagedView,
     StudioBlueprintSaveView,
     StudioBlueprintValidationView,
     StudioReelStripGenerationView,
@@ -12,8 +13,16 @@ import type {
 // Preview/Build panels reuse interpretHome.ts's existing describeBuildPreview/describeBuildResult
 // as-is — StudioBlueprintService.previewBuild()/build() return the exact same DTO shapes.
 
+// "idle" — never validated at all yet (a brand-new draft, or one just loaded/replaced). "stale" —
+// *was* validated ("ok"/"invalid") at some earlier revision, but the blueprint has since changed and
+// that result no longer describes it -- the guided Design Game editor's own freshness-aware auto-
+// validate (see BlueprintEditorPage's own debounced revision-bump effect) shows this for the short
+// window between an edit and the automatic re-check actually starting ("loading"), so a user watching
+// the panel never mistakes a going-stale "Valid" for a still-true one. Distinct from "idle" specifically
+// so "never checked yet" and "checked, then changed" read as different truths, not the same blank state.
 export type BlueprintValidationView =
     | {status: "idle"}
+    | {status: "stale"}
     | {status: "loading"}
     | {status: "error"; message: string}
     | {status: "ok"; warnings: ValidationIssue[]}
@@ -155,4 +164,15 @@ export function describeSaveResult(result: StudioBlueprintSaveView): BlueprintSa
         return {status: "failed", message: result.error};
     }
     return {status: "ok", path: result.path};
+}
+
+// The guided editor's own "first Save" collapses onto the exact same BlueprintSaveView shape as an
+// ordinary path-based save -- there's no "conflict" outcome to carry (see StudioBlueprintSaveManagedView's
+// own doc comment), so every non-"ok" status reads as "failed", the same bucket describeSaveResult's own
+// "error" branch already uses.
+export function describeSaveManagedResult(result: StudioBlueprintSaveManagedView): BlueprintSaveView {
+    if (result.status === "ok") {
+        return {status: "ok", path: result.path};
+    }
+    return {status: "failed", message: result.error};
 }

@@ -6,8 +6,10 @@ import type {
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     StudioBlueprintApplyView,
+    StudioBlueprintCheckView,
     StudioBlueprintLoadView,
     StudioBlueprintRandomView,
+    StudioBlueprintSaveManagedView,
     StudioBlueprintSaveView,
     StudioBlueprintValidationView,
     StudioBuildPreviewView,
@@ -231,6 +233,22 @@ export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise
     return (await response.json()) as StudioBlueprintLoadView;
 }
 
+// Backs BlueprintEditorPage's own background source-check -- see
+// StudioBlueprintService.checkSource()'s own doc comment. Never throws for "load-error" (an expected,
+// safe-to-show domain outcome, e.g. the file having since been deleted) -- only a malformed request
+// itself throws, same convention as every other apiClient function here.
+export async function checkBlueprintSource(fetchImpl: FetchLike, path: string, blueprintHash: string): Promise<StudioBlueprintCheckView> {
+    const response = await fetchImpl("/api/home/blueprints/check-source", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path, blueprintHash}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to check the blueprint source"));
+    }
+    return (await response.json()) as StudioBlueprintCheckView;
+}
+
 export type GenerateRandomBlueprintRequest = {seed?: number; preset?: "default" | "variant"; name?: string};
 
 // Backs the New flow's "Generate random" option — the same RandomGameBlueprintGenerator "pokie build
@@ -269,6 +287,24 @@ export async function saveBlueprint(
         throw new Error(await extractErrorMessage(response, "Failed to save blueprint"));
     }
     return (await response.json()) as StudioBlueprintSaveView;
+}
+
+// The guided Design Game editor's own "first Save" -- the caller never picks a path (see
+// StudioBlueprintService.saveManaged()'s own doc comment for the path Studio itself resolves). Never
+// throws for a domain-level outcome ("invalid-name"/"unavailable" are ordinary results of a manifest.id
+// this service can't turn into a safe directory segment, or a machine with no writable default project
+// location) -- same "only a malformed request throws" convention every other apiClient function here
+// follows.
+export async function saveManagedBlueprint(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioBlueprintSaveManagedView> {
+    const response = await fetchImpl("/api/home/blueprints/save-managed", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to save the project"));
+    }
+    return (await response.json()) as StudioBlueprintSaveManagedView;
 }
 
 // Commits an edited blueprint back to the current project's own source file and rebuilds its

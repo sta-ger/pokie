@@ -52,9 +52,10 @@ export function classifyIssuesByStep(issues: ValidationIssue[]): {
 
 export type MechanicsEditorStepStatus = {tone: "neutral" | "success" | "warning" | "error"; errorCount: number; warningCount: number};
 
-// Same "neutral before a real result exists" rule as BlueprintSections.ts's describeSectionStatus.
+// Same "neutral before a real result exists (or a prior one has gone stale)" rule as
+// BlueprintSections.ts's describeSectionStatus.
 export function describeStepStatus(stepId: MechanicsEditorStepId, view: BlueprintValidationView): MechanicsEditorStepStatus {
-    if (view.status === "idle" || view.status === "loading" || view.status === "error") {
+    if (view.status === "idle" || view.status === "stale" || view.status === "loading" || view.status === "error") {
         return {tone: "neutral", errorCount: 0, warningCount: 0};
     }
     const allIssues = view.status === "invalid" ? [...view.errors, ...view.warnings] : view.warnings;

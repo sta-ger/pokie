@@ -1088,6 +1088,23 @@ describe("StudioServer", () => {
                 expect(body).toMatchObject({status: "invalid"});
                 expect((body as {errors: Array<{code: string}>}).errors[0].code).toBe("blueprint-reels-invalid");
             });
+
+            // The Blueprint Editor's own guided freshness contract (see BlueprintEditorPage's own
+            // revision-bump/handleValidate doc comments) relies on this endpoint never answering from a
+            // stale, previously-computed result -- there is no server-side validation cache to go stale
+            // in the first place: every request is judged strictly on the exact blueprint it carries,
+            // regardless of what an earlier request on the same connection asked about.
+            it("never reflects a previous call's own blueprint -- each request is judged strictly on its own body", async () => {
+                const broken = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint({reels: 0})});
+                expect(broken.body).toMatchObject({status: "invalid"});
+
+                const fixed = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint()});
+                expect(fixed.status).toBe(200);
+                expect(fixed.body).toEqual({status: "ok", warnings: []});
+
+                const brokenAgain = await post(`${homeBaseUrl}/api/home/blueprints/validate`, {blueprint: buildBlueprint({reels: 0})});
+                expect(brokenAgain.body).toMatchObject({status: "invalid"});
+            });
         });
 
         describe("POST /api/home/blueprints/load", () => {
@@ -1121,6 +1138,77 @@ describe("StudioServer", () => {
                 const insidePath = path.join(homeStudioRoot, "index.html");
 
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/load`, {path: insidePath});
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect((body as {error: string}).error).toContain("internal directory");
+            });
+        });
+
+        describe("POST /api/home/blueprints/check-source", () => {
+            it("rejects a body with no path field", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {blueprintHash: "abc"});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"path" is required.'});
+            });
+
+            it("rejects a body with no blueprintHash field", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {path: blueprintPath});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprintHash" is required and must be a non-empty string.'});
+            });
+
+            it("reports 'unchanged' when the on-disk content's hash matches the given hash", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {
+                    path: blueprintPath,
+                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                });
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "unchanged"});
+            });
+
+            // The Blueprint Editor's own external-change detection (see BlueprintEditorPage's own
+            // background source-check poll) relies on this: a persisted source mutated by something
+            // other than this same caller's own Load/Save round trip (a hand edit, another tool) is
+            // reported as "changed", carrying the fresh content back so the caller never needs a second
+            // round trip just to see what changed.
+            it("reports 'changed' with the fresh blueprint/hash once the on-disk content no longer matches the given hash", async () => {
+                const blueprintPath = writeBlueprintFile(buildBlueprint());
+                const staleHash = computeGameBlueprintHash(buildBlueprint());
+                const mutated = buildBlueprint({rows: 4});
+                fs.writeFileSync(blueprintPath, JSON.stringify(mutated));
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {
+                    path: blueprintPath,
+                    blueprintHash: staleHash,
+                });
+
+                expect(status).toBe(200);
+                expect(body).toEqual({status: "changed", blueprint: mutated, blueprintHash: computeGameBlueprintHash(mutated)});
+            });
+
+            it("returns a safe load-error for a missing file", async () => {
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {
+                    path: path.join(workDir, "does-not-exist.json"),
+                    blueprintHash: "abc",
+                });
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({status: "load-error"});
+                expect(JSON.stringify(body)).not.toContain("\\n    at ");
+            });
+
+            it("returns a safe load-error for a path inside Studio's own internal directory", async () => {
+                const insidePath = path.join(homeStudioRoot, "index.html");
+
+                const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/check-source`, {path: insidePath, blueprintHash: "abc"});
 
                 expect(status).toBe(200);
                 expect(body).toMatchObject({status: "load-error"});
@@ -1185,7 +1273,7 @@ describe("StudioServer", () => {
                 });
 
                 expect(status).toBe(201);
-                expect(body).toEqual({status: "ok", path: filePath});
+                expect(body).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
                 const written = fs.readFileSync(filePath, "utf-8");
                 expect(written.endsWith("\n")).toBe(true);
                 expect(Object.keys(JSON.parse(written))).toEqual(["manifest", "reels", "rows", "symbols", "paytable"]);
@@ -1220,6 +1308,118 @@ describe("StudioServer", () => {
 
                 expect(second.status).toBe(201);
                 expect(fs.readFileSync(filePath).equals(firstBytes)).toBe(true);
+            });
+        });
+
+        describe("POST /api/home/blueprints/save-managed", () => {
+            let managedServer: StudioServer;
+            let managedBaseUrl: string;
+            let managedWorkDir: string;
+            let managedRegistry: InMemoryStudioProjectRegistry;
+
+            beforeEach(async () => {
+                managedWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-managed-work-"));
+                const managedHomeService = new StudioHomeService("1.0.0");
+                managedRegistry = new InMemoryStudioProjectRegistry();
+                // Points PokiePathResolver.resolveIndependentProjectDirectory's own "POKIE Projects/<name>"
+                // convention at this test's own temp directory instead of the real machine's Documents/Home
+                // -- everything else about saveManaged() (writing blueprint.json, registering it) runs for
+                // real, against real collaborators, matching this describe block's own "real collaborators
+                // against real temp directories" convention.
+                const resolveIndependentProjectDirectory = jest.fn((name: string) => ({
+                    status: "valid",
+                    directory: path.join(managedWorkDir, "POKIE Projects", name),
+                    source: "documents",
+                }));
+                managedServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: homeStudioRoot,
+                    homeService: managedHomeService,
+                    blueprintService: new StudioBlueprintService(
+                        "1.0.0",
+                        homeStudioRoot,
+                        managedHomeService,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioBlueprintService>[11],
+                    ),
+                    projectRegistrationService: new StudioProjectRegistrationService(managedRegistry),
+                });
+                const address = await managedServer.start();
+                managedBaseUrl = `http://${address.host}:${address.port}`;
+            });
+
+            afterEach(async () => {
+                await managedServer.stop();
+                fs.rmSync(managedWorkDir, {recursive: true, force: true});
+            });
+
+            it("rejects a body with no blueprint field", async () => {
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprint" is required.'});
+            });
+
+            it("writes to a path chosen from the blueprint's own manifest.id and registers it as a managed project", async () => {
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
+
+                expect(status).toBe(201);
+                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+                expect(fs.existsSync(expectedPath)).toBe(true);
+
+                const entries = await managedRegistry.list();
+                expect(entries).toHaveLength(1);
+                expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot", origin: "managed", type: "blueprint"});
+            });
+
+            // Mirrors BlueprintEditorPage.tsx's own handleGuidedSave: once a first save-managed call has
+            // established a path, every later save in that same editor session goes through the ordinary
+            // /save endpoint against that exact path (overwrite:true) rather than calling save-managed
+            // again -- so "re-uses the already-established destination without prompting" is this request
+            // sequence, not a second save-managed call.
+            it("a later save through the ordinary save endpoint re-uses the already-established path and stays a single registry entry", async () => {
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+                await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save`, {
+                    path: expectedPath,
+                    blueprint: buildBlueprint({rows: 4}),
+                    overwrite: true,
+                });
+
+                expect(status).toBe(201);
+                expect((body as {path: string}).path).toBe(expectedPath);
+                expect(JSON.parse(fs.readFileSync(expectedPath, "utf-8")).rows).toBe(4);
+                expect(await managedRegistry.list()).toHaveLength(1);
+            });
+
+            it("does not overwrite an existing managed blueprint.json for the same id on a first save, and registers the new destination instead", async () => {
+                const collidingDir = path.join(managedWorkDir, "POKIE Projects", "sample-slot");
+                fs.mkdirSync(collidingDir, {recursive: true});
+                fs.writeFileSync(path.join(collidingDir, "blueprint.json"), "existing project content");
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot-2", "blueprint.json");
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
+
+                expect(status).toBe(201);
+                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot-2", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+                expect(fs.readFileSync(path.join(collidingDir, "blueprint.json"), "utf-8")).toBe("existing project content");
+                expect(fs.existsSync(expectedPath)).toBe(true);
+
+                const entries = await managedRegistry.list();
+                expect(entries).toHaveLength(1);
+                expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot-2", origin: "managed", type: "blueprint"});
             });
         });
 

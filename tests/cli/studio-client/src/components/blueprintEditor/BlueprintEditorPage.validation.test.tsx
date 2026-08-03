@@ -45,8 +45,13 @@ describe("Guided Design Game: validation staleness and build gating", () => {
 
         await dirtyGameId(user, "changed-after-validate");
 
+        // A previously "ok" result goes "stale" (not back to "idle") on the next edit -- freshness-aware
+        // validation truthfully distinguishes "changed since it was last checked" from "never checked
+        // yet" (see BlueprintValidationView's own doc comment). The guided editor's own debounced
+        // auto-validate (see BlueprintEditorPage's own revision-bump effect) will re-check shortly after,
+        // but this assertion runs well before that debounce elapses.
         expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
-        expect(screen.getByText("Configure your game model")).toBeInTheDocument();
+        expect(screen.getByText("Checking your changes")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 
@@ -349,5 +354,308 @@ describe("Guided Design Game: validation staleness and build gating", () => {
         // sectioned editor entirely) -- getAllByText tolerates that instead of asserting exclusivity.
         expect(screen.getByText("First reels warning.")).toBeInTheDocument();
         expect(screen.getAllByText(/Second reels warning\./).length).toBeGreaterThan(0);
+    }, 60000);
+});
+
+// This step's own freshness contract: guided validation must run on initial open/load (not only after
+// an explicit "Validate" click or an edit), and an external source change (Load) or a runtime
+// materialization event (Build) must both make a previously-current result stale and trigger a fresh,
+// guarded revalidate -- never leaving a stale "ok" in place once the source it described has moved on.
+describe("Guided Design Game: automatic freshness triggers (open, external change, materialization)", () => {
+    it("validates a freshly opened blueprint automatically, with no explicit Validate click", async () => {
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        // Nothing has run yet the instant this mounts -- the auto-validate below is genuinely debounced
+        // (see AUTO_VALIDATE_DEBOUNCE_MS), not a synchronous side effect of render.
+        expect(screen.getByText("Configure your game model")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+
+        // No user action at all -- the guided editor's own debounced auto-validate (see
+        // BlueprintEditorPage's own revision-bump effect) now also fires once on mount, not only after
+        // an edit.
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+    }, 60000);
+
+    it("an externally modified persisted Blueprint source is detected with no Load action, persistently blocking Build even once a guarded revalidate of the current content reports ok again -- only a reload clears it", async () => {
+        const user = userEvent.setup();
+        let validateCalls = 0;
+        let checkSourceCalls = 0;
+        let lastCheckSourceBody: {path?: string; blueprintHash?: string} | undefined;
+        let resolveCheckSource: ((value: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                validateCalls += 1;
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/load" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    path: "/games/watched.json",
+                    blueprint: {manifest: {id: "watched", name: "Watched", version: "0.1.0"}},
+                    blueprintHash: "hash-1",
+                });
+            }
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/watched.json", displayPath: "/games/watched.json", entries: []});
+            }
+            if (path === "/api/home/blueprints/check-source" && method === "POST") {
+                checkSourceCalls += 1;
+                lastCheckSourceBody = JSON.parse(String(init?.body ?? "{}")) as {path?: string; blueprintHash?: string};
+                // Held open (rather than resolved immediately) so this test controls exactly when the
+                // background poll's own in-flight check "arrives" -- the assertion right below it proves
+                // the check itself already went out with no Load/Validate click involved.
+                return new Promise((resolve) => {
+                    resolveCheckSource = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // Open a path-backed blueprint -- this is the "persisted Blueprint source" the test then mutates
+        // out from under the editor, without ever clicking Load again.
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/watched.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // The background check against the persisted source's own hash starts entirely on its own -- no
+        // further user action (a poll, not a Load) triggers it.
+        await waitFor(() => expect(checkSourceCalls).toBeGreaterThan(0));
+        expect(lastCheckSourceBody).toEqual({path: "/games/watched.json", blueprintHash: "hash-1"});
+        const validateCallsBeforeChange = validateCalls;
+
+        resolveCheckSource?.({
+            status: "changed",
+            blueprint: {manifest: {id: "watched", name: "Watched", version: "0.2.0"}},
+            blueprintHash: "hash-2",
+        });
+
+        // Detecting the mutation invalidates the previously-"ok" validation and kicks off its own guarded
+        // revalidate of the *current* in-editor content -- never the changed file's own content -- which
+        // settles back to "ok" for that (unchanged) draft.
+        await waitFor(() => expect(validateCalls).toBeGreaterThan(validateCallsBeforeChange));
+
+        // That guarded revalidate reporting "ok" for the pre-change draft must NOT be presented as
+        // current/Build-ready -- the persisted source itself moved on, and only a reload/save (never a
+        // content-only revalidate) can truthfully re-establish that. This must remain true even after the
+        // revalidate above has fully settled.
+        await waitFor(() => expect(screen.getByText("Blueprint changed on disk")).toBeInTheDocument());
+        expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+
+        // A further explicit Validate click can also legitimately report "ok" again -- that alone must
+        // still never quietly re-authorize Build while the source-changed diagnostic stands.
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Blueprint changed on disk")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
+
+        // Reloading the same path establishes a fresh source baseline -- the only thing this step's own
+        // contract says can clear the diagnostic -- and Build becomes available again.
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+    }, 60000);
+
+    it("an externally deleted or malformed opened Blueprint source is detected with no Load action, persistently blocking Build even once a content-only revalidate reports ok again", async () => {
+        const user = userEvent.setup();
+        let resolveCheckSource: ((value: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/load" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    path: "/games/watched.json",
+                    blueprint: {manifest: {id: "watched", name: "Watched", version: "0.1.0"}},
+                    blueprintHash: "hash-1",
+                });
+            }
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/watched.json", displayPath: "/games/watched.json", entries: []});
+            }
+            if (path === "/api/home/blueprints/check-source" && method === "POST") {
+                // Held open the same way the "changed" test above does -- this test controls exactly
+                // when the poll's own "the file is gone" response arrives.
+                return new Promise((resolve) => {
+                    resolveCheckSource = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/watched.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await waitFor(() => expect(resolveCheckSource).toBeDefined());
+        resolveCheckSource?.({status: "load-error", error: "ENOENT: no such file or directory, open '/games/watched.json'"});
+
+        // The persistent diagnostic replaces "Ready to build" -- Build is blocked purely from this
+        // background detection, with no user action (no Load click, no Validate click) involved.
+        await waitFor(() => expect(screen.getByText("Blueprint source unavailable")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+
+        // A content-only revalidate (the guarded one this same detection kicks off automatically, or a
+        // manual click) can legitimately report "ok" again for the in-editor draft -- that alone must
+        // never quietly re-authorize Build, since the persisted source itself is still unaccounted for.
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Blueprint source unavailable")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
+    }, 60000);
+
+    it("a late check-source response for a previously opened source cannot authorize Build once a different blueprint has since been opened", async () => {
+        const user = userEvent.setup();
+        let resolveFirstCheck: ((value: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/load" && method === "POST") {
+                const body = JSON.parse(String(init?.body ?? "{}")) as {path?: string};
+                if (body.path === "/games/first.json") {
+                    return respond({
+                        status: "ok",
+                        path: "/games/first.json",
+                        blueprint: {manifest: {id: "first", name: "First", version: "0.1.0"}},
+                        blueprintHash: "hash-first",
+                    });
+                }
+                return respond({
+                    status: "ok",
+                    path: "/games/second.json",
+                    blueprint: {manifest: {id: "second", name: "Second", version: "0.1.0"}},
+                    blueprintHash: "hash-second",
+                });
+            }
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/second.json", displayPath: "/games/second.json", entries: []});
+            }
+            if (path === "/api/home/blueprints/check-source" && method === "POST") {
+                if (resolveFirstCheck === undefined) {
+                    return new Promise((resolve) => {
+                        resolveFirstCheck = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                    });
+                }
+                // Every check after the first (i.e. any poll against "second.json") reports no change --
+                // this test is only interested in what the *first* (pre-change) source's own late response
+                // does once it finally arrives.
+                return respond({status: "unchanged"});
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/first.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // The background poll's own check-source request for "first.json" is now in flight but
+        // deliberately held open.
+        await waitFor(() => expect(resolveFirstCheck).toBeDefined());
+
+        // Load a different blueprint before that in-flight check ever resolves.
+        const loadField = screen.getByLabelText("Load from path", {exact: false});
+        await user.clear(loadField);
+        await user.type(loadField, "/games/second.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        // The stale response for the pre-change ("first.json") source now finally arrives, reporting a
+        // change -- it must not touch anything, since it no longer describes what's open.
+        resolveFirstCheck?.({
+            status: "changed",
+            blueprint: {manifest: {id: "stale", name: "Stale", version: "9.9.9"}},
+            blueprintHash: "stale-hash",
+        });
+        await new Promise((resolve) => {
+            setTimeout(resolve, 200);
+        });
+
+        expect(screen.getByText("Ready to build")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
+    }, 60000);
+
+    it("a successful Build (runtime materialization) makes the displayed validation stale and triggers a guarded revalidate", async () => {
+        const user = userEvent.setup();
+        let validateCalls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                validateCalls += 1;
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/build-preview" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    warnings: [],
+                    manifest: {id: "materialize", name: "Materialize", version: "0.1.0"},
+                    reels: 5,
+                    rows: 3,
+                    symbolsCount: 0,
+                    blueprintHash: "abc123",
+                    expectedFiles: ["build-info.json"],
+                    projectRoot: "/games/materialize",
+                    destinationHasContent: false,
+                    createFiles: ["build-info.json"],
+                    updateFiles: [],
+                    deleteFiles: [],
+                });
+            }
+            if (path === "/api/home/blueprints/build" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    projectRoot: "/games/materialize",
+                    manifest: {id: "materialize", name: "Materialize", version: "0.1.0"},
+                    createdFiles: ["build-info.json"],
+                    buildInfo: {blueprintHash: "abc123", pokieVersion: "1.0.0", generatedAt: new Date(0).toISOString(), files: []},
+                    unchanged: false,
+                    warnings: [],
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+        expect(validateCalls).toBeGreaterThanOrEqual(1);
+        const validateCallsBeforeBuild = validateCalls;
+
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await screen.findByText(/Last built/);
+
+        // The build materialized a real runtime package from this exact revision -- that must trigger
+        // its own guarded revalidate (not just reuse whatever "ok" merely authorized the build to
+        // start), and the displayed result must still land on "Ready to build" once it settles.
+        await waitFor(() => expect(validateCalls).toBeGreaterThan(validateCallsBeforeBuild));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
     }, 60000);
 });

@@ -16,6 +16,7 @@ import {validateApplyProjectBlueprintRequest, ApplyProjectBlueprintRequestInput}
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
+import {validateCheckBlueprintSourceRequest, CheckBlueprintSourceRequestInput} from "./blueprint/validateCheckBlueprintSourceRequest.js";
 import {validateBlueprintRandomRequest, BlueprintRandomRequestInput} from "./blueprint/validateBlueprintRandomRequest.js";
 import {validateParSheetExportRequest, ParSheetExportRequestInput} from "./blueprint/validateParSheetExportRequest.js";
 import {validateParSheetImportRequest, ParSheetImportRequestInput} from "./blueprint/validateParSheetImportRequest.js";
@@ -405,6 +406,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/blueprints/check-source") {
+            await this.handleBlueprintCheckSource(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/random") {
             await this.handleBlueprintRandom(req, res);
             return;
@@ -412,6 +418,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/blueprints/save") {
             await this.handleBlueprintSave(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/blueprints/save-managed") {
+            await this.handleBlueprintSaveManaged(req, res);
             return;
         }
 
@@ -972,6 +983,23 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, this.blueprintService.load(validated.path));
     }
 
+    // Backs BlueprintEditorPage's own background source-check (see StudioBlueprintService.checkSource's
+    // own doc comment) -- a caller that already loaded/saved a path and holds its own blueprintHash asks
+    // whether the persisted source has since changed externally, without re-sending or re-diffing the
+    // full content itself.
+    private async handleBlueprintCheckSource(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateCheckBlueprintSourceRequest((body ?? {}) as CheckBlueprintSourceRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.checkSource(validated.path, validated.blueprintHash));
+    }
+
     private async handleBlueprintRandom(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -1004,6 +1032,30 @@ export class StudioServer implements StudioServerHandling {
             return 201;
         }
         return status === "conflict" ? 409 : 200;
+    }
+
+    // The guided Design Game editor's own "first Save" -- see StudioBlueprintService.saveManaged's own
+    // doc comment for the path-choice policy. On "ok", registers the freshly-written file as a *managed*
+    // Studio project (see StudioProjectRegistrationService.registerManaged's own doc comment) so it shows
+    // up in the Projects tab the same way a `pokie create`/Build-from-Home project already does -- this
+    // is the one caller-side step saveManaged() deliberately leaves to StudioServer rather than taking a
+    // StudioProjectRegistrationService dependency of its own (same split as homeService.
+    // rememberRecentProject() being called from here rather than from inside StudioBlueprintService).
+    private async handleBlueprintSaveManaged(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = this.blueprintService.saveManaged(validated.blueprint);
+        if (result.status === "ok") {
+            await this.projectRegistrationService.registerManaged(result.path, result.name);
+        }
+        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }
 
     private async handleBlueprintBuildPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {

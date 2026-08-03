@@ -3,6 +3,7 @@ import {
     describeLoadResult,
     describeReelStripGenerationEntrySummary,
     describeReelStripGenerationPreview,
+    describeSaveManagedResult,
     describeSaveResult,
     describeValidation,
     hasReelStripGenerationDraftChanged,
@@ -165,6 +166,30 @@ describe("interpretBlueprintEditor", () => {
 
         it("maps error to failed", () => {
             expect(describeSaveResult({status: "error", error: "disk full"})).toEqual({status: "failed", message: "disk full"});
+        });
+    });
+
+    describe("describeSaveManagedResult", () => {
+        it("maps ok to its path", () => {
+            expect(describeSaveManagedResult({status: "ok", path: "/a/blueprint.json", name: "a"})).toEqual({status: "ok", path: "/a/blueprint.json"});
+        });
+
+        it("maps invalid-name to failed", () => {
+            expect(describeSaveManagedResult({status: "invalid-name", error: "not a valid project name"})).toEqual({
+                status: "failed",
+                message: "not a valid project name",
+            });
+        });
+
+        it("maps unavailable to failed", () => {
+            expect(describeSaveManagedResult({status: "unavailable", error: "no writable default project location"})).toEqual({
+                status: "failed",
+                message: "no writable default project location",
+            });
+        });
+
+        it("maps error to failed", () => {
+            expect(describeSaveManagedResult({status: "error", error: "disk full"})).toEqual({status: "failed", message: "disk full"});
         });
     });
 });

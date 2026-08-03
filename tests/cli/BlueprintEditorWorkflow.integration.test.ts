@@ -57,7 +57,7 @@ describe("Blueprint Editor workflow (integration): validate -> save -> load -> b
         expect(service.validate(blueprint)).toEqual({status: "ok", warnings: []});
 
         const saved = service.save(blueprintPath, blueprint, false);
-        expect(saved).toEqual({status: "ok", path: blueprintPath});
+        expect(saved).toEqual({status: "ok", path: blueprintPath, blueprintHash: computeGameBlueprintHash(blueprint)});
         expect(fs.readFileSync(blueprintPath, "utf-8").endsWith("\n")).toBe(true);
 
         const loaded = service.load(blueprintPath);
