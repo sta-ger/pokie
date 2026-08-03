@@ -1,11 +1,14 @@
-import {Anchor, Collapse, SegmentedControl, Text, Title} from "@mantine/core";
+import {Anchor, Button, Collapse, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
-import {loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
+import {loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
+import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {errorMessage} from "../../domain/errorMessage";
+import {describePathActionError} from "../../domain/pathActionError";
 import {
     describeLoadResult,
+    describeSaveManagedResult,
     describeSaveResult,
     describeValidation,
     type BlueprintLoadView,
@@ -16,9 +19,12 @@ import type {BuiltBlueprintSnapshot} from "../../domain/interpret/Home";
 import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {ErrorState} from "../common/ErrorState";
 import {NextStepCallout} from "../common/NextStepCallout";
+import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
 import {StepProgressList, type StepProgressItem, type StepProgressStatus} from "../common/StepProgressList";
+import {SuccessResult} from "../common/SuccessResult";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
@@ -42,11 +48,19 @@ type BlueprintMode = "form" | "json";
 // edit, see the revision-bump effect above), so it's "blocked" rather than merely "available" until then.
 const VALIDATE_STEP_STATUS: Record<BlueprintValidationView["status"], StepProgressStatus> = {
     idle: "available",
+    stale: "current",
     loading: "current",
     invalid: "failed",
     error: "failed",
     ok: "completed",
 };
+
+// The guided Design Game editor's own auto-validate debounce (see the revision-bump effect below) --
+// long enough that a normal typing burst (several field edits/blurs in quick succession) collapses into
+// one request once the user actually pauses, short enough that the "stale" freshness state (see
+// BlueprintValidationView's own doc comment) never lingers long enough to read as broken. Only ever
+// scheduled in guided mode -- the raw/non-guided editor keeps its existing manual-only "Validate" button.
+const AUTO_VALIDATE_DEBOUNCE_MS = 600;
 
 function describeGuidedProgress(status: BlueprintValidationView["status"]): StepProgressItem[] {
     const configureStatus: StepProgressStatus = status === "idle" ? "current" : "completed";
@@ -74,6 +88,9 @@ function describeGuidedNextStep(status: BlueprintValidationView["status"]): Guid
     }
     if (status === "error") {
         return {tone: "warning", title: "Validation failed", description: "Something went wrong while validating — try again."};
+    }
+    if (status === "stale") {
+        return {tone: "info", title: "Checking your changes", description: "Your blueprint changed — validating it again automatically."};
     }
     return {
         tone: "info",
@@ -105,7 +122,20 @@ export function BlueprintEditorPage({
     const overwriteConfirmedForPath = useRef<string | undefined>(undefined);
     const [loadView, setLoadView] = useState<BlueprintLoadView>({status: "idle"});
     const [saveView, setSaveView] = useState<BlueprintSaveView>({status: "idle"});
+    // The guided flow's own prominent "Save" action (see handleGuidedSave below) -- kept separate from
+    // `saveView` above since that one renders inside the advanced-options Collapse and would be invisible
+    // whenever this action's own result needs to be seen.
+    const [managedSaveView, setManagedSaveView] = useState<BlueprintSaveView>({status: "idle"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
+    // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
+    // recovery slot (see blueprintDraftStorage.ts) -- undefined when there's nothing to recover, storage
+    // is unusable, or this page mounted with an explicit `initialPath` (a deliberate Open/Configure-from-
+    // Overview navigation that already knows exactly which blueprint it wants -- see the initialPath
+    // effect below, which would otherwise race this same draft for "what the editor opens showing"). A
+    // once-only useState (its setter is never called) rather than a ref, since a ref's `.current` can't
+    // be read during render -- same pattern CertificationTab's own persistedFields uses.
+    const [persistedDraft] = useState(() => (guided && !initialPath ? loadPersistedBlueprintDraft() : undefined));
+    const [draftRecoveryDismissed, setDraftRecoveryDismissed] = useState(false);
     // The persistent "last successful build" record BlueprintBuildPanel renders -- kept here, not inside
     // that panel's own local state, so it survives that panel's own key={`build-${formGeneration}`}
     // remount on a "Restore built blueprint" (itself a wholesale replace, see handleRestoreBuilt below).
@@ -194,20 +224,6 @@ export function BlueprintEditorPage({
         onDirtyChange?.(dirty);
     });
 
-    // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
-    // blueprintEditorState.ts's own doc comment) -- resetting validationView to idle on every bump, in
-    // one place, uniformly makes *any* of those stale a previous validation result: section statuses
-    // (describeSectionStatus already returns "neutral" for "idle"), the guided progress list/NextStepCallout
-    // ("Ready to build" only shows for "ok"), and guided Build-gating (below, keyed off "ok") all revert for
-    // free, with no separate reset needed at each call site. handleChooseBlank/handleUseRandomBlueprint
-    // set this explicitly too (see their own doc comments) purely to avoid a one-frame stale-validation
-    // flash between their own replace and this effect running; every other bump still relies on this
-    // alone.
-    useEffect(() => {
-        setValidationView({status: "idle"});
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editor.state.revision]);
-
     // Kept in sync with the latest revision on every render so handleValidate's async resolve handler
     // can read the *current* value at response time, not the one closed over at request-send time --
     // same pattern ReelStripGenerationEditor.tsx's own "Resolve reels" preview already uses for its own
@@ -221,6 +237,92 @@ export function BlueprintEditorPage({
     // is recognized as stale even in the (currently impossible, since validateGuard already serializes
     // validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
+
+    // Declared here (rather than down among the other handlers) so the auto-validate debounce inside the
+    // revision-bump effect just below can call it directly -- an equivalent ref-indirection would only
+    // obscure the same thing ESLint's own react-hooks/immutability rule is asking for: a function used by
+    // an earlier-declared effect must itself be declared first.
+    const handleValidate = (): void => {
+        if (!validateGuard.begin()) {
+            return;
+        }
+        // Captured now, at request-send time -- compared against the *current* refs at response time, so
+        // a response for a blueprint that's since changed (an edit, New, Load, JSON Apply -- anything
+        // that bumped revision) or been superseded by a newer validate request is discarded rather than
+        // clobbering whatever the current, already-reset-to-idle state should be.
+        const requestedRevision = editor.state.revision;
+        const requestId = ++validateRequestIdRef.current;
+        const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== revisionRef.current;
+        setValidationView({status: "loading"});
+        validateBlueprint(fetchImpl, editor.state.blueprint)
+            .then((result) => {
+                if (isStale()) {
+                    return;
+                }
+                setValidationView(describeValidation(result));
+            })
+            .catch((error: unknown) => {
+                if (isStale()) {
+                    return;
+                }
+                setValidationView({status: "error", message: errorMessage(error)});
+            })
+            .finally(() => validateGuard.end());
+    };
+
+    // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
+    // blueprintEditorState.ts's own doc comment). The very first run of this effect (component mount) is
+    // a no-op beyond resetting to "idle" -- there's no *prior* validation result to go stale yet, and
+    // (guided) nothing has actually been edited to autosave or auto-validate. Every run after that:
+    //   - resets validationView, uniformly making *any* revision bump stale a previous validation result
+    //     -- section statuses (describeSectionStatus already returns "neutral" for "idle"), the guided
+    //     progress list/NextStepCallout ("Ready to build" only shows for "ok"), and guided Build-gating
+    //     (below, keyed off "ok") all revert for free, with no separate reset needed at each call site.
+    //     Guided mode resets to "stale" (not "idle") when the *previous* result was itself a completed
+    //     check ("ok"/"invalid"/already-"stale") -- see BlueprintValidationView's own doc comment for why
+    //     that's a more truthful state than "never checked" here; every other case (never validated yet,
+    //     or non-guided) still resets to plain "idle", exactly as before this pass.
+    //   - (guided only) autosaves the current draft to this tab's own recovery slot, and (re)schedules a
+    //     debounced auto-validate -- freshness-aware validation running on every edit, not only an
+    //     explicit "Validate" click. The non-guided/raw editor keeps its previous manual-only contract.
+    // handleChooseBlank/handleUseRandomBlueprint set validationView explicitly too (see their own doc
+    // comments) purely to avoid a one-frame stale-validation flash between their own replace and this
+    // effect running; every other bump still relies on this alone.
+    const hasSkippedInitialRevisionEffectRef = useRef(false);
+    const autoValidateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    useEffect(() => {
+        if (!hasSkippedInitialRevisionEffectRef.current) {
+            hasSkippedInitialRevisionEffectRef.current = true;
+            setValidationView({status: "idle"});
+            return;
+        }
+        setValidationView((prev) =>
+            guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"},
+        );
+        if (!guided) {
+            return;
+        }
+        savePersistedBlueprintDraft(editor.state.blueprint);
+        if (autoValidateTimerRef.current !== undefined) {
+            clearTimeout(autoValidateTimerRef.current);
+        }
+        autoValidateTimerRef.current = setTimeout(() => {
+            autoValidateTimerRef.current = undefined;
+            handleValidate();
+        }, AUTO_VALIDATE_DEBOUNCE_MS);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor.state.revision]);
+
+    // Cancels a pending debounced auto-validate on unmount -- a stray setTimeout firing after this page
+    // is gone would call setValidationView on an unmounted component.
+    useEffect(
+        () => () => {
+            if (autoValidateTimerRef.current !== undefined) {
+                clearTimeout(autoValidateTimerRef.current);
+            }
+        },
+        [],
+    );
 
     // Captures whatever's in the editor right now, right before a New-flow replace (Blank or Generate
     // random) overwrites it -- what handleUndoReplace restores from. `wasClean` records whether *this*
@@ -323,6 +425,26 @@ export function BlueprintEditorPage({
             .finally(() => loadGuard.end());
     };
 
+    // Draft recovery -- "Restore" replaces the current (still-blank, since `persistedDraft` only reads
+    // non-undefined when nothing else has loaded first -- see its own doc comment) draft with whatever
+    // this tab's own recovery slot held. A wholesale replace like Load, except deliberately NOT marked
+    // clean the way a real Load is: a recovered draft was never confirmed saved anywhere, valid or not
+    // (see this step's own "invalid drafts recover/autosave but cannot run required-valid operations"
+    // contract -- Save/Build below already gate on validity, not on this). "Discard" clears the slot and
+    // leaves the current (still-blank) draft alone.
+    const handleRestoreDraft = (): void => {
+        if (!persistedDraft) {
+            return;
+        }
+        editor.loadFrom(persistedDraft.blueprint);
+        setDraftRecoveryDismissed(true);
+    };
+
+    const handleDiscardDraft = (): void => {
+        clearPersistedBlueprintDraft();
+        setDraftRecoveryDismissed(true);
+    };
+
     // A successful PAR sheet Apply is a wholesale blueprint replace exactly like Load (see
     // ParSheetImportExportPanel's own doc comment) -- same "clean starting point" bookkeeping handleLoad's
     // own success branch does, reusing `sourcePath` (the .xlsx path) as this blueprint's own
@@ -390,32 +512,38 @@ export function BlueprintEditorPage({
         confirm(`Overwrite the blueprint at "${path}"?`, () => runSave(path, true));
     };
 
-    const handleValidate = (): void => {
-        if (!validateGuard.begin()) {
+    // The guided Design Game editor's own prominent "Save" action -- disabled below (see the Save button
+    // in the render) unless validationView.status is "ok", so a Save can never target a source the user
+    // hasn't at least seen validated (this step's own "invalid drafts ... cannot run required-valid
+    // operations" contract -- autosave above is exempt, this isn't). The *first* Save (no `blueprintPath`
+    // owned yet) creates/chooses a managed Blueprint Project via saveManagedBlueprint -- the editor never
+    // asks where; every Save after that (blueprintPath already owned, whether from a prior guided Save or
+    // an explicit advanced Load/Save) reuses the ordinary saveBlueprint endpoint against that exact path
+    // with overwrite:true, so it never re-asks either. A successful save also clears the draft-recovery
+    // slot -- the content is now safely persisted, so there's nothing left to "recover".
+    const handleGuidedSave = (): void => {
+        if (!saveGuard.begin()) {
             return;
         }
-        // Captured now, at request-send time -- compared against the *current* refs at response time, so
-        // a response for a blueprint that's since changed (an edit, New, Load, JSON Apply -- anything
-        // that bumped revision) or been superseded by a newer validate request is discarded rather than
-        // clobbering whatever the current, already-reset-to-idle state should be.
-        const requestedRevision = editor.state.revision;
-        const requestId = ++validateRequestIdRef.current;
-        const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== revisionRef.current;
-        setValidationView({status: "loading"});
-        validateBlueprint(fetchImpl, editor.state.blueprint)
+        // Captured now, at request-send time -- same reasoning as runSave's own savedRevision.
+        const savedRevision = editor.state.revision;
+        setManagedSaveView({status: "loading"});
+        const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath.current === blueprintPath;
+        const request = alreadyOwnsPath
+            ? saveBlueprint(fetchImpl, blueprintPath, editor.state.blueprint, true).then(describeSaveResult)
+            : saveManagedBlueprint(fetchImpl, editor.state.blueprint).then(describeSaveManagedResult);
+        request
             .then((result) => {
-                if (isStale()) {
-                    return;
+                setManagedSaveView(result);
+                if (result.status === "ok") {
+                    setBlueprintPath(result.path);
+                    overwriteConfirmedForPath.current = result.path;
+                    markClean(savedRevision);
+                    clearPersistedBlueprintDraft();
                 }
-                setValidationView(describeValidation(result));
             })
-            .catch((error: unknown) => {
-                if (isStale()) {
-                    return;
-                }
-                setValidationView({status: "error", message: errorMessage(error)});
-            })
-            .finally(() => validateGuard.end());
+            .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))
+            .finally(() => saveGuard.end());
     };
 
     const {blueprint, revision} = editor.state;
@@ -464,6 +592,35 @@ export function BlueprintEditorPage({
                     </Text>
                     <StepProgressList steps={guidedProgress} />
                     <NextStepCallout {...nextStep} />
+                </div>
+            )}
+
+            {persistedDraft && !draftRecoveryDismissed && (
+                <RecoveryNotice
+                    message="Recovered an unsaved draft from your last session in this tab."
+                    actionLabel="Restore"
+                    onAction={handleRestoreDraft}
+                    secondaryActionLabel="Discard"
+                    onSecondaryAction={handleDiscardDraft}
+                />
+            )}
+
+            {guided && (
+                <div>
+                    <QuickActions>
+                        <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"} disabled={validationView.status !== "ok"}>
+                            Save
+                        </Button>
+                    </QuickActions>
+                    {validationView.status !== "ok" && (
+                        <Text c="dimmed" size="sm" mb="sm">
+                            Validate your configuration successfully before saving.
+                        </Text>
+                    )}
+                    {managedSaveView.status === "ok" && <SuccessResult message={`Saved to "${managedSaveView.path}".`} />}
+                    {(managedSaveView.status === "failed" || managedSaveView.status === "error") && (
+                        <ErrorState message={describePathActionError("The project", managedSaveView.message)} />
+                    )}
                 </div>
             )}
 

@@ -696,6 +696,80 @@ describe("StudioBlueprintService", () => {
         });
     });
 
+    describe("saveManaged", () => {
+        function createServiceWithPathResolver(
+            resolveIndependentProjectDirectory: jest.Mock,
+        ): StudioBlueprintService {
+            return new StudioBlueprintService(
+                "1.2.1",
+                studioRoot,
+                homeService,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioBlueprintService>[11],
+            );
+        }
+
+        function createServiceWithManagedDirectory(directory: string): StudioBlueprintService {
+            return createServiceWithPathResolver(jest.fn().mockReturnValue({status: "valid", directory, source: "documents"}));
+        }
+
+        it("writes blueprint.json into the resolved managed directory, named from the blueprint's own manifest.id", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+
+            const result = service.saveManaged(buildBlueprint());
+
+            const expectedPath = path.join(managedDir, "blueprint.json");
+            expect(result).toEqual({status: "ok", path: expectedPath, name: "sample-slot"});
+            expect(fs.existsSync(expectedPath)).toBe(true);
+            expect(fs.readFileSync(expectedPath, "utf-8")).toContain('"sample-slot"');
+        });
+
+        it("falls back to the literal name \"blueprint\" when manifest.id is blank", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "blueprint");
+            const service = createServiceWithManagedDirectory(managedDir);
+
+            const result = service.saveManaged(buildBlueprint({manifest: {id: "", name: "Untitled", version: "0.1.0"}}));
+
+            expect(result).toEqual({status: "ok", path: path.join(managedDir, "blueprint.json"), name: "blueprint"});
+        });
+
+        it("overwrites an existing file at the resolved managed path without a conflict", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            fs.mkdirSync(managedDir, {recursive: true});
+            fs.writeFileSync(path.join(managedDir, "blueprint.json"), "stale content");
+            const service = createServiceWithManagedDirectory(managedDir);
+
+            const result = service.saveManaged(buildBlueprint());
+
+            expect(result.status).toBe("ok");
+            expect(fs.readFileSync(path.join(managedDir, "blueprint.json"), "utf-8")).toContain('"sample-slot"');
+        });
+
+        it("surfaces an invalid-name outcome from the path resolver without writing anything", () => {
+            const service = createServiceWithPathResolver(jest.fn().mockReturnValue({status: "invalid-name", message: "not a valid project name"}));
+
+            const result = service.saveManaged(buildBlueprint());
+
+            expect(result).toEqual({status: "invalid-name", error: "not a valid project name"});
+        });
+
+        it("collapses every other non-valid path resolver outcome to \"unavailable\"", () => {
+            const service = createServiceWithPathResolver(jest.fn().mockReturnValue({status: "permission", message: "not writable"}));
+
+            const result = service.saveManaged(buildBlueprint());
+
+            expect(result).toEqual({status: "unavailable", error: "not writable"});
+        });
+    });
+
     describe("previewBuild", () => {
         it("returns an ok preview without writing anything", () => {
             const service = createService();

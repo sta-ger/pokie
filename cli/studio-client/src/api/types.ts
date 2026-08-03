@@ -285,6 +285,17 @@ export type StudioBlueprintSaveView =
     | {status: "conflict"; path: string; error: string}
     | {status: "error"; error: string};
 
+// POST /api/home/blueprints/save-managed's own DTO — see
+// cli/studio/blueprint/StudioBlueprintSaveManagedView.ts's own doc comment. Unlike StudioBlueprintSaveView
+// above, there's no "conflict" outcome (the path is always one Studio itself picked, never a user-chosen
+// one that might already hold someone else's file) — "invalid-name"/"unavailable" cover a path this
+// service couldn't resolve a usable destination for at all.
+export type StudioBlueprintSaveManagedView =
+    | {status: "ok"; path: string; name: string}
+    | {status: "invalid-name"; error: string}
+    | {status: "unavailable"; error: string}
+    | {status: "error"; error: string};
+
 // POST /api/project/blueprint/apply's own DTO — see cli/studio/blueprint/StudioBlueprintApplyView.ts's
 // own doc comment for the conditional-commit semantics behind it. "conflict" means the source
 // blueprint on disk no longer matches the snapshot this request was built from — never a write.

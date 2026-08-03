@@ -62,13 +62,14 @@ export function classifyIssuesBySection(issues: ValidationIssue[]): {
 
 export type SectionStatus = {tone: "neutral" | "success" | "warning" | "error"; errorCount: number; warningCount: number};
 
-// "neutral" before Validate has ever produced a result (idle/loading) or after it failed outright
-// (error, e.g. a network failure) -- never show a false "valid" checkmark without an actual validation
-// result behind it. Otherwise counts *this section's own* errors/warnings independently of the overall
-// blueprint status: a section can be clean even while the overall blueprint is "invalid" because of an
-// issue in a different section.
+// "neutral" before Validate has ever produced a result (idle/loading), after it failed outright (error,
+// e.g. a network failure), or once a previously-completed result has gone "stale" (the draft changed
+// since -- see BlueprintValidationView's own doc comment) -- never show a false "valid"/issue-count
+// checkmark against a result that no longer describes the current draft. Otherwise counts *this section's
+// own* errors/warnings independently of the overall blueprint status: a section can be clean even while
+// the overall blueprint is "invalid" because of an issue in a different section.
 export function describeSectionStatus(sectionId: BlueprintSectionId, view: BlueprintValidationView): SectionStatus {
-    if (view.status === "idle" || view.status === "loading" || view.status === "error") {
+    if (view.status === "idle" || view.status === "stale" || view.status === "loading" || view.status === "error") {
         return {tone: "neutral", errorCount: 0, warningCount: 0};
     }
     const allIssues = view.status === "invalid" ? [...view.errors, ...view.warnings] : view.warnings;

@@ -1223,6 +1223,91 @@ describe("StudioServer", () => {
             });
         });
 
+        describe("POST /api/home/blueprints/save-managed", () => {
+            let managedServer: StudioServer;
+            let managedBaseUrl: string;
+            let managedWorkDir: string;
+            let managedRegistry: InMemoryStudioProjectRegistry;
+
+            beforeEach(async () => {
+                managedWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-managed-work-"));
+                const managedHomeService = new StudioHomeService("1.0.0");
+                managedRegistry = new InMemoryStudioProjectRegistry();
+                // Points PokiePathResolver.resolveIndependentProjectDirectory's own "POKIE Projects/<name>"
+                // convention at this test's own temp directory instead of the real machine's Documents/Home
+                // -- everything else about saveManaged() (writing blueprint.json, registering it) runs for
+                // real, against real collaborators, matching this describe block's own "real collaborators
+                // against real temp directories" convention.
+                const resolveIndependentProjectDirectory = jest.fn((name: string) => ({
+                    status: "valid",
+                    directory: path.join(managedWorkDir, "POKIE Projects", name),
+                    source: "documents",
+                }));
+                managedServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: homeStudioRoot,
+                    homeService: managedHomeService,
+                    blueprintService: new StudioBlueprintService(
+                        "1.0.0",
+                        homeStudioRoot,
+                        managedHomeService,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        undefined,
+                        {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioBlueprintService>[11],
+                    ),
+                    projectRegistrationService: new StudioProjectRegistrationService(managedRegistry),
+                });
+                const address = await managedServer.start();
+                managedBaseUrl = `http://${address.host}:${address.port}`;
+            });
+
+            afterEach(async () => {
+                await managedServer.stop();
+                fs.rmSync(managedWorkDir, {recursive: true, force: true});
+            });
+
+            it("rejects a body with no blueprint field", async () => {
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {});
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"blueprint" is required.'});
+            });
+
+            it("writes to a path chosen from the blueprint's own manifest.id and registers it as a managed project", async () => {
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
+
+                expect(status).toBe(201);
+                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot"});
+                expect(fs.existsSync(expectedPath)).toBe(true);
+
+                const entries = await managedRegistry.list();
+                expect(entries).toHaveLength(1);
+                expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot", origin: "managed", type: "blueprint"});
+            });
+
+            it("saving again re-uses the same resolved path and stays a single registry entry", async () => {
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+                await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint({rows: 4})});
+
+                expect(status).toBe(201);
+                expect((body as {path: string}).path).toBe(expectedPath);
+                expect(JSON.parse(fs.readFileSync(expectedPath, "utf-8")).rows).toBe(4);
+                expect(await managedRegistry.list()).toHaveLength(1);
+            });
+        });
+
         describe("POST /api/home/blueprints/reel-strip-generation-preview", () => {
             it("rejects a body with no blueprint field", async () => {
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/reel-strip-generation-preview`, {});

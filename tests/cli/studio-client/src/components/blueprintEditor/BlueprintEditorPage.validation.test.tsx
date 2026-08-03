@@ -45,8 +45,13 @@ describe("Guided Design Game: validation staleness and build gating", () => {
 
         await dirtyGameId(user, "changed-after-validate");
 
+        // A previously "ok" result goes "stale" (not back to "idle") on the next edit -- freshness-aware
+        // validation truthfully distinguishes "changed since it was last checked" from "never checked
+        // yet" (see BlueprintValidationView's own doc comment). The guided editor's own debounced
+        // auto-validate (see BlueprintEditorPage's own revision-bump effect) will re-check shortly after,
+        // but this assertion runs well before that debounce elapses.
         expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
-        expect(screen.getByText("Configure your game model")).toBeInTheDocument();
+        expect(screen.getByText("Checking your changes")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
     }, 60000);
 

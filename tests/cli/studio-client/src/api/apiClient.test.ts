@@ -32,6 +32,7 @@ import {
     restartRuntime,
     runReplay,
     saveBlueprint,
+    saveManagedBlueprint,
     spinRuntimeSession,
     startRuntime,
     startSimulation,
@@ -345,6 +346,38 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"path" is required.'}}));
 
             await expect(saveBlueprint(fetchImpl, "", {}, false)).rejects.toThrow('"path" is required.');
+        });
+    });
+
+    describe("saveManagedBlueprint", () => {
+        it("POSTs only the blueprint (no path) and returns the save-managed result", async () => {
+            const body = {status: "ok", path: "/POKIE Projects/a/blueprint.json", name: "a"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body}));
+
+            const result = await saveManagedBlueprint(fetchImpl, {manifest: {id: "a"}});
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/home/blueprints/save-managed",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({blueprint: {manifest: {id: "a"}}})},
+                },
+            ]);
+            expect(result).toEqual(body);
+        });
+
+        it("returns a typed invalid-name/unavailable outcome (not a thrown error) since both ride on 200", async () => {
+            const body = {status: "invalid-name", error: "not a valid project name"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body}));
+
+            const result = await saveManagedBlueprint(fetchImpl, {});
+
+            expect(result).toEqual(body);
+        });
+
+        it("throws the server's own error message for a malformed request", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: '"blueprint" is required.'}}));
+
+            await expect(saveManagedBlueprint(fetchImpl, undefined)).rejects.toThrow('"blueprint" is required.');
         });
     });
 

@@ -26,6 +26,11 @@ export function BlueprintValidationPanel({view, onValidate}: {view: BlueprintVal
                 </Button>
             </QuickActions>
             {view.status === "loading" && <LoadingState label="Validating…" />}
+            {view.status === "stale" && (
+                <Text c="dimmed" mb="sm">
+                    Source changed — checking again…
+                </Text>
+            )}
             {view.status === "error" && <ErrorState message={describePathActionError("This validation request", view.message)} />}
             {statusText(view) && <Text mb="sm">{statusText(view)}</Text>}
             {view.status === "invalid" && <IssueList title="Errors" issues={view.errors} />}

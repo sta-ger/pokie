@@ -23,6 +23,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import path from "path";
+import {PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import {applyGameBlueprintToProject} from "./applyGameBlueprintToProject.js";
 import {isPathWithin} from "../isPathWithin.js";
 import {previewBuildDestination} from "../previewBuildDestination.js";
@@ -33,6 +34,7 @@ import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
 import type {StudioBlueprintApplyView} from "./StudioBlueprintApplyView.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintRandomView} from "./StudioBlueprintRandomView.js";
+import type {StudioBlueprintSaveManagedView} from "./StudioBlueprintSaveManagedView.js";
 import type {StudioBlueprintSaveView} from "./StudioBlueprintSaveView.js";
 import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationView.js";
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
@@ -44,6 +46,23 @@ const outsideStudioRootMessage = (rawPath: string): string =>
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// saveManaged()'s own directory-name policy -- the blueprint's own manifest.id when it's already a
+// non-empty string (the same identifier GamePackageCreator/build already treat as this game's own
+// identity), falling back to the fixed literal "blueprint" for a draft that hasn't set one yet (a blank
+// New-flow start, or a manifest.id GameBlueprintValidator would itself reject) rather than failing the
+// save outright -- PokiePathResolver.resolveIndependentProjectDirectory's own "invalid-name" outcome is
+// reserved for a name that's unsafe as a directory segment (contains a path separator, is "."/".."), not
+// for "not yet a valid game id".
+function deriveManagedBlueprintName(blueprint: unknown): string {
+    if (isPlainObject(blueprint) && isPlainObject(blueprint.manifest) && typeof blueprint.manifest.id === "string") {
+        const trimmedId = blueprint.manifest.id.trim();
+        if (trimmedId.length > 0) {
+            return trimmedId;
+        }
+    }
+    return "blueprint";
 }
 
 // Drives GameBlueprintValidating/GamePackageGenerating/loadGameBlueprint/buildGameBuildInfo/
@@ -67,6 +86,7 @@ export class StudioBlueprintService {
     private readonly parSheetExporter: ParSheetExporting;
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
+    private readonly pathResolver: PokiePathResolver;
 
     constructor(
         pokieVersion: string,
@@ -93,6 +113,11 @@ export class StudioBlueprintService {
             new SlotGameNameGenerator(),
             new RandomGameBlueprintVariantStrategy(),
         ),
+        // Same PokiePathResolver "POKIE Projects" convention pokie create/StudioHomeService.
+        // resolveDefaultProjectDirectory already use for a brand-new managed project's own default
+        // destination -- see saveManaged()'s own doc comment for why the guided editor's "first Save"
+        // reuses it rather than growing its own placement policy.
+        pathResolver: PokiePathResolver = new PokiePathResolver(),
     ) {
         this.pokieVersion = pokieVersion;
         this.studioRoot = path.resolve(studioRoot);
@@ -105,6 +130,7 @@ export class StudioBlueprintService {
         this.parSheetExporter = parSheetExporter;
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
+        this.pathResolver = pathResolver;
     }
 
     // Drives the Blueprint Editor's "Generate random" New-flow option via the exact same
@@ -163,6 +189,38 @@ export class StudioBlueprintService {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
             fs.writeFileSync(resolved, serializeGameBlueprint(blueprint));
             return {status: "ok", path: resolved};
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    // The guided Design Game editor's own "first Save" -- unlike save() above, the caller never picks a
+    // path: this resolves one itself (the same platform "POKIE Projects/<name>" convention pokie create
+    // and StudioHomeService.resolveDefaultProjectDirectory already use, via PokiePathResolver), creates
+    // the directory if needed, and always writes `blueprint.json` inside it. `<name>` comes from the
+    // blueprint's own manifest.id when it's a non-empty string, falling back to "blueprint" otherwise --
+    // never caller-supplied, since the whole point is the editor never has to ask. Always overwrites
+    // (never a 409/"conflict" the way save() reports one): the destination is a location this service
+    // itself just picked from the blueprint's own identity, not a user-chosen path that might already
+    // hold someone else's unrelated file. The caller (StudioServer's own route handler) is expected to
+    // register the returned path in StudioProjectRegistry on "ok" -- this method only ever writes the
+    // file, the same "one concern per service" split StudioBlueprintService.build()/
+    // homeService.rememberRecentProject() already follow.
+    public saveManaged(blueprint: unknown): StudioBlueprintSaveManagedView {
+        const name = deriveManagedBlueprintName(blueprint);
+        const resolved = this.pathResolver.resolveIndependentProjectDirectory(name);
+        if (resolved.status === "invalid-name") {
+            return {status: "invalid-name", error: resolved.message};
+        }
+        if (resolved.status !== "valid") {
+            return {status: "unavailable", error: resolved.message};
+        }
+
+        const targetPath = path.join(resolved.directory, "blueprint.json");
+        try {
+            fs.mkdirSync(resolved.directory, {recursive: true});
+            fs.writeFileSync(targetPath, serializeGameBlueprint(blueprint));
+            return {status: "ok", path: targetPath, name};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
