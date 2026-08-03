@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {GameBlueprint} from "pokie";
 import {ReelCommand} from "../../../cli/commands/ReelCommand.js";
 
@@ -215,5 +218,68 @@ describe("ReelCommand", () => {
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toMatch(/position\(s\) differ from the current reelStrips\[1\]/);
+    });
+
+    describe("atomic --apply writes (default writeFile)", () => {
+        let tempDir: string;
+        let blueprintPath: string;
+        const originalContents = "ORIGINAL BLUEPRINT CONTENTS";
+
+        beforeEach(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "reel-command-"));
+            blueprintPath = path.join(tempDir, "game.json");
+            fs.writeFileSync(blueprintPath, originalContents, "utf-8");
+        });
+
+        afterEach(() => {
+            fs.rmSync(tempDir, {recursive: true, force: true});
+        });
+
+        it("--apply replaces the destination in place via rename, leaving no leftover temp file", async () => {
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+
+            const exitCode = await command.run(["generate", blueprintPath, "--apply"]);
+
+            expect(exitCode).toBe(0);
+            const written = JSON.parse(fs.readFileSync(blueprintPath, "utf-8")) as GameBlueprint;
+            expect(written.reelStripGeneration?.[1].type).toBe("literal");
+            expect(fs.readdirSync(tempDir)).toEqual(["game.json"]);
+        });
+
+        it("leaves the destination file completely untouched when the underlying write fails", async () => {
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+            const writeSpy = jest.spyOn(fs.promises, "writeFile").mockRejectedValueOnce(new Error("disk full"));
+
+            await expect(command.run(["generate", blueprintPath, "--apply"])).rejects.toThrow("disk full");
+
+            expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(originalContents);
+            expect(fs.readdirSync(tempDir)).toEqual(["game.json"]);
+            writeSpy.mockRestore();
+        });
+
+        it("leaves the destination file completely untouched when the rename step fails", async () => {
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+            const renameSpy = jest.spyOn(fs.promises, "rename").mockRejectedValueOnce(new Error("EXDEV: cross-device link not permitted"));
+
+            await expect(command.run(["generate", blueprintPath, "--apply"])).rejects.toThrow("cross-device link not permitted");
+
+            expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(originalContents);
+            expect(fs.readdirSync(tempDir)).toEqual(["game.json"]);
+            renameSpy.mockRestore();
+        });
+
+        it("--apply --out <file> writes the new file atomically without disturbing an unrelated existing file at --out", async () => {
+            const outPath = path.join(tempDir, "custom.json");
+            fs.writeFileSync(outPath, "STALE OUT CONTENTS", "utf-8");
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+            const writeSpy = jest.spyOn(fs.promises, "writeFile").mockRejectedValueOnce(new Error("disk full"));
+
+            await expect(command.run(["generate", blueprintPath, "--apply", "--out", outPath])).rejects.toThrow("disk full");
+
+            expect(fs.readFileSync(outPath, "utf-8")).toBe("STALE OUT CONTENTS");
+            expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(originalContents);
+            expect(fs.readdirSync(tempDir).sort()).toEqual(["custom.json", "game.json"]);
+            writeSpy.mockRestore();
+        });
     });
 });

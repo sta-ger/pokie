@@ -1377,6 +1377,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 () => REEL_FIXTURE_BLUEPRINT,
                 () => {
                     writeFileCalled = true;
+                    return Promise.resolve();
                 },
                 reelGenerationObserver(key),
             );
@@ -1384,9 +1385,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         "reel::generate <blueprint.json> --reel <index> --seed <integer> --format json (accepted --reel/--seed/--format values, machine-readable shape)": (key) =>
             new ReelCommand(
                 () => REEL_FIXTURE_BLUEPRINT,
-                () => {
-                    throw new Error("writeFile must not run without --apply.");
-                },
+                () => Promise.reject(new Error("writeFile must not run without --apply.")),
                 reelGenerationObserver(key),
             ),
         "reel::generate <blueprint.json> --apply --out <file> (accepted --apply/--out values)": (key) =>
@@ -1395,6 +1394,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 (filePath) => {
                     observe(key, "--apply", "true");
                     observe(key, "--out", filePath);
+                    return Promise.resolve();
                 },
                 reelGenerationObserver(key),
             ),

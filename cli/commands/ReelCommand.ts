@@ -5,6 +5,7 @@ import {
     ReelStripGenerationSpec,
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
+    writeFileAtomically,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
@@ -32,12 +33,16 @@ type ReelGenerateOptions = {
 // given Blueprint Project file.
 export class ReelCommand implements CliCommandHandling {
     private readonly loadBlueprint: (filePath: string) => unknown;
-    private readonly writeFile: (filePath: string, contents: string) => void;
+    private readonly writeFile: (filePath: string, contents: string) => Promise<void>;
     private readonly resolveGeneration: typeof resolveReelStripGeneration;
 
     constructor(
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
-        writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
+        // Atomic by default (see writeFileAtomically's own doc): the applied Blueprint is written to a
+        // temp file beside the destination and only renamed into place once fully written, so a failed
+        // or interrupted write can never leave the destination truncated or partially replaced.
+        writeFile: (filePath: string, contents: string) => Promise<void> = (filePath, contents) =>
+            writeFileAtomically(filePath, (tempPath) => fs.promises.writeFile(tempPath, contents, "utf-8")),
         resolveGeneration: typeof resolveReelStripGeneration = resolveReelStripGeneration,
     ) {
         this.loadBlueprint = loadBlueprint;
@@ -99,11 +104,11 @@ export class ReelCommand implements CliCommandHandling {
                 },
                 "summary" as ReelGenerateFormat,
             )
-            .action((blueprintPath: string, excess: string[], options: {reel?: number; seed?: number; apply?: boolean; out?: string; format: ReelGenerateFormat}) => {
+            .action(async (blueprintPath: string, excess: string[], options: {reel?: number; seed?: number; apply?: boolean; out?: string; format: ReelGenerateFormat}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                 }
-                exitCode = this.executeGenerate(blueprintPath, {
+                exitCode = await this.executeGenerate(blueprintPath, {
                     reel: options.reel,
                     seed: options.seed,
                     apply: options.apply ?? false,
@@ -132,7 +137,7 @@ export class ReelCommand implements CliCommandHandling {
             });
     }
 
-    private executeGenerate(blueprintPath: string, options: ReelGenerateOptions): number {
+    private async executeGenerate(blueprintPath: string, options: ReelGenerateOptions): Promise<number> {
         const blueprint = this.loadBlueprint(blueprintPath) as GameBlueprint;
         const specs = blueprint.reelStripGeneration;
         if (!Array.isArray(specs) || specs.length === 0) {
@@ -156,7 +161,7 @@ export class ReelCommand implements CliCommandHandling {
                 }
             }
             outPath = options.out ?? blueprintPath;
-            this.writeFile(outPath, `${JSON.stringify({...blueprint, reelStripGeneration: updatedSpecs}, null, 4)}\n`);
+            await this.writeFile(outPath, `${JSON.stringify({...blueprint, reelStripGeneration: updatedSpecs}, null, 4)}\n`);
             applied = true;
         }
 
