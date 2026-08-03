@@ -97,7 +97,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     a running `pokie serve`; `pokie dev <packageRoot>` (experimental), which runs both together; `pokie par
     import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
     paylines, available bets, win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie par
-    export <config.json>`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie stakeengine
+    export <config.json>`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie reel generate
+    <blueprint.json>`, which runs one or every `"generated"` entry of a Blueprint Project's `reelStripGeneration`
+    through `ReelStripGenerator` (the same machinery `pokie build` runs silently), previewing a deterministic
+    diff by default and only pinning the result back in as a literal strip with `--apply`; `pokie stakeengine
     export <config.json>`, which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine
     math-sdk static file format; `pokie stakeengine import <stakeDir>`, which imports one back; `pokie stakeengine
     analyze <stakeDir>`, which validates and computes exact weighted statistics over any Stake Engine outcome

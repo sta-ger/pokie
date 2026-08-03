@@ -74,6 +74,9 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "par", verb: "import", requiresLoadablePackage: false, primaryInput: "input.xlsx (a PAR sheet workbook)"},
     {command: "par", verb: "export", requiresLoadablePackage: false, primaryInput: "config.json (a GameBlueprint)"},
 
+    // reel generate: reads/writes a Blueprint's own reelStripGeneration in place -- never a package.
+    {command: "reel", verb: "generate", requiresLoadablePackage: false, primaryInput: "blueprint.json (a GameBlueprint)"},
+
     {command: "replay", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 
     {command: "report", verb: undefined, requiresLoadablePackage: false, primaryInput: "simulationReportJson (a pokie sim --out report)"},
