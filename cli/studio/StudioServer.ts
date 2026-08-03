@@ -27,6 +27,7 @@ import {
 } from "./certification/validateCertificationSourceValidateRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
+import {createMaterializingRuntimePackageResolver} from "../materialize/materializeRuntimePackage.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {validateFairnessConfigureRequest, FairnessConfigureRequestInput} from "./fairness/validateFairnessConfigureRequest.js";
 import {validateFairnessGenerateRequest, FairnessGenerateRequestInput} from "./fairness/validateFairnessGenerateRequest.js";
@@ -177,7 +178,8 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
-        this.runtimeManager = options.runtimeManager ?? new StudioRuntimeManager(this.loadGame);
+        this.runtimeManager =
+            options.runtimeManager ?? new StudioRuntimeManager(this.loadGame, undefined, undefined, createMaterializingRuntimePackageResolver(this.pokieVersion));
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);

@@ -9,12 +9,15 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieProject,
+    ProjectMaterializing,
+    ProjectResolving,
     PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
 } from "pokie";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
 
 type RecordedCommand = {command: string; args: string[]; cwd: string};
@@ -823,5 +826,116 @@ describe("BlueprintProjectMaterializer", () => {
         } finally {
             hHolder.kill();
         }
+    });
+});
+
+function stubProjectResolver(result: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+    const calls: string[] = [];
+    return {
+        calls,
+        resolve(targetPath: string) {
+            calls.push(targetPath);
+            return Promise.resolve(result);
+        },
+    };
+}
+
+function rejectingMaterializer(message: string): ProjectMaterializing & {calls: PokieProject[]} {
+    const calls: PokieProject[] = [];
+    return {
+        calls,
+        materialize(project: PokieProject) {
+            calls.push(project);
+            return Promise.reject(new Error(message));
+        },
+    };
+}
+
+// The one place every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) crosses from
+// "the packageRoot it was given" to "a real, loadable runtime" -- see materializeRuntimePackage.ts's own
+// doc comment. Every case here uses the same fakes as BlueprintProjectMaterializer's own tests above
+// (never a real "npm install"), since what's under test is the boundary's own routing logic (does a
+// resolved "blueprint" reach the materializer, does anything else bypass it, does a materialization
+// failure ever let a caller reach a runtime path to load), not BlueprintProjectMaterializer's own
+// generate/install/verify lifecycle, which already has its own dedicated coverage above.
+describe("createMaterializingRuntimePackageResolver", () => {
+    let cacheRoot: string;
+    let sourceDir: string;
+
+    beforeEach(() => {
+        cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-materialize-cache-boundary-"));
+        sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-materialize-source-boundary-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(cacheRoot, {recursive: true, force: true});
+        fs.rmSync(sourceDir, {recursive: true, force: true});
+    });
+
+    it("routes a resolved blueprint through BlueprintProjectMaterializer, handing the operation the materialized runtime path instead of the raw blueprint path", async () => {
+        const runner = createRecordingRunner();
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const resolveProject = stubProjectResolver(blueprintProjectOf(blueprintPath));
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", {resolveProject, materializer});
+
+        const resolution = await resolveRuntimePackageRoot(blueprintPath);
+
+        expect(resolveProject.calls).toEqual([blueprintPath]);
+        expect(runner.calls).toHaveLength(1);
+        expect(resolution.runtimePath).not.toBe(blueprintPath);
+        expect(resolution.runtimePath.startsWith(cacheRoot)).toBe(true);
+        expect(fs.existsSync(path.join(resolution.runtimePath, "dist", "index.js"))).toBe(true);
+
+        // Stands in for the operation's own loadPokieGame call -- proves it's only ever handed the
+        // materialized path, never the raw blueprint path this boundary received.
+        const loadGame = jest.fn((packageRoot: string) => Promise.resolve(packageRoot));
+        await loadGame(resolution.runtimePath);
+        expect(loadGame).toHaveBeenCalledWith(resolution.runtimePath);
+        expect(loadGame).not.toHaveBeenCalledWith(blueprintPath);
+
+        await expect(resolution.release()).resolves.toBeUndefined();
+    });
+
+    it("passes a resolved tsPackage straight through, never invoking the materializer", async () => {
+        const materializer = rejectingMaterializer("must not be called for a tsPackage project");
+        const project = {type: "tsPackage", rootPath: "/some/existing/package", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage, provenance: "test fixture"} as PokieProject;
+        const resolveProject = stubProjectResolver(project);
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", {resolveProject, materializer});
+
+        const resolution = await resolveRuntimePackageRoot("/some/existing/package");
+
+        expect(resolution.runtimePath).toBe("/some/existing/package");
+        expect(materializer.calls).toEqual([]);
+    });
+
+    it("passes a path ProjectResolving doesn't recognize straight through, never invoking the materializer", async () => {
+        const materializer = rejectingMaterializer("must not be called for an unresolved path");
+        const resolveProject = stubProjectResolver(undefined);
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", {resolveProject, materializer});
+
+        const resolution = await resolveRuntimePackageRoot("/does/not/resolve");
+
+        expect(resolution.runtimePath).toBe("/does/not/resolve");
+        expect(materializer.calls).toEqual([]);
+    });
+
+    it("surfaces a materialization failure as its own BlueprintMaterializationError, with its failing phase intact, and never yields a runtime path the operation could load", async () => {
+        const failingRunner = createRecordingRunner("network unreachable");
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, failingRunner, createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const resolveProject = stubProjectResolver(blueprintProjectOf(blueprintPath));
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", {resolveProject, materializer});
+
+        // Mirrors exactly how a migrated operation uses this boundary: resolve, then (only on success)
+        // load. A fake standing in for loadPokieGame proves the operation itself is never reached.
+        const loadGame = jest.fn((packageRoot: string) => Promise.resolve(packageRoot));
+        const caught = await resolveRuntimePackageRoot(blueprintPath)
+            .then((resolution) => loadGame(resolution.runtimePath))
+            .catch((error: unknown) => error);
+
+        expect(caught).toBeInstanceOf(BlueprintMaterializationError);
+        expect((caught as BlueprintMaterializationError).phase).toBe("dependencies");
+        expect(loadGame).not.toHaveBeenCalled();
     });
 });

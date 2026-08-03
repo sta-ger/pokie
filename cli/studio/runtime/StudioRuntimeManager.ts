@@ -13,6 +13,7 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {StudioOutcomeLibraryService, type ResolvedOutcomeLibrary} from "../outcomeLibrary/StudioOutcomeLibraryService.js";
 import {RuntimeHttpResult, RuntimeSessionClient} from "./RuntimeSessionClient.js";
@@ -72,6 +73,11 @@ export class StudioRuntimeManager {
     private readonly loadGame: typeof loadPokieGame;
     private readonly createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling;
     private readonly resolveOutcomeLibrary: (projectRoot: string, selector: OutcomeLibrarySelector) => Promise<ResolvedOutcomeLibrary>;
+    // Crosses from "the projectRoot Studio has open" to "a real, loadable runtime" before this.loadGame
+    // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
+    // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
+    // StudioServer wires the real, materializing one in.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     private state: StudioRuntimeStateView = {status: "stopped"};
     private server: PokieDevServerHandling | undefined;
@@ -111,10 +117,12 @@ export class StudioRuntimeManager {
         // differently than the tab that offered it.
         resolveOutcomeLibrary: (projectRoot: string, selector: OutcomeLibrarySelector) => Promise<ResolvedOutcomeLibrary> = (projectRoot, selector) =>
             new StudioOutcomeLibraryService().resolveLibrary(projectRoot, selector),
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
         this.resolveOutcomeLibrary = resolveOutcomeLibrary;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     public getState(): StudioRuntimeStateView {
@@ -350,7 +358,12 @@ export class StudioRuntimeManager {
 
         let game: PokieGame;
         try {
-            game = await this.loadGame(projectRoot);
+            const resolution = await this.resolveRuntimePackageRoot(projectRoot);
+            try {
+                game = await this.loadGame(resolution.runtimePath);
+            } finally {
+                await resolution.release();
+            }
         } catch (error) {
             return this.fail(error);
         }

@@ -139,3 +139,45 @@ describe("ServeCommand (integration, real loadPokieGame + PokieDevServer + fixtu
         logSpy.mockRestore();
     });
 });
+
+// Proves "pokie serve" crosses the shared runtime-package-materialization boundary (see
+// materializeRuntimePackage.ts) exactly once per invocation, and only ever loads against whatever
+// runtime path that boundary hands back -- never the caller's own raw packageRoot.
+describe("ServeCommand runtime package materialization boundary", () => {
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("resolves the raw packageRoot once and loads the resolved runtime path instead", async () => {
+        const rawPackageRoot = "/blueprints/raw-game.json";
+        const resolvedRuntimePath = "/materialized/raw-game";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: resolvedRuntimePath, release: () => Promise.resolve()});
+        };
+        const loadCalls: string[] = [];
+        const loadGame = (packageRoot: string) => {
+            loadCalls.push(packageRoot);
+            return Promise.resolve(createFakeGame(manifest));
+        };
+        const stubServer = createStubServer({host: "127.0.0.1", port: 4321});
+        const command = new ServeCommand(loadGame, () => stubServer, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([rawPackageRoot]);
+
+        logSpy.mockRestore();
+        expect(resolveCalls).toEqual([rawPackageRoot]);
+        expect(loadCalls).toEqual([resolvedRuntimePath]);
+    });
+
+    it("propagates a materialization failure without ever loading the game or starting the server", async () => {
+        const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const stubServer = createStubServer({host: "127.0.0.1", port: 4321});
+        const command = new ServeCommand(loadGame, () => stubServer, resolveRuntimePackageRoot);
+
+        await expect(command.run(["/blueprints/raw-game.json"])).rejects.toThrow(/dependencies phase failed/);
+        expect(loadGame).not.toHaveBeenCalled();
+        expect(stubServer.startCalls).toBe(0);
+    });
+});

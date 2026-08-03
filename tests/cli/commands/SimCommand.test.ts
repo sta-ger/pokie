@@ -976,3 +976,45 @@ describe("SimCommand (integration, real game with an explicit custom category)",
     });
 });
 
+// Proves "pokie sim" crosses the shared runtime-package-materialization boundary (see
+// materializeRuntimePackage.ts) exactly once per invocation, and only ever loads/simulates against
+// whatever runtime path that boundary hands back -- never the caller's own raw packageRoot -- which is
+// also what lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
+describe("SimCommand runtime package materialization boundary", () => {
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("resolves the raw packageRoot once and runs the simulation against the resolved runtime path instead", async () => {
+        const rawPackageRoot = "/blueprints/raw-game.json";
+        const resolvedRuntimePath = "/materialized/raw-game";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: resolvedRuntimePath, release: () => Promise.resolve()});
+        };
+        const loadCalls: string[] = [];
+        const loadGame = (packageRoot: string) => {
+            loadCalls.push(packageRoot);
+            return Promise.resolve(createFakeGame(manifest));
+        };
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([rawPackageRoot, "--rounds", "5"]);
+
+        logSpy.mockRestore();
+        expect(resolveCalls).toEqual([rawPackageRoot]);
+        expect(loadCalls.length).toBeGreaterThan(0);
+        expect(loadCalls.every((call) => call === resolvedRuntimePath)).toBe(true);
+        expect(loadCalls).not.toContain(rawPackageRoot);
+    });
+
+    it("propagates a materialization failure without ever loading or simulating the game", async () => {
+        const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, resolveRuntimePackageRoot);
+
+        await expect(command.run(["/blueprints/raw-game.json", "--rounds", "5"])).rejects.toThrow(/dependencies phase failed/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+});
+

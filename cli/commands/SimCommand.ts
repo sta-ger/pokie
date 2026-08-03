@@ -14,6 +14,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type SimFormat = "summary" | "json";
@@ -74,6 +75,12 @@ export class SimCommand implements CliCommandHandling {
         rounds: number,
         options: ParallelSimulationRunOptions,
     ) => ParallelSimulationRunner;
+    // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
+    // (or a spawned simulation worker, which never sees this.loadGame at all -- see runSingleMode()) ever
+    // touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op passthrough so
+    // every existing caller/test keeps behaving exactly as before this boundary existed; cli/pokie.ts wires
+    // the real, materializing one in.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -85,12 +92,14 @@ export class SimCommand implements CliCommandHandling {
             rounds: number,
             options: ParallelSimulationRunOptions,
         ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
         this.reportBuilder = reportBuilder;
         this.workerEntryUrl = workerEntryUrl;
         this.createParallelSimulationRunner = createParallelSimulationRunner;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     public getName(): string {
@@ -235,6 +244,21 @@ export class SimCommand implements CliCommandHandling {
     // The original run()'s own business logic, unchanged -- only its entry point moved, from directly
     // inside run() to here, called from the Commander action once packageRoot/options are parsed.
     private async execute(options: SimOptions): Promise<void> {
+        // Crossed exactly once per invocation -- every downstream step (the metadata load below,
+        // runSingleMode()/runAllModes(), and the packageRoot ParallelSimulationRunner hands to its own
+        // worker threads) reuses this same resolved runtimePath instead of re-resolving/re-materializing
+        // options.packageRoot itself. This is also what makes --workers > 1 work for a Blueprint: a worker
+        // thread can't receive this.loadGame as a closure (see ParallelSimulationRunner's own worker
+        // entry), but it can receive a plain, already-materialized real package path.
+        const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
+        try {
+            await this.executeAgainstRuntimePackage({...options, packageRoot: resolution.runtimePath});
+        } finally {
+            await resolution.release();
+        }
+    }
+
+    private async executeAgainstRuntimePackage(options: SimOptions): Promise<void> {
         // Loaded once up front regardless of path (single mode, no mode, or --mode all) purely to read
         // the package's own declarative getBetModes() -- optional/feature-detected, exactly like every
         // other PokieGame capability -- for mode discovery (--mode all) and each mode's targetRtp.

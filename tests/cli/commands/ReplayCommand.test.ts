@@ -173,3 +173,42 @@ describe("ReplayCommand (integration, real loadPokieGame + fixture game package)
         await expect(command.run([path.join(outDir, "does-not-exist"), "--round", "1"])).rejects.toThrow(/package\.json/);
     });
 });
+
+// Proves "pokie replay" crosses the shared runtime-package-materialization boundary (see
+// materializeRuntimePackage.ts) exactly once per invocation, and only ever loads against whatever
+// runtime path that boundary hands back -- never the caller's own raw packageRoot.
+describe("ReplayCommand runtime package materialization boundary", () => {
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("resolves the raw packageRoot once and replays against the resolved runtime path instead", async () => {
+        const rawPackageRoot = "/blueprints/raw-game.json";
+        const resolvedRuntimePath = "/materialized/raw-game";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: resolvedRuntimePath, release: () => Promise.resolve()});
+        };
+        const loadCalls: string[] = [];
+        const loadGame = (packageRoot: string) => {
+            loadCalls.push(packageRoot);
+            return Promise.resolve(createFakeGame(manifest));
+        };
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+
+        await command.run([rawPackageRoot, "--round", "1"]);
+
+        logSpy.mockRestore();
+        expect(resolveCalls).toEqual([rawPackageRoot]);
+        expect(loadCalls).toEqual([resolvedRuntimePath]);
+    });
+
+    it("propagates a materialization failure without ever loading or replaying the game", async () => {
+        const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+
+        await expect(command.run(["/blueprints/raw-game.json", "--round", "1"])).rejects.toThrow(/dependencies phase failed/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+});

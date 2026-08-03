@@ -356,3 +356,59 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
         logSpy.mockRestore();
     });
 });
+
+// Proves "pokie dev" crosses the shared runtime-package-materialization boundary (see
+// materializeRuntimePackage.ts) exactly once per invocation, and only ever loads against whatever
+// runtime path that boundary hands back -- never the caller's own raw packageRoot.
+describe("DevCommand runtime package materialization boundary", () => {
+    const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("resolves the raw packageRoot once and loads the resolved runtime path instead", async () => {
+        const rawPackageRoot = "/blueprints/raw-game.json";
+        const resolvedRuntimePath = "/materialized/raw-game";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: resolvedRuntimePath, release: () => Promise.resolve()});
+        };
+        const loadCalls: string[] = [];
+        const loadGame = (packageRoot: string) => {
+            loadCalls.push(packageRoot);
+            return Promise.resolve(createFakeGame(manifest));
+        };
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const clientServer = createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 3100});
+
+        const command = new DevCommand(
+            loadGame,
+            () => apiServer,
+            {
+                createClientServer: () => clientServer,
+                waitForHealth: () => Promise.resolve(),
+                openBrowser: () => undefined,
+                clientRoot: "/fake/client/root",
+                process: new FakeProcess() as unknown as NodeJS.Process,
+            },
+            resolveRuntimePackageRoot,
+        );
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([rawPackageRoot, "--no-open"]);
+
+        logSpy.mockRestore();
+        expect(resolveCalls).toEqual([rawPackageRoot]);
+        expect(loadCalls).toEqual([resolvedRuntimePath]);
+    });
+
+    it("propagates a materialization failure without ever loading the game or starting any server", async () => {
+        const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+
+        const command = new DevCommand(loadGame, () => apiServer, {clientRoot: "/fake/client/root"}, resolveRuntimePackageRoot);
+
+        await expect(command.run(["/blueprints/raw-game.json", "--no-open"])).rejects.toThrow(/dependencies phase failed/);
+        expect(loadGame).not.toHaveBeenCalled();
+        expect(apiServer.startCalls).toBe(0);
+    });
+});
