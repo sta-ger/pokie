@@ -9,7 +9,7 @@ const GAME = {id: "a", name: "A", version: "1.0.0"};
 const TARGET = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME}}),
+    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "blueprint", capabilities: ["blueprint.build"]}}),
     "/api/project/inspect": () => ({
         ok: true,
         status: 200,
@@ -63,7 +63,6 @@ function stepperStep(label: string, description: string): RegExp {
 // hand-typed name -- so only the Outcome library path still needs filling in by hand.
 async function goToDeploymentConfigure(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Deployment"}));
     await screen.findByRole("button", {name: "Run deployment preflight"});
     await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
     await user.type(screen.getByLabelText("Outcome library path"), "libs/base.json");
@@ -90,7 +89,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                 ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
 
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
@@ -143,7 +142,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                 ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
 
         const selectTargetStep = screen.getByRole("button", {name: stepperStep("Select target", "Where to publish")});
@@ -187,7 +186,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                 ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
 
@@ -217,7 +216,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                 ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
@@ -260,7 +259,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                     ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
@@ -307,7 +306,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                     ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
@@ -344,7 +343,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                 ),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
@@ -386,7 +385,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
                 ),
         });
 
-        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
+        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
         await user.click(await screen.findByRole("button", {name: "Continue to Preview artifacts"}));
@@ -397,16 +396,15 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
         first.unmount();
 
         const {fetchImpl: fetchImplB} = createRoutedFakeFetch({
-            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
             "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
         });
-        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Deployment"}));
 
         // A brand new project's Deployment tab must show no trace of the previous project's target
         // selection, modes, or run result -- targets list is this project's own (empty), and there is
@@ -437,7 +435,7 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
             return Promise.reject(new Error(`no fake route for ${url}`));
         };
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await goToDeploymentConfigure(user);
         await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
 
@@ -461,10 +459,8 @@ describe("ProjectDashboardPage - Deployment & External Adapters workflow", () =>
             "/api/project/deployment/targets": () => ({ok: false, status: 500, body: {error: "ENOENT: no such file or directory"}}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "A"});
-        const user = userEvent.setup();
-        await user.click(screen.getByRole("button", {name: "Deployment"}));
 
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("The deployment targets list couldn't be completed. Try again, and check the Studio server logs if the problem persists.");

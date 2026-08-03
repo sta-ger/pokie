@@ -45,7 +45,11 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: PROJECT_ROOT, game: GAME}}),
+    "/api/project/context": () => ({
+        ok: true,
+        status: 200,
+        body: {status: "loaded", projectRoot: PROJECT_ROOT, game: GAME, type: "blueprint", capabilities: ["blueprint.build"]},
+    }),
     "/api/project/inspect": () => ({ok: true, status: 200, body: GENERATED_INSPECT_REPORT}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -67,7 +71,7 @@ function stepperStep(label: string, description?: string): RegExp {
 
 async function goToMechanicsEditorTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+    await user.click(screen.getByRole("button", {name: "Game Model"}));
     await screen.findByLabelText("Reels");
 }
 
@@ -175,7 +179,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
 
         expect(await screen.findByText("The project's source blueprint could not be found. Check the path and try again.")).toBeInTheDocument();
         expect(screen.queryByText(/ENOENT/)).not.toBeInTheDocument();
@@ -456,7 +460,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         await user.click(await screen.findByRole("button", {name: "Leave"}));
         await screen.findByRole("button", {name: "Re-run Inspect"});
 
-        await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
         await screen.findByLabelText("Reels");
         await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
 
@@ -653,7 +657,11 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         first.unmount();
 
         const {fetchImpl: fetchImplB} = createRoutedFakeFetch({
-            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}}}),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
+            }),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -662,7 +670,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
 
         // Project B wasn't built from a tracked source blueprint (generated: false) -- the tab must show
         // its own unsupported state, with no trace of project A's edits (a stale remount would instead
@@ -777,7 +785,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await user.click(screen.getByRole("button", {name: "Leave"}));
             expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
 
-            await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+            await user.click(screen.getByRole("button", {name: "Game Model"}));
             await screen.findByLabelText("Reels");
             await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
             expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
@@ -925,7 +933,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
             await user.click(screen.getByRole("button", {name: "Start"}));
             await waitFor(() => expect(screen.getAllByText(/running at/).length).toBeGreaterThan(0));
 
-            await user.click(screen.getByRole("button", {name: "Mechanics Editor"}));
+            await user.click(screen.getByRole("button", {name: "Game Model"}));
             await makeADirtyEdit(user);
 
             await user.click(screen.getByRole("button", {name: "Close project"}));

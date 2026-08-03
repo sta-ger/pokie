@@ -7,7 +7,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
     "/api/project/inspect": () => ({
         ok: true,
@@ -63,10 +63,13 @@ describe("ProjectDashboardPage - Deployment double-submit / stale-response guard
             return Promise.reject(new Error(`no fake route for ${url} (init: ${JSON.stringify(init)})`));
         };
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        // Deployment has no nav entry of its own any more (it's only reachable through Build/Export's
+        // own target-selection shell, see ProjectDashboardPage.tsx's own ALL_PROJECT_TABS doc comment) --
+        // this test exercises the Deployment workflow itself, so it deep-links straight to it, same as
+        // ProjectDashboardPage.deploymentWorkflow.test.tsx already does.
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "A"});
 
-        await user.click(screen.getByRole("button", {name: "Deployment"}));
         // The only registered target is selected automatically, auto-advancing the stepper straight to
         // Configure -- no artificial Select-target click needed.
         await screen.findByRole("button", {name: "Run deployment preflight"});

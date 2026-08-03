@@ -8,7 +8,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -17,33 +17,27 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
 };
 
-async function goToValidationTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Validate"}));
-    await screen.findByRole("button", {name: "Run Validate"});
-}
-
+// Validation is no longer a separate section a user has to navigate to and click into -- it runs
+// automatically, as soon as a project finishes loading, and its diagnostics render right inside
+// Overview (see OverviewTab's own ValidationDiagnostics). Every test here just waits for that automatic
+// first check to land instead of clicking into a "Validate" tab first.
 describe("ProjectDashboardPage - Validation workflow", () => {
-    it("shows a subject-specific recovery message, never the raw backend text, when the validation request fails", async () => {
-        const user = userEvent.setup();
+    it("shows a subject-specific recovery message, never the raw backend text, when the automatic validation check fails", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/validate": () => ({ok: false, status: 500, body: {error: "ENOENT: no such file or directory, open 'blueprint.json'"}}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToValidationTab(user);
-
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
+        await screen.findByRole("heading", {name: "A"});
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("This validation request couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("This validation check couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
         expect(alert).not.toHaveTextContent("ENOENT");
         expect(alert).not.toHaveTextContent("blueprint.json");
     });
 
     it("classifies a network failure distinctly from an unrecognized backend rejection", async () => {
-        const user = userEvent.setup();
         let validateAttempts = 0;
         const fetchImpl: FetchLike = (url) => {
             const [path] = url.split("?");
@@ -60,17 +54,15 @@ describe("ProjectDashboardPage - Validation workflow", () => {
         };
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToValidationTab(user);
-
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
+        await screen.findByRole("heading", {name: "A"});
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("This validation request couldn't reach the Studio server. Check your connection and try again.");
+        expect(alert).toHaveTextContent("This validation check couldn't reach the Studio server. Check your connection and try again.");
         expect(alert).not.toHaveTextContent("Failed to fetch");
         expect(validateAttempts).toBe(1);
     });
 
-    it("clears a translated error once a re-validation succeeds", async () => {
+    it("clears a translated error once a re-check succeeds", async () => {
         const user = userEvent.setup();
         let attempts = 0;
         const {fetchImpl} = createRoutedFakeFetch({
@@ -89,12 +81,10 @@ describe("ProjectDashboardPage - Validation workflow", () => {
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToValidationTab(user);
-
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
+        await screen.findByRole("heading", {name: "A"});
         expect(await screen.findByRole("alert")).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
+        await user.click(screen.getByRole("button", {name: "Re-check project"}));
         await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
         expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
     });

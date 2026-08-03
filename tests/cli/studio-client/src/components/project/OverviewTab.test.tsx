@@ -1,7 +1,7 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {OverviewTab} from "../../../../../../cli/studio-client/src/components/project/OverviewTab";
-import type {InspectionResultView, NextActionView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
+import type {InspectionResultView, NextActionView, ProjectHeaderView, ProjectValidationView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
 
 function renderWithMantine(ui: React.ReactElement) {
     return render(<MantineProvider>{ui}</MantineProvider>);
@@ -13,6 +13,20 @@ const NEXT_ACTION: NextActionView = {
     description: "Run a validation check to confirm your game package is ready to simulate.",
     actionLabel: "Validate project",
 };
+
+const VALIDATION_IDLE: ProjectValidationView = {status: "idle"};
+
+function header(overrides: Partial<Extract<ProjectHeaderView, {status: "loaded"}>> = {}): Extract<ProjectHeaderView, {status: "loaded"}> {
+    return {
+        status: "loaded",
+        projectRoot: "/games/sample-slot",
+        id: "sample-slot",
+        name: "Sample Slot",
+        version: "1.0.0",
+        capabilities: [],
+        ...overrides,
+    };
+}
 
 describe("OverviewTab", () => {
     // A long, unbroken build-info "source" path (e.g. a deeply nested absolute path with no spaces)
@@ -37,8 +51,10 @@ describe("OverviewTab", () => {
 
         renderWithMantine(
             <OverviewTab
-                header={{id: "sample-slot", version: "1.0.0", projectRoot: "/games/sample-slot"}}
+                header={header()}
                 inspection={inspection}
+                validation={VALIDATION_IDLE}
+                onRevalidate={() => undefined}
                 nextAction={NEXT_ACTION}
                 onNextAction={() => undefined}
                 onReinspect={() => undefined}
@@ -52,8 +68,10 @@ describe("OverviewTab", () => {
     it("announces the next-step recommendation as a polite status update, not a silent one", () => {
         renderWithMantine(
             <OverviewTab
-                header={{id: "sample-slot", version: "1.0.0", projectRoot: "/games/sample-slot"}}
+                header={header()}
                 inspection={{status: "loading"}}
+                validation={VALIDATION_IDLE}
+                onRevalidate={() => undefined}
                 nextAction={NEXT_ACTION}
                 onNextAction={() => undefined}
                 onReinspect={() => undefined}

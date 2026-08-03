@@ -7,7 +7,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -38,7 +38,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
-        await user.click(screen.getByRole("button", {name: "Export & Deploy"}));
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         expect(within(staticExportSection).getByText("Stake Engine Export")).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
-        await user.click(screen.getByRole("button", {name: "Export & Deploy"}));
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await screen.findByText("External Adapter: local-json-example");
         await user.click(screen.getByRole("button", {name: "Select & configure in Deployment"}));
 
@@ -71,7 +71,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
-        await user.click(screen.getByRole("button", {name: "Export & Deploy"}));
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await user.click(screen.getByRole("button", {name: "Open Stake Engine Export"}));
 
         expect(await screen.findByRole("button", {name: "Continue to Preview"})).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         });
         await screen.findByRole("heading", {name: "A"});
         const user = userEvent.setup();
-        await user.click(screen.getByRole("button", {name: "Export & Deploy"}));
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("The deployment targets list couldn't reach the Studio server. Check your connection and try again.");

@@ -21,7 +21,13 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
             "/api/project/context": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/a",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    type: "blueprint",
+                    capabilities: ["blueprint.build"],
+                },
             }),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -33,8 +39,40 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
 
         await screen.findByRole("heading", {name: "A"});
-        expect(screen.getByRole("button", {name: /Simulation & Reports/})).toHaveAttribute("aria-current", "page");
+        expect(screen.getByRole("button", {name: "Simulation"})).toHaveAttribute("aria-current", "page");
         expect(screen.getByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+    });
+
+    it("a direct link to an operation the project's own capabilities don't support shows a diagnostic, never that operation's workflow", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/a",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    // A read-only/package-exchange project (e.g. an outcome library) -- neither
+                    // "blueprint.build" nor "runtime.execute" -- can't run Simulation in-process.
+                    type: "outcomeLibrary",
+                    capabilities: ["outcomeLibrary.read"],
+                },
+            }),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+
+        await screen.findByRole("heading", {name: "A"});
+        // Simulation's own workflow never mounts -- no "Run Simulation" control anywhere on the page.
+        expect(screen.queryByRole("button", {name: "Run Simulation"})).not.toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent('"Simulation" isn\'t available for this project');
+        // Nor is Simulation offered as a destination to navigate to in the first place.
+        expect(screen.queryByRole("button", {name: "Simulation"})).not.toBeInTheDocument();
     });
 
     it("an unrecognized :tab falls back to the default section instead of erroring", () => {

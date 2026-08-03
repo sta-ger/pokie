@@ -40,6 +40,7 @@ describe("describeProjectHeader", () => {
             name: "Sample Slot",
             version: "0.1.0",
             description: "A fruit slot",
+            capabilities: [],
         });
     });
 
@@ -50,7 +51,38 @@ describe("describeProjectHeader", () => {
             game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
         });
 
-        expect(view).toEqual({status: "loaded", projectRoot: "/a", id: "sample-slot", name: "Sample Slot", version: "0.1.0", description: undefined});
+        expect(view).toEqual({
+            status: "loaded",
+            projectRoot: "/a",
+            id: "sample-slot",
+            name: "Sample Slot",
+            version: "0.1.0",
+            description: undefined,
+            capabilities: [],
+        });
+    });
+
+    it("carries type/capabilities/origin through when the context provides them", () => {
+        const view = describeProjectHeader({
+            status: "loaded",
+            projectRoot: "/a",
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            type: "blueprint",
+            capabilities: ["blueprint.build"],
+            origin: "managed",
+        });
+
+        expect(view).toEqual({
+            status: "loaded",
+            projectRoot: "/a",
+            id: "sample-slot",
+            name: "Sample Slot",
+            version: "0.1.0",
+            description: undefined,
+            type: "blueprint",
+            capabilities: ["blueprint.build"],
+            origin: "managed",
+        });
     });
 });
 

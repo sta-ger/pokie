@@ -8,7 +8,7 @@ function baseFetchRoutes() {
         "/api/project/context": () => ({
             ok: true,
             status: 200,
-            body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}},
+            body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
         }),
         "/api/project/inspect": () => ({
             ok: true,
@@ -37,12 +37,14 @@ describe("ProjectDashboardPage", () => {
         expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
         await waitFor(() => expect(screen.getAllByText("/games/sample-slot").length).toBeGreaterThan(0));
 
-        await user.click(screen.getByRole("button", {name: "Validate"}));
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
-
+        // No separate "Validate" section to click into any more -- validation runs automatically as
+        // soon as the project loads, and its result renders right inside Overview.
         await waitFor(() => {
             expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
         });
+
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+        expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
     });
 
     it("keeps a running simulation's polling alive across a tab switch", async () => {
@@ -123,7 +125,7 @@ describe("ProjectDashboardPage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "Sample Slot"});
 
-        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
         // Switch away from the Simulation tab while the job is still "running" -- the poll must keep
@@ -135,7 +137,7 @@ describe("ProjectDashboardPage", () => {
 
         // The completed job auto-opened its report (in the background, while Overview was showing) --
         // switching back lands straight on the Review step's own summary, not the Configure step.
-        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         await waitFor(
             () => {
                 expect(screen.getAllByText("90.00%").length).toBeGreaterThan(0);
@@ -173,24 +175,22 @@ describe("ProjectDashboardPage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "Sample Slot"});
 
-        await user.click(screen.getByRole("button", {name: "Validate project"}));
+        // No click needed -- validation runs automatically as soon as the project loads.
         await waitFor(() => expect(screen.getByText(/Valid, with warnings/)).toBeInTheDocument());
-
-        // Back on Overview, the recommendation is to simulate -- not blocked by the warning.
-        await user.click(screen.getByRole("button", {name: "Overview"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Run a simulation"})).toBeInTheDocument());
         expect(screen.queryByRole("button", {name: "Review validation"})).not.toBeInTheDocument();
 
         // The Simulate tab itself stays fully usable -- warnings never gate the actual action, only the
         // Overview recommendation's copy.
-        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
 
-        await user.click(screen.getByRole("button", {name: "Validate"}));
+        // Back on Overview, the warnings-only diagnostics are still shown, unchanged.
+        await user.click(screen.getByRole("button", {name: "Overview"}));
         expect(screen.getByText(/Valid, with warnings/)).toBeInTheDocument();
     });
 
-    it("a failed re-validation clears the stale successful result instead of leaving it displayed", async () => {
+    it("a failed re-check clears the stale successful result instead of leaving it displayed", async () => {
         const user = userEvent.setup();
         let validateCallCount = 0;
         const {fetchImpl} = createFakeFetch((call) => {
@@ -221,20 +221,18 @@ describe("ProjectDashboardPage", () => {
             throw new Error(`no fake route for ${call.url}`);
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/validation"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "Sample Slot"});
 
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
+        // The automatic first check (validateCallCount === 1) succeeds.
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
 
-        await user.click(screen.getByRole("button", {name: "Run Validate"}));
+        await user.click(screen.getByRole("button", {name: "Re-check project"}));
         await waitFor(() => expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument());
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("This validation request couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("This validation check couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
         expect(alert).not.toHaveTextContent("Internal error");
-
-        await user.click(screen.getByRole("button", {name: "Overview"}));
-        expect(await screen.findByText("Validation failed")).toBeInTheDocument();
+        expect(screen.getByText("Validation failed")).toBeInTheDocument();
         expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
     });
 

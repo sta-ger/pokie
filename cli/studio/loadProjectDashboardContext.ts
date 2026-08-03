@@ -1,7 +1,16 @@
-import {loadPokieGame} from "pokie";
+import {loadPokieGame, type ProjectType} from "pokie";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
+import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
+
+export type ProjectLocationDescribing = (
+    location: string,
+) => Promise<{type: ProjectType; capabilities: readonly string[]; origin?: StudioProjectOrigin} | undefined>;
+
+// Defaults to "nothing known" so every existing caller/test keeps behaving exactly as before
+// type/capabilities/origin existed on this result.
+const noDescribeLocation: ProjectLocationDescribing = () => Promise.resolve(undefined);
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a
@@ -18,17 +27,32 @@ import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 // UnsupportedProjectOperationError's own message as this result's "error", never a raw loadPokieGame
 // failure a user would have to guess the cause of. Defaults to a no-op passthrough so every existing
 // caller/test keeps behaving exactly as before this boundary existed.
+//
+// `describeLocation` (typically StudioProjectRegistrationService.describeLocation) separately answers
+// "what is `projectRoot` itself" -- type/capabilities/origin, for Overview -- and is deliberately never
+// allowed to fail this load: it runs after `game` already loaded successfully, and any error from it is
+// swallowed, leaving those fields undefined rather than turning an otherwise-successful load into
+// "error".
 export async function loadProjectDashboardContext(
     projectRoot: string,
     loadGame: typeof loadPokieGame = loadPokieGame,
     resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+    describeLocation: ProjectLocationDescribing = noDescribeLocation,
 ): Promise<ProjectDashboardContext> {
     const resolvedRoot = path.resolve(projectRoot);
     try {
         const resolution = await resolveRuntimePackageRoot(projectRoot);
         try {
             const game = await loadGame(resolution.runtimePath);
-            return {status: "loaded", projectRoot: resolvedRoot, game: game.getManifest()};
+            const identity = await describeLocation(projectRoot).catch(() => undefined);
+            return {
+                status: "loaded",
+                projectRoot: resolvedRoot,
+                game: game.getManifest(),
+                type: identity?.type,
+                capabilities: identity?.capabilities,
+                origin: identity?.origin,
+            };
         } finally {
             await resolution.release();
         }

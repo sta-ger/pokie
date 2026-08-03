@@ -143,6 +143,32 @@ export class StudioProjectRegistrationService {
         }
     }
 
+    // Best-effort project identity for the Project Dashboard's own Overview -- resolves `location`
+    // exactly like previewImport does (type/capabilities always fresh off disk, never a stale registry
+    // copy), then separately looks up a registry entry at that same resolved location purely for its
+    // `origin` (a project opened ad hoc, e.g. `pokie <path>`, may never have been registered at all, so
+    // `origin` alone is allowed to come back undefined while type/capabilities still do not). Never
+    // throws: an unresolvable location, or one ProjectTargetResolver can't disambiguate
+    // (ProjectTargetAmbiguousError) or rejects outright (ProjectTargetUnsupportedError), simply means
+    // there is no identity to report here -- the Overview these feed just omits them, exactly as it
+    // already does for a "loading"/"error" dashboard.
+    public async describeLocation(
+        location: string,
+    ): Promise<{type: ProjectType; capabilities: readonly string[]; origin?: StudioProjectOrigin} | undefined> {
+        let project;
+        try {
+            project = await this.resolveProject.resolve(path.resolve(location));
+        } catch {
+            return undefined;
+        }
+        if (!project) {
+            return undefined;
+        }
+        const entries = await this.registry.list();
+        const registered = entries.find((entry) => entry.location === project.rootPath);
+        return {type: project.type, capabilities: project.capabilities, origin: registered?.origin};
+    }
+
     // The directory a "show in folder" action should reveal for a given entry — the entry's own
     // `location` when it's already a directory (tsPackage/outcomeLibrary/stakeAdapter), or its containing
     // directory when `location` is itself a file (blueprint/parWorkbook/wasm). A pure function of an

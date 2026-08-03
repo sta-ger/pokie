@@ -7,7 +7,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -52,7 +52,7 @@ describe("ProjectDashboardPage - Simulation 409 conflict", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
-        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
         // No error surfaces -- the 409 with activeJobId is a typed conflict, not a failure -- and

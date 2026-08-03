@@ -15,7 +15,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -79,7 +79,7 @@ function jobFor(id: string, overrides: Partial<StudioSimulationJobView> = {}): S
 
 async function goToSimulationTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+    await user.click(screen.getByRole("button", {name: "Simulation"}));
     await screen.findByRole("button", {name: "Run Simulation"});
 }
 
@@ -664,7 +664,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
                 return Promise.resolve({
                     ok: true,
                     status: 200,
-                    json: () => Promise.resolve({status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}}),
+                    json: () => Promise.resolve({status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}),
                 });
             }
             if (path === "/api/project/reports/entry-a") {
@@ -696,7 +696,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
             "/api/project/context": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}},
+                body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
             }),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -706,7 +706,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: /Simulation & Reports/}));
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         await screen.findByRole("button", {name: "Run Simulation"});
 
         // Project A's report request finally resolves -- must never reach project B's now-mounted UI.

@@ -6,7 +6,7 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
-    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME}}),
+    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "blueprint", capabilities: ["blueprint.build"]}}),
     "/api/project/inspect": () => ({
         ok: true,
         status: 200,
@@ -32,9 +32,13 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
     };
 }
 
-async function openDeploymentTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+// Deployment has no nav entry of its own any more (it's only reachable through Build/Export's own
+// target-selection shell, see ProjectDashboardPage.tsx's own ALL_PROJECT_TABS doc comment) -- these
+// tests exercise the Deployment workflow itself, so they deep-link straight to it, exactly like
+// ProjectDashboardPage.deploymentWorkflow.test.tsx already does, rather than reproducing Build/Export's
+// own target-picking UI here.
+async function openDeploymentTab(): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Deployment"}));
 }
 
 describe("ProjectDashboardPage - Deployment target selection", () => {
@@ -42,9 +46,9 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
         const user = userEvent.setup();
         renderRoutedApp({
             fetchImpl: fetchImplFrom({...BASE_ROUTES, "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []})}),
-            initialEntries: ["/project/overview"],
+            initialEntries: ["/project/deployment"],
         });
-        await openDeploymentTab(user);
+        await openDeploymentTab();
 
         expect(await screen.findByText("No deployment targets registered.")).toBeInTheDocument();
         expect(screen.getByText(/docs\/external-adapter-sdk\.md/)).toBeInTheDocument();
@@ -65,9 +69,9 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
                     body: [{id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: []}],
                 }),
             }),
-            initialEntries: ["/project/overview"],
+            initialEntries: ["/project/deployment"],
         });
-        await openDeploymentTab(user);
+        await openDeploymentTab();
 
         // Lands straight on Configure -- no artificial Select-target click was ever needed.
         expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
@@ -92,9 +96,9 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
                 ...BASE_ROUTES,
                 "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [targetOne, targetTwo]}),
             }),
-            initialEntries: ["/project/overview"],
+            initialEntries: ["/project/deployment"],
         });
-        await openDeploymentTab(user);
+        await openDeploymentTab();
 
         // Nothing is auto-selected when there is a real choice to make -- both targets' own detail is
         // shown side by side for comparison, and there is no per-card "Select" button, only a single
@@ -150,10 +154,11 @@ describe("ProjectDashboardPage - Deployment target selection", () => {
                         },
                     }),
             }),
-            initialEntries: ["/project/overview"],
+            initialEntries: ["/project/deployment"],
         });
-        await openDeploymentTab(user);
+        await openDeploymentTab();
 
+        await screen.findByText("Choose a deployment target");
         await user.click(screen.getByRole("radio", {name: /target-one/}));
         await user.click(screen.getByRole("button", {name: "Continue with target"}));
 

@@ -14,7 +14,7 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME}}),
+    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "blueprint", capabilities: ["blueprint.build"]}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -73,7 +73,7 @@ function okSelectView(libraryId: string, analysis: WeightedOutcomeLibraryAnalysi
 // Generate the same way a user clicking the Stepper's own "Select/import" step would.
 async function goToOutcomeLibrariesTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+    await user.click(screen.getByRole("button", {name: "Analysis"}));
     await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
     await screen.findByLabelText("Library JSON path");
 }
@@ -293,7 +293,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         first.unmount();
 
         const {fetchImpl: fetchImplB} = createRoutedFakeFetch({
-            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -303,7 +303,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.click(screen.getByRole("button", {name: "Analysis"}));
         await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
 
         // A brand new project's Outcome Libraries tab must show no trace of the previous project's
@@ -471,7 +471,7 @@ const GENERATE_RESULT: StudioOutcomeLibraryGenerateResultView = {
 async function generateFromCurrentBuild(user: ReturnType<typeof userEvent.setup>, fetchImpl: FetchLike): Promise<void> {
     renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+    await user.click(screen.getByRole("button", {name: "Analysis"}));
 
     // Opens directly on the new primary Generate step -- no navigation needed to reach it.
     await user.type(screen.getByLabelText("Mode"), "base");
@@ -491,7 +491,7 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.click(screen.getByRole("button", {name: "Analysis"}));
 
         // Opens directly on the new primary Generate step -- no navigation needed to reach it.
         await user.type(screen.getByLabelText("Mode"), "base");
@@ -536,7 +536,7 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.click(screen.getByRole("button", {name: "Analysis"}));
         await user.type(screen.getByLabelText("Mode"), "base");
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
@@ -564,7 +564,7 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.click(screen.getByRole("button", {name: "Analysis"}));
         await user.type(screen.getByLabelText("Mode"), "base");
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
@@ -708,7 +708,7 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Outcome Libraries"}));
+        await user.click(screen.getByRole("button", {name: "Analysis"}));
 
         expect(await screen.findByText("No library built yet")).toBeInTheDocument();
 
