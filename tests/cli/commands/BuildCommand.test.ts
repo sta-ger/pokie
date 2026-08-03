@@ -5,6 +5,9 @@ import {
     GameBuildInfoReelStripGeneration,
     GamePackageGenerating,
     GeneratedGamePackage,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
     RandomGameBlueprintGenerating,
     RandomGameBlueprintRequest,
     RandomGameBlueprintResult,
@@ -660,5 +663,86 @@ describe("BuildCommand", () => {
 
             await expect(command.run(["random", "--preset"])).rejects.toThrow(/--preset must be one of: default, variant/);
         });
+    });
+});
+
+// Proves the default "<config.json>" path resolves its target via ProjectResolving (see
+// BuildCommand's own resolveProject field comment) before ever reaching this.loadBlueprint -- a
+// recognized-but-wrong-type target reports a capability diagnostic instead of a confusing raw
+// JSON/schema error, while an unresolved path is completely unaffected.
+describe("BuildCommand resolved-project boundary", () => {
+    function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+        const calls: string[] = [];
+        return {
+            calls,
+            resolve(targetPath: string) {
+                calls.push(targetPath);
+                return Promise.resolve(project);
+            },
+        };
+    }
+
+    it('reports a capability diagnostic, without ever calling loadBlueprint, for a resolved non-"blueprint" target', async () => {
+        const loadBlueprint = jest.fn(() => rawBlueprint);
+        const project = {
+            type: "tsPackage",
+            rootPath: "/some/existing/package",
+            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+            provenance: "test fixture",
+        } as PokieProject;
+        const resolveProject = stubProjectResolver(project);
+        const command = new BuildCommand(
+            "1.3.0",
+            loadBlueprint,
+            createStubValidator([]),
+            createStubGenerator(generatedResult),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            resolveProject,
+        );
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+        await expect(command.run(["/some/existing/package"])).rejects.toThrow(
+            /"build" is not supported for a "tsPackage" project \(missing the "blueprint\.build" capability\)/,
+        );
+
+        expect(resolveProject.calls).toEqual(["/some/existing/package"]);
+        expect(loadBlueprint).not.toHaveBeenCalled();
+
+        (console.log as jest.Mock).mockRestore();
+        (console.error as jest.Mock).mockRestore();
+    });
+
+    it("still reaches loadBlueprint unchanged for a path ProjectResolving doesn't recognize", async () => {
+        const loadBlueprint = jest.fn(() => rawBlueprint);
+        const resolveProject = stubProjectResolver(undefined);
+        const generator = createStubGenerator(generatedResult);
+        const command = new BuildCommand(
+            "1.3.0",
+            loadBlueprint,
+            createStubValidator([]),
+            generator,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            resolveProject,
+        );
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        const exitCode = await command.run(["config.json"]);
+
+        expect(exitCode).toBe(0);
+        expect(resolveProject.calls).toEqual(["config.json"]);
+        expect(loadBlueprint).toHaveBeenCalledWith("config.json");
+
+        (console.log as jest.Mock).mockRestore();
     });
 });

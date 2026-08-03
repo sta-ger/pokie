@@ -2,7 +2,9 @@
 
 # POKIE Phase 3 current-state contract (v1)
 
-**Status:** baseline, frozen 2026-08-01 against `HEAD` at the start of the `P3-POLISH-*` step series. Written
+**Status:** baseline, frozen 2026-08-01 against `HEAD` at the start of the `P3-POLISH-*` step series; §1's
+"package-only" classification was superseded by `P3-POLISH-09` (2026-08-03) — see that section's own update
+note. Written
 *before* any Phase 3 migration work touches CLI targets, the generated-package seam, Studio's home/project
 routes, or the External Adapter SDK / Stake Engine adapter boundary, so a future migration step can diff its
 own intended changes against this document instead of re-deriving "what did this look like before" from
@@ -61,6 +63,28 @@ already on disk.
   contract as the 8 package-only commands when a `projectRoot` is given, but runs perfectly well with none
   (opens Home). Deliberately excluded from the strict package-only set for that reason; see the fixture's own
   comment on this entry.
+
+**`P3-POLISH-09` update (capability-driven CLI, 2026-08-03):** the classification above is still accurate as
+a *positional-shape* fact (`packageRoot`, plus `report`'s `simulationReportJson` and `build`'s `config.json`,
+are still each command's own frozen argument name — `tests/cli/fixtures/cliCommandInventory.ts` is
+unchanged), but is no longer accurate as an *"already-loadable-package-or-nothing"* fact for `validate`,
+`sim`, `dev`, `serve`, `replay`, `build`, `report`, or Studio's Play runtime: each now crosses
+`ProjectTargetResolver`/`describeUnsupportedProjectOperation` (`src/project/`) before touching
+`loadPokieGame`/its own raw loader. A resolved `"blueprint"` target is materialized into a real runtime first
+(`cli/materialize/materializeRuntimePackage.ts`, `P3-POLISH-08`'s own boundary, now operation-aware); a
+resolved target of a type that can't perform the requested operation (e.g. `pokie sim` against an
+`outcomeLibrary`/`stakeAdapter`/`parWorkbook` path) throws a `UnsupportedProjectOperationError` carrying the
+same structured diagnostic `describeUnsupportedProjectOperation` returns, instead of a raw `loadPokieGame`/
+`fs` error; a path `ProjectTargetResolver` doesn't recognize at all is unaffected, so an ordinary malformed
+input still reports its original error. `build`'s `<config.json>` and `report`'s
+`<simulationReportJson>` gained the same resolution as a *diagnostic-only* upgrade (a recognized
+wrong-type target now names what was actually detected) — neither materializes anything, since neither reads
+an already-loadable runtime package. `pokie <path>`/`pokie studio <path>` (and Home's own "Open Project")
+cross this same boundary via `loadProjectDashboardContext` before Studio's Project Dashboard ever calls
+`loadPokieGame`, so opening a blueprint path directly now materializes and opens it instead of failing with a
+raw loader error. **Executable:** `tests/cli/materialize/BlueprintProjectMaterializer.test.ts`'s own
+`describe("createMaterializingRuntimePackageResolver", ...)`, plus each migrated command's/`StudioServer`'s
+own "resolved-project"/"runtime package materialization boundary" test group.
 
 ## 2. Build/create/init semantics
 
@@ -160,10 +184,12 @@ migration responsibility actually reaches that surface*, not by proximity to thi
 version marker above in the same commit as whichever step changes one of these facts:
 
 - **CLI package-only inputs (§1)** is three distinct future concerns, not one: the **resolver** that would
-  relax which commands require an already-loadable `packageRoot` → `P3-POLISH-03`; the **materialization**
-  path a relaxed command falls back to once it no longer requires one on disk (in-memory or implicit-build)
-  → `P3-POLISH-08`; and the resulting **capability**/CLI surface/help-text/dispatcher change once the resolver
-  and materialization land → `P3-POLISH-09`.
+  relax which commands require an already-loadable `packageRoot` → `P3-POLISH-03` (done); the
+  **materialization** path a relaxed command falls back to once it no longer requires one on disk (in-memory
+  or implicit-build) → `P3-POLISH-08` (done); and the resulting **capability**/CLI surface/dispatcher change
+  once the resolver and materialization land → `P3-POLISH-09` (done — see §1's own update note; CLI
+  *help text* for each migrated command's own usage string is unchanged by this step, since capability
+  diagnostics are runtime messages, not static usage text).
 - **Build/create/init semantics and the generated-package file seam (§2–§3)** is three distinct tools, not
   one: shared target-directory **preparation** semantics across `create`/`init`/`build` → `P3-POLISH-05`;
   the **creator** (`pokie create` / `GamePackageCreator`) → `P3-POLISH-06`; and **create-init**

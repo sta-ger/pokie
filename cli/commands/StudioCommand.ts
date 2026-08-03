@@ -1,4 +1,6 @@
+import {STUDIO_OPERATION} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {createMaterializingRuntimePackageResolver} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
@@ -54,7 +56,20 @@ export class StudioCommand implements CliCommandHandling {
         this.createServer = dependencies.createServer ?? ((options) => new StudioServer(options));
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
-        this.homeService = dependencies.homeService ?? new StudioHomeService(pokieVersion);
+        this.homeService =
+            dependencies.homeService ??
+            new StudioHomeService(
+                pokieVersion,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION),
+            );
         this.studioRoot = dependencies.studioRoot ?? "";
         this.blueprintService =
             dependencies.blueprintService ?? new StudioBlueprintService(pokieVersion, this.studioRoot, this.homeService);

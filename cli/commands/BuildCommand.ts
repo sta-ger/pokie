@@ -1,13 +1,17 @@
 import fs from "fs";
 import {
     buildGameBuildInfo,
+    BUILD_OPERATION,
     computeGameBlueprintHash,
+    describeUnsupportedProjectOperation,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
     GamePackageGenerating,
     GamePackageGenerator,
     loadGameBlueprint,
+    ProjectResolving,
+    ProjectTargetResolver,
     RandomGameBlueprintGenerating,
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
@@ -18,6 +22,7 @@ import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js
 import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
@@ -47,6 +52,13 @@ export class BuildCommand implements CliCommandHandling {
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly runSmokeSimulation: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome>;
+    // Consulted once, only on the default "<config.json>" path (never --init-blueprint/random, which
+    // never take an existing target to resolve) -- see runDefault's own comment on why a resolved,
+    // non-"blueprint" project produces an UnsupportedProjectOperationError instead of falling through to
+    // this.loadBlueprint's own confusing "not valid JSON"/shape error. An unrecognized path (resolve()
+    // returns undefined) is unaffected: it still reaches this.loadBlueprint exactly as before this
+    // resolver existed.
+    private readonly resolveProject: ProjectResolving;
 
     constructor(
         pokieVersion: string,
@@ -62,6 +74,7 @@ export class BuildCommand implements CliCommandHandling {
             new SlotGameNameGenerator(),
             new RandomGameBlueprintVariantStrategy(),
         ),
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
@@ -71,6 +84,7 @@ export class BuildCommand implements CliCommandHandling {
         this.fileExists = fileExists;
         this.writeFile = writeFile;
         this.randomBlueprintGenerator = randomBlueprintGenerator;
+        this.resolveProject = resolveProject;
         this.runSmokeSimulation = runSmoke;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
     }
@@ -165,6 +179,19 @@ export class BuildCommand implements CliCommandHandling {
                 // caught below and reported the same way.
                 if (!configPath || excess.length > 0) {
                     throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : `${USAGE}\n${BLUEPRINT_HINT}`);
+                }
+                // Only ever rejects a *recognized*-but-wrong-type target (a tsPackage/outcomeLibrary/
+                // stakeAdapter/parWorkbook/wasm path) with a capability diagnostic explaining exactly
+                // why "build" can't run against it. An unrecognized path -- resolve() returns undefined,
+                // e.g. an arbitrary or malformed file this resolver can't classify at all -- falls
+                // straight through to loadBlueprint below exactly as it always has, so an ordinary
+                // "not valid JSON"/schema error is unaffected.
+                const project = await this.resolveProject.resolve(configPath);
+                if (project !== undefined && project.type !== "blueprint") {
+                    const diagnostic = describeUnsupportedProjectOperation(project, BUILD_OPERATION);
+                    if (diagnostic !== undefined) {
+                        throw new UnsupportedProjectOperationError(diagnostic);
+                    }
                 }
                 const blueprint = this.loadBlueprint(configPath);
                 exitCode = await this.buildFromBlueprint(blueprint, options.out, configPath, options.dryRun ?? false);

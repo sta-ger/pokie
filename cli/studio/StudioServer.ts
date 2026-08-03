@@ -6,6 +6,7 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidator,
     RoundArtifactValidator,
+    STUDIO_OPERATION,
 } from "pokie";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
@@ -27,7 +28,7 @@ import {
 } from "./certification/validateCertificationSourceValidateRequest.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
 import {validateDeploymentRunRequest, DeploymentRunRequestInput} from "./deployment/validateDeploymentRunRequest.js";
-import {createMaterializingRuntimePackageResolver} from "../materialize/materializeRuntimePackage.js";
+import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioFairnessService} from "./fairness/StudioFairnessService.js";
 import {validateFairnessConfigureRequest, FairnessConfigureRequestInput} from "./fairness/validateFairnessConfigureRequest.js";
 import {validateFairnessGenerateRequest, FairnessGenerateRequestInput} from "./fairness/validateFairnessGenerateRequest.js";
@@ -142,6 +143,13 @@ export class StudioServer implements StudioServerHandling {
     private readonly openFolder: (folderPath: string) => void;
     private readonly blueprintService: StudioBlueprintService;
     private readonly loadGame: typeof loadPokieGame;
+    // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to
+    // "a real, loadable runtime" before startProjectDashboardLoad() ever touches loadGame -- same
+    // materializing boundary runtimeManager's own resolver crosses (see materializeRuntimePackage.ts),
+    // operation STUDIO_OPERATION since opening a project into the Dashboard needs exactly the same
+    // "runtime.execute" capability Play does. StudioHomeService carries its own, separate copy of this
+    // same kind of resolver for the /api/home/projects/open path -- see its own constructor.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
     private readonly simulationService: StudioSimulationService;
@@ -174,12 +182,13 @@ export class StudioServer implements StudioServerHandling {
         this.openFolder = options.openFolder ?? openInFileManager;
         this.blueprintService = options.blueprintService;
         this.loadGame = options.loadGame ?? loadPokieGame;
+        this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createMaterializingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
         this.runtimeManager =
-            options.runtimeManager ?? new StudioRuntimeManager(this.loadGame, undefined, undefined, createMaterializingRuntimePackageResolver(this.pokieVersion));
+            options.runtimeManager ?? new StudioRuntimeManager(this.loadGame, undefined, undefined, this.resolveRuntimePackageRoot);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
@@ -281,7 +290,7 @@ export class StudioServer implements StudioServerHandling {
 
     private startProjectDashboardLoad(projectRoot: string): void {
         this.projectDashboard = {status: "loading", projectRoot};
-        loadProjectDashboardContext(projectRoot, this.loadGame)
+        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot)
             .then((dashboard) => {
                 this.projectDashboard = dashboard;
             })
