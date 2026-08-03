@@ -1383,16 +1383,43 @@ describe("StudioServer", () => {
                 expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot", origin: "managed", type: "blueprint"});
             });
 
-            it("saving again re-uses the same resolved path and stays a single registry entry", async () => {
+            // Mirrors BlueprintEditorPage.tsx's own handleGuidedSave: once a first save-managed call has
+            // established a path, every later save in that same editor session goes through the ordinary
+            // /save endpoint against that exact path (overwrite:true) rather than calling save-managed
+            // again -- so "re-uses the already-established destination without prompting" is this request
+            // sequence, not a second save-managed call.
+            it("a later save through the ordinary save endpoint re-uses the already-established path and stays a single registry entry", async () => {
                 const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
                 await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
 
-                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint({rows: 4})});
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save`, {
+                    path: expectedPath,
+                    blueprint: buildBlueprint({rows: 4}),
+                    overwrite: true,
+                });
 
                 expect(status).toBe(201);
                 expect((body as {path: string}).path).toBe(expectedPath);
                 expect(JSON.parse(fs.readFileSync(expectedPath, "utf-8")).rows).toBe(4);
                 expect(await managedRegistry.list()).toHaveLength(1);
+            });
+
+            it("does not overwrite an existing managed blueprint.json for the same id on a first save, and registers the new destination instead", async () => {
+                const collidingDir = path.join(managedWorkDir, "POKIE Projects", "sample-slot");
+                fs.mkdirSync(collidingDir, {recursive: true});
+                fs.writeFileSync(path.join(collidingDir, "blueprint.json"), "existing project content");
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot-2", "blueprint.json");
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
+
+                expect(status).toBe(201);
+                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot-2", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+                expect(fs.readFileSync(path.join(collidingDir, "blueprint.json"), "utf-8")).toBe("existing project content");
+                expect(fs.existsSync(expectedPath)).toBe(true);
+
+                const entries = await managedRegistry.list();
+                expect(entries).toHaveLength(1);
+                expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot-2", origin: "managed", type: "blueprint"});
             });
         });
 

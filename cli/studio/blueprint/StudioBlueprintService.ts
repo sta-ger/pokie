@@ -66,6 +66,44 @@ function deriveManagedBlueprintName(blueprint: unknown): string {
     return "blueprint";
 }
 
+// A brand-new guided session's first Save must never silently clobber a *different*, already-existing
+// managed Blueprint Project that just happens to share its manifest.id -- two "New Design Game" sessions
+// started from the same starter preset (or a hand-typed id collision) are exactly the case this guards.
+// Rather than asking the user to pick a different id (breaking saveManaged()'s whole "never has to ask"
+// contract), this deterministically walks "<name>", "<name>-2", "<name>-3", ... and takes the first
+// candidate whose managed blueprint.json doesn't exist yet -- the same numeric-suffix convention a
+// filesystem's own "Copy" / "Save As" dialog already uses, so a user who does notice the name (in the
+// Projects tab, or a later Save As) recognizes it immediately as "the same idea, a different slot".
+// Deliberately keyed off the target *file's* existence, not the directory's: a directory that already
+// exists but has no blueprint.json yet (created for some other reason) is not a collision.
+const MAX_MANAGED_DESTINATION_ATTEMPTS = 1000;
+
+type ManagedDestination =
+    | {readonly status: "valid"; readonly directory: string; readonly targetPath: string; readonly name: string}
+    | {readonly status: "invalid-name" | "unavailable"; readonly message: string};
+
+function resolveAvailableManagedDestination(pathResolver: PokiePathResolver, baseName: string): ManagedDestination {
+    for (let attempt = 1; attempt <= MAX_MANAGED_DESTINATION_ATTEMPTS; attempt++) {
+        const candidateName = attempt === 1 ? baseName : `${baseName}-${attempt}`;
+        const resolved = pathResolver.resolveIndependentProjectDirectory(candidateName);
+        if (resolved.status === "invalid-name") {
+            return {status: "invalid-name", message: resolved.message};
+        }
+        if (resolved.status !== "valid") {
+            return {status: "unavailable", message: resolved.message};
+        }
+
+        const targetPath = path.join(resolved.directory, "blueprint.json");
+        if (!fs.existsSync(targetPath)) {
+            return {status: "valid", directory: resolved.directory, targetPath, name: candidateName};
+        }
+    }
+    return {
+        status: "unavailable",
+        message: `Could not find an available managed project location for "${baseName}" after ${MAX_MANAGED_DESTINATION_ATTEMPTS} attempts.`,
+    };
+}
+
 // Drives GameBlueprintValidating/GamePackageGenerating/loadGameBlueprint/buildGameBuildInfo/
 // ParSheetImporting/ParSheetExporting — the exact same services `pokie build`/`pokie par import`/
 // `pokie par export` themselves use — directly, for the Blueprint Editor's /api/home/blueprints/*
@@ -217,30 +255,33 @@ export class StudioBlueprintService {
     // The guided Design Game editor's own "first Save" -- unlike save() above, the caller never picks a
     // path: this resolves one itself (the same platform "POKIE Projects/<name>" convention pokie create
     // and StudioHomeService.resolveDefaultProjectDirectory already use, via PokiePathResolver), creates
-    // the directory if needed, and always writes `blueprint.json` inside it. `<name>` comes from the
-    // blueprint's own manifest.id when it's a non-empty string, falling back to "blueprint" otherwise --
-    // never caller-supplied, since the whole point is the editor never has to ask. Always overwrites
-    // (never a 409/"conflict" the way save() reports one): the destination is a location this service
-    // itself just picked from the blueprint's own identity, not a user-chosen path that might already
-    // hold someone else's unrelated file. The caller (StudioServer's own route handler) is expected to
-    // register the returned path in StudioProjectRegistry on "ok" -- this method only ever writes the
-    // file, the same "one concern per service" split StudioBlueprintService.build()/
-    // homeService.rememberRecentProject() already follow.
+    // the directory if needed, and writes `blueprint.json` inside it. `<name>` starts from the blueprint's
+    // own manifest.id when it's a non-empty string, falling back to "blueprint" otherwise -- never
+    // caller-supplied, since the whole point is the editor never has to ask. Never overwrites an existing
+    // managed blueprint.json it did not itself just create in this call -- see
+    // resolveAvailableManagedDestination's own doc comment for why this walks to the next "-2", "-3", ...
+    // candidate instead, deterministically, rather than reporting save() above's 409/"conflict" (which
+    // would force the guided flow to ask the user something it promises never to ask). The caller
+    // (StudioServer's own route handler) is expected to register the returned path in StudioProjectRegistry
+    // on "ok" -- this method only ever writes the file, the same "one concern per service" split
+    // StudioBlueprintService.build()/homeService.rememberRecentProject() already follow. Only ever called
+    // for a session's first Save -- every Save after that reuses the exact path this returned via the
+    // ordinary save() above, so a later collision-avoidance re-walk here never happens for the same
+    // session (see BlueprintEditorPage.tsx's own handleGuidedSave).
     public saveManaged(blueprint: unknown): StudioBlueprintSaveManagedView {
-        const name = deriveManagedBlueprintName(blueprint);
-        const resolved = this.pathResolver.resolveIndependentProjectDirectory(name);
-        if (resolved.status === "invalid-name") {
-            return {status: "invalid-name", error: resolved.message};
+        const baseName = deriveManagedBlueprintName(blueprint);
+        const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
+        if (destination.status === "invalid-name") {
+            return {status: "invalid-name", error: destination.message};
         }
-        if (resolved.status !== "valid") {
-            return {status: "unavailable", error: resolved.message};
+        if (destination.status !== "valid") {
+            return {status: "unavailable", error: destination.message};
         }
 
-        const targetPath = path.join(resolved.directory, "blueprint.json");
         try {
-            fs.mkdirSync(resolved.directory, {recursive: true});
-            fs.writeFileSync(targetPath, serializeGameBlueprint(blueprint));
-            return {status: "ok", path: targetPath, name, blueprintHash: computeGameBlueprintHash(blueprint)};
+            fs.mkdirSync(destination.directory, {recursive: true});
+            fs.writeFileSync(destination.targetPath, serializeGameBlueprint(blueprint));
+            return {status: "ok", path: destination.targetPath, name: destination.name, blueprintHash: computeGameBlueprintHash(blueprint)};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }

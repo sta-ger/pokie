@@ -747,10 +747,57 @@ describe("StudioBlueprintService", () => {
             });
         });
 
-        it("overwrites an existing file at the resolved managed path without a conflict", () => {
+        it("never overwrites an existing managed blueprint.json for the same id -- picks the next available destination instead", () => {
+            const collidingDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            fs.mkdirSync(collidingDir, {recursive: true});
+            fs.writeFileSync(path.join(collidingDir, "blueprint.json"), "stale content from a different project");
+            const nextDir = path.join(tmpDir, "POKIE Projects", "sample-slot-2");
+            const resolveIndependentProjectDirectory = jest.fn((name: string) => ({
+                status: "valid",
+                directory: name === "sample-slot" ? collidingDir : nextDir,
+                source: "documents",
+            }));
+            const service = createServiceWithPathResolver(resolveIndependentProjectDirectory);
+
+            const result = service.saveManaged(buildBlueprint());
+
+            expect(result).toEqual({
+                status: "ok",
+                path: path.join(nextDir, "blueprint.json"),
+                name: "sample-slot-2",
+                blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+            });
+            expect(fs.readFileSync(path.join(collidingDir, "blueprint.json"), "utf-8")).toBe("stale content from a different project");
+            expect(fs.readFileSync(path.join(nextDir, "blueprint.json"), "utf-8")).toContain('"sample-slot"');
+        });
+
+        it("walks past multiple existing collisions to find the first available numbered destination", () => {
+            const firstDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const secondDir = path.join(tmpDir, "POKIE Projects", "sample-slot-2");
+            const thirdDir = path.join(tmpDir, "POKIE Projects", "sample-slot-3");
+            fs.mkdirSync(firstDir, {recursive: true});
+            fs.writeFileSync(path.join(firstDir, "blueprint.json"), "occupied");
+            fs.mkdirSync(secondDir, {recursive: true});
+            fs.writeFileSync(path.join(secondDir, "blueprint.json"), "also occupied");
+            const resolveIndependentProjectDirectory = jest.fn((name: string) => ({
+                status: "valid",
+                directory: path.join(tmpDir, "POKIE Projects", name),
+                source: "documents",
+            }));
+            const service = createServiceWithPathResolver(resolveIndependentProjectDirectory);
+
+            const result = service.saveManaged(buildBlueprint());
+
+            expect(result).toEqual({
+                status: "ok",
+                path: path.join(thirdDir, "blueprint.json"),
+                name: "sample-slot-3",
+                blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+            });
+        });
+
+        it("still writes directly when the resolved managed path doesn't exist yet", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
-            fs.mkdirSync(managedDir, {recursive: true});
-            fs.writeFileSync(path.join(managedDir, "blueprint.json"), "stale content");
             const service = createServiceWithManagedDirectory(managedDir);
 
             const result = service.saveManaged(buildBlueprint());
