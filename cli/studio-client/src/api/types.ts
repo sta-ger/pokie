@@ -68,19 +68,47 @@ export type PokieGamePackageValidationReport = {
     suggestions: string[];
 };
 
-// POST /api/home/projects/create and /init's shared DTO — see
-// cli/studio/home/StudioScaffoldResultView.ts's own doc comment (the two flows' underlying
-// ScaffoldResult shapes are already identical).
-export type StudioScaffoldResultView =
+// Mirrors the "pokie" package's own ProjectType -- the kinds of on-disk input Studio's Projects registry
+// resolves "a project" to (see src/project/ProjectType.ts's own doc comment for what each one means).
+export type StudioProjectType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "wasm" | "parWorkbook";
+
+// A capability id is a plain, open string -- same convention as the "pokie" package's own
+// ProjectCapability (src/project/ProjectCapability.ts).
+export type StudioProjectCapability = string;
+
+export type StudioProjectOrigin = "managed" | "external";
+
+export type StudioProjectStatus = "ok" | "missing";
+
+// GET /api/home/projects/registry's own row shape -- see cli/studio/StudioProjectRegistryView.ts's own
+// doc comment. `status` is computed fresh at read time, never persisted.
+export type StudioProjectRegistryView = {
+    location: string;
+    name: string;
+    type: StudioProjectType;
+    capabilities: StudioProjectCapability[];
+    origin: StudioProjectOrigin;
+    lastOpenedAt: string;
+    status: StudioProjectStatus;
+};
+
+// POST /api/home/projects/registry/preview's own DTO — see
+// cli/studio/StudioProjectImportPreviewResult.ts's own doc comment. Never the result of anything being
+// registered -- purely a read-only "detect" step.
+export type StudioProjectImportPreviewResult =
     | {
-          status: "ok";
-          projectRoot: string;
-          manifest: PokieGameManifest;
-          createdFiles: string[];
-          updatedFiles: string[];
-          skippedFiles: string[];
+          status: "recognized";
+          location: string;
+          type: StudioProjectType;
+          capabilities: StudioProjectCapability[];
+          suggestedName: string;
       }
-    | {status: "error"; error: string};
+    | {status: "unrecognized"; path: string};
+
+// POST /api/home/projects/registry/register's own DTO — see
+// cli/studio/StudioProjectRegistrationResult.ts's own doc comment. "unrecognized" is an ordinary,
+// expected outcome of pointing registration at an arbitrary path, never a thrown error.
+export type StudioProjectRegistrationResult = {status: "ok"; entry: StudioProjectRegistryView} | {status: "unrecognized"; path: string};
 
 // GET /api/home/fs/browse's own DTO — see cli/studio/home/StudioFsBrowseService.ts's own doc comment.
 // Backs the "Browse" action on every filesystem-path input in Home's project-creation forms.
@@ -131,7 +159,7 @@ export type BuildDestinationPreview = {
     priorBuild?: {version: string; blueprintHash: string; generatedAt: string};
 };
 
-// POST /api/home/projects/build/preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
+// POST /api/home/blueprints/build-preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
 // own doc comment. Never the result of anything being written to disk.
 export type StudioBuildPreviewView =
     | {status: "load-error"; error: string}
@@ -147,7 +175,7 @@ export type StudioBuildPreviewView =
           expectedFiles: string[];
       } & BuildDestinationPreview);
 
-// POST /api/home/projects/build's own DTO — see cli/studio/home/StudioBuildResult.ts's own doc
+// POST /api/home/blueprints/build's own DTO — see cli/studio/home/StudioBuildResult.ts's own doc
 // comment.
 export type StudioBuildResult =
     | {status: "load-error"; error: string}

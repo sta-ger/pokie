@@ -20,7 +20,7 @@ import {PaytableEditor} from "./PaytableEditor";
 import {ReelGenerationModeSelector} from "./ReelGenerationModeSelector";
 import {SymbolsTable} from "./SymbolsTable";
 
-// The guided Design & Build editor's field groups, reorganized into 6 named sections instead of one
+// The guided Design Game editor's field groups, reorganized into 6 named sections instead of one
 // long flat scroll -- same field components as the raw/non-guided editor (SymbolsTable, BetsList, etc.),
 // just regrouped and each now showing its own filtered slice of the *same* validateBlueprint result
 // (see BlueprintSections.ts's own doc comment on why this is a display categorization, not a new

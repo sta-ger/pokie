@@ -7,11 +7,11 @@ import {useNavigationBlockerConfirm} from "./useNavigationBlockerConfirm";
 // close button would otherwise dismiss the modal without running either onConfirm or onCancel -- for
 // the blocker that leaves `blocker.state` stuck at "blocked" forever (no reset(), no proceed()); for
 // guardedAction that leaves its returned Promise permanently pending, which in turn leaves every caller
-// that awaits it (e.g. OpenProjectForm's loading state, its double-submit guard) stuck forever too. The
+// that awaits it (e.g. ProjectsPanel's own Open action, its double-submit guard) stuck forever too. The
 // only way to dismiss this modal is an explicit Leave/Stay choice.
 const CONFIRM_MODAL = {
     title: "Unsaved changes",
-    children: "You have unsaved changes in Design & Build. Leave and lose them?",
+    children: "You have unsaved changes in Design Game. Leave and lose them?",
     labels: {confirm: "Leave", cancel: "Stay"},
     withCloseButton: false,
     closeOnEscape: false,
@@ -19,12 +19,12 @@ const CONFIRM_MODAL = {
 };
 
 // A caller-supplied side effect (e.g. useOpenProject's "call the API, then navigate") that must run
-// after the user has confirmed leaving a dirty Design & Build draft -- never before. Resolves without
+// after the user has confirmed leaving a dirty Design Game draft -- never before. Resolves without
 // running `action` at all if the user cancels; the not-dirty case skips the modal and runs `action`
 // immediately.
 export type GuardedAction = (action: () => Promise<void>) => Promise<void>;
 
-// The one centralized mechanism guarding a dirty Design & Build draft against every way of leaving
+// The one centralized mechanism guarding a dirty Design Game draft against every way of leaving
 // Home. Two distinct kinds of exit need two distinct strategies:
 //
 // 1. Transitions the router already knows about *before* they commit -- browser Back/Forward and any

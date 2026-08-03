@@ -5,7 +5,7 @@ import type {BlueprintValidationView} from "./BlueprintEditor";
 // already-computed, flat ValidationIssue[] onto the Mechanics Editor's own step grouping (Layout &
 // symbols / Win model & paytable / Mechanics & features / Bet modes) -- never a re-implementation of
 // any check. Kept independent from BlueprintSections.ts (a different grouping for a different guided
-// flow) so the existing Home "Design & Build" editor's own section list is untouched.
+// flow) so the existing Home "Design Game" editor's own section list is untouched.
 export type MechanicsEditorStepId = "layoutSymbols" | "winModelPaytable" | "mechanicsFeatures" | "betModes";
 
 export const MECHANICS_EDITOR_STEPS: {id: MechanicsEditorStepId; label: string}[] = [

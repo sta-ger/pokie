@@ -37,12 +37,14 @@ import type {
     StudioOutcomeLibrarySelectView,
     StudioParSheetExportView,
     StudioParSheetImportView,
+    StudioProjectImportPreviewResult,
+    StudioProjectRegistrationResult,
+    StudioProjectRegistryView,
     StudioReelStripGenerationView,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
     StudioRuntimeStateView,
-    StudioScaffoldResultView,
     StudioSimulationJobView,
     StudioSimulationReportDetail,
     StudioSimulationReportListEntry,
@@ -70,34 +72,10 @@ export async function listRecentProjects(fetchImpl: FetchLike): Promise<StudioHo
     return (await response.json()) as StudioHomeRecentProjectView[];
 }
 
-export type CreateProjectRequest = {
-    destinationDir: string;
-    name: string;
-    gameId?: string;
-    gameName?: string;
-    version?: string;
-};
-
-// Never throws for a domain-level failure (an invalid name, a destination that already exists) — the
-// DTO's own `status` field carries that; only a genuinely malformed request throws (see
-// validateCreateProjectRequest on the server side). Same reasoning for initProject/previewBuild/
-// buildProject below.
-export async function createProject(fetchImpl: FetchLike, request: CreateProjectRequest): Promise<StudioScaffoldResultView> {
-    const response = await fetchImpl("/api/home/projects/create", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(request),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to create project"));
-    }
-    return (await response.json()) as StudioScaffoldResultView;
-}
-
 // Backs the "Browse" action and PathInput's own live resolved-path hint on every filesystem-path input
 // across Home *and* Project surfaces -- never throws for a domain-level failure (a nonexistent/
-// unreadable/wrong-type path), same convention as createProject/initProject above; the DTO's own
-// `status` field carries that. `base`, when given (e.g. the currently open project's root), resolves
+// unreadable/wrong-type path); the DTO's own `status` field carries that. `base`, when given (e.g. the
+// currently open project's root), resolves
 // `path` relative to it instead of Studio's own server root -- see StudioFsBrowseService.browse's own
 // doc comment for why a project-scoped field (Certification's bundle directory, an Outcome Libraries
 // selector, ...) needs this to show a truthful hint at all. `kind`, when "file", validates/resolves
@@ -124,8 +102,9 @@ export async function browseFilesystem(fetchImpl: FetchLike, path?: string, base
 
 // Backs PathInput's start-location precedence -- the "platform Documents, then Home" rung, after the
 // field's own current value/relevant directory/remembered location have all come up empty. `name`
-// opts into the Create Project destination field's own Documents/POKIE/<name> suggestion; every other
-// caller omits it. Never throws for a domain-level failure, same convention as browseFilesystem.
+// opts into a Documents/POKIE/<name> suggestion for a brand-new managed project's own destination;
+// every other caller omits it. Never throws for a domain-level failure, same convention as
+// browseFilesystem.
 export async function resolveDefaultBrowseLocation(fetchImpl: FetchLike, name?: string): Promise<StudioDefaultLocationView> {
     const query = name && name.trim().length > 0 ? `?name=${encodeURIComponent(name)}` : "";
     const response = await fetchImpl(`/api/home/fs/default-location${query}`);
@@ -166,45 +145,53 @@ export async function pickNativePath(fetchImpl: FetchLike, request: NativeBrowse
     return (await response.json()) as StudioNativePickerResultView;
 }
 
-export type InitProjectRequest = {directory: string};
-
-export async function initProject(fetchImpl: FetchLike, request: InitProjectRequest): Promise<StudioScaffoldResultView> {
-    const response = await fetchImpl("/api/home/projects/init", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(request),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to initialize project"));
-    }
-    return (await response.json()) as StudioScaffoldResultView;
+// The Projects area's own managed/registered list -- every project Studio knows about, most-recently-
+// registered/opened first (see StudioProjectRegistrationService.list()'s own doc comment).
+export async function listProjectRegistry(fetchImpl: FetchLike): Promise<StudioProjectRegistryView[]> {
+    const response = await fetchImpl("/api/home/projects/registry");
+    return (await response.json()) as StudioProjectRegistryView[];
 }
 
-export type BuildRequest = {blueprintPath: string; outDir?: string};
-
-// Never writes anything — see StudioHomeService.previewBuild()'s own doc comment.
-export async function previewBuild(fetchImpl: FetchLike, request: BuildRequest): Promise<StudioBuildPreviewView> {
-    const response = await fetchImpl("/api/home/projects/build/preview", {
+// Import Project's own "detect" step -- read-only, never registers anything (see
+// StudioProjectRegistrationService.previewImport()'s own doc comment). Never throws for a domain-level
+// outcome ("unrecognized" is an ordinary result of pointing detection at an arbitrary path) -- only a
+// genuinely malformed request throws.
+export async function previewProjectImport(fetchImpl: FetchLike, location: string): Promise<StudioProjectImportPreviewResult> {
+    const response = await fetchImpl("/api/home/projects/registry/preview", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(request),
+        body: JSON.stringify({location}),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to preview build"));
+        throw new Error(await extractErrorMessage(response, "Failed to detect the project at this location"));
     }
-    return (await response.json()) as StudioBuildPreviewView;
+    return (await response.json()) as StudioProjectImportPreviewResult;
 }
 
-export async function buildProject(fetchImpl: FetchLike, request: BuildRequest): Promise<StudioBuildResult> {
-    const response = await fetchImpl("/api/home/projects/build", {
+// Import Project's own "register" step -- always origin "external" (see
+// StudioProjectRegistrationService.registerExternal()'s own doc comment). `name` defaults to the
+// resolved path's own basename server-side when omitted.
+export async function registerProjectImport(fetchImpl: FetchLike, location: string, name?: string): Promise<StudioProjectRegistrationResult> {
+    const response = await fetchImpl("/api/home/projects/registry/register", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(request),
+        body: JSON.stringify({location, name}),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to build project"));
+        throw new Error(await extractErrorMessage(response, "Failed to register the project"));
     }
-    return (await response.json()) as StudioBuildResult;
+    return (await response.json()) as StudioProjectRegistrationResult;
+}
+
+export async function removeProjectRegistryEntry(fetchImpl: FetchLike, location: string): Promise<void> {
+    const response = await fetchImpl("/api/home/projects/registry/remove", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({location}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to remove the project from the registry"));
+    }
 }
 
 // Never writes/reads anything on disk — see StudioBlueprintService.validate()'s own doc comment.

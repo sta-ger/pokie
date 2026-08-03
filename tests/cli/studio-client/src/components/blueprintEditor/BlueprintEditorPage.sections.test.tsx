@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
-// Covers the guided Design & Build editor's sectioned layout (SectionedFormEditor): editing across
+// Covers the guided Design Game editor's sectioned layout (SectionedFormEditor): editing across
 // multiple named sections (Game basics/Layout/Symbols/Reels/Paytable/Bets), a dirty edit surviving a
 // section switch, a validation error surfacing in its own section's badge/inline list while the bottom
 // BlueprintValidationPanel still shows the full summary, and keyboard navigation between sections.
@@ -14,7 +14,7 @@ function okValidateFetch(): FetchLike {
     return (url, init) => {
         const [path] = url.split("?");
         const method = init?.method ?? "GET";
-        if (path === "/api/home/recent-projects") {
+        if (path === "/api/home/projects/registry") {
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
         }
         if (path === "/api/home/blueprints/validate" && method === "POST") {
@@ -93,7 +93,7 @@ function okValidateFetch(): FetchLike {
     };
 }
 
-describe("Guided Design & Build: sectioned layout", () => {
+describe("Guided Design Game: sectioned layout", () => {
     it("walks Edit (across sections) -> Validate -> Build, ending on the Project Dashboard", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
@@ -125,9 +125,9 @@ describe("Guided Design & Build: sectioned layout", () => {
 
         // The draft was never saved to a source blueprint file (building a package is a distinct fact
         // from that -- see BlueprintBuildPanel's own `onBuilt` doc comment), so it's still genuinely
-        // dirty -- same guarded-navigation confirm as every other "leave a dirty Design & Build draft"
+        // dirty -- same guarded-navigation confirm as every other "leave a dirty Design Game draft"
         // exit (see openProjectGuard.test.tsx).
-        expect(await screen.findByText("You have unsaved changes in Design & Build. Leave and lose them?")).toBeInTheDocument();
+        expect(await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("heading", {name: "Sectioned"})).toBeInTheDocument();
@@ -152,7 +152,7 @@ describe("Guided Design & Build: sectioned layout", () => {
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
             const method = init?.method ?? "GET";
-            if (path === "/api/home/recent-projects") {
+            if (path === "/api/home/projects/registry") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
             }
             if (path === "/api/home/blueprints/validate" && method === "POST") {

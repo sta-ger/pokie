@@ -82,17 +82,21 @@ function describeGuidedNextStep(status: BlueprintValidationView["status"]): Guid
     };
 }
 
-// `guided`/`initialPath` are purely additive -- omitted (the "Advanced Tools" raw editor's usage),
-// this component renders exactly as it always has. `guided` adds a step indicator + next-step hint and
-// tucks JSON mode/Load-by-path/Save behind an "advanced options" disclosure, since Build works directly
-// off the in-memory blueprint and doesn't strictly need either in the guided happy path. `initialPath`
-// (set when arriving via Project Overview's "Configure Game Model" link) auto-loads that blueprint on
-// mount, reusing the exact same handleLoad a manual Load click would use.
+// `guided`/`initialPath`/`initialParSheetPath` are purely additive -- omitted (the removed "Advanced
+// Tools" raw editor's own usage), this component renders exactly as it always has. `guided` adds a step
+// indicator + next-step hint and tucks JSON mode/Load-by-path/Save/PAR Sheet Import-Export behind an
+// "advanced options" disclosure, since Build works directly off the in-memory blueprint and doesn't
+// strictly need any of them in the guided happy path. `initialPath` (set when arriving via Project
+// Overview's "Configure Game Model" link) auto-loads that blueprint on mount, reusing the exact same
+// handleLoad a manual Load click would use. `initialParSheetPath` (set when Home's own Projects "Import
+// Project" action detects a PAR sheet -- see HomePage's own doc comment) opens the advanced disclosure
+// and hands the path to ParSheetImportExportPanel, which auto-runs Import against it on mount.
 export function BlueprintEditorPage({
     guided = false,
     initialPath,
+    initialParSheetPath,
     onDirtyChange,
-}: {guided?: boolean; initialPath?: string; onDirtyChange?: (dirty: boolean) => void} = {}) {
+}: {guided?: boolean; initialPath?: string; initialParSheetPath?: string; onDirtyChange?: (dirty: boolean) => void} = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -112,7 +116,21 @@ export function BlueprintEditorPage({
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
     const validateGuard = useDoubleSubmitGuard();
-    const [advancedOpened, {toggle: toggleAdvanced}] = useDisclosure(false);
+    const [advancedOpened, {toggle: toggleAdvanced, open: openAdvanced}] = useDisclosure(Boolean(initialParSheetPath));
+    // useDisclosure's own initial value above only ever covers a fresh mount -- Projects -> Design (both
+    // under the same `/home/:tab` route, see HomePage's own routing doc comment) never remounts this page,
+    // so a *second* "Import Project" -> "Open in Design Game" click while already on the Design tab would
+    // otherwise land on a PAR sheet the advanced-options Collapse (and therefore
+    // ParSheetImportExportPanel's own auto-import effect inside it -- Mantine's Collapse defers a hidden
+    // child's effects via React's Activity API) never actually reveals. Reacting to initialParSheetPath
+    // itself, not just reading it once, closes that gap the same way ParSheetImportExportPanel's own
+    // initialImportPath effect below now does.
+    useEffect(() => {
+        if (initialParSheetPath) {
+            openAdvanced();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialParSheetPath]);
     const [newDialogOpened, {open: openNewDialog, close: closeNewDialog}] = useDisclosure(false);
     // A single-level "undo" for the New flow's own Blank/Generate random replace -- see
     // handleChooseBlank/handleUseRandomBlueprint below for where this is captured, and
@@ -439,7 +457,7 @@ export function BlueprintEditorPage({
         <div>
             {guided && (
                 <div>
-                    <Title order={2}>Design & Build Your Game</Title>
+                    <Title order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
                         Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your
                         game package.
@@ -519,6 +537,7 @@ export function BlueprintEditorPage({
                     blueprintPath={blueprintPath}
                     revision={revision}
                     onApplyImportedBlueprint={handleApplyImportedBlueprint}
+                    initialImportPath={initialParSheetPath}
                 />
             </Collapse>
 

@@ -827,7 +827,7 @@ describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
         // clicking a different NavTabs entry was already guarded, but browser Back/Forward (and any
         // other in-app navigate() call) bypasses that entirely, going straight through the router. This
         // reuses useNavigationBlockerConfirm (the same mechanism useDesignNavigationGuard already uses
-        // for a dirty Home Design & Build draft), not a tab-specific workaround -- see
+        // for a dirty Home Design Game draft), not a tab-specific workaround -- see
         // ProjectDashboardPage's own doc comment on why.
         it("blocks browser Back navigation while the draft is unapplied, and Stay keeps it in place", async () => {
             const user = userEvent.setup();

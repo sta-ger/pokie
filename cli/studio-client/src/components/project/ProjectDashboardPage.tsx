@@ -171,7 +171,7 @@ export function ProjectDashboardPage() {
     // Guards a dirty Mechanics Editor draft against *every* way of leaving it -- a NavTabs click, browser
     // Back/Forward, and any other in-app navigate() call are all just "history transitions" to a data
     // router, blocked uniformly by useNavigationBlockerConfirm's predicate below (the same mechanism
-    // useDesignNavigationGuard uses for a dirty Home Design & Build draft -- see its own doc comment).
+    // useDesignNavigationGuard uses for a dirty Home Design Game draft -- see its own doc comment).
     // Deliberately not the *full* guard system Home has (no guardedAction as its own exported action, no
     // hashchange fallback, no beforeunload) -- Close project is this tab's only "action with a side
     // effect before its own navigate() call", handled inline via suppressMechanicsEditorBlockRef instead

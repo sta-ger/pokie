@@ -84,6 +84,7 @@ export function ParSheetImportExportPanel({
     blueprintPath,
     revision,
     onApplyImportedBlueprint,
+    initialImportPath,
 }: {
     blueprint: Record<string, unknown>;
     // The path the current blueprint was last loaded/imported from (BlueprintEditorPage's own
@@ -91,10 +92,32 @@ export function ParSheetImportExportPanel({
     blueprintPath?: string;
     revision: number;
     onApplyImportedBlueprint: (blueprint: unknown, sourcePath: string) => void;
+    // Set when Home's own Projects "Import Project" action detected a PAR sheet and routed here (see
+    // HomePage's own `initialParSheetPath` doc comment) -- auto-runs Import against this path on mount,
+    // the same "arrive already on the right step" treatment BlueprintEditorPage's own `initialPath`
+    // gives a regular blueprint file, so the user lands straight on Diagnose & map instead of having to
+    // re-paste the path they already gave Import Project.
+    initialImportPath?: string;
 }) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const [activeStep, setActiveStep] = useState(0);
+
+    // ---- Preview canonical model state (declared ahead of Import below since invalidateImport/
+    // runImportFor both need to invalidate a stale preview the moment the import it was built from
+    // changes) ----
+    const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
+    const previewRequestIdRef = useRef(0);
+    const previewGuard = useDoubleSubmitGuard();
+
+    // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
+    // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
+    // right away instead of waiting for that now-superseded request to settle.
+    function invalidatePreview(): void {
+        previewRequestIdRef.current++;
+        setBuildPreview({status: "idle"});
+        previewGuard.end();
+    }
 
     // ---- Import ----
     const [importPath, setImportPath] = useState("");
@@ -120,14 +143,14 @@ export function ParSheetImportExportPanel({
         }
     }
 
-    function runImport(): void {
-        if (importPath.trim().length === 0 || !importGuard.begin()) {
+    function runImportFor(path: string): void {
+        if (path.trim().length === 0 || !importGuard.begin()) {
             return;
         }
         const requestId = ++importRequestIdRef.current;
         invalidatePreview();
         setImportView({status: "loading"});
-        importParSheet(fetchImpl, importPath.trim())
+        importParSheet(fetchImpl, path.trim())
             .then((result) => {
                 if (requestId !== importRequestIdRef.current) {
                     return;
@@ -147,25 +170,35 @@ export function ParSheetImportExportPanel({
             });
     }
 
+    function runImport(): void {
+        runImportFor(importPath);
+    }
+
+    // Auto-runs Import against whatever path Home's own Import Project routed here with. Unlike
+    // BlueprintEditorPage's own initialPath (which only ever arrives via a fresh mount, since Project
+    // Dashboard -> Home crosses a real route boundary), this panel's initialImportPath can change without
+    // a remount: Projects -> Design is a same-route (`/home/:tab`) tab switch, and HomePage keeps both tab
+    // bodies -- this panel included -- permanently mounted (see HomePage's own doc comment), so a second
+    // "Import Project" -> "Open in Design Game" click while already on the Design tab only changes this
+    // prop, not the component instance. `appliedImportPathRef` makes the auto-run idempotent per distinct
+    // path instead of per mount.
+    const appliedImportPathRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (initialImportPath && initialImportPath !== appliedImportPathRef.current) {
+            appliedImportPathRef.current = initialImportPath;
+            setImportPath(initialImportPath);
+            runImportFor(initialImportPath);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialImportPath]);
+
     const importResult = importView.status === "ok" ? importView : undefined;
     const importOutcome = importResult ? describeParSheetImportOutcome(importResult) : undefined;
     const diagnoseReachable = importView.status !== "idle" && importView.status !== "loading";
 
     // ---- Preview canonical model (reuses the exact same previewBlueprintBuild/BuildPreviewDisplay the
-    // Home nav's own Build-from-Blueprint flow already shows) ----
-    const [buildPreview, setBuildPreview] = useState<BuildPreviewView>({status: "idle"});
-    const previewRequestIdRef = useRef(0);
-    const previewGuard = useDoubleSubmitGuard();
-
-    // Bumping the ref both marks any in-flight preview request stale (so its late response is ignored,
-    // see runCanonicalPreview's own check) and frees the guard immediately, so a fresh preview can start
-    // right away instead of waiting for that now-superseded request to settle.
-    function invalidatePreview(): void {
-        previewRequestIdRef.current++;
-        setBuildPreview({status: "idle"});
-        previewGuard.end();
-    }
-
+    // Home nav's own Build-from-Blueprint flow already shows; state/invalidatePreview declared above,
+    // ahead of Import) ----
     function runCanonicalPreview(): void {
         if (importResult === undefined || !previewGuard.begin()) {
             return;

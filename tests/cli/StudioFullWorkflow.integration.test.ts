@@ -109,9 +109,10 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
 
         // 2. Create project (via the Blueprint Editor's real Build flow — GamePackageGenerator, no stub).
         const blueprintPath = path.join(workDir, "sample-slot.blueprint.json");
-        fs.writeFileSync(blueprintPath, JSON.stringify(buildBlueprint("sample-slot")));
+        const blueprint = buildBlueprint("sample-slot");
+        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
         const outDir = path.join(workDir, "sample-slot-out");
-        const built = await post(`${baseUrl}/api/home/projects/build`, {blueprintPath, outDir});
+        const built = await post(`${baseUrl}/api/home/blueprints/build`, {blueprint, outDir, sourcePath: blueprintPath});
         expect(built.status).toBe(201);
         const projectRoot = (built.body as {projectRoot: string}).projectRoot;
 
@@ -191,9 +192,14 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
 
         // 16. Open a second, distinct project.
         const secondBlueprintPath = path.join(workDir, "lucky-sevens.blueprint.json");
-        fs.writeFileSync(secondBlueprintPath, JSON.stringify(buildBlueprint("lucky-sevens")));
+        const secondBlueprint = buildBlueprint("lucky-sevens");
+        fs.writeFileSync(secondBlueprintPath, JSON.stringify(secondBlueprint));
         const secondOutDir = path.join(workDir, "lucky-sevens-out");
-        const secondBuilt = await post(`${baseUrl}/api/home/projects/build`, {blueprintPath: secondBlueprintPath, outDir: secondOutDir});
+        const secondBuilt = await post(`${baseUrl}/api/home/blueprints/build`, {
+            blueprint: secondBlueprint,
+            outDir: secondOutDir,
+            sourcePath: secondBlueprintPath,
+        });
         expect(secondBuilt.status).toBe(201);
         const secondProjectRoot = (secondBuilt.body as {projectRoot: string}).projectRoot;
         const secondOpened = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: secondProjectRoot});

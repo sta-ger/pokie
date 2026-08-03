@@ -13,7 +13,7 @@ export type StudioFsBrowseErrorReason = "absent" | "type" | "permission" | "unre
 
 // Backs GET /api/home/fs/browse -- the "Browse" action (and PathInput's own live resolved-path hint) on
 // every filesystem-path input across Home *and* Project surfaces. "error" never carries a stack trace,
-// only a plain client-safe message (same convention as StudioScaffoldResultView etc.) -- an unreadable/
+// only a plain client-safe message (same convention every other Home DTO follows) -- an unreadable/
 // missing/non-directory path is an expected outcome of letting a user type or navigate to anywhere on
 // disk, not a failed request. `reason` classifies that same message so a caller (PathInput's hint) can
 // key its own tone/remediation copy off a stable value instead of pattern-matching `error` text.

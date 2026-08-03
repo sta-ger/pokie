@@ -39,7 +39,7 @@ describe("Studio startup landing route", () => {
 
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
-        await screen.findByRole("heading", {name: "Design & Build Your Game"});
+        await screen.findByRole("heading", {name: "Design Your Game"});
         expect(router.state.location.pathname).toBe("/home/design");
     });
 
@@ -51,7 +51,7 @@ describe("Studio startup landing route", () => {
 
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
-        await screen.findByRole("heading", {name: "Design & Build Your Game"});
+        await screen.findByRole("heading", {name: "Design Your Game"});
         expect(router.state.historyAction).toBe("REPLACE");
     });
 

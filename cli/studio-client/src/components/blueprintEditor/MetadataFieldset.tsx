@@ -12,7 +12,7 @@ function toRecordCopy(value: unknown): Record<string, unknown> {
 type ManifestField = "id" | "name" | "version" | "description" | "author";
 
 // `legend` defaults to "Metadata" (the raw/non-guided editor's own, unchanged label) -- the guided
-// Design & Build editor's "Game basics" section overrides it, so this component's own default behavior
+// Design Game editor's "Game basics" section overrides it, so this component's own default behavior
 // stays exactly what it was before reels/rows moved out to LayoutFieldset. `issues` defaults to `[]` for
 // the same reason -- the raw editor never passes any, so it never shows field-level errors, unchanged.
 export function MetadataFieldset({

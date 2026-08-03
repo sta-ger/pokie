@@ -8,9 +8,9 @@ import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // A minimal controlled harness -- PathInput is normally driven by a Mantine uncontrolled form's
-// getInputProps()/setFieldValue (see CreateProjectForm/InitProjectForm/BuildFromBlueprintPanel), but its
-// own on-focus resolved-path hint and Browse wiring don't depend on that at all, so a plain useState
-// harness exercises them directly without needing a whole form around it.
+// getInputProps()/setFieldValue (see BlueprintEditorPage's own Load/Save-by-path fields), but its own
+// on-focus resolved-path hint and Browse wiring don't depend on that at all, so a plain useState harness
+// exercises them directly without needing a whole form around it.
 function Harness({
     kind = "directory" as const,
     initial = ".",

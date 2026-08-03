@@ -143,7 +143,7 @@ describe("Wide tables stay wrapped in Table.ScrollContainer (source guard)", () 
         "common/ScreenTable.tsx",
         "common/SimulationReportDisplay.tsx",
         "common/RoundArtifactInspector.tsx",
-        "home/RecentProjectsPanel.tsx",
+        "home/ProjectsPanel.tsx",
         "blueprintEditor/SymbolWeightsEditor.tsx",
         "blueprintEditor/PaytableEditor.tsx",
         "blueprintEditor/SymbolsTable.tsx",

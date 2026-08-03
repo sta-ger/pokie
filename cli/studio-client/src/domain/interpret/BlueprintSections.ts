@@ -1,7 +1,7 @@
 import type {ValidationIssue} from "../../api/types";
 import type {BlueprintValidationView} from "./BlueprintEditor";
 
-// The guided Design & Build editor groups its fields into named sections -- this module maps the
+// The guided Design Game editor groups its fields into named sections -- this module maps the
 // server's already-computed, flat ValidationIssue[] onto those same sections *for display only*.
 // ValidationIssue carries no structured path/field (see GameBlueprintValidator.ts), just a `code` and a
 // human-readable `message` -- location info is only inferable from `code` prefixes, so that's what this
