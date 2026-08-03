@@ -47,7 +47,17 @@ const LOCK_HOLDER_FILE = "holder.json";
 
 type MaterializedMarker = {readonly cacheKey: string};
 
-type LockHolder = {readonly pid: number};
+// "token" uniquely identifies one specific *instance* of holding a cache key's lock -- generated fresh every
+// time a call becomes a holder, whether via the initial `mkdir` win or via reclaiming an abandoned lock (see
+// acquireLock()'s own doc comment). It's what lets releaseLock() tell "the lock currently at lockDir is still
+// the exact instance this call acquired" apart from "lockDir now belongs to an entirely different holder" --
+// a distinction pid alone can't make (a reclaim can, in the failure case its own doc comment describes,
+// leave this call's instance sitting in a private quarantine copy while lockDir itself has since been
+// claimed fresh by someone else with a different token but, coincidentally or not, any pid). Optional only so
+// a holder record written by an older/foreign format (no "token" field) still parses as a value with no token
+// -- readHolder() itself never treats that as invalid, but any ownership-equality check against it correctly
+// always fails, since a real token is never undefined.
+type LockHolder = {readonly pid: number; readonly token?: string};
 
 // The concrete ProjectMaterializing for "blueprint" (and, trivially, "tsPackage") PokieProjects -- the
 // implementation ProjectMaterializing.ts was left contract-only in P3-POLISH-02. Turns a blueprint source
@@ -158,7 +168,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         // EEXIST acquireLock() actually knows how to retry on.
         fs.mkdirSync(this.cacheRoot, {recursive: true});
         const lockDir = `${cacheDir}.lock`;
-        await this.acquireLock(lockDir);
+        const lockToken = await this.acquireLock(lockDir);
         try {
             if (await this.isReady(cacheDir, cacheKey)) {
                 // Whoever held the lock immediately before us already published a ready, matching entry --
@@ -185,7 +195,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
 
             return this.borrowed(cacheDir);
         } finally {
-            await this.releaseLock(lockDir);
+            await this.releaseLock(lockDir, lockToken);
         }
     }
 
@@ -259,22 +269,58 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // retry `mkdir`, exactly as if the lock had been released normally. Reclaiming is itself safe to attempt
     // redundantly from multiple contenders at once -- see reclaimAbandonedLock()'s own doc comment -- because
     // the actual exclusivity guarantee always comes from `mkdir`'s atomicity, never from reclaim.
-    private async acquireLock(lockDir: string): Promise<void> {
+    // Returns the token (see LockHolder's own doc comment) this specific call now owns for `lockDir`'s cache
+    // key -- releaseLock() must be given this exact value back, never inferred, so it can tell its own lock
+    // instance apart from a later holder's (see releaseLock()'s own doc comment on why that distinction is
+    // "ownership-aware" rather than a blind path-based delete).
+    private async acquireLock(lockDir: string): Promise<string> {
         for (;;) {
+            const token = crypto.randomBytes(16).toString("hex");
             try {
                 await fs.promises.mkdir(lockDir);
-                fs.writeFileSync(path.join(lockDir, LOCK_HOLDER_FILE), JSON.stringify({pid: process.pid} as LockHolder));
-                return;
+                this.writeHolder(lockDir, token);
+                return token;
             } catch (error) {
                 if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") {
                     throw error;
                 }
             }
+            // Opportunistic, best-effort: a prior reclaim attempt against *this* lockDir may have quarantined
+            // an active lock whose handback then lost the race to whichever holder occupies lockDir right
+            // now (see reclaimAbandonedLock()'s own doc comment) -- if that displaced holder has itself since
+            // died without ever reaching its own releaseLock(), nothing else will ever notice, since nothing
+            // else ever looks at a `.reclaim-*` path. Sweeping it here, on every contended retry against the
+            // same lockDir, is what keeps that case from becoming permanent disk debris.
+            await this.sweepAbandonedQuarantine(lockDir);
             if (await this.isLockAbandoned(lockDir)) {
                 await this.reclaimAbandonedLock(lockDir);
                 continue;
             }
             await this.delay(LOCK_RETRY_DELAY_MS);
+        }
+    }
+
+    private writeHolder(lockDir: string, token: string): void {
+        const holder: LockHolder = {pid: process.pid, token};
+        fs.writeFileSync(path.join(lockDir, LOCK_HOLDER_FILE), JSON.stringify(holder));
+    }
+
+    // Reads whatever holder record currently lives at `holderPath`, or null if there isn't one (not yet
+    // written, already removed, or unparseable) -- never throws. Only "pid" is required for a value to come
+    // back non-null; "token" is read through verbatim when present (see LockHolder's own doc comment on why
+    // an absent token is a valid, distinct value from any real one, never coerced or defaulted).
+    private async readHolder(holderPath: string): Promise<LockHolder | null> {
+        let raw: string;
+        try {
+            raw = await fs.promises.readFile(holderPath, "utf-8");
+        } catch {
+            return null;
+        }
+        try {
+            const holder = JSON.parse(raw) as Partial<LockHolder>;
+            return typeof holder.pid === "number" ? {pid: holder.pid, token: holder.token} : null;
+        } catch {
+            return null;
         }
     }
 
@@ -284,19 +330,8 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // next loop iteration's `mkdir` attempt will observe whichever of those is actually true. This is what
     // keeps a genuinely active holder from ever being reclaimed or interrupted.
     private async isLockAbandoned(lockDir: string): Promise<boolean> {
-        let raw: string;
-        try {
-            raw = await fs.promises.readFile(path.join(lockDir, LOCK_HOLDER_FILE), "utf-8");
-        } catch {
-            return false;
-        }
-        let holder: Partial<LockHolder>;
-        try {
-            holder = JSON.parse(raw);
-        } catch {
-            return false;
-        }
-        return typeof holder.pid === "number" && !this.isProcessAlive(holder.pid);
+        const holder = await this.readHolder(path.join(lockDir, LOCK_HOLDER_FILE));
+        return holder !== null && !this.isProcessAlive(holder.pid);
     }
 
     // Signaling pid 0 (no-op) is the standard liveness probe: it succeeds iff a process with that pid exists
@@ -327,10 +362,9 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     //   - alive: this call's own abandonment check was already stale by the time its rename ran -- what it
     //     grabbed is a fresh, active lock claimed at this path afterwards. It hands that straight back via a
     //     second rename, restoring the active holder exactly as if this call had never touched `lockDir`.
-    //     If that hand-back itself loses a race (lockDir reclaimed *again* by yet another contender in the
-    //     interim -- see its own inline comment below), the now-doubly-orphaned quarantine copy is simply
-    //     discarded rather than left as permanent disk debris; that holder's own release/reclaim cycle still
-    //     recovers cleanly, since every removal here targets a private path, never `lockDir` itself.
+    //     If that hand-back itself loses a race (lockDir claimed *again* by yet another, later contender in
+    //     the interim), the displaced holder is never discarded to make room -- see the inline comment on
+    //     that branch below for how it's still guaranteed to get cleaned up without ever being destroyed.
     // A lock that's genuinely abandoned but can't actually be reclaimed (e.g. a permissions problem on the
     // cache root) is thrown, never silently retried forever.
     private async reclaimAbandonedLock(lockDir: string): Promise<void> {
@@ -358,17 +392,69 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         try {
             await fs.promises.rename(quarantineDir, lockDir);
         } catch {
-            // lockDir was reclaimed again by another contender while this call held the quarantine copy --
-            // the active holder it briefly displaced can't be handed back to its expected path anymore.
-            // Discarding the orphaned copy here (rather than leaving it as debris) is the only option left;
-            // that holder's own eventual release/reclaim cycle is unaffected, since it never touches this
-            // private quarantine path.
-            await this.removeBestEffort(quarantineDir);
+            // lockDir was claimed by a different, later contender while this call held the quarantine copy
+            // pending verification -- the active holder inside it can no longer be handed back to its
+            // expected path. It is left exactly where it is, never discarded: quarantineDir is a private path
+            // nothing else ever looks at, so leaving it in place can never be observed as, or confused with,
+            // a real lock by anyone else. That holder's own eventual releaseLock() call still finds and
+            // removes this exact copy (see releaseLock()'s own doc comment on cleanupOwnQuarantineCopy()); if
+            // it instead dies without ever releasing, a later contender's sweepAbandonedQuarantine() reclaims
+            // it once it's independently confirmed dead. This call itself never touches lockDir again, which
+            // by now unambiguously belongs to that later contender.
         }
     }
 
-    private async releaseLock(lockDir: string): Promise<void> {
-        await this.removeBestEffort(lockDir);
+    // Ownership-aware: only ever removes `lockDir` outright when it still records *this exact* lock instance
+    // (matched by `token`, not just pid -- see LockHolder's own doc comment on why pid alone can't make this
+    // distinction). A mismatch means lockDir now belongs to a different, later holder -- most likely because
+    // this call's own lock was displaced into a private quarantine copy by another contender's failed
+    // reclaim-handback (see reclaimAbandonedLock()'s own doc comment) rather than ever actually being
+    // reclaimed or genuinely released. Either way, lockDir itself is never touched in that case: doing so
+    // would delete a holder this call never owned. Instead this cleans up its own quarantine copy, if one
+    // exists, so an earlier holder's release still leaves no trace behind without ever disturbing whoever
+    // holds lockDir now.
+    private async releaseLock(lockDir: string, token: string): Promise<void> {
+        const holder = await this.readHolder(path.join(lockDir, LOCK_HOLDER_FILE));
+        if (holder !== null && holder.token === token) {
+            await this.removeBestEffort(lockDir);
+            return;
+        }
+        await this.cleanupOwnQuarantineCopy(lockDir, token);
+    }
+
+    // Finds and removes the one quarantine copy under lockDir's own `.reclaim-` prefix (if any) whose
+    // recorded token matches `token` -- i.e. this call's own displaced lock instance, never anyone else's.
+    private async cleanupOwnQuarantineCopy(lockDir: string, token: string): Promise<void> {
+        for (const quarantineDir of await this.listQuarantineSiblings(lockDir)) {
+            const holder = await this.readHolder(path.join(quarantineDir, LOCK_HOLDER_FILE));
+            if (holder !== null && holder.token === token) {
+                await this.removeBestEffort(quarantineDir);
+                return;
+            }
+        }
+    }
+
+    // Opportunistic, best-effort cleanup of quarantine copies whose own recorded holder is independently
+    // confirmed dead -- see acquireLock()'s own doc comment on when and why this runs. Never removes a
+    // quarantine copy holding a still-live (merely displaced) lock; that one is left for
+    // cleanupOwnQuarantineCopy() to find once its rightful holder actually releases.
+    private async sweepAbandonedQuarantine(lockDir: string): Promise<void> {
+        for (const quarantineDir of await this.listQuarantineSiblings(lockDir)) {
+            if (await this.isLockAbandoned(quarantineDir)) {
+                await this.removeBestEffort(quarantineDir);
+            }
+        }
+    }
+
+    private async listQuarantineSiblings(lockDir: string): Promise<string[]> {
+        const prefix = `${path.basename(lockDir)}.reclaim-`;
+        let entries: string[];
+        try {
+            entries = await fs.promises.readdir(path.dirname(lockDir));
+        } catch {
+            return [];
+        }
+        return entries.filter((entry) => entry.startsWith(prefix)).map((entry) => path.join(path.dirname(lockDir), entry));
     }
 
     private delay(ms: number): Promise<void> {

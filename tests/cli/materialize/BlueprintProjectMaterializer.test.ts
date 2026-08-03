@@ -1,4 +1,4 @@
-import {spawnSync} from "child_process";
+import {spawn, spawnSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -86,6 +86,17 @@ function spawnDeadPid(): number {
         throw new Error("failed to spawn a throwaway process to obtain a dead pid for the test fixture");
     }
     return result.pid;
+}
+
+// A pid guaranteed alive for as long as the returned handle isn't killed -- a genuinely separate OS process
+// (not this test process's own pid), so a test needing two simultaneously-alive-but-distinct holders can tell
+// them apart unambiguously.
+function spawnLongLivedPid(): {pid: number; kill: () => void} {
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {stdio: "ignore"});
+    if (typeof child.pid !== "number") {
+        throw new Error("failed to spawn a long-lived throwaway process to obtain a live pid for the test fixture");
+    }
+    return {pid: child.pid, kill: () => child.kill()};
 }
 
 function seedStaleMarkerlessCacheEntry(materializer: BlueprintProjectMaterializer, blueprintPath: string): Promise<string> {
@@ -625,5 +636,115 @@ describe("BlueprintProjectMaterializer", () => {
         expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
         expect(contenderRunner.calls).toHaveLength(1);
         expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
+    });
+
+    it("preserves both holders when a second, distinct contender claims lockDir after quarantine but before handback, then cleans up to a single ready cache entry once each releases", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
+
+        const lockDir = `${cacheDir}.lock`;
+        const holderPath = path.join(lockDir, "holder.json");
+        const deadPid = spawnDeadPid();
+        fs.mkdirSync(lockDir);
+        fs.writeFileSync(holderPath, JSON.stringify({pid: deadPid}));
+
+        // H: a genuinely, independently alive process -- distinct from both the dead pid seeded above and
+        // from this test process itself (which plays the role of "C" below) -- so the two holders this test
+        // proves survive intact are unambiguously different entities, not two labels for the same check.
+        const hHolder = spawnLongLivedPid();
+        try {
+            // Intercept the contender's own reclaim rename -- the first rename() call moving `lockDir` itself
+            // into a `.reclaim-` quarantine path. Immediately before letting it run for real, simulate H
+            // legitimately claiming the now-dead-looking lockDir with a fresh, genuinely active lock (the
+            // "stale observation" this contender's own outer abandonment check is exposed to). Then, once the
+            // quarantine rename has for-real moved H's active record aside, but *before* this contender gets a
+            // chance to hand it back, simulate a second, wholly separate contender ("C" -- this test process,
+            // unambiguously alive throughout) claiming the now-vacant lockDir with its own fresh, distinct
+            // lock -- exactly the interleaving the reviewer flagged as unsafe: a blind discard on failed
+            // handback would destroy H's still-active lock, and H's own later release would then remove C's.
+            const realRename = fs.promises.rename.bind(fs.promises) as (oldPath: fs.PathLike, newPath: fs.PathLike) => Promise<void>;
+            let interceptedReclaim = false;
+            let quarantineDir: string | undefined;
+            const renameSpy = jest.spyOn(fs.promises, "rename").mockImplementation(((oldPath: fs.PathLike, newPath: fs.PathLike) => {
+                if (!interceptedReclaim && oldPath === lockDir && typeof newPath === "string" && newPath.startsWith(`${lockDir}.reclaim-`)) {
+                    interceptedReclaim = true;
+                    quarantineDir = newPath;
+                    return (async () => {
+                        fs.rmSync(lockDir, {recursive: true, force: true});
+                        fs.mkdirSync(lockDir);
+                        fs.writeFileSync(holderPath, JSON.stringify({pid: hHolder.pid}));
+
+                        await realRename(oldPath, newPath);
+
+                        fs.mkdirSync(lockDir);
+                        fs.writeFileSync(holderPath, JSON.stringify({pid: process.pid}));
+                    })();
+                }
+                return realRename(oldPath, newPath);
+            }) as typeof fs.promises.rename);
+
+            // Deterministically observe that the contender has, after its failed handback, re-checked C's
+            // (now occupying lockDir) liveness several times -- i.e. is genuinely looping/waiting on C, not
+            // stuck or -- the bug under test -- having destroyed H's or corrupted C's lock -- before asserting
+            // anything, instead of racing against a wall-clock delay.
+            const realReadFile = fs.promises.readFile.bind(fs.promises);
+            let livenessChecksAfterHandback = 0;
+            let resolveObservedEnough!: () => void;
+            const observedEnough = new Promise<void>((resolve) => {
+                resolveObservedEnough = resolve;
+            });
+            const readFileSpy = jest.spyOn(fs.promises, "readFile").mockImplementation(((targetPath: fs.PathLike, encoding?: BufferEncoding) => {
+                if (targetPath === holderPath && interceptedReclaim) {
+                    livenessChecksAfterHandback++;
+                    if (livenessChecksAfterHandback === 3) {
+                        resolveObservedEnough();
+                    }
+                }
+                return realReadFile(targetPath, encoding ?? "utf-8");
+            }) as typeof fs.promises.readFile);
+
+            const contenderRunner = createRecordingRunner();
+            const contender = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, contenderRunner, createStubPackageValidator(validReport), cacheRoot);
+            const resultPromise = contender.materialize(blueprintProjectOf(blueprintPath));
+
+            await observedEnough;
+            readFileSpy.mockRestore();
+            renameSpy.mockRestore();
+
+            if (!quarantineDir) {
+                throw new Error("test setup failed to intercept the contender's reclaim rename");
+            }
+
+            // Both holders survive fully intact. H's active lock, displaced into quarantine when the
+            // contender's reclaim raced past it, was never discarded merely because lockDir was reoccupied
+            // before handback could complete...
+            expect(fs.existsSync(quarantineDir)).toBe(true);
+            expect(JSON.parse(fs.readFileSync(path.join(quarantineDir, "holder.json"), "utf-8"))).toEqual({pid: hHolder.pid});
+            // ...and C's own, later, genuinely distinct lock at lockDir was never touched by the contender's
+            // reclaim attempt either.
+            expect(fs.existsSync(lockDir)).toBe(true);
+            expect(JSON.parse(fs.readFileSync(holderPath, "utf-8"))).toEqual({pid: process.pid});
+            expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(true);
+            expect(contenderRunner.calls).toEqual([]);
+
+            // C genuinely releases now (a normal releaseLock() -- removing lockDir outright).
+            fs.rmSync(lockDir, {recursive: true, force: true});
+            // H genuinely releases too, independently -- its own eventual releaseLock() finding and removing
+            // this exact quarantine copy, never touching lockDir (by then C's, then the contender's).
+            fs.rmSync(quarantineDir, {recursive: true, force: true});
+
+            const result = await resultPromise;
+            expect(result.runtimePath).toBe(cacheDir);
+            expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(false);
+            expect(fs.existsSync(path.join(cacheDir, "dist", "index.js"))).toBe(true);
+            expect(contenderRunner.calls).toHaveLength(1);
+
+            // Cleanup yields exactly one ready cache entry -- no lock or staging artifacts left anywhere
+            // under the cache root, from either the quarantine dance above or the eventual real build.
+            expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(cacheDir)]);
+        } finally {
+            hHolder.kill();
+        }
     });
 });
