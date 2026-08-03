@@ -23,6 +23,7 @@ import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 import {dispatch} from "./dispatch.js";
+import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
 
 function readOwnVersion(): string {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +53,7 @@ function run(): Promise<number> {
         new CertificationCommand(readOwnVersion()),
         new ClientCommand(undefined, ownClientRoot()),
         new CreateCommand(readOwnVersion()),
-        new DevCommand(undefined, undefined, {clientRoot: ownClientRoot()}),
+        new DevCommand(undefined, undefined, {clientRoot: ownClientRoot()}, createMaterializingRuntimePackageResolver(readOwnVersion())),
         new DiffCommand(),
         new FairnessCommand(),
         new InitCommand(readOwnVersion()),
@@ -60,10 +61,10 @@ function run(): Promise<number> {
         new NameCommand(),
         new OutcomeLibraryCommand(readOwnVersion()),
         new ParCommand(readOwnVersion()),
-        new ReplayCommand(),
+        new ReplayCommand(undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion())),
         new ReportCommand(),
-        new ServeCommand(),
-        new SimCommand(),
+        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion())),
+        new SimCommand(undefined, undefined, undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion())),
         new StakeEngineCommand(readOwnVersion()),
         new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
         new ValidateCommand(),

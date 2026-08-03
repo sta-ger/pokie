@@ -1,5 +1,6 @@
 import {loadPokieGame, PokieDevServer, PokieDevServerHandling, PokieDevServerOptions, PokieGame} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]";
@@ -7,14 +8,21 @@ const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <strin
 export class ServeCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
     private readonly createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling;
+    // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
+    // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
+    // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
+    // cli/pokie.ts wires the real, materializing one in.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling = (game, options) =>
             new PokieDevServer(game, options),
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     public getName(): string {
@@ -64,7 +72,13 @@ export class ServeCommand implements CliCommandHandling {
             });
         }
 
-        const game = await this.loadGame(packageRoot);
+        const resolution = await this.resolveRuntimePackageRoot(packageRoot);
+        let game: PokieGame;
+        try {
+            game = await this.loadGame(resolution.runtimePath);
+        } finally {
+            await resolution.release();
+        }
         const server = this.createServer(game, {host, port});
         const address = await server.start();
 

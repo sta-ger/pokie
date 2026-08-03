@@ -9,6 +9,7 @@ import {
     PokieGame,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -53,6 +54,11 @@ export class DevCommand implements CliCommandHandling {
     private readonly openBrowserImpl: typeof openBrowser;
     private readonly clientRoot: string;
     private readonly process: NodeJS.Process;
+    // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
+    // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
+    // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
+    // cli/pokie.ts wires the real, materializing one in.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -61,6 +67,7 @@ export class DevCommand implements CliCommandHandling {
             options,
         ) => new PokieDevServer(game, options),
         dependencies: DevCommandDependencies = {},
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.loadGame = loadGame;
         this.createApiServer = createApiServer;
@@ -71,6 +78,7 @@ export class DevCommand implements CliCommandHandling {
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.clientRoot = dependencies.clientRoot ?? "";
         this.process = dependencies.process ?? process;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     public getName(): string {
@@ -83,7 +91,13 @@ export class DevCommand implements CliCommandHandling {
 
     public async run(args: string[]): Promise<void> {
         const options = this.parseArgs(args);
-        const game = await this.loadGame(options.packageRoot);
+        const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
+        let game: PokieGame;
+        try {
+            game = await this.loadGame(resolution.runtimePath);
+        } finally {
+            await resolution.release();
+        }
 
         // If any step from here on throws — the client server failing to bind its port, or the API
         // never becoming healthy — every server already started for this run must still be stopped

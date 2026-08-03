@@ -765,3 +765,43 @@ describe("StudioRuntimeManager", () => {
         });
     });
 });
+
+// Proves Studio's Play/Runtime feature crosses the shared runtime-package-materialization boundary (see
+// materializeRuntimePackage.ts) exactly once per start(), and only ever loads against whatever runtime
+// path that boundary hands back -- never the caller's own raw projectRoot.
+describe("StudioRuntimeManager runtime package materialization boundary", () => {
+    it("resolves the raw projectRoot once and loads the resolved runtime path instead", async () => {
+        const rawProjectRoot = "/blueprints/raw-game.json";
+        const resolvedRuntimePath = "/materialized/raw-game";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: resolvedRuntimePath, release: () => Promise.resolve()});
+        };
+        const loadCalls: string[] = [];
+        const loadGame = (packageRoot: string) => {
+            loadCalls.push(packageRoot);
+            return Promise.resolve(createFakeGame());
+        };
+        const manager = new StudioRuntimeManager(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+
+        const result = await manager.start(rawProjectRoot, startOptions());
+
+        expect(result.status).toBe("started");
+        expect(resolveCalls).toEqual([rawProjectRoot]);
+        expect(loadCalls).toEqual([resolvedRuntimePath]);
+
+        await manager.stop();
+    });
+
+    it("reports a safe 'failed' result, without ever loading the game, when the runtime package cannot be materialized", async () => {
+        const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame()));
+        const manager = new StudioRuntimeManager(loadGame, undefined, undefined, resolveRuntimePackageRoot);
+
+        const result = await manager.start("/fake/project", startOptions());
+
+        expect(result).toEqual({status: "failed", error: "dependencies phase failed"});
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+});

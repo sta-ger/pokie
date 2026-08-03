@@ -5,12 +5,12 @@ import path from "path";
 import util from "util";
 import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
-import {PackageCommandResult, PackageCommandRunning, runPackageCommand} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
+import {localPokieDependencyRunner, REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 
 const execFileAsync = util.promisify(execFile);
 
-const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
@@ -22,57 +22,8 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // mid-development) lag behind this checkout. Real `npm install`/`npm run build` calls are slow, which
 // is exactly why this file -- unlike GamePackagePreparer.test.ts -- is matched into the slower
 // "pokie-integration" project (see jest.config.mjs's `*.integration.test.ts` glob) instead of running
-// in the default fast lane.
-//
-// The whole install is kept offline on purpose: pointing "pokie" at this checkout still leaves
-// "typescript" (a direct devDependency) and, transitively, this checkout's own "dependencies" --
-// plus *their* dependencies, recursively (e.g. "exceljs" alone pulls in dozens of packages like
-// "archiver" and "@fast-csv/format") -- as ordinary registry specifiers, exactly the kind of fetch a
-// network-restricted CI sandbox can't complete. Redirecting all of them to this checkout's own
-// already-installed copies via `file:` (direct deps) and `overrides` (the full transitive closure,
-// which this scaffolded package never declares directly) means "npm install" here never needs the
-// registry at all.
-function collectTransitiveDependencyNames(rootNames: string[]): string[] {
-    const collected = new Set<string>();
-    const queue = [...rootNames];
-    while (queue.length > 0) {
-        const name = queue.shift() as string;
-        if (collected.has(name)) {
-            continue;
-        }
-        collected.add(name);
-        const pkgPath = path.join(REPO_ROOT, "node_modules", name, "package.json");
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {dependencies?: Record<string, string>};
-        queue.push(...Object.keys(pkg.dependencies ?? {}));
-    }
-    return [...collected];
-}
-
-function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
-    return (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
-        if (args[0] === "install") {
-            const packageJsonPath = path.join(cwd, "package.json");
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {
-                dependencies?: Record<string, string>;
-                devDependencies?: Record<string, string>;
-                overrides?: Record<string, string>;
-            };
-            const repoPackageJson = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
-                dependencies?: Record<string, string>;
-            };
-            const localFileSpec = (name: string): string => `file:${path.join(REPO_ROOT, "node_modules", name)}`;
-            packageJson.dependencies = {...packageJson.dependencies, pokie: `file:${REPO_ROOT}`};
-            packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec("typescript")};
-            const transitiveNames = collectTransitiveDependencyNames(Object.keys(repoPackageJson.dependencies ?? {}));
-            packageJson.overrides = {
-                ...packageJson.overrides,
-                ...Object.fromEntries(transitiveNames.map((name) => [name, localFileSpec(name)])),
-            };
-            fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4));
-        }
-        return realRunCommand(command, args, cwd);
-    };
-}
+// in the default fast lane. The whole install is kept offline via localPokieDependencyRunner -- see
+// its own doc comment (tests/testUtils/offlinePokieDependencyOverride.ts) for why that's necessary.
 
 describe("GamePackagePreparer (real npm install, real tsc build, real spawned npm)", () => {
     jest.setTimeout(300000);

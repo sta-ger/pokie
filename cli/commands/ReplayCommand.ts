@@ -1,6 +1,7 @@
 import {loadPokieGame, PokieGame, ReplayRecorder, ReplayRecording} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ReplayOptions = {
@@ -16,15 +17,22 @@ export class ReplayCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly recorder: ReplayRecording;
+    // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
+    // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
+    // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
+    // cli/pokie.ts wires the real, materializing one in.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         recorder: ReplayRecording = new ReplayRecorder(),
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
         this.recorder = recorder;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     public getName(): string {
@@ -38,7 +46,13 @@ export class ReplayCommand implements CliCommandHandling {
     public async run(args: string[]): Promise<void> {
         const options = this.parseArgs(args);
 
-        const game = await this.loadGame(options.packageRoot);
+        const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
+        let game: PokieGame;
+        try {
+            game = await this.loadGame(resolution.runtimePath);
+        } finally {
+            await resolution.release();
+        }
         const descriptor = this.recorder.record({game, seed: options.seed, round: options.round});
         const json = JSON.stringify(descriptor, null, 4);
 
