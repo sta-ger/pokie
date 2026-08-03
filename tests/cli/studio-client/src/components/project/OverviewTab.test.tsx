@@ -1,8 +1,7 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {OverviewTab} from "../../../../../../cli/studio-client/src/components/project/OverviewTab";
-import type {NextActionView, ProjectHeaderView, ProjectValidationView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
-import type {InspectionResultView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
+import type {InspectionResultView, NextActionView, ProjectHeaderView, ProjectValidationView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
 
 function renderWithMantine(ui: React.ReactElement) {
     return render(<MantineProvider>{ui}</MantineProvider>);
