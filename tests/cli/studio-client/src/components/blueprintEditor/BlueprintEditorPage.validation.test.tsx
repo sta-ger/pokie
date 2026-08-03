@@ -384,7 +384,7 @@ describe("Guided Design Game: automatic freshness triggers (open, external chang
         expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
 
-    it("an externally modified persisted Blueprint source is detected with no Load action, invalidating validation and the materialized build so a guarded revalidate of the current content replaces them", async () => {
+    it("an externally modified persisted Blueprint source is detected with no Load action, persistently blocking Build even once a guarded revalidate of the current content reports ok again -- only a reload clears it", async () => {
         const user = userEvent.setup();
         let validateCalls = 0;
         let checkSourceCalls = 0;
@@ -444,12 +444,29 @@ describe("Guided Design Game: automatic freshness triggers (open, external chang
             blueprintHash: "hash-2",
         });
 
-        // Detecting the mutation invalidates the previously-"ok" validation (and, per this step's own
-        // freshness contract, the materialized runtime cache the same way -- see BlueprintEditorPage's
-        // own source-check-poll doc comment for why builtSnapshot is cleared identically) and kicks off
-        // its own guarded revalidate of the *current* in-editor content -- never the changed file's own
-        // content -- reaching "Ready to build" again once that settles, entirely on its own.
+        // Detecting the mutation invalidates the previously-"ok" validation and kicks off its own guarded
+        // revalidate of the *current* in-editor content -- never the changed file's own content -- which
+        // settles back to "ok" for that (unchanged) draft.
         await waitFor(() => expect(validateCalls).toBeGreaterThan(validateCallsBeforeChange));
+
+        // That guarded revalidate reporting "ok" for the pre-change draft must NOT be presented as
+        // current/Build-ready -- the persisted source itself moved on, and only a reload/save (never a
+        // content-only revalidate) can truthfully re-establish that. This must remain true even after the
+        // revalidate above has fully settled.
+        await waitFor(() => expect(screen.getByText("Blueprint changed on disk")).toBeInTheDocument());
+        expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+
+        // A further explicit Validate click can also legitimately report "ok" again -- that alone must
+        // still never quietly re-authorize Build while the source-changed diagnostic stands.
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Blueprint changed on disk")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
+
+        // Reloading the same path establishes a fresh source baseline -- the only thing this step's own
+        // contract says can clear the diagnostic -- and Build becomes available again.
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
         await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
         expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
