@@ -4,6 +4,7 @@ import path from "path";
 import {
     checkDirectoryUsability,
     isUsableDirectory,
+    resolvePlatformAppDataDirectory,
     resolvePlatformDocumentsDirectory,
     resolvePlatformHomeDirectory,
     resolveUserBaseDirectory,
@@ -94,6 +95,37 @@ describe("resolvePlatformDocumentsDirectory", () => {
     it("treats a disabled XDG Documents folder (set to $HOME itself) the same as any other resolvable value", () => {
         const env = buildEnv({env: {XDG_DOCUMENTS_DIR: "$HOME"}, homeDir: "/home/alice"});
         expect(resolvePlatformDocumentsDirectory(env)).toBe("/home/alice");
+    });
+});
+
+describe("resolvePlatformAppDataDirectory", () => {
+    it("resolves win32 to %APPDATA%\\pokie when APPDATA is set", () => {
+        const env = buildEnv({platform: "win32", env: {APPDATA: "C:\\Users\\alice\\AppData\\Roaming", USERPROFILE: "C:\\Users\\alice"}});
+        expect(resolvePlatformAppDataDirectory(env)).toBe("C:\\Users\\alice\\AppData\\Roaming\\pokie");
+    });
+
+    it("falls back to USERPROFILE\\AppData\\Roaming\\pokie on win32 when APPDATA is unset", () => {
+        const env = buildEnv({platform: "win32", env: {USERPROFILE: "C:\\Users\\alice"}});
+        expect(resolvePlatformAppDataDirectory(env)).toBe("C:\\Users\\alice\\AppData\\Roaming\\pokie");
+    });
+
+    it("resolves darwin to ~/Library/Application Support/pokie", () => {
+        expect(resolvePlatformAppDataDirectory(buildEnv({platform: "darwin", homeDir: "/Users/alice"}))).toBe(
+            "/Users/alice/Library/Application Support/pokie",
+        );
+    });
+
+    it("resolves linux to $XDG_CONFIG_HOME/pokie when the env var is set", () => {
+        const env = buildEnv({env: {XDG_CONFIG_HOME: "/home/alice/.config-custom"}});
+        expect(resolvePlatformAppDataDirectory(env)).toBe("/home/alice/.config-custom/pokie");
+    });
+
+    it("falls back to ~/.config/pokie on linux when XDG_CONFIG_HOME is unset -- never a bare hardcoded home path", () => {
+        expect(resolvePlatformAppDataDirectory(buildEnv({env: {}}))).toBe("/home/alice/.config/pokie");
+    });
+
+    it("returns undefined when no home directory can be determined", () => {
+        expect(resolvePlatformAppDataDirectory(buildEnv({homeDir: ""}))).toBeUndefined();
     });
 });
 
