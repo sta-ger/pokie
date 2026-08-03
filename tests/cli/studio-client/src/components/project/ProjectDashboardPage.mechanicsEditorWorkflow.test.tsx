@@ -1,1017 +1,147 @@
-import {screen, waitFor} from "@testing-library/react";
+import {screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
-import type {GamePackageInspectionReport, StudioBlueprintValidationView} from "../../../../../../cli/studio-client/src/api/types";
-import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
+import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 const PROJECT_ROOT = "/games/a";
 const SOURCE_PATH = "/games/a-source/blueprint.json";
 
-const BLUEPRINT = {
-    manifest: GAME,
-    reels: 3,
-    rows: 3,
-    symbols: ["A", "B", "S"],
-    scatters: ["S"],
-    paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
-    availableBets: [1],
-};
-// A plain fixture string, not a real hash -- correctness of the actual hash algorithm/comparison is
-// verified against the real filesystem in applyGameBlueprintToProject.test.ts. This only has to be
-// something the fake /load response returns and the fake /apply response can be asserted to receive
-// back unchanged, proving the client threads it through rather than inventing its own.
-const BLUEPRINT_HASH = "sha256:loaded-blueprint";
-
-const GENERATED_INSPECT_REPORT: GamePackageInspectionReport = {
-    packageRoot: PROJECT_ROOT,
-    valid: true,
-    generated: true,
-    packageJson: {name: "a", version: "1.0.0"},
-    buildInfo: {
-        schemaVersion: 1,
-        generatedBy: "pokie build",
-        pokieVersion: "1.3.0",
-        generatedAt: "2026-01-01T00:00:00.000Z",
-        blueprintHash: "sha256:blueprint",
-        source: SOURCE_PATH,
-        game: GAME,
-    },
-};
-
-function jsonResponse(body: unknown, status = 200) {
-    return Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
-}
-
-const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
+const PROJECT_ROUTES = {
     "/api/project/context": () => ({
         ok: true,
         status: 200,
         body: {status: "loaded", projectRoot: PROJECT_ROOT, game: GAME, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
-    "/api/project/inspect": () => ({ok: true, status: 200, body: GENERATED_INSPECT_REPORT}),
+    "/api/project/inspect": () => ({
+        ok: true,
+        status: 200,
+        body: {
+            packageRoot: PROJECT_ROOT,
+            valid: true,
+            generated: true,
+            buildInfo: {
+                schemaVersion: 1,
+                generatedBy: "pokie build",
+                pokieVersion: "1.3.0",
+                generatedAt: "2026-01-01T00:00:00.000Z",
+                blueprintHash: "sha256:blueprint",
+                source: SOURCE_PATH,
+                game: GAME,
+            },
+        },
+    }),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
-    "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH, blueprint: BLUEPRINT, blueprintHash: BLUEPRINT_HASH}}),
 };
-
-// Mantine's Stepper.Step packs the step number/icon + label + description into one <button>, so its
-// accessible name is a concatenation -- an exact-match query on just the label never matches. Same
-// convention as every other Stepper-driving workflow test in this suite (see e.g.
-// ProjectDashboardPage.simulationWorkflow.test.tsx's own stepperStep helper). The "Validate" step's
-// label alone also collides with the page-level "Validate" NavTab button, so it (and "Apply", for the
-// same reason should another top-level surface ever add one) always disambiguates with its own
-// description text.
-function stepperStep(label: string, description?: string): RegExp {
-    return description === undefined ? new RegExp(label) : new RegExp(`${label}.*${description}`);
-}
 
 async function goToMechanicsEditorTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Game Model"}));
-    await screen.findByLabelText("Reels");
 }
 
-describe("ProjectDashboardPage - Mechanics Editor workflow", () => {
-    // jsdom has no layout engine and doesn't implement Element.scrollIntoView -- Mantine's Combobox
-    // (used by the "Free games scatter symbol" Select) calls it when keyboard-navigating options.
-    beforeAll(() => {
-        Element.prototype.scrollIntoView = jest.fn();
-    });
-
-
-    it("edits layout/symbols, win model, free games, and bet modes, then validates and applies", async () => {
-        const user = userEvent.setup();
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "ok", blueprintHash: "sha256:applied", warnings: []}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        // Step 1: Layout & symbols -- edit a symbol id.
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "AA");
-        await user.tab();
-
-        // Step 2: Win model & paytable -- switch to Ways.
-        await user.click(screen.getByRole("button", {name: stepperStep("Win model & paytable")}));
-        await user.click(screen.getByRole("radio", {name: "Ways"}));
-
-        // Step 3: Mechanics & features -- enable free games against the "S" scatter.
-        await user.click(screen.getByRole("button", {name: stepperStep("Mechanics & features")}));
-        await user.click(screen.getByRole("switch", {name: "Enable scatter-triggered free games"}));
-        // Mantine's Select combobox: open it, then pick the (only) option via keyboard rather than
-        // clicking a floating-positioned option node, which jsdom doesn't lay out.
-        await user.click(screen.getByLabelText("Free games scatter symbol"));
-        await user.keyboard("{ArrowDown}{Enter}");
-        await user.type(screen.getByLabelText("Match count"), "3");
-        await user.type(screen.getByLabelText("Free games awarded"), "10");
-        await user.click(screen.getByRole("button", {name: "Add award"}));
-
-        // Step 4: Bet modes -- add one.
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
-
-        // Step 5: Validate.
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-        await screen.findByText("No issues found.");
-
-        // Step 6: Apply.
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Apply"}));
-        await user.click(await screen.findByRole("button", {name: "Confirm"}));
-
-        expect(await screen.findByText(/up to date/)).toBeInTheDocument();
-
-        const applyCalls = calls.filter((call) => call.url === "/api/project/blueprint/apply");
-        expect(applyCalls).toHaveLength(1);
-        const appliedBody = JSON.parse(applyCalls[0].init?.body ?? "{}");
-        expect(appliedBody.expectedHash).toBe(BLUEPRINT_HASH);
-        expect(appliedBody.blueprint.symbols).toEqual(["AA", "B", "S"]);
-        expect(appliedBody.blueprint.winModel).toEqual({type: "ways"});
-        expect(appliedBody.blueprint.mechanics.freeGames).toEqual({scatterSymbol: "S", awardsByCount: {3: 10}});
-        expect(appliedBody.blueprint.betModes).toEqual([{id: "buy-bonus"}]);
-    });
-
-    it("shows a validation error for an invalid config and blocks Apply", async () => {
-        const user = userEvent.setup();
-        const invalidValidation: StudioBlueprintValidationView = {
-            status: "invalid",
-            errors: [{code: "blueprint-mechanics-freegames-missing-scatter", severity: "error", message: '"mechanics.freeGames.scatterSymbol" must be a non-empty symbol id.'}],
-            warnings: [],
-        };
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: invalidValidation}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Mechanics & features")}));
-        await user.click(screen.getByRole("switch", {name: "Enable scatter-triggered free games"}));
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-
-        expect(await screen.findByText(/must be a non-empty symbol id/)).toBeInTheDocument();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        expect(screen.getByRole("button", {name: "Apply"})).toBeDisabled();
-    });
-
-    it("shows a subject-specific recovery message, never the raw backend text, when loading the project's source blueprint fails", async () => {
+// P3-POLISH-16: Blueprint's own Game Model tab now goes through the same unified, read-only
+// GameModelProjection view as an introspectable-but-not-editable package/WASM project -- see
+// MechanicsEditorTab's own doc comment. The guided EditableMechanicsEditor is kept in that file,
+// unreferenced, purely for the P3-POLISH-17 migration to build on; it is not reachable from here, and this
+// suite intentionally no longer drives it through ProjectDashboardPage.
+describe("ProjectDashboardPage - Mechanics Editor workflow (Blueprint projects)", () => {
+    it("renders every viewer section straight off the server-owned projection, with no edit fields, Edit action, Save changes action, or Cancel action anywhere", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "load-error", error: `ENOENT: no such file or directory, open '${SOURCE_PATH}'`}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Game Model"}));
-
-        expect(await screen.findByText("The project's source blueprint could not be found. Check the path and try again.")).toBeInTheDocument();
-        expect(screen.queryByText(/ENOENT/)).not.toBeInTheDocument();
-    });
-
-    it("shows a subject-specific recovery message, never the raw backend text, when the validation request itself fails (not a domain validation result)", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => {
-                throw new Error("Failed to fetch");
-            },
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-
-        expect(await screen.findByText("This validation request could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
-        expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
-    });
-
-    it("preserves in-progress edits when switching between steps", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        expect(screen.getByText("Available bets")).toBeInTheDocument();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
-        expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("ZZ");
-    });
-
-    // Regression: the Bet modes step's own content div only renders while `activeStep === 3` (a
-    // conditional *mount*, not Mantine Tabs' own keepMounted/display-none used elsewhere in this
-    // codebase), so BetModesEditor's "New bet mode id" draft used to live in a local useState that was
-    // silently discarded every time the user switched away and back -- unlike a symbol id (committed
-    // into the blueprint on blur, so it survives regardless), a typed-but-not-yet-added bet mode id had
-    // nowhere else to live. It's now lifted into MechanicsEditorTab itself, which stays mounted for the
-    // whole step-switching lifetime.
-    it("preserves an in-progress, not-yet-added bet mode id when switching away from and back to the Bet modes step", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-
-        expect(screen.getByLabelText("New bet mode id")).toHaveValue("buy-bonus");
-        expect(screen.queryByLabelText("Bet mode 1 id")).not.toBeInTheDocument();
-    });
-
-    it("shows a validation error and blocks Add for a duplicate bet mode id, without ever adding a second row", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
-        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
-        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
-
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-
-        expect(await screen.findByText('"buy-bonus" is already used by another bet mode -- ids must be unique.')).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Add bet mode"})).toBeDisabled();
-        expect(screen.queryByLabelText("Bet mode 2 id")).not.toBeInTheDocument();
-
-        // V13-POLISH-7: a duplicate draft id must never be reported as "Saved"/"Unsaved" -- BetModesEditor's
-        // own field error only covers the field itself, not this step's own lifecycle line, which used to
-        // keep showing whatever it said before the duplicate was typed.
-        expect(screen.getByText(/^Invalid -- "buy-bonus" is already used by another bet mode/)).toBeInTheDocument();
-        expect(screen.queryByText("Unsaved changes -- go to Apply to save them to the project.")).not.toBeInTheDocument();
-        expect(screen.queryByText("Saved -- matches the project's applied blueprint.")).not.toBeInTheDocument();
-
-        // Clearing the duplicate draft restores the truthful Unsaved status underneath it.
-        await user.clear(screen.getByLabelText("New bet mode id"));
-        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
-    });
-
-    it("clears an in-progress new bet mode id draft when the blueprint is discarded", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        // Discard is disabled until the draft is actually dirty -- typing an unadded bet mode id alone
-        // doesn't touch the blueprint, so a real edit is needed to enable it.
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Discard draft"}));
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
-    });
-
-    // V13-POLISH-7: the Bet modes step must make its own Draft/Saved/Invalid/Unsaved lifecycle visible
-    // and truthful, not just leave it implicit in the Discard button's enabled state.
-    it("shows the Bet modes step's Draft/Unsaved/Saved lifecycle status as a bet mode id is typed, added, and applied", async () => {
-        const user = userEvent.setup();
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "ok", blueprintHash: "sha256:applied", warnings: []}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-
-        // Freshly loaded, no edits yet -- already matches the project's applied blueprint.
-        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
-
-        // A typed-but-not-yet-added id is its own "Draft" state -- not part of the blueprint yet, and
-        // must not be reported as an unsaved blueprint change either.
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-        expect(screen.getByText(/Draft -- "buy-bonus" isn't part of the bet mode list yet/)).toBeInTheDocument();
-        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
-
-        // Adding it commits it to the blueprint -- now a real, unsaved change.
-        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
-        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
-
-        // Applying it clears the unsaved state back to saved.
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-        await screen.findByText("No issues found.");
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Apply"}));
-        await user.click(await screen.findByRole("button", {name: "Confirm"}));
-        await screen.findByText(/up to date/);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
-    });
-
-    it("shows a subject-specific recovery message, never the raw backend text, on a failed Apply of a Bet Modes edit, keeps it recoverable, and Discard reverts it", async () => {
-        const user = userEvent.setup();
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "error", error: "Disk full."}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
-        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-        await screen.findByText("No issues found.");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Apply"}));
-        await user.click(await screen.findByRole("button", {name: "Confirm"}));
-
-        expect(await screen.findByText("The project's blueprint file could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
-        expect(screen.queryByText("Disk full.")).not.toBeInTheDocument();
-        expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
-        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
-
-        // The failed Apply must never mark the added bet mode "saved" -- it's still an unsaved, fully
-        // recoverable edit, still sitting on its own row exactly as the user left it.
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
-        expect(screen.getByText("Unsaved changes -- go to Apply to save them to the project.")).toBeInTheDocument();
-
-        // Discard still works, reverting all the way back to the originally loaded blueprint (no bet
-        // modes at all).
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Discard draft"}));
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        expect(screen.queryByLabelText("Bet mode 1 id")).not.toBeInTheDocument();
-        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
-    });
-
-    // P2-POLISH-25: a completed Apply's own "up to date" success message used to survive a further,
-    // un-applied edit untouched -- unlike Validate, applyView was never reset by the revision-tracking
-    // effect, so the Apply step kept truthfully-sounding but stale "up to date" text on screen even
-    // though the project had since diverged from what was actually applied.
-    it("marks a completed Apply result Outdated once a further edit is made, instead of continuing to claim the project is up to date", async () => {
-        const user = userEvent.setup();
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "ok", blueprintHash: "sha256:applied", warnings: []}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-        await screen.findByText("No issues found.");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Apply"}));
-        await user.click(await screen.findByRole("button", {name: "Confirm"}));
-        expect(await screen.findByText(/up to date/)).toBeInTheDocument();
-
-        // A further, un-applied edit must invalidate that success message -- the project no longer
-        // matches what was actually applied.
-        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
-        const symbolInputAgain = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInputAgain);
-        await user.type(symbolInputAgain, "YY");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        expect(screen.queryByText("Applied — the project's blueprint and generated game module are up to date.")).not.toBeInTheDocument();
-        expect(screen.getByText(/Outdated — this project has been edited since the last Apply attempt/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Apply"})).toBeDisabled();
-
-        // Only the one Apply call so far -- the stale success wasn't replaced by a second, unrequested
-        // network round trip; it was invalidated purely client-side.
-        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
-    });
-
-    // Regression coverage for the established "reload discards an unapplied draft" contract (see the
-    // "warns before losing an unapplied draft" describe block below) specifically for Bet Modes: since
-    // MechanicsEditorTab is conditionally *mounted* (only while activeTab === "mechanicsEditor", see
-    // ProjectDashboardPage's own key={projectKey} on it), navigating away and back is a genuine fresh
-    // reload from the server, not a suspend/resume -- an added-but-unapplied bet mode row and an
-    // in-progress "New bet mode id" draft must both be gone afterward, exactly as any other unapplied
-    // field edit already is.
-    it("reloads a clean Bet Modes slate -- no added row, no in-progress draft -- after a confirmed navigation away and back", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl, calls} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
-        expect(screen.getByLabelText("Bet mode 1 id")).toHaveValue("buy-bonus");
-
-        await user.click(screen.getByRole("button", {name: "Overview"}));
-        await user.click(await screen.findByRole("button", {name: "Leave"}));
-        await screen.findByRole("button", {name: "Re-run Inspect"});
-
-        await user.click(screen.getByRole("button", {name: "Game Model"}));
-        await screen.findByLabelText("Reels");
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-
-        expect(screen.queryByLabelText("Bet mode 1 id")).not.toBeInTheDocument();
-        expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
-        expect(screen.getByText("Saved -- matches the project's applied blueprint.")).toBeInTheDocument();
-
-        // Confirms this really was a fresh reload from the server, not stale client-side state.
-        expect(calls.filter((call) => call.url === "/api/home/blueprints/load")).toHaveLength(2);
-    });
-
-    it("does not offer a non-functional 'forces free games' bet-mode control", async () => {
-        // BetMode has no field promising engine behavior nothing in the runtime actually delivers
-        // (see BetMode.ts's own doc comment) -- the editor must not offer a control for one either,
-        // in addition to a bet mode row only ever committing id/label/costMultiplier/targetRtp (the
-        // only fields BetModesEditor.tsx has dedicated columns for).
-        const user = userEvent.setup();
-        const {fetchImpl, calls} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-        await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-        await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-        await user.click(screen.getByRole("button", {name: "Add bet mode"}));
-
-        expect(screen.queryByText(/forces free games/i)).not.toBeInTheDocument();
-        expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-        expect(calls.every((call) => !(call.init?.body ?? "").includes("forcesFreeGames"))).toBe(true);
-    });
-
-    it("discards a draft back to the originally loaded blueprint", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        expect(screen.getByRole("button", {name: "Discard draft"})).not.toBeDisabled();
-        await user.click(screen.getByRole("button", {name: "Discard draft"}));
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
-        expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("A");
-    });
-
-    it("shows a subject-specific recovery message, never the raw backend text, on a failed Apply, never marks the draft clean, and still lets Discard work", async () => {
-        const user = userEvent.setup();
-        // The atomic build-then-commit rollback itself (a build/commit failure never leaving the
-        // project's source or generated output ahead of one another) is verified directly against the
-        // real filesystem in applyGameBlueprintToProject.test.ts -- this only covers what the frontend
-        // itself must do with a failed Apply: show the error, never mark the draft clean, and let
-        // Discard still work afterward.
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "error", error: "Disk full."}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-        await screen.findByText("No issues found.");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Apply"}));
-        await user.click(await screen.findByRole("button", {name: "Confirm"}));
-
-        expect(await screen.findByText("The project's blueprint file could not be completed. Try again, and check the Studio server logs if the problem persists.")).toBeInTheDocument();
-        expect(screen.queryByText("Disk full.")).not.toBeInTheDocument();
-        expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
-        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
-
-        await user.click(screen.getByRole("button", {name: "Discard draft"}));
-        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
-        expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("A");
-    });
-
-    it("refuses to apply and makes no writes when the source blueprint changed on disk since it was loaded", async () => {
-        // Conflict detection is now entirely server-side (see applyGameBlueprintToProject.test.ts for
-        // the actual hash-check-then-stage-then-commit behavior) -- this only covers the frontend's own
-        // handling of a "conflict" response: showing the message, never marking the draft clean, and
-        // never making a second, separate write call of its own.
-        const user = userEvent.setup();
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: okValidation}),
-            "/api/project/blueprint/apply": () => ({ok: false, status: 409, body: {status: "conflict", currentHash: "sha256:external"}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-        await screen.findByText("No issues found.");
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Save & rebuild")}));
-        await user.click(screen.getByRole("button", {name: "Apply"}));
-        await user.click(await screen.findByRole("button", {name: "Confirm"}));
-
-        expect(await screen.findByText(/changed on disk since it was loaded here/)).toBeInTheDocument();
-        expect(screen.queryByText(/up to date/)).not.toBeInTheDocument();
-
-        // Exactly one write attempt, and exactly one load (the tab's own initial one) -- confirms the
-        // client no longer does its own separate load-then-compare round trip before applying.
-        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(1);
-        expect(calls.filter((call) => call.url === "/api/home/blueprints/load")).toHaveLength(1);
-    });
-
-    it("ignores a stale validate response once a newer one has resolved", async () => {
-        const user = userEvent.setup();
-        let resolveFirst: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
-        let validateCallCount = 0;
-        const okValidation: StudioBlueprintValidationView = {status: "ok", warnings: []};
-        const invalidValidation: StudioBlueprintValidationView = {
-            status: "invalid",
-            errors: [{code: "blueprint-symbols-invalid", severity: "error", message: "stale response -- must never appear"}],
-            warnings: [],
-        };
-        const fetchImpl: FetchLike = (url, init) => {
-            if (url in BASE_ROUTES) {
-                const routed = BASE_ROUTES[url]({url, init});
-                return jsonResponse(routed.body, routed.status);
-            }
-            if (url === "/api/home/blueprints/validate") {
-                validateCallCount += 1;
-                if (validateCallCount === 1) {
-                    return new Promise((res) => {
-                        resolveFirst = res;
-                    });
-                }
-                return jsonResponse(okValidation);
-            }
-            return Promise.reject(new Error(`unexpected fetch ${url}`));
-        };
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-
-        // An edit invalidates the in-flight validate request (revision changed) and frees the guard, so
-        // a fresh Run validation click starts a genuinely new request rather than being blocked.
-        await user.click(screen.getByRole("button", {name: stepperStep("Layout & symbols")}));
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-        await user.click(screen.getByRole("button", {name: stepperStep("Validate", "Errors & warnings")}));
-        await user.click(screen.getByRole("button", {name: "Run validation"}));
-
-        await screen.findByText("No issues found.");
-
-        resolveFirst?.(await jsonResponse(invalidValidation));
-        await new Promise((resolveTimeout) => {
-            setTimeout(resolveTimeout, 50);
-        });
-
-        expect(screen.queryByText(/stale response -- must never appear/)).not.toBeInTheDocument();
-    });
-
-    it("clears all mechanics-editor state when the project switches", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl: fetchImplA} = createRoutedFakeFetch({...BASE_ROUTES});
-
-        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
-        await goToMechanicsEditorTab(user);
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "ZZ");
-        await user.tab();
-        expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("ZZ");
-
-        first.unmount();
-
-        const {fetchImpl: fetchImplB} = createRoutedFakeFetch({
-            "/api/project/context": () => ({
+            ...PROJECT_ROUTES,
+            "/api/project/gameModel": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "loaded", projectRoot: "/games/b", game: {id: "b", name: "B", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
+                body: {
+                    basics: {status: "available", data: GAME},
+                    layout: {status: "available", data: {reels: 3, rows: 3, winModel: {type: "lines"}, paylineCount: 1}},
+                    symbols: {status: "available", data: [{id: "A", isWild: false, isScatter: false}]},
+                    reels: {status: "available", data: {generationMode: "default"}},
+                    paytable: {status: "available", data: [{symbolId: "A", matchCount: 3, payout: 5}]},
+                    betsAndModes: {status: "available", data: {availableBets: [1], betModes: []}},
+                    mechanics: {status: "available", data: {}},
+                },
             }),
-            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
-            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
-            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
-            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
         });
-        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Game Model"}));
-
-        // Project B wasn't built from a tracked source blueprint (generated: false) -- the tab must show
-        // its own unsupported state, with no trace of project A's edits (a stale remount would instead
-        // show the previous, already-loaded "ZZ" symbol form).
-        expect(await screen.findByText(/wasn't built from a tracked source blueprint/)).toBeInTheDocument();
-        expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
-    });
-
-    // Regression test for a bug AdvancedDisclosure's always-mounted-content fix (see its own doc
-    // comment) exposed: BlueprintJsonPanel's Textarea is uncontrolled (defaultValue, read via a ref on
-    // Apply), which only stays correct if the panel remounts fresh every time the blueprint changes.
-    // Without that, "Show advanced details" would keep showing the blueprint exactly as it was at
-    // first load, and clicking "Apply JSON" against that stale text would silently revert the user's
-    // own form edits.
-    it("keeps the raw blueprint JSON panel in sync with form edits instead of showing what the blueprint looked like at first load", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToMechanicsEditorTab(user);
 
-        await user.click(screen.getByRole("button", {name: "Show advanced details (raw blueprint JSON)"}));
-        const jsonTextarea = screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement;
-        expect(jsonTextarea.value).toContain('"A"');
-        expect(jsonTextarea.value).not.toContain('"AA"');
+        // Every one of GameModelView's own sections is present.
+        expect(await screen.findByText("Id: a")).toBeInTheDocument();
+        for (const legend of ["Game basics", "Layout", "Symbols", "Reels", "Paytable", "Bets & Modes", "Mechanics"]) {
+            expect(screen.getByText(legend)).toBeInTheDocument();
+        }
+        expect(screen.getByText("Reels: 3")).toBeInTheDocument();
+        expect(screen.getByText("Generation mode: Default (uniform across symbols)")).toBeInTheDocument();
+        expect(screen.getByText(/Read-only/)).toBeInTheDocument();
 
-        const symbolInput = screen.getByLabelText("Symbol 1 id");
-        await user.clear(symbolInput);
-        await user.type(symbolInput, "AA");
-        await user.tab();
-
-        // The panel (still open) must reflect the edit -- not the pre-edit "A" it was mounted with.
-        expect(screen.getByLabelText("Blueprint JSON")).not.toBe(jsonTextarea);
-        expect((screen.getByLabelText("Blueprint JSON") as HTMLTextAreaElement).value).toContain('"AA"');
+        // No editable form controls, and no Edit/Save changes/Cancel/Apply action anywhere -- Blueprint
+        // editing is deferred to P3-POLISH-17 (see MechanicsEditorTab's own doc comment).
+        expect(screen.queryByRole("button", {name: "Edit"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Save changes"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Apply"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Run validation"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Discard draft"})).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Reels")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("New bet mode id")).not.toBeInTheDocument();
     });
 
-    // MechanicsEditorTab is conditionally *mounted* (only while activeTab === "mechanicsEditor"), so
-    // switching to any other Project Dashboard tab used to discard an unapplied draft with zero warning
-    // -- unlike Home's guided Blueprint Editor, which has a full navigation-blocking guard for exactly
-    // this. A plain confirm() is the proportionate fix (not a second copy of that whole guard system).
-    describe("warns before losing an unapplied draft", () => {
-        async function makeADirtyEdit(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-            const symbolInput = screen.getByLabelText("Symbol 1 id");
-            await user.clear(symbolInput);
-            await user.type(symbolInput, "AA");
-            await user.tab();
-            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
-        }
-
-        it("asks for confirmation before switching to another tab, and Cancel keeps the draft in place", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Stay"}));
-            // Mantine's Modal unmounts its content only after its own closing transition -- the button
-            // can briefly still be in the DOM right after the click.
-            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
-            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
-            expect(screen.getByRole("button", {name: "Overview"})).not.toHaveAttribute("aria-current");
+    it("shows an explicit per-section \"Not available\" diagnostic for a Blueprint project whose game model is only partially introspectable", async () => {
+        const user = userEvent.setup();
+        const reason = "This project's build record has no tracked source blueprint path on record, so this section can't be shown here.";
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/gameModel": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    basics: {status: "available", data: GAME},
+                    layout: {status: "unavailable", reason},
+                    symbols: {status: "unavailable", reason},
+                    reels: {status: "unavailable", reason},
+                    paytable: {status: "unavailable", reason},
+                    betsAndModes: {status: "unavailable", reason},
+                    mechanics: {status: "unavailable", reason},
+                },
+            }),
         });
 
-        it("navigates away and discards the draft once the user confirms", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
 
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
+        expect(await screen.findByText("Id: a")).toBeInTheDocument();
+        expect(screen.getAllByText(/Not available — This project's build record has no tracked source/).length).toBe(6);
+        expect(screen.queryByRole("button", {name: "Edit"})).not.toBeInTheDocument();
+    });
 
-            await user.click(screen.getByRole("button", {name: "Overview"}));
-            await user.click(await screen.findByRole("button", {name: "Leave"}));
-
-            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
-            expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
+    it("shows a subject-specific recovery message, never the raw backend text, when loading the project's game model fails", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/gameModel": () => ({ok: false, status: 500, body: {error: "Studio server crashed unexpectedly"}}),
         });
 
-        it("does not ask for confirmation switching tabs once the draft is clean again (freshly loaded, no edits)", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToMechanicsEditorTab(user);
 
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-
-            await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument();
-            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
-        });
-
-        // V13-POLISH-7: a typed-but-not-yet-added "New bet mode id" is real, uncommitted user input, not
-        // yet part of the blueprint -- it used to leave isDirty/onDirtyChange entirely untouched, so
-        // switching tabs (or Back/Forward) silently discarded it with zero warning, unlike every other
-        // field edit.
-        it("asks for confirmation before switching tabs with only a typed, unadded bet mode id draft, and confirming clears it", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-            await user.type(screen.getByLabelText("New bet mode id"), "buy-bonus");
-
-            await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Leave"}));
-            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Game Model"}));
-            await screen.findByLabelText("Reels");
-            await user.click(screen.getByRole("button", {name: stepperStep("Bet modes")}));
-            expect(screen.getByLabelText("New bet mode id")).toHaveValue("");
-        });
-
-        it("asks for confirmation before closing the project while the draft is unapplied", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch({
-                ...BASE_ROUTES,
-                "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
-            });
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            await user.click(screen.getByRole("button", {name: "Close project"}));
-            expect(await screen.findByText(/unapplied Mechanics Editor draft/)).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Confirm"}));
-            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
-        });
-
-        // The "POKIE Studio" breadcrumb is a second way to leave the project, not just the "Close
-        // project" button -- it must go through the exact same warn-then-close-then-navigate path
-        // (see AppShellLayout's own onHomeClick doc comment), not silently bounce back to this same
-        // still-active project (its default `href="#/"` behavior) and discard the draft unwarned.
-        it("asks for confirmation before leaving via the POKIE Studio breadcrumb while the draft is unapplied", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch({
-                ...BASE_ROUTES,
-                "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
-            });
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            await user.click(screen.getByRole("button", {name: "POKIE Studio"}));
-            expect(await screen.findByText(/unapplied Mechanics Editor draft/)).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Confirm"}));
-            expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
-        });
-
-        // MechanicsEditorTab is conditionally *mounted* only while activeTab === "mechanicsEditor" --
-        // clicking a different NavTabs entry was already guarded, but browser Back/Forward (and any
-        // other in-app navigate() call) bypasses that entirely, going straight through the router. This
-        // reuses useNavigationBlockerConfirm (the same mechanism useDesignNavigationGuard already uses
-        // for a dirty Home Design Game draft), not a tab-specific workaround -- see
-        // ProjectDashboardPage's own doc comment on why.
-        it("blocks browser Back navigation while the draft is unapplied, and Stay keeps it in place", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
-
-            const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            router.navigate(-1);
-            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Stay"}));
-            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
-            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
-            expect(router.state.location.pathname).toBe("/project/mechanicsEditor");
-        });
-
-        it("lets Back navigation through and discards the draft once the user confirms Leave", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
-
-            const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            router.navigate(-1);
-            await user.click(await screen.findByRole("button", {name: "Leave"}));
-
-            expect(await screen.findByRole("button", {name: "Re-run Inspect"})).toBeInTheDocument();
-            expect(screen.queryByLabelText("Symbol 1 id")).not.toBeInTheDocument();
-            expect(router.state.location.pathname).toBe("/project/overview");
-        });
-
-        // The instant Leave/Confirm is chosen (whether that was a Back-navigation prompt or the tab-click
-        // one), isMechanicsEditorDirty must be cleared -- otherwise a *later*, unrelated Close project
-        // would still warn about a draft the user already explicitly agreed to lose.
-        it(
-            "clears the dirty flag once Back navigation is confirmed, so a later Close project shows no ghost 'unapplied draft' warning",
-            async () => {
-                const user = userEvent.setup();
-                const {fetchImpl} = createRoutedFakeFetch({
-                    ...BASE_ROUTES,
-                    "/api/projects/close": () => ({ok: true, status: 200, body: {context: {status: "empty"}}}),
-                });
-
-                const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-                await goToMechanicsEditorTab(user);
-                await makeADirtyEdit(user);
-
-                router.navigate(-1);
-                await user.click(await screen.findByRole("button", {name: "Leave"}));
-                await screen.findByRole("button", {name: "Re-run Inspect"});
-
-                await user.click(screen.getByRole("button", {name: "Close project"}));
-                // No risks left at all -- closes immediately, no confirmation modal of any kind.
-                expect(screen.queryByText(/unapplied Mechanics Editor draft/)).not.toBeInTheDocument();
-                expect(await screen.findByRole("heading", {name: "POKIE Studio"})).toBeInTheDocument();
-            },
-            // This chains more sequential steps (tab switch, dirty edit, Back nav, confirm, tab
-            // unmount/remount, Close project, a second navigate) than any other test in this file -- same
-            // reasoning as happyPath.test.tsx's own explicit per-test timeout, and the same 60000ms every
-            // other explicit override in this test's sibling ProjectDashboardPage.*Workflow.test.tsx files
-            // already uses (this one was previously left at a stale 30000ms, below even the project's
-            // current 60000ms global testTimeout, which is what let it intermittently exceed budget under
-            // concurrent Jest workers).
-            60000,
-        );
-
-        // A project can simultaneously have an unapplied Mechanics Editor draft *and* an active
-        // operation (here, a running Runtime server) -- the close warning must name both risks, not
-        // silently pick one over the other.
-        it("names both risks when the draft is unapplied and another operation is active at the same time", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch({
-                ...BASE_ROUTES,
-                "/api/project/runtime/start": () => ({
-                    ok: true,
-                    status: 200,
-                    body: {
-                        status: "running",
-                        host: "127.0.0.1",
-                        port: 4123,
-                        baseUrl: "http://127.0.0.1:4123",
-                        debug: false,
-                        repositoryMode: "memory",
-                        startedAt: "2026-01-01T00:00:00.000Z",
-                    },
-                }),
-            });
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await screen.findByRole("heading", {name: "A"});
-            await user.click(screen.getByRole("button", {name: "Runtime"}));
-            await user.click(screen.getByRole("button", {name: "Start"}));
-            await waitFor(() => expect(screen.getAllByText(/running at/).length).toBeGreaterThan(0));
-
-            await user.click(screen.getByRole("button", {name: "Game Model"}));
-            await makeADirtyEdit(user);
-
-            await user.click(screen.getByRole("button", {name: "Close project"}));
-            expect(
-                await screen.findByText(
-                    /This project has an unapplied Mechanics Editor draft and an active simulation, replay, deployment, or running runtime\./,
-                ),
-            ).toBeInTheDocument();
-        });
-
-        // A failed close must never be silently treated like a successful one -- the draft was never
-        // actually discarded, so every other way of leaving Mechanics Editor (a tab click here) has to
-        // keep asking for confirmation exactly as it did before Close project was ever attempted.
-        it("keeps the dirty-navigation guard active after a failed Close project", async () => {
-            const user = userEvent.setup();
-            const {fetchImpl} = createRoutedFakeFetch({
-                ...BASE_ROUTES,
-                "/api/projects/close": () => ({ok: false, status: 500, body: {error: "disk write failed"}}),
-            });
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            await user.click(screen.getByRole("button", {name: "Close project"}));
-            await user.click(await screen.findByRole("button", {name: "Confirm"}));
-            expect(await screen.findByText(/Couldn't close the project/)).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Stay"}));
-            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
-            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
-        });
-
-        // While closeProject()'s own request is still in flight, the draft is exactly as unapplied as it
-        // was before the click -- nothing has actually been discarded yet -- so an attempt to leave via
-        // some other route in the meantime must still be caught by the guard, not slip through a window
-        // where the flag was cleared eagerly.
-        it("keeps the draft protected while Close project is still pending", async () => {
-            const user = userEvent.setup();
-            const fetchImpl: FetchLike = (url, init) => {
-                if (url in BASE_ROUTES) {
-                    const routed = BASE_ROUTES[url]({url, init});
-                    return jsonResponse(routed.body, routed.status);
-                }
-                if (url === "/api/projects/close") {
-                    return new Promise(() => {
-                        // Deliberately never resolves -- this test only cares about the guard's behavior
-                        // while the close request is still pending.
-                    });
-                }
-                return Promise.reject(new Error(`unexpected fetch ${url}`));
-            };
-
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-            await goToMechanicsEditorTab(user);
-            await makeADirtyEdit(user);
-
-            await user.click(screen.getByRole("button", {name: "Close project"}));
-            await user.click(await screen.findByRole("button", {name: "Confirm"}));
-
-            await user.click(screen.getByRole("button", {name: "Overview"}));
-            expect(await screen.findByRole("button", {name: "Leave"})).toBeInTheDocument();
-
-            await user.click(screen.getByRole("button", {name: "Stay"}));
-            await waitFor(() => expect(screen.queryByRole("button", {name: "Leave"})).not.toBeInTheDocument());
-            expect(screen.getByLabelText("Symbol 1 id")).toHaveValue("AA");
-        });
+        expect(
+            await screen.findByText("The project's game model could not be completed. Try again, and check the Studio server logs if the problem persists."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Studio server crashed unexpectedly/)).not.toBeInTheDocument();
     });
 });
 
 // P3-POLISH-16: Game Model is read-only, via GameModelView's own server/core-owned projection (GET
 // /api/project/gameModel -- see buildGameModelProjection in "pokie" core / buildProjectGameModel.ts in
-// cli/studio), for an introspectable-but-not-editable package/WASM project -- one that carries
-// BLUEPRINT_BUILD_CAPABILITY (a "blueprint" project) still goes straight into the guided editor above,
-// completely unchanged. No Edit action exists anywhere in this read-only path.
+// cli/studio), for every project that can view it at all -- both a Blueprint project (BLUEPRINT_BUILD_
+// CAPABILITY, see the describe block above) and an introspectable-but-not-editable package/WASM project
+// below go through the exact same unified viewer. No Edit action exists anywhere in this read-only path.
 describe("ProjectDashboardPage - Game Model (read-only, introspectable-but-not-editable projects)", () => {
     const READ_ONLY_GAME = {id: "b", name: "B", version: "1.0.0"};
     const READ_ONLY_ROUTES = {

@@ -85,8 +85,10 @@ type ApplyView =
     | {status: "ok"};
 
 // Guided Layout & symbols -> Win model/paytable -> Mechanics/features -> Bet modes -> Validate -> Apply
-// editor for the *current project's* own source blueprint -- unchanged from before P3-POLISH-16 (Blueprint
-// editing is out of scope there, see MechanicsEditorTab's own doc comment). Reuses the Home "Design Game"
+// editor for the *current project's* own source blueprint. As of P3-POLISH-16, MechanicsEditorTab below no
+// longer mounts this component at all (Blueprint editing is out of scope for that step -- see its own doc
+// comment); the implementation is kept here, unreferenced, only for the P3-POLISH-17 migration to build on
+// if/when Blueprint editing returns. Reuses the Home "Design Game"
 // editor's own field components/useBlueprintEditor draft-state hook and the existing blueprint validate/
 // load/save/build services as-is -- no new backend routes, no re-implemented domain math (see
 // GameBlueprintValidator/GamePackageGenerator for the real rules). Draft/apply/discard, stale-response
@@ -539,17 +541,19 @@ function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boole
 
 type ReadOnlyLoadView = {status: "loading"} | {status: "error"; message: string} | {status: "ok"; projection: GameModelProjection};
 
-// The read-only Game Model view for an introspectable-but-not-editable package/WASM project (`canEdit`
-// false, resolved by ProjectDashboardPage from BLUEPRINT_BUILD_CAPABILITY) -- a Blueprint project's own
-// editable source goes through EditableMechanicsEditor above instead, unchanged from before P3-POLISH-16.
+// The unified, read-only Game Model view -- P3-POLISH-16's own default for every project that can view
+// its game model at all, Blueprint (`canEdit` true, BLUEPRINT_BUILD_CAPABILITY) and
+// introspectable-but-not-editable package/WASM projects (`canEdit` false) alike. A Blueprint project's own
+// guided EditableMechanicsEditor above is deliberately never mounted from here in this step -- see
+// MechanicsEditorTab's own doc comment below; it's kept only for the P3-POLISH-17 migration to build on.
 // Backed by the server/core-owned canonical projection GET /api/project/gameModel returns (see
 // buildGameModelProjection in "pokie" core / buildProjectGameModel.ts in cli/studio) -- this component
 // never parses a raw blueprint or inspect report itself. Every section that isn't actually available (no
 // tracked source recorded, a load failure, ...) renders its own explicit diagnostic instead of being
 // silently omitted (see GameModelView.tsx). Editing is out of scope here by design (P3-POLISH-16's own
-// non-goal) -- a future step is expected to decide whether/how a read-only project like this ever becomes
-// editable, which is a materially different question than EditableMechanicsEditor's own "apply a draft
-// back to a tracked source blueprint this project already has".
+// non-goal) -- a future step is expected to decide whether/how/when a project like this becomes editable
+// again, which is a materially different question than EditableMechanicsEditor's own "apply a draft back
+// to a tracked source blueprint this project already has".
 function ReadOnlyGameModel() {
     const fetchImpl = useStudioApi();
     const [loadView, setLoadView] = useState<ReadOnlyLoadView>({status: "loading"});
@@ -601,15 +605,12 @@ function ReadOnlyGameModel() {
     );
 }
 
-// The Game Model tab -- `canEdit` (BLUEPRINT_BUILD_CAPABILITY, resolved by ProjectDashboardPage) is what
-// decides which of the two, materially different, sub-components above actually mounts: a Blueprint
-// project's own guided editor (EditableMechanicsEditor, unchanged from before P3-POLISH-16), or an
-// introspectable-but-not-editable package/WASM project's read-only projection (ReadOnlyGameModel, new in
-// P3-POLISH-16 -- see its own doc comment). Neither ever offers a way into the other: P3-POLISH-16 adds no
-// Edit action, and an editable project's own tab never shows the read-only projection instead.
-export function MechanicsEditorTab({canEdit, onDirtyChange}: {canEdit: boolean; onDirtyChange?: (dirty: boolean) => void}) {
-    if (canEdit) {
-        return <EditableMechanicsEditor onDirtyChange={onDirtyChange} />;
-    }
+// The Game Model tab -- for P3-POLISH-16, every project that can view its game model at all (`canEdit`
+// true or false, both resolved by ProjectDashboardPage from BLUEPRINT_BUILD_CAPABILITY) renders the same
+// unified read-only projection (ReadOnlyGameModel, see its own doc comment); `canEdit`/`onDirtyChange` are
+// accepted but deliberately unused here now -- EditableMechanicsEditor above is never mounted from this
+// tab in this step, kept only for the P3-POLISH-17 migration to decide whether/how Blueprint editing comes
+// back. No Edit action exists anywhere in this tab yet.
+export function MechanicsEditorTab({canEdit: _canEdit, onDirtyChange: _onDirtyChange}: {canEdit: boolean; onDirtyChange?: (dirty: boolean) => void}) {
     return <ReadOnlyGameModel />;
 }
