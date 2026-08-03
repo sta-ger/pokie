@@ -243,6 +243,8 @@ export * from "./project/ArtifactBuilder.js";
 export * from "./project/ArtifactBuilderRegistry.js";
 export * from "./project/ArtifactTargetType.js";
 export * from "./project/BlueprintProjectTargetAdapter.js";
+export * from "./project/GameModelProjection.js";
+export * from "./project/buildGameModelProjection.js";
 export * from "./project/OutcomeLibraryProjectTargetAdapter.js";
 export * from "./project/ParWorkbookProjectTargetAdapter.js";
 export * from "./project/PokieOperation.js";

@@ -1,8 +1,8 @@
 import {Alert, Button, Stepper, Text} from "@mantine/core";
 import {IconAlertTriangle} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import {applyProjectBlueprint, inspectProject, loadBlueprint, validateBlueprint} from "../../api/apiClient";
-import type {ValidationIssue} from "../../api/types";
+import {applyProjectBlueprint, inspectProject, loadBlueprint, loadGameModel, validateBlueprint} from "../../api/apiClient";
+import type {GameModelProjection, ValidationIssue} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {asBetModesList, describeNewBetModeDraft, getWinModelType, type NewBetModeDraftStatus} from "../../domain/blueprintFormOps";
 import {errorMessage} from "../../domain/errorMessage";
@@ -30,6 +30,7 @@ import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {GameModelView} from "./GameModelView";
 
 function describeStepStatusText(stepId: MechanicsEditorStepId, view: BlueprintValidationView): string {
     return describeSectionStatusText(describeStepStatus(stepId, view));
@@ -84,14 +85,17 @@ type ApplyView =
     | {status: "ok"};
 
 // Guided Layout & symbols -> Win model/paytable -> Mechanics/features -> Bet modes -> Validate -> Apply
-// editor for the *current project's* own source blueprint. Reuses the Home "Design Game" editor's
-// own field components/useBlueprintEditor draft-state hook and the existing blueprint validate/load/
-// save/build services as-is -- no new backend routes, no re-implemented domain math (see
+// editor for the *current project's* own source blueprint. As of P3-POLISH-16, MechanicsEditorTab below no
+// longer mounts this component at all (Blueprint editing is out of scope for that step -- see its own doc
+// comment); the implementation is kept here, unreferenced, only for the P3-POLISH-17 migration to build on
+// if/when Blueprint editing returns. Reuses the Home "Design Game"
+// editor's own field components/useBlueprintEditor draft-state hook and the existing blueprint validate/
+// load/save/build services as-is -- no new backend routes, no re-implemented domain math (see
 // GameBlueprintValidator/GamePackageGenerator for the real rules). Draft/apply/discard, stale-response
 // guards, and progressive JSON disclosure follow OutcomeLibrariesTab's own established lifecycle
 // discipline; project-switch cleanup is a full remount, not page-level state -- see
-// ProjectDashboardPage's `key={projectKey ?? "no-project"}` on this component.
-export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boolean) => void} = {}) {
+// ProjectDashboardPage's `key={projectKey ?? "no-project"}` on MechanicsEditorTab.
+function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boolean) => void}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -533,4 +537,80 @@ export function MechanicsEditorTab({onDirtyChange}: {onDirtyChange?: (dirty: boo
             </AdvancedDisclosure>
         </PageSection>
     );
+}
+
+type ReadOnlyLoadView = {status: "loading"} | {status: "error"; message: string} | {status: "ok"; projection: GameModelProjection};
+
+// The unified, read-only Game Model view -- P3-POLISH-16's own default for every project that can view
+// its game model at all, Blueprint (`canEdit` true, BLUEPRINT_BUILD_CAPABILITY) and
+// introspectable-but-not-editable package/WASM projects (`canEdit` false) alike. A Blueprint project's own
+// guided EditableMechanicsEditor above is deliberately never mounted from here in this step -- see
+// MechanicsEditorTab's own doc comment below; it's kept only for the P3-POLISH-17 migration to build on.
+// Backed by the server/core-owned canonical projection GET /api/project/gameModel returns (see
+// buildGameModelProjection in "pokie" core / buildProjectGameModel.ts in cli/studio) -- this component
+// never parses a raw blueprint or inspect report itself. Every section that isn't actually available (no
+// tracked source recorded, a load failure, ...) renders its own explicit diagnostic instead of being
+// silently omitted (see GameModelView.tsx). Editing is out of scope here by design (P3-POLISH-16's own
+// non-goal) -- a future step is expected to decide whether/how/when a project like this becomes editable
+// again, which is a materially different question than EditableMechanicsEditor's own "apply a draft back
+// to a tracked source blueprint this project already has".
+function ReadOnlyGameModel() {
+    const fetchImpl = useStudioApi();
+    const [loadView, setLoadView] = useState<ReadOnlyLoadView>({status: "loading"});
+    const loadRequestIdRef = useRef(0);
+
+    useEffect(() => {
+        const requestId = ++loadRequestIdRef.current;
+        setLoadView({status: "loading"});
+        loadGameModel(fetchImpl)
+            .then((projection) => {
+                if (requestId !== loadRequestIdRef.current) {
+                    return;
+                }
+                setLoadView({status: "ok", projection});
+            })
+            .catch((error: unknown) => {
+                if (requestId !== loadRequestIdRef.current) {
+                    return;
+                }
+                setLoadView({status: "error", message: errorMessage(error)});
+            });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    if (loadView.status === "loading") {
+        return (
+            <PageSection legend="Game Model">
+                <LoadingState label="Loading the project's game model…" />
+            </PageSection>
+        );
+    }
+    if (loadView.status === "error") {
+        return (
+            <PageSection legend="Game Model">
+                <ErrorState message={describePathActionError("The project's game model", loadView.message)} />
+            </PageSection>
+        );
+    }
+
+    return (
+        <PageSection legend="Game Model">
+            <QuickActions>
+                <Text size="sm" c="dimmed">
+                    Read-only — this project doesn&apos;t support editing its game model directly.
+                </Text>
+            </QuickActions>
+            <GameModelView projection={loadView.projection} />
+        </PageSection>
+    );
+}
+
+// The Game Model tab -- for P3-POLISH-16, every project that can view its game model at all (`canEdit`
+// true or false, both resolved by ProjectDashboardPage from BLUEPRINT_BUILD_CAPABILITY) renders the same
+// unified read-only projection (ReadOnlyGameModel, see its own doc comment); `canEdit`/`onDirtyChange` are
+// accepted but deliberately unused here now -- EditableMechanicsEditor above is never mounted from this
+// tab in this step, kept only for the P3-POLISH-17 migration to decide whether/how Blueprint editing comes
+// back. No Edit action exists anywhere in this tab yet.
+export function MechanicsEditorTab({canEdit: _canEdit, onDirtyChange: _onDirtyChange}: {canEdit: boolean; onDirtyChange?: (dirty: boolean) => void}) {
+    return <ReadOnlyGameModel />;
 }

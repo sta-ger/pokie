@@ -56,6 +56,45 @@ export type GamePackageInspectionReport = {
     buildInfo?: GameBuildInfo;
 };
 
+// GET /api/project/gameModel's own DTO -- mirrors the "pokie" package's own GameModelProjection (see
+// src/project/GameModelProjection.ts's own doc comment), kept as a separate client-side copy, same
+// convention as every other type in this file. Every section is either "available" (with its own,
+// already-computed `data`) or "unavailable" (with a plain-language `reason`) -- GameModelView.tsx renders
+// exactly this, never flattening a paytable or inferring a reel generation mode itself.
+export type GameModelSection<T> = {status: "available"; data: T} | {status: "unavailable"; reason: string};
+
+export type GameModelBasics = {id?: string; name?: string; version?: string; description?: string; author?: string};
+
+export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClusterSize?: number};
+
+export type GameModelLayout = {reels?: number; rows?: number; winModel: GameModelWinModel; paylineCount?: number};
+
+export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
+
+export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
+
+export type GameModelReels = {generationMode: GameModelReelGenerationMode};
+
+export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
+
+export type GameModelBetMode = {id: string; label?: string; costMultiplier?: number; targetRtp?: number};
+
+export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameModelBetMode[]};
+
+export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<string, number>};
+
+export type GameModelMechanics = {freeGames?: GameModelFreeGames};
+
+export type GameModelProjection = {
+    basics: GameModelSection<GameModelBasics>;
+    layout: GameModelSection<GameModelLayout>;
+    symbols: GameModelSection<GameModelSymbol[]>;
+    reels: GameModelSection<GameModelReels>;
+    paytable: GameModelSection<GameModelPaytableRow[]>;
+    betsAndModes: GameModelSection<GameModelBetsAndModes>;
+    mechanics: GameModelSection<GameModelMechanics>;
+};
+
 export type ValidationIssue = {
     code: string;
     severity: "error" | "warning" | "info";

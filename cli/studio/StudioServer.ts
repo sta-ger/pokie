@@ -12,6 +12,7 @@ import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
+import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
 import {validateApplyProjectBlueprintRequest, ApplyProjectBlueprintRequestInput} from "./blueprint/validateApplyProjectBlueprintRequest.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
@@ -479,6 +480,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/inspect") {
             this.handleInspectProject(res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/gameModel") {
+            this.handleGameModel(res);
             return;
         }
 
@@ -1147,6 +1153,19 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, this.gamePackageInspector.inspect(this.currentContext.projectRoot));
+    }
+
+    // Studio's Game Model tab (see GameModelView.tsx/MechanicsEditorTab.tsx) never parses a raw blueprint
+    // or inspect report itself -- this is the one place that DTO is actually assembled, from the same
+    // GamePackageInspector.inspect() /api/project/inspect itself uses, plus (when a tracked source is
+    // known) StudioBlueprintService's own load() -- see buildProjectGameModel.ts's own doc comment.
+    private handleGameModel(res: ServerResponse): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const report = this.gamePackageInspector.inspect(this.currentContext.projectRoot);
+        this.sendJson(res, 200, buildProjectGameModel(report, (path) => this.blueprintService.load(path)));
     }
 
     private async handleValidateProject(res: ServerResponse): Promise<void> {

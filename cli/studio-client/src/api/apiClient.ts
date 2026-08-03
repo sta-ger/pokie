@@ -1,5 +1,6 @@
 import type {
     FairnessCommitment,
+    GameModelProjection,
     GamePackageInspectionReport,
     OutcomeLibrarySelector,
     PokieGameManifest,
@@ -434,6 +435,17 @@ export async function inspectProject(fetchImpl: FetchLike): Promise<GamePackageI
         throw new Error(await extractErrorMessage(response, "Failed to inspect the project"));
     }
     return (await response.json()) as GamePackageInspectionReport;
+}
+
+// Backs the Game Model tab (see MechanicsEditorTab.tsx/GameModelView.tsx) -- the server/core-owned
+// canonical projection (see buildProjectGameModel.ts's own doc comment), never a raw blueprint or
+// inspect report this client would have to interpret itself.
+export async function loadGameModel(fetchImpl: FetchLike): Promise<GameModelProjection> {
+    const response = await fetchImpl("/api/project/gameModel");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load the project's game model"));
+    }
+    return (await response.json()) as GameModelProjection;
 }
 
 export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePackageValidationReport> {
