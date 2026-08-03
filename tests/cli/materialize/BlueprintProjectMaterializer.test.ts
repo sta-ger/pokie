@@ -747,4 +747,81 @@ describe("BlueprintProjectMaterializer", () => {
             hHolder.kill();
         }
     });
+
+    it("surfaces a lock-phase error, instead of proceeding as if lockDir were free, when handing an active quarantined holder back fails for a reason other than lockDir being reoccupied", async () => {
+        const seeder = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, createRecordingRunner(), createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const cacheDir = await seedStaleMarkerlessCacheEntry(seeder, blueprintPath);
+
+        const lockDir = `${cacheDir}.lock`;
+        const holderPath = path.join(lockDir, "holder.json");
+        const deadPid = spawnDeadPid();
+        fs.mkdirSync(lockDir);
+        fs.writeFileSync(holderPath, JSON.stringify({pid: deadPid}));
+
+        // H: a genuinely, independently alive process -- distinct from both the dead pid seeded above and
+        // this test process -- so the active holder this test proves survives quarantine is unambiguously a
+        // real, distinct entity, not a labeling artifact.
+        const hHolder = spawnLongLivedPid();
+        try {
+            // Intercept the contender's own reclaim rename -- the first rename() call moving `lockDir` itself
+            // into a `.reclaim-` quarantine path. Immediately before letting it run for real, simulate H
+            // legitimately claiming the now-dead-looking lockDir with a fresh, genuinely active lock (the
+            // "stale observation" this contender's own outer abandonment check is exposed to), exactly like
+            // the "preserves both holders" case above. Unlike that case, this simulates the contender's
+            // *subsequent* hand-back rename (quarantineDir -> lockDir) itself failing for a reason that has
+            // nothing to do with lockDir being reoccupied -- lockDir is left absent throughout; no other
+            // contender ever claims it.
+            const realRename = fs.promises.rename.bind(fs.promises) as (oldPath: fs.PathLike, newPath: fs.PathLike) => Promise<void>;
+            let interceptedReclaim = false;
+            let quarantineDir: string | undefined;
+            const renameSpy = jest.spyOn(fs.promises, "rename").mockImplementation(((oldPath: fs.PathLike, newPath: fs.PathLike) => {
+                if (!interceptedReclaim && oldPath === lockDir && typeof newPath === "string" && newPath.startsWith(`${lockDir}.reclaim-`)) {
+                    interceptedReclaim = true;
+                    quarantineDir = newPath;
+                    return (async () => {
+                        fs.rmSync(lockDir, {recursive: true, force: true});
+                        fs.mkdirSync(lockDir);
+                        fs.writeFileSync(holderPath, JSON.stringify({pid: hHolder.pid}));
+
+                        await realRename(oldPath, newPath);
+                    })();
+                }
+                if (typeof oldPath === "string" && oldPath === quarantineDir && newPath === lockDir) {
+                    const permissionError = new Error("permission denied");
+                    (permissionError as NodeJS.ErrnoException).code = "EACCES";
+                    return Promise.reject(permissionError);
+                }
+                return realRename(oldPath, newPath);
+            }) as typeof fs.promises.rename);
+
+            const contenderRunner = createRecordingRunner();
+            const contender = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, contenderRunner, createStubPackageValidator(validReport), cacheRoot);
+            const caught = await contender.materialize(blueprintProjectOf(blueprintPath)).catch((error: unknown) => error);
+
+            renameSpy.mockRestore();
+
+            if (!quarantineDir) {
+                throw new Error("test setup failed to intercept the contender's reclaim rename");
+            }
+
+            expect(caught).toBeInstanceOf(BlueprintMaterializationError);
+            expect((caught as BlueprintMaterializationError).phase).toBe("lock");
+
+            // No build ever ran, and no replacement lock was ever acquired in its place -- the non-contention
+            // handback failure surfaced immediately instead of silently letting acquisition proceed as if
+            // lockDir were free.
+            expect(contenderRunner.calls).toEqual([]);
+            expect(fs.existsSync(lockDir)).toBe(false);
+
+            // H's active lock, displaced into quarantine when the contender's reclaim raced past it, is still
+            // there, fully intact -- never discarded merely because the handback rename itself failed for a
+            // reason unrelated to any genuine lockDir collision.
+            expect(fs.existsSync(quarantineDir)).toBe(true);
+            expect(JSON.parse(fs.readFileSync(path.join(quarantineDir, "holder.json"), "utf-8"))).toEqual({pid: hHolder.pid});
+            expect(fs.existsSync(path.join(cacheDir, "corrupt-leftover.txt"))).toBe(true);
+        } finally {
+            hHolder.kill();
+        }
+    });
 });

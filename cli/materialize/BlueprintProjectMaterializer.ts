@@ -364,7 +364,14 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     //     second rename, restoring the active holder exactly as if this call had never touched `lockDir`.
     //     If that hand-back itself loses a race (lockDir claimed *again* by yet another, later contender in
     //     the interim), the displaced holder is never discarded to make room -- see the inline comment on
-    //     that branch below for how it's still guaranteed to get cleaned up without ever being destroyed.
+    //     that branch below for how it's still guaranteed to get cleaned up without ever being destroyed. Only
+    //     an EEXIST or ENOTEMPTY from that rename means lockDir is genuinely occupied by such a later
+    //     contender -- a directory `rename` onto an existing, non-empty directory fails with ENOTEMPTY on
+    //     Linux and EEXIST on other platforms, and a later contender's lockDir always holds at least its own
+    //     holder file, so it is never empty. Any other failure (e.g. a permissions problem) is not a collision
+    //     and must never be treated like one -- it is thrown instead, so a non-contention handback failure can
+    //     never silently leave the active holder stranded in quarantine while acquisition proceeds as if the
+    //     lock were free.
     // A lock that's genuinely abandoned but can't actually be reclaimed (e.g. a permissions problem on the
     // cache root) is thrown, never silently retried forever.
     private async reclaimAbandonedLock(lockDir: string): Promise<void> {
@@ -391,7 +398,15 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
 
         try {
             await fs.promises.rename(quarantineDir, lockDir);
-        } catch {
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException)?.code;
+            if (code !== "EEXIST" && code !== "ENOTEMPTY") {
+                throw new BlueprintMaterializationError(
+                    "lock",
+                    `Active materialization lock "${lockDir}" could not be restored after quarantine: ${error instanceof Error ? error.message : String(error)}. ` +
+                        "Remove any stray quarantine directory manually before retrying.",
+                );
+            }
             // lockDir was claimed by a different, later contender while this call held the quarantine copy
             // pending verification -- the active holder inside it can no longer be handed back to its
             // expected path. It is left exactly where it is, never discarded: quarantineDir is a private path
