@@ -14,14 +14,16 @@ import {
     listReports,
     validateProject,
 } from "../../api/apiClient";
-import type {RoundArtifactJson, StudioSimulationReportListEntry} from "../../api/types";
+import type {RoundArtifactJson, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
+    describeCapability,
     describeInspection,
     describeNextAction,
     describeValidationSummary,
+    RUNTIME_EXECUTE_CAPABILITY,
     type InspectionResultView,
     type ProjectHeaderView,
     type ProjectValidationView,
@@ -68,16 +70,27 @@ export type ProjectTab =
     | "provablyFair"
     | "stakeEngineExport";
 
+// Every runtime operation (Simulation/Replay/Runtime/Certification/Fairness/Build-Export/Analysis) needs
+// the loaded project to actually be runnable in-process. A "tsPackage" project carries
+// RUNTIME_EXECUTE_CAPABILITY itself; a "blueprint" project never does (see RUNTIME_EXECUTE_CAPABILITY's
+// own doc comment), but Studio always materializes it into a runnable tsPackage before loading it, so
+// BLUEPRINT_BUILD_CAPABILITY is an equally sufficient signal here -- either one unlocks this whole group.
+const RUNTIME_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [BLUEPRINT_BUILD_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY];
+
+type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
+    // undefined -- always reachable once a project is loaded (Overview). A non-empty list -- reachable
+    // only once the loaded project's own resolved capabilities include at least one of them.
+    requiredCapabilities?: StudioProjectCapability[];
+};
+
 // The full vocabulary of Project Dashboard sections, in the order the capability-driven nav below
 // picks from -- there is no standalone "Validate" section any more: validation is now automatic
 // diagnostics folded into Overview itself (see OverviewTab), run on load and re-run on demand, not a
-// separate click-to-check tab. Game Model (mechanicsEditor) is the only entry here gated on a real
-// capability today (BLUEPRINT_BUILD_CAPABILITY -- see visibleProjectTabs below): every other tab is
-// reachable as soon as the dashboard itself has loaded, since loading it at all already proves the
-// underlying project can run in-process (see ProjectDashboardContext's own doc comment). Replay/
-// Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs visually
-// separates them from the primary Overview -> Game Model -> Simulation -> Analysis flow -- everything's
-// still one click away, just not presented as equal-weight to it.
+// separate click-to-check tab. Every entry but Overview carries `requiredCapabilities` -- what actually
+// decides whether it's offered (see isTabSupported below), never just "the dashboard loaded at all".
+// Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs
+// visually separates them from the primary Overview -> Game Model -> Simulation -> Analysis flow --
+// everything's still one click away, just not presented as equal-weight to it.
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is a shared target-selection shell in front of
 // "deployment"/"stakeEngineExport" (see ExportDeployTargets.ts's own doc comment) -- it never replaces
@@ -85,32 +98,55 @@ export type ProjectTab =
 // off. Both of those routes are deliberately kept in ALL_PROJECT_TABS, unchanged, so an existing deep
 // link to /project/deployment or /project/stakeEngineExport keeps working exactly as before -- they're
 // simply no longer their own top-level nav entries (see visibleProjectTabs), Build/Export is.
-const ALL_PROJECT_TABS: NavTabItem<ProjectTab>[] = [
+const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
-    {value: "mechanicsEditor", label: "Game Model"},
-    {value: "simulation", label: "Simulation"},
-    {value: "outcomeLibraries", label: "Analysis"},
-    {value: "replay", label: "Replay", section: "Advanced"},
-    {value: "runtime", label: "Runtime", section: "Advanced"},
-    {value: "exportDeploy", label: "Build/Export", section: "Advanced"},
-    {value: "deployment", label: "Deployment", section: "Advanced"},
-    {value: "certification", label: "Certification", section: "Advanced"},
-    {value: "provablyFair", label: "Fairness", section: "Advanced"},
-    {value: "stakeEngineExport", label: "Stake Engine Export", section: "Advanced"},
+    {value: "mechanicsEditor", label: "Game Model", requiredCapabilities: [BLUEPRINT_BUILD_CAPABILITY]},
+    {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "outcomeLibraries", label: "Analysis", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "runtime", label: "Runtime", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "exportDeploy", label: "Build/Export", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "deployment", label: "Deployment", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "certification", label: "Certification", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "provablyFair", label: "Fairness", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "stakeEngineExport", label: "Stake Engine Export", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
-// The nav items NavTabs actually renders -- Game Model only appears once the loaded project's own
-// capabilities say it's supported (a project this Studio can't edit as a Blueprint has nothing for
-// that section to show but an "unsupported" diagnostic, so it isn't offered as a destination at all).
-// "deployment"/"stakeEngineExport" are deliberately never in this list (see ALL_PROJECT_TABS' own doc
-// comment) -- both stay reachable through Build/Export, just not as their own calm-workspace entries.
+// Whether `tab` is actually reachable for the loaded project -- solely a function of its resolved
+// capabilities, never of whether the dashboard merely finished loading. A tab with no
+// `requiredCapabilities` (Overview) is always supported; everything else needs the project to be
+// "loaded" (a "loading"/"error"/"empty" header has no capabilities to check at all) and to carry at
+// least one of the capabilities it lists.
+function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): boolean {
+    if (tab.requiredCapabilities === undefined) {
+        return true;
+    }
+    return header.status === "loaded" && tab.requiredCapabilities.some((capability) => header.capabilities.includes(capability));
+}
+
+// The nav items NavTabs actually renders -- each filtered solely by isTabSupported above (a project
+// this Studio can't edit as a Blueprint has nothing for Game Model to show but an "unsupported"
+// diagnostic, so it isn't offered as a destination at all; same for every runtime-dependent section
+// against a project that isn't actually runnable). "deployment"/"stakeEngineExport" are deliberately
+// never in this list (see ALL_PROJECT_TABS' own doc comment) -- both stay reachable through Build/Export,
+// just not as their own calm-workspace entries.
 function visibleProjectTabs(header: ProjectHeaderView): NavTabItem<ProjectTab>[] {
-    const showGameModel = header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
-    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && (tab.value !== "mechanicsEditor" || showGameModel));
+    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && isTabSupported(tab, header));
+}
+
+// The explicit diagnostic a deep link to an unsupported operation shows instead of ever mounting that
+// tab's own workflow component (see the render tree below) -- mirrors
+// describeUnsupportedProjectOperation's own "missing capability" framing (see src/project/
+// describeUnsupportedProjectOperation.ts) but for a frontend tab rather than a PokieOperation, since
+// studio-client has no dependency on that package (same convention as BLUEPRINT_BUILD_CAPABILITY's own
+// doc comment).
+function describeUnsupportedTabMessage(tab: ProjectTabDescriptor): string {
+    const need = (tab.requiredCapabilities ?? []).map(describeCapability).join(" or ");
+    return `"${tab.label}" isn't available for this project -- it requires: ${need}.`;
 }
 
 // Mirrors the old app's own showProjectDashboard: every tab's data-loading hook lives here, at the page
@@ -671,7 +707,13 @@ export function ProjectDashboardPage() {
         runtime.running ||
         deployment.runLoading;
 
-    const activeTabLabel = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
+    const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
+    const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
+    // Whether the active tab's own workflow component should actually mount -- a deep link to an
+    // unsupported operation (e.g. /project/simulation for a project that can't run in-process) shows
+    // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
+    // own hooks/fetches.
+    const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
     const projectName = header.status === "loaded" ? header.name : "Project";
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -816,198 +858,203 @@ export function ProjectDashboardPage() {
 
             {(header.status === "loaded" || header.status === "error") && (
                 <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
-                    {activeTab === "overview" && header.status === "loaded" && (
-                        <OverviewTab
-                            header={header}
-                            inspection={inspection}
-                            validation={validation}
-                            onRevalidate={runValidate}
-                            nextAction={nextAction}
-                            onNextAction={onNextAction}
-                            onConfigureGameModel={onConfigureGameModel}
-                            onReinspect={refreshInspect}
-                        />
-                    )}
-                    {activeTab === "simulation" && (
-                        <SimulationTab
-                            progress={simulation.progress}
-                            error={simulation.error}
-                            onRun={startRun}
-                            onCancel={() => {
-                                // Clears eagerly (not just via the terminal-state effect) so the notice
-                                // doesn't linger for the ~poll-interval it takes the job to actually
-                                // reflect "cancelled".
-                                setRunAgainNotice(undefined);
-                                simulation.cancel();
-                            }}
-                            onRetry={() => simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers)}
-                            recentRuns={reportsView}
-                            recentRunsError={reportsError}
-                            onRefreshRecentRuns={refreshReports}
-                            reviewedDetail={reportDetail}
-                            currentReportId={selectedReportId}
-                            onOpenHistoric={(entry: StudioSimulationReportListEntry) => selectReport(entry.id)}
-                            onRunAgain={onRunAgain}
-                            runAgainNotice={runAgainNotice}
-                            compareDetail={compareDetail}
-                            onCompare={onCompare}
-                            onClearCompare={onClearCompare}
-                            downloadUrls={
-                                reportDetail.status === "loaded" && selectedReportId
-                                    ? {
-                                        json: buildReportDownloadUrl(selectedReportId, "json"),
-                                        markdown: buildReportDownloadUrl(selectedReportId, "markdown"),
-                                        html: buildReportDownloadUrl(selectedReportId, "html"),
+                    {!activeTabSupported && activeTabDescriptor !== undefined && <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />}
+                    {activeTabSupported && (
+                        <>
+                            {activeTab === "overview" && header.status === "loaded" && (
+                                <OverviewTab
+                                    header={header}
+                                    inspection={inspection}
+                                    validation={validation}
+                                    onRevalidate={runValidate}
+                                    nextAction={nextAction}
+                                    onNextAction={onNextAction}
+                                    onConfigureGameModel={onConfigureGameModel}
+                                    onReinspect={refreshInspect}
+                                />
+                            )}
+                            {activeTab === "simulation" && (
+                                <SimulationTab
+                                    progress={simulation.progress}
+                                    error={simulation.error}
+                                    onRun={startRun}
+                                    onCancel={() => {
+                                    // Clears eagerly (not just via the terminal-state effect) so the notice
+                                    // doesn't linger for the ~poll-interval it takes the job to actually
+                                    // reflect "cancelled".
+                                        setRunAgainNotice(undefined);
+                                        simulation.cancel();
+                                    }}
+                                    onRetry={() => simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers)}
+                                    recentRuns={reportsView}
+                                    recentRunsError={reportsError}
+                                    onRefreshRecentRuns={refreshReports}
+                                    reviewedDetail={reportDetail}
+                                    currentReportId={selectedReportId}
+                                    onOpenHistoric={(entry: StudioSimulationReportListEntry) => selectReport(entry.id)}
+                                    onRunAgain={onRunAgain}
+                                    runAgainNotice={runAgainNotice}
+                                    compareDetail={compareDetail}
+                                    onCompare={onCompare}
+                                    onClearCompare={onClearCompare}
+                                    downloadUrls={
+                                        reportDetail.status === "loaded" && selectedReportId
+                                            ? {
+                                                json: buildReportDownloadUrl(selectedReportId, "json"),
+                                                markdown: buildReportDownloadUrl(selectedReportId, "markdown"),
+                                                html: buildReportDownloadUrl(selectedReportId, "html"),
+                                            }
+                                            : undefined
                                     }
-                                    : undefined
-                            }
-                        />
-                    )}
-                    {activeTab === "replay" && (
-                        <ReplayTab
-                            progress={replay.progress}
-                            result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
-                            error={replay.error}
-                            onRun={runReplay}
-                            onCancel={replay.cancel}
-                            onRetry={() => replay.job && runReplay(replay.job.round, replay.job.seed, expectedReplay.status === "loaded")}
-                            listView={replayListView}
-                            listError={replayListError}
-                            onRefreshList={refreshReplayList}
-                            onInspectStored={onInspectStored}
-                            onCompareStored={onCompareStored}
-                            expected={expectedReplay}
-                            onLoadExpectedFromPaste={onLoadExpectedFromPaste}
-                            onClearExpected={clearExpectedReplay}
-                            comparison={replayComparison}
-                            recentSpins={recentSpinsView}
-                            recentSpinsError={recentSpinsError}
-                            onRefreshRecentSpins={refreshRecentSpins}
-                            recentRuns={reportsView}
-                            recentRunsError={reportsError}
-                            onRefreshRecentRuns={refreshReports}
-                            currentGame={header.status === "loaded" ? {id: header.id, version: header.version} : undefined}
-                        />
-                    )}
-                    {activeTab === "runtime" && (
-                        <RuntimeTab
-                            // Forces a full remount on a genuine project switch -- RuntimeTab stays
-                            // mounted across ProjectDashboardPage's own project-switch effect otherwise
-                            // (the page is deliberately designed not to remount itself, see its own doc
-                            // comment), which would leave activeStep/pendingAdvanceStepRef/manual spin
-                            // overrides from the previous project's session dangling. A key change is
-                            // React's own "reset every bit of local state" primitive -- simpler and more
-                            // complete than enumerating each piece of local state by hand.
-                            key={projectKey ?? "no-project"}
-                            state={runtime.state}
-                            running={runtime.running}
-                            session={runtime.session}
-                            sessionId={runtime.sessionId}
-                            lastSpin={runtime.lastSpin}
-                            onRefresh={runtime.refresh}
-                            onStart={runtime.start}
-                            onStop={runtime.stop}
-                            onRestart={runtime.restart}
-                            onCreateSession={runtime.createSession}
-                            onLoadSession={runtime.loadSession}
-                            onSpin={runtime.spin}
-                            onRepeatSpin={runtime.repeatSpin}
-                            history={runtime.history}
-                            recentSpins={recentSpinsView}
-                            recentSpinsError={recentSpinsError}
-                            onRefreshRecentSpins={refreshRecentSpins}
-                        />
-                    )}
-                    {activeTab === "exportDeploy" && (
-                        <ExportDeployTab
-                            targetsView={deployment.targetsView}
-                            targetsError={deployment.targetsError}
-                            onRefreshTargets={deployment.refreshTargets}
-                            onSelectDeploymentTarget={(target) => {
-                                deployment.selectTarget(target);
-                                setActiveTab("deployment");
-                            }}
-                            onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
-                        />
-                    )}
-                    {activeTab === "deployment" && (
-                        <DeploymentTab
-                            // Forces a full remount on a genuine project switch -- same reasoning as
-                            // RuntimeTab's own key above: DeploymentTab owns local stepper state
-                            // (activeStep/pendingAdvanceStepRef) that deployment.resetForProjectSwitch()
-                            // itself can't reach (it only resets the page-level hook's own state), and
-                            // ProjectDashboardPage deliberately never remounts itself on a project switch.
-                            key={projectKey ?? "no-project"}
-                            targetsView={deployment.targetsView}
-                            targetsError={deployment.targetsError}
-                            onRefreshTargets={deployment.refreshTargets}
-                            selectedTarget={deployment.selectedTarget}
-                            onSelectTarget={deployment.selectTarget}
-                            modes={deployment.modes}
-                            projectModesView={deployment.projectModesView}
-                            registryView={deployment.registryView}
-                            onSetModeName={deployment.setModeName}
-                            onSetModeLibrarySelector={deployment.setModeLibrarySelector}
-                            onAddMode={deployment.addMode}
-                            onRemoveMode={deployment.removeMode}
-                            onPreview={() => deployment.run(false)}
-                            onDeploy={() => deployment.run(true)}
-                            runResult={deployment.runResult}
-                            runError={deployment.runError}
-                            runLoading={deployment.runLoading}
-                            preflightOutdated={deployment.preflightOutdated}
-                            selectedArtifactPath={deployment.selectedArtifactPath}
-                            onSelectArtifact={deployment.selectArtifact}
-                            projectRoot={projectKey}
-                            onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
-                            onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
-                        />
-                    )}
-                    {activeTab === "outcomeLibraries" && (
-                        // Forces a full remount on a genuine project switch -- OutcomeLibrariesTab owns all
-                        // of its own state locally (no page-level hook), same reasoning as DeploymentTab's
-                        // own key above.
-                        <OutcomeLibrariesTab
-                            key={projectKey ?? "no-project"}
-                            projectRoot={projectKey}
-                            onUseInRuntime={(selector, expectedHash) => {
-                                // restart() (not start()) so this always takes effect, whether the
-                                // runtime is currently stopped or already running some other
-                                // configuration -- see StudioRuntimeManager.restart()'s own doc comment.
-                                // expectedHash is the hash Outcome Libraries already showed for this
-                                // library -- passing it lets the server refuse to silently start against
-                                // content that changed on disk since (see StudioRuntimeManager.
-                                // startInternal()'s own doc comment).
-                                runtime.restart({preGeneratedLibrarySelector: selector, preGeneratedLibraryExpectedHash: expectedHash});
-                                setActiveTab("runtime");
-                            }}
-                            onNavigateToTab={setActiveTab}
-                        />
-                    )}
-                    {activeTab === "mechanicsEditor" && (
-                        // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
-                        // all of its own draft state locally (via useBlueprintEditor), so a genuine project
-                        // switch is handled by a full remount rather than page-level cleanup.
-                        <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={handleMechanicsEditorDirtyChange} />
-                    )}
-                    {activeTab === "certification" && (
-                        // Same reasoning as OutcomeLibrariesTab's own key above -- CertificationTab owns
-                        // all of its own stepper state locally (no page-level hook).
-                        <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
-                    )}
-                    {activeTab === "provablyFair" && (
-                        // Same reasoning as OutcomeLibrariesTab's own key above -- ProvablyFairTab owns
-                        // all of its own stepper state locally (no page-level hook).
-                        <ProvablyFairTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
-                    )}
-                    {activeTab === "stakeEngineExport" && (
-                        // Same reasoning as OutcomeLibrariesTab's own key above -- StakeEngineExportTab
-                        // owns all of its own stepper state locally (no page-level hook).
-                        <StakeEngineExportTab
-                            key={projectKey ?? "no-project"}
-                            projectRoot={projectKey}
-                            onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
-                        />
+                                />
+                            )}
+                            {activeTab === "replay" && (
+                                <ReplayTab
+                                    progress={replay.progress}
+                                    result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
+                                    error={replay.error}
+                                    onRun={runReplay}
+                                    onCancel={replay.cancel}
+                                    onRetry={() => replay.job && runReplay(replay.job.round, replay.job.seed, expectedReplay.status === "loaded")}
+                                    listView={replayListView}
+                                    listError={replayListError}
+                                    onRefreshList={refreshReplayList}
+                                    onInspectStored={onInspectStored}
+                                    onCompareStored={onCompareStored}
+                                    expected={expectedReplay}
+                                    onLoadExpectedFromPaste={onLoadExpectedFromPaste}
+                                    onClearExpected={clearExpectedReplay}
+                                    comparison={replayComparison}
+                                    recentSpins={recentSpinsView}
+                                    recentSpinsError={recentSpinsError}
+                                    onRefreshRecentSpins={refreshRecentSpins}
+                                    recentRuns={reportsView}
+                                    recentRunsError={reportsError}
+                                    onRefreshRecentRuns={refreshReports}
+                                    currentGame={header.status === "loaded" ? {id: header.id, version: header.version} : undefined}
+                                />
+                            )}
+                            {activeTab === "runtime" && (
+                                <RuntimeTab
+                                // Forces a full remount on a genuine project switch -- RuntimeTab stays
+                                // mounted across ProjectDashboardPage's own project-switch effect otherwise
+                                // (the page is deliberately designed not to remount itself, see its own doc
+                                // comment), which would leave activeStep/pendingAdvanceStepRef/manual spin
+                                // overrides from the previous project's session dangling. A key change is
+                                // React's own "reset every bit of local state" primitive -- simpler and more
+                                // complete than enumerating each piece of local state by hand.
+                                    key={projectKey ?? "no-project"}
+                                    state={runtime.state}
+                                    running={runtime.running}
+                                    session={runtime.session}
+                                    sessionId={runtime.sessionId}
+                                    lastSpin={runtime.lastSpin}
+                                    onRefresh={runtime.refresh}
+                                    onStart={runtime.start}
+                                    onStop={runtime.stop}
+                                    onRestart={runtime.restart}
+                                    onCreateSession={runtime.createSession}
+                                    onLoadSession={runtime.loadSession}
+                                    onSpin={runtime.spin}
+                                    onRepeatSpin={runtime.repeatSpin}
+                                    history={runtime.history}
+                                    recentSpins={recentSpinsView}
+                                    recentSpinsError={recentSpinsError}
+                                    onRefreshRecentSpins={refreshRecentSpins}
+                                />
+                            )}
+                            {activeTab === "exportDeploy" && (
+                                <ExportDeployTab
+                                    targetsView={deployment.targetsView}
+                                    targetsError={deployment.targetsError}
+                                    onRefreshTargets={deployment.refreshTargets}
+                                    onSelectDeploymentTarget={(target) => {
+                                        deployment.selectTarget(target);
+                                        setActiveTab("deployment");
+                                    }}
+                                    onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
+                                />
+                            )}
+                            {activeTab === "deployment" && (
+                                <DeploymentTab
+                                // Forces a full remount on a genuine project switch -- same reasoning as
+                                // RuntimeTab's own key above: DeploymentTab owns local stepper state
+                                // (activeStep/pendingAdvanceStepRef) that deployment.resetForProjectSwitch()
+                                // itself can't reach (it only resets the page-level hook's own state), and
+                                // ProjectDashboardPage deliberately never remounts itself on a project switch.
+                                    key={projectKey ?? "no-project"}
+                                    targetsView={deployment.targetsView}
+                                    targetsError={deployment.targetsError}
+                                    onRefreshTargets={deployment.refreshTargets}
+                                    selectedTarget={deployment.selectedTarget}
+                                    onSelectTarget={deployment.selectTarget}
+                                    modes={deployment.modes}
+                                    projectModesView={deployment.projectModesView}
+                                    registryView={deployment.registryView}
+                                    onSetModeName={deployment.setModeName}
+                                    onSetModeLibrarySelector={deployment.setModeLibrarySelector}
+                                    onAddMode={deployment.addMode}
+                                    onRemoveMode={deployment.removeMode}
+                                    onPreview={() => deployment.run(false)}
+                                    onDeploy={() => deployment.run(true)}
+                                    runResult={deployment.runResult}
+                                    runError={deployment.runError}
+                                    runLoading={deployment.runLoading}
+                                    preflightOutdated={deployment.preflightOutdated}
+                                    selectedArtifactPath={deployment.selectedArtifactPath}
+                                    onSelectArtifact={deployment.selectArtifact}
+                                    projectRoot={projectKey}
+                                    onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
+                                    onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
+                                />
+                            )}
+                            {activeTab === "outcomeLibraries" && (
+                            // Forces a full remount on a genuine project switch -- OutcomeLibrariesTab owns all
+                            // of its own state locally (no page-level hook), same reasoning as DeploymentTab's
+                            // own key above.
+                                <OutcomeLibrariesTab
+                                    key={projectKey ?? "no-project"}
+                                    projectRoot={projectKey}
+                                    onUseInRuntime={(selector, expectedHash) => {
+                                    // restart() (not start()) so this always takes effect, whether the
+                                    // runtime is currently stopped or already running some other
+                                    // configuration -- see StudioRuntimeManager.restart()'s own doc comment.
+                                    // expectedHash is the hash Outcome Libraries already showed for this
+                                    // library -- passing it lets the server refuse to silently start against
+                                    // content that changed on disk since (see StudioRuntimeManager.
+                                    // startInternal()'s own doc comment).
+                                        runtime.restart({preGeneratedLibrarySelector: selector, preGeneratedLibraryExpectedHash: expectedHash});
+                                        setActiveTab("runtime");
+                                    }}
+                                    onNavigateToTab={setActiveTab}
+                                />
+                            )}
+                            {activeTab === "mechanicsEditor" && (
+                            // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
+                            // all of its own draft state locally (via useBlueprintEditor), so a genuine project
+                            // switch is handled by a full remount rather than page-level cleanup.
+                                <MechanicsEditorTab key={projectKey ?? "no-project"} onDirtyChange={handleMechanicsEditorDirtyChange} />
+                            )}
+                            {activeTab === "certification" && (
+                            // Same reasoning as OutcomeLibrariesTab's own key above -- CertificationTab owns
+                            // all of its own stepper state locally (no page-level hook).
+                                <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
+                            )}
+                            {activeTab === "provablyFair" && (
+                            // Same reasoning as OutcomeLibrariesTab's own key above -- ProvablyFairTab owns
+                            // all of its own stepper state locally (no page-level hook).
+                                <ProvablyFairTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
+                            )}
+                            {activeTab === "stakeEngineExport" && (
+                            // Same reasoning as OutcomeLibrariesTab's own key above -- StakeEngineExportTab
+                            // owns all of its own stepper state locally (no page-level hook).
+                                <StakeEngineExportTab
+                                    key={projectKey ?? "no-project"}
+                                    projectRoot={projectKey}
+                                    onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
+                                />
+                            )}
+                        </>
                     )}
                 </div>
             )}

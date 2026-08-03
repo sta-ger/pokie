@@ -96,6 +96,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                             status: "loaded",
                             projectRoot: "/games/sample-slot",
                             game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            type: "blueprint",
+                            capabilities: ["blueprint.build"],
                         }),
                 });
             }

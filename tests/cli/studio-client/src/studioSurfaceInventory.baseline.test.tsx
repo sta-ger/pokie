@@ -156,6 +156,53 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         const nav = screen.getByRole("navigation", {name: "Sections"});
         expect(within(nav).queryByRole("button", {name: "Game Model"})).not.toBeInTheDocument();
     });
+
+    it("lists only Overview for a read-only/package-exchange project (e.g. an outcome library), hiding every runtime-dependent section", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/my-slot",
+                    game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+                    type: "outcomeLibrary",
+                    capabilities: ["outcomeLibrary.read"],
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        const nav = screen.getByRole("navigation", {name: "Sections"});
+        const tabButtons = within(nav).getAllByRole("button");
+        expect(tabButtons.map((button) => button.textContent)).toEqual(["Overview"]);
+    });
+
+    it("shows a diagnostic instead of the Certification workflow when deep-linking to an operation a read-only/package-exchange project's own capabilities don't support", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/my-slot",
+                    game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+                    type: "outcomeLibrary",
+                    capabilities: ["outcomeLibrary.read"],
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/certification"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        expect(screen.getByRole("alert")).toHaveTextContent('"Certification" isn\'t available for this project');
+        expect(screen.queryByRole("button", {name: stepperStep("Select/configure", "Bundle & modes")})).not.toBeInTheDocument();
+    });
 });
 
 describe("New Blueprint action surface baseline", () => {

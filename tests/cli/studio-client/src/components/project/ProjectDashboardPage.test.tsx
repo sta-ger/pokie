@@ -8,7 +8,7 @@ function baseFetchRoutes() {
         "/api/project/context": () => ({
             ok: true,
             status: 200,
-            body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}},
+            body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
         }),
         "/api/project/inspect": () => ({
             ok: true,

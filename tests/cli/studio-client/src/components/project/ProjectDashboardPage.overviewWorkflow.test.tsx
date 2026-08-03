@@ -7,7 +7,16 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/context": () => ({
         ok: true,
         status: 200,
-        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}},
+        body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
+    }),
+    // Validation now runs automatically on load, folded into Overview itself (see OverviewTab's own
+    // ValidationDiagnostics) -- every test here needs this route mocked too, or the resulting fetch
+    // rejection would render its own second "alert", alongside whichever inspection-specific alert each
+    // test is actually asserting on.
+    "/api/project/validate": () => ({
+        ok: true,
+        status: 200,
+        body: {packageRoot: "/games/a", valid: true, game: {id: "a", name: "A", version: "1.0.0"}, errors: [], warnings: [], suggestions: []},
     }),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),

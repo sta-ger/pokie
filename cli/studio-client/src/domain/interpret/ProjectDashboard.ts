@@ -63,6 +63,14 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
 // as StudioProjectCapability's own doc comment in api/types.ts.
 export const BLUEPRINT_BUILD_CAPABILITY: StudioProjectCapability = "blueprint.build";
 
+// The capability every in-process runtime operation (Simulation, Replay, Runtime, Certification,
+// Fairness, Build/Export, Analysis) requires -- only a project resolved as "tsPackage" grants it on its
+// own (see PROJECT_TYPE_CAPABILITIES). A "blueprint" project never carries this id itself, even though
+// Studio always materializes it into a runnable tsPackage before ever loading it (see
+// loadProjectDashboardContext.ts's own doc comment) -- ProjectDashboardPage therefore treats either this
+// or BLUEPRINT_BUILD_CAPABILITY as sufficient for those tabs, rather than requiring this one specifically.
+export const RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "runtime.execute";
+
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",
     tsPackage: "Package",
