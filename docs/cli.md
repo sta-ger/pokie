@@ -70,11 +70,12 @@ package directly; that "programmer-first" role now belongs to `pokie init`.
 Writes a random, always-valid `GameBlueprint` (see [Random generation
 (`pokie build random`)](#random-generation-pokie-build-random) below — same generator, same guarantees) to a
 Blueprint Project file, rather than building a package — same as the plain `pokie create` path above, just with
-randomly generated content. Its reel weighting is already expressed as valid **per-reel generation**: an
-independent, reproducible `reelStripGeneration` entry per reel (targeting the same symbol:weight ratio the
-generator's flat `symbolWeights` would have produced) rather than one implicit engine-wide weighting — a blueprint
-that already carries its own literal `reelStrips`/`reelStripGeneration` (the richer `--preset variant` strategy
-sometimes produces) is left untouched.
+randomly generated content. Its reel weighting is always expressed as valid **per-reel generation**: an
+independent, reproducible `reelStripGeneration` entry per reel, inspectable straight off the written file. For
+`--preset default`, `DefaultRandomGameBlueprintStrategy` already generates its reel weighting this way by itself;
+for `--preset variant`, when `RandomGameBlueprintVariantStrategy` instead picks a flat `symbolWeights` map, `pokie
+create` converts it into the same per-reel shape (targeting the same symbol:weight ratio) before writing — a
+blueprint that already carries its own literal `reelStrips`/`reelStripGeneration` is left untouched.
 
 ```
 pokie create --random                          # name and file path picked for you
@@ -221,7 +222,7 @@ pokie build random
 ```
 Generated random game "Blazing Riches" (id: "blazing-riches") from seed 1845220913.
 Reproduce this exact game with: pokie build random --seed 1845220913 --preset default
-Provenance: generator 1.0.0, strategy "default-line-pay".
+Provenance: generator 1.1.0, strategy "default-line-pay".
 Build summary:
   ...
 Running a short smoke simulation...
@@ -257,7 +258,9 @@ Options (`--out`/`--dry-run` behave exactly as for a config-driven build):
 - `--preset default|variant` — which `RandomGameBlueprintStrategy` fills in the mechanic-bearing fields. Defaults
   to `default`:
   - `default` (`DefaultRandomGameBlueprintStrategy`, `provenance.strategy` `"default-line-pay"`) — the minimal
-    line-pay shape (reels/rows/symbols/paytable/`symbolWeights`, default paylines, no wilds/scatters/`winModel`);
+    line-pay shape (reels/rows/symbols/paytable/`reelStripGeneration`, default paylines, no
+    wilds/scatters/`winModel`) — its reel weighting is always inspectable, already-per-reel-generated content, not a
+    flat `symbolWeights` map;
   - `variant` (`RandomGameBlueprintVariantStrategy`, `provenance.strategy` `"random-variant"`) — a richer shape
     drawn from the same guaranteed-valid space: custom paylines, "ways"/"clusters" `winModel`, and literal
     `reelStrips` in place of `symbolWeights`, picked per build (never combining `paylines` with a `winModel`, since

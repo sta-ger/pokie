@@ -1,4 +1,4 @@
-import {GameBlueprintValidator, RandomGameBlueprintGenerator, toCanonicalJson} from "pokie";
+import {GameBlueprintValidator, RandomGameBlueprintGenerator, resolveReelStripGeneration, toCanonicalJson} from "pokie";
 
 // RandomGameBlueprintGenerator.test.ts checks reproducibility, validator-cleanliness, and mechanic scope each in
 // isolation, on a handful of hand-picked seeds. This sweeps a bounded, fixed set of seeds and checks every one of
@@ -27,8 +27,8 @@ describe("RandomGameBlueprintGenerator bounded property invariants", () => {
             // valid generated blueprints
             expect(validator.validate(blueprint)).toEqual([]);
 
-            // unsupported mechanics are not generated: only reels/rows/symbols/paytable/symbolWeights/availableBets
-            // ever appear, matching DefaultRandomGameBlueprintStrategy's declared (empty) feature set
+            // unsupported mechanics are not generated: only reels/rows/symbols/paytable/reelStripGeneration/
+            // availableBets ever appear, matching DefaultRandomGameBlueprintStrategy's declared feature set
             expect(blueprint.wilds).toBeUndefined();
             expect(blueprint.scatters).toBeUndefined();
             expect(blueprint.paylines).toBeUndefined();
@@ -36,15 +36,23 @@ describe("RandomGameBlueprintGenerator bounded property invariants", () => {
             expect(blueprint.mechanics).toBeUndefined();
             expect(blueprint.betModes).toBeUndefined();
             expect(blueprint.reelStrips).toBeUndefined();
-            expect(blueprint.reelStripGeneration).toBeUndefined();
+            expect(blueprint.symbolWeights).toBeUndefined();
+            expect(blueprint.reelStripGeneration).toHaveLength(blueprint.reels);
 
-            // non-negative payouts: every paytable entry and reel weight is strictly positive
+            // non-negative payouts: every paytable entry and every reel's generation weight is strictly positive
             for (const symbolId of blueprint.symbols) {
                 for (const payout of Object.values(blueprint.paytable[symbolId])) {
                     expect(payout).toBeGreaterThan(0);
                 }
-                expect(blueprint.symbolWeights![symbolId]).toBeGreaterThan(0);
+                for (const spec of blueprint.reelStripGeneration!) {
+                    expect((spec as {symbolWeights: Record<string, number>}).symbolWeights[symbolId]).toBeGreaterThan(0);
+                }
             }
+
+            // inspectable reel results: every generated reel resolves deterministically to a concrete strip
+            const resolution = resolveReelStripGeneration(blueprint);
+            expect(resolution.success).toBe(true);
+            expect(resolveReelStripGeneration(blueprint)).toEqual(resolution);
 
             // serialization round-trip: the canonical JSON form survives a stringify/parse cycle losslessly
             const canonical = toCanonicalJson(blueprint);

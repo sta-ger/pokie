@@ -1,4 +1,4 @@
-import {GameBlueprintValidator, RandomGameBlueprintGenerator} from "pokie";
+import {GameBlueprintValidator, RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy} from "pokie";
 import {buildRandomReelStripGeneration} from "../../../cli/build/buildRandomReelStripGeneration.js";
 
 describe("buildRandomReelStripGeneration", () => {
@@ -17,8 +17,12 @@ describe("buildRandomReelStripGeneration", () => {
         expect(spec.map((entry) => (entry as {seed: number}).seed)).toEqual([100, 101, 102]);
     });
 
+    // DefaultRandomGameBlueprintStrategy ("--preset default") now always expresses its own reel
+    // weighting as reelStripGeneration directly (see that class's own doc comment), so it never has a
+    // flat symbolWeights map to convert -- RandomGameBlueprintVariantStrategy ("--preset variant") is
+    // the one that still sometimes produces symbolWeights (seed 1 is a seed where it does).
     it("embeds into a random blueprint cleanly: zero errors or warnings from the real GameBlueprintValidator", () => {
-        const {blueprint, seed} = new RandomGameBlueprintGenerator().generate({seed: 7});
+        const {blueprint, seed} = new RandomGameBlueprintGenerator(undefined, new RandomGameBlueprintVariantStrategy()).generate({seed: 1});
         const symbolWeights = blueprint.symbolWeights!;
 
         const converted = {...blueprint, reelStripGeneration: buildRandomReelStripGeneration(symbolWeights, blueprint.reels, seed)};

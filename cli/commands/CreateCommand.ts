@@ -180,9 +180,11 @@ export class CreateCommand implements CliCommandHandling {
 
     // Bakes the seeded generator's flat symbolWeights ratio into an equivalent per-reel
     // reelStripGeneration array instead -- see buildRandomReelStripGeneration.ts. A blueprint that
-    // already carries its own reelStrips/reelStripGeneration (the richer "--preset variant" strategy
-    // sometimes produces) is left untouched: there is no flat symbolWeights ratio to convert, and it
-    // already expresses its reel content per-reel (or literally) on its own.
+    // already carries its own reelStrips/reelStripGeneration is left untouched: there is no flat
+    // symbolWeights ratio to convert, and it already expresses its reel content per-reel (or literally)
+    // on its own. In practice this now only ever fires for "--preset variant", when it happens to pick
+    // symbolWeights -- "--preset default" (DefaultRandomGameBlueprintStrategy) already generates its
+    // reel weighting as reelStripGeneration by itself.
     private applyPerReelGeneration(blueprint: GameBlueprint, seed: number): GameBlueprint {
         if (blueprint.symbolWeights === undefined || blueprint.reelStrips !== undefined || blueprint.reelStripGeneration !== undefined) {
             return blueprint;

@@ -3,10 +3,13 @@ import {RandomGameBlueprintGenerator} from "pokie";
 // RandomGameBlueprintGenerator.test.ts checks reproducibility ("same seed -> toEqual") and structural
 // invariants (bounds, validator cleanliness) across many seeds, but never pins one seed's full literal
 // output. This locks in the exact blueprint a known seed produces end-to-end -- manifest, reel/symbol
-// counts, paytable, symbol weights, and provenance -- so a change to the default strategy's internals
-// that still satisfies the structural invariants but silently alters actual output gets caught.
+// counts, paytable, per-reel generation, and provenance -- so a change to the default strategy's
+// internals that still satisfies the structural invariants but silently alters actual output gets
+// caught.
 describe("RandomGameBlueprintGenerator golden seeds", () => {
     test("seed 42 always produces the exact same blueprint", () => {
+        const sharedSymbolWeights = {"7": 3, "8": 5, "9": 8, "10": 1, A: 2, Q: 4, J: 6, K: 7};
+
         expect(new RandomGameBlueprintGenerator().generate({seed: 42})).toEqual({
             blueprint: {
                 manifest: {
@@ -28,11 +31,17 @@ describe("RandomGameBlueprintGenerator golden seeds", () => {
                     J: {"3": 3, "4": 6, "5": 9},
                     K: {"3": 2, "4": 4, "5": 6},
                 },
-                symbolWeights: {"7": 3, "8": 5, "9": 8, "10": 1, A: 2, Q: 4, J: 6, K: 7},
+                reelStripGeneration: [
+                    {type: "generated", length: 36, symbolWeights: sharedSymbolWeights, seed: 536707132},
+                    {type: "generated", length: 36, symbolWeights: sharedSymbolWeights, seed: 1894206920},
+                    {type: "generated", length: 36, symbolWeights: sharedSymbolWeights, seed: 1601459225},
+                    {type: "generated", length: 36, symbolWeights: sharedSymbolWeights, seed: 659280729},
+                    {type: "generated", length: 36, symbolWeights: sharedSymbolWeights, seed: 423599391},
+                ],
                 availableBets: [1, 2, 5, 10],
             },
             seed: 42,
-            provenance: {generatorVersion: "1.0.0", strategy: "default-line-pay", seed: 42},
+            provenance: {generatorVersion: "1.1.0", strategy: "default-line-pay", seed: 42},
         });
     });
 });
