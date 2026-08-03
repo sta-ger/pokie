@@ -84,6 +84,31 @@ function expandXdgHomeToken(rawValue: string, home: string): string {
     return rawValue.startsWith("$HOME") ? home + rawValue.slice("$HOME".length) : rawValue;
 }
 
+// Best-effort platform per-user application-data directory -- where POKIE's own internal state (the
+// Studio project registry, see cli/studio/StudioProjectRegistry.ts) lives, as opposed to
+// resolvePlatformDocumentsDirectory's user-facing "where do new project files go" answer above. Windows:
+// %APPDATA% (Roaming), falling back to the USERPROFILE-relative convention when unset. macOS: the
+// standard "Library/Application Support" convention. Linux and every other POSIX platform: the XDG Base
+// Directory spec's $XDG_CONFIG_HOME, falling back to "~/.config" -- never a bare "~/.pokie" or other
+// hardcoded dotfile, so a user who has already relocated $XDG_CONFIG_HOME is honored the same way
+// readXdgDocumentsDirectory honors a relocated $XDG_DOCUMENTS_DIR above. Returns `undefined` only when no
+// home directory could be determined at all, same as resolvePlatformDocumentsDirectory.
+export function resolvePlatformAppDataDirectory(env: PlatformDirectoryEnvironment = defaultPlatformDirectoryEnvironment()): string | undefined {
+    const home = resolvePlatformHomeDirectory(env);
+    if (!home) {
+        return undefined;
+    }
+    if (env.platform === "win32") {
+        const roaming = env.env.APPDATA && env.env.APPDATA.trim().length > 0 ? env.env.APPDATA : path.win32.join(home, "AppData", "Roaming");
+        return path.win32.join(roaming, "pokie");
+    }
+    if (env.platform === "darwin") {
+        return path.join(home, "Library", "Application Support", "pokie");
+    }
+    const xdgConfigHome = env.env.XDG_CONFIG_HOME && env.env.XDG_CONFIG_HOME.trim().length > 0 ? env.env.XDG_CONFIG_HOME : path.join(home, ".config");
+    return path.join(xdgConfigHome, "pokie");
+}
+
 // The one gate every default-directory candidate below must pass, broken out into which of the three
 // ways it can fail: doesn't exist ("absent"), exists but isn't a directory -- e.g. a file some other app
 // already put at the "Documents" path -- ("type"), or exists as a directory but isn't writable by the

@@ -24,7 +24,7 @@ describe("PokiePathResolver", () => {
             fs.rmSync(path.join(process.cwd(), ".pokie-path-resolver-fixtures"), {recursive: true, force: true});
         });
 
-        it("resolves to Documents/POKIE/<name> when Documents is usable", () => {
+        it("resolves to Documents/POKIE Projects/<name> when Documents is usable", () => {
             const documents = path.join(tmpDir, "Documents");
             fs.mkdirSync(documents);
             const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
@@ -36,16 +36,16 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "valid", directory: path.join(documents, "POKIE", "sample-slot"), source: "documents"});
+            expect(result).toEqual({status: "valid", directory: path.join(documents, "POKIE Projects", "sample-slot"), source: "documents"});
         });
 
-        it("falls back to Home/POKIE/<name> when Documents does not resolve", () => {
+        it("falls back to Home/POKIE Projects/<name> when Documents does not resolve", () => {
             const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tmpDir};
             const resolver = new PokiePathResolver({cwd: "/somewhere/unrelated"}, env);
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "valid", directory: path.join(tmpDir, "POKIE", "sample-slot"), source: "home"});
+            expect(result).toEqual({status: "valid", directory: path.join(tmpDir, "POKIE Projects", "sample-slot"), source: "home"});
         });
 
         it("rejects a blank name", () => {
@@ -106,7 +106,7 @@ describe("PokiePathResolver", () => {
 
                 const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-                expect(result).toEqual({status: "valid", directory: path.join(documentsLink, "POKIE", "sample-slot"), source: "documents"});
+                expect(result).toEqual({status: "valid", directory: path.join(documentsLink, "POKIE Projects", "sample-slot"), source: "documents"});
             } finally {
                 fs.rmSync(realTarget, {recursive: true, force: true});
             }
@@ -175,7 +175,7 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\Documents\\POKIE\\sample-slot", source: "documents"});
+            expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\Documents\\POKIE Projects\\sample-slot", source: "documents"});
         });
 
         it("joins a relocated/localized win32 Documents base directory using Windows path semantics", () => {
@@ -188,7 +188,7 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "valid", directory: "D:\\MyStuff\\Dokumente\\POKIE\\sample-slot", source: "documents"});
+            expect(result).toEqual({status: "valid", directory: "D:\\MyStuff\\Dokumente\\POKIE Projects\\sample-slot", source: "documents"});
         });
 
         it("falls back to a win32 Home base directory using Windows path semantics when Documents is disabled/unusable", () => {
@@ -201,7 +201,7 @@ describe("PokiePathResolver", () => {
 
             const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-            expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\POKIE\\sample-slot", source: "home"});
+            expect(result).toEqual({status: "valid", directory: "C:\\Users\\alice\\POKIE Projects\\sample-slot", source: "home"});
         });
 
         it("flags a win32 default that resolves into the install root using Windows path semantics, regardless of host platform", () => {
@@ -247,7 +247,7 @@ describe("PokiePathResolver", () => {
     });
 
     describe("resolveBaseDirectory", () => {
-        it("reports the same Documents/Home policy as resolveIndependentProjectDirectory, without a POKIE/<name> suffix", () => {
+        it("reports the same Documents/Home policy as resolveIndependentProjectDirectory, without a POKIE Projects/<name> suffix", () => {
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-path-resolver-base-test-"));
             try {
                 const documents = path.join(tmpDir, "Documents");
@@ -261,6 +261,22 @@ describe("PokiePathResolver", () => {
             } finally {
                 fs.rmSync(tmpDir, {recursive: true, force: true});
             }
+        });
+    });
+
+    describe("resolveAppDataDirectory", () => {
+        it("delegates to resolvePlatformAppDataDirectory using the resolver's own env, honoring XDG_CONFIG_HOME rather than a hardcoded Linux home path", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {XDG_CONFIG_HOME: "/home/alice/.config-custom"}, homeDir: "/home/alice"};
+            const resolver = new PokiePathResolver({}, env);
+
+            expect(resolver.resolveAppDataDirectory()).toBe("/home/alice/.config-custom/pokie");
+        });
+
+        it("returns undefined when no home directory can be determined", () => {
+            const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: ""};
+            const resolver = new PokiePathResolver({}, env);
+
+            expect(resolver.resolveAppDataDirectory()).toBeUndefined();
         });
     });
 });

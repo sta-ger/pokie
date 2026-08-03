@@ -1,10 +1,15 @@
 import path from "path";
 import {resolveProjectDirectory, ResolveProjectDirectoryResult} from "../studio/outcomeLibrary/resolveProjectDirectory.js";
 import {isUnsafeStartDirectory, UnsafeStartDirectoryContext} from "./isUnsafeStartDirectory.js";
-import {resolveUserBaseDirectory, UserBaseDirectoryResult} from "./PlatformDirectories.js";
+import {resolvePlatformAppDataDirectory, resolveUserBaseDirectory, UserBaseDirectoryResult} from "./PlatformDirectories.js";
 import {defaultPlatformDirectoryEnvironment, PlatformDirectoryEnvironment} from "./PlatformDirectoryEnvironment.js";
 
-const POKIE_PROJECTS_FOLDER_NAME = "POKIE";
+// The platform convention every *managed* Studio project (one POKIE itself created, via Create/Init/Build
+// from Home) lives under by default -- the same "AppName Projects" convention most creative desktop apps
+// (Unity, Xcode, ...) already use, so a user browsing Documents recognizes at a glance which folder is
+// POKIE's own. Never the destination for an *external* project (a package/library/WASM target a user
+// already has elsewhere and only registers by path) -- see cli/studio/StudioProjectRegistrationService.ts.
+const POKIE_PROJECTS_FOLDER_NAME = "POKIE Projects";
 
 // Mirrors PlatformDirectories.ts's DirectoryUsabilityResult/UserBaseDirectoryResult states, plus the two
 // concerns only this class can detect: "invalid-name" (the caller-supplied project name itself, before
@@ -27,9 +32,10 @@ export type IndependentProjectDirectoryResult =
 // containment check. Two distinct jobs, kept on one class because Studio's Home surface needs both from
 // the same request:
 //   - resolveIndependentProjectDirectory: a brand-new project with no existing parent to anchor to --
-//     platform Documents/POKIE/<name>, falling back to Home/POKIE/<name> (see PlatformDirectories.ts),
-//     with isUnsafeStartDirectory.ts as a defense-in-depth check against ever handing back CWD, POKIE's
-//     own install root, Studio's own internal directory, or a temp/cache directory.
+//     platform Documents/POKIE Projects/<name>, falling back to Home/POKIE Projects/<name> (see
+//     PlatformDirectories.ts), with isUnsafeStartDirectory.ts as a defense-in-depth check against ever
+//     handing back CWD, POKIE's own install root, Studio's own internal directory, or a temp/cache
+//     directory.
 //   - resolveProjectRelativeDirectory: a path that must live inside an *already known* project root --
 //     delegates to resolveProjectDirectory (cli/studio/outcomeLibrary/resolveProjectDirectory.ts), the
 //     existing lexical-plus-realpath containment check every project-scoped Studio service (Stake
@@ -96,10 +102,22 @@ export class PokiePathResolver {
     }
 
     // The bare "platform Documents, then Home" policy without resolveIndependentProjectDirectory's own
-    // POKIE/<name> suffix or unsafe-path guard -- for callers (a path field's start-location precedence)
-    // that want a plain default directory to start browsing from, not a brand-new project's destination.
+    // POKIE Projects/<name> suffix or unsafe-path guard -- for callers (a path field's start-location
+    // precedence) that want a plain default directory to start browsing from, not a brand-new project's
+    // destination.
     public resolveBaseDirectory(): UserBaseDirectoryResult {
         return this.resolveBase(this.env);
+    }
+
+    // Where POKIE's own internal state -- today, just the Studio project registry (see
+    // cli/studio/StudioProjectRegistry.ts) -- is stored, as distinct from resolveBaseDirectory/
+    // resolveIndependentProjectDirectory's user-facing project-file locations above. Deliberately not
+    // run through isUnsafeStartDirectory.ts: that guard exists to keep a *user's project files* out of a
+    // handful of CWD/install/temp directories a new project must never silently land in, which has no
+    // bearing on POKIE's own app-data directory. `undefined` only when no home directory could be
+    // determined at all (see resolvePlatformAppDataDirectory).
+    public resolveAppDataDirectory(): string | undefined {
+        return resolvePlatformAppDataDirectory(this.env);
     }
 }
 
