@@ -265,8 +265,8 @@ export function ProjectDashboardPage() {
             return true;
         },
         {
-            title: "Unapplied changes",
-            children: "You have an unapplied draft in Mechanics Editor. Leave and lose it?",
+            title: "Unsaved changes",
+            children: "You have unsaved changes in Game Model. Leave and lose them?",
             labels: {confirm: "Leave", cancel: "Stay"},
         },
         () => {
@@ -820,7 +820,7 @@ export function ProjectDashboardPage() {
         // to mention would silently hide the other.
         const risks: string[] = [];
         if (isMechanicsEditorDirty) {
-            risks.push("an unapplied Mechanics Editor draft");
+            risks.push("unsaved changes in Game Model");
         }
         if (hasActiveOperation) {
             risks.push("an active simulation, replay, deployment, or running runtime");
@@ -830,7 +830,7 @@ export function ProjectDashboardPage() {
             return;
         }
         const risksText = risks.length === 2 ? `${risks[0]} and ${risks[1]}` : risks[0];
-        const lossWarning = isMechanicsEditorDirty ? " Any unapplied draft will be lost." : "";
+        const lossWarning = isMechanicsEditorDirty ? " Any unsaved changes will be lost." : "";
         confirm(`This project has ${risksText}. Close the project anyway?${lossWarning}`, doClose);
     };
 
