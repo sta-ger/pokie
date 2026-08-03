@@ -23,7 +23,10 @@ export function FreeGamesFieldset({blueprint, mutate}: {blueprint: Record<string
             <Switch
                 label="Enable scatter-triggered free games"
                 checked={enabled}
-                onChange={(event) => mutate((b) => setFreeGamesEnabled(b, event.currentTarget.checked))}
+                onChange={(event) => {
+                    const checked = event.currentTarget.checked;
+                    mutate((b) => setFreeGamesEnabled(b, checked));
+                }}
                 mb="md"
             />
 
