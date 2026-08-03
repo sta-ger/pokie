@@ -137,13 +137,13 @@ describe("Guided Design Game: sectioned layout", () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
-        await user.click(screen.getByRole("tab", {name: "Symbols"}));
+        await user.click(screen.getByRole("tab", {name: /Symbols/}));
         await user.type(screen.getAllByLabelText("New symbol id")[0], "draft-symbol");
 
-        await user.click(screen.getByRole("tab", {name: "Layout"}));
-        expect(screen.getByRole("tab", {name: "Layout"})).toHaveAttribute("aria-selected", "true");
+        await user.click(screen.getByRole("tab", {name: /Layout/}));
+        expect(screen.getByRole("tab", {name: /Layout/})).toHaveAttribute("aria-selected", "true");
 
-        await user.click(screen.getByRole("tab", {name: "Symbols"}));
+        await user.click(screen.getByRole("tab", {name: /Symbols/}));
         expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("draft-symbol");
     }, 60000);
 
@@ -239,14 +239,14 @@ describe("Guided Design Game: sectioned layout", () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
-        await user.click(screen.getByRole("tab", {name: "Game basics"}));
-        expect(screen.getByRole("tab", {name: "Game basics"})).toHaveAttribute("aria-selected", "true");
+        await user.click(screen.getByRole("tab", {name: /Game basics/}));
+        expect(screen.getByRole("tab", {name: /Game basics/})).toHaveAttribute("aria-selected", "true");
 
         await user.keyboard("{ArrowRight}");
-        expect(screen.getByRole("tab", {name: "Layout"})).toHaveAttribute("aria-selected", "true");
-        expect(screen.getByRole("tab", {name: "Game basics"})).toHaveAttribute("aria-selected", "false");
+        expect(screen.getByRole("tab", {name: /Layout/})).toHaveAttribute("aria-selected", "true");
+        expect(screen.getByRole("tab", {name: /Game basics/})).toHaveAttribute("aria-selected", "false");
 
         await user.keyboard("{ArrowRight}");
-        expect(screen.getByRole("tab", {name: "Symbols"})).toHaveAttribute("aria-selected", "true");
+        expect(screen.getByRole("tab", {name: /Symbols/})).toHaveAttribute("aria-selected", "true");
     }, 60000);
 });
