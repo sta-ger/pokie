@@ -454,6 +454,62 @@ describe("Guided Design Game: automatic freshness triggers (open, external chang
         expect(screen.getByRole("button", {name: "Build Package"})).not.toBeDisabled();
     }, 60000);
 
+    it("an externally deleted or malformed opened Blueprint source is detected with no Load action, persistently blocking Build even once a content-only revalidate reports ok again", async () => {
+        const user = userEvent.setup();
+        let resolveCheckSource: ((value: unknown) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            const method = init?.method ?? "GET";
+            if (path === "/api/home/blueprints/validate" && method === "POST") {
+                return respond({status: "ok", warnings: []});
+            }
+            if (path === "/api/home/blueprints/load" && method === "POST") {
+                return respond({
+                    status: "ok",
+                    path: "/games/watched.json",
+                    blueprint: {manifest: {id: "watched", name: "Watched", version: "0.1.0"}},
+                    blueprintHash: "hash-1",
+                });
+            }
+            if (path === "/api/home/fs/browse") {
+                return respond({status: "ok", resolvedPath: "/games/watched.json", displayPath: "/games/watched.json", entries: []});
+            }
+            if (path === "/api/home/blueprints/check-source" && method === "POST") {
+                // Held open the same way the "changed" test above does -- this test controls exactly
+                // when the poll's own "the file is gone" response arrives.
+                return new Promise((resolve) => {
+                    resolveCheckSource = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                });
+            }
+            return respond([]);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await user.click(screen.getByRole("button", {name: "Show advanced options (JSON mode, load/save by path)"}));
+        await user.type(screen.getByLabelText("Load from path", {exact: false}), "/games/watched.json");
+        await user.click(screen.getByRole("button", {name: "Load", exact: true, hidden: true}));
+        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
+
+        await waitFor(() => expect(resolveCheckSource).toBeDefined());
+        resolveCheckSource?.({status: "load-error", error: "ENOENT: no such file or directory, open '/games/watched.json'"});
+
+        // The persistent diagnostic replaces "Ready to build" -- Build is blocked purely from this
+        // background detection, with no user action (no Load click, no Validate click) involved.
+        await waitFor(() => expect(screen.getByText("Blueprint source unavailable")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+
+        // A content-only revalidate (the guarded one this same detection kicks off automatically, or a
+        // manual click) can legitimately report "ok" again for the in-editor draft -- that alone must
+        // never quietly re-authorize Build, since the persisted source itself is still unaccounted for.
+        await validate(user);
+        await waitFor(() => expect(screen.getByText("Blueprint source unavailable")).toBeInTheDocument());
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        expect(screen.queryByText("Ready to build")).not.toBeInTheDocument();
+    }, 60000);
+
     it("a late check-source response for a previously opened source cannot authorize Build once a different blueprint has since been opened", async () => {
         const user = userEvent.setup();
         let resolveFirstCheck: ((value: unknown) => void) | undefined;

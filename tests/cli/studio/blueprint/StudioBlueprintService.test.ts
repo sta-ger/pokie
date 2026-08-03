@@ -631,7 +631,7 @@ describe("StudioBlueprintService", () => {
 
             const result = service.save(filePath, buildBlueprint(), false);
 
-            expect(result).toEqual({status: "ok", path: filePath});
+            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
             expect(fs.existsSync(filePath)).toBe(true);
         });
 
@@ -653,7 +653,7 @@ describe("StudioBlueprintService", () => {
 
             const result = service.save(filePath, buildBlueprint(), true);
 
-            expect(result).toEqual({status: "ok", path: filePath});
+            expect(result).toEqual({status: "ok", path: filePath, blueprintHash: computeGameBlueprintHash(buildBlueprint())});
             expect(fs.readFileSync(filePath, "utf-8")).toContain('"sample-slot"');
         });
 
@@ -727,7 +727,7 @@ describe("StudioBlueprintService", () => {
             const result = service.saveManaged(buildBlueprint());
 
             const expectedPath = path.join(managedDir, "blueprint.json");
-            expect(result).toEqual({status: "ok", path: expectedPath, name: "sample-slot"});
+            expect(result).toEqual({status: "ok", path: expectedPath, name: "sample-slot", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
             expect(fs.existsSync(expectedPath)).toBe(true);
             expect(fs.readFileSync(expectedPath, "utf-8")).toContain('"sample-slot"');
         });
@@ -736,9 +736,15 @@ describe("StudioBlueprintService", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "blueprint");
             const service = createServiceWithManagedDirectory(managedDir);
 
-            const result = service.saveManaged(buildBlueprint({manifest: {id: "", name: "Untitled", version: "0.1.0"}}));
+            const blueprintWithBlankId = buildBlueprint({manifest: {id: "", name: "Untitled", version: "0.1.0"}});
+            const result = service.saveManaged(blueprintWithBlankId);
 
-            expect(result).toEqual({status: "ok", path: path.join(managedDir, "blueprint.json"), name: "blueprint"});
+            expect(result).toEqual({
+                status: "ok",
+                path: path.join(managedDir, "blueprint.json"),
+                name: "blueprint",
+                blueprintHash: computeGameBlueprintHash(blueprintWithBlankId),
+            });
         });
 
         it("overwrites an existing file at the resolved managed path without a conflict", () => {

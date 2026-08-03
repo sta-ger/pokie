@@ -70,10 +70,15 @@ const AUTO_VALIDATE_DEBOUNCE_MS = 600;
 // source itself being cleared (a New/Random/PAR-import replace, or an Undo).
 const SOURCE_CHECK_POLL_MS = 500;
 
-function describeGuidedProgress(status: BlueprintValidationView["status"]): StepProgressItem[] {
+// `sourceProblem` overrides the Validate/Build step statuses below regardless of `status` -- a source
+// that's been confirmed unreadable (see sourceProblem's own doc comment) means the currently
+// displayed validation result, even an "ok" one, no longer describes something Build can trust, and a
+// content-only revalidate can never clear that on its own (see the source-check poll's own doc comment
+// for why only an actual reload/save does).
+function describeGuidedProgress(status: BlueprintValidationView["status"], sourceProblem: boolean): StepProgressItem[] {
     const configureStatus: StepProgressStatus = status === "idle" ? "current" : "completed";
-    const validateStatus = VALIDATE_STEP_STATUS[status];
-    const buildStatus: StepProgressStatus = status === "ok" ? "current" : "blocked";
+    const validateStatus: StepProgressStatus = sourceProblem ? "failed" : VALIDATE_STEP_STATUS[status];
+    const buildStatus: StepProgressStatus = status === "ok" && !sourceProblem ? "current" : "blocked";
     return [
         {id: "configure", label: "Configure", description: "Game model", status: configureStatus},
         {id: "validate", label: "Validate", description: "Check for issues", status: validateStatus},
@@ -83,7 +88,10 @@ function describeGuidedProgress(status: BlueprintValidationView["status"]): Step
 
 type GuidedNextStep = {tone: "info" | "success" | "warning"; title: string; description: string};
 
-function describeGuidedNextStep(status: BlueprintValidationView["status"]): GuidedNextStep {
+function describeGuidedNextStep(status: BlueprintValidationView["status"], sourceProblemMessage: string | undefined): GuidedNextStep {
+    if (sourceProblemMessage !== undefined) {
+        return {tone: "warning", title: "Blueprint source unavailable", description: sourceProblemMessage};
+    }
     if (status === "ok") {
         return {
             tone: "success",
@@ -105,6 +113,19 @@ function describeGuidedNextStep(status: BlueprintValidationView["status"]): Guid
         title: "Configure your game model",
         description: "Add symbols, bets, paylines and a paytable below, then validate your configuration.",
     };
+}
+
+// The message BlueprintBuildPanel shows under a disabled Build button in guided mode -- `sourceProblem`
+// takes priority over `status` for the same reason describeGuidedNextStep's own does (see
+// guidedBuildBlocked's own doc comment for why Build stays blocked on it regardless of `status`).
+function describeGuidedBuildBlockedMessage(status: BlueprintValidationView["status"], sourceProblem: boolean): string {
+    if (sourceProblem) {
+        return "Reload or save this blueprint to establish a current source before building.";
+    }
+    if (status === "invalid") {
+        return "Fix the validation errors above before building.";
+    }
+    return "Validate your configuration successfully before building.";
 }
 
 // `guided`/`initialPath`/`initialParSheetPath` are purely additive -- omitted (the removed "Advanced
@@ -301,6 +322,21 @@ export function BlueprintEditorPage({
     // revision number, since a source-check response doesn't carry (or need) one of its own.
     const sourceVersionRef = useRef<{path: string; hash: string} | undefined>(undefined);
 
+    // Set once the background source-check poll below (never any other caller) confirms the persisted
+    // Blueprint source `sourceVersionRef` was watching has become unreadable (deleted, moved, or no
+    // longer valid JSON) -- a "load-error" check-source result, handled as its own outcome rather than
+    // silently falling through the same "changed" branch a content mutation takes, since there is no
+    // fresh content here to revalidate against. Deliberately independent of `validationView`: the whole
+    // point is that a stale-but-still-"ok"-looking validation of the in-memory draft must never again
+    // read as authorizing Build once the source it was last confirmed against is gone, even after a
+    // later content-only edit/auto-validate legitimately re-earns "ok" for the draft itself (see
+    // guidedBuildBlocked below, which ANDs both). Cleared -- the only way out, matching this step's own
+    // "block ... until an appropriate reload/save action" contract -- by every handler that establishes a
+    // fresh known-good `sourceVersionRef` baseline (Load, Save, guided Save) or that replaces the draft
+    // wholesale with something that has no persisted source of its own to complain about (New/Random/
+    // Undo/PAR-import, which also clear `sourceVersionRef` itself).
+    const [sourceProblem, setSourceProblem] = useState<{message: string} | undefined>(undefined);
+
     // A form edit, New, Load, and a successful JSON Apply all bump `revision` (see
     // blueprintEditorState.ts's own doc comment). Every run of this effect, including the very first
     // (component mount):
@@ -388,6 +424,13 @@ export function BlueprintEditorPage({
     // never be silently clobbered by a background check), only re-establishes whether that content is
     // still known-valid against a freshness contract that has, in fact, moved on.
     //
+    // A "load-error" result -- the persisted source has gone missing, unparseable, or otherwise
+    // unreadable, mirroring load()'s own outcome for the same path -- invalidates the same two things a
+    // "changed" result does, but never re-arms `sourceVersionRef` (there's no fresh hash to watch) and
+    // additionally sets `sourceProblem`, a persistent diagnostic that a guarded content-only revalidate
+    // can never clear on its own (see sourceProblem's own doc comment for why Build stays blocked even
+    // once that revalidate reports "ok" again).
+    //
     // `watched` is captured once, at request-send time, and compared by identity (not by value) against
     // `sourceVersionRef.current` when the response arrives -- see that ref's own doc comment for why an
     // identity mismatch (a newer Load/Save, or a previous, faster-resolving check already having detected
@@ -430,6 +473,16 @@ export function BlueprintEditorPage({
                             prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev,
                         );
                         handleValidateRef.current();
+                    } else if (result.status === "load-error") {
+                        // No fresh hash to re-arm with, and nothing left to watch until a real
+                        // reload/save re-establishes a source -- see sourceProblem's own doc comment.
+                        sourceVersionRef.current = undefined;
+                        setBuiltSnapshot(undefined);
+                        setValidationView((prev) =>
+                            prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev,
+                        );
+                        handleValidateRef.current();
+                        setSourceProblem({message: describePathActionError("The opened blueprint source", result.error)});
                     }
                 })
                 .catch(() => undefined)
@@ -478,6 +531,7 @@ export function BlueprintEditorPage({
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
         sourceVersionRef.current = undefined;
+        setSourceProblem(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setValidationView({status: "idle"});
@@ -501,6 +555,7 @@ export function BlueprintEditorPage({
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
         sourceVersionRef.current = undefined;
+        setSourceProblem(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setValidationView({status: "idle"});
@@ -525,6 +580,7 @@ export function BlueprintEditorPage({
         // change detection (see sourceVersionRef's own doc comment) simply stays off for this path until
         // the next Load/Save re-establishes a known-good baseline for it.
         sourceVersionRef.current = undefined;
+        setSourceProblem(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setBuiltSnapshot(undoSnapshot.builtSnapshot);
@@ -551,6 +607,9 @@ export function BlueprintEditorPage({
                     // source-check poll starts watching it from here (see sourceVersionRef's own doc
                     // comment).
                     sourceVersionRef.current = {path: result.path, hash: result.blueprintHash};
+                    // A fresh Load is one of the two "reload/save" actions that re-establishes trust --
+                    // see sourceProblem's own doc comment.
+                    setSourceProblem(undefined);
                 }
             })
             .catch((error: unknown) => setLoadView({status: "error", message: errorMessage(error)}))
@@ -591,6 +650,7 @@ export function BlueprintEditorPage({
         // background source-change detection stays off until a JSON Load/Save gives it a real path to
         // watch (see sourceVersionRef's own doc comment).
         sourceVersionRef.current = undefined;
+        setSourceProblem(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         // Same reasoning as handleLoad's own success branch -- see builtSnapshot's own doc comment.
@@ -655,6 +715,9 @@ export function BlueprintEditorPage({
                     // This exact content is now known to match `result.path` on disk -- see
                     // sourceVersionRef's own doc comment.
                     sourceVersionRef.current = {path: result.path, hash: result.blueprintHash};
+                    // A fresh Save is the other of the two "reload/save" actions that re-establishes
+                    // trust -- see sourceProblem's own doc comment.
+                    setSourceProblem(undefined);
                 }
             })
             .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}))
@@ -702,6 +765,8 @@ export function BlueprintEditorPage({
                     markClean(savedRevision);
                     clearPersistedBlueprintDraft();
                     sourceVersionRef.current = {path: view.path, hash: raw.blueprintHash};
+                    // Same as runSave's own success branch -- see sourceProblem's own doc comment.
+                    setSourceProblem(undefined);
                 }
             })
             .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))
@@ -710,17 +775,18 @@ export function BlueprintEditorPage({
 
     const {blueprint, revision} = editor.state;
 
-    const guidedProgress = describeGuidedProgress(validationView.status);
-    const nextStep = describeGuidedNextStep(validationView.status);
+    const guidedProgress = describeGuidedProgress(validationView.status, sourceProblem !== undefined);
+    const nextStep = describeGuidedNextStep(validationView.status, sourceProblem?.message);
 
     // Guided flow requires an actual successful validation *of the current revision* before allowing a
     // build -- not just "not known-invalid" (the raw editor's own, looser rule below, unchanged). Since
     // validationView is reset to "idle" on every revision bump (see the effect above), "ok" here can
     // only ever mean "the current revision validated cleanly" -- warnings don't prevent it, matching
-    // BlueprintBuildPanel's own existing "warnings-only never blocks" contract.
-    const guidedBuildBlocked = validationView.status !== "ok";
-    const guidedBuildBlockedMessage =
-        validationView.status === "invalid" ? "Fix the validation errors above before building." : "Validate your configuration successfully before building.";
+    // BlueprintBuildPanel's own existing "warnings-only never blocks" contract. ANDed with `sourceProblem`
+    // being clear -- see its own doc comment for why a confirmed-unreadable source keeps Build blocked
+    // even once a content-only revalidate reports "ok" again for the current draft.
+    const guidedBuildBlocked = validationView.status !== "ok" || sourceProblem !== undefined;
+    const guidedBuildBlockedMessage = describeGuidedBuildBlockedMessage(validationView.status, sourceProblem !== undefined);
 
     const formModeContent = guided ? (
         <SectionedFormEditor
