@@ -189,6 +189,21 @@ function stripsOf(reels: GameModelReel[]): string[][] {
     return reels.map((reel) => ("positions" in reel ? reel.positions.map((position) => position.symbolId) : []));
 }
 
+// The Studio Game Model view's own "convert to editable per-reel strips" action (see GameModelView.tsx's
+// SharedWeightsConversionTable) -- reuses this file's own weights -> sample math verbatim (the exact same
+// buildReelsFromSharedWeights this file already runs for "symbolWeights"/"default" previews) so the
+// strips a caller freezes into blueprint.reelStrips are byte-for-byte the same reproducible sample the
+// read-only view already showed, never a second, independently re-derived conversion. Only meaningful for
+// a blueprint with no reelStrips/reelStripGeneration of its own -- the caller (StudioBlueprintService)
+// decides whether this action even applies to a given blueprint.
+export function convertSharedWeightsToReelStrips(blueprint: GameBlueprint): string[][] {
+    const wilds = blueprint.wilds ?? [];
+    const scatters = blueprint.scatters ?? [];
+    const weights = blueprint.symbolWeights !== undefined ? blueprint.symbolWeights : defaultWeightsFor(blueprint.symbols, wilds, scatters);
+    const {reels} = buildReelsFromSharedWeights(weights, blueprint.reels, wilds, scatters);
+    return stripsOf(reels);
+}
+
 // The Game Model Reels view's own data: which of the four ways this blueprint configures its reels
 // (see GameModelReelGenerationMode), plus the truthful Game window / Full strips / Analysis data that
 // generation mode actually supports -- "reelStrips"/"reelStripGeneration" get their own real, fixed

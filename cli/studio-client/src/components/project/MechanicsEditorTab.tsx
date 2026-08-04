@@ -362,7 +362,7 @@ export function MechanicsEditorTab({canEdit, onDirtyChange}: {canEdit: boolean; 
                 </QuickActions>
                 {projectionView.status === "loading" && <LoadingState label="Loading the project's game model…" />}
                 {projectionView.status === "error" && <ErrorState message={describePathActionError("The project's game model", projectionView.message)} />}
-                {projectionView.status === "ok" && <GameModelView projection={projectionView.projection} />}
+                {projectionView.status === "ok" && <GameModelView projection={projectionView.projection} canEdit={canEdit} onConverted={loadProjection} />}
             </PageSection>
         );
     }

@@ -44,6 +44,7 @@ import type {
     StudioProjectRegistrationResult,
     StudioProjectRegistryView,
     StudioReelStripGenerationView,
+    StudioSharedWeightsConversionView,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
@@ -220,6 +221,21 @@ export async function previewReelStripGeneration(fetchImpl: FetchLike, blueprint
         throw new Error(await extractErrorMessage(response, "Failed to resolve reel strip generation"));
     }
     return (await response.json()) as StudioReelStripGenerationView;
+}
+
+// Never writes/reads anything on disk — see StudioBlueprintService.convertSharedWeightsToReelStrips's
+// own doc comment. `reelStrips` on "ok" is the exact same core-computed sample GameModelView's own Reels
+// views already render; persisting it is a separate, caller-driven applyProjectBlueprint call.
+export async function convertSharedWeightsToReelStrips(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioSharedWeightsConversionView> {
+    const response = await fetchImpl("/api/home/blueprints/shared-weights-conversion", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to convert shared weights to reel strips"));
+    }
+    return (await response.json()) as StudioSharedWeightsConversionView;
 }
 
 export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise<StudioBlueprintLoadView> {

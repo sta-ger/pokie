@@ -1,11 +1,18 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {GameModelView} from "../../../../../../cli/studio-client/src/components/project/GameModelView";
-import type {GameModelProjection, GameModelReels} from "../../../../../../cli/studio-client/src/api/types";
+import {StudioApiProvider} from "../../../../../../cli/studio-client/src/context/StudioApiProvider";
+import type {GameModelProjection, GameModelReels, GamePackageInspectionReport} from "../../../../../../cli/studio-client/src/api/types";
+import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 
-function renderWithMantine(ui: React.ReactElement) {
-    return render(<MantineProvider>{ui}</MantineProvider>);
+function renderWithMantine(ui: React.ReactElement, fetchImpl?: FetchLike) {
+    return render(
+        <StudioApiProvider fetchImpl={fetchImpl}>
+            <MantineProvider>{ui}</MantineProvider>
+        </StudioApiProvider>,
+    );
 }
 
 const BASE_SECTIONS: Omit<GameModelProjection, "reels"> = {
@@ -20,6 +27,30 @@ const BASE_SECTIONS: Omit<GameModelProjection, "reels"> = {
 function projectionWithReels(reels: GameModelReels): GameModelProjection {
     return {...BASE_SECTIONS, reels: {status: "available", data: reels}};
 }
+
+const SHARED_WEIGHTS_REELS: GameModelReels = {
+    generationMode: "symbolWeights",
+    gameWindow: {reels: 1, rows: 2, wrapsAround: true, grid: [[{symbolId: "A", isWild: true, isScatter: false}, {symbolId: "B", isWild: false, isScatter: false}]]},
+    reels: [
+        {
+            reelIndex: 0,
+            source: "sample",
+            positions: [
+                {index: 0, symbolId: "A", isWild: true, isScatter: false, locked: false, stackSize: 1},
+                {index: 1, symbolId: "B", isWild: false, isScatter: false, locked: false, stackSize: 1},
+                {index: 2, symbolId: "B", isWild: false, isScatter: false, locked: false, stackSize: 1},
+                {index: 3, symbolId: "B", isWild: false, isScatter: false, locked: false, stackSize: 1},
+            ],
+            analysis: {length: 4, symbolCounts: {A: 1, B: 3}, symbolFrequencies: {A: 0.25, B: 0.75}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {A: 1, B: 3}},
+        },
+    ],
+    sharedWeightsSample: {
+        weights: {A: 1, B: 3},
+        seed: 1,
+        sampleLength: 4,
+        conversion: {weights: {A: 1, B: 3}, counts: {A: 1, B: 3}, targetProportions: {A: 0.25, B: 0.75}, actualProportions: {A: 0.25, B: 0.75}, deviations: {A: 0, B: 0}},
+    },
+};
 
 describe("GameModelView -- Reels", () => {
     it("Game window renders reel columns × rows at stop 0 with wild/scatter cells highlighted, straight off the projection's own grid", () => {
@@ -62,7 +93,7 @@ describe("GameModelView -- Reels", () => {
             ],
         };
 
-        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} />);
+        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} canEdit={false} />);
 
         expect(screen.getByRole("tab", {name: "Game window"})).toHaveAttribute("aria-selected", "true");
         const panel = within(screen.getByRole("tabpanel"));
@@ -100,7 +131,7 @@ describe("GameModelView -- Reels", () => {
             ],
         };
 
-        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} />);
+        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} canEdit={false} />);
 
         await user.click(screen.getByRole("tab", {name: "Full strips"}));
         const fullStripsPanel = within(screen.getByRole("tabpanel"));
@@ -126,7 +157,7 @@ describe("GameModelView -- Reels", () => {
             reels: [{reelIndex: 0, source: "generated", reason: "Could not satisfy every constraint after 200 attempt(s).", generationDiagnostics: [{attempt: 1, accepted: false, violations: [{constraintId: "x", message: "too many"}]}]}],
         };
 
-        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} />);
+        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} canEdit={false} />);
 
         await user.click(screen.getByRole("tab", {name: "Full strips"}));
         expect(within(screen.getByRole("tabpanel")).getByText(/Unresolved — Could not satisfy every constraint/)).toBeInTheDocument();
@@ -134,31 +165,8 @@ describe("GameModelView -- Reels", () => {
 
     it("never shows a fake fixed strip for symbolWeights/default -- labels every reel a sample, and Analysis shows the real weights-to-counts conversion", async () => {
         const user = userEvent.setup();
-        const reels: GameModelReels = {
-            generationMode: "symbolWeights",
-            gameWindow: {reels: 1, rows: 2, wrapsAround: true, grid: [[{symbolId: "A", isWild: true, isScatter: false}, {symbolId: "B", isWild: false, isScatter: false}]]},
-            reels: [
-                {
-                    reelIndex: 0,
-                    source: "sample",
-                    positions: [
-                        {index: 0, symbolId: "A", isWild: true, isScatter: false, locked: false, stackSize: 1},
-                        {index: 1, symbolId: "B", isWild: false, isScatter: false, locked: false, stackSize: 1},
-                        {index: 2, symbolId: "B", isWild: false, isScatter: false, locked: false, stackSize: 1},
-                        {index: 3, symbolId: "B", isWild: false, isScatter: false, locked: false, stackSize: 1},
-                    ],
-                    analysis: {length: 4, symbolCounts: {A: 1, B: 3}, symbolFrequencies: {A: 0.25, B: 0.75}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {A: 1, B: 3}},
-                },
-            ],
-            sharedWeightsSample: {
-                weights: {A: 1, B: 3},
-                seed: 1,
-                sampleLength: 4,
-                conversion: {weights: {A: 1, B: 3}, counts: {A: 1, B: 3}, targetProportions: {A: 0.25, B: 0.75}, actualProportions: {A: 0.25, B: 0.75}, deviations: {A: 0, B: 0}},
-            },
-        };
 
-        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} />);
+        renderWithMantine(<GameModelView projection={projectionWithReels(SHARED_WEIGHTS_REELS)} canEdit={false} />);
 
         expect(screen.getByText(/no single fixed strip/)).toBeInTheDocument();
 
@@ -178,8 +186,126 @@ describe("GameModelView -- Reels", () => {
             reels: [],
         };
 
-        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} />);
+        renderWithMantine(<GameModelView projection={projectionWithReels(reels)} canEdit={false} />);
 
         expect(within(screen.getByRole("tabpanel")).getByText("No reels configured yet.")).toBeInTheDocument();
+    });
+});
+
+// P3-POLISH-18 (review fix): symbolWeights/default previously showed the shared-weights sample as a
+// read-only diagnostic table with no way to actually act on it. This action freezes that same reproducible
+// sample into the project's own literal, editable reelStrips, through the exact same canonical
+// load -> apply-with-expectedHash path MechanicsEditorTab's own Save changes already uses -- never a
+// frontend-synthesized strip (see StudioBlueprintService.convertSharedWeightsToReelStrips's own doc
+// comment for where the actual conversion math runs).
+describe("GameModelView -- shared-weights conversion action", () => {
+    const SOURCE_PATH = "/games/a-source/blueprint.json";
+    const BLUEPRINT = {manifest: {id: "a", name: "A", version: "1.0.0"}, reels: 1, rows: 2, symbols: ["A", "B"], wilds: ["A"], symbolWeights: {A: 1, B: 3}};
+    const BLUEPRINT_HASH = "sha256:loaded-blueprint";
+    const INSPECT_REPORT: GamePackageInspectionReport = {
+        packageRoot: "/games/a",
+        valid: true,
+        generated: true,
+        buildInfo: {
+            schemaVersion: 1,
+            generatedBy: "pokie build",
+            pokieVersion: "1.3.0",
+            generatedAt: "2026-01-01T00:00:00.000Z",
+            blueprintHash: "sha256:blueprint",
+            source: SOURCE_PATH,
+            game: {id: "a", name: "A", version: "1.0.0"},
+        },
+    };
+    const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
+        "/api/project/inspect": () => ({ok: true, status: 200, body: INSPECT_REPORT}),
+        "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: SOURCE_PATH, blueprint: BLUEPRINT, blueprintHash: BLUEPRINT_HASH}}),
+    };
+
+    it("only offers the action for symbolWeights/default Reels, and only when this project can be edited", () => {
+        const {fetchImpl} = createRoutedFakeFetch({...BASE_ROUTES});
+        const {rerender} = renderWithMantine(<GameModelView projection={projectionWithReels(SHARED_WEIGHTS_REELS)} canEdit={false} />, fetchImpl);
+        expect(screen.queryByRole("button", {name: "Convert to editable per-reel strips"})).not.toBeInTheDocument();
+
+        rerender(
+            <StudioApiProvider fetchImpl={fetchImpl}>
+                <MantineProvider>
+                    <GameModelView projection={projectionWithReels({...SHARED_WEIGHTS_REELS, generationMode: "reelStrips"})} canEdit={true} />
+                </MantineProvider>
+            </StudioApiProvider>,
+        );
+        expect(screen.queryByRole("button", {name: "Convert to editable per-reel strips"})).not.toBeInTheDocument();
+
+        rerender(
+            <StudioApiProvider fetchImpl={fetchImpl}>
+                <MantineProvider>
+                    <GameModelView projection={projectionWithReels(SHARED_WEIGHTS_REELS)} canEdit={true} />
+                </MantineProvider>
+            </StudioApiProvider>,
+        );
+        expect(screen.getByRole("button", {name: "Convert to editable per-reel strips"})).toBeInTheDocument();
+    });
+
+    it("converts via the canonical load -> apply-with-expectedHash path -- reelStrips from the core conversion, symbolWeights removed, hash forwarded, and the caller's projection reloaded", async () => {
+        const user = userEvent.setup();
+        const onConverted = jest.fn();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/shared-weights-conversion": () => ({ok: true, status: 200, body: {status: "ok", reelStrips: [["A", "B", "B", "B"]]}}),
+            "/api/project/blueprint/apply": () => ({ok: true, status: 200, body: {status: "ok", blueprintHash: "sha256:applied", warnings: []}}),
+        });
+
+        renderWithMantine(<GameModelView projection={projectionWithReels(SHARED_WEIGHTS_REELS)} canEdit={true} onConverted={onConverted} />, fetchImpl);
+
+        await user.click(screen.getByRole("button", {name: "Convert to editable per-reel strips"}));
+
+        expect(await screen.findByText(/Converted — this project's reels are now literal, editable strips/)).toBeInTheDocument();
+        expect(onConverted).toHaveBeenCalledTimes(1);
+
+        const applyCalls = calls.filter((call) => call.url === "/api/project/blueprint/apply");
+        expect(applyCalls).toHaveLength(1);
+        const appliedBody = JSON.parse(applyCalls[0].init?.body ?? "{}");
+        expect(appliedBody.expectedHash).toBe(BLUEPRINT_HASH);
+        expect(appliedBody.blueprint.reelStrips).toEqual([["A", "B", "B", "B"]]);
+        expect(appliedBody.blueprint.symbolWeights).toBeUndefined();
+    });
+
+    it("reports a failed conversion diagnostically and never applies a partial mutation", async () => {
+        const user = userEvent.setup();
+        const onConverted = jest.fn();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/shared-weights-conversion": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "unsupported", error: 'This blueprint already configures "reelStrips" or "reelStripGeneration" -- there is no shared-weights sample to convert.'},
+            }),
+        });
+
+        renderWithMantine(<GameModelView projection={projectionWithReels(SHARED_WEIGHTS_REELS)} canEdit={true} onConverted={onConverted} />, fetchImpl);
+
+        await user.click(screen.getByRole("button", {name: "Convert to editable per-reel strips"}));
+
+        expect(await screen.findByText(/there is no shared-weights sample to convert/)).toBeInTheDocument();
+        expect(onConverted).not.toHaveBeenCalled();
+        // The conversion itself failed diagnostically before ever reaching the project mutation path --
+        // apply is never even attempted, so there is no risk of a partial write.
+        expect(calls.filter((call) => call.url === "/api/project/blueprint/apply")).toHaveLength(0);
+    });
+
+    it("reports a since-changed source conflict from the apply step diagnostically, without applying anything", async () => {
+        const user = userEvent.setup();
+        const onConverted = jest.fn();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/blueprints/shared-weights-conversion": () => ({ok: true, status: 200, body: {status: "ok", reelStrips: [["A", "B", "B", "B"]]}}),
+            "/api/project/blueprint/apply": () => ({ok: true, status: 409, body: {status: "conflict", currentHash: "sha256:changed-on-disk"}}),
+        });
+
+        renderWithMantine(<GameModelView projection={projectionWithReels(SHARED_WEIGHTS_REELS)} canEdit={true} onConverted={onConverted} />, fetchImpl);
+
+        await user.click(screen.getByRole("button", {name: "Convert to editable per-reel strips"}));
+
+        expect(await screen.findByText(/changed on disk since it was loaded here/)).toBeInTheDocument();
+        expect(onConverted).not.toHaveBeenCalled();
     });
 });

@@ -1,4 +1,6 @@
-import {Badge, Group, Table, Tabs, Text} from "@mantine/core";
+import {Badge, Button, Group, Table, Tabs, Text} from "@mantine/core";
+import {useState} from "react";
+import {applyProjectBlueprint, convertSharedWeightsToReelStrips, inspectProject, loadBlueprint} from "../../api/apiClient";
 import type {
     GameModelBetsAndModes,
     GameModelGameWindow,
@@ -12,9 +14,15 @@ import type {
     GameModelSharedWeightsSample,
     GameModelSymbol,
 } from "../../api/types";
+import {useStudioApi} from "../../context/StudioApiProvider";
+import {errorMessage} from "../../domain/errorMessage";
 import {AnalysisTable, DiagnosticsList} from "../blueprintEditor/ReelStripGenerationEditor";
 import {EmptyState} from "../common/EmptyState";
 import {PageSection} from "../common/PageSection";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
     if (mode === "reelStrips") {
@@ -311,6 +319,110 @@ function SharedWeightsConversionTable({sample}: {sample: GameModelSharedWeightsS
     );
 }
 
+type SharedWeightsConversionStatus = {status: "idle"} | {status: "loading"} | {status: "ok"} | {status: "error"; message: string};
+
+// symbolWeights/default Reels' own "Convert to editable per-reel strips" action -- freezes the exact same
+// reproducible sample the read-only views above already show into this project's own literal, per-reel
+// reelStrips, so it becomes editable (Reel Strip Modeler, Full strips, ...) instead of reshuffling fresh
+// every session. The sample itself is never computed here: POST /api/home/blueprints/shared-weights-
+// conversion runs the real core convertSharedWeightsToReelStrips() (src/project/buildGameModelReels.ts)
+// against this project's own freshly loaded tracked source blueprint, and the result is only ever
+// persisted through the existing conditional-commit POST /api/project/blueprint/apply path (same
+// expectedHash contract MechanicsEditorTab's own Save changes uses) -- so a source blueprint that changed
+// on disk since this view loaded, or a conversion result that fails validation, is reported here and never
+// partially applied.
+function SharedWeightsConversionAction({canEdit, onConverted}: {canEdit: boolean; onConverted?: () => void}) {
+    const fetchImpl = useStudioApi();
+    const [conversionStatus, setConversionStatus] = useState<SharedWeightsConversionStatus>({status: "idle"});
+
+    if (!canEdit) {
+        return null;
+    }
+
+    async function handleConvert(): Promise<void> {
+        setConversionStatus({status: "loading"});
+        try {
+            const report = await inspectProject(fetchImpl);
+            if (!report.generated || report.buildInfo?.source === undefined) {
+                setConversionStatus({
+                    status: "error",
+                    message: "This project wasn't built from a tracked source blueprint (no \"source\" recorded in build-info.json), so it can't be converted here.",
+                });
+                return;
+            }
+
+            const loaded = await loadBlueprint(fetchImpl, report.buildInfo.source);
+            if (loaded.status === "load-error") {
+                setConversionStatus({status: "error", message: loaded.error});
+                return;
+            }
+
+            const conversion = await convertSharedWeightsToReelStrips(fetchImpl, loaded.blueprint);
+            if (conversion.status === "unsupported") {
+                setConversionStatus({status: "error", message: conversion.error});
+                return;
+            }
+            if (conversion.status === "invalid") {
+                const message = conversion.errors.map((issue) => issue.message).join(" ");
+                setConversionStatus({status: "error", message: message.length > 0 ? message : "The project's source blueprint failed validation."});
+                return;
+            }
+
+            const nextBlueprint = isPlainObject(loaded.blueprint) ? {...loaded.blueprint} : {};
+            nextBlueprint.reelStrips = conversion.reelStrips;
+            Reflect.deleteProperty(nextBlueprint, "symbolWeights");
+
+            const applied = await applyProjectBlueprint(fetchImpl, nextBlueprint, loaded.blueprintHash);
+            if (applied.status === "conflict") {
+                setConversionStatus({
+                    status: "error",
+                    message: "The project's source blueprint changed on disk since it was loaded here, so converting would silently overwrite those changes. Try converting again to reload the latest version first.",
+                });
+                return;
+            }
+            if (applied.status === "invalid") {
+                const message = applied.errors.map((issue) => issue.message).join(" ");
+                setConversionStatus({status: "error", message: message.length > 0 ? message : "The converted blueprint failed validation."});
+                return;
+            }
+            if (applied.status !== "ok") {
+                setConversionStatus({status: "error", message: applied.error});
+                return;
+            }
+
+            setConversionStatus({status: "ok"});
+            onConverted?.();
+        } catch (error) {
+            setConversionStatus({status: "error", message: errorMessage(error)});
+        }
+    }
+
+    return (
+        <Group gap="sm" mb="sm" align="center">
+            <Button
+                size="xs"
+                variant="light"
+                loading={conversionStatus.status === "loading"}
+                onClick={() => {
+                    handleConvert();
+                }}
+            >
+                Convert to editable per-reel strips
+            </Button>
+            {conversionStatus.status === "ok" && (
+                <Text size="sm" c="green">
+                    Converted — this project&apos;s reels are now literal, editable strips (reelStrips).
+                </Text>
+            )}
+            {conversionStatus.status === "error" && (
+                <Text size="sm" c="red">
+                    {conversionStatus.message}
+                </Text>
+            )}
+        </Group>
+    );
+}
+
 // Analysis: the shared weights → counts conversion (when this generation mode has one), plus each
 // reel's own ReelStripAnalyzer output (counts/shares/distances/possible stop windows) and, for a
 // "generated" reel, its own generation constraint diagnostics -- reusing AnalysisTable/DiagnosticsList
@@ -350,7 +462,7 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
 // GameModelReels this project's generation mode actually produced (see buildGameModelReels.ts). Never
 // shows a single strip as "the" strip for "symbolWeights"/"default" (see GameModelSharedWeightsSample's
 // own doc comment) -- an explicit note plus each view's own "sample" labeling makes that unmistakable.
-function ReelsSection({section}: {section: GameModelSection<GameModelReels>}) {
+function ReelsSection({section, canEdit, onConverted}: {section: GameModelSection<GameModelReels>; canEdit: boolean; onConverted?: () => void}) {
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
@@ -360,10 +472,13 @@ function ReelsSection({section}: {section: GameModelSection<GameModelReels>}) {
         <div>
             <Text size="sm">Generation mode: {describeReelGenerationMode(data.generationMode)}</Text>
             {hasNoFixedStrip && (
-                <Text size="sm" c="dimmed" mb="sm">
-                    This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each
-                    session, so the views below show one reproducible sample instead of a real strip.
-                </Text>
+                <>
+                    <Text size="sm" c="dimmed" mb="sm">
+                        This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each
+                        session, so the views below show one reproducible sample instead of a real strip.
+                    </Text>
+                    <SharedWeightsConversionAction canEdit={canEdit} onConverted={onConverted} />
+                </>
             )}
             <Tabs defaultValue="gameWindow" mt="sm">
                 <Tabs.List>
@@ -418,8 +533,12 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
 // renderer over `projection` (see GameModelProjection in api/types.ts, mirroring the "pokie" core's own
 // canonical type) -- every value shown here comes straight off that DTO; this component never flattens a
 // paytable, infers a reel generation mode, or otherwise re-derives any of the underlying GameBlueprint's
-// own math itself (that's buildGameModelProjection's job, server/core-side).
-export function GameModelView({projection}: {projection: GameModelProjection}) {
+// own math itself (that's buildGameModelProjection's job, server/core-side). `canEdit` gates the one
+// action this otherwise-read-only view offers (SharedWeightsConversionAction, see its own doc comment) --
+// an introspectable-only project never sees it, same as MechanicsEditorTab's own "Edit" gating.
+// `onConverted` lets the caller reload its own projection after a successful conversion, the same way
+// MechanicsEditorTab already reloads after a Save changes.
+export function GameModelView({projection, canEdit, onConverted}: {projection: GameModelProjection; canEdit: boolean; onConverted?: () => void}) {
     return (
         <div>
             <PageSection legend="Game basics">
@@ -461,7 +580,7 @@ export function GameModelView({projection}: {projection: GameModelProjection}) {
             </PageSection>
 
             <PageSection legend="Reels">
-                <ReelsSection section={projection.reels} />
+                <ReelsSection section={projection.reels} canEdit={canEdit} onConverted={onConverted} />
             </PageSection>
 
             <PageSection legend="Paytable">

@@ -1,4 +1,4 @@
-import {buildGameModelReels} from "../../src/project/buildGameModelReels.js";
+import {buildGameModelReels, convertSharedWeightsToReelStrips} from "../../src/project/buildGameModelReels.js";
 import type {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 
 const BASE_BLUEPRINT: GameBlueprint = {
@@ -158,5 +158,23 @@ describe("buildGameModelReels", () => {
             throw new Error("expected a resolved sample reel");
         }
         expect(reel.analysis.symbolCounts).toEqual({A: 5, B: 15, S: 3});
+    });
+
+    describe("convertSharedWeightsToReelStrips", () => {
+        it("returns exactly the same per-reel sample strips buildGameModelReels itself already shows for symbolWeights, never a second, independently re-derived conversion", () => {
+            const blueprint: GameBlueprint = {...BASE_BLUEPRINT, reels: 2, symbolWeights: {A: 1, B: 3}};
+            const sampleReels = buildGameModelReels(blueprint).reels;
+            const stripsFromSample = sampleReels.map((reel) => ("positions" in reel ? reel.positions.map((position) => position.symbolId) : []));
+
+            expect(convertSharedWeightsToReelStrips(blueprint)).toEqual(stripsFromSample);
+        });
+
+        it("converts the engine's own built-in default weighting the same way, when neither reelStrips/reelStripGeneration/symbolWeights is set", () => {
+            const blueprint: GameBlueprint = {...BASE_BLUEPRINT, reels: 1};
+            const sampleReels = buildGameModelReels(blueprint).reels;
+            const stripsFromSample = sampleReels.map((reel) => ("positions" in reel ? reel.positions.map((position) => position.symbolId) : []));
+
+            expect(convertSharedWeightsToReelStrips(blueprint)).toEqual(stripsFromSample);
+        });
     });
 });

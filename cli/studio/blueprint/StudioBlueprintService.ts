@@ -1,6 +1,7 @@
 import {
     buildGameBuildInfo,
     computeGameBlueprintHash,
+    convertSharedWeightsToReelStrips,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -41,6 +42,7 @@ import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationVie
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
 import type {StudioParSheetImportView} from "./StudioParSheetImportView.js";
 import type {StudioReelStripGenerationReelView, StudioReelStripGenerationView} from "./StudioReelStripGenerationView.js";
+import type {StudioSharedWeightsConversionView} from "./StudioSharedWeightsConversionView.js";
 
 const outsideStudioRootMessage = (rawPath: string): string =>
     `"${rawPath}" resolves inside POKIE Studio's own internal directory and cannot be used as a blueprint path.`;
@@ -454,6 +456,32 @@ export class StudioBlueprintService {
         });
 
         return {status: "ok", errors, warnings, reels};
+    }
+
+    // The Game Model view's own "Convert to editable per-reel strips" action (see
+    // GameModelView.tsx's SharedWeightsConversionTable) -- reuses the real core
+    // convertSharedWeightsToReelStrips() (src/project/buildGameModelReels.ts), the exact same
+    // weights -> sample math the read-only view already renders for a "symbolWeights"/"default"
+    // blueprint, never a second, independently re-derived conversion. Purely compute-and-return: the
+    // caller applies the result itself via the existing POST /api/project/blueprint/apply path, with
+    // its own already-loaded expectedHash -- this never writes anything.
+    public convertSharedWeightsToReelStrips(blueprint: unknown): StudioSharedWeightsConversionView {
+        if (!isPlainObject(blueprint)) {
+            return {status: "unsupported", error: "The blueprint must be a JSON object."};
+        }
+        if (blueprint.reelStrips !== undefined || blueprint.reelStripGeneration !== undefined) {
+            return {
+                status: "unsupported",
+                error: 'This blueprint already configures "reelStrips" or "reelStripGeneration" -- there is no shared-weights sample to convert.',
+            };
+        }
+
+        const validated = this.validate(blueprint);
+        if (validated.status === "invalid") {
+            return {status: "invalid", errors: validated.errors, warnings: validated.warnings};
+        }
+
+        return {status: "ok", reelStrips: convertSharedWeightsToReelStrips(blueprint as GameBlueprint)};
     }
 
     public async build(blueprint: unknown, outDir?: string, sourcePath?: string): Promise<StudioBuildResult> {

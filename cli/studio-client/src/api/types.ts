@@ -342,6 +342,16 @@ export type StudioReelStripGenerationView = {
     reels: StudioReelStripGenerationReelView[];
 };
 
+// POST /api/home/blueprints/shared-weights-conversion's own DTO -- see
+// cli/studio/blueprint/StudioSharedWeightsConversionView.ts's own doc comment. `reelStrips` is the exact
+// same reproducible sample GameModelView's own Reels views already render for a "symbolWeights"/"default"
+// blueprint -- never re-derived here. Never the result of anything being written -- persisting it is a
+// separate, caller-driven applyProjectBlueprint call with the caller's own already-loaded expectedHash.
+export type StudioSharedWeightsConversionView =
+    | {status: "ok"; reelStrips: string[][]}
+    | {status: "unsupported"; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
+
 // POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
 // doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated. `blueprintHash`
 // is that content's own exact-content hash — carry it forward as the "expectedHash" a later
