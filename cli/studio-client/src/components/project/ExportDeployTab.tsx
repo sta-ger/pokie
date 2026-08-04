@@ -25,6 +25,7 @@ import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {RecoveryNotice} from "../common/RecoveryNotice";
 
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
     outcomeLibrary: {
@@ -65,6 +66,11 @@ type StaticExportRunView =
     | {status: "idle"}
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioStakeEngineExportView, {status: "ok"}>}
+    // `source` is the exact resolved mode/library selector the conflicting request was submitted with --
+    // Overwrite resubmits that same pairing (never re-resolves it), so an Outcome Libraries change made
+    // while the conflict is on screen can never make Overwrite silently write a different library than
+    // what the conflict itself was reported against.
+    | {status: "conflict"; result: Extract<StudioStakeEngineExportView, {status: "conflict"}>; source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>}
     | {status: "error"; message: string};
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
@@ -78,12 +84,11 @@ function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateR
     return view.error;
 }
 
-function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportView, {status: "ok"}>): string {
+// Never called for a "conflict" result -- that status renders its own recovery UI (Overwrite when
+// `overwritable`, otherwise its own already-actionable `error` message) directly in TargetCard below.
+function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportView, {status: "ok"} | {status: "conflict"}>): string {
     if (view.status === "load-error") {
         return describePathActionError("The Stake Engine export's outcome library", view.error);
-    }
-    if (view.status === "conflict") {
-        return `An export already exists at "${view.outDir}". Remove it, or open Stake Engine Export directly to overwrite it.`;
     }
     const [firstError] = view.errors;
     return firstError?.message ?? "The Stake Engine export failed validation.";
@@ -98,6 +103,7 @@ function TargetCard({
     resolveDeploymentModes,
     staticExportRun,
     onRunStaticExport,
+    onOverwriteStaticExport,
     deployment,
     onOpenFolder,
 }: {
@@ -109,6 +115,7 @@ function TargetCard({
     resolveDeploymentModes: () => StudioDeploymentModeInput[] | undefined;
     staticExportRun: StaticExportRunView;
     onRunStaticExport: () => void;
+    onOverwriteStaticExport: () => void;
     deployment: DeploymentManager;
     onOpenFolder: (path: string) => void;
 }) {
@@ -217,10 +224,22 @@ function TargetCard({
                     <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"} disabled={!canRunStaticExport}>
                         Run Stake Engine Export ({staticExportModeName})
                     </Button>
-                    {!canRunStaticExport && staticExportRun.status !== "ok" && (
+                    {!canRunStaticExport && staticExportRun.status !== "ok" && staticExportRun.status !== "conflict" && (
                         <EmptyState message="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." />
                     )}
                     {staticExportRun.status === "error" && <ErrorState message={staticExportRun.message} />}
+                    {staticExportRun.status === "conflict" &&
+                        (staticExportRun.result.overwritable ? (
+                            <RecoveryNotice
+                                title={staticExportRun.result.error}
+                                message="Exporting will replace the existing directory's contents."
+                                actionLabel="Overwrite"
+                                actionColor="red"
+                                onAction={onOverwriteStaticExport}
+                            />
+                        ) : (
+                            <ErrorState message={staticExportRun.result.error} />
+                        ))}
                     {staticExportRun.status === "ok" && (
                         <Text size="sm" mt={4}>
                             Exported {staticExportRun.result.files.length} file(s) to {staticExportRun.result.outDir}.{" "}
@@ -368,17 +387,19 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         return source === undefined ? undefined : [{modeName: source.modeName, librarySelector: source}];
     }
 
-    function handleRunStaticExport(): void {
-        const source = resolveOutcomeLibrarySource();
-        if (source === undefined || !staticExportGuard.begin()) {
-            return;
-        }
+    // Shared by the initial run and the conflict card's own Overwrite action -- `source` is always the
+    // exact resolved mode/library selector the caller already has in hand (freshly resolved for the
+    // initial run, or the one a prior conflict was reported against for Overwrite), never re-resolved
+    // here, so Overwrite can never end up pairing a since-changed selector with `overwrite: true`.
+    function runStaticExport(source: Extract<OutcomeLibrarySelector, {kind: "bundle"}>, overwrite: boolean): void {
         setStaticExportRun({status: "running"});
-        exportStakeEngine(fetchImpl, [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
+        exportStakeEngine(fetchImpl, [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, overwrite)
             .then((view) => {
                 staticExportGuard.end();
                 if (view.status === "ok") {
                     setStaticExportRun({status: "ok", result: view});
+                } else if (view.status === "conflict") {
+                    setStaticExportRun({status: "conflict", result: view, source});
                 } else {
                     setStaticExportRun({status: "error", message: describeStakeEngineResultError(view)});
                 }
@@ -387,6 +408,21 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                 staticExportGuard.end();
                 setStaticExportRun({status: "error", message: describeProjectActionError("The Stake Engine export", errorMessage(error))});
             });
+    }
+
+    function handleRunStaticExport(): void {
+        const source = resolveOutcomeLibrarySource();
+        if (source === undefined || !staticExportGuard.begin()) {
+            return;
+        }
+        runStaticExport(source, false);
+    }
+
+    function handleOverwriteStaticExport(): void {
+        if (staticExportRun.status !== "conflict" || !staticExportGuard.begin()) {
+            return;
+        }
+        runStaticExport(staticExportRun.source, true);
     }
 
     return (
@@ -433,6 +469,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                         resolveDeploymentModes={resolveDeploymentModes}
                                         staticExportRun={staticExportRun}
                                         onRunStaticExport={handleRunStaticExport}
+                                        onOverwriteStaticExport={handleOverwriteStaticExport}
                                         deployment={deployment}
                                         onOpenFolder={handleOpenFolder}
                                     />

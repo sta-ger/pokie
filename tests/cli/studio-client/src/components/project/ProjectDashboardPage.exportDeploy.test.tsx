@@ -282,6 +282,136 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         ]);
     });
 
+    it("offers an in-place Overwrite action for an overwritable Stake Engine export conflict, and resubmits the identical resolved mode/library selector with overwrite: true", async () => {
+        const user = userEvent.setup();
+        const capturedBodies: {modes?: unknown; outDir?: string; overwrite?: boolean}[] = [];
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    buildStatus: "compatible",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    currentGame: {id: "a", name: "A", version: "1.0.0"},
+                    artifactPokieVersion: "1.0.0",
+                    currentPokieVersion: "1.0.0",
+                    generatedAt: "2026-01-01T00:00:00.000Z",
+                    modes: [
+                        {
+                            modeName: "base",
+                            libraryId: "a-base",
+                            bundleDir: "outcomelibrary",
+                            buildStatus: "compatible",
+                            outcomeCount: 500,
+                            totalWeight: 1000,
+                            rtp: 0.95,
+                            hash: "sha256:library",
+                        },
+                    ],
+                },
+            }),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/stakeengine/export") {
+                const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {modes?: unknown; outDir?: string; overwrite?: boolean};
+                capturedBodies.push(body);
+                if (!body.overwrite) {
+                    return Promise.resolve({
+                        ok: false,
+                        status: 409,
+                        json: () =>
+                            Promise.resolve({
+                                status: "conflict",
+                                outDir: "stakeengine",
+                                overwritable: true,
+                                error: '"stakeengine" already exists and is not empty. Resubmit with "overwrite": true to replace it.',
+                            }),
+                    });
+                }
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []}),
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
+
+        expect(await screen.findByText('"stakeengine" already exists and is not empty. Resubmit with "overwrite": true to replace it.')).toBeInTheDocument();
+        expect(screen.queryByText(/open Stake Engine Export directly/)).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Overwrite"}));
+
+        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
+        expect(capturedBodies).toEqual([
+            {modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}], outDir: "stakeengine", overwrite: false},
+            {modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}], outDir: "stakeengine", overwrite: true},
+        ]);
+    });
+
+    it("gives an actionable in-place message, with no Overwrite action, for a non-overwritable Stake Engine export conflict", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    buildStatus: "compatible",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    currentGame: {id: "a", name: "A", version: "1.0.0"},
+                    artifactPokieVersion: "1.0.0",
+                    currentPokieVersion: "1.0.0",
+                    generatedAt: "2026-01-01T00:00:00.000Z",
+                    modes: [
+                        {
+                            modeName: "base",
+                            libraryId: "a-base",
+                            bundleDir: "outcomelibrary",
+                            buildStatus: "compatible",
+                            outcomeCount: 500,
+                            totalWeight: 1000,
+                            rtp: 0.95,
+                            hash: "sha256:library",
+                        },
+                    ],
+                },
+            }),
+            "/api/project/stakeengine/export": () => ({
+                ok: false,
+                status: 409,
+                body: {
+                    status: "conflict",
+                    outDir: "stakeengine",
+                    overwritable: false,
+                    error: '"stakeengine" already exists and is not empty, and wasn\'t produced by a previous Stake Engine export. Choose a different output directory or empty it first.',
+                },
+            }),
+        };
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
+
+        expect(await screen.findByText(/wasn't produced by a previous Stake Engine export/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Overwrite"})).not.toBeInTheDocument();
+        expect(screen.queryByText(/open Stake Engine Export directly/)).not.toBeInTheDocument();
+    });
+
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
         const user = userEvent.setup();
         const routes = {
