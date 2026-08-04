@@ -11,6 +11,7 @@ import {
     addReelStripSymbol,
     addSymbol,
     applyReelStripGenerationEntry,
+    computeReelStripGenerationAutoLength,
     duplicateBetAt,
     duplicatePaylineAt,
     duplicatePaytablePayout,
@@ -448,6 +449,20 @@ describe("blueprintFormOps", () => {
             setReelStripGenerationSourceMode(b, drafts, 0, "symbolCounts");
 
             expect(b.reelStripGeneration).toEqual([{type: "generated", length: 1, seed: 1, symbolCounts: {A: 3}}]);
+        });
+
+        describe("computeReelStripGenerationAutoLength", () => {
+            it("sums the active symbolCounts", () => {
+                expect(computeReelStripGenerationAutoLength({type: "generated", symbolCounts: {A: 3, B: 5}})).toBe(8);
+            });
+
+            it("sums and rounds the active symbolWeights", () => {
+                expect(computeReelStripGenerationAutoLength({type: "generated", symbolWeights: {A: 1.5, B: 2.6}})).toBe(4);
+            });
+
+            it("returns undefined when the active side is empty", () => {
+                expect(computeReelStripGenerationAutoLength({type: "generated", symbolCounts: {}})).toBeUndefined();
+            });
         });
 
         it("does not lose a side's own data across repeated symbolCounts <-> symbolWeights switches, and the blueprint entry stays clean (no draft keys, no both-sides-set)", () => {

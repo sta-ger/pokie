@@ -485,6 +485,22 @@ export function getReelStripGenerationSourceMode(entry: Record<string, unknown>)
     return entry.symbolWeights !== undefined ? "symbolWeights" : "symbolCounts";
 }
 
+// A sensible default "length" for a generated reel's own currently active symbolCounts/symbolWeights --
+// the sum of whichever side is active. For counts, that's the length that already makes them sum
+// exactly (no rounding needed). For weights, this mirrors buildRandomReelStripGeneration's own technique
+// (length = sum of the weights themselves) so LargestRemainderReelStripSymbolWeightsConverter needs no
+// rounding to hit those exact proportions. Returns undefined for an empty counts/weights table -- there
+// is nothing to sum yet, so "Auto" has nothing sensible to set length to.
+export function computeReelStripGenerationAutoLength(entry: Record<string, unknown>): number | undefined {
+    const mode = getReelStripGenerationSourceMode(entry);
+    const values = Object.values(asNumberRecord(mode === "symbolCounts" ? entry.symbolCounts : entry.symbolWeights));
+    if (values.length === 0) {
+        return undefined;
+    }
+    const sum = values.reduce((total, value) => total + value, 0);
+    return mode === "symbolCounts" ? sum : Math.round(sum);
+}
+
 // Unlike the literal/generated "type" toggle above, symbolCounts and symbolWeights can't simply keep
 // both riding along together while inactive: GameBlueprintValidator rejects a generated entry that has
 // both (or neither) set -- "exactly one of these two must be set". So the side being *left* is stashed

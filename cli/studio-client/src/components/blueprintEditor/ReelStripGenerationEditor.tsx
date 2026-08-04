@@ -7,6 +7,7 @@ import {asStringList} from "../../domain/asStringList";
 import {
     addReelStripGenerationLiteralSymbol,
     applyReelStripGenerationEntry,
+    computeReelStripGenerationAutoLength,
     duplicateReelStripGenerationLiteralSymbolAt,
     getReelStripGenerationSourceMode,
     moveReelStripGenerationLiteralSymbolAt,
@@ -27,6 +28,7 @@ import {
     setReelStripGenerationSymbolWeight,
 } from "../../domain/blueprintFormOps";
 import {errorMessage} from "../../domain/errorMessage";
+import {REEL_STRIP_CONSTRAINT_PRESETS} from "../../domain/reelStripConstraintPresets";
 import {
     computeReelStopWindow,
     describeReelStripGenerationEntrySummary,
@@ -283,11 +285,18 @@ function LockedPositions({
 
 function ConstraintsEditor({reelIndex, entry, mutate}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate}) {
     const [error, setError] = useState<string>();
+    // Bumped only when a preset is inserted programmatically -- remounts the Textarea below so its own
+    // uncontrolled `defaultValue` picks up the freshly appended preset instead of silently keeping
+    // whatever the user last typed/blurred (same "uncontrolled input needs a fresh key" technique
+    // ReelStripGenerationEditor's own `draftGeneration` uses at the whole-reel level).
+    const [textKey, setTextKey] = useState(0);
+    const [presetId, setPresetId] = useState<string | null>(null);
     const initialText = Array.isArray(entry.constraints) ? JSON.stringify(entry.constraints, null, 2) : "";
 
     return (
         <PageSection legend="Constraints (JSON array)">
             <Textarea
+                key={textKey}
                 rows={4}
                 defaultValue={initialText}
                 aria-label={`Constraints for reel ${reelIndex + 1}`}
@@ -302,6 +311,31 @@ function ConstraintsEditor({reelIndex, entry, mutate}: {reelIndex: number; entry
                 }}
             />
             {error && <ErrorState message={error} />}
+            <QuickActions>
+                <Select
+                    aria-label={`Constraint preset for reel ${reelIndex + 1}`}
+                    placeholder="Add preset…"
+                    data={REEL_STRIP_CONSTRAINT_PRESETS.map((preset) => ({value: preset.id, label: preset.label}))}
+                    value={presetId}
+                    onChange={setPresetId}
+                />
+                <Button
+                    variant="default"
+                    aria-label={`Add constraint preset to reel ${reelIndex + 1}`}
+                    onClick={() => {
+                        const preset = REEL_STRIP_CONSTRAINT_PRESETS.find((candidate) => candidate.id === presetId);
+                        if (preset === undefined) {
+                            return;
+                        }
+                        const existing = Array.isArray(entry.constraints) ? entry.constraints : [];
+                        setError(undefined);
+                        mutate((b) => setReelStripGenerationConstraints(b, reelIndex, [...existing, preset.build()]));
+                        setTextKey((key) => key + 1);
+                    }}
+                >
+                    Add preset
+                </Button>
+            </QuickActions>
         </PageSection>
     );
 }
@@ -320,11 +354,17 @@ function GeneratedEditor({
     drafts: ReelStripGenerationDraftsRef;
 }) {
     const sourceMode = getReelStripGenerationSourceMode(entry);
+    // Bumped only by the "Auto" button below -- remounts the Length NumberInput so its own uncontrolled
+    // `defaultValue` picks up the programmatically computed length, the same "uncontrolled input needs a
+    // fresh key" technique ConstraintsEditor's own `textKey` uses for its preset-insert action.
+    const [lengthKey, setLengthKey] = useState(0);
+    const autoLength = computeReelStripGenerationAutoLength(entry);
 
     return (
         <div>
             <QuickActions>
                 <NumberInput
+                    key={lengthKey}
                     label="Length"
                     min={1}
                     step={1}
@@ -336,6 +376,21 @@ function GeneratedEditor({
                         }
                     }}
                 />
+                <Button
+                    variant="default"
+                    size="sm"
+                    aria-label={`Set reel ${reelIndex + 1} length automatically from its own counts/weights`}
+                    disabled={autoLength === undefined}
+                    onClick={() => {
+                        if (autoLength === undefined) {
+                            return;
+                        }
+                        mutate((b) => setReelStripGenerationLength(b, reelIndex, autoLength));
+                        setLengthKey((key) => key + 1);
+                    }}
+                >
+                    Auto length
+                </Button>
                 <NumberInput
                     label="Seed"
                     step={1}
@@ -505,6 +560,7 @@ export function ReelStripGenerationEditor({
     const [preview, setPreview] = useState<ReelStripGenerationPreviewView>({status: "idle"});
     const [stop, setStop] = useState<number | string>(0);
     const [rows, setRows] = useState<number>(defaultRows);
+    const [copySourceReelIndex, setCopySourceReelIndex] = useState<string | null>(null);
     const resolveGuard = useDoubleSubmitGuard();
 
     // A local staleness signal alongside `revision` -- reel switches and draft edits don't touch the
@@ -575,6 +631,7 @@ export function ReelStripGenerationEditor({
             setDraftEntry(cloneRecord(entries[reelIndex]));
             setStop(0);
             setRows(defaultRows);
+            setCopySourceReelIndex(null);
             setDraftGeneration((generation) => generation + 1);
             setActiveStep(1);
         };
@@ -667,6 +724,29 @@ export function ReelStripGenerationEditor({
         invalidatePendingPreview();
         setDraftEntry(cloneRecord(appliedEntry));
         setDraftGeneration((generation) => generation + 1);
+    }
+
+    // Replaces the current reel's own draft wholesale with another reel's own *applied* entry (length,
+    // seed, counts-or-weights, locked positions, constraints, literal strip -- whatever that other reel
+    // currently has) -- a starting point to tweak from, never auto-applied itself, same as any other
+    // draft edit. Still requires the explicit Apply step below to actually commit it. Same
+    // confirm-before-discarding-unapplied-work and toggle-bookkeeping-cleanup reasoning as selectReel()'s
+    // own confirmed-switch-away path, since this equally throws away whatever was in progress here.
+    function copyFromReel(sourceReelIndex: number): void {
+        if (selectedReelIndex === undefined || entries[sourceReelIndex] === undefined) {
+            return;
+        }
+        const proceed = (): void => {
+            drafts.current.delete(selectedReelIndex);
+            invalidatePendingPreview();
+            setDraftEntry(cloneRecord(entries[sourceReelIndex]));
+            setDraftGeneration((generation) => generation + 1);
+        };
+        if (isDirty) {
+            confirm(`Reel ${selectedReelIndex + 1} has unapplied changes. Discard them and copy Reel ${sourceReelIndex + 1}'s configuration in?`, proceed);
+        } else {
+            proceed();
+        }
     }
 
     const reelPreview: StudioReelStripGenerationReelView | undefined =
@@ -763,6 +843,34 @@ export function ReelStripGenerationEditor({
                                 </Badge>
                             )}
                         </Group>
+                        {entries.length > 1 && (
+                            <QuickActions>
+                                <Select
+                                    aria-label={`Copy configuration into reel ${selectedReelIndex + 1} from reel`}
+                                    placeholder="Copy from reel…"
+                                    data={entries
+                                        .map((_, index) => index)
+                                        .filter((index) => index !== selectedReelIndex)
+                                        .map((index) => ({value: String(index), label: `Reel ${index + 1}`}))}
+                                    value={copySourceReelIndex}
+                                    onChange={setCopySourceReelIndex}
+                                />
+                                <Button
+                                    variant="default"
+                                    aria-label={`Copy into reel ${selectedReelIndex + 1}`}
+                                    disabled={copySourceReelIndex === null}
+                                    onClick={() => {
+                                        if (copySourceReelIndex === null) {
+                                            return;
+                                        }
+                                        copyFromReel(Number(copySourceReelIndex));
+                                        setCopySourceReelIndex(null);
+                                    }}
+                                >
+                                    Copy
+                                </Button>
+                            </QuickActions>
+                        )}
                         <Radio.Group
                             value={draftEntry.type === "generated" ? "generated" : "literal"}
                             onChange={(value) => localMutate((b) => setReelStripGenerationEntryType(b, drafts.current, selectedReelIndex, value as "literal" | "generated"))}
