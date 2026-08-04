@@ -5,7 +5,11 @@
 **Status:** baseline, frozen 2026-08-01 against `HEAD` at the start of the `P3-POLISH-*` step series; §1's
 "package-only" classification was superseded by `P3-POLISH-09` (2026-08-03) — see that section's own update
 note. §4's Advanced-tab nav list and §6's "documentation update only" framing were both superseded by
-`P3-POLISH-20` (2026-08-04) — see the "Owner steps" section's own update note. Written
+`P3-POLISH-20` (2026-08-04) — see the "Owner steps" section's own update note. This baseline and the "Owner
+steps" list below are closed out by `P3-POLISH-24`'s
+[`pokie-phase3-final-verification-report.md`](pokie-phase3-final-verification-report.md) — see that report for
+the closing acceptance check against the current tree; it supersedes nothing recorded here, it only confirms
+each owner step's own work landed as this baseline anticipated. Written
 *before* any Phase 3 migration work touches CLI targets, the generated-package seam, Studio's home/project
 routes, or the External Adapter SDK / Stake Engine adapter boundary, so a future migration step can diff its
 own intended changes against this document instead of re-deriving "what did this look like before" from
