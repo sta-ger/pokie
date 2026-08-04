@@ -113,7 +113,9 @@ function TargetCard({
     onOpenFolder: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
-    const canRunStaticExport = resolveOutcomeLibrarySource() !== undefined;
+    const staticExportSource = resolveOutcomeLibrarySource();
+    const canRunStaticExport = staticExportSource !== undefined;
+    const staticExportModeName = staticExportSource?.modeName ?? defaultModeName;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
 
     return (
@@ -213,7 +215,7 @@ function TargetCard({
             {card.kind === "staticExport" && (
                 <>
                     <Button size="xs" mt="sm" onClick={onRunStaticExport} loading={staticExportRun.status === "running"} disabled={!canRunStaticExport}>
-                        Run Stake Engine Export ({defaultModeName})
+                        Run Stake Engine Export ({staticExportModeName})
                     </Button>
                     {!canRunStaticExport && staticExportRun.status !== "ok" && (
                         <EmptyState message="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." />
@@ -372,7 +374,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             return;
         }
         setStaticExportRun({status: "running"});
-        exportStakeEngine(fetchImpl, [{modeName: defaultModeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
+        exportStakeEngine(fetchImpl, [{modeName: source.modeName, librarySelector: source, cost: 1}], STAKE_ENGINE_DEFAULT_OUT_DIR, false)
             .then((view) => {
                 staticExportGuard.end();
                 if (view.status === "ok") {

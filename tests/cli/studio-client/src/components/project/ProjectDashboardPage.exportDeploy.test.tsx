@@ -222,6 +222,66 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByRole("button", {name: "Continue to Preview"})).not.toBeInTheDocument();
     });
 
+    it("exports a registry fallback mode with a coherent modeName/librarySelector pairing, not the project's default mode name", async () => {
+        const user = userEvent.setup();
+        let capturedExportBody: {modes?: {modeName: string; librarySelector: {kind: string; bundleDir: string; modeName: string}}[]} | undefined;
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    buildStatus: "compatible",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    currentGame: {id: "a", name: "A", version: "1.0.0"},
+                    artifactPokieVersion: "1.0.0",
+                    currentPokieVersion: "1.0.0",
+                    generatedAt: "2026-01-01T00:00:00.000Z",
+                    // Only a non-"base" mode is registered -- resolveOutcomeLibrarySource() must fall back
+                    // to this mode (registryView.modes[0]) rather than the project's own default "base",
+                    // and the exported modeName must agree with it.
+                    modes: [
+                        {
+                            modeName: "bonus",
+                            libraryId: "a-bonus",
+                            bundleDir: "outcomelibrary",
+                            buildStatus: "compatible",
+                            outcomeCount: 500,
+                            totalWeight: 1000,
+                            rtp: 0.95,
+                            hash: "sha256:library",
+                        },
+                    ],
+                },
+            }),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/stakeengine/export") {
+                capturedExportBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []}),
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (bonus)"}));
+
+        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
+        expect(capturedExportBody?.modes).toEqual([
+            {modeName: "bonus", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "bonus"}, cost: 1},
+        ]);
+    });
+
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
         const user = userEvent.setup();
         const routes = {
