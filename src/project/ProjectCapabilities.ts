@@ -1,6 +1,8 @@
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
+    OUTCOME_SOURCE_READ_CAPABILITY,
+    OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
@@ -19,11 +21,19 @@ export type ProjectCapabilities = readonly ProjectCapability[];
 // describeUnsupportedProjectOperation when it looks for an alternative type) reads this map rather than
 // re-deciding "does this type support that capability" independently. "wasm" deliberately maps to an empty
 // array — see ProjectType.ts's own doc comment on that entry.
+//
+// "outcomeLibrary" and "stakeAdapter" are the two ProjectType values that carry more than one capability today
+// — both already have their own canonical outcome-source reader (OutcomeLibraryBundleReading /
+// StakeEngineOutcomeSourceReading), so both grant OUTCOME_SOURCE_READ_CAPABILITY (inspect, exact analysis) in
+// addition to their own exchange/build-facing capability. Only "outcomeLibrary" additionally grants
+// OUTCOME_SOURCE_SAMPLE_CAPABILITY (sampling sim, play/serve, replay): a "stakeAdapter" export has no
+// PreGeneratedOutcomeSourcing-style draw-by-draw serving contract, so it stays read-only — see that
+// capability's own doc comment.
 export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapabilities>> = {
     blueprint: [BLUEPRINT_BUILD_CAPABILITY],
     tsPackage: [RUNTIME_EXECUTE_CAPABILITY],
-    outcomeLibrary: [OUTCOME_LIBRARY_READ_CAPABILITY],
-    stakeAdapter: [STAKE_ADAPTER_EXCHANGE_CAPABILITY],
+    outcomeLibrary: [OUTCOME_LIBRARY_READ_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY, OUTCOME_SOURCE_SAMPLE_CAPABILITY],
+    stakeAdapter: [STAKE_ADAPTER_EXCHANGE_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY],
     wasm: [],
     parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY],
 };

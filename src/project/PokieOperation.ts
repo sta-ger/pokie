@@ -1,6 +1,8 @@
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
+    OUTCOME_SOURCE_READ_CAPABILITY,
+    OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
@@ -33,6 +35,17 @@ export const STAKE_ENGINE_DIFF_OPERATION: PokieOperation = "stakeEngine.diff";
 export const PAR_IMPORT_OPERATION: PokieOperation = "par.import";
 export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
+// The outcome-source-driven counterparts to INSPECT/SIM/SERVE/REPLAY_OPERATION above — deliberately separate
+// operation ids, not a reuse of those, since they're satisfied a different way (a canonical outcome-source
+// reader/selector, never loadPokieGame) and by a different capability (OUTCOME_SOURCE_READ_CAPABILITY/
+// OUTCOME_SOURCE_SAMPLE_CAPABILITY, not RUNTIME_EXECUTE_CAPABILITY) — see those capabilities' own doc
+// comments. Reusing e.g. SIM_OPERATION's id for this would incorrectly imply an "outcomeLibrary" project also
+// grants DEV/CLIENT/STUDIO_OPERATION, which it does not.
+export const OUTCOME_SOURCE_INSPECT_OPERATION: PokieOperation = "outcomeSource.inspect";
+export const OUTCOME_SOURCE_ANALYZE_OPERATION: PokieOperation = "outcomeSource.analyze";
+export const OUTCOME_SOURCE_SAMPLE_OPERATION: PokieOperation = "outcomeSource.sample";
+export const OUTCOME_SOURCE_SERVE_OPERATION: PokieOperation = "outcomeSource.serve";
+export const OUTCOME_SOURCE_REPLAY_OPERATION: PokieOperation = "outcomeSource.replay";
 
 // Which single ProjectCapability each known PokieOperation requires — the one place
 // describeUnsupportedProjectOperation reads from to decide whether a resolved PokieProject can perform a
@@ -58,4 +71,9 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [PAR_IMPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [PAR_EXPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [WASM_EXPORT_OPERATION]: WASM_EXPORT_CAPABILITY,
+    [OUTCOME_SOURCE_INSPECT_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
+    [OUTCOME_SOURCE_ANALYZE_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
+    [OUTCOME_SOURCE_SAMPLE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_SERVE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_REPLAY_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
 };
