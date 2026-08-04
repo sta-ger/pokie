@@ -1,27 +1,19 @@
-import {Alert, Button, Stepper, Text} from "@mantine/core";
-import {IconAlertTriangle} from "@tabler/icons-react";
-import {useEffect, useRef, useState, type ReactNode} from "react";
+import {Button, Text} from "@mantine/core";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {applyProjectBlueprint, inspectProject, loadBlueprint, loadGameModel, validateBlueprint} from "../../api/apiClient";
 import type {GameModelProjection, ValidationIssue} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {asBetModesList, describeNewBetModeDraft, getWinModelType, type NewBetModeDraftStatus} from "../../domain/blueprintFormOps";
+import {asBetModesList, describeNewBetModeDraft, type NewBetModeDraftStatus} from "../../domain/blueprintFormOps";
 import {errorMessage} from "../../domain/errorMessage";
-import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
-import {describeSectionStatusText} from "../../domain/interpret/BlueprintSections";
-import {classifyIssuesByStep, describeStepStatus, MECHANICS_EDITOR_STEPS, type MechanicsEditorStepId} from "../../domain/interpret/mechanicsEditorSections";
+import {describeValidation, type BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {describePathActionError} from "../../domain/pathActionError";
 import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {BetModesEditor} from "../blueprintEditor/BetModesEditor";
-import {BetsList} from "../blueprintEditor/BetsList";
 import {BlueprintJsonPanel} from "../blueprintEditor/BlueprintJsonPanel";
 import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
-import {LayoutFieldset} from "../blueprintEditor/LayoutFieldset";
-import {PaylinesEditor} from "../blueprintEditor/PaylinesEditor";
-import {PaytableEditor} from "../blueprintEditor/PaytableEditor";
-import {ReelGenerationModeSelector} from "../blueprintEditor/ReelGenerationModeSelector";
-import {SymbolsTable} from "../blueprintEditor/SymbolsTable";
+import {SectionedFormEditor} from "../blueprintEditor/SectionedFormEditor";
 import {WinModelSelector} from "../blueprintEditor/WinModelSelector";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {EmptyState} from "../common/EmptyState";
@@ -32,21 +24,18 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {GameModelView} from "./GameModelView";
 
-function describeStepStatusText(stepId: MechanicsEditorStepId, view: BlueprintValidationView): string {
-    return describeSectionStatusText(describeStepStatus(stepId, view));
-}
+// The guided Design Game editor's own auto-validate debounce (see BlueprintEditorPage's own doc comment)
+// -- reused verbatim here so Edit mode's own freshness-aware auto-validate behaves identically.
+const AUTO_VALIDATE_DEBOUNCE_MS = 600;
 
-// The Bet modes step's own Draft/Saved/Invalid/Unsaved lifecycle line, distinct from the Stepper's
-// per-step description above -- that one only ever reflects the last Validate result and stays blank
-// until Validate has actually run, so on its own it can't tell the user an edit sits unapplied. A
-// duplicate New bet mode id draft takes priority over everything else: BetModesEditor's own field
-// already shows its inline error, but the field error alone left this line free to keep saying "Saved"
-// for an id that is, in fact, not usable -- untruthful. Invalid (this step's own applied-blueprint
-// validation errors) takes priority over Unsaved next: fixing the error is the more urgent fact. See
-// BetModesEditor's own newBetModeIdDescription for the separate "Draft" state -- a typed, unique,
-// not-yet-added bet mode id -- which this line does not duplicate; a ready draft alone still leaves this
-// line as Saved/Unsaved exactly as if it weren't there, matching the fact that Add hasn't committed it
-// to the blueprint yet.
+// The Bet modes section's own Draft/Saved/Invalid/Unsaved lifecycle line -- distinct from SectionedFormEditor's
+// own per-section status badges (which only ever reflect the last Validate result and stay blank until
+// Validate has actually run). A duplicate New bet mode id draft takes priority over everything else:
+// BetModesEditor's own field already shows its inline error, but the field error alone left this line free
+// to keep saying "Saved" for an id that is, in fact, not usable -- untruthful. Invalid (this section's own
+// applied-blueprint validation errors) takes priority over Unsaved next: fixing the error is the more
+// urgent fact. See BetModesEditor's own newBetModeIdDescription for the separate "Draft" state -- a typed,
+// unique, not-yet-added bet mode id -- which this line does not duplicate.
 function describeBetModesLifecycleStatus(
     isDirty: boolean,
     view: BlueprintValidationView,
@@ -58,12 +47,11 @@ function describeBetModesLifecycleStatus(
             text: `Invalid -- "${newBetModeDraftStatus.id}" is already used by another bet mode; the New bet mode id must be unique before it can be added.`,
         };
     }
-    const status = describeStepStatus("betModes", view);
-    if (status.tone === "error") {
-        return {tone: "error", text: "Invalid -- fix the errors below before applying."};
+    if (view.status === "invalid") {
+        return {tone: "error", text: "Invalid -- fix the errors below before saving."};
     }
     if (isDirty) {
-        return {tone: "warning", text: "Unsaved changes -- go to Apply to save them to the project."};
+        return {tone: "warning", text: "Unsaved changes -- use Save changes above to save them to the project."};
     }
     return {tone: "success", text: "Saved -- matches the project's applied blueprint."};
 }
@@ -74,9 +62,11 @@ const BET_MODES_LIFECYCLE_TONE_COLOR: Record<"success" | "warning" | "error", st
     error: "red",
 };
 
-type LoadView = {status: "loading"} | {status: "unsupported"; message: string} | {status: "error"; message: string} | {status: "ok"};
+type ProjectionView = {status: "loading"} | {status: "error"; message: string} | {status: "ok"; projection: GameModelProjection};
 
-type ApplyView =
+type EditLoadView = {status: "loading"} | {status: "unsupported"; message: string} | {status: "error"; message: string} | {status: "ok"};
+
+type SaveView =
     | {status: "idle"}
     | {status: "loading"}
     | {status: "error"; message: string}
@@ -84,46 +74,70 @@ type ApplyView =
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "ok"};
 
-// Guided Layout & symbols -> Win model/paytable -> Mechanics/features -> Bet modes -> Validate -> Apply
-// editor for the *current project's* own source blueprint. As of P3-POLISH-16, MechanicsEditorTab below no
-// longer mounts this component at all (Blueprint editing is out of scope for that step -- see its own doc
-// comment); the implementation is kept here, unreferenced, only for the P3-POLISH-17 migration to build on
-// if/when Blueprint editing returns. Reuses the Home "Design Game"
-// editor's own field components/useBlueprintEditor draft-state hook and the existing blueprint validate/
-// load/save/build services as-is -- no new backend routes, no re-implemented domain math (see
-// GameBlueprintValidator/GamePackageGenerator for the real rules). Draft/apply/discard, stale-response
-// guards, and progressive JSON disclosure follow OutcomeLibrariesTab's own established lifecycle
-// discipline; project-switch cleanup is a full remount, not page-level state -- see
-// ProjectDashboardPage's `key={projectKey ?? "no-project"}` on MechanicsEditorTab.
-function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boolean) => void}) {
+// The Game Model tab -- one unified view of the *current project's* own game model, read-only by
+// default for both a Blueprint project's own editable source and an introspectable-but-not-editable
+// package/WASM project's tracked source alike (see GameModelView's own doc comment; both load the exact
+// same server/core-owned GameModelProjection, GET /api/project/gameModel). `canEdit` (BLUEPRINT_BUILD_
+// CAPABILITY, resolved by ProjectDashboardPage) is the only thing that decides whether an "Edit" action
+// into the guided editor below is offered at all -- an introspectable-only project never sees it.
+//
+// Edit mode reuses the Home "Design Game" editor's own SectionedFormEditor -- the exact same component,
+// not a re-implementation of it -- for every field Design Game already covers (basics, layout, symbols,
+// reels, paytable, bets), plus WinModelSelector/FreeGamesFieldset/BetModesEditor for the fields that are
+// unique to a Blueprint's own game model and have no Design Game equivalent yet. This retires the former
+// EditableMechanicsEditor's own Stepper, which duplicated Design Game's own Layout/Symbols/Paytable/Bets
+// fields behind a second, differently-shaped guided flow. Validation is inline and automatic (the same
+// debounced auto-validate Design Game's own guided mode uses), not a separate manual "Run validation"
+// step. Saving reuses the existing blueprint load/validate/apply services as-is -- no new backend routes,
+// no re-implemented domain math (see GameBlueprintValidator/GamePackageGenerator for the real rules) --
+// and returns straight to the read-only view on success, reloading the projection so the view can never
+// show stale data. Project-switch cleanup is a full remount, not page-level state -- see
+// ProjectDashboardPage's `key={projectKey ?? "no-project"}` on this component.
+export function MechanicsEditorTab({canEdit, onDirtyChange}: {canEdit: boolean; onDirtyChange?: (dirty: boolean) => void}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
-    const [activeStep, setActiveStep] = useState(0);
-    // Lifted out of BetModesEditor itself: the Bet modes step's own content div only renders while
-    // `activeStep === 3` (see below), so a useState local to BetModesEditor would be silently discarded
-    // -- losing whatever id the user had typed but not yet clicked "Add bet mode" for -- every time they
-    // switched to another step and back. Held here instead, where it survives every step switch, and
-    // reset on every wholesale blueprint replace (New/Load/Discard) via the formGeneration effect below,
-    // the same "stale scratch state from the previous blueprint must not survive" rule
-    // nextFormGenerationIsClean already applies to the dirty-tracking ref.
+    const [mode, setMode] = useState<"view" | "edit">("view");
+
+    // The read-only view's own data source -- reloaded on mount and again after every successful Save
+    // changes below, so View never shows a stale projection once an edit has actually been persisted.
+    const [projectionView, setProjectionView] = useState<ProjectionView>({status: "loading"});
+    const projectionRequestIdRef = useRef(0);
+    const loadProjection = useCallback(() => {
+        const requestId = ++projectionRequestIdRef.current;
+        setProjectionView({status: "loading"});
+        loadGameModel(fetchImpl)
+            .then((projection) => {
+                if (requestId !== projectionRequestIdRef.current) {
+                    return;
+                }
+                setProjectionView({status: "ok", projection});
+            })
+            .catch((error: unknown) => {
+                if (requestId !== projectionRequestIdRef.current) {
+                    return;
+                }
+                setProjectionView({status: "error", message: errorMessage(error)});
+            });
+    }, [fetchImpl]);
+    useEffect(() => {
+        loadProjection();
+    }, [loadProjection]);
+
+    // Lifted out of BetModesEditor itself: it only renders while Edit mode is active, so a local
+    // useState there would be silently discarded -- losing whatever id the user had typed but not yet
+    // clicked "Add bet mode" for -- every time Edit mode remounts (Cancel then Edit again, or a Save).
+    // Held here instead, and reset on every wholesale blueprint replace (a fresh Edit-mode load) via the
+    // formGeneration effect below.
     const [newBetModeId, setNewBetModeId] = useState("");
     useEffect(() => {
         setNewBetModeId("");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.formGeneration]);
-    // Shared by the dirty-tracking effect below (a non-"empty" draft counts as pending, unsaved-loss-risk
-    // state even though it isn't in the blueprint yet) and the Bet modes lifecycle status computed later
-    // in render (a "duplicate" draft must report Invalid). Recomputed every render from plain state/props
-    // -- not a ref -- so it's safe to read here, unlike cleanRevisionRef below.
     const newBetModeDraftStatus = describeNewBetModeDraft(asBetModesList(editor.state.blueprint.betModes), newBetModeId);
 
-    const [loadView, setLoadView] = useState<LoadView>({status: "loading"});
-    const loadRequestIdRef = useRef(0);
-    const lastLoadedBlueprintRef = useRef<unknown>(undefined);
-    // The exact-content hash of `lastLoadedBlueprintRef`'s own content -- the "expectedHash" Apply
-    // sends, so the server can do its own conditional commit (see applyProjectBlueprint) instead of
-    // this tab trying to detect a conflict itself via a separate load-then-compare round trip.
+    const [editLoadView, setEditLoadView] = useState<EditLoadView>({status: "loading"});
+    const editLoadRequestIdRef = useRef(0);
     const lastLoadedBlueprintHashRef = useRef<string | undefined>(undefined);
 
     const [validateView, setValidateView] = useState<BlueprintValidationView>({status: "idle"});
@@ -133,45 +147,14 @@ function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boole
     useEffect(() => {
         revisionRef.current = editor.state.revision;
     }, [editor.state.revision]);
-    // Any edit invalidates a previous (or in-flight) validation result -- bumping the request id and
-    // releasing the guard here (not just resetting the view) means an edit made while a validate
-    // request is still pending frees up a fresh "Run validation" click immediately, instead of that
-    // click being silently swallowed until the stale request eventually settles. Same
-    // invalidateXxx() reasoning as OutcomeLibrariesTab's own guard-releasing invalidation helpers.
-    useEffect(() => {
-        validateRequestIdRef.current++;
-        setValidateView({status: "idle"});
-        validateGuard.end();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editor.state.revision]);
 
-    const [applyView, setApplyView] = useState<ApplyView>({status: "idle"});
-    const applyRequestIdRef = useRef(0);
-    const applyGuard = useDoubleSubmitGuard();
-    // True once a *completed* Apply result (its own success message included) has been silently
-    // invalidated by a later edit -- same distinction CertificationTab's own validateOutdated/
-    // buildOutdated draw between "outdated" and "never run". Without this, "Applied -- ... up to date."
-    // stayed on screen after a subsequent edit, since applyView is otherwise only ever set from
-    // runApply()/handleDiscard(), never from the same revision-tracking effect that resets Validate.
-    // Cleared the instant a fresh Apply attempt starts, or Discard reverts to the last-applied blueprint.
-    const [applyOutdated, setApplyOutdated] = useState(false);
-    // Mirrors the validateView-reset effect below, one render tick later so it can see whether the
-    // *previous* applyView was worth flagging as outdated (an idle one never was). Kept as its own
-    // effect, rather than folded into that one, so each stays focused on the single result it owns.
-    useEffect(() => {
-        applyRequestIdRef.current++;
-        if (applyView.status !== "idle" && applyView.status !== "loading") {
-            setApplyOutdated(true);
-        }
-        setApplyView({status: "idle"});
-        applyGuard.end();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editor.state.revision]);
+    const [saveView, setSaveView] = useState<SaveView>({status: "idle"});
+    const saveGuard = useDoubleSubmitGuard();
 
     // Dirty-tracking: same cleanRevisionRef/nextFormGenerationIsClean/markClean scheme as
     // BlueprintEditorPage's own (see its doc comment) -- kept local to this tab rather than shared,
     // matching the rest of this codebase's convention of not abstracting this small a pattern across
-    // unrelated tabs.
+    // unrelated tabs. Scoped to Edit mode: View mode never has a draft of its own to lose.
     const cleanRevisionRef = useRef(editor.state.revision);
     const nextFormGenerationIsClean = useRef(false);
     const [isDirty, setIsDirty] = useState(false);
@@ -188,65 +171,71 @@ function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boole
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.formGeneration]);
     // Refs must never be read during render (react-hooks/refs) -- derive isDirty in an effect with no
-    // dependency array instead, which runs after every render (a mutate/markClean/formGeneration
-    // change always re-renders anyway) -- same pattern BlueprintEditorPage's own onDirtyChange uses.
-    // `isDirty` itself stays scoped to the blueprint's own revision (it drives the Bet modes step's
-    // Saved/Unsaved lifecycle line and the Apply step's Discard button, both of which must stay truthful
-    // about whether there's an actual blueprint change to save/discard) -- but the onDirtyChange report
-    // ProjectDashboardPage gates navigation away from this tab (or closing the project) on also folds in
-    // a pending "New bet mode id" draft: a typed-but-not-yet-added id is real, uncommitted user input
-    // that a bare tab switch or Back/Forward would otherwise silently throw away with zero warning, same
-    // as any other unsaved field edit. formGeneration resets `newBetModeId` on every wholesale replace
-    // (New/Load/Discard), so a confirmed Leave -- which remounts this whole tab -- and a Discard both
-    // still clear it exactly as before.
+    // dependency array instead, which runs after every render. Reported up through onDirtyChange so
+    // ProjectDashboardPage can gate navigation away from this tab (or Close project) on it -- see its own
+    // handleMechanicsEditorDirtyChange doc comment. Also folds in a pending "New bet mode id" draft: a
+    // typed-but-not-yet-added id is real, uncommitted user input that a bare tab switch or Back/Forward
+    // would otherwise silently throw away with zero warning, same as any other unsaved field edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        const dirty = editor.state.revision !== cleanRevisionRef.current;
+        const dirty = mode === "edit" && (editor.state.revision !== cleanRevisionRef.current || newBetModeDraftStatus.status !== "empty");
         setIsDirty(dirty);
-        onDirtyChange?.(dirty || newBetModeDraftStatus.status !== "empty");
+        onDirtyChange?.(dirty);
     });
 
-    // Runs once per mount -- this component is remounted wholesale (key={projectKey}) on a genuine
-    // project switch, so there is no separate "project changed" case to handle here.
+    // Runs whenever Edit mode is (re-)entered -- a fresh load every time, so Cancel (which simply
+    // switches back to "view" without reverting anything itself) and a prior failed Save both always
+    // resolve to reloading the genuinely-current source rather than trying to reconcile a stale draft.
     useEffect(() => {
-        const requestId = ++loadRequestIdRef.current;
-        setLoadView({status: "loading"});
+        if (mode !== "edit") {
+            return;
+        }
+        const requestId = ++editLoadRequestIdRef.current;
+        setEditLoadView({status: "loading"});
+        setSaveView({status: "idle"});
         inspectProject(fetchImpl)
             .then((report) => {
-                if (requestId !== loadRequestIdRef.current) {
+                if (requestId !== editLoadRequestIdRef.current) {
                     return undefined;
                 }
                 if (!report.generated || report.buildInfo?.source === undefined) {
-                    setLoadView({
+                    setEditLoadView({
                         status: "unsupported",
                         message: "This project wasn't built from a tracked source blueprint (no \"source\" recorded in build-info.json), so it can't be edited here.",
                     });
                     return undefined;
                 }
                 return loadBlueprint(fetchImpl, report.buildInfo.source).then((result) => {
-                    if (requestId !== loadRequestIdRef.current) {
+                    if (requestId !== editLoadRequestIdRef.current) {
                         return;
                     }
                     if (result.status === "load-error") {
-                        setLoadView({status: "error", message: result.error});
+                        setEditLoadView({status: "error", message: result.error});
                         return;
                     }
-                    lastLoadedBlueprintRef.current = result.blueprint;
                     lastLoadedBlueprintHashRef.current = result.blueprintHash;
                     nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
-                    setLoadView({status: "ok"});
+                    setEditLoadView({status: "ok"});
                 });
             })
             .catch((error: unknown) => {
-                if (requestId !== loadRequestIdRef.current) {
+                if (requestId !== editLoadRequestIdRef.current) {
                     return;
                 }
-                setLoadView({status: "error", message: errorMessage(error)});
+                setEditLoadView({status: "error", message: errorMessage(error)});
             });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [mode]);
 
-    function handleValidate(): void {
+    // Freshness-aware auto-validate -- same debounced, revision-driven contract as BlueprintEditorPage's
+    // own guided mode (see its doc comment): every edit (and the initial Edit-mode load itself) reschedules
+    // a validate AUTO_VALIDATE_DEBOUNCE_MS after the last change, so a typing burst collapses into one
+    // request. Bumping validateRequestIdRef and releasing the guard here (not just resetting the view)
+    // means an edit made while a validate request is still pending frees up a fresh auto-validate
+    // immediately, instead of that request being silently swallowed until the stale one eventually settles.
+    const autoValidateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const handleValidate = (): void => {
         if (!validateGuard.begin()) {
             return;
         }
@@ -259,7 +248,7 @@ function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boole
                 if (isStale()) {
                     return;
                 }
-                setValidateView(result);
+                setValidateView(describeValidation(result));
             })
             .catch((error: unknown) => {
                 if (isStale()) {
@@ -268,349 +257,207 @@ function EditableMechanicsEditor({onDirtyChange}: {onDirtyChange?: (dirty: boole
                 setValidateView({status: "error", message: errorMessage(error)});
             })
             .finally(() => validateGuard.end());
-    }
+    };
+    useEffect(() => {
+        if (mode !== "edit") {
+            // Leaving Edit mode (Cancel, a successful Save, or an unsupported/error edit-load's own
+            // Cancel) must cancel any pending debounced auto-validate and invalidate any validate
+            // request still in flight -- otherwise a Cancel made just before the debounce fires would
+            // still send a validate for the just-discarded draft, and a response that settles after
+            // leaving Edit could still land (via isStale()'s requestId check in handleValidate) against
+            // the restored View or a brand-new Edit session's own state.
+            if (autoValidateTimerRef.current !== undefined) {
+                clearTimeout(autoValidateTimerRef.current);
+                autoValidateTimerRef.current = undefined;
+            }
+            validateRequestIdRef.current++;
+            validateGuard.end();
+            return undefined;
+        }
+        validateRequestIdRef.current++;
+        validateGuard.end();
+        setValidateView((prev) => (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : {status: "idle"}));
+        if (autoValidateTimerRef.current !== undefined) {
+            clearTimeout(autoValidateTimerRef.current);
+        }
+        autoValidateTimerRef.current = setTimeout(() => {
+            autoValidateTimerRef.current = undefined;
+            handleValidate();
+        }, AUTO_VALIDATE_DEBOUNCE_MS);
+        return undefined;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editor.state.revision, mode]);
+    // Cancels a pending debounced auto-validate on unmount -- a stray setTimeout firing after this page
+    // is gone would call setValidateView on an unmounted component.
+    useEffect(
+        () => () => {
+            if (autoValidateTimerRef.current !== undefined) {
+                clearTimeout(autoValidateTimerRef.current);
+            }
+        },
+        [],
+    );
 
-    // Apply is a single request to the server's own conditional-commit endpoint (see
-    // applyGameBlueprintToProject.ts) -- this tab no longer does its own load-then-compare-then-write:
-    // the server re-checks the source blueprint's hash itself, immediately before staging its own
-    // build+save, and stages both before committing either, so a failed/conflicting Apply always
-    // leaves the project's source and generated output exactly as they were before the attempt (see
-    // that function's own doc comment for the full conditional-commit sequence). `lastLoadedBlueprintRef`/
-    // `lastLoadedBlueprintHashRef`/markClean only advance once the server reports "ok", so Discard
-    // after any failure or conflict reverts to what's genuinely still on disk.
-    function runApply(): void {
+    // Save changes is a single request to the server's own conditional-commit endpoint (see
+    // applyGameBlueprintToProject.ts) -- this tab does no load-then-compare-then-write of its own: the
+    // server re-checks the source blueprint's hash itself, immediately before staging its own build+save,
+    // and stages both before committing either, so a failed/conflicting save always leaves the project's
+    // source and generated output exactly as they were before the attempt. A successful save returns to
+    // the read-only view and reloads its projection, so it can never show what was just overwritten.
+    function handleSaveChanges(): void {
         const expectedHash = lastLoadedBlueprintHashRef.current;
-        if (expectedHash === undefined || !applyGuard.begin()) {
+        if (expectedHash === undefined || !saveGuard.begin()) {
             return;
         }
-        const appliedRevision = editor.state.revision;
-        const requestId = ++applyRequestIdRef.current;
-        const isStale = (): boolean => requestId !== applyRequestIdRef.current;
-        const blueprint = editor.state.blueprint;
-        setApplyOutdated(false);
-        setApplyView({status: "loading"});
-        applyProjectBlueprint(fetchImpl, blueprint, expectedHash)
+        const savedRevision = editor.state.revision;
+        setSaveView({status: "loading"});
+        applyProjectBlueprint(fetchImpl, editor.state.blueprint, expectedHash)
             .then((result) => {
-                if (isStale()) {
-                    return;
-                }
                 if (result.status === "conflict") {
-                    setApplyView({
+                    setSaveView({
                         status: "conflict",
                         message:
-                            "The project's blueprint file changed on disk since it was loaded here, so applying would silently overwrite those changes. Switch away from this tab and back to reload the latest version before applying.",
+                            "The project's blueprint file changed on disk since it was loaded here, so saving would silently overwrite those changes. Cancel and open Edit again to reload the latest version before saving.",
                     });
                     return;
                 }
                 if (result.status === "invalid") {
-                    setApplyView({status: "invalid", errors: result.errors, warnings: result.warnings});
+                    setSaveView({status: "invalid", errors: result.errors, warnings: result.warnings});
                     return;
                 }
                 if (result.status !== "ok") {
-                    setApplyView({status: "error", message: result.error});
+                    setSaveView({status: "error", message: result.error});
                     return;
                 }
-                lastLoadedBlueprintRef.current = blueprint;
-                lastLoadedBlueprintHashRef.current = result.blueprintHash;
-                markClean(appliedRevision);
-                setApplyView({status: "ok"});
+                markClean(savedRevision);
+                setSaveView({status: "ok"});
+                setMode("view");
+                loadProjection();
             })
-            .catch((error: unknown) => {
-                if (isStale()) {
-                    return;
-                }
-                setApplyView({status: "error", message: errorMessage(error)});
-            })
-            .finally(() => applyGuard.end());
+            .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}))
+            .finally(() => saveGuard.end());
     }
 
-    function handleApply(): void {
-        confirm("Save this draft to the project's blueprint and rebuild the generated game module?", runApply);
-    }
-
-    function handleDiscard(): void {
-        if (lastLoadedBlueprintRef.current === undefined) {
+    // Cancel only confirms when there's actually something to lose -- a clean draft (nothing edited, or
+    // freshly loaded/saved) returns to the view straight away.
+    function handleCancel(): void {
+        if (isDirty) {
+            confirm("Discard your unsaved changes to this project's game model?", () => setMode("view"));
             return;
         }
-        nextFormGenerationIsClean.current = true;
-        editor.loadFrom(lastLoadedBlueprintRef.current);
-        setValidateView({status: "idle"});
-        setApplyView({status: "idle"});
-        setApplyOutdated(false);
+        setMode("view");
     }
 
-    if (loadView.status === "loading") {
+    if (mode === "view") {
         return (
-            <PageSection legend="Mechanics Editor">
+            <PageSection legend="Game Model">
+                <QuickActions>
+                    {canEdit ? (
+                        <Button onClick={() => setMode("edit")}>Edit</Button>
+                    ) : (
+                        <Text size="sm" c="dimmed">
+                            Read-only — this project doesn&apos;t support editing its game model directly.
+                        </Text>
+                    )}
+                </QuickActions>
+                {projectionView.status === "loading" && <LoadingState label="Loading the project's game model…" />}
+                {projectionView.status === "error" && <ErrorState message={describePathActionError("The project's game model", projectionView.message)} />}
+                {projectionView.status === "ok" && <GameModelView projection={projectionView.projection} />}
+            </PageSection>
+        );
+    }
+
+    if (editLoadView.status === "loading") {
+        return (
+            <PageSection legend="Game Model">
                 <LoadingState label="Loading the project's blueprint…" />
             </PageSection>
         );
     }
-    if (loadView.status === "unsupported") {
+    if (editLoadView.status === "unsupported") {
         return (
-            <PageSection legend="Mechanics Editor">
-                <EmptyState message={loadView.message} />
+            <PageSection legend="Game Model">
+                <EmptyState message={editLoadView.message} />
+                <QuickActions>
+                    <Button variant="default" onClick={() => setMode("view")}>
+                        Cancel
+                    </Button>
+                </QuickActions>
             </PageSection>
         );
     }
-    if (loadView.status === "error") {
+    if (editLoadView.status === "error") {
         return (
-            <PageSection legend="Mechanics Editor">
-                <ErrorState message={describePathActionError("The project's source blueprint", loadView.message)} />
+            <PageSection legend="Game Model">
+                <ErrorState message={describePathActionError("The project's source blueprint", editLoadView.message)} />
+                <QuickActions>
+                    <Button variant="default" onClick={() => setMode("view")}>
+                        Cancel
+                    </Button>
+                </QuickActions>
             </PageSection>
         );
     }
 
     const {blueprint, revision} = editor.state;
-    let allIssues: ValidationIssue[] = [];
-    if (validateView.status === "invalid") {
-        allIssues = [...validateView.errors, ...validateView.warnings];
-    } else if (validateView.status === "ok") {
-        allIssues = validateView.warnings;
-    }
-    const {byStep, unclassified} = classifyIssuesByStep(allIssues);
-    const applyBlocked = validateView.status !== "ok";
     const betModesLifecycleStatus = describeBetModesLifecycleStatus(isDirty, validateView, newBetModeDraftStatus);
 
-    function renderStepIssues(stepId: MechanicsEditorStepId): ReactNode {
-        const issues = byStep[stepId];
-        if (issues.length === 0) {
-            return null;
-        }
-        return (
-            <PageSection legend="Diagnostics">
-                <IssueList title="Errors" issues={issues.filter((issue) => issue.severity === "error")} />
-                <IssueList title="Warnings" issues={issues.filter((issue) => issue.severity === "warning")} />
-            </PageSection>
-        );
-    }
-
     return (
-        <PageSection legend="Mechanics Editor">
+        <PageSection legend="Edit Game Model">
+            <QuickActions>
+                <Button onClick={handleSaveChanges} loading={saveView.status === "loading"} disabled={validateView.status !== "ok"}>
+                    Save changes
+                </Button>
+                <Button variant="default" onClick={handleCancel}>
+                    Cancel
+                </Button>
+            </QuickActions>
             <Text size="sm" c="dimmed" mb="sm">
                 Configure this project&apos;s layout, symbols, win model, paytable, mechanics/features, and bet
                 modes, backed by the same GameBlueprint validators and build service the CLI uses — nothing
                 here re-implements or duplicates that logic.
             </Text>
-
-            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                {MECHANICS_EDITOR_STEPS.map((step, index) => (
-                    <Stepper.Step
-                        key={step.id}
-                        label={step.label}
-                        description={describeStepStatusText(step.id, validateView)}
-                        aria-current={activeStep === index ? "step" : undefined}
-                    />
-                ))}
-                <Stepper.Step
-                    label="Validate"
-                    description="Errors & warnings"
-                    aria-current={activeStep === MECHANICS_EDITOR_STEPS.length ? "step" : undefined}
-                />
-                <Stepper.Step label="Apply" description="Save & rebuild" aria-current={activeStep === MECHANICS_EDITOR_STEPS.length + 1 ? "step" : undefined} />
-            </Stepper>
-
-            {activeStep === 0 && (
-                <div key={editor.formGeneration}>
-                    <LayoutFieldset blueprint={blueprint} mutate={editor.mutate} />
-                    <SymbolsTable blueprint={blueprint} mutate={editor.mutate} />
-                    <ReelGenerationModeSelector blueprint={blueprint} mutate={editor.mutate} drafts={editor.drafts} revision={revision} />
-                    {renderStepIssues("layoutSymbols")}
-                </div>
+            {validateView.status === "error" && <ErrorState message={describePathActionError("This validation request", validateView.message)} />}
+            {validateView.status !== "ok" && validateView.status !== "error" && (
+                <Text size="sm" c="dimmed" mb="sm">
+                    Checking for validation issues automatically as you edit — Save changes stays disabled until your configuration is valid.
+                </Text>
             )}
-
-            {activeStep === 1 && (
-                <div key={editor.formGeneration}>
-                    <WinModelSelector blueprint={blueprint} mutate={editor.mutate} />
-                    {getWinModelType(blueprint) === "lines" && <PaylinesEditor blueprint={blueprint} mutate={editor.mutate} />}
-                    <PaytableEditor blueprint={blueprint} mutate={editor.mutate} />
-                    {renderStepIssues("winModelPaytable")}
-                </div>
-            )}
-
-            {activeStep === 2 && (
-                <div key={editor.formGeneration}>
-                    <FreeGamesFieldset blueprint={blueprint} mutate={editor.mutate} />
-                    {renderStepIssues("mechanicsFeatures")}
-                </div>
-            )}
-
-            {activeStep === 3 && (
-                <div key={editor.formGeneration}>
-                    <Text size="sm" c={BET_MODES_LIFECYCLE_TONE_COLOR[betModesLifecycleStatus.tone]} mb="sm">
-                        {betModesLifecycleStatus.text}
-                    </Text>
-                    <BetsList blueprint={blueprint} mutate={editor.mutate} />
-                    <BetModesEditor blueprint={blueprint} mutate={editor.mutate} newBetModeId={newBetModeId} onNewBetModeIdChange={setNewBetModeId} />
-                    {renderStepIssues("betModes")}
-                </div>
-            )}
-
-            {activeStep === 4 && (
+            {saveView.status === "error" && <ErrorState message={describePathActionError("The project's blueprint file", saveView.message)} />}
+            {saveView.status === "conflict" && <ErrorState message={saveView.message} />}
+            {saveView.status === "invalid" && (
                 <div>
-                    <QuickActions>
-                        <Button onClick={handleValidate} loading={validateView.status === "loading"}>
-                            Run validation
-                        </Button>
-                    </QuickActions>
-                    {validateView.status === "error" && <ErrorState message={describePathActionError("This validation request", validateView.message)} />}
-                    {validateView.status === "idle" && (
-                        <Text size="sm" c="dimmed">
-                            No validation result yet — run validation to see errors and warnings.
-                        </Text>
-                    )}
-                    {(validateView.status === "ok" || validateView.status === "invalid") && (
-                        <div>
-                            <IssueList title="Errors" issues={validateView.status === "invalid" ? validateView.errors : []} />
-                            <IssueList title="Warnings" issues={validateView.warnings} />
-                            <IssueList title="Other" issues={unclassified} />
-                            {validateView.status === "ok" && validateView.warnings.length === 0 && (
-                                <Text size="sm" c="dimmed">
-                                    No issues found.
-                                </Text>
-                            )}
-                        </div>
-                    )}
+                    <IssueList title="Errors" issues={saveView.errors} />
+                    <IssueList title="Warnings" issues={saveView.warnings} />
                 </div>
             )}
 
-            {activeStep === 5 && (
-                <div>
-                    <PageSection legend="Apply">
-                        <Text size="sm" c="dimmed" mb="sm">
-                            Saves this draft back to the project&apos;s blueprint file, then rebuilds the
-                            generated game module in place.
-                        </Text>
-                        {applyOutdated && (
-                            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
-                                Outdated — this project has been edited since the last Apply attempt. That
-                                result no longer reflects what&apos;s configured here; validate and apply
-                                again to bring the project up to date.
-                            </Alert>
-                        )}
-                        <QuickActions>
-                            <Button onClick={handleApply} loading={applyView.status === "loading"} disabled={applyBlocked}>
-                                Apply
-                            </Button>
-                            <Button variant="default" color="red" onClick={handleDiscard} disabled={!isDirty}>
-                                Discard draft
-                            </Button>
-                        </QuickActions>
-                        {applyBlocked && (
-                            <Text size="sm" c="dimmed">
-                                Validate your configuration successfully before applying.
-                            </Text>
-                        )}
-                        {applyView.status === "error" && <ErrorState message={describePathActionError("The project's blueprint file", applyView.message)} />}
-                        {applyView.status === "conflict" && <ErrorState message={applyView.message} />}
-                        {applyView.status === "invalid" && (
-                            <div>
-                                <IssueList title="Errors" issues={applyView.errors} />
-                                <IssueList title="Warnings" issues={applyView.warnings} />
-                            </div>
-                        )}
-                        {applyView.status === "ok" && (
-                            <Text size="sm" c="green">
-                                Applied — the project&apos;s blueprint and generated game module are up to date.
-                            </Text>
-                        )}
-                    </PageSection>
-                </div>
-            )}
+            <SectionedFormEditor key={editor.formGeneration} blueprint={blueprint} mutate={editor.mutate} drafts={editor.drafts} revision={revision} validationView={validateView} />
+
+            <PageSection legend="Win model & mechanics">
+                <WinModelSelector blueprint={blueprint} mutate={editor.mutate} />
+                <FreeGamesFieldset blueprint={blueprint} mutate={editor.mutate} />
+            </PageSection>
+
+            <PageSection legend="Bet modes">
+                <Text size="sm" c={BET_MODES_LIFECYCLE_TONE_COLOR[betModesLifecycleStatus.tone]} mb="sm">
+                    {betModesLifecycleStatus.text}
+                </Text>
+                <BetModesEditor blueprint={blueprint} mutate={editor.mutate} newBetModeId={newBetModeId} onNewBetModeIdChange={setNewBetModeId} />
+            </PageSection>
 
             <AdvancedDisclosure detail="raw blueprint JSON">
                 {/* BlueprintJsonPanel's Textarea is uncontrolled (defaultValue, read via a ref on Apply)
                     -- correct as long as it remounts fresh whenever the underlying blueprint changes.
-                    AdvancedDisclosure keeps its children mounted at all times now (see its own doc
-                    comment on why), so without this key the panel would capture the blueprint's JSON
-                    once at initial load and silently go stale on every subsequent field edit -- and
-                    clicking "Apply JSON" against that stale text would revert those edits. Keyed on
-                    `revision` (bumped by every mutate(), not just New/Load/a JSON apply) so it always
-                    remounts with the current jsonText, same convention ReelStripGenerationEditor/
-                    ParSheetImportExportPanel already use for "must never show stale content" panels. */}
-                <BlueprintJsonPanel
-                    key={editor.state.revision}
-                    jsonText={editor.state.jsonText}
-                    jsonError={editor.state.jsonError}
-                    onApply={editor.applyJson}
-                />
+                    AdvancedDisclosure keeps its children mounted at all times (see its own doc comment on
+                    why), so without this key the panel would capture the blueprint's JSON once at initial
+                    load and silently go stale on every subsequent field edit -- and clicking "Apply JSON"
+                    against that stale text would revert those edits. Keyed on `revision` (bumped by every
+                    mutate(), not just a wholesale load/JSON apply) so it always remounts with the current
+                    jsonText, same convention ReelStripGenerationEditor/ParSheetImportExportPanel already
+                    use for "must never show stale content" panels. */}
+                <BlueprintJsonPanel key={editor.state.revision} jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
             </AdvancedDisclosure>
         </PageSection>
     );
-}
-
-type ReadOnlyLoadView = {status: "loading"} | {status: "error"; message: string} | {status: "ok"; projection: GameModelProjection};
-
-// The unified, read-only Game Model view -- P3-POLISH-16's own default for every project that can view
-// its game model at all, Blueprint (`canEdit` true, BLUEPRINT_BUILD_CAPABILITY) and
-// introspectable-but-not-editable package/WASM projects (`canEdit` false) alike. A Blueprint project's own
-// guided EditableMechanicsEditor above is deliberately never mounted from here in this step -- see
-// MechanicsEditorTab's own doc comment below; it's kept only for the P3-POLISH-17 migration to build on.
-// Backed by the server/core-owned canonical projection GET /api/project/gameModel returns (see
-// buildGameModelProjection in "pokie" core / buildProjectGameModel.ts in cli/studio) -- this component
-// never parses a raw blueprint or inspect report itself. Every section that isn't actually available (no
-// tracked source recorded, a load failure, ...) renders its own explicit diagnostic instead of being
-// silently omitted (see GameModelView.tsx). Editing is out of scope here by design (P3-POLISH-16's own
-// non-goal) -- a future step is expected to decide whether/how/when a project like this becomes editable
-// again, which is a materially different question than EditableMechanicsEditor's own "apply a draft back
-// to a tracked source blueprint this project already has".
-function ReadOnlyGameModel() {
-    const fetchImpl = useStudioApi();
-    const [loadView, setLoadView] = useState<ReadOnlyLoadView>({status: "loading"});
-    const loadRequestIdRef = useRef(0);
-
-    useEffect(() => {
-        const requestId = ++loadRequestIdRef.current;
-        setLoadView({status: "loading"});
-        loadGameModel(fetchImpl)
-            .then((projection) => {
-                if (requestId !== loadRequestIdRef.current) {
-                    return;
-                }
-                setLoadView({status: "ok", projection});
-            })
-            .catch((error: unknown) => {
-                if (requestId !== loadRequestIdRef.current) {
-                    return;
-                }
-                setLoadView({status: "error", message: errorMessage(error)});
-            });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    if (loadView.status === "loading") {
-        return (
-            <PageSection legend="Game Model">
-                <LoadingState label="Loading the project's game model…" />
-            </PageSection>
-        );
-    }
-    if (loadView.status === "error") {
-        return (
-            <PageSection legend="Game Model">
-                <ErrorState message={describePathActionError("The project's game model", loadView.message)} />
-            </PageSection>
-        );
-    }
-
-    return (
-        <PageSection legend="Game Model">
-            <QuickActions>
-                <Text size="sm" c="dimmed">
-                    Read-only — this project doesn&apos;t support editing its game model directly.
-                </Text>
-            </QuickActions>
-            <GameModelView projection={loadView.projection} />
-        </PageSection>
-    );
-}
-
-// The Game Model tab -- for P3-POLISH-16, every project that can view its game model at all (`canEdit`
-// true or false, both resolved by ProjectDashboardPage from BLUEPRINT_BUILD_CAPABILITY) renders the same
-// unified read-only projection (ReadOnlyGameModel, see its own doc comment); `canEdit`/`onDirtyChange` are
-// accepted but deliberately unused here now -- EditableMechanicsEditor above is never mounted from this
-// tab in this step, kept only for the P3-POLISH-17 migration to decide whether/how Blueprint editing comes
-// back. No Edit action exists anywhere in this tab yet.
-export function MechanicsEditorTab({canEdit: _canEdit, onDirtyChange: _onDirtyChange}: {canEdit: boolean; onDirtyChange?: (dirty: boolean) => void}) {
-    return <ReadOnlyGameModel />;
 }

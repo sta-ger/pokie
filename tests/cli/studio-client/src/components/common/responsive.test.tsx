@@ -104,7 +104,6 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
             "project/SimulationTab.tsx",
             "project/OutcomeLibrariesTab.tsx",
             "project/DeploymentTab.tsx",
-            "project/MechanicsEditorTab.tsx",
             "project/CertificationTab.tsx",
             "project/ProvablyFairTab.tsx",
             "project/StakeEngineExportTab.tsx",
