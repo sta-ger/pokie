@@ -18,11 +18,62 @@ export type PokieGameManifest = {
     author?: string;
 };
 
+// A single reader-family mode's own exact analysis -- mirrors src/project/OutcomeSourceProjectReport.ts's
+// own OutcomeSourceProjectModeAnalysis. Both the native (WeightedOutcomeLibraryAnalysis) and Stake Engine
+// (StakeEngineStandaloneModeAnalysis) readers already share these field names (see that server type's own
+// doc comment), so this client-side copy is a single flat shape rather than a union.
+export type OutcomeSourceProjectModeAnalysisView = {
+    modeName: string;
+    analysis: {
+        totalWeight: number;
+        rtp: number;
+        hitFrequency: number;
+        zeroWinFrequency: number;
+        variance: number;
+        standardDeviation: number;
+        maxWin: number;
+        maxWinProbability: number;
+    };
+};
+
+// Mirrors src/pregenerated/CanonicalOutcomeSourceDescriptor.ts -- what kind of canonical reader produced
+// a report, whether it streams (a native bundle) or reads its source fully up front (a Stake Engine
+// export), and any other honest limitation of reading outcomes this way rather than from the game model
+// that produced them.
+export type CanonicalOutcomeSourceDescriptorView = {
+    kind: "native" | "stakeEngine";
+    streaming: boolean;
+    limitations: string[];
+};
+
+// Mirrors src/project/OutcomeSourceProjectReport.ts -- what OutcomeSourceProjectAnalyzer.analyze() returns
+// for a resolved "outcomeLibrary"/"stakeAdapter" project. `modes` is empty whenever `issues` contains an
+// error-severity entry (a malformed source's exact analysis is meaningless -- see that server type's own
+// doc comment).
+export type OutcomeSourceProjectReportView = {
+    rootPath: string;
+    descriptor: CanonicalOutcomeSourceDescriptorView;
+    issues: ValidationIssue[];
+    modes: OutcomeSourceProjectModeAnalysisView[];
+};
+
+// POST /api/project/outcome-source/sample's own DTO -- mirrors src/project/sampleOutcomeSourceProject.ts's
+// own OutcomeSourceSampleResult. `diagnostic` is StudioServer's exact same structured
+// UnsupportedProjectOperationDiagnostic every other unsupported-capability route already surfaces.
+export type OutcomeSourceSampleView =
+    | {supported: true; selection: {libraryId: string; libraryHash: string; totalWeight: number; outcome: {id: string; weight: number; artifact: RoundArtifact}}}
+    | {supported: false; diagnostic: {detectedType: StudioProjectType; operation: string; missingCapability: string; alternatives: StudioProjectType[]; message: string}};
+
 // The Project Dashboard's own read model — see cli/studio/ProjectDashboardContext.ts (the server's
 // copy of this same type; kept as a separate client-side copy, same convention as every other type
 // in this file, since the studio-client TS project compiles independently from cli/studio). `type`/
 // `capabilities`/`origin` describe the *original* project `projectRoot` resolved from, best-effort --
 // see the server type's own doc comment for why they're independently optional from `game`.
+//
+// "outcome-source" is the dedicated state for a resolved "outcomeLibrary"/"stakeAdapter" `projectRoot` --
+// neither type ever gains RUNTIME_EXECUTE_CAPABILITY, so there's no `game` manifest to load; `project`
+// carries the resolved project's own type/capabilities/rootPath directly (no separate optional fields,
+// unlike "loaded" -- this state is never reached without a successfully resolved project).
 export type ProjectDashboardContext =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
@@ -33,6 +84,13 @@ export type ProjectDashboardContext =
           type?: StudioProjectType;
           capabilities?: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
+      }
+    | {
+          status: "outcome-source";
+          projectRoot: string;
+          project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+          origin?: StudioProjectOrigin;
+          report: OutcomeSourceProjectReportView;
       }
     | {status: "error"; projectRoot: string; error: string};
 

@@ -1,4 +1,4 @@
-import type {PokieGameManifest, ProjectType} from "pokie";
+import type {OutcomeSourceProjectReport, PokieGameManifest, PokieProject, ProjectType} from "pokie";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 
 // The Project Dashboard's own read model — richer than StudioContext (which only ever carries
@@ -14,6 +14,14 @@ import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 // itself. Best-effort and independent of `game`: a resolver that can't identify `projectRoot` at all
 // (or a location that was never registered, for `origin`) simply leaves these undefined rather than
 // failing the whole load -- Overview treats their absence as "unknown", never as an error.
+//
+// "outcome-source" is the dedicated state for a resolved "outcomeLibrary"/"stakeAdapter" `projectRoot`
+// -- neither type ever gains RUNTIME_EXECUTE_CAPABILITY (see ProjectCapabilities.ts), so there is no
+// `game`/materialized runtime to load at all; loadProjectDashboardContext routes these straight through
+// OutcomeSourceProjectAnalyzer instead of attempting (and permanently failing) the ordinary "loaded"
+// path. `project` is the full resolved PokieProject (not just `type`/`capabilities`) so a caller (see
+// StudioServer's own outcome-source sample route) can hand it straight to sampleOutcomeSourceProject
+// without re-resolving it a second time.
 export type ProjectDashboardContext =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
@@ -24,5 +32,12 @@ export type ProjectDashboardContext =
           type?: ProjectType;
           capabilities?: readonly string[];
           origin?: StudioProjectOrigin;
+      }
+    | {
+          status: "outcome-source";
+          projectRoot: string;
+          project: PokieProject;
+          origin?: StudioProjectOrigin;
+          report: OutcomeSourceProjectReport;
       }
     | {status: "error"; projectRoot: string; error: string};

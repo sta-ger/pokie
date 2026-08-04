@@ -1,5 +1,6 @@
 import type {
     GamePackageInspectionReport,
+    OutcomeSourceProjectReportView,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     StudioProjectCapability,
@@ -31,6 +32,14 @@ export type ProjectHeaderView =
           type?: StudioProjectType;
           capabilities: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
+      }
+    | {
+          status: "outcome-source";
+          projectRoot: string;
+          type: StudioProjectType;
+          capabilities: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
+          report: OutcomeSourceProjectReportView;
       };
 
 export function describeProjectHeader(context: ProjectDashboardContext): ProjectHeaderView {
@@ -42,6 +51,16 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
     }
     if (context.status === "error") {
         return {status: "error", projectRoot: context.projectRoot, message: context.error};
+    }
+    if (context.status === "outcome-source") {
+        return {
+            status: "outcome-source",
+            projectRoot: context.projectRoot,
+            type: context.project.type,
+            capabilities: context.project.capabilities,
+            origin: context.origin,
+            report: context.report,
+        };
     }
     return {
         status: "loaded",

@@ -49,6 +49,7 @@ import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
 import {ExportDeployTab} from "./ExportDeployTab";
 import {MechanicsEditorTab} from "./MechanicsEditorTab";
+import {OutcomeSourceOverview} from "./OutcomeSourceOverview";
 import {OverviewTab} from "./OverviewTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
@@ -907,6 +908,11 @@ export function ProjectDashboardPage() {
             {header.status === "error" && (
                 <div style={{marginTop: "1rem"}}>
                     <ErrorState message={header.message} />
+                </div>
+            )}
+            {header.status === "outcome-source" && (
+                <div style={{marginTop: "1rem"}}>
+                    <OutcomeSourceOverview header={header} />
                 </div>
             )}
 

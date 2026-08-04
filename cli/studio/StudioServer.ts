@@ -6,6 +6,9 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidator,
     RoundArtifactValidator,
+    sampleOutcomeSourceProject,
+    SecureWeightedOutcomeRandomSource,
+    SeededWeightedOutcomeRandomSource,
     STUDIO_OPERATION,
 } from "pokie";
 import fs from "fs";
@@ -52,6 +55,10 @@ import {
     OutcomeLibraryGenerateEstimateRequestInput,
 } from "./outcomeLibrary/validateOutcomeLibraryGenerateEstimateRequest.js";
 import {validateOutcomeLibraryGenerateRequest, OutcomeLibraryGenerateRequestInput} from "./outcomeLibrary/validateOutcomeLibraryGenerateRequest.js";
+import {
+    validateOutcomeSourceSampleRequest,
+    OutcomeSourceSampleRequestInput,
+} from "./outcomeSource/validateOutcomeSourceSampleRequest.js";
 import type {StudioDiagnosticsView} from "./StudioDiagnosticsView.js";
 import {validateOpenProjectRequest, OpenProjectRequestInput} from "./home/validateOpenProjectRequest.js";
 import {loadProjectDashboardContext, type ProjectLocationDescribing} from "./loadProjectDashboardContext.js";
@@ -644,6 +651,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/project/outcome-source/sample") {
+            await this.handleOutcomeSourceSample(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/project/certification/validate-source") {
             await this.handleValidateCertificationSourceBundle(req, res);
             return;
@@ -867,11 +879,13 @@ export class StudioServer implements StudioServerHandling {
         }
 
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
-        // "loaded" or "error" — "empty"/"loading" are exclusively synthesized elsewhere in this class
-        // — but the check is spelled as `!== "loaded"` rather than `=== "error"` so TypeScript can
-        // narrow `dashboard` to the "loaded" variant below without a cast.
+        // "loaded", "outcome-source", or "error" — "empty"/"loading" are exclusively synthesized
+        // elsewhere in this class. A resolved "outcomeLibrary"/"stakeAdapter" project opens straight
+        // into its own canonical-reader-backed dashboard (see ProjectDashboardContext's own doc
+        // comment) rather than failing here the way it always used to before that status existed —
+        // neither type ever gains a `game` manifest to report back.
         const dashboard = await this.homeService.openProject(validated.projectRoot);
-        if (dashboard.status !== "loaded") {
+        if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source") {
             const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
             this.sendJson(res, 400, {error: message});
             return;
@@ -888,7 +902,7 @@ export class StudioServer implements StudioServerHandling {
         // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
-        this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.game});
+        this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 
     // Always 200: same "a well-formed request that fails at the domain level isn't a failed HTTP
@@ -1346,6 +1360,38 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.registry(this.currentContext.projectRoot));
+    }
+
+    // Draws exactly one outcome from the currently open "outcomeLibrary" project through
+    // sampleOutcomeSourceProject -- the same OutcomeLibraryBundleOutcomeSource selector class
+    // PreGeneratedSpinCommandHandler already wires in production, never loadPokieGame or a re-derived
+    // game-model draw (see that function's own doc comment). This is the native "play" route for a
+    // project resolved straight to "outcomeLibrary"/"stakeAdapter" (see loadProjectDashboardContext's
+    // own "outcome-source" status) -- a currently open "stakeAdapter" project has no draw contract of
+    // its own, so this always resolves to `{supported: false, diagnostic}` for one instead of throwing
+    // or ever attempting package-runtime execution (StudioRuntimeManager/loadGame are never touched by
+    // this handler). Always 200: same "a well-formed request that fails at the domain level isn't a
+    // failed HTTP request" reasoning as GET /api/project/validate -- the unsupported-capability outcome
+    // is carried in the response body's own `supported` field, not an HTTP error status.
+    private async handleOutcomeSourceSample(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project" || this.projectDashboard?.status !== "outcome-source") {
+            this.sendJson(res, 409, {error: "No active outcome-source project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOutcomeSourceSampleRequest((body ?? {}) as OutcomeSourceSampleRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const randomSource =
+            validated.seed !== undefined ? new SeededWeightedOutcomeRandomSource(validated.seed) : new SecureWeightedOutcomeRandomSource();
+        const result = await sampleOutcomeSourceProject(this.projectDashboard.project, validated.modeName, randomSource);
+        this.sendJson(res, 200, result);
     }
 
     private async handleValidateCertificationSourceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
