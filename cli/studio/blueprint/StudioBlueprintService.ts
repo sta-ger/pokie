@@ -270,7 +270,18 @@ export class StudioBlueprintService {
     // for a session's first Save -- every Save after that reuses the exact path this returned via the
     // ordinary save() above, so a later collision-avoidance re-walk here never happens for the same
     // session (see BlueprintEditorPage.tsx's own handleGuidedSave).
-    public saveManaged(blueprint: unknown): StudioBlueprintSaveManagedView {
+    //
+    // `sourceWorkbookPath`, when given, is the .xlsx workbook this blueprint was Applied from (see
+    // ParSheetImportExportPanel/handleApplyImportedBlueprint's own doc comments) -- the guided editor's
+    // own "first Save" right after a PAR sheet Apply, the moment a freshly imported workbook actually
+    // becomes a real managed Blueprint Project. Never written into the blueprint file itself (the managed
+    // Blueprint stays the one, unpolluted editable source -- see this method's own doc comment above for
+    // why saveManaged never asks the caller for anything blueprint-shape-related beyond the blueprint
+    // itself) -- only echoed back on "ok" so the caller can record it as this project's own provenance
+    // (see StudioServer's own handleBlueprintSaveManaged, which forwards it to
+    // StudioProjectRegistrationService.registerManaged). Omitted entirely for an ordinary "first Save" with
+    // no PAR import behind it.
+    public saveManaged(blueprint: unknown, sourceWorkbookPath?: string): StudioBlueprintSaveManagedView {
         const baseName = deriveManagedBlueprintName(blueprint);
         const destination = resolveAvailableManagedDestination(this.pathResolver, baseName);
         if (destination.status === "invalid-name") {
@@ -283,7 +294,13 @@ export class StudioBlueprintService {
         try {
             fs.mkdirSync(destination.directory, {recursive: true});
             fs.writeFileSync(destination.targetPath, serializeGameBlueprint(blueprint));
-            return {status: "ok", path: destination.targetPath, name: destination.name, blueprintHash: computeGameBlueprintHash(blueprint)};
+            return {
+                status: "ok",
+                path: destination.targetPath,
+                name: destination.name,
+                blueprintHash: computeGameBlueprintHash(blueprint),
+                sourceWorkbookPath,
+            };
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }

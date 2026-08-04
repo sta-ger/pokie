@@ -1,4 +1,4 @@
-import {Anchor, Button, Collapse, SegmentedControl, Text, Title} from "@mantine/core";
+import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
@@ -188,6 +188,16 @@ export function BlueprintEditorPage({
     // draft describe a different blueprint than whatever was last built, so showing that old build's
     // summary (and offering to "restore" back to it) would be actively misleading.
     const [builtSnapshot, setBuiltSnapshot] = useState<BuiltBlueprintSnapshot | undefined>(undefined);
+    // The .xlsx PAR sheet workbook this draft was Applied from (see handleApplyImportedBlueprint below),
+    // undefined for a draft that was never touched by a PAR import -- carried forward through edits, the
+    // guided flow's own first Save (as `sourceWorkbookPath`, see handleGuidedSave), a browser-refresh draft
+    // recovery (see blueprintDraftStorage's own PersistedBlueprintDraft), and the New flow's own Undo, so
+    // "Imported from PAR" stays true of this draft's identity through the whole Apply -> Save ->
+    // reopen-from-Projects lifecycle rather than only for the one request that happens to run right after
+    // Apply. Deliberately NOT cleared by a successful guided Save -- the whole point is that this project's
+    // provenance survives being saved, exactly like the persisted StudioProjectRegistryEntry it produced
+    // (see StudioProjectRegistryEntry's own doc comment).
+    const [importedFromParSheetPath, setImportedFromParSheetPath] = useState<string | undefined>(undefined);
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
     const validateGuard = useDoubleSubmitGuard();
@@ -221,6 +231,7 @@ export function BlueprintEditorPage({
               wasClean: boolean;
               builtSnapshot: BuiltBlueprintSnapshot | undefined;
               validAtRevision: number;
+              importedFromParSheetPath: string | undefined;
           }
         | undefined
     >(undefined);
@@ -399,7 +410,7 @@ export function BlueprintEditorPage({
             return;
         }
         if (!isInitialMount) {
-            savePersistedBlueprintDraft(editor.state.blueprint);
+            savePersistedBlueprintDraft(editor.state.blueprint, importedFromParSheetPath);
         }
         if (autoValidateTimerRef.current !== undefined) {
             clearTimeout(autoValidateTimerRef.current);
@@ -539,6 +550,7 @@ export function BlueprintEditorPage({
         overwriteConfirmedForPath: overwriteConfirmedForPath.current,
         wasClean: editor.state.revision === cleanRevisionRef.current,
         builtSnapshot,
+        importedFromParSheetPath,
     });
 
     // New -> Blank: the New flow's minimal option (see NewBlueprintDialog's own doc comment) -- same
@@ -561,6 +573,7 @@ export function BlueprintEditorPage({
         setSaveView({status: "idle"});
         setValidationView({status: "idle"});
         setBuiltSnapshot(undefined);
+        setImportedFromParSheetPath(undefined);
         setUndoSnapshot({...snapshot, validAtRevision: revisionBeforeReplace + 1});
         closeNewDialog();
     };
@@ -585,6 +598,7 @@ export function BlueprintEditorPage({
         setSaveView({status: "idle"});
         setValidationView({status: "idle"});
         setBuiltSnapshot(undefined);
+        setImportedFromParSheetPath(undefined);
         setUndoSnapshot({...snapshot, validAtRevision: revisionBeforeReplace + 1});
         closeNewDialog();
     };
@@ -609,6 +623,7 @@ export function BlueprintEditorPage({
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
         setBuiltSnapshot(undoSnapshot.builtSnapshot);
+        setImportedFromParSheetPath(undoSnapshot.importedFromParSheetPath);
         setUndoSnapshot(undefined);
     };
 
@@ -628,6 +643,11 @@ export function BlueprintEditorPage({
                     // A freshly loaded blueprint has nothing to do with whatever the *previous* draft was
                     // last built into -- see builtSnapshot's own doc comment.
                     setBuiltSnapshot(undefined);
+                    // A JSON Load opens a blueprint by its own already-established identity (this exact
+                    // path's own registry entry, if any, already carries whatever provenance it has) --
+                    // never inherits whatever the *previous* in-editor draft's own importedFromParSheetPath
+                    // happened to be.
+                    setImportedFromParSheetPath(undefined);
                     // This exact content is now known to match `result.path` on disk -- the background
                     // source-check poll starts watching it from here (see sourceVersionRef's own doc
                     // comment).
@@ -653,6 +673,7 @@ export function BlueprintEditorPage({
             return;
         }
         editor.loadFrom(persistedDraft.blueprint);
+        setImportedFromParSheetPath(persistedDraft.importedFromParSheetPath);
         setDraftRecoveryDismissed(true);
     };
 
@@ -680,6 +701,9 @@ export function BlueprintEditorPage({
         setSaveView({status: "idle"});
         // Same reasoning as handleLoad's own success branch -- see builtSnapshot's own doc comment.
         setBuiltSnapshot(undefined);
+        // This draft's own identity from here on -- see importedFromParSheetPath's own doc comment for how
+        // it survives through to the guided flow's first Save (handleGuidedSave) and beyond.
+        setImportedFromParSheetPath(sourcePath);
     };
 
     // "Restore built blueprint"/"Discard unbuilt changes" (BlueprintBuildPanel's own confirm already
@@ -780,7 +804,10 @@ export function BlueprintEditorPage({
         // comment.
         const request = alreadyOwnsPath
             ? saveBlueprint(fetchImpl, blueprintPath, editor.state.blueprint, true).then((raw) => ({raw, view: describeSaveResult(raw)}))
-            : saveManagedBlueprint(fetchImpl, editor.state.blueprint).then((raw) => ({raw, view: describeSaveManagedResult(raw)}));
+            : saveManagedBlueprint(fetchImpl, editor.state.blueprint, importedFromParSheetPath).then((raw) => ({
+                raw,
+                view: describeSaveManagedResult(raw),
+            }));
         request
             .then(({raw, view}) => {
                 setManagedSaveView(view);
@@ -856,6 +883,15 @@ export function BlueprintEditorPage({
                     secondaryActionLabel="Discard"
                     onSecondaryAction={handleDiscardDraft}
                 />
+            )}
+
+            {guided && importedFromParSheetPath && (
+                <Group gap="xs" mb="xs">
+                    <Badge color="grape">Imported from PAR</Badge>
+                    <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                        Source: {importedFromParSheetPath}
+                    </Text>
+                </Group>
             )}
 
             {guided && (

@@ -24,4 +24,11 @@ export type StudioProjectRegistryEntry = {
     readonly capabilities: ProjectCapabilities;
     readonly origin: StudioProjectOrigin;
     readonly lastOpenedAt: string;
+    // The .xlsx PAR sheet workbook this *managed* project's own Blueprint was originally Applied and
+    // saved from (see StudioBlueprintService.saveManaged's own doc comment) -- undefined for every project
+    // that didn't come from that flow. The workbook itself is never the project's own editable source
+    // (`location` above always points at the managed blueprint.json this entry was registered for) -- this
+    // is provenance only, carried here since the registry is already the one durable, "reopen"-surviving
+    // record Studio keeps per project (see this type's own doc comment above).
+    readonly importedFromParSheetPath?: string;
 };

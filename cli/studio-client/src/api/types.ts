@@ -228,6 +228,10 @@ export type StudioProjectRegistryView = {
     origin: StudioProjectOrigin;
     lastOpenedAt: string;
     status: StudioProjectStatus;
+    // The .xlsx PAR sheet workbook this project's own managed Blueprint was originally Applied and
+    // first-saved from -- see cli/studio/StudioProjectRegistryEntry.ts's own doc comment. Undefined for
+    // every project that didn't come from that flow.
+    importedFromParSheetPath?: string;
 };
 
 // POST /api/home/projects/registry/preview's own DTO — see
@@ -458,7 +462,7 @@ export type StudioBlueprintSaveView =
 // one that might already hold someone else's file) — "invalid-name"/"unavailable" cover a path this
 // service couldn't resolve a usable destination for at all.
 export type StudioBlueprintSaveManagedView =
-    | {status: "ok"; path: string; name: string; blueprintHash: string}
+    | {status: "ok"; path: string; name: string; blueprintHash: string; sourceWorkbookPath?: string}
     | {status: "invalid-name"; error: string}
     | {status: "unavailable"; error: string}
     | {status: "error"; error: string};

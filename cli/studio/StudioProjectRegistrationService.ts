@@ -78,8 +78,12 @@ export class StudioProjectRegistrationService {
         return entries.map((entry) => ({...entry, status: this.pathExists(entry.location) ? "ok" : "missing"}));
     }
 
-    public registerManaged(location: string, name: string): Promise<StudioProjectRegistrationResult> {
-        return this.register(location, "managed", name);
+    // `importedFromParSheetPath`, when given, records that `location`'s own managed Blueprint was Applied
+    // and first-saved from that .xlsx workbook (see StudioBlueprintService.saveManaged's own doc comment)
+    // -- forwarded straight onto the registered entry (see StudioProjectRegistryEntry's own doc comment
+    // for why this, not the blueprint file itself, is where that provenance lives).
+    public registerManaged(location: string, name: string, importedFromParSheetPath?: string): Promise<StudioProjectRegistrationResult> {
+        return this.register(location, "managed", name, importedFromParSheetPath);
     }
 
     // Registers an already-existing package/library/WASM target by its own path — resolves it (never
@@ -179,7 +183,12 @@ export class StudioProjectRegistrationService {
         return FILE_PROJECT_TYPES.has(entry.type) ? path.dirname(entry.location) : entry.location;
     }
 
-    private async register(location: string, origin: StudioProjectOrigin, name?: string): Promise<StudioProjectRegistrationResult> {
+    private async register(
+        location: string,
+        origin: StudioProjectOrigin,
+        name?: string,
+        importedFromParSheetPath?: string,
+    ): Promise<StudioProjectRegistrationResult> {
         const resolvedPath = path.resolve(location);
         const project = await this.resolveProject.resolve(resolvedPath);
         if (!project) {
@@ -194,6 +203,7 @@ export class StudioProjectRegistrationService {
             capabilities: project.capabilities,
             origin,
             lastOpenedAt: new Date().toISOString(),
+            importedFromParSheetPath,
         };
         await this.registry.upsert(entry);
         return {status: "ok", entry: {...entry, status: "ok"}};

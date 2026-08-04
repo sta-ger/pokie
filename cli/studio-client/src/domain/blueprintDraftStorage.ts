@@ -1,6 +1,11 @@
 const DESIGN_DRAFT_STORAGE_KEY = "pokie-studio:design-draft:v1";
 
-export type PersistedBlueprintDraft = {blueprint: unknown};
+// `importedFromParSheetPath`, when set, is the .xlsx workbook this draft was Applied from (see
+// BlueprintEditorPage's own handleApplyImportedBlueprint) -- carried alongside the draft itself so a
+// recovered draft's eventual first Save still records the same workbook provenance an uninterrupted
+// session would have (see saveManagedBlueprint's own doc comment), rather than silently becoming an
+// ordinary, unattributed managed Blueprint just because the tab happened to refresh first.
+export type PersistedBlueprintDraft = {blueprint: unknown; importedFromParSheetPath?: string};
 
 // The guided Design Game editor's own draft-recovery slot -- one browser tab, one in-progress draft at a
 // time (Home only ever mounts a single BlueprintEditorPage instance -- see BlueprintEditorPage's own
@@ -21,15 +26,18 @@ export function loadPersistedBlueprintDraft(): PersistedBlueprintDraft | undefin
         if (parsed.blueprint === undefined) {
             return undefined;
         }
-        return {blueprint: parsed.blueprint};
+        return {
+            blueprint: parsed.blueprint,
+            importedFromParSheetPath: typeof parsed.importedFromParSheetPath === "string" ? parsed.importedFromParSheetPath : undefined,
+        };
     } catch {
         return undefined;
     }
 }
 
-export function savePersistedBlueprintDraft(blueprint: unknown): void {
+export function savePersistedBlueprintDraft(blueprint: unknown, importedFromParSheetPath?: string): void {
     try {
-        window.sessionStorage.setItem(DESIGN_DRAFT_STORAGE_KEY, JSON.stringify({blueprint}));
+        window.sessionStorage.setItem(DESIGN_DRAFT_STORAGE_KEY, JSON.stringify({blueprint, importedFromParSheetPath}));
     } catch {
         // sessionStorage unavailable (private browsing, storage disabled) -- the in-memory draft still
         // works for the rest of this tab's lifetime, it just won't survive a refresh.

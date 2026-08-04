@@ -1421,6 +1421,42 @@ describe("StudioServer", () => {
                 expect(entries).toHaveLength(1);
                 expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot-2", origin: "managed", type: "blueprint"});
             });
+
+            // Covers the PAR Apply -> guided "first Save" lifecycle end to end (see
+            // BlueprintEditorPage.tsx's own handleApplyImportedBlueprint/handleGuidedSave): the .xlsx
+            // workbook a PAR sheet Apply carried into this request is recorded on the freshly-registered
+            // managed project as its own provenance, never as the project's own `location`.
+            it("records sourceWorkbookPath on the response and on the registered managed project's own entry when a PAR Apply is behind this first Save", async () => {
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "sample-slot", "blueprint.json");
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: buildBlueprint(),
+                    sourceWorkbookPath: "/games/in.par.xlsx",
+                });
+
+                expect(status).toBe(201);
+                expect(body).toEqual({
+                    status: "ok",
+                    path: expectedPath,
+                    name: "sample-slot",
+                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                    sourceWorkbookPath: "/games/in.par.xlsx",
+                });
+
+                const entries = await managedRegistry.list();
+                expect(entries).toHaveLength(1);
+                expect(entries[0]).toMatchObject({location: expectedPath, origin: "managed", importedFromParSheetPath: "/games/in.par.xlsx"});
+            });
+
+            it("rejects a non-string sourceWorkbookPath", async () => {
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: buildBlueprint(),
+                    sourceWorkbookPath: 42,
+                });
+
+                expect(status).toBe(400);
+                expect(body).toEqual({error: '"sourceWorkbookPath" must be a string when given.'});
+            });
         });
 
         describe("POST /api/home/blueprints/reel-strip-generation-preview", () => {
