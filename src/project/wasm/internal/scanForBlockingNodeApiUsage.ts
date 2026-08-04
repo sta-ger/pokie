@@ -6,13 +6,45 @@ import {NODE_BUILTIN_MODULES} from "./NODE_BUILTIN_MODULES.js";
 const SCANNABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".tsx"]);
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git"]);
 
-// A line only worth scanning at all -- narrows every other line out before the (more expensive) string-literal
-// scan below ever runs.
+// A line only worth scanning at all -- narrows every other line out before the (more expensive) specifier
+// patterns below ever run.
 const IMPORT_OR_REQUIRE_KEYWORD_PATTERN = /\b(?:import|require|export)\b/;
-// Every quoted string literal on a line -- deliberately not itself constrained to "looks like a module
-// specifier" (a plain regex over source text has no idea what's a specifier vs. an ordinary string), since
-// isBlockingBuiltinSpecifier below already rejects anything that isn't a real Node builtin name.
-const STRING_LITERAL_PATTERN = /['"]([^'"]+)['"]/g;
+
+// Each pattern below captures only the module specifier of an actual static import/export-from/require --
+// never an arbitrary quoted string elsewhere on the line (e.g. inside a comment or unrelated string literal
+// that merely shares the line with an import-related keyword).
+// import x from "y"; import {a, b} from "y"; import * as ns from "y"; import type x from "y"
+const IMPORT_FROM_SPECIFIER_PATTERN = /\bimport\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
+// import "y"; -- side-effect-only import with no "from"
+const IMPORT_SIDE_EFFECT_SPECIFIER_PATTERN = /\bimport\s*['"]([^'"]+)['"]/g;
+// import("y") -- dynamic import
+const DYNAMIC_IMPORT_SPECIFIER_PATTERN = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+// export {a} from "y"; export * from "y"; export * as ns from "y"
+const EXPORT_FROM_SPECIFIER_PATTERN = /\bexport\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
+// require("y")
+const REQUIRE_SPECIFIER_PATTERN = /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+const MODULE_SPECIFIER_PATTERNS = [
+    IMPORT_FROM_SPECIFIER_PATTERN,
+    IMPORT_SIDE_EFFECT_SPECIFIER_PATTERN,
+    DYNAMIC_IMPORT_SPECIFIER_PATTERN,
+    EXPORT_FROM_SPECIFIER_PATTERN,
+    REQUIRE_SPECIFIER_PATTERN,
+];
+
+// Extracts every real module specifier on a line -- i.e. the argument of an import/export-from/require, never
+// an unrelated quoted string that happens to share the line with an import-related keyword.
+function extractModuleSpecifiers(line: string): string[] {
+    const specifiers: string[] = [];
+    for (const pattern of MODULE_SPECIFIER_PATTERNS) {
+        pattern.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(line)) !== null) {
+            specifiers.push(match[1]);
+        }
+    }
+    return specifiers;
+}
 
 function listFilesRecursively(rootPath: string): string[] {
     const results: string[] = [];
@@ -68,10 +100,8 @@ export function scanForBlockingNodeApiUsage(rootPath: string): WasmPackagingBloc
             if (!IMPORT_OR_REQUIRE_KEYWORD_PATTERN.test(line)) {
                 return;
             }
-            STRING_LITERAL_PATTERN.lastIndex = 0;
-            let match: RegExpExecArray | null;
-            while ((match = STRING_LITERAL_PATTERN.exec(line)) !== null) {
-                const blockingModule = blockingBuiltinModuleOf(match[1]);
+            for (const specifier of extractModuleSpecifiers(line)) {
+                const blockingModule = blockingBuiltinModuleOf(specifier);
                 if (blockingModule !== undefined) {
                     usages.push({module: blockingModule, filePath: path.relative(rootPath, filePath), line: index + 1});
                 }

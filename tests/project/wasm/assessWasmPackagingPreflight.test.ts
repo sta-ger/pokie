@@ -45,6 +45,24 @@ describe("assessWasmPackagingPreflight", () => {
         }
     });
 
+    it("never flags a non-specifier string that merely shares a line with an import-related word", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            'import {loadPreset} from "./presets"; // comment mentions "fs" but does not import it\n' +
+                'const cmd = require("child_process"); // not "fs"\n'
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            const modules = result.report.blockingApiUsages.map((usage) => usage.module).sort();
+            expect(modules).toEqual(["child_process"]);
+        }
+    });
+
     it("never flags an npm package whose name merely looks like a Node builtin", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(path.join(workDir, "src", "index.ts"), 'import fsExtra from "fs-extra";\n');
