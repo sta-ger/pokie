@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {
     OutcomeLibraryBundleWriter,
+    OutcomeSourceDiffResult,
     OutcomeSourceProjectAnalyzing,
     OutcomeSourceProjectReport,
     OutcomeSourceSampleResult,
@@ -25,6 +26,26 @@ function stubProjectResolver(project: PokieProject | undefined): ProjectResolvin
             return Promise.resolve(project);
         },
     };
+}
+
+function stubProjectResolverByPath(byPath: Record<string, PokieProject | undefined>): ProjectResolving & {calls: string[]} {
+    const calls: string[] = [];
+    return {
+        calls,
+        resolve(targetPath: string) {
+            calls.push(targetPath);
+            return Promise.resolve(byPath[targetPath]);
+        },
+    };
+}
+
+function stubDiff(result: OutcomeSourceDiffResult): ((left: PokieProject, right: PokieProject) => Promise<OutcomeSourceDiffResult>) & {calls: {left: PokieProject; right: PokieProject}[]} {
+    const calls: {left: PokieProject; right: PokieProject}[] = [];
+    const fn = (left: PokieProject, right: PokieProject) => {
+        calls.push({left, right});
+        return Promise.resolve(result);
+    };
+    return Object.assign(fn, {calls});
 }
 
 function stubAnalyzer(report: OutcomeSourceProjectReport): OutcomeSourceProjectAnalyzing & {calls: PokieProject[]} {
@@ -268,6 +289,99 @@ describe("OutcomeSourceCommand sample", () => {
     });
 });
 
+describe("OutcomeSourceCommand diff", () => {
+    it("throws when the left path does not resolve to a recognized project", async () => {
+        const resolveProject = stubProjectResolverByPath({"/nowhere": undefined, "/libraries/base": outcomeLibraryProject});
+        const command = new OutcomeSourceCommand(resolveProject);
+
+        await expect(command.run(["diff", "/nowhere", "/libraries/base"])).rejects.toThrow(/"\/nowhere" does not resolve to a recognized POKIE project/);
+    });
+
+    it("throws when the right path does not resolve to a recognized project", async () => {
+        const resolveProject = stubProjectResolverByPath({"/libraries/base": outcomeLibraryProject, "/nowhere": undefined});
+        const command = new OutcomeSourceCommand(resolveProject);
+
+        await expect(command.run(["diff", "/libraries/base", "/nowhere"])).rejects.toThrow(/"\/nowhere" does not resolve to a recognized POKIE project/);
+    });
+
+    it("diffs two resolved outcome-source projects through the injected differ, and prints a summary", async () => {
+        const resolveProject = stubProjectResolverByPath({"/libraries/left": outcomeLibraryProject, "/stake/right": stakeAdapterProject});
+        const diffResult: OutcomeSourceDiffResult = {
+            supported: true,
+            diff: {
+                left: {rootPath: "/libraries/left", kind: "native", issues: []},
+                right: {rootPath: "/stake/right", kind: "stakeEngine", issues: []},
+                perMode: {
+                    base: {
+                        modeName: "base",
+                        rtp: {left: 0.9, right: 0.95, delta: 0.05, percentDelta: 5.56},
+                        hitFrequency: {left: 0.25, right: 0.3, delta: 0.05, percentDelta: 20},
+                        zeroWinFrequency: {left: 0.75, right: 0.7, delta: -0.05, percentDelta: -6.67},
+                        variance: {left: 0.1, right: 0.1, delta: 0, percentDelta: 0},
+                        standardDeviation: {left: 0.3162, right: 0.3162, delta: 0, percentDelta: 0},
+                        maxWinProbability: {left: 0.001, right: 0.001, delta: 0, percentDelta: 0},
+                    },
+                },
+                onlyInLeft: [],
+                onlyInRight: [],
+            },
+        };
+        const diff = stubDiff(diffResult);
+        const command = new OutcomeSourceCommand(resolveProject, undefined, undefined, undefined, diff);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        const exitCode = await command.run(["diff", "/libraries/left", "/stake/right"]);
+
+        expect(diff.calls).toEqual([{left: outcomeLibraryProject, right: stakeAdapterProject}]);
+        expect(exitCode).toBe(0);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain('Diffing "/libraries/left" (native) -> "/stake/right" (stakeEngine)');
+        expect(printed).toContain('Mode "base":');
+
+        logSpy.mockRestore();
+    });
+
+    it("throws the capability diagnostic, rather than diffing, when either side is unsupported", async () => {
+        const resolveProject = stubProjectResolverByPath({"/blueprints/game.json": blueprintProject, "/libraries/base": outcomeLibraryProject});
+        const diff = stubDiff({
+            supported: false,
+            diagnostic: {
+                detectedType: "blueprint",
+                operation: "outcomeSource.diff",
+                missingCapability: "outcomeSource.read",
+                alternatives: ["outcomeLibrary", "stakeAdapter"],
+                message: '"outcomeSource.diff" is not supported for a "blueprint" project (missing the "outcomeSource.read" capability). Supported by: outcomeLibrary, stakeAdapter.',
+            },
+        });
+        const command = new OutcomeSourceCommand(resolveProject, undefined, undefined, undefined, diff);
+
+        await expect(command.run(["diff", "/blueprints/game.json", "/libraries/base"])).rejects.toThrow(
+            /"outcomeSource\.diff" is not supported for a "blueprint" project/,
+        );
+    });
+
+    it("exits 1 when either side's own canonical reader reported structural issues", async () => {
+        const resolveProject = stubProjectResolverByPath({"/libraries/left": outcomeLibraryProject, "/libraries/right": outcomeLibraryProject});
+        const diff = stubDiff({
+            supported: true,
+            diff: {
+                left: {rootPath: "/libraries/left", kind: "native", issues: [{code: "outcome-library-bundle-manifest-invalid-json", severity: "error", message: "boom"}]},
+                right: {rootPath: "/libraries/right", kind: "native", issues: []},
+                perMode: {},
+                onlyInLeft: [],
+                onlyInRight: [],
+            },
+        });
+        const command = new OutcomeSourceCommand(resolveProject, undefined, undefined, undefined, diff);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        const exitCode = await command.run(["diff", "/libraries/left", "/libraries/right"]);
+
+        expect(exitCode).toBe(1);
+        (console.log as jest.Mock).mockRestore();
+    });
+});
+
 // Real, non-stubbed end-to-end coverage: both verbs pointed straight at a real, on-disk outcome-library
 // bundle (built by "pokie outcomelibrary build", not mocked), resolved and served through the same
 // ProjectTargetResolver/OutcomeSourceProjectAnalyzer/sampleOutcomeSourceProject path the unit tests above stub
@@ -309,6 +423,20 @@ describe("OutcomeSourceCommand (integration, real outcome-library bundle)", () =
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain(`Drew outcome "`);
         expect(printed).toContain('from "' + bundleDir + '" (library "base-lib"');
+
+        logSpy.mockRestore();
+    });
+
+    it('diffs a real bundle against itself, through the real differ, via "pokie outcomesource diff"', async () => {
+        const command = new OutcomeSourceCommand(new ProjectTargetResolver());
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        const exitCode = await command.run(["diff", bundleDir, bundleDir]);
+
+        expect(exitCode).toBe(0);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain(`Diffing "${bundleDir}" (native) -> "${bundleDir}" (native)`);
+        expect(printed).toContain('Mode "base":');
 
         logSpy.mockRestore();
     });
