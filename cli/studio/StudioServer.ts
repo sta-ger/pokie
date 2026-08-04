@@ -444,6 +444,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/blueprints/shared-weights-conversion") {
+            await this.handleBlueprintSharedWeightsConversion(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/par-import") {
             await this.handleBlueprintParImport(req, res);
             return;
@@ -1097,6 +1102,23 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, this.blueprintService.previewReelStripGeneration(validated.blueprint));
+    }
+
+    // Same request shape as /validate (just "blueprint") -- reuses validateBlueprintValidationRequest
+    // rather than a near-duplicate validator. Always 200: "unsupported"/"invalid" are ordinary domain
+    // outcomes carried in the body, never a write either way (see
+    // StudioBlueprintService.convertSharedWeightsToReelStrips's own doc comment).
+    private async handleBlueprintSharedWeightsConversion(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.convertSharedWeightsToReelStrips(validated.blueprint));
     }
 
     private async handleBlueprintParImport(req: IncomingMessage, res: ServerResponse): Promise<void> {

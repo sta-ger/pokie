@@ -73,7 +73,39 @@ export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
 export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
 
-export type GameModelReels = {generationMode: GameModelReelGenerationMode};
+export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
+
+export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]};
+
+export type GameModelReelStripPosition = {
+    index: number;
+    symbolId: string;
+    isWild: boolean;
+    isScatter: boolean;
+    locked: boolean;
+    stackSize: number;
+};
+
+export type GameModelResolvedReel = {
+    reelIndex: number;
+    source: "literal" | "generated" | "sample";
+    positions: GameModelReelStripPosition[];
+    analysis: ReelStripAnalysis;
+    generationDiagnostics?: ReelStripGenerationDiagnostic[];
+};
+
+export type GameModelUnresolvedReel = {reelIndex: number; source: "generated"; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
+
+export type GameModelReel = GameModelResolvedReel | GameModelUnresolvedReel;
+
+export type GameModelSharedWeightsSample = {weights: Record<string, number>; seed: number; sampleLength: number; conversion: ReelStripSymbolWeightsConversionDiagnostic};
+
+export type GameModelReels = {
+    generationMode: GameModelReelGenerationMode;
+    gameWindow: GameModelGameWindow;
+    reels: GameModelReel[];
+    sharedWeightsSample?: GameModelSharedWeightsSample;
+};
 
 export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
 
@@ -258,6 +290,14 @@ export type ReelStripGenerationDiagnostic = {
     score?: number;
 };
 
+export type ReelStripSymbolWeightsConversionDiagnostic = {
+    weights: Record<string, number>;
+    counts: Record<string, number>;
+    targetProportions: Record<string, number>;
+    actualProportions: Record<string, number>;
+    deviations: Record<string, number>;
+};
+
 export type ReelStripAnalysis = {
     length: number;
     symbolCounts: Record<string, number>;
@@ -301,6 +341,16 @@ export type StudioReelStripGenerationView = {
     warnings: ValidationIssue[];
     reels: StudioReelStripGenerationReelView[];
 };
+
+// POST /api/home/blueprints/shared-weights-conversion's own DTO -- see
+// cli/studio/blueprint/StudioSharedWeightsConversionView.ts's own doc comment. `reelStrips` is the exact
+// same reproducible sample GameModelView's own Reels views already render for a "symbolWeights"/"default"
+// blueprint -- never re-derived here. Never the result of anything being written -- persisting it is a
+// separate, caller-driven applyProjectBlueprint call with the caller's own already-loaded expectedHash.
+export type StudioSharedWeightsConversionView =
+    | {status: "ok"; reelStrips: string[][]}
+    | {status: "unsupported"; error: string}
+    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
 
 // POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
 // doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated. `blueprintHash`

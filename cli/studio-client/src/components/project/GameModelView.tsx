@@ -1,6 +1,28 @@
-import {Badge, Group, Table, Text} from "@mantine/core";
-import type {GameModelBetsAndModes, GameModelMechanics, GameModelProjection, GameModelReelGenerationMode, GameModelSection, GameModelSymbol} from "../../api/types";
+import {Badge, Button, Group, Table, Tabs, Text} from "@mantine/core";
+import {useState} from "react";
+import {applyProjectBlueprint, convertSharedWeightsToReelStrips, inspectProject, loadBlueprint} from "../../api/apiClient";
+import type {
+    GameModelBetsAndModes,
+    GameModelGameWindow,
+    GameModelMechanics,
+    GameModelProjection,
+    GameModelReel,
+    GameModelReelGenerationMode,
+    GameModelReels,
+    GameModelResolvedReel,
+    GameModelSection,
+    GameModelSharedWeightsSample,
+    GameModelSymbol,
+} from "../../api/types";
+import {useStudioApi} from "../../context/StudioApiProvider";
+import {errorMessage} from "../../domain/errorMessage";
+import {AnalysisTable, DiagnosticsList} from "../blueprintEditor/ReelStripGenerationEditor";
+import {EmptyState} from "../common/EmptyState";
 import {PageSection} from "../common/PageSection";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
     if (mode === "reelStrips") {
@@ -122,6 +144,362 @@ function BetModesTable({betModes}: {betModes: GameModelBetsAndModes["betModes"]}
     );
 }
 
+function describeGameWindowCellColor(cell: {isWild: boolean; isScatter: boolean}): string {
+    if (cell.isWild) {
+        return "grape";
+    }
+    if (cell.isScatter) {
+        return "orange";
+    }
+    return "gray";
+}
+
+// Game window: this project's own reel grid at stop position 0, [reelIndex][rowIndex] -- read straight
+// off GameModelGameWindow, never re-derived (see that type's own doc comment for which strip each column
+// actually comes from). Wild/scatter cells are highlighted as the window's own overlay.
+function GameWindowView({gameWindow}: {gameWindow: GameModelGameWindow}) {
+    if (gameWindow.reels === 0 || gameWindow.grid.every((column) => column.length === 0)) {
+        return <EmptyState message="No reels configured yet." />;
+    }
+    return (
+        <div>
+            <Text size="sm" c="dimmed" mb="sm">
+                {gameWindow.reels} reel column(s) × {gameWindow.rows} row(s) (row 0 on top), read at stop position
+                0 -- every reel wraps back to its own start once it runs past its own end. Wild/scatter symbols are
+                highlighted.
+            </Text>
+            <Table.ScrollContainer minWidth={200}>
+                <Table withColumnBorders>
+                    <Table.Tbody>
+                        {Array.from({length: gameWindow.rows}, (_, rowIndex) => (
+                            <Table.Tr key={rowIndex}>
+                                {gameWindow.grid.map((column, reelIndex) => {
+                                    const cell = column[rowIndex];
+                                    return (
+                                        <Table.Td key={reelIndex} ta="center">
+                                            {cell === undefined ? (
+                                                "—"
+                                            ) : (
+                                                <Badge variant={cell.isWild || cell.isScatter ? "filled" : "outline"} color={describeGameWindowCellColor(cell)}>
+                                                    {cell.symbolId}
+                                                </Badge>
+                                            )}
+                                        </Table.Td>
+                                    );
+                                })}
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
+        </div>
+    );
+}
+
+// A reel is "resolved" (has its own real or sample positions to show) iff it carries `positions` --
+// mirrors the discriminant GameModelReel/GameModelUnresolvedReel actually use (see GameModelProjection.ts).
+function isResolvedReel(reel: GameModelReel): reel is GameModelResolvedReel {
+    return "positions" in reel;
+}
+
+function describeReelSource(source: GameModelResolvedReel["source"]): string {
+    if (source === "literal") {
+        return "Literal strip — fixed, exactly as authored.";
+    }
+    if (source === "generated") {
+        return "Generated strip — resolved from this reel's own reelStripGeneration config.";
+    }
+    return "Sample only — this generation mode has no fixed strip (every session reshuffles fresh); shown as one reproducible instance.";
+}
+
+function describeSpecialCell(position: {isWild: boolean; isScatter: boolean}): string {
+    if (position.isWild) {
+        return "Wild";
+    }
+    if (position.isScatter) {
+        return "Scatter";
+    }
+    return "—";
+}
+
+function ReelPositionsTable({reel}: {reel: GameModelResolvedReel}) {
+    return (
+        <Table.ScrollContainer minWidth={480}>
+            <Table>
+                <Table.Thead>
+                    <Table.Tr>
+                        <Table.Th>Index</Table.Th>
+                        <Table.Th>Symbol</Table.Th>
+                        <Table.Th>Special</Table.Th>
+                        <Table.Th>Stack</Table.Th>
+                        <Table.Th>Locked</Table.Th>
+                    </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                    {reel.positions.map((position) => (
+                        <Table.Tr key={position.index}>
+                            <Table.Td>{position.index}</Table.Td>
+                            <Table.Td>{position.symbolId}</Table.Td>
+                            <Table.Td>{describeSpecialCell(position)}</Table.Td>
+                            <Table.Td>{position.stackSize > 1 ? `${position.stackSize}×` : "—"}</Table.Td>
+                            <Table.Td>{position.locked ? "Locked" : "—"}</Table.Td>
+                        </Table.Tr>
+                    ))}
+                </Table.Tbody>
+            </Table>
+        </Table.ScrollContainer>
+    );
+}
+
+// Full strips: every physical reel's own full, circular strip -- index, symbol, wild/scatter, stack
+// run, and locked positions (see GameModelReelStripPosition's own doc comment). An unresolved
+// "generated" reel shows exactly why it couldn't be resolved instead of a strip.
+function FullStripsView({reels}: {reels: GameModelReel[]}) {
+    if (reels.length === 0) {
+        return <EmptyState message="No reels configured yet." />;
+    }
+    return (
+        <div>
+            {reels.map((reel) => (
+                <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1}`}>
+                    {isResolvedReel(reel) ? (
+                        <>
+                            <Text size="sm" c="dimmed" mb="xs">
+                                {describeReelSource(reel.source)} {reel.positions.length} position(s), circular (wraps
+                                from the last position back to index 0).
+                            </Text>
+                            <ReelPositionsTable reel={reel} />
+                        </>
+                    ) : (
+                        <Text size="sm" c="red">
+                            Unresolved — {reel.reason}
+                        </Text>
+                    )}
+                </PageSection>
+            ))}
+        </div>
+    );
+}
+
+function SharedWeightsConversionTable({sample}: {sample: GameModelSharedWeightsSample}) {
+    const symbolIds = Object.keys(sample.weights);
+    return (
+        <PageSection legend="Shared weights → counts conversion">
+            <Text size="sm" c="dimmed" mb="xs">
+                Reproducible sample only (seed {sample.seed}, sample length {sample.sampleLength}) — not the strip any
+                real session will use; every reel independently reshuffles this same weight pool fresh each session.
+            </Text>
+            <Table.ScrollContainer minWidth={480}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Symbol</Table.Th>
+                            <Table.Th>Weight</Table.Th>
+                            <Table.Th>Resolved count</Table.Th>
+                            <Table.Th>Target proportion</Table.Th>
+                            <Table.Th>Actual proportion</Table.Th>
+                            <Table.Th>Deviation</Table.Th>
+                        </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {symbolIds.map((symbolId) => (
+                            <Table.Tr key={symbolId}>
+                                <Table.Td>{symbolId}</Table.Td>
+                                <Table.Td>{sample.weights[symbolId]}</Table.Td>
+                                <Table.Td>{sample.conversion.counts[symbolId] ?? 0}</Table.Td>
+                                <Table.Td>{(sample.conversion.targetProportions[symbolId] ?? 0).toFixed(3)}</Table.Td>
+                                <Table.Td>{(sample.conversion.actualProportions[symbolId] ?? 0).toFixed(3)}</Table.Td>
+                                <Table.Td>{(sample.conversion.deviations[symbolId] ?? 0).toFixed(3)}</Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
+        </PageSection>
+    );
+}
+
+type SharedWeightsConversionStatus = {status: "idle"} | {status: "loading"} | {status: "ok"} | {status: "error"; message: string};
+
+// symbolWeights/default Reels' own "Convert to editable per-reel strips" action -- freezes the exact same
+// reproducible sample the read-only views above already show into this project's own literal, per-reel
+// reelStrips, so it becomes editable (Reel Strip Modeler, Full strips, ...) instead of reshuffling fresh
+// every session. The sample itself is never computed here: POST /api/home/blueprints/shared-weights-
+// conversion runs the real core convertSharedWeightsToReelStrips() (src/project/buildGameModelReels.ts)
+// against this project's own freshly loaded tracked source blueprint, and the result is only ever
+// persisted through the existing conditional-commit POST /api/project/blueprint/apply path (same
+// expectedHash contract MechanicsEditorTab's own Save changes uses) -- so a source blueprint that changed
+// on disk since this view loaded, or a conversion result that fails validation, is reported here and never
+// partially applied.
+function SharedWeightsConversionAction({canEdit, onConverted}: {canEdit: boolean; onConverted?: () => void}) {
+    const fetchImpl = useStudioApi();
+    const [conversionStatus, setConversionStatus] = useState<SharedWeightsConversionStatus>({status: "idle"});
+
+    if (!canEdit) {
+        return null;
+    }
+
+    async function handleConvert(): Promise<void> {
+        setConversionStatus({status: "loading"});
+        try {
+            const report = await inspectProject(fetchImpl);
+            if (!report.generated || report.buildInfo?.source === undefined) {
+                setConversionStatus({
+                    status: "error",
+                    message: "This project wasn't built from a tracked source blueprint (no \"source\" recorded in build-info.json), so it can't be converted here.",
+                });
+                return;
+            }
+
+            const loaded = await loadBlueprint(fetchImpl, report.buildInfo.source);
+            if (loaded.status === "load-error") {
+                setConversionStatus({status: "error", message: loaded.error});
+                return;
+            }
+
+            const conversion = await convertSharedWeightsToReelStrips(fetchImpl, loaded.blueprint);
+            if (conversion.status === "unsupported") {
+                setConversionStatus({status: "error", message: conversion.error});
+                return;
+            }
+            if (conversion.status === "invalid") {
+                const message = conversion.errors.map((issue) => issue.message).join(" ");
+                setConversionStatus({status: "error", message: message.length > 0 ? message : "The project's source blueprint failed validation."});
+                return;
+            }
+
+            const nextBlueprint = isPlainObject(loaded.blueprint) ? {...loaded.blueprint} : {};
+            nextBlueprint.reelStrips = conversion.reelStrips;
+            Reflect.deleteProperty(nextBlueprint, "symbolWeights");
+
+            const applied = await applyProjectBlueprint(fetchImpl, nextBlueprint, loaded.blueprintHash);
+            if (applied.status === "conflict") {
+                setConversionStatus({
+                    status: "error",
+                    message: "The project's source blueprint changed on disk since it was loaded here, so converting would silently overwrite those changes. Try converting again to reload the latest version first.",
+                });
+                return;
+            }
+            if (applied.status === "invalid") {
+                const message = applied.errors.map((issue) => issue.message).join(" ");
+                setConversionStatus({status: "error", message: message.length > 0 ? message : "The converted blueprint failed validation."});
+                return;
+            }
+            if (applied.status !== "ok") {
+                setConversionStatus({status: "error", message: applied.error});
+                return;
+            }
+
+            setConversionStatus({status: "ok"});
+            onConverted?.();
+        } catch (error) {
+            setConversionStatus({status: "error", message: errorMessage(error)});
+        }
+    }
+
+    return (
+        <Group gap="sm" mb="sm" align="center">
+            <Button
+                size="xs"
+                variant="light"
+                loading={conversionStatus.status === "loading"}
+                onClick={() => {
+                    handleConvert();
+                }}
+            >
+                Convert to editable per-reel strips
+            </Button>
+            {conversionStatus.status === "ok" && (
+                <Text size="sm" c="green">
+                    Converted — this project&apos;s reels are now literal, editable strips (reelStrips).
+                </Text>
+            )}
+            {conversionStatus.status === "error" && (
+                <Text size="sm" c="red">
+                    {conversionStatus.message}
+                </Text>
+            )}
+        </Group>
+    );
+}
+
+// Analysis: the shared weights → counts conversion (when this generation mode has one), plus each
+// reel's own ReelStripAnalyzer output (counts/shares/distances/possible stop windows) and, for a
+// "generated" reel, its own generation constraint diagnostics -- reusing AnalysisTable/DiagnosticsList
+// verbatim from the Reel Strip Modeler rather than a second implementation of either.
+function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sharedWeightsSample: GameModelSharedWeightsSample | undefined}) {
+    if (reels.length === 0) {
+        return <EmptyState message="No reels configured yet." />;
+    }
+    return (
+        <div>
+            {sharedWeightsSample !== undefined && <SharedWeightsConversionTable sample={sharedWeightsSample} />}
+            {reels.map((reel) => (
+                <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1} analysis`}>
+                    {isResolvedReel(reel) ? (
+                        <>
+                            <Text size="sm" c="dimmed" mb="xs">
+                                {reel.analysis.length} possible stop position(s) (this reel&apos;s own length).
+                            </Text>
+                            <AnalysisTable analysis={reel.analysis} />
+                            {reel.generationDiagnostics !== undefined && <DiagnosticsList diagnostics={reel.generationDiagnostics} />}
+                        </>
+                    ) : (
+                        <>
+                            <Text size="sm" c="red" mb="xs">
+                                Unresolved — {reel.reason}
+                            </Text>
+                            <DiagnosticsList diagnostics={reel.generationDiagnostics} />
+                        </>
+                    )}
+                </PageSection>
+            ))}
+        </div>
+    );
+}
+
+// The Reels section's own content -- Game window / Full strips / Analysis, straight off whichever
+// GameModelReels this project's generation mode actually produced (see buildGameModelReels.ts). Never
+// shows a single strip as "the" strip for "symbolWeights"/"default" (see GameModelSharedWeightsSample's
+// own doc comment) -- an explicit note plus each view's own "sample" labeling makes that unmistakable.
+function ReelsSection({section, canEdit, onConverted}: {section: GameModelSection<GameModelReels>; canEdit: boolean; onConverted?: () => void}) {
+    if (section.status === "unavailable") {
+        return <UnavailableSection reason={section.reason} />;
+    }
+    const {data} = section;
+    const hasNoFixedStrip = data.generationMode === "symbolWeights" || data.generationMode === "default";
+    return (
+        <div>
+            <Text size="sm">Generation mode: {describeReelGenerationMode(data.generationMode)}</Text>
+            {hasNoFixedStrip && (
+                <>
+                    <Text size="sm" c="dimmed" mb="sm">
+                        This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each
+                        session, so the views below show one reproducible sample instead of a real strip.
+                    </Text>
+                    <SharedWeightsConversionAction canEdit={canEdit} onConverted={onConverted} />
+                </>
+            )}
+            <Tabs defaultValue="gameWindow" mt="sm">
+                <Tabs.List>
+                    <Tabs.Tab value="gameWindow">Game window</Tabs.Tab>
+                    <Tabs.Tab value="fullStrips">Full strips</Tabs.Tab>
+                    <Tabs.Tab value="analysis">Analysis</Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel value="gameWindow" pt="sm">
+                    <GameWindowView gameWindow={data.gameWindow} />
+                </Tabs.Panel>
+                <Tabs.Panel value="fullStrips" pt="sm">
+                    <FullStripsView reels={data.reels} />
+                </Tabs.Panel>
+                <Tabs.Panel value="analysis" pt="sm">
+                    <AnalysisView reels={data.reels} sharedWeightsSample={data.sharedWeightsSample} />
+                </Tabs.Panel>
+            </Tabs>
+        </div>
+    );
+}
+
 function MechanicsSection({section}: {section: GameModelSection<GameModelMechanics>}) {
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
@@ -155,8 +533,12 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
 // renderer over `projection` (see GameModelProjection in api/types.ts, mirroring the "pokie" core's own
 // canonical type) -- every value shown here comes straight off that DTO; this component never flattens a
 // paytable, infers a reel generation mode, or otherwise re-derives any of the underlying GameBlueprint's
-// own math itself (that's buildGameModelProjection's job, server/core-side).
-export function GameModelView({projection}: {projection: GameModelProjection}) {
+// own math itself (that's buildGameModelProjection's job, server/core-side). `canEdit` gates the one
+// action this otherwise-read-only view offers (SharedWeightsConversionAction, see its own doc comment) --
+// an introspectable-only project never sees it, same as MechanicsEditorTab's own "Edit" gating.
+// `onConverted` lets the caller reload its own projection after a successful conversion, the same way
+// MechanicsEditorTab already reloads after a Save changes.
+export function GameModelView({projection, canEdit, onConverted}: {projection: GameModelProjection; canEdit: boolean; onConverted?: () => void}) {
     return (
         <div>
             <PageSection legend="Game basics">
@@ -198,11 +580,7 @@ export function GameModelView({projection}: {projection: GameModelProjection}) {
             </PageSection>
 
             <PageSection legend="Reels">
-                {projection.reels.status === "unavailable" ? (
-                    <UnavailableSection reason={projection.reels.reason} />
-                ) : (
-                    <Text size="sm">Generation mode: {describeReelGenerationMode(projection.reels.data.generationMode)}</Text>
-                )}
+                <ReelsSection section={projection.reels} canEdit={canEdit} onConverted={onConverted} />
             </PageSection>
 
             <PageSection legend="Paytable">
