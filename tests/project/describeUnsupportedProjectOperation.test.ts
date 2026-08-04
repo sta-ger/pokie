@@ -100,6 +100,15 @@ describe("describeUnsupportedProjectOperation", () => {
             alternatives: ["outcomeLibrary"],
             message: expect.stringContaining("outcomeLibrary"),
         });
+
+        const serveDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SERVE_OPERATION);
+        expect(serveDiagnostic).toEqual({
+            detectedType: "stakeAdapter",
+            operation: OUTCOME_SOURCE_SERVE_OPERATION,
+            missingCapability: "outcomeSource.sample",
+            alternatives: ["outcomeLibrary"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
     });
 
     it("never grants an outcomeLibrary/stakeAdapter project sim/replay/serve via runtime.execute", () => {

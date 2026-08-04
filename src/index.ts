@@ -324,6 +324,7 @@ export * from "./reporting/isSimulationReportSet.js";
 export * from "./server/PokieClientServer.js";
 export * from "./server/PokieClientServerHandling.js";
 export * from "./server/PokieClientServerOptions.js";
+export * from "./server/OutcomeSourceDevServer.js";
 export * from "./server/PokieDevServer.js";
 export * from "./server/PokieDevServerAddress.js";
 export * from "./server/PokieDevServerHandling.js";
