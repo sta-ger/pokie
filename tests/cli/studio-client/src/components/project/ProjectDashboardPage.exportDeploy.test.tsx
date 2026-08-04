@@ -53,9 +53,30 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(remoteSection).getByText("Remote deployment (none registered yet)")).toBeInTheDocument();
     });
 
-    it("pre-selects the target and hands off to the Deployment tab, labelled as a local build, when a local adapter card is chosen", async () => {
+    it("runs the local build right here (no hand-off to the Deployment tab) when a local adapter card's own Build locally is chosen", async () => {
         const user = userEvent.setup();
-        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+            "/api/project/deployment/runs": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    targetId: "local-json-example",
+                    publish: true,
+                    stages: [],
+                    descriptorIssues: [],
+                    compatibilityIssues: [],
+                    projectionIssues: [],
+                    generation: {artifacts: [], issues: []},
+                    artifactIssues: [],
+                    diagnostic: {ok: true, checks: []},
+                    delivery: {delivered: true},
+                },
+            }),
+        };
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
@@ -63,33 +84,92 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByRole("button", {name: "Configure & publish"})).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build locally"}));
 
-        // Landed on the (unchanged) Deployment tab, with the same target already marked selected --
-        // ExportDeployTab only pre-selects it, it never runs the deployment pipeline itself. It's also
-        // the only registered target, so Select-target is skipped entirely and this lands straight on
-        // Configure -- no artificial step forcing a click through the single option.
-        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
+        // Runs the same runDeployment(publish: true) pipeline the Deployment tab itself drives, right
+        // here -- never navigating away to a separate Stepper-driven workflow first.
+        expect(await screen.findByText(/Build succeeded and was written to disk\./)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument();
+        expect(screen.getByRole("heading", {name: "A"})).toBeInTheDocument();
     });
 
-    it("hands off to the (unchanged) Stake Engine Export tab when the static-export card is chosen", async () => {
+    it("runs the Stake Engine Export right here (no hand-off to the Stake Engine Export tab) once a canonical outcome library is available", async () => {
         const user = userEvent.setup();
-        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    buildStatus: "compatible",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    currentGame: {id: "a", name: "A", version: "1.0.0"},
+                    artifactPokieVersion: "1.0.0",
+                    currentPokieVersion: "1.0.0",
+                    generatedAt: "2026-01-01T00:00:00.000Z",
+                    modes: [
+                        {
+                            modeName: "base",
+                            libraryId: "a-base",
+                            bundleDir: "outcomelibrary",
+                            buildStatus: "compatible",
+                            outcomeCount: 500,
+                            totalWeight: 1000,
+                            rtp: 0.95,
+                            hash: "sha256:library",
+                        },
+                    ],
+                },
+            }),
+            "/api/project/stakeengine/export": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []},
+            }),
+        };
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(screen.getByRole("button", {name: "Open Stake Engine Export"}));
+        await user.click(await screen.findByRole("button", {name: "Run Stake Engine Export (base)"}));
 
-        expect(await screen.findByRole("button", {name: "Continue to Preview"})).toBeInTheDocument();
+        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Continue to Preview"})).not.toBeInTheDocument();
     });
 
-    it("hands off to the (unchanged) Outcome Libraries tab when the outcome-library card is chosen", async () => {
+    it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
         const user = userEvent.setup();
-        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+            "/api/project/outcome-libraries/generate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    files: ["manifest.json"],
+                    warnings: [],
+                    mode: {modeName: "base", libraryId: "a-base", hash: "sha256:library", outcomeCount: 500, totalWeight: 1000, rtp: 0.95},
+                    generator: {algorithm: "exact", strategy: "exact", pokieVersion: "1.0.0"},
+                    coverage: 1,
+                    selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                },
+            }),
+        };
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(screen.getByRole("button", {name: "Open Outcome Libraries"}));
+        await user.click(await screen.findByRole("button", {name: "Generate outcome library (base)"}));
 
-        expect(await screen.findByLabelText("Mode")).toBeInTheDocument();
+        expect(await screen.findByText(/Generated 500 outcomes for mode "base" \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
+        expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
     });
 
     it("keeps the legacy /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes deep-link compatible, none of them shown in the nav", async () => {

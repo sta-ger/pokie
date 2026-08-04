@@ -323,13 +323,24 @@ export function useDeploymentManager() {
     );
 
     const run = useCallback(
-        (publish: boolean) => {
-            if (selectedTarget === undefined) {
+        // `targetOverride` lets a caller that owns its own target list (Build/Export's ExportDeployTab,
+        // choosing straight from an ExportDeployTargetCard) select-and-run in one action, without a
+        // separate selectTarget() call first landing in a stale closure of `selectedTarget` -- see
+        // ExportDeployTab's own doc comment. Every existing caller (DeploymentTab's own Preview/Deploy
+        // buttons) omits it entirely and keeps running against whatever selectTarget() already put in
+        // state, unchanged.
+        (publish: boolean, targetOverride?: StudioDeploymentTargetSummary) => {
+            const target = targetOverride ?? selectedTarget;
+            if (target === undefined) {
                 return;
             }
             const token = trackerRef.current.beginRun();
             if (token === undefined) {
                 return;
+            }
+            if (targetOverride !== undefined && targetOverride.id !== selectedTarget?.id) {
+                selectedTargetRef.current = targetOverride;
+                setSelectedTarget(targetOverride);
             }
             setSelectedArtifactPath(undefined);
             // A fresh run is exactly what clears "outdated" -- whatever it lands on (success or failure) is
@@ -348,7 +359,7 @@ export function useDeploymentManager() {
             setRunResult(undefined);
             setRunLoading(true);
 
-            runDeployment(fetchImpl, selectedTarget.id, modes, publish)
+            runDeployment(fetchImpl, target.id, modes, publish)
                 .then((view) => {
                     trackerRef.current.endRun();
                     setRunLoading(trackerRef.current.isRunInFlight());
@@ -396,3 +407,9 @@ export function useDeploymentManager() {
         resetForProjectSwitch,
     };
 }
+
+// ExportDeployTab's own prop type -- it renders straight off this hook's return shape (owned by
+// ProjectDashboardPage, same instance DeploymentTab itself renders off) instead of threading each field
+// through as its own prop, since Build/Export now drives the same run()/registry/build-modes state
+// DeploymentTab does, not a parallel copy of it.
+export type DeploymentManager = ReturnType<typeof useDeploymentManager>;

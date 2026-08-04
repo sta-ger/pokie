@@ -993,17 +993,7 @@ export function ProjectDashboardPage() {
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab
-                                    targetsView={deployment.targetsView}
-                                    targetsError={deployment.targetsError}
-                                    onRefreshTargets={deployment.refreshTargets}
-                                    onSelectDeploymentTarget={(target) => {
-                                        deployment.selectTarget(target);
-                                        setActiveTab("deployment");
-                                    }}
-                                    onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
-                                    onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
-                                />
+                                <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
                             )}
                             {activeTab === "deployment" && (
                                 <DeploymentTab

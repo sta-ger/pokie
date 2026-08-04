@@ -1,5 +1,6 @@
-import type {StudioDeploymentTargetSummary} from "../../api/types";
+import type {StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
+import {BLUEPRINT_BUILD_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY} from "./ProjectDashboard";
 
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
 // project's outputs are built/published from. It classifies, but never merges, the three backend
@@ -136,13 +137,30 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator contract every other target already does.",
 };
 
+// Every builder on this page ultimately runs against this project's own current build (see
+// OUTCOME_LIBRARY_CARD/STAKE_ENGINE_EXPORT_CARD/describeExternalAdapterTargetCard's own doc comments) --
+// the same RUNTIME_CAPABLE_CAPABILITIES gate ProjectDashboardPage already applies to the whole "Build/
+// Export" tab, duplicated here (rather than trusted implicitly) so this module's own card list is
+// self-consistent even if a future caller ever renders it without that outer gate.
+function canBuildFromCurrentProject(capabilities: readonly StudioProjectCapability[]): boolean {
+    return capabilities.includes(BLUEPRINT_BUILD_CAPABILITY) || capabilities.includes(RUNTIME_EXECUTE_CAPABILITY);
+}
+
 // Builds the shell's own card list from the live registered-target list (StudioDeploymentTargetSummary[],
-// exactly what useDeploymentManager.targetsView already carries) -- Outcome libraries and Stake Engine
-// Export's cards are always present (neither is registry-backed the way an adapter target is), one card
-// per registered target classifies as "localAdapter" (the SDK's own local-json-example) or
-// "remoteDeployment" (anything else -- a future adapter's extension point), and the placeholder above
-// fills the "Remote deployment" group only while it would otherwise be empty.
-export function describeExportDeployTargetCards(deploymentTargets: readonly StudioDeploymentTargetSummary[]): ExportDeployTargetCard[] {
+// exactly what useDeploymentManager.targetsView already carries) and the resolved project's own
+// capabilities -- Outcome libraries and Stake Engine Export's cards, plus every adapter-backed card
+// (registered target or the remote-deployment placeholder), are only ever shown for a project this Studio
+// can actually build/run (see canBuildFromCurrentProject above); one card per registered target classifies
+// as "localAdapter" (the SDK's own local-json-example) or "remoteDeployment" (anything else -- a future
+// adapter's extension point), and the placeholder above fills the "Remote deployment" group only while it
+// would otherwise be empty.
+export function describeExportDeployTargetCards(
+    deploymentTargets: readonly StudioDeploymentTargetSummary[],
+    capabilities: readonly StudioProjectCapability[],
+): ExportDeployTargetCard[] {
+    if (!canBuildFromCurrentProject(capabilities)) {
+        return [];
+    }
     const adapterCards = deploymentTargets.map(describeExternalAdapterTargetCard);
     const hasRemoteTarget = adapterCards.some((card) => card.kind === "remoteDeployment");
     return [OUTCOME_LIBRARY_CARD, STAKE_ENGINE_EXPORT_CARD, ...adapterCards, ...(hasRemoteTarget ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD])];
