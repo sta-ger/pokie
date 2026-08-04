@@ -145,8 +145,9 @@ Studio's Play/runtime surface is `cli/studio-client/src/components/project/Runti
 `cli/studio/runtime/{StudioRuntimeManager,StudioRuntimeSessionView,StudioRuntimeStateView,RuntimeSessionClient,
 validateRuntimeSpinRequest,validateRuntimeSessionRequest}.ts` (server). This section separates two evidence
 layers the prior baseline of this document conflated: real, non-mocked **Studio-server** (HTTP API) evidence,
-which already exists and is substantial, and real **browser** (visual/DOM-rendering) evidence, which does not
-and which this step verified — rather than assumed — it cannot produce here.
+which already exists and is substantial, and real **browser** (visual/DOM-rendering) evidence. The original
+implementer sandbox could not provide the latter; this recovery completes it on the browser-capable host and
+records the exact built artifact and captures below.
 
 **Studio-server evidence (real, not mocked, exists today):** `tests/cli/studio/StudioServer.test.ts` (4522
 lines, `pokie-integration` project, `jest.config.mjs:12`) instantiates a real `http.createServer`-backed
@@ -162,45 +163,26 @@ sandbox doesn't run (see this document's own "Method" above). It has **no dedica
 case** (verified: no match for `with space`/`isTTY`/`isatty` in the file) — already named as a gap in "Owner
 steps" below, unchanged by this step.
 
-**Browser (visual/DOM-rendering) evidence — attempted, verified infeasible in this sandbox, not merely
-declined:** the only component-level (jsdom, never a real browser) coverage is
+**Browser (visual/DOM-rendering) evidence — real host pass, 2026-08-05:** the component-level (jsdom, never a
+real browser) coverage remains
 `tests/cli/studio-client/src/components/project/ProjectDashboardPage.runtimeWorkflow.test.tsx` and
-`.runtimeSpin.test.tsx`. The only established *real-browser* evidence convention is
-[`phase2-browser-evidence/README.md`](phase2-browser-evidence/README.md): a one-time manual pass (Chrome
-138.0.7204.183, captured 2026-08-01) against a built `pokie studio` server, one PNG + SHA-256 per route,
-explicitly scoped to *read-state* rendering only. It has **not been repeated since Phase 2** — no equivalent
-pass exists for anything Phase 3 changed (most notably `P3-POLISH-20`'s Build/Export nav consolidation and the
-three legacy-route migration-copy deep links it introduced, `pokie-phase3-inventory.md` §4).
+`.runtimeSpin.test.tsx`. The host has Google Chrome `138.0.7204.183`; from this preserved task clone it built
+`build-esm`, `build-cjs`, and `build-cli`, started the resulting `dist/cli/pokie.js studio` server, waited for
+the real HTTP project-context response, and captured 1440×1100 headless Chrome PNGs after five seconds of
+virtual time. The screenshots and SHA-256 values are in
+[`phase4-evidence/browser/`](phase4-evidence/README.md); they are not jsdom or mocked transport evidence.
 
-Reproducing it needs, at minimum, a built `pokie studio` server (`build-cli`, itself needing `build-esm`/
-`build-cjs`/`build-studio-client` first) and a real browser session. This step verified, rather than assumed,
-that neither is available — see [`phase4-evidence/browser-tooling-search.txt`](phase4-evidence/README.md) and
-[`phase4-evidence/npm-wrapper-repro.txt`](phase4-evidence/README.md):
-
-- **No browser binary anywhere on this sandbox's filesystem** (`find / -xdev -maxdepth 4` for
-  Chromium/Chrome/Firefox: no match) and **no browser-automation dependency** (`puppeteer`/`playwright`/
-  `chrome-launcher`/`karma`) in `package.json` or `node_modules`, matching the prior baseline's own finding —
-  re-verified here from a live filesystem search, not carried forward as an assumption.
-- **The build toolchain itself is blocked in this correction-round sandbox**: `npm` (`/usr/local/bin/npm`, a
-  policy wrapper outside this worktree/repo, not something this step can edit) fails with a `dash` syntax error
-  on every invocation — including a bare `npm test -- <allowed file>` — before its own allowlist logic ever
-  runs (root cause: a malformed generated `case` pattern on the wrapper's own line 9). `npx`, which could
-  otherwise fetch a headless browser on demand, is separately and explicitly disabled by the same wrapper
-  ("`npx is disabled; use npm test -- saved-file`"). Neither is a fact about POKIE's own source — both are
-  reproduced transcripts of this correction-round sandbox's own tooling.
-- **No compiled `dist/`** exists to serve a built Studio server from in the first place (`find . -maxdepth 2
-  -iname "dist*"`: no match).
-- Even bypassing the broken wrapper (this step already does so for the three required Jest fixtures, by
-  invoking `node node_modules/jest/bin/jest.js` directly — see "Method") only reaches `tsc`/`vite` directly;
-  it does not conjure a browser binary, and installing one (`apt-get install chromium`, or adding a new
-  `puppeteer`/`playwright` `package.json` dependency) is exactly the kind of build/dependency/packaging change
-  this role is scoped away from making unilaterally in a docs-audit correction round, not a step this document
-  can respond to by simply trying harder.
-
-Recorded here as a named, explicit, *verified* gap — not silently dropped, and not the same as declining to
-try — so a future step with real build/browser access (necessarily a differently-provisioned environment than
-this correction-round implementer sandbox) closes it deliberately, the same way `pokie-phase3-inventory.md`'s
-own "Owner steps" section named (rather than silently absorbed) every surface it didn't itself change.
+The capture uses two real inputs. First, a random Blueprint located at
+`/tmp/p4 studio evidence.hGuacz/Blueprint With Spaces.blueprint.json` confirms that Studio accepts a source path
+with spaces and honestly remains in `Loading project…` while the current Blueprint materialization path is
+pending. Second, a loadable package fixture at
+`/tmp/p4 studio evidence.hGuacz/Studio Package With Spaces` (with the current built POKIE made available through
+its local runtime dependency) returns `{status:"loaded", type:"tsPackage", capabilities:["runtime.execute"]}`
+from the actual Studio HTTP API. Its Overview screenshot shows the space-containing location and valid package
+metadata; Replay visibly exposes the current Recreate from seed / Replay Artifact / Session Spin / Recent
+Simulation split and its best-effort reproduction copy; Runtime visibly exposes the current technical server,
+session, inspect and debug panel. This is baseline evidence of the current product, not a claim that any of
+those Stage 4 behaviours are already acceptable.
 
 ## 5. What Phase 3 implementation is retained
 
@@ -233,15 +215,12 @@ this document; every fact in this section is a pointer to where it's already fro
 ## 6. `pokie-examples` inventory: reusable vs. example-specific units
 
 `pokie-examples` (`github.com/sta-ger/pokie-examples`, linked from this repo's own `README.md`/`docs/README.md`)
-is a separate, external repository. This step obtained a real synced local checkout —
-`git clone https://github.com/sta-ger/pokie-examples.git`, pinned at commit
-`530c2c7ff709361d93fe60f59b20436be719d209` (`Merge develop into main`, 2026-07-09) — and read every `src/**/*.ts`
-file (2,485 lines total) directly from that checkout, not from remote representative-file sampling. The full
-clone command, pinned commit, and complete file tree with line counts are saved at
-[`phase4-evidence/pokie-examples-checkout.txt`](phase4-evidence/README.md) so this is reproducible independent of
-this document's own prose. This checkout was not persisted into this worktree (it is a separate external
-repository, outside this repo's own tree); a future step that needs to *modify* `pokie-examples`' own shared code
-should re-clone at its own current `HEAD`, not assume this pinned commit is still current.
+is a separate, external repository. The initial audit read a real clone rather than representative remote files;
+this recovery additionally verifies the sibling `../pokie-examples` checkout is clean `develop` and exactly at
+`origin/develop`, commit `af432206a435db5c1063ca5cd9dd81652b886a6e`, before treating its source as the canonical
+baseline. The original clone transcript and complete `src/**/*.ts` file tree are retained at
+[`phase4-evidence/pokie-examples-checkout.txt`](phase4-evidence/README.md); later player work must resync the
+checkout again before changing it.
 
 **Repository shape:** nine example games under `src/games/<name>/` — `simple-slot`, `growing-grid`,
 `megaways-style`, `mixed-evaluators`, `value-pay-multiplier`, `verifiable-spin`, `slot-with-free-games`,
@@ -339,14 +318,13 @@ and none should be silently absorbed into a later step without being checked aga
 - **Integration-lane (real `npm install`) space-path coverage** for materialization
   (`BlueprintProjectMaterializer.integration.test.ts`) and package preparation beyond
   `GamePackagePreparer.integration.test.ts`'s own existing case.
-- **Player/browser *visual* acceptance evidence** (§4) — a fresh `docs/phase2-browser-evidence`-style manual pass
-  covering every Studio route Phase 3 changed. Verified, not merely assumed, to need a differently-provisioned
-  environment than any correction-round implementer sandbox: real `build-cli` output and a real browser binary,
-  neither obtainable here (no browser anywhere on this sandbox's filesystem, no `puppeteer`/`playwright`
-  dependency, `npm`/`npx` build/install access blocked by this sandbox's own correction-round policy wrapper —
-  see [`phase4-evidence/`](phase4-evidence/README.md)). Real, non-mocked Studio-*server* (HTTP API, as opposed to
-  browser-rendered) coverage already exists today (`tests/cli/studio/StudioServer.test.ts`, §4) and needs no
-  further action from this line item; only the visual/DOM-rendering layer is open.
+- **Final player/browser acceptance matrix** — §4 now contains a real host-side baseline capture for the
+  Blueprint/materialization, Overview, Replay and Runtime decision surfaces, including space-containing paths.
+  P4-POLISH-13 must expand that into the final post-implementation matrix (Play, player interactions, features,
+  reconnect/error, responsive/narrow screen and every changed route). The historical implementer sandbox's
+  browser/build constraint remains recorded in [`phase4-evidence/`](phase4-evidence/README.md), but it is no
+  longer a blocker for this baseline step. Real Studio-server HTTP coverage remains in
+  `tests/cli/studio/StudioServer.test.ts` (§4).
 - **This sandbox's own `npm` wrapper is broken independent of anything in this repository** (§4,
   [`phase4-evidence/npm-wrapper-repro.txt`](phase4-evidence/README.md)): a malformed generated `case` pattern
   makes `dash` reject the wrapper script itself before any of its own policy logic runs, for every invocation.

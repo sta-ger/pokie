@@ -1,0 +1,30 @@
+P4-POLISH-01 host-side baseline capture
+Captured: 2026-08-05
+Product task clone: task/P4-POLISH-01-20260804225959 at 400a092efa0e26cee2af2965de9c9da7d9fa96a5 before this evidence commit
+Browser: Google Chrome 138.0.7204.183
+
+$ printf '' | node dist/cli/pokie.js create
+exit: 0
+  created  ./starter-slot.blueprint.json
+
+Game blueprint "Starter Slot" (id: "starter-slot") created at "./starter-slot.blueprint.json".
+
+Edit it by hand, then run:
+  pokie build ./starter-slot.blueprint.json --dry-run
+  pokie build ./starter-slot.blueprint.json --out <dir>
+
+Note: "pokie create" now writes an editable Blueprint Project (a GameBlueprint JSON file) -- it no longer writes a ready-to-run package. For a prepared, immediately valid package instead, run: pokie init [name]
+
+$ node dist/cli/pokie.js create --random --seed 4242 --out "/tmp/p4 studio evidence.hGuacz/Blueprint With Spaces.blueprint.json"
+exit: 0
+Generated random game "Roaring Savage Olympus" (id: "roaring-savage-olympus") from seed 4242.
+Reproduce this exact game with: pokie create --random --seed 4242 --preset default
+Provenance: generator 1.1.0, strategy "default-line-pay".
+  created  /tmp/p4 studio evidence.hGuacz/Blueprint With Spaces.blueprint.json
+
+Game blueprint "Roaring Savage Olympus" (id: "roaring-savage-olympus") created at "/tmp/p4 studio evidence.hGuacz/Blueprint With Spaces.blueprint.json".
+
+The real Studio API then loaded the package fixture at
+/tmp/p4 studio evidence.hGuacz/Studio Package With Spaces:
+
+{"status":"loaded","projectRoot":"/tmp/p4 studio evidence.hGuacz/Studio Package With Spaces","game":{"id":"playable-game","name":"Playable Game","version":"1.0.0"},"type":"tsPackage","capabilities":["runtime.execute"]}
