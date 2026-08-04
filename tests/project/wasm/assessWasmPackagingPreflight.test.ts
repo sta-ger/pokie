@@ -145,6 +145,40 @@ describe("assessWasmPackagingPreflight", () => {
         }
     });
 
+    it("detects a static require/import specifier inside a template literal's executable interpolation", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            `const cjs = \`\${require("fs")}\`;\nconst esm = \`\${import("node:path")}\`;\n`
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            const modules = result.report.blockingApiUsages.map((usage) => usage.module).sort();
+            expect(modules).toEqual(["fs", "path"]);
+            expect(result.report.blockingApiUsages.map((usage) => usage.line).sort()).toEqual([1, 2]);
+        }
+    });
+
+    it("never flags import-like text in a template literal outside of its interpolation expression", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            `const label = \`import fs from "fs" -- value is \${1 + 1}\`;\n`
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            expect(result.report.blockingApiUsages).toEqual([]);
+        }
+    });
+
     it("still detects a real import that follows a multi-line template literal on a later line", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(

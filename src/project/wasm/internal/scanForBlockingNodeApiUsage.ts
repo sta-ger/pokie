@@ -41,47 +41,73 @@ const MODULE_SPECIFIER_PATTERNS = [
 const STRING_PLACEHOLDER_PREFIX = "POKIE_WASM_PREFLIGHT_STRING_";
 const STRING_PLACEHOLDER_PATTERN = new RegExp(`^${STRING_PLACEHOLDER_PREFIX}(\\d+)$`);
 
-// Carries comment/string context from one line to the next -- a block comment or a template literal that
-// doesn't close on the line it starts must keep masking every subsequent line until it actually closes,
-// rather than each line being scanned as if it started fresh at top-level code.
+// One open template literal on the mask stack. `inExpression` is false while scanning inert literal text and
+// true while inside that literal's `${...}` interpolation, where the content is executable code and must be
+// scanned like any other code rather than masked away. `braceDepth` counts unmatched `{` seen since the
+// interpolation opened, so a nested object literal's own braces (`${JSON.stringify({a: 1})}`) don't get
+// mistaken for the closing `}` of the interpolation itself. `literalContent` accumulates the current inert-text
+// chunk so it can be masked as one placeholder once its extent -- ended by `${`, a closing backtick, or (for a
+// chunk spanning multiple lines) final flush -- is known.
+interface TemplateLiteralFrame {
+    inExpression: boolean;
+    braceDepth: number;
+    literalContent: string;
+}
+
+// Carries comment/string context from one line to the next -- a block comment or a template literal (including
+// one left open mid-interpolation) that doesn't close on the line it starts must keep masking every subsequent
+// line until it actually closes, rather than each line being scanned as if it started fresh at top-level code.
+// `templateStack` holds one frame per currently-open template literal, innermost last, so a template literal
+// nested inside another interpolation (`` `${`${x}`}` ``) tracks each level's own expression/text state and
+// brace depth independently.
 interface CommentStringMaskState {
     inBlockComment: boolean;
-    inTemplateLiteral: boolean;
-    templateLiteralContent: string;
+    templateStack: TemplateLiteralFrame[];
 }
 
 function createCommentStringMaskState(): CommentStringMaskState {
-    return {inBlockComment: false, inTemplateLiteral: false, templateLiteralContent: ""};
+    return {inBlockComment: false, templateStack: []};
 }
 
-// Scans template-literal content starting at `startIndex` in `line`, honoring backslash escapes. When the
-// closing backtick is found on this line, `closingIndex` is the index right after it and scanning can resume
-// as normal code from there; otherwise `closingIndex` is -1 and `content` is the rest of the line, meaning the
-// literal continues onto the next line.
-function consumeTemplateLiteralChunk(line: string, startIndex: number): {content: string; closingIndex: number} {
+// Scans inert template-literal text starting at `startIndex` in `line`, honoring backslash escapes (so an
+// escaped `` \` `` or `\$` never ends the chunk early). The chunk ends at whichever comes first: an unescaped
+// backtick (the literal closes -- `terminator: "backtick"`), an unescaped `${` (an interpolation opens --
+// `terminator: "expression"`, and `nextIndex` points just past the `{` so the caller resumes in code mode), or
+// the end of the line with neither found (`terminator: "eol"`, meaning the literal's inert text continues onto
+// the next line).
+function consumeTemplateLiteralTextChunk(
+    line: string,
+    startIndex: number
+): {content: string; nextIndex: number; terminator: "backtick" | "expression" | "eol"} {
     let content = "";
     let j = startIndex;
-    while (j < line.length && line[j] !== "`") {
+    while (j < line.length) {
         if (line[j] === "\\" && j + 1 < line.length) {
             content += line[j] + line[j + 1];
             j += 2;
             continue;
         }
+        if (line[j] === "`") {
+            return {content, nextIndex: j + 1, terminator: "backtick"};
+        }
+        if (line[j] === "$" && line[j + 1] === "{") {
+            return {content, nextIndex: j + 2, terminator: "expression"};
+        }
         content += line[j];
         j += 1;
     }
-    if (j >= line.length) {
-        return {content, closingIndex: -1};
-    }
-    return {content, closingIndex: j + 1};
+    return {content, nextIndex: line.length, terminator: "eol"};
 }
 
-// Strips `//` and `/* */` comments and replaces every string/template literal's content with a placeholder
+// Strips `//` and `/* */` comments and replaces every inert string/template-text content with a placeholder
 // token, so the specifier patterns above can never match import-like text that only exists inside a comment
-// or an unrelated string. Quote characters are preserved (as a canonical `"`) so a real specifier's own
-// quoted string is still recognized as a string; `stringLiterals[i]` holds that placeholder's real content
-// (escape sequences left as-is) for resolving an extracted specifier back to its actual text. `state` is
-// mutated in place so a block comment or template literal left open at the end of this line keeps masking
+// or an unrelated string -- while a template literal's `${...}` interpolation is left as live code in
+// `maskedLine` (recursively subject to these same comment/string/nested-template rules), since it actually
+// executes and a `require(...)`/`import(...)` written there is exactly as real as one at top level. Quote
+// characters are preserved (as a canonical `"`) so a real specifier's own quoted string is still recognized as
+// a string; `stringLiterals[i]` holds that placeholder's real content (escape sequences left as-is) for
+// resolving an extracted specifier back to its actual text. `state` is mutated in place so a block comment or a
+// template literal left open (whether mid-text or mid-interpolation) at the end of this line keeps masking
 // subsequent lines from the caller until it actually closes -- single/double-quoted strings and `//` comments
 // never legitimately span multiple lines, so those remain scoped to the current line only.
 function maskCommentsAndStrings(line: string, state: CommentStringMaskState): {maskedLine: string; stringLiterals: string[]} {
@@ -98,20 +124,36 @@ function maskCommentsAndStrings(line: string, state: CommentStringMaskState): {m
         i = end + 2;
     }
 
-    if (state.inTemplateLiteral) {
-        const {content, closingIndex} = consumeTemplateLiteralChunk(line, i);
-        if (closingIndex === -1) {
-            state.templateLiteralContent += `\n${content}`;
-            return {maskedLine, stringLiterals};
-        }
-        stringLiterals.push(`${state.templateLiteralContent}\n${content}`);
-        maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
-        state.inTemplateLiteral = false;
-        state.templateLiteralContent = "";
-        i = closingIndex;
-    }
+    // Whether the very first template-text chunk consumed below is a continuation of a literal that was
+    // already open (mid-text) when this line started -- if so, the line break that separated it from the
+    // previous line's content is itself part of the literal's text and must be preserved when the chunk is
+    // finally flushed to a placeholder.
+    const topFrameAtEntry = state.templateStack[state.templateStack.length - 1];
+    let isFirstChunkContinuingAcrossLines = topFrameAtEntry !== undefined && !topFrameAtEntry.inExpression;
 
     while (i < line.length) {
+        const topFrame: TemplateLiteralFrame | undefined = state.templateStack[state.templateStack.length - 1];
+
+        if (topFrame !== undefined && !topFrame.inExpression) {
+            const {content, nextIndex, terminator} = consumeTemplateLiteralTextChunk(line, i);
+            topFrame.literalContent += isFirstChunkContinuingAcrossLines ? `\n${content}` : content;
+            isFirstChunkContinuingAcrossLines = false;
+            i = nextIndex;
+            if (terminator === "eol") {
+                return {maskedLine, stringLiterals};
+            }
+            stringLiterals.push(topFrame.literalContent);
+            maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
+            topFrame.literalContent = "";
+            if (terminator === "expression") {
+                topFrame.inExpression = true;
+                topFrame.braceDepth = 0;
+            } else {
+                state.templateStack.pop();
+            }
+            continue;
+        }
+
         const ch = line[i];
         const next = line[i + 1];
         if (ch === "/" && next === "/") {
@@ -127,15 +169,25 @@ function maskCommentsAndStrings(line: string, state: CommentStringMaskState): {m
             continue;
         }
         if (ch === "`") {
-            const {content, closingIndex} = consumeTemplateLiteralChunk(line, i + 1);
-            if (closingIndex === -1) {
-                state.inTemplateLiteral = true;
-                state.templateLiteralContent = content;
-                break;
+            state.templateStack.push({inExpression: false, braceDepth: 0, literalContent: ""});
+            i += 1;
+            continue;
+        }
+        if (topFrame !== undefined && topFrame.inExpression && ch === "{") {
+            topFrame.braceDepth += 1;
+            maskedLine += ch;
+            i += 1;
+            continue;
+        }
+        if (topFrame !== undefined && topFrame.inExpression && ch === "}") {
+            if (topFrame.braceDepth === 0) {
+                topFrame.inExpression = false;
+                i += 1;
+                continue;
             }
-            stringLiterals.push(content);
-            maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
-            i = closingIndex;
+            topFrame.braceDepth -= 1;
+            maskedLine += ch;
+            i += 1;
             continue;
         }
         if (ch === '"' || ch === "'") {
