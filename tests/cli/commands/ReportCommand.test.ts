@@ -1,9 +1,21 @@
-import {PokieProject, PROJECT_TYPE_CAPABILITIES, ProjectResolving, SimulationReport, SimulationReportRendering, SimulationReportSet} from "pokie";
+import {
+    OutcomeLibraryBundleWriter,
+    OutcomeSourceProjectAnalyzing,
+    OutcomeSourceProjectReport,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
+    ProjectTargetResolver,
+    SimulationReport,
+    SimulationReportRendering,
+    SimulationReportSet,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ReportCommand} from "../../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 const report: SimulationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -237,6 +249,147 @@ describe("ReportCommand resolved-project boundary", () => {
 
         await expect(command.run(["other.json"])).rejects.toThrow(/does not look like a pokie sim report/);
         expect(resolveProject.calls).toEqual(["other.json"]);
+    });
+});
+
+// Proves the P3-POLISH-21 routing: a mistakenly-given target that resolves to an "outcomeLibrary"/
+// "stakeAdapter" project is analyzed through its own canonical outcome-source reader and rendered directly --
+// never told to "run pokie sim" first, since neither project type ever gains RUNTIME_EXECUTE_CAPABILITY.
+describe("ReportCommand outcome-source project routing", () => {
+    function stubProjectResolver(project: PokieProject | undefined): ProjectResolving {
+        return {resolve: () => Promise.resolve(project)};
+    }
+
+    function stubAnalyzer(report: OutcomeSourceProjectReport | Error): OutcomeSourceProjectAnalyzing & {calls: PokieProject[]} {
+        const calls: PokieProject[] = [];
+        return {
+            calls,
+            analyze(project: PokieProject) {
+                calls.push(project);
+                return report instanceof Error ? Promise.reject(report) : Promise.resolve(report);
+            },
+        };
+    }
+
+    const outcomeLibraryProject: PokieProject = {
+        type: "outcomeLibrary",
+        rootPath: "/libraries/base",
+        capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+        provenance: "test fixture",
+    };
+
+    it('renders a canonical-reader-backed exact analysis, with limitations, for a resolved "outcomeLibrary" project', async () => {
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/libraries/base",
+            descriptor: {kind: "native", streaming: true, limitations: ["never re-derives the game model that produced these outcomes"]},
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    analysis: {totalWeight: 1000, rtp: 0.955, hitFrequency: 0.25, zeroWinFrequency: 0.75, variance: 0.1, standardDeviation: 0.3162, maxWin: 500, maxWinProbability: 0.001, payoutDistribution: []},
+                },
+            ],
+        };
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const outcomeSourceAnalyzer = stubAnalyzer(report);
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject, outcomeSourceAnalyzer);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/base"]);
+
+        expect(outcomeSourceAnalyzer.calls).toEqual([outcomeLibraryProject]);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain('"/libraries/base" is a "native" canonical outcome source (streaming: true).');
+        expect(printed).toContain("never re-derives the game model that produced these outcomes");
+        expect(printed).toContain('mode "base": rtp 95.50%, hit frequency 25.00%');
+
+        logSpy.mockRestore();
+    });
+
+    it("prints the source's own structural issues instead of an exact analysis when it's malformed", async () => {
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/libraries/broken",
+            descriptor: {kind: "native", streaming: true, limitations: ["never re-derives the game model that produced these outcomes"]},
+            issues: [{code: "outcome-library-bundle-manifest-invalid-json", severity: "error", message: "manifest.json is not valid JSON."}],
+            modes: [],
+        };
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const outcomeSourceAnalyzer = stubAnalyzer(report);
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject, outcomeSourceAnalyzer);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/broken"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("1 issue(s) found while reading it:");
+        expect(printed).toContain("outcome-library-bundle-manifest-invalid-json");
+        expect(printed).not.toContain("Exact analysis");
+
+        logSpy.mockRestore();
+    });
+
+    it("falls back to the original error unchanged when the outcome-source analyzer itself fails", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const outcomeSourceAnalyzer = stubAnalyzer(new Error("disk exploded"));
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject, outcomeSourceAnalyzer);
+
+        await expect(command.run(["missing.json"])).rejects.toThrow(/Could not read simulation report at "missing\.json"/);
+    });
+
+    it("writes the rendered exact analysis to --out, same as an ordinary sim report", async () => {
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/libraries/base",
+            descriptor: {kind: "stakeEngine", streaming: false, limitations: ["reads every mode's own CSV/books before analyzing"]},
+            issues: [],
+            modes: [
+                {modeName: "base", analysis: {modeName: "base", cost: 1, outcomeCount: 3, totalWeight: 1000, rtp: 0.95, hitFrequency: 0.2, zeroWinFrequency: 0.8, variance: 0.05, standardDeviation: 0.2236, maxPayoutMultiplier: 500, maxRatio: 5, maxWinProbability: 0.005, nonInvertibleRatioCount: 0, payoutDistribution: [], eventClassificationBreakdown: []}},
+            ],
+        };
+        const writeFile = jest.fn();
+        const resolveProject = stubProjectResolver({...outcomeLibraryProject, type: "stakeAdapter", capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter});
+        const outcomeSourceAnalyzer = stubAnalyzer(report);
+        const command = new ReportCommand(createStubReadFile({}), writeFile, undefined, resolveProject, outcomeSourceAnalyzer);
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/stake/base", "--out", "analysis.txt"]);
+
+        expect(writeFile).toHaveBeenCalledTimes(1);
+        const [file, contents] = writeFile.mock.calls[0];
+        expect(file).toBe("analysis.txt");
+        expect(contents).toContain('"stakeEngine" canonical outcome source');
+
+        (console.log as jest.Mock).mockRestore();
+    });
+});
+
+// Real, non-stubbed end-to-end coverage: "pokie report" pointed straight at a real, on-disk outcome-library
+// bundle (built by "pokie outcomelibrary build", not mocked) resolves and renders it through the same
+// OutcomeSourceProjectAnalyzer/canonical-reader path the unit tests above stub out.
+describe("ReportCommand (integration, real outcome-library bundle)", () => {
+    let bundleDir: string;
+
+    beforeEach(async () => {
+        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-report-outcome-source-test-"));
+        fs.rmdirSync(bundleDir);
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(bundleDir, {recursive: true, force: true});
+    });
+
+    it("renders a real bundle's exact analysis instead of an error, without ever being told to run \"pokie sim\"", async () => {
+        const command = new ReportCommand(undefined, undefined, undefined, new ProjectTargetResolver());
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain('is a "native" canonical outcome source (streaming: true)');
+        expect(printed).toContain('mode "base":');
+        expect(printed).not.toContain("run pokie sim");
+
+        logSpy.mockRestore();
     });
 });
 
