@@ -1,16 +1,30 @@
+P4-POLISH-01 correction round — real pokie-examples `develop` checkout
+Captured: 2026-08-05, from this task's own worktree (network egress to github.com is available here)
+
+This replaces the prior version of this file, which recorded a clone of the *default* branch
+(`main`, commit 530c2c7ff709361d93fe60f59b20436be719d209) while the inventory's own prose claimed
+`develop`/af432206a435db5c1063ca5cd9dd81652b886a6e — a real inconsistency between what was cloned and
+what was cited, caught and fixed this round. Both branches' `src/` trees are byte-identical
+(`git diff --stat 530c2c7..af432206 -- src` across full non-shallow clones of both branches is empty),
+so no §6 finding changes; this file now correctly documents the branch the doc's own prose names.
+
 == Clone command ==
-$ git clone --depth 1 https://github.com/sta-ger/pokie-examples.git
+$ git clone --branch develop https://github.com/sta-ger/pokie-examples.git
 
 == Pinned commit ==
-commit 530c2c7ff709361d93fe60f59b20436be719d209
-author date: 2026-07-09 11:24:32 +0200
-subject: Merge develop into main
+commit af432206a435db5c1063ca5cd9dd81652b886a6e
+author date: 2026-07-09 11:50:42 +0200
+subject: Merge main into develop
 
 == git status (clean checkout, nothing local) ==
-On branch main
-Your branch is up to date with 'origin/main'.
+On branch develop
+Your branch is up to date with 'origin/develop'.
 
 nothing to commit, working tree clean
+
+== git remote -v ==
+origin	https://github.com/sta-ger/pokie-examples.git (fetch)
+origin	https://github.com/sta-ger/pokie-examples.git (push)
 
 == Full source file tree with line counts ==
     11 src/cascading-cluster.ts
@@ -73,3 +87,33 @@ nothing to commit, working tree clean
         "pokie": "^1.2.0"
     }
 }
+
+== Spot-check of this document's own §6 claims against the real develop checkout ==
+$ grep -n "onAfterRoundPlayed\|afterRoundPlayed" src/data.ts
+24:let onAfterRoundPlayed: ((session: AnyVideoSlotSession) => void) | undefined;
+30:    afterRoundPlayed?: (session: AnyVideoSlotSession) => void,
+35:    onAfterRoundPlayed = afterRoundPlayed;
+49:        onAfterRoundPlayed?.(localSession);
+88:    onAfterRoundPlayed?.(localSession);
+
+$ grep -rl "afterRoundPlayed" src/games/*/index.ts
+src/games/growing-grid/index.ts
+src/games/cascading-cluster/index.ts
+src/games/verifiable-spin/index.ts
+
+$ grep -n "class CascadingClusterWinCalculator" src/games/cascading-cluster/CascadingClusterWinCalculator.ts
+26:export class CascadingClusterWinCalculator implements VideoSlotWinCalculating<string> {
+
+$ grep -n "^export class\|^class" src/games/slot-with-sticky-respin/*.ts
+src/games/slot-with-sticky-respin/SwsrCombinationsGenerator.ts:14:export class SwsrCombinationsGenerator extends SymbolsCombinationsGenerator {
+src/games/slot-with-sticky-respin/SwsrSession.ts:5:export class SwsrSession extends VideoSlotWithFreeGamesSession {
+src/games/slot-with-sticky-respin/SwsrWinCalculator.ts:4:export class SwsrWinCalculator extends VideoSlotWinCalculator {
+
+$ grep -rn "@media" src/**/*.ts src/*.ts
+src/ui/ui.ts:38:            @media (max-width: 480px) {
+
+$ find . -name "*.html" | xargs grep -l "@media"
+(no output — no per-game HTML file defines its own media query)
+
+All five spot-checks confirm this document's existing §6 prose; nothing in §6's classification table
+changed as a result of this correction, only the branch/commit this file cites.

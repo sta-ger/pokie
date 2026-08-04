@@ -216,10 +216,14 @@ this document; every fact in this section is a pointer to where it's already fro
 
 `pokie-examples` (`github.com/sta-ger/pokie-examples`, linked from this repo's own `README.md`/`docs/README.md`)
 is a separate, external repository. The initial audit read a real clone rather than representative remote files;
-this recovery additionally verifies the sibling `../pokie-examples` checkout is clean `develop` and exactly at
-`origin/develop`, commit `af432206a435db5c1063ca5cd9dd81652b886a6e`, before treating its source as the canonical
-baseline. The original clone transcript and complete `src/**/*.ts` file tree are retained at
-[`phase4-evidence/pokie-examples-checkout.txt`](phase4-evidence/README.md); later player work must resync the
+this correction round re-clones `develop` directly from this worktree (this sandbox has network egress to
+`github.com`) and verifies it is clean and exactly at `origin/develop`, commit
+`af432206a435db5c1063ca5cd9dd81652b886a6e` (2026-07-09), before treating its source as the canonical baseline —
+also catching and fixing a prior-round inconsistency where the checkout transcript actually recorded the
+*default* (`main`) branch at a different commit while this prose already claimed `develop`. Both branches'
+`src/` trees are byte-identical, so no classification below changed; the transcript, complete `src/**/*.ts` file
+tree, and five source spot-checks re-confirming this section's claims are retained at
+[`phase4-evidence/pokie-examples-checkout.txt`](phase4-evidence/README.md). Later player work must resync the
 checkout again before changing it.
 
 **Repository shape:** nine example games under `src/games/<name>/` — `simple-slot`, `growing-grid`,
@@ -335,8 +339,9 @@ and none should be silently absorbed into a later step without being checked aga
   by direct read of `tests/cli/studio/StudioServer.test.ts` (§4): no space-path or `isTTY`/`isatty` case exists
   there, even though §1 now covers `dispatch()`/materialize/replay at the CLI-argument layer.
 - **`pokie-examples` deeper coupling audit beyond this step's own re-audit** (§6) — this step replaced the prior
-  file/export-level, remote-sampled inventory with one read from a real synced checkout (pinned at commit
-  `530c2c7ff709361d93fe60f59b20436be719d209`), but a line-level read of `src/ui/`'s own contract with each game's
+  file/export-level, remote-sampled inventory with one read from a real synced `develop` checkout (pinned at
+  commit `af432206a435db5c1063ca5cd9dd81652b886a6e`), but a line-level read of `src/ui/`'s own contract with each
+  game's
   `*Config.ts` (e.g. exactly which `VideoSlotConfig` fields `initializeUi`/`drawReelsSymbols` silently assume
   exist) is still needed before any step attempts to *change* `pokie-examples`' shared code itself, and that
   checkout should be re-cloned at its own current `HEAD` rather than assumed still current.
