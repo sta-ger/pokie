@@ -1015,6 +1015,32 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
+## `pokie outcomesource inspect <path>` / `pokie outcomesource sample <path> --mode <modeName>` / `pokie outcomesource diff <leftPath> <rightPath>`
+
+Operates directly on a resolved outcome-source project — an `outcomelibrary build` bundle or a `stakeengine
+export` directory — through its own canonical reader/selector, never `loadPokieGame` and never a re-derived
+game-model calculation.
+
+```
+pokie outcomesource inspect bundle
+pokie outcomesource sample bundle --mode base
+pokie outcomesource sample bundle --mode base --seed demo-seed
+pokie outcomesource diff bundle-v1 bundle-v2
+pokie outcomesource diff bundle stake-export --format json --out diff.json
+```
+
+`inspect` prints the source's own kind/streaming/limitations plus, for a structurally valid source, an exact
+per-mode analysis (every outcome's own weight, enumerated exactly — no simulation). `sample` draws exactly one
+outcome from a native outcome library's own mode through the same selector/session/server path live and
+pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index) — `--seed <string>` makes
+the draw reproducible (`SeededWeightedOutcomeRandomSource`), omitted uses a cryptographically secure source. A
+Stake Engine export has no such draw contract, so `sample` against one reports the same missing-capability
+diagnostic every other unsupported project operation does, rather than attempting to run it. `diff` compares
+two resolved outcome sources' own exact analyses mode-by-mode over the core metrics both a native bundle and a
+Stake Engine export already share (rtp, hit frequency, zero-win frequency, variance, standard deviation, max
+win probability) — either side may be either kind, since diffing never draws/samples anything and both kinds
+already expose a canonical reader's own exact analysis.
+
 ## `pokie certification build <bundleDir> <config.json>`
 
 Builds a canonical [Certification/Evidence Bundle](certification-evidence-bundle.md) on top of an already-built

@@ -1,6 +1,8 @@
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
+    OUTCOME_SOURCE_READ_CAPABILITY,
+    OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
@@ -33,6 +35,34 @@ export const STAKE_ENGINE_DIFF_OPERATION: PokieOperation = "stakeEngine.diff";
 export const PAR_IMPORT_OPERATION: PokieOperation = "par.import";
 export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
+// The outcome-source-driven counterparts to INSPECT/SIM/SERVE/REPLAY_OPERATION above — deliberately separate
+// operation ids, not a reuse of those, since they're satisfied a different way (a canonical outcome-source
+// reader/selector, never loadPokieGame) and by a different capability (OUTCOME_SOURCE_READ_CAPABILITY/
+// OUTCOME_SOURCE_SAMPLE_CAPABILITY, not RUNTIME_EXECUTE_CAPABILITY) — see those capabilities' own doc
+// comments. Reusing e.g. SIM_OPERATION's id for this would incorrectly imply an "outcomeLibrary" project also
+// grants DEV/CLIENT/STUDIO_OPERATION, which it does not.
+export const OUTCOME_SOURCE_INSPECT_OPERATION: PokieOperation = "outcomeSource.inspect";
+export const OUTCOME_SOURCE_ANALYZE_OPERATION: PokieOperation = "outcomeSource.analyze";
+export const OUTCOME_SOURCE_SAMPLE_OPERATION: PokieOperation = "outcomeSource.sample";
+export const OUTCOME_SOURCE_SERVE_OPERATION: PokieOperation = "outcomeSource.serve";
+export const OUTCOME_SOURCE_REPLAY_OPERATION: PokieOperation = "outcomeSource.replay";
+export const OUTCOME_SOURCE_SIMULATE_OPERATION: PokieOperation = "outcomeSource.simulate";
+// Compares two resolved outcome-source projects' own canonical exact analyses (see
+// diffOutcomeSourceProjects.ts) -- requires only OUTCOME_SOURCE_READ_CAPABILITY, the same capability
+// inspect/analyze already require, since diffing never draws/samples anything and both "outcomeLibrary" and
+// "stakeAdapter" already expose a canonical reader's own exact analysis (see OutcomeSourceProjectAnalyzer).
+// Deliberately a single operation id covering both project types -- unlike sample/serve/replay, which split
+// "outcomeLibrary" from "stakeAdapter" because only one of them can be drawn from, diffing is equally
+// meaningful (and equally read-only) for either side of the comparison, in any combination.
+export const OUTCOME_SOURCE_DIFF_OPERATION: PokieOperation = "outcomeSource.diff";
+// Builds/verifies a certification/evidence bundle on top of an already-computed outcome-library bundle (see
+// CertificationCommand) -- requires OUTCOME_LIBRARY_READ_CAPABILITY, the same capability "outcomeLibrary.build"/
+// "outcomeLibrary.validate" already require, since a certification bundle is itself built by sampling an
+// existing native outcome-library bundle, never a Stake Engine export (which has no
+// PreGeneratedOutcomeSourcing-style draw contract of its own -- see OUTCOME_SOURCE_SAMPLE_CAPABILITY) and never
+// a live package's runtime.
+export const CERTIFICATION_BUILD_OPERATION: PokieOperation = "certification.build";
+export const CERTIFICATION_VERIFY_OPERATION: PokieOperation = "certification.verify";
 
 // Which single ProjectCapability each known PokieOperation requires — the one place
 // describeUnsupportedProjectOperation reads from to decide whether a resolved PokieProject can perform a
@@ -58,4 +88,13 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [PAR_IMPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [PAR_EXPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [WASM_EXPORT_OPERATION]: WASM_EXPORT_CAPABILITY,
+    [OUTCOME_SOURCE_INSPECT_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
+    [OUTCOME_SOURCE_ANALYZE_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
+    [OUTCOME_SOURCE_SAMPLE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_SERVE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_REPLAY_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_SIMULATE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_DIFF_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
+    [CERTIFICATION_BUILD_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
+    [CERTIFICATION_VERIFY_OPERATION]: OUTCOME_LIBRARY_READ_CAPABILITY,
 };

@@ -89,6 +89,12 @@ export class StudioHomeService {
         const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeLocation);
         if (dashboard.status === "loaded") {
             await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name);
+        } else if (dashboard.status === "outcome-source") {
+            // Neither "outcomeLibrary" nor "stakeAdapter" carries a PokieGameManifest to name itself
+            // with (see ProjectDashboardContext's own doc comment) -- the resolved project's own
+            // directory/file name is the only stable identity available here, same fallback Overview
+            // already uses for an unresolved name elsewhere.
+            await this.rememberRecentProject(dashboard.projectRoot, path.basename(dashboard.projectRoot));
         }
         return dashboard;
     }

@@ -80,7 +80,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "stakeAdapter",
             rootPath: stakeDir,
-            capabilities: ["stakeAdapter.exchange"],
+            capabilities: ["stakeAdapter.exchange", "outcomeSource.read"],
             provenance: expect.stringContaining("pokie-manifest.json"),
         });
     });
@@ -95,7 +95,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "outcomeLibrary",
             rootPath: bundleDir,
-            capabilities: ["outcomeLibrary.read"],
+            capabilities: ["outcomeLibrary.read", "outcomeSource.read", "outcomeSource.sample"],
             provenance: expect.stringContaining("manifest.json"),
         });
     });

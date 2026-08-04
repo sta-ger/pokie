@@ -4,15 +4,67 @@ import {
     GameSessionHandling,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
+    OutcomeLibraryBundleWriter,
+    OutcomeSourceSimulationResult,
     PokieGame,
     PokieGameManifest,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
+    ProjectTargetResolver,
     SimulationReport,
     SimulationReportSet,
+    WeightedOutcomeRandomSource,
 } from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+
+function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+    const calls: string[] = [];
+    return {
+        calls,
+        resolve(targetPath: string) {
+            calls.push(targetPath);
+            return Promise.resolve(project);
+        },
+    };
+}
+
+function stubSimulateOutcomeSource(
+    result: OutcomeSourceSimulationResult,
+): ((
+    project: PokieProject,
+    modeName: string,
+    rounds: number,
+    randomSource: WeightedOutcomeRandomSource,
+    seed?: string,
+) => Promise<OutcomeSourceSimulationResult>) & {
+    calls: {project: PokieProject; modeName: string; rounds: number; seed?: string}[];
+} {
+    const calls: {project: PokieProject; modeName: string; rounds: number; seed?: string}[] = [];
+    const fn = (project: PokieProject, modeName: string, rounds: number, _randomSource: WeightedOutcomeRandomSource, seed?: string) => {
+        calls.push({project, modeName, rounds, seed});
+        return Promise.resolve(result);
+    };
+    return Object.assign(fn, {calls});
+}
+
+const outcomeLibraryProject: PokieProject = {
+    type: "outcomeLibrary",
+    rootPath: "/libraries/base",
+    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+    provenance: "test fixture",
+};
+
+const stakeAdapterProject: PokieProject = {
+    type: "stakeAdapter",
+    rootPath: "/stake/base",
+    capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+    provenance: "test fixture",
+};
 
 function createFakeSession(): GameSessionHandling {
     let credits = 1000;
@@ -1015,6 +1067,131 @@ describe("SimCommand runtime package materialization boundary", () => {
 
         await expect(command.run(["/blueprints/raw-game.json", "--rounds", "5"])).rejects.toThrow(/dependencies phase failed/);
         expect(loadGame).not.toHaveBeenCalled();
+    });
+});
+
+// Proves P3-POLISH-21's own sim-side outcome-source boundary: a resolved "outcomeLibrary" project is routed
+// through the canonical outcome-source selector/session path (simulateOutcomeSourceProject) instead of
+// resolveRuntimePackageRoot/loadGame/ParallelSimulationRunner, while a resolved "stakeAdapter" project surfaces
+// the same structured missing-capability diagnostic every other unsupported-operation attempt does -- and never
+// reaches loadGame either.
+describe("SimCommand outcome-source routing", () => {
+    it("throws when --mode is omitted for a resolved native outcome-library project", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const loadGame = jest.fn();
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/libraries/base", "--rounds", "10", "--seed", "demo"])).rejects.toThrow(/--mode <modeName> is required/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("rejects --mode all for a resolved native outcome-library project", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const loadGame = jest.fn();
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/libraries/base", "--rounds", "10", "--mode", "all"])).rejects.toThrow(/--mode <modeName> is required/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("simulates a resolved native outcome-library project through the injected outcome-source simulation function, never loading the game", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const simulate = stubSimulateOutcomeSource({
+            supported: true,
+            report: {
+                libraryId: "base-lib",
+                libraryHash: "sha256:abc",
+                modeName: "base",
+                requestedRounds: 25,
+                seed: "demo-seed",
+                durationMs: 3,
+                statistics: {
+                    rounds: 25,
+                    hitCount: 5,
+                    totalBet: 25,
+                    totalPayout: 12.5,
+                    averageBet: 1,
+                    averagePayout: 0.5,
+                    averagePayoutConfidenceInterval95: {low: 0, high: 1},
+                    rtp: 0.5,
+                    rtpConfidenceInterval95: {low: 0, high: 1},
+                    volatility: 1,
+                    payoutStandardDeviation: 1,
+                    returnStandardDeviation: 1,
+                    maxWin: 5,
+                    payoutHistogram: {},
+                },
+            },
+        });
+        const loadGame = jest.fn();
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, resolveProject, simulate);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/base", "--rounds", "25", "--seed", "demo-seed", "--mode", "base", "--format", "json"]);
+
+        expect(simulate.calls).toEqual([{project: outcomeLibraryProject, modeName: "base", rounds: 25, seed: "demo-seed"}]);
+        expect(loadGame).not.toHaveBeenCalled();
+        const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; statistics: {rounds: number; rtp: number}};
+        expect(report.libraryId).toBe("base-lib");
+        expect(report.statistics.rounds).toBe(25);
+        expect(report.statistics.rtp).toBe(0.5);
+
+        logSpy.mockRestore();
+    });
+
+    it("throws the capability diagnostic, rather than attempting package-runtime execution, for a resolved Stake Engine project", async () => {
+        const resolveProject = stubProjectResolver(stakeAdapterProject);
+        const simulate = stubSimulateOutcomeSource({
+            supported: false,
+            diagnostic: {
+                detectedType: "stakeAdapter",
+                operation: "outcomeSource.simulate",
+                missingCapability: "outcomeSource.sample",
+                alternatives: ["outcomeLibrary"],
+                message: '"outcomeSource.simulate" is not supported for a "stakeAdapter" project (missing the "outcomeSource.sample" capability). Supported by: outcomeLibrary.',
+            },
+        });
+        const loadGame = jest.fn();
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, resolveProject, simulate);
+
+        await expect(command.run(["/stake/base", "--rounds", "10", "--seed", "demo", "--mode", "base"])).rejects.toThrow(
+            /"outcomeSource\.simulate" is not supported for a "stakeAdapter" project/,
+        );
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+});
+
+// Real, non-stubbed end-to-end coverage: a real, on-disk outcome-library bundle (built by
+// OutcomeLibraryBundleWriter, not mocked), resolved and simulated through the same
+// ProjectTargetResolver/simulateOutcomeSourceProject path the unit tests above stub out.
+describe("SimCommand outcome-source routing (integration, real outcome-library bundle)", () => {
+    let bundleDir: string;
+
+    beforeEach(async () => {
+        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-outcomesource-test-"));
+        fs.rmdirSync(bundleDir);
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(bundleDir, {recursive: true, force: true});
+    });
+
+    it("simulates a real bundle through the real outcome-source selector path, never loading a game", async () => {
+        const loadGame = jest.fn();
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, new ProjectTargetResolver());
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir, "--rounds", "200", "--seed", "sim-seed", "--mode", "base", "--format", "json"]);
+
+        expect(loadGame).not.toHaveBeenCalled();
+        const report = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; statistics: {rounds: number; rtp: number; totalBet: number}};
+        expect(report.libraryId).toBe("base-lib");
+        expect(report.statistics.rounds).toBe(200);
+        expect(report.statistics.totalBet).toBe(200);
+        expect(report.statistics.rtp).toBeGreaterThanOrEqual(0);
+
+        logSpy.mockRestore();
     });
 });
 

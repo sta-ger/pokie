@@ -1,4 +1,4 @@
-import {loadPokieGame, type ProjectType} from "pokie";
+import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, type ProjectType} from "pokie";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
@@ -11,6 +11,27 @@ export type ProjectLocationDescribing = (
 // Defaults to "nothing known" so every existing caller/test keeps behaving exactly as before
 // type/capabilities/origin existed on this result.
 const noDescribeLocation: ProjectLocationDescribing = () => Promise.resolve(undefined);
+
+// Resolves `projectRoot` to its own canonical outcome-source exact analysis when (and only when) it
+// resolves to an "outcomeLibrary"/"stakeAdapter" PokieProject -- `undefined` for every other resolved
+// type (or an unresolvable/ambiguous/unreadable location), so loadProjectDashboardContext falls straight
+// through to the ordinary loadGame path exactly as it always has. Injectable so a test never touches the
+// real filesystem/canonical readers; defaults to a real ProjectTargetResolver/OutcomeSourceProjectAnalyzer
+// pair, mirroring ReportCommand's/OutcomeSourceCommand's own default wiring -- neither has any
+// construction-time dependency of its own, so (unlike resolveRuntimePackageRoot/describeLocation above)
+// there's no reason to default this to a no-op.
+export type OutcomeSourceProjectResolving = (
+    projectRoot: string,
+) => Promise<{project: PokieProject; report: OutcomeSourceProjectReport} | undefined>;
+
+const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async (projectRoot) => {
+    const project = await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
+    if (project === undefined || (project.type !== "outcomeLibrary" && project.type !== "stakeAdapter")) {
+        return undefined;
+    }
+    const report = await new OutcomeSourceProjectAnalyzer().analyze(project);
+    return {project, report};
+};
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a
@@ -38,8 +59,28 @@ export async function loadProjectDashboardContext(
     loadGame: typeof loadPokieGame = loadPokieGame,
     resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     describeLocation: ProjectLocationDescribing = noDescribeLocation,
+    resolveOutcomeSourceProject: OutcomeSourceProjectResolving = defaultResolveOutcomeSourceProject,
 ): Promise<ProjectDashboardContext> {
     const resolvedRoot = path.resolve(projectRoot);
+
+    // Checked first, before ever touching resolveRuntimePackageRoot/loadGame: an "outcomeLibrary"/
+    // "stakeAdapter" `projectRoot` has no materialized runtime to load at all (neither type ever gains
+    // RUNTIME_EXECUTE_CAPABILITY), so attempting the ordinary path below would always fail with an
+    // UnsupportedProjectOperationError. `undefined` here means "not one of those two types" (or
+    // unresolvable), so every existing tsPackage/blueprint/wasm/parWorkbook caller falls straight through
+    // to the unchanged path below.
+    const outcomeSource = await resolveOutcomeSourceProject(projectRoot).catch(() => undefined);
+    if (outcomeSource !== undefined) {
+        const identity = await describeLocation(projectRoot).catch(() => undefined);
+        return {
+            status: "outcome-source",
+            projectRoot: resolvedRoot,
+            project: outcomeSource.project,
+            origin: identity?.origin,
+            report: outcomeSource.report,
+        };
+    }
+
     try {
         const resolution = await resolveRuntimePackageRoot(projectRoot);
         try {

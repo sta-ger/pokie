@@ -1,14 +1,48 @@
 import {
     loadPokieGame,
+    OutcomeLibraryBundleWriter,
+    OutcomeSourceDevServer,
     PokieDevServer,
     PokieDevServerAddress,
     PokieDevServerHandling,
     PokieDevServerOptions,
     PokieGame,
     PokieGameManifest,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
+    ProjectTargetResolver,
 } from "pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+
+function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+    const calls: string[] = [];
+    return {
+        calls,
+        resolve(targetPath: string) {
+            calls.push(targetPath);
+            return Promise.resolve(project);
+        },
+    };
+}
+
+const outcomeLibraryProject: PokieProject = {
+    type: "outcomeLibrary",
+    rootPath: "/libraries/base",
+    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+    provenance: "test fixture",
+};
+
+const stakeAdapterProject: PokieProject = {
+    type: "stakeAdapter",
+    rootPath: "/stake/base",
+    capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+    provenance: "test fixture",
+};
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
@@ -179,5 +213,119 @@ describe("ServeCommand runtime package materialization boundary", () => {
         await expect(command.run(["/blueprints/raw-game.json"])).rejects.toThrow(/dependencies phase failed/);
         expect(loadGame).not.toHaveBeenCalled();
         expect(stubServer.startCalls).toBe(0);
+    });
+});
+
+// Proves P3-POLISH-21's own serve-side outcome-source boundary: a resolved "outcomeLibrary" project is routed
+// through the canonical outcome-source-backed server (OutcomeSourceDevServer) instead of
+// resolveRuntimePackageRoot/loadGame/PokieDevServer, while a resolved "stakeAdapter" project surfaces the same
+// structured missing-capability diagnostic every other unsupported-operation attempt does -- before any
+// package runtime loading, regardless of whether --mode was even given.
+describe("ServeCommand outcome-source routing", () => {
+    it("throws the capability diagnostic for a resolved Stake Engine project, never loading the game", async () => {
+        const resolveProject = stubProjectResolver(stakeAdapterProject);
+        const loadGame = jest.fn();
+        const command = new ServeCommand(loadGame, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/stake/base"])).rejects.toThrow(/"outcomeSource\.serve" is not supported for a "stakeAdapter" project/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("throws the capability diagnostic for a resolved Stake Engine project even when --mode is given", async () => {
+        const resolveProject = stubProjectResolver(stakeAdapterProject);
+        const loadGame = jest.fn();
+        const command = new ServeCommand(loadGame, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/stake/base", "--mode", "base"])).rejects.toThrow(
+            /"outcomeSource\.serve" is not supported for a "stakeAdapter" project/,
+        );
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("throws when --mode is omitted for a resolved native outcome-library project", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const loadGame = jest.fn();
+        const command = new ServeCommand(loadGame, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/libraries/base"])).rejects.toThrow(/--mode <modeName> is required/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("serves a resolved native outcome-library project through the injected outcome-source server, never loading the game", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const stubServer = createStubServer({host: "127.0.0.1", port: 4322});
+        let receivedProject: PokieProject | undefined;
+        let receivedMode: string | undefined;
+        let receivedOptions: PokieDevServerOptions | undefined;
+        const loadGame = jest.fn();
+        const command = new ServeCommand(loadGame, undefined, undefined, resolveProject, (project, modeName, options) => {
+            receivedProject = project;
+            receivedMode = modeName;
+            receivedOptions = options;
+            return stubServer;
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/base", "--mode", "base", "--port", "4322"]);
+
+        expect(receivedProject).toBe(outcomeLibraryProject);
+        expect(receivedMode).toBe("base");
+        expect(receivedOptions).toEqual({host: undefined, port: 4322});
+        expect(stubServer.startCalls).toBe(1);
+        expect(loadGame).not.toHaveBeenCalled();
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("http://127.0.0.1:4322");
+        expect(printed.toLowerCase()).toContain("not a casino backend");
+
+        logSpy.mockRestore();
+    });
+});
+
+// Real, non-stubbed end-to-end coverage: a real, on-disk outcome-library bundle (built by
+// OutcomeLibraryBundleWriter, not mocked), resolved and served through the same
+// ProjectTargetResolver/OutcomeSourceDevServer path the unit tests above stub out.
+describe("ServeCommand outcome-source routing (integration, real outcome-library bundle)", () => {
+    let bundleDir: string;
+
+    beforeEach(async () => {
+        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-outcomesource-test-"));
+        fs.rmdirSync(bundleDir);
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(bundleDir, {recursive: true, force: true});
+    });
+
+    it("serves draws from a real bundle through the real outcome-source server, never loading a game", async () => {
+        const loadGame = jest.fn();
+        let server: PokieDevServerHandling | undefined;
+        const command = new ServeCommand(loadGame, undefined, undefined, new ProjectTargetResolver(), (project, modeName, options) => {
+            server = new OutcomeSourceDevServer(project, modeName, options);
+            return server;
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir, "--mode", "base", "--port", "0"]);
+
+        expect(loadGame).not.toHaveBeenCalled();
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        const match = printed.match(/http:\/\/127\.0\.0\.1:(\d+)/);
+        expect(match).not.toBeNull();
+        const port = Number(match![1]);
+
+        const response = await fetch(`http://127.0.0.1:${port}/outcome-source/sample`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: "serve-seed"}),
+        });
+        const body = (await response.json()) as {supported: boolean; selection: {libraryId: string; outcome: {id: string}}};
+
+        expect(response.status).toBe(200);
+        expect(body.supported).toBe(true);
+        expect(body.selection.libraryId).toBe("base-lib");
+
+        await server!.stop();
+        logSpy.mockRestore();
     });
 });

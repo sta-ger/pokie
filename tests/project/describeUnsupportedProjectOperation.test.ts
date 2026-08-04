@@ -1,5 +1,18 @@
 import {describeUnsupportedProjectOperation} from "../../src/project/describeUnsupportedProjectOperation.js";
-import {BUILD_OPERATION, SIM_OPERATION, WASM_EXPORT_OPERATION} from "../../src/project/PokieOperation.js";
+import {
+    BUILD_OPERATION,
+    CERTIFICATION_BUILD_OPERATION,
+    CERTIFICATION_VERIFY_OPERATION,
+    OUTCOME_SOURCE_ANALYZE_OPERATION,
+    OUTCOME_SOURCE_DIFF_OPERATION,
+    OUTCOME_SOURCE_INSPECT_OPERATION,
+    OUTCOME_SOURCE_REPLAY_OPERATION,
+    OUTCOME_SOURCE_SAMPLE_OPERATION,
+    OUTCOME_SOURCE_SERVE_OPERATION,
+    OUTCOME_SOURCE_SIMULATE_OPERATION,
+    SIM_OPERATION,
+    WASM_EXPORT_OPERATION,
+} from "../../src/project/PokieOperation.js";
 import type {PokieProject} from "../../src/project/PokieProject.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import type {ProjectType} from "../../src/project/ProjectType.js";
@@ -58,5 +71,82 @@ describe("describeUnsupportedProjectOperation", () => {
 
         expect(diagnostic?.missingCapability).toBe("wasm.export");
         expect(diagnostic?.alternatives).toEqual([]);
+    });
+
+    it("supports inspect/analyze for both outcomeLibrary and stakeAdapter projects, never via runtime.execute", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_INSPECT_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_ANALYZE_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_INSPECT_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_ANALYZE_OPERATION)).toBeUndefined();
+    });
+
+    it("supports sampling sim/serve/replay for outcomeLibrary but not stakeAdapter projects", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_SAMPLE_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_SERVE_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_REPLAY_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_SIMULATE_OPERATION)).toBeUndefined();
+
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SAMPLE_OPERATION);
+        expect(diagnostic).toEqual({
+            detectedType: "stakeAdapter",
+            operation: OUTCOME_SOURCE_SAMPLE_OPERATION,
+            missingCapability: "outcomeSource.sample",
+            alternatives: ["outcomeLibrary"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
+
+        const simulateDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SIMULATE_OPERATION);
+        expect(simulateDiagnostic).toEqual({
+            detectedType: "stakeAdapter",
+            operation: OUTCOME_SOURCE_SIMULATE_OPERATION,
+            missingCapability: "outcomeSource.sample",
+            alternatives: ["outcomeLibrary"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
+
+        const serveDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SERVE_OPERATION);
+        expect(serveDiagnostic).toEqual({
+            detectedType: "stakeAdapter",
+            operation: OUTCOME_SOURCE_SERVE_OPERATION,
+            missingCapability: "outcomeSource.sample",
+            alternatives: ["outcomeLibrary"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
+    });
+
+    it("never grants an outcomeLibrary/stakeAdapter project sim/replay/serve via runtime.execute", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), SIM_OPERATION)?.missingCapability).toBe("runtime.execute");
+        expect(describeUnsupportedProjectOperation(projectOf("stakeAdapter"), SIM_OPERATION)?.missingCapability).toBe("runtime.execute");
+    });
+
+    it("supports diff for both outcomeLibrary and stakeAdapter projects, never via runtime.execute", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_DIFF_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_DIFF_OPERATION)).toBeUndefined();
+
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("blueprint"), OUTCOME_SOURCE_DIFF_OPERATION);
+        expect(diagnostic).toEqual({
+            detectedType: "blueprint",
+            operation: OUTCOME_SOURCE_DIFF_OPERATION,
+            missingCapability: "outcomeSource.read",
+            alternatives: ["outcomeLibrary", "stakeAdapter"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
+    });
+
+    it("supports certification build/verify for outcomeLibrary only, not stakeAdapter", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), CERTIFICATION_BUILD_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), CERTIFICATION_VERIFY_OPERATION)).toBeUndefined();
+
+        const buildDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), CERTIFICATION_BUILD_OPERATION);
+        expect(buildDiagnostic).toEqual({
+            detectedType: "stakeAdapter",
+            operation: CERTIFICATION_BUILD_OPERATION,
+            missingCapability: "outcomeLibrary.read",
+            alternatives: ["outcomeLibrary"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
+
+        const verifyDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), CERTIFICATION_VERIFY_OPERATION);
+        expect(verifyDiagnostic?.missingCapability).toBe("outcomeLibrary.read");
     });
 });

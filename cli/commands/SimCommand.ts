@@ -2,19 +2,29 @@ import {
     BetMode,
     loadPokieGame,
     MAX_SIMULATION_WORKERS,
+    OutcomeSourceSimulationReport,
+    OutcomeSourceSimulationResult,
     ParallelSimulationRunner,
     ParallelSimulationRunOptions,
     PokieGame,
+    PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
+    SecureWeightedOutcomeRandomSource,
+    SeededWeightedOutcomeRandomSource,
+    simulateOutcomeSourceProject,
     SimulationConfig,
     SimulationConvergenceOptions,
     SimulationReport,
     SimulationReportBuilder,
     SimulationReportBuilding,
     SimulationReportSet,
+    WeightedOutcomeRandomSource,
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type SimFormat = "summary" | "json";
@@ -50,6 +60,17 @@ type SimCliOptions = {
     stableChecks?: number;
 };
 
+// Deliberately the non-generic (T = string) instantiation of simulateOutcomeSourceProject's own signature --
+// same rationale as OutcomeSourceCommand's own SampleFn/ReplayCommand's own ReplayOutcomeSourceFn: this command
+// only ever deals in plain string outcome ids off the CLI.
+type SimulateOutcomeSourceFn = (
+    project: PokieProject,
+    modeName: string,
+    rounds: number,
+    randomSource: WeightedOutcomeRandomSource,
+    seed?: string,
+) => Promise<OutcomeSourceSimulationResult>;
+
 // "--mode all" is a reserved mode id meaning "run every mode the game declares" (see runAllModes())
 // rather than an actual bet mode -- a real game is very unlikely to ever declare a mode literally
 // named "all", and this keeps the flag's grammar identical to --mode <betModeId> (one value, no new
@@ -81,6 +102,19 @@ export class SimCommand implements CliCommandHandling {
     // every existing caller/test keeps behaving exactly as before this boundary existed; cli/pokie.ts wires
     // the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    // Decides, ahead of resolveRuntimePackageRoot/loadGame, whether packageRoot is a resolved
+    // "outcomeLibrary"/"stakeAdapter" project -- see execute()'s own routing. Defaults to the real
+    // ProjectTargetResolver so every caller gets this routing for free; a test can still inject a stub.
+    private readonly resolveProject: ProjectResolving;
+    // The canonical outcome-source selector/session path a resolved "outcomeLibrary" project's simulation is
+    // actually served through -- see simulateOutcomeSourceProject's own doc comment. Never reaches loadGame/
+    // ParallelSimulationRunner; a resolved "stakeAdapter" project's own missing-capability diagnostic comes back
+    // through this same function's {supported: false} result instead.
+    private readonly simulateOutcomeSource: SimulateOutcomeSourceFn;
+    // Builds the WeightedOutcomeRandomSource simulateOutcomeSource draws through -- same seeded/secure choice
+    // OutcomeSourceCommand's own "sample" verb makes, so "--seed" behaves identically everywhere a caller draws
+    // from a canonical outcome source.
+    private readonly buildRandomSource: (seed?: string) => WeightedOutcomeRandomSource;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
@@ -93,6 +127,10 @@ export class SimCommand implements CliCommandHandling {
             options: ParallelSimulationRunOptions,
         ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        simulateOutcomeSource: SimulateOutcomeSourceFn = simulateOutcomeSourceProject,
+        buildRandomSource: (seed?: string) => WeightedOutcomeRandomSource = (seed) =>
+            seed !== undefined ? new SeededWeightedOutcomeRandomSource(seed) : new SecureWeightedOutcomeRandomSource(),
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
@@ -100,6 +138,9 @@ export class SimCommand implements CliCommandHandling {
         this.workerEntryUrl = workerEntryUrl;
         this.createParallelSimulationRunner = createParallelSimulationRunner;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
+        this.resolveProject = resolveProject;
+        this.simulateOutcomeSource = simulateOutcomeSource;
+        this.buildRandomSource = buildRandomSource;
     }
 
     public getName(): string {
@@ -244,6 +285,18 @@ export class SimCommand implements CliCommandHandling {
     // The original run()'s own business logic, unchanged -- only its entry point moved, from directly
     // inside run() to here, called from the Commander action once packageRoot/options are parsed.
     private async execute(options: SimOptions): Promise<void> {
+        // A resolved "outcomeLibrary"/"stakeAdapter" project is routed through the outcome-source selector
+        // path below instead -- neither ever reaches resolveRuntimePackageRoot/loadGame (see
+        // simulateOutcomeSourceProject's own doc comment on why a "stakeAdapter" export can't be sampled at
+        // all). A path that doesn't resolve to either of those two types -- including one ProjectResolving
+        // doesn't recognize as any known project at all -- falls through to the original, unaffected
+        // materialize-and-load flow.
+        const project = await this.resolveProject.resolve(options.packageRoot);
+        if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
+            await this.runOutcomeSourceSim(project, options);
+            return;
+        }
+
         // Crossed exactly once per invocation -- every downstream step (the metadata load below,
         // runSingleMode()/runAllModes(), and the packageRoot ParallelSimulationRunner hands to its own
         // worker threads) reuses this same resolved runtimePath instead of re-resolving/re-materializing
@@ -256,6 +309,52 @@ export class SimCommand implements CliCommandHandling {
         } finally {
             await resolution.release();
         }
+    }
+
+    private async runOutcomeSourceSim(project: PokieProject, options: SimOptions): Promise<void> {
+        if (!options.mode || options.mode === ALL_MODES) {
+            throw new Error(`--mode <modeName> is required to simulate a native outcome-library project. ${USAGE}`);
+        }
+
+        const result = await this.simulateOutcomeSource(
+            project,
+            options.mode,
+            options.rounds,
+            this.buildRandomSource(options.seed),
+            options.seed,
+        );
+        if (!result.supported) {
+            throw new UnsupportedProjectOperationError(result.diagnostic);
+        }
+
+        const report = result.report;
+        if (options.out) {
+            this.writeFile(options.out, JSON.stringify(report, null, 4));
+        }
+
+        if (options.format === "json") {
+            console.log(JSON.stringify(report, null, 4));
+        } else {
+            this.printOutcomeSourceSummary(report);
+            if (options.out) {
+                console.log(`\nReport written to "${options.out}".`);
+            }
+        }
+    }
+
+    private printOutcomeSourceSummary(report: OutcomeSourceSimulationReport): void {
+        const statistics = report.statistics;
+        console.log(`Simulated outcome library "${report.libraryId}" (hash "${report.libraryHash}"), mode "${report.modeName}"`);
+        console.log(`  rounds          ${statistics.rounds}`);
+        if (report.seed !== undefined) {
+            console.log(`  seed            ${report.seed}`);
+        }
+        console.log(`  total bet       ${statistics.totalBet.toFixed(2)}`);
+        console.log(`  total win       ${statistics.totalPayout.toFixed(2)}`);
+        console.log(`  rtp             ${(statistics.rtp * 100).toFixed(2)}%`);
+        console.log(`  hit frequency   ${((statistics.hitCount / statistics.rounds) * 100).toFixed(2)}%`);
+        console.log(`  max win         ${statistics.maxWin.toFixed(2)}`);
+        console.log(`  duration        ${report.durationMs}ms`);
     }
 
     private async executeAgainstRuntimePackage(options: SimOptions): Promise<void> {

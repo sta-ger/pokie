@@ -1,15 +1,22 @@
 import fs from "fs";
 import path from "path";
 import {
+    CERTIFICATION_BUILD_OPERATION,
+    CERTIFICATION_VERIFY_OPERATION,
     CertificationEvidenceBundleBuilder,
     CertificationEvidenceBundleBuildResult,
     CertificationEvidenceBundleBuilding,
     CertificationEvidenceBundleModeSampleInput,
     CertificationEvidenceBundleVerifier,
     CertificationEvidenceBundleVerifying,
+    describeUnsupportedProjectOperation,
+    PokieOperation,
+    ProjectResolving,
+    ProjectTargetResolver,
     ValidationIssue,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
@@ -32,16 +39,25 @@ export class CertificationCommand implements CliCommandHandling {
     private readonly builder: CertificationEvidenceBundleBuilding;
     private readonly verifier: CertificationEvidenceBundleVerifying;
     private readonly loadJson: (filePath: string) => unknown;
+    // Consulted once per verb, on the source bundleDir only (never <config.json>/<certDir>, which never name
+    // an existing outcome-library bundle themselves) -- see executeBuild/executeVerify's own comment on why a
+    // resolved, non-"outcomeLibrary" source produces a capability diagnostic instead of falling through to
+    // this.builder/this.verifier's own confusing "not a valid outcome library bundle" error. An unrecognized
+    // path (resolve() returns undefined) is unaffected: it still reaches the builder/verifier exactly as
+    // before this resolver existed.
+    private readonly resolveProject: ProjectResolving;
 
     constructor(
         pokieVersion: string,
         builder: CertificationEvidenceBundleBuilding = new CertificationEvidenceBundleBuilder(pokieVersion),
         verifier: CertificationEvidenceBundleVerifying = new CertificationEvidenceBundleVerifier(),
         loadJson: (filePath: string) => unknown = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf-8")),
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
     ) {
         this.builder = builder;
         this.verifier = verifier;
         this.loadJson = loadJson;
+        this.resolveProject = resolveProject;
     }
 
     public getName(): string {
@@ -132,6 +148,8 @@ export class CertificationCommand implements CliCommandHandling {
     }
 
     private async executeBuild(bundleDir: string, configPath: string, outDir: string): Promise<number> {
+        await this.checkOutcomeLibrarySource(bundleDir, CERTIFICATION_BUILD_OPERATION);
+
         const descriptor = this.loadDescriptor(configPath);
 
         const modes: CertificationEvidenceBundleModeSampleInput[] = descriptor.modes.map((entry) => ({
@@ -162,6 +180,8 @@ export class CertificationCommand implements CliCommandHandling {
     }
 
     private async executeVerify(certDir: string, sourceBundleDir: string): Promise<number> {
+        await this.checkOutcomeLibrarySource(sourceBundleDir, CERTIFICATION_VERIFY_OPERATION);
+
         const issues = await this.verifier.verify(certDir, {sourceBundleDir});
         const errors = issues.filter((issue) => issue.severity === "error");
         const rest = issues.filter((issue) => issue.severity !== "error");
@@ -178,6 +198,25 @@ export class CertificationCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    // Only ever rejects a *recognized*-but-wrong-type source (a tsPackage/blueprint/stakeAdapter/
+    // parWorkbook/wasm path) with a capability diagnostic explaining exactly why certification can't run
+    // against it -- the same "only reject a recognized mismatch, never an unrecognized path" discipline
+    // BuildCommand's own runDefault() already follows. An unrecognized path -- resolve() returns undefined,
+    // e.g. an arbitrary or malformed directory this resolver can't classify at all -- falls straight through
+    // to this.builder/this.verifier exactly as it always has, so an ordinary "not a valid outcome library
+    // bundle" error is unaffected.
+    private async checkOutcomeLibrarySource(bundleDir: string, operation: PokieOperation): Promise<void> {
+        const project = await this.resolveProject.resolve(bundleDir);
+        if (project === undefined || project.type === "outcomeLibrary") {
+            return;
+        }
+
+        const diagnostic = describeUnsupportedProjectOperation(project, operation);
+        if (diagnostic !== undefined) {
+            throw new UnsupportedProjectOperationError(diagnostic);
+        }
     }
 
     private printIssues(issues: ValidationIssue[]): void {

@@ -2,6 +2,8 @@ import {
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
     MarkdownSimulationReportRenderer,
+    OutcomeSourceProjectAnalyzer,
+    OutcomeSourceProjectAnalyzing,
     ProjectResolving,
     ProjectTargetResolver,
     SimulationReport,
@@ -11,8 +13,11 @@ import {
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
 type ReportFormat = "markdown" | "html";
+
+type ReportPathAlternative = {readonly error: Error} | {readonly rendered: string};
 
 const USAGE = "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]";
 
@@ -21,12 +26,18 @@ export class ReportCommand implements CliCommandHandling {
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly renderers: Record<ReportFormat, SimulationReportRendering>;
     // Consulted only once reading/parsing/shape-checking `reportPath` as a plain JSON report has already
-    // failed -- see readReportJson's own comment on why a resolved PokieProject (someone pointed "pokie
-    // report" at a game package/blueprint/etc instead of a sim report) upgrades that failure into a
-    // message naming what POKIE actually detected and what to run instead, rather than a bare "not valid
-    // JSON"/shape mismatch. Best-effort: resolve() failing too (or resolving to nothing) simply falls
-    // back to the original, unresolved error, exactly as before this existed.
+    // failed -- see resolveReportPathAlternative's own comment on why a resolved PokieProject (someone
+    // pointed "pokie report" at a game package/blueprint/outcome source/etc instead of a sim report)
+    // upgrades that failure into either a canonical-reader-backed analysis or a message naming what POKIE
+    // actually detected, rather than a bare "not valid JSON"/shape mismatch. Best-effort: resolve() failing
+    // too (or resolving to nothing) simply falls back to the original, unresolved error, exactly as before
+    // this existed.
     private readonly resolveProject: ProjectResolving;
+    // Routes a resolved "outcomeLibrary"/"stakeAdapter" project (see resolveReportPathAlternative) through
+    // its own canonical outcome-source reader instead of ever telling its caller to "run pokie sim" first
+    // -- neither project type ever gains RUNTIME_EXECUTE_CAPABILITY, so that advice would be permanently
+    // wrong for them (see OutcomeSourceProjectAnalyzer's own doc comment).
+    private readonly outcomeSourceAnalyzer: OutcomeSourceProjectAnalyzing;
 
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
@@ -36,11 +47,13 @@ export class ReportCommand implements CliCommandHandling {
             html: new HtmlSimulationReportRenderer(),
         },
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        outcomeSourceAnalyzer: OutcomeSourceProjectAnalyzing = new OutcomeSourceProjectAnalyzer(),
     ) {
         this.readFile = readFile;
         this.writeFile = writeFile;
         this.renderers = renderers;
         this.resolveProject = resolveProject;
+        this.outcomeSourceAnalyzer = outcomeSourceAnalyzer;
     }
 
     public getName(): string {
@@ -53,12 +66,26 @@ export class ReportCommand implements CliCommandHandling {
 
     public async run(args: string[]): Promise<void> {
         const {reportPath, format, out} = this.parseArgs(args);
-        const parsed = await this.readReportJson(reportPath);
+
+        let parsed: SimulationReport | SimulationReportSet;
+        try {
+            parsed = this.readReportJson(reportPath);
+        } catch (error) {
+            const alternative = await this.resolveReportPathAlternative(reportPath, error instanceof Error ? error : new Error(String(error)));
+            if ("rendered" in alternative) {
+                this.emit(alternative.rendered, out);
+                return;
+            }
+            throw alternative.error;
+        }
+
         const renderer = this.renderers[format];
-
         const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
-        console.log(rendered);
+        this.emit(rendered, out);
+    }
 
+    private emit(rendered: string, out?: string): void {
+        console.log(rendered);
         if (out) {
             this.writeFile(out, rendered);
             console.log(`Report written to "${out}".`);
@@ -117,25 +144,19 @@ export class ReportCommand implements CliCommandHandling {
         return {reportPath, format, out};
     }
 
-    private async readReportJson(reportPath: string): Promise<SimulationReport | SimulationReportSet> {
+    private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {
         let contents: string;
         try {
             contents = this.readFile(reportPath);
         } catch (error) {
-            throw await this.describeReportPathFailure(
-                reportPath,
-                `Could not read simulation report at "${reportPath}": ${error instanceof Error ? error.message : String(error)}`,
-            );
+            throw new Error(`Could not read simulation report at "${reportPath}": ${error instanceof Error ? error.message : String(error)}`);
         }
 
         let parsed: unknown;
         try {
             parsed = JSON.parse(contents);
         } catch (error) {
-            throw await this.describeReportPathFailure(
-                reportPath,
-                `"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-            );
+            throw new Error(`"${reportPath}" is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
         }
 
         if (isSimulationReportSet(parsed)) {
@@ -143,8 +164,7 @@ export class ReportCommand implements CliCommandHandling {
         }
 
         if (!this.isSimulationReport(parsed)) {
-            throw await this.describeReportPathFailure(
-                reportPath,
+            throw new Error(
                 `"${reportPath}" does not look like a pokie sim report (expected fields like "game", "rtp", "rounds"). ` +
                     `Generate one with "pokie sim <packageRoot> --out ${reportPath}".`,
             );
@@ -155,24 +175,40 @@ export class ReportCommand implements CliCommandHandling {
 
     // Upgrades a raw report-parsing failure into a project-aware one when `reportPath` turns out to
     // actually resolve to a recognized PokieProject (a game package, blueprint, outcome library, ...) --
-    // see this.resolveProject's own field comment. Best-effort: any resolver error, or no resolved
-    // project at all, falls back to `fallbackMessage` untouched, so an ordinary unrelated/malformed path
-    // still reports exactly the error it always has.
-    private async describeReportPathFailure(reportPath: string, fallbackMessage: string): Promise<Error> {
+    // see this.resolveProject's own field comment. A resolved "outcomeLibrary"/"stakeAdapter" project is
+    // routed straight through its own canonical outcome-source reader (this.outcomeSourceAnalyzer) and
+    // rendered directly -- telling its caller to "run pokie sim" first would be permanently wrong for
+    // either type, since neither ever gains RUNTIME_EXECUTE_CAPABILITY. Every other resolved type keeps the
+    // plain "wrong project type" message. Best-effort throughout: any resolver error, no resolved project at
+    // all, or a failure while analyzing an outcome-source project, falls back to `fallbackError` untouched,
+    // so an ordinary unrelated/malformed path still reports exactly the error it always has.
+    private async resolveReportPathAlternative(reportPath: string, fallbackError: Error): Promise<ReportPathAlternative> {
         let project;
         try {
             project = await this.resolveProject.resolve(reportPath);
         } catch {
-            return new Error(fallbackMessage);
+            return {error: fallbackError};
         }
         if (project === undefined) {
-            return new Error(fallbackMessage);
+            return {error: fallbackError};
         }
-        return new Error(
-            `"${reportPath}" is a "${project.type}" project, not a pokie sim report. ` +
-                `"pokie report" only reads a JSON report produced by "pokie sim <packageRoot> --out <file>" -- ` +
-                `run that against this project first, then point "pokie report" at its output.`,
-        );
+
+        if (project.type === "outcomeLibrary" || project.type === "stakeAdapter") {
+            try {
+                const report = await this.outcomeSourceAnalyzer.analyze(project);
+                return {rendered: renderOutcomeSourceReport(reportPath, report)};
+            } catch {
+                return {error: fallbackError};
+            }
+        }
+
+        return {
+            error: new Error(
+                `"${reportPath}" is a "${project.type}" project, not a pokie sim report. ` +
+                    `"pokie report" only reads a JSON report produced by "pokie sim <packageRoot> --out <file>" -- ` +
+                    `run that against this project first, then point "pokie report" at its output.`,
+            ),
+        };
     }
 
     private isSimulationReport(value: unknown): value is SimulationReport {

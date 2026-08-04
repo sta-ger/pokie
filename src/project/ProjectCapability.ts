@@ -31,3 +31,25 @@ export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: ProjectCapability = "parWorkbook.
 // "wasm" doc comment), so describeUnsupportedProjectOperation reports every "wasm.export" attempt as
 // unsupported with no alternatives, today.
 export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
+
+// A project whose own pre-computed outcomes can be inspected and exactly analyzed straight off disk, via its
+// own canonical outcome-source reader — never by loading or executing a PokieGame. What
+// "outcomeSource.inspect" and "outcomeSource.analyze" require. Granted to both "outcomeLibrary" (read via
+// OutcomeLibraryBundleReading/WeightedOutcomeLibraryAnalyzer) and "stakeAdapter" (read via
+// StakeEngineOutcomeSourceReading/StakeEngineStandaloneAnalyzer) — each already has its own
+// validator/analyzer over its own canonical source; see CanonicalOutcomeSourceDescriptor for what each
+// source's own reader promises/limits (streaming vs. whole-directory, and what it deliberately never
+// reconstructs). Deliberately distinct from RUNTIME_EXECUTE_CAPABILITY: neither reader ever loads or
+// executes a PokieGame the way "sim"/"replay"/"serve" against a "tsPackage" project do.
+export const OUTCOME_SOURCE_READ_CAPABILITY: ProjectCapability = "outcomeSource.read";
+
+// A project whose own outcomes can be drawn one at a time, atomically, via a PreGeneratedOutcomeSourcing
+// implementation — what "outcomeSource.sample", "outcomeSource.serve", and "outcomeSource.replay" require.
+// Deliberately never "regenerated model math": every draw is served off an already-computed source
+// (WeightedOutcomeSelector over an already-built WeightedOutcomeLibrary, or a canonical bundle's own
+// index/byte-range read), the same selector/session/server path PreGeneratedSpinCommandHandler and
+// PreGeneratedRoundReplayer already use — never a fresh game-model simulation. Granted only to
+// "outcomeLibrary" today: a "stakeAdapter" export is a foreign directory pokie's own runtime has no serving
+// contract for (see StakeEngineOutcomeSourceReading's own doc comment) — its own exact analysis/diff/report
+// remain read-only, under OUTCOME_SOURCE_READ_CAPABILITY, instead.
+export const OUTCOME_SOURCE_SAMPLE_CAPABILITY: ProjectCapability = "outcomeSource.sample";

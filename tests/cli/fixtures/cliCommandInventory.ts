@@ -1910,7 +1910,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "missing <packageRoot>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+        expectedError:
+            "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -1919,7 +1921,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg"],
         expectedExitCode: 1,
         expectedError:
-            "--round is required. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+            "--round is required. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -1928,7 +1931,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "0"],
         expectedExitCode: 1,
         expectedError:
-            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -1937,7 +1941,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--round", "3", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format only supports "json". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]',
+            '--format only supports "json". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n' +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -1998,7 +2003,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "missing <packageRoot>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+        expectedError:
+            "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n" +
+            "   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]",
     },
     {
         command: "serve",
@@ -2006,7 +2013,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--port must be a non-negative integer",
         args: ["pkg", "--port", "-5"],
         expectedExitCode: 1,
-        expectedError: "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+        expectedError:
+            "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n" +
+            "   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]",
     },
     {
         command: "serve",
@@ -2719,7 +2728,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--round given with no value",
         args: ["pkg", "--round"],
         expectedExitCode: 1,
-        expectedError: "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+        expectedError:
+            "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -2727,7 +2738,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--seed given with no value",
         args: ["pkg", "--round", "3", "--seed"],
         expectedExitCode: 1,
-        expectedError: "--seed requires a value. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+        expectedError:
+            "--seed requires a value. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -2735,7 +2748,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["pkg", "--round", "3", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+        expectedError:
+            "--out requires a file path. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
     {
         command: "replay",
@@ -2743,7 +2758,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format given with no value",
         args: ["pkg", "--round", "3", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format only supports \"json\". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+        expectedError:
+            "--format only supports \"json\". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
     },
 
     // --- report: missing-value cases ---
@@ -2771,7 +2788,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--port given with no value",
         args: ["pkg", "--port"],
         expectedExitCode: 1,
-        expectedError: "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+        expectedError:
+            "--port must be a non-negative integer. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n" +
+            "   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]",
     },
     {
         command: "serve",
@@ -2779,7 +2798,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--host given with no value",
         args: ["pkg", "--host"],
         expectedExitCode: 1,
-        expectedError: "--host requires a value. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]",
+        expectedError:
+            "--host requires a value. Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n" +
+            "   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]",
     },
 
     // --- sim: missing-value cases ---

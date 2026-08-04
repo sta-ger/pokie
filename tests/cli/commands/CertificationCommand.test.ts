@@ -2,8 +2,12 @@ import {
     CertificationEvidenceBundleBuildResult,
     CertificationEvidenceBundleModeSampleInput,
     CertificationEvidenceVerifyOptions,
+    ProjectTargetResolver,
     ValidationIssue,
 } from "pokie";
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {CertificationCommand} from "../../../cli/commands/CertificationCommand.js";
 
 const CONFIG_PATH = "/project/certification-config.json";
@@ -229,6 +233,57 @@ describe("CertificationCommand", () => {
             const command = new CertificationCommand("1.3.0");
 
             await expect(command.run(["verify", "/project/certification", "--source", "/project/bundle", "--bogus"])).rejects.toThrow(/Unknown option/);
+        });
+    });
+
+    // Proves P3-POLISH-21's own certification routing: a resolved-but-wrong-type source (here, a Stake
+    // Engine export directory, which has no PreGeneratedOutcomeSourcing-style draw contract of its own) is
+    // rejected with the ordinary capability diagnostic before ever reaching the builder/verifier, rather than
+    // surfacing a confusing "not a valid outcome library bundle" error -- while an unrecognized path (the
+    // fixture "/project/bundle" every other test above uses) is completely unaffected, exactly the same
+    // "only reject a recognized mismatch" discipline BuildCommand's own routing already follows.
+    describe("resolved-project capability routing", () => {
+        let stakeDir: string;
+
+        beforeEach(() => {
+            stakeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-certification-command-test-"));
+            fs.writeFileSync(path.join(stakeDir, "pokie-manifest.json"), JSON.stringify({generatedBy: "pokie stakeengine export", generatedAt: new Date(0).toISOString()}));
+        });
+
+        afterEach(() => {
+            fs.rmSync(stakeDir, {recursive: true, force: true});
+        });
+
+        it('rejects "certification build" with the capability diagnostic when bundleDir resolves to a Stake Engine export', async () => {
+            const builder = createStubBuilder(successResult);
+            const loadJson = createStubJsonStore({[CONFIG_PATH]: descriptor});
+            const command = new CertificationCommand("1.3.0", builder, undefined, loadJson, new ProjectTargetResolver());
+
+            await expect(command.run(["build", stakeDir, CONFIG_PATH])).rejects.toThrow(
+                /"certification\.build" is not supported for a "stakeAdapter" project/,
+            );
+            expect(builder.calledWith).toBeUndefined();
+        });
+
+        it('rejects "certification verify --source" with the capability diagnostic when the source resolves to a Stake Engine export', async () => {
+            const verifier = createStubVerifier([]);
+            const command = new CertificationCommand("1.3.0", undefined, verifier, undefined, new ProjectTargetResolver());
+
+            await expect(command.run(["verify", "/project/certification", "--source", stakeDir])).rejects.toThrow(
+                /"certification\.verify" is not supported for a "stakeAdapter" project/,
+            );
+            expect(verifier.calledWith).toBeUndefined();
+        });
+
+        it('still reaches the builder for an unrecognized bundleDir, unaffected by the new routing', async () => {
+            const builder = createStubBuilder(successResult);
+            const loadJson = createStubJsonStore({[CONFIG_PATH]: descriptor});
+            const command = new CertificationCommand("1.3.0", builder, undefined, loadJson, new ProjectTargetResolver());
+
+            const exitCode = await command.run(["build", "/project/bundle", CONFIG_PATH]);
+
+            expect(exitCode).toBe(0);
+            expect(builder.calledWith?.bundleDir).toBe("/project/bundle");
         });
     });
 });

@@ -3,6 +3,7 @@ import type {
     GameModelProjection,
     GamePackageInspectionReport,
     OutcomeLibrarySelector,
+    OutcomeSourceSampleView,
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
@@ -443,6 +444,25 @@ export async function closeProject(fetchImpl: FetchLike): Promise<StudioContext>
 export async function getProjectContext(fetchImpl: FetchLike): Promise<ProjectDashboardContext> {
     const response = await fetchImpl("/api/project/context");
     return (await response.json()) as ProjectDashboardContext;
+}
+
+// Draws exactly one outcome from the currently open "outcomeLibrary" project's own `modeName` through
+// the server's sampleOutcomeSourceProject() -- the same selector/session/server-backed path
+// PreGeneratedSpinCommandHandler already uses in production for a native library, never loadPokieGame
+// (see StudioServer.handleOutcomeSourceSample's own doc comment). Always resolves to the response body's
+// own `{supported, ...}` result rather than throwing on `supported: false` -- a currently open
+// "stakeAdapter" project's structured "outcomeSource.sample" capability diagnostic is an expected, honest
+// outcome here, not a failed HTTP request (the route itself always answers 200 -- see that handler).
+export async function sampleOutcomeSource(fetchImpl: FetchLike, modeName: string, seed?: string): Promise<OutcomeSourceSampleView> {
+    const response = await fetchImpl("/api/project/outcome-source/sample", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(seed === undefined ? {modeName} : {modeName, seed}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to draw an outcome"));
+    }
+    return (await response.json()) as OutcomeSourceSampleView;
 }
 
 export async function inspectProject(fetchImpl: FetchLike): Promise<GamePackageInspectionReport> {
