@@ -1,8 +1,59 @@
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest, ReplayDescriptor} from "pokie";
+import {
+    GameSessionHandling,
+    loadPokieGame,
+    OutcomeLibraryBundleWriter,
+    OutcomeSourceReplayResult,
+    PokieGame,
+    PokieGameManifest,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
+    ProjectTargetResolver,
+    ReplayDescriptor,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+
+function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+    const calls: string[] = [];
+    return {
+        calls,
+        resolve(targetPath: string) {
+            calls.push(targetPath);
+            return Promise.resolve(project);
+        },
+    };
+}
+
+function stubReplayOutcomeSource(
+    result: OutcomeSourceReplayResult,
+): ((project: PokieProject, modeName: string, seed: string, round: number) => Promise<OutcomeSourceReplayResult>) & {
+    calls: {project: PokieProject; modeName: string; seed: string; round: number}[];
+} {
+    const calls: {project: PokieProject; modeName: string; seed: string; round: number}[] = [];
+    const fn = (project: PokieProject, modeName: string, seed: string, round: number) => {
+        calls.push({project, modeName, seed, round});
+        return Promise.resolve(result);
+    };
+    return Object.assign(fn, {calls});
+}
+
+const outcomeLibraryProject: PokieProject = {
+    type: "outcomeLibrary",
+    rootPath: "/libraries/base",
+    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+    provenance: "test fixture",
+};
+
+const stakeAdapterProject: PokieProject = {
+    type: "stakeAdapter",
+    rootPath: "/stake/base",
+    capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+    provenance: "test fixture",
+};
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
     let credits = 1000;
@@ -210,5 +261,115 @@ describe("ReplayCommand runtime package materialization boundary", () => {
 
         await expect(command.run(["/blueprints/raw-game.json", "--round", "1"])).rejects.toThrow(/dependencies phase failed/);
         expect(loadGame).not.toHaveBeenCalled();
+    });
+});
+
+// Proves P3-POLISH-21's own replay-side outcome-source boundary: a resolved "outcomeLibrary" project is
+// routed through the canonical outcome-source selector/session path (replayOutcomeSourceProject) instead of
+// resolveRuntimePackageRoot/loadGame, while a resolved "stakeAdapter" project surfaces the same structured
+// missing-capability diagnostic every other unsupported-operation attempt does -- and never reaches
+// loadGame either.
+describe("ReplayCommand outcome-source routing", () => {
+    it("throws when --mode is omitted for a resolved native outcome-library project", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const loadGame = jest.fn();
+        const command = new ReplayCommand(loadGame, undefined, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/libraries/base", "--round", "1", "--seed", "demo"])).rejects.toThrow(/--mode is required/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("throws when --seed is omitted for a resolved native outcome-library project", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const loadGame = jest.fn();
+        const command = new ReplayCommand(loadGame, undefined, undefined, undefined, resolveProject);
+
+        await expect(command.run(["/libraries/base", "--round", "1", "--mode", "base"])).rejects.toThrow(/--seed is required/);
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("replays a resolved native outcome-library round through the injected outcome-source replay function, never loading the game", async () => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const replay = stubReplayOutcomeSource({
+            supported: true,
+            replay: {
+                libraryId: "base-lib",
+                libraryHash: "sha256:abc",
+                seed: "demo-seed",
+                round: 3,
+                outcomeId: "2",
+                weight: 150,
+                totalWin: 5,
+                payoutMultiplier: 5,
+                timestamp: 0,
+                durationMs: 1,
+            },
+        });
+        const loadGame = jest.fn();
+        const command = new ReplayCommand(loadGame, undefined, undefined, undefined, resolveProject, replay);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/base", "--round", "3", "--seed", "demo-seed", "--mode", "base"]);
+
+        expect(replay.calls).toEqual([{project: outcomeLibraryProject, modeName: "base", seed: "demo-seed", round: 3}]);
+        expect(loadGame).not.toHaveBeenCalled();
+        const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as {outcomeId: string; libraryId: string};
+        expect(descriptor.outcomeId).toBe("2");
+        expect(descriptor.libraryId).toBe("base-lib");
+
+        logSpy.mockRestore();
+    });
+
+    it("throws the capability diagnostic, rather than attempting package-runtime execution, for a resolved Stake Engine project", async () => {
+        const resolveProject = stubProjectResolver(stakeAdapterProject);
+        const replay = stubReplayOutcomeSource({
+            supported: false,
+            diagnostic: {
+                detectedType: "stakeAdapter",
+                operation: "outcomeSource.replay",
+                missingCapability: "outcomeSource.sample",
+                alternatives: ["outcomeLibrary"],
+                message: '"outcomeSource.replay" is not supported for a "stakeAdapter" project (missing the "outcomeSource.sample" capability). Supported by: outcomeLibrary.',
+            },
+        });
+        const loadGame = jest.fn();
+        const command = new ReplayCommand(loadGame, undefined, undefined, undefined, resolveProject, replay);
+
+        await expect(command.run(["/stake/base", "--round", "1", "--seed", "demo", "--mode", "base"])).rejects.toThrow(
+            /"outcomeSource\.replay" is not supported for a "stakeAdapter" project/,
+        );
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+});
+
+// Real, non-stubbed end-to-end coverage: a real, on-disk outcome-library bundle (built by
+// OutcomeLibraryBundleWriter, not mocked), resolved and replayed through the same
+// ProjectTargetResolver/replayOutcomeSourceProject path the unit tests above stub out.
+describe("ReplayCommand outcome-source routing (integration, real outcome-library bundle)", () => {
+    let bundleDir: string;
+
+    beforeEach(async () => {
+        bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-outcomesource-test-"));
+        fs.rmdirSync(bundleDir);
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+    });
+
+    afterEach(() => {
+        fs.rmSync(bundleDir, {recursive: true, force: true});
+    });
+
+    it("replays a real bundle's round through the real outcome-source selector path, never loading a game", async () => {
+        const loadGame = jest.fn();
+        const command = new ReplayCommand(loadGame, undefined, undefined, undefined, new ProjectTargetResolver());
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir, "--round", "1", "--seed", "replay-seed", "--mode", "base"]);
+
+        expect(loadGame).not.toHaveBeenCalled();
+        const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; outcomeId: string};
+        expect(descriptor.libraryId).toBe("base-lib");
+        expect(typeof descriptor.outcomeId).toBe("string");
+
+        logSpy.mockRestore();
     });
 });

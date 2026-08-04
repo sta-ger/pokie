@@ -269,6 +269,7 @@ export * from "./project/UnsupportedProjectOperationDiagnostic.js";
 export * from "./project/buildGameModelProjection.js";
 export * from "./project/buildGameModelReels.js";
 export * from "./project/describeUnsupportedProjectOperation.js";
+export * from "./project/replayOutcomeSourceProject.js";
 export * from "./project/sampleOutcomeSourceProject.js";
 export * from "./reels/CompositeReelStripConstraintValidator.js";
 export * from "./reels/LargestRemainderReelStripSymbolWeightsConverter.js";

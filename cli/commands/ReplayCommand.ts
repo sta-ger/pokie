@@ -1,7 +1,18 @@
-import {loadPokieGame, PokieGame, ReplayRecorder, ReplayRecording} from "pokie";
+import {
+    loadPokieGame,
+    OutcomeSourceReplayResult,
+    PokieGame,
+    PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
+    replayOutcomeSourceProject,
+    ReplayRecorder,
+    ReplayRecording,
+} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ReplayOptions = {
@@ -9,9 +20,17 @@ type ReplayOptions = {
     seed?: string;
     round: number;
     out?: string;
+    mode?: string;
 };
 
-const USAGE = "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]";
+// Deliberately the non-generic (T = string) instantiation of replayOutcomeSourceProject's own signature --
+// same rationale as OutcomeSourceCommand's own SampleFn: this command only ever deals in plain string
+// outcome ids off the CLI.
+type ReplayOutcomeSourceFn = (project: PokieProject, modeName: string, seed: string, round: number) => Promise<OutcomeSourceReplayResult>;
+
+const USAGE =
+    "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+    "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]";
 
 export class ReplayCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
@@ -22,17 +41,30 @@ export class ReplayCommand implements CliCommandHandling {
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
     // cli/pokie.ts wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    // Decides, ahead of resolveRuntimePackageRoot/loadGame, whether packageRoot is a resolved
+    // "outcomeLibrary"/"stakeAdapter" project -- see run()'s own routing. Defaults to the real
+    // ProjectTargetResolver so every caller gets this routing for free; a test can still inject a stub.
+    private readonly resolveProject: ProjectResolving;
+    // The canonical outcome-source selector/session path a resolved "outcomeLibrary" project's replay is
+    // actually served through -- see replayOutcomeSourceProject's own doc comment. Never reaches loadGame;
+    // a resolved "stakeAdapter" project's own missing-capability diagnostic comes back through this same
+    // function's {supported: false} result instead.
+    private readonly replayOutcomeSource: ReplayOutcomeSourceFn;
 
     constructor(
         loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         recorder: ReplayRecording = new ReplayRecorder(),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        replayOutcomeSource: ReplayOutcomeSourceFn = replayOutcomeSourceProject,
     ) {
         this.loadGame = loadGame;
         this.writeFile = writeFile;
         this.recorder = recorder;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
+        this.resolveProject = resolveProject;
+        this.replayOutcomeSource = replayOutcomeSource;
     }
 
     public getName(): string {
@@ -46,6 +78,18 @@ export class ReplayCommand implements CliCommandHandling {
     public async run(args: string[]): Promise<void> {
         const options = this.parseArgs(args);
 
+        // A resolved "outcomeLibrary"/"stakeAdapter" project is routed through the outcome-source selector
+        // path below instead -- neither ever reaches resolveRuntimePackageRoot/loadGame (see
+        // replayOutcomeSourceProject's own doc comment on why a "stakeAdapter" export can't be sampled at
+        // all). A path that doesn't resolve to either of those two types -- including one ProjectResolving
+        // doesn't recognize as any known project at all -- falls through to the original, unaffected
+        // materialize-and-load flow.
+        const project = await this.resolveProject.resolve(options.packageRoot);
+        if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
+            await this.runOutcomeSourceReplay(project, options);
+            return;
+        }
+
         const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
         let game: PokieGame;
         try {
@@ -56,6 +100,30 @@ export class ReplayCommand implements CliCommandHandling {
         const descriptor = this.recorder.record({game, seed: options.seed, round: options.round});
         const json = JSON.stringify(descriptor, null, 4);
 
+        if (options.out) {
+            this.writeFile(options.out, json);
+        }
+
+        console.log(json);
+        if (options.out) {
+            console.log(`\nReplay written to "${options.out}".`);
+        }
+    }
+
+    private async runOutcomeSourceReplay(project: PokieProject, options: ReplayOptions): Promise<void> {
+        if (!options.mode) {
+            throw new Error(`--mode is required to replay a native outcome-library round. ${USAGE}`);
+        }
+        if (!options.seed) {
+            throw new Error(`--seed is required to replay a native outcome-library round. ${USAGE}`);
+        }
+
+        const result = await this.replayOutcomeSource(project, options.mode, options.seed, options.round);
+        if (!result.supported) {
+            throw new UnsupportedProjectOperationError(result.diagnostic);
+        }
+
+        const json = JSON.stringify(result.replay, null, 4);
         if (options.out) {
             this.writeFile(options.out, json);
         }
@@ -95,15 +163,21 @@ export class ReplayCommand implements CliCommandHandling {
                 }
                 return value;
             })
-            .action((packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                }
-                if (options.round === undefined) {
-                    throw new Error(`--round is required. ${USAGE}`);
-                }
-                result = {packageRoot, seed: options.seed, round: options.round, out: options.out};
-            });
+            // Only meaningful when packageRoot resolves to an "outcomeLibrary" project -- see
+            // runOutcomeSourceReplay -- but declared/validated here alongside every other option rather
+            // than a bespoke second parse, same as OutcomeSourceCommand's own "sample" verb.
+            .option("--mode <modeName>")
+            .action(
+                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string}) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                    }
+                    if (options.round === undefined) {
+                        throw new Error(`--round is required. ${USAGE}`);
+                    }
+                    result = {packageRoot, seed: options.seed, round: options.round, out: options.out, mode: options.mode};
+                },
+            );
 
         try {
             command.parse(args, {from: "user"});
@@ -121,6 +195,8 @@ export class ReplayCommand implements CliCommandHandling {
                             return `--out requires a file path. ${USAGE}`;
                         case "--format":
                             return `--format only supports "json". ${USAGE}`;
+                        case "--mode":
+                            return `--mode requires a mode name. ${USAGE}`;
                         default:
                             return `Unknown option "${flag}". ${USAGE}`;
                     }
