@@ -202,6 +202,22 @@ describe("ReplayCommand (integration, real loadPokieGame + fixture game package)
         expect(Array.isArray(descriptor.screen)).toBe(true);
     });
 
+    it("loads a real game package and writes a replay artifact when both the package root and --out path contain spaces", async () => {
+        const spacedPackageRoot = path.join(outDir, "playable game with spaces");
+        fs.cpSync(fixtureRoot, spacedPackageRoot, {recursive: true});
+        const command = new ReplayCommand(loadPokieGame);
+        const outFile = path.join(outDir, "replay artifact with spaces.json");
+
+        await command.run([spacedPackageRoot, "--seed", "demo", "--round", "5", "--out", outFile]);
+
+        expect(fs.existsSync(outFile)).toBe(true);
+        const descriptor = JSON.parse(fs.readFileSync(outFile, "utf-8")) as ReplayDescriptor;
+        expect(descriptor.game).toEqual({id: "playable-game", name: "Playable Game", version: "1.0.0"});
+        expect(descriptor.seed).toBe("demo");
+        expect(descriptor.round).toBe(5);
+        expect(Array.isArray(descriptor.screen)).toBe(true);
+    });
+
     it("produces the same replay JSON (aside from timestamp/durationMs) for the same seed and round", async () => {
         const command = new ReplayCommand(loadPokieGame);
         const firstFile = path.join(outDir, "first.json");

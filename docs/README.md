@@ -245,5 +245,9 @@ release lanes) and how to run it, [`v1.3-closeout-report.md`](v1.3-closeout-repo
 gap-audit priority list and what's explicitly deferred to v2, and [`pokie-phase3-inventory.md`](pokie-phase3-inventory.md)
 for the versioned, executable-fixture-backed baseline of CLI targets, the generated-package seam, Studio's
 home/project routes, and the External Adapter SDK/Stake Engine adapter boundary, frozen ahead of Phase 3
-migration work, and [`pokie-phase3-final-verification-report.md`](pokie-phase3-final-verification-report.md)
-for that migration sequence's own closing acceptance check.
+migration work, [`pokie-phase3-final-verification-report.md`](pokie-phase3-final-verification-report.md)
+for that migration sequence's own closing acceptance check, and
+[`pokie-phase4-inventory.md`](pokie-phase4-inventory.md) for the CLI-robustness (paths with spaces, non-TTY
+invocation), materialization, Replay, player/browser-acceptance, and `pokie-examples` reusable-vs-example-specific
+baseline frozen ahead of Phase 4 work, including an explicit account of exactly which Phase 3 decisions are
+retained rather than reopened.
