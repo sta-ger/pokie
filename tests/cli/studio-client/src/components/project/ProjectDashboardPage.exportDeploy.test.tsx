@@ -1,4 +1,4 @@
-import {screen, within} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -94,6 +94,84 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Publish"})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Preview artifacts"})).not.toBeInTheDocument();
+    });
+
+    it("sends a remote adapter's compatibility check against an already-registered outcome library, not just one generated this session", async () => {
+        const user = userEvent.setup();
+        let capturedRunBody: {targetId?: string; modes?: {modeName: string; librarySelector: unknown}[]; publish?: boolean} | undefined;
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [{id: "acme-rgs-v2", version: "0.1.0", requirements: {}, capabilities: []}],
+            }),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    buildStatus: "compatible",
+                    game: {id: "a", name: "A", version: "1.0.0"},
+                    currentGame: {id: "a", name: "A", version: "1.0.0"},
+                    artifactPokieVersion: "1.0.0",
+                    currentPokieVersion: "1.0.0",
+                    generatedAt: "2026-01-01T00:00:00.000Z",
+                    modes: [
+                        {
+                            modeName: "base",
+                            libraryId: "a-base",
+                            bundleDir: "outcomelibrary",
+                            buildStatus: "compatible",
+                            outcomeCount: 500,
+                            totalWeight: 1000,
+                            rtp: 0.95,
+                            hash: "sha256:library",
+                        },
+                    ],
+                },
+            }),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/deployment/runs") {
+                capturedRunBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () =>
+                        Promise.resolve({
+                            targetId: "acme-rgs-v2",
+                            publish: false,
+                            stages: [],
+                            descriptorIssues: [],
+                            compatibilityIssues: [],
+                            projectionIssues: [],
+                            generation: {artifacts: [], issues: []},
+                            artifactIssues: [],
+                            diagnostic: {ok: true, checks: []},
+                            delivery: {delivered: false},
+                        }),
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await screen.findByText("External Adapter: acme-rgs-v2");
+        // Waits for the same registry-backed resolution the Stake Engine Export card's own enabled state
+        // depends on, so the compatibility check below is guaranteed to run after the registry's
+        // already-registered library has actually loaded, not against a still-loading registryView.
+        await waitFor(() => expect(screen.getByRole("button", {name: "Run Stake Engine Export (base)"})).toBeEnabled());
+
+        await user.click(screen.getByRole("button", {name: "Check compatibility"}));
+
+        expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
+        expect(capturedRunBody?.modes).toEqual([{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}}]);
     });
 
     it("runs the Stake Engine Export right here (no hand-off to the Stake Engine Export tab) once a canonical outcome library is available", async () => {

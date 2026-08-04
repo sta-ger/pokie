@@ -1,7 +1,13 @@
 import {useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
 import {exportStakeEngine, generateOutcomeLibrary, openOutputFolder} from "../../api/apiClient";
-import type {OutcomeLibrarySelector, StudioOutcomeLibraryGenerateResultView, StudioProjectCapability, StudioStakeEngineExportView} from "../../api/types";
+import type {
+    OutcomeLibrarySelector,
+    StudioDeploymentModeInput,
+    StudioOutcomeLibraryGenerateResultView,
+    StudioProjectCapability,
+    StudioStakeEngineExportView,
+} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {
     describeExportDeployTargetCards,
@@ -89,6 +95,7 @@ function TargetCard({
     outcomeLibraryRun,
     onGenerateOutcomeLibrary,
     resolveOutcomeLibrarySource,
+    resolveDeploymentModes,
     staticExportRun,
     onRunStaticExport,
     deployment,
@@ -98,7 +105,8 @@ function TargetCard({
     defaultModeName: string;
     outcomeLibraryRun: OutcomeLibraryRunView;
     onGenerateOutcomeLibrary: () => void;
-    resolveOutcomeLibrarySource: () => OutcomeLibrarySelector | undefined;
+    resolveOutcomeLibrarySource: () => Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined;
+    resolveDeploymentModes: () => StudioDeploymentModeInput[] | undefined;
     staticExportRun: StaticExportRunView;
     onRunStaticExport: () => void;
     deployment: DeploymentManager;
@@ -228,12 +236,18 @@ function TargetCard({
                         size="xs"
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
-                        onClick={() => deployment.run(false, card.deploymentTarget)}
+                        onClick={() => deployment.run(false, card.deploymentTarget, resolveDeploymentModes())}
                     >
                         Check compatibility
                     </Button>
                     {previewedOk && (
-                        <Button size="xs" mt="xs" ml="xs" loading={isActiveTarget && deployment.runLoading} onClick={() => deployment.run(true, card.deploymentTarget)}>
+                        <Button
+                            size="xs"
+                            mt="xs"
+                            ml="xs"
+                            loading={isActiveTarget && deployment.runLoading}
+                            onClick={() => deployment.run(true, card.deploymentTarget, resolveDeploymentModes())}
+                        >
                             Publish
                         </Button>
                     )}
@@ -262,11 +276,13 @@ function TargetCard({
 // status/error convention (ErrorState + a plain-language result line), rather than navigating away into a
 // separate legacy Stepper-driven workflow first. Deployment's own selection/run/registry state is owned by
 // the shared useDeploymentManager hook (see DeploymentManager) -- ExportDeployTab drives it directly
-// (deployment.run(publish, target)) instead of duplicating it, and outcome-library generation feeds its
-// result straight back into that hook's own first mode row (setModeName/setModeLibrarySelector) so an
-// adapter card run immediately afterward already points at the library just generated. Every adapter
-// card's own action always checks compatibility first (publish:false) and only offers "Publish" once that
-// check comes back clean -- never a first-click auto-publish outside this machine. (The SDK's own
+// (deployment.run(publish, target, modes)) instead of duplicating it. An adapter card's own Check/Publish
+// always runs against resolveDeploymentModes()'s own resolved library -- a session-generated bundle or an
+// already-registered one, whichever resolveOutcomeLibrarySource() itself finds -- passed straight into
+// deployment.run() as an explicit override, so neither case depends on the Configure step's own `modes`
+// state already agreeing with it first. Every adapter card's own action always checks compatibility
+// first (publish:false) and only offers "Publish" once that check comes back clean -- never a first-click
+// auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
 export function ExportDeployTab({capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
@@ -325,7 +341,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     // (outcomeLibraryRun), falling back to whatever the registry already reports as compatible for
     // `defaultModeName` -- a project that already had a fresh library before Build/Export was even opened
     // never needs a redundant re-generate click first.
-    function resolveOutcomeLibrarySource(): OutcomeLibrarySelector | undefined {
+    function resolveOutcomeLibrarySource(): Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined {
         if (outcomeLibraryRun.status === "ok") {
             return {kind: "bundle", bundleDir: outcomeLibraryRun.result.bundleDir, modeName: outcomeLibraryRun.result.mode.modeName};
         }
@@ -337,6 +353,17 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             }
         }
         return undefined;
+    }
+
+    // A remote adapter card's own run source: the exact same resolved library resolveOutcomeLibrarySource()
+    // already found -- a session-generated bundle or an already-registered one -- carried into a
+    // StudioDeploymentModeInput whose modeName is always the *selector's own* mode (never defaultModeName
+    // blindly), so a registry fallback onto a different mode than defaultModeName can never send a
+    // request pairing one mode's name with another mode's library. `undefined` (no resolved library yet)
+    // falls back to deployment.run()'s own default of the Configure step's `modes` state, unchanged.
+    function resolveDeploymentModes(): StudioDeploymentModeInput[] | undefined {
+        const source = resolveOutcomeLibrarySource();
+        return source === undefined ? undefined : [{modeName: source.modeName, librarySelector: source}];
     }
 
     function handleRunStaticExport(): void {
@@ -401,6 +428,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                         outcomeLibraryRun={outcomeLibraryRun}
                                         onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                         resolveOutcomeLibrarySource={resolveOutcomeLibrarySource}
+                                        resolveDeploymentModes={resolveDeploymentModes}
                                         staticExportRun={staticExportRun}
                                         onRunStaticExport={handleRunStaticExport}
                                         deployment={deployment}
