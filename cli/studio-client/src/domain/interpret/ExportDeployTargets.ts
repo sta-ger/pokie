@@ -1,16 +1,18 @@
 import type {StudioDeploymentTargetSummary} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
-// Pure view-model for the shared Export / Deploy shell (see ExportDeployTab) -- a presentation-layer
-// classification over the two pipelines this Studio actually has (Stake Engine Export's own static
-// exporter, and the External Adapter SDK's own registered-target pipeline). It never merges those two
-// backend pipelines: Stake Engine Export still runs through StudioStakeEngineExportService/the
-// StakeEngineExportTab unchanged, and every registered ExternalDeploymentTarget still runs through
-// useDeploymentManager/the DeploymentTab unchanged. See docs/external-adapter-sdk.md's own "Why Stake
-// Engine Export isn't an ExternalDeploymentTarget" -- that split is confirmed structural, not an
-// oversight this shell should paper over, so this module only ever *describes* the two pipelines'
-// existing targets side by side, it never routes a Stake export through the registry or vice versa.
-export type ExportDeployTargetKind = "staticExport" | "localAdapter" | "remoteDeployment";
+// Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
+// project's outputs are built/published from. It classifies, but never merges, the three backend
+// pipelines this Studio actually has (Stake Engine Export's own static exporter, the outcome-library
+// generator/registry, and the External Adapter SDK's own registered-target pipeline). Stake Engine
+// Export still runs through StudioStakeEngineExportService/the StakeEngineExportTab unchanged, outcome-
+// library generation still runs through StudioOutcomeLibraryGenerateService/the OutcomeLibrariesTab
+// unchanged, and every registered ExternalDeploymentTarget still runs through useDeploymentManager/the
+// DeploymentTab unchanged. See docs/external-adapter-sdk.md's own "Why Stake Engine Export isn't an
+// ExternalDeploymentTarget" -- that split is confirmed structural, not an oversight this shell should
+// paper over, so this module only ever *describes* those pipelines' existing targets side by side, it
+// never routes one through another's registry.
+export type ExportDeployTargetKind = "staticExport" | "outcomeLibrary" | "localAdapter" | "remoteDeployment";
 
 export type ExportDeployTargetCard = {
     readonly kind: ExportDeployTargetKind;
@@ -66,6 +68,28 @@ const STAKE_ENGINE_EXPORT_CARD: ExportDeployTargetCard = {
         "A deliberately separate, sibling pipeline to the External Adapter SDK -- not built on the ExternalDeploymentTarget contract, so it never competes with (or is limited by) a registered adapter's own requirements.",
 };
 
+// The outcome-library generator/registry, described as a build target in its own right -- generating (or
+// selecting) a canonical outcome library is the one build step every other target on this page ultimately
+// reads from (a Deployment mode, a Stake Engine Export mode, and this card's own Registry all discover
+// against the same bundle), so it belongs in this list rather than only being reachable as a side-effect
+// of configuring one of the others.
+const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
+    kind: "outcomeLibrary",
+    id: "outcome-library",
+    label: "Outcome library generator",
+    adapter: "pokie's own weighted-outcome-library generator",
+    version: "--",
+    purpose:
+        "Generates (or selects) a canonical outcome library from this project's own current build -- the source content every other target on this page deploys/exports from.",
+    destination: "A local bundle directory registered for this project (outcomelibrary by default, or a custom directory) -- nothing is deployed or exported externally.",
+    writePublishBehavior: "Generate writes the bundle to disk and registers it for discovery; Select/Validate/Inspect never write anything.",
+    capabilities: ["Exact or bounded-sample generation, whichever the game's own mechanic supports", "Registry discovery by mode name for every other target on this page"],
+    limits: [],
+    prerequisites: ["A built, runnable package for this project"],
+    locality: "local",
+    compatibility: "Read by Deployment and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.",
+};
+
 function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary): ExportDeployTargetCard {
     const isLocalExample = target.id === LOCAL_JSON_EXAMPLE_TARGET_ID;
     return {
@@ -113,13 +137,13 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
 };
 
 // Builds the shell's own card list from the live registered-target list (StudioDeploymentTargetSummary[],
-// exactly what useDeploymentManager.targetsView already carries) -- Stake Engine Export's card is always
-// present (it's not registry-backed), one card per registered target classifies as "localAdapter" (the
-// SDK's own local-json-example) or "remoteDeployment" (anything else -- a future adapter's extension
-// point), and the placeholder above fills the "Remote deployment" group only while it would otherwise be
-// empty.
+// exactly what useDeploymentManager.targetsView already carries) -- Outcome libraries and Stake Engine
+// Export's cards are always present (neither is registry-backed the way an adapter target is), one card
+// per registered target classifies as "localAdapter" (the SDK's own local-json-example) or
+// "remoteDeployment" (anything else -- a future adapter's extension point), and the placeholder above
+// fills the "Remote deployment" group only while it would otherwise be empty.
 export function describeExportDeployTargetCards(deploymentTargets: readonly StudioDeploymentTargetSummary[]): ExportDeployTargetCard[] {
     const adapterCards = deploymentTargets.map(describeExternalAdapterTargetCard);
     const hasRemoteTarget = adapterCards.some((card) => card.kind === "remoteDeployment");
-    return [STAKE_ENGINE_EXPORT_CARD, ...adapterCards, ...(hasRemoteTarget ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD])];
+    return [OUTCOME_LIBRARY_CARD, STAKE_ENGINE_EXPORT_CARD, ...adapterCards, ...(hasRemoteTarget ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD])];
 }

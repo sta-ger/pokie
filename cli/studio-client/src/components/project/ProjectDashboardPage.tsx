@@ -92,12 +92,13 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // visually separates them from the primary Overview -> Game Model -> Simulation -> Analysis flow --
 // everything's still one click away, just not presented as equal-weight to it.
 //
-// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is a shared target-selection shell in front of
-// "deployment"/"stakeEngineExport" (see ExportDeployTargets.ts's own doc comment) -- it never replaces
-// either tab, it only helps a user pick between them and pre-selects a deployment target before handing
-// off. Both of those routes are deliberately kept in ALL_PROJECT_TABS, unchanged, so an existing deep
-// link to /project/deployment or /project/stakeEngineExport keeps working exactly as before -- they're
-// simply no longer their own top-level nav entries (see visibleProjectTabs), Build/Export is.
+// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface in front of
+// "deployment"/"stakeEngineExport"/"outcomeLibraries" (see ExportDeployTargets.ts's own doc comment) --
+// it never replaces any of those three, it lists the targets/builders they each own and hands off to
+// the applicable one. All three routes are deliberately kept in ALL_PROJECT_TABS, unchanged, so an
+// existing deep link to /project/deployment, /project/stakeEngineExport, or /project/outcomeLibraries
+// keeps working exactly as before -- they're simply no longer their own top-level nav entries (see
+// visibleProjectTabs), Build/Export is.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
     {value: "mechanicsEditor", label: "Game Model", requiredCapabilities: [BLUEPRINT_BUILD_CAPABILITY]},
@@ -153,11 +154,14 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView, ga
 // The nav items NavTabs actually renders -- each filtered solely by isTabSupported above (a project
 // whose game model isn't introspectable at all has nothing for Game Model to show but an "unsupported"
 // diagnostic, so it isn't offered as a destination at all; same for every runtime-dependent section
-// against a project that isn't actually runnable). "deployment"/"stakeEngineExport" are deliberately
-// never in this list (see ALL_PROJECT_TABS' own doc comment) -- both stay reachable through Build/Export,
-// just not as their own calm-workspace entries.
+// against a project that isn't actually runnable). "deployment"/"stakeEngineExport"/"outcomeLibraries"
+// are deliberately never in this list (see ALL_PROJECT_TABS' own doc comment) -- all three stay reachable
+// through Build/Export (deployment/stakeEngineExport by picking a card, outcomeLibraries via its own
+// "Outcome libraries" card), just not as their own calm-workspace entries.
 function visibleProjectTabs(header: ProjectHeaderView, gameModelViewable: boolean): NavTabItem<ProjectTab>[] {
-    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && isTabSupported(tab, header, gameModelViewable));
+    return ALL_PROJECT_TABS.filter(
+        (tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && tab.value !== "outcomeLibraries" && isTabSupported(tab, header, gameModelViewable),
+    );
 }
 
 // The explicit diagnostic a deep link to an unsupported operation shows instead of ever mounting that
@@ -998,6 +1002,7 @@ export function ProjectDashboardPage() {
                                         setActiveTab("deployment");
                                     }}
                                     onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
+                                    onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
                                 />
                             )}
                             {activeTab === "deployment" && (

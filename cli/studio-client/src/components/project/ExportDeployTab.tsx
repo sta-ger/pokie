@@ -14,30 +14,46 @@ import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
+    outcomeLibrary: {
+        legend: "Outcome libraries",
+        blurb: "Generates or selects the canonical outcome library every other builder below reads from -- a build step in its own right, not a delivery target.",
+    },
     staticExport: {
         legend: "Static export",
         blurb: "Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.",
     },
     localAdapter: {
         legend: "Local adapter",
-        blurb: "A registered External Adapter SDK target that writes to this machine's own filesystem.",
+        blurb: "A registered External Adapter SDK target that writes a build artifact to this machine's own filesystem -- nothing leaves this machine.",
     },
     remoteDeployment: {
         legend: "Remote deployment",
-        blurb: "A registered External Adapter SDK target whose own runtime adapter delivers somewhere other than this machine -- an extension point for a future real RGS/aggregator integration.",
+        blurb: "A registered External Adapter SDK target whose own runtime adapter publishes somewhere other than this machine -- an extension point for a future real RGS/aggregator integration.",
     },
 };
 
-const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["staticExport", "localAdapter", "remoteDeployment"];
+const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "localAdapter", "remoteDeployment"];
+
+// "Build locally"/"Configure & publish" are deliberately different labels for the same underlying
+// hand-off (see onSelectDeploymentTarget below) -- a localAdapter card's own run only ever writes a build
+// artifact to this machine, never anything a "Publish" label would misleadingly promise; "Publish" is
+// reserved for a remoteDeployment card, which only ever exists here once a real target is registered
+// (see ExportDeployTargets.ts's own REMOTE_DEPLOYMENT_PLACEHOLDER_CARD -- it carries no deploymentTarget,
+// so it never reaches this button at all).
+function describeTargetActionLabel(card: ExportDeployTargetCard): string {
+    return card.kind === "localAdapter" ? "Build locally" : "Configure & publish";
+}
 
 function TargetCard({
     card,
     onSelectDeploymentTarget,
     onOpenStakeEngineExport,
+    onOpenOutcomeLibraries,
 }: {
     card: ExportDeployTargetCard;
     onSelectDeploymentTarget: (target: StudioDeploymentTargetSummary) => void;
     onOpenStakeEngineExport: () => void;
+    onOpenOutcomeLibraries: () => void;
 }) {
     return (
         <div style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}>
@@ -113,6 +129,11 @@ function TargetCard({
                 </Text>{" "}
                 {card.compatibility}
             </Text>
+            {card.kind === "outcomeLibrary" && (
+                <Button size="xs" mt="sm" onClick={onOpenOutcomeLibraries}>
+                    Open Outcome Libraries
+                </Button>
+            )}
             {card.kind === "staticExport" && (
                 <Button size="xs" mt="sm" onClick={onOpenStakeEngineExport}>
                     Open Stake Engine Export
@@ -120,32 +141,38 @@ function TargetCard({
             )}
             {card.deploymentTarget && (
                 <Button size="xs" mt="sm" onClick={() => onSelectDeploymentTarget(card.deploymentTarget as StudioDeploymentTargetSummary)}>
-                    Select &amp; configure in Deployment
+                    {describeTargetActionLabel(card)}
                 </Button>
             )}
         </div>
     );
 }
 
-// The shared Export / Deploy target-selection shell -- a presentation-only layer over the project's two
-// existing, independent pipelines (Stake Engine Export's own static exporter, and the External Adapter
-// SDK's own registered-target pipeline via useDeploymentManager). Picking a card here never runs either
-// pipeline itself: a Stake Engine Export card navigates straight to the (unchanged) Stake Engine Export
-// tab, and a deployment-target card only pre-selects that target (useDeploymentManager.selectTarget)
-// before navigating to the (unchanged) Deployment tab's own Select-target step. See
-// ExportDeployTargets.ts's own doc comment for why the two backend pipelines are never merged.
+// The sole Studio Build/Export surface -- lists every applicable target/builder this project's own
+// resolved capabilities offer (see ProjectDashboardPage's own RUNTIME_CAPABLE_CAPABILITIES gate on this
+// whole tab), grouped by what it actually does, and hands off to that builder's own existing pipeline:
+// outcome-library generation (still StudioOutcomeLibraryGenerateService/OutcomeLibrariesTab), Stake
+// Engine Export (still StudioStakeEngineExportService/StakeEngineExportTab), and every registered
+// ExternalDeploymentTarget (still useDeploymentManager/DeploymentTab) -- none of those three pipelines is
+// duplicated or merged here, see ExportDeployTargets.ts's own doc comment. A local adapter's own action
+// is deliberately labelled "Build locally" (it only ever writes a build artifact to this machine) while
+// "Publish" language ("Configure & publish") only ever appears for a remoteDeployment card, which only
+// exists here once a real target is registered -- the placeholder shown while none is carries no
+// deploymentTarget, so it renders no action at all (see describeTargetActionLabel above).
 export function ExportDeployTab({
     targetsView,
     targetsError,
     onRefreshTargets,
     onSelectDeploymentTarget,
     onOpenStakeEngineExport,
+    onOpenOutcomeLibraries,
 }: {
     targetsView: DeploymentTargetsListView;
     targetsError: string | undefined;
     onRefreshTargets: () => void;
     onSelectDeploymentTarget: (target: StudioDeploymentTargetSummary) => void;
     onOpenStakeEngineExport: () => void;
+    onOpenOutcomeLibraries: () => void;
 }) {
     const deploymentTargets = targetsView.status === "loaded" ? targetsView.targets : [];
     const cards = describeExportDeployTargetCards(deploymentTargets);
@@ -153,11 +180,13 @@ export function ExportDeployTab({
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
-                Every way this project can leave Studio, grouped by what it actually does -- a static export
-                writes a standalone bundle with nothing registered, a local adapter writes to this machine via
-                the External Adapter SDK, and a remote deployment is that same SDK&apos;s own extension point for a
-                future real RGS/aggregator integration. Choosing a card here jumps into that target&apos;s own
-                existing workflow; it never runs a deploy or export itself.
+                Every applicable way this project can be built or leave Studio, grouped by what it actually
+                does -- generating an outcome library is the source build step every other target here reads
+                from, a static export writes a standalone bundle with nothing registered, a local adapter
+                writes a build artifact to this machine via the External Adapter SDK, and a remote deployment
+                is that same SDK&apos;s own extension point for a future real RGS/aggregator integration.
+                Choosing a card here jumps into that builder&apos;s own existing workflow, safely -- it never
+                silently runs a build in the background.
             </Text>
             <QuickActions>
                 <Button variant="default" size="xs" onClick={onRefreshTargets}>
@@ -183,6 +212,7 @@ export function ExportDeployTab({
                                     card={card}
                                     onSelectDeploymentTarget={onSelectDeploymentTarget}
                                     onOpenStakeEngineExport={onOpenStakeEngineExport}
+                                    onOpenOutcomeLibraries={onOpenOutcomeLibraries}
                                 />
                             ))
                         )}

@@ -4,7 +4,8 @@
 
 **Status:** baseline, frozen 2026-08-01 against `HEAD` at the start of the `P3-POLISH-*` step series; §1's
 "package-only" classification was superseded by `P3-POLISH-09` (2026-08-03) — see that section's own update
-note. Written
+note. §4's Advanced-tab nav list and §6's "documentation update only" framing were both superseded by
+`P3-POLISH-20` (2026-08-04) — see the "Owner steps" section's own update note. Written
 *before* any Phase 3 migration work touches CLI targets, the generated-package seam, Studio's home/project
 routes, or the External Adapter SDK / Stake Engine adapter boundary, so a future migration step can diff its
 own intended changes against this document instead of re-deriving "what did this look like before" from
@@ -129,6 +130,18 @@ Deployment, Outcome Libraries, Stake Engine Export), their Stepper gating, path 
 conditions, inferable-empty-input behavior, and raw-error surfaces, are all documented there with fixture
 citations. Not re-derived here.
 
+**Update (`P3-POLISH-20`, 2026-08-04):** Outcome Libraries (nav label "Analysis") joined Deployment/Stake
+Engine Export as reachable only via deep link or from Build/Export's own card list
+(`ExportDeployTab`/`ExportDeployTargets.ts`), no longer its own top-level Advanced nav entry — Build/Export
+is now the sole Studio surface a project's builders (outcome-library generation, Stake Engine Export, and
+every registered `ExternalDeploymentTarget`) are listed and reached from. The Advanced project nav is 8
+entries, not 9; see `studioSurfaceInventory.baseline.test.tsx`'s own updated fixture for the exact list.
+
+Not folded into this consolidation: the package Build panel (`blueprintEditor/BlueprintBuildPanel.tsx`) —
+it was already excluded from every Advanced project tab before this step (it only ever mounts inside Home's
+own Design & Build flow, i.e. project *creation*, not the open-project workspace this section documents),
+so there was nothing in workspace navigation left to remove.
+
 **Route table (evidence, `cli/studio-client/src/routes.tsx:18-26`):** `/` → `StudioLanding` (asks the server
 which mode it started in); `/home/:tab` → `HomePage`; `/project` → redirect to `/project/overview`;
 `/project/:tab` → `ProjectDashboardPage`; any other path → redirect to `/home/design`. This is the one fact
@@ -199,11 +212,20 @@ version marker above in the same commit as whichever step changes one of these f
   `/project/:tab`) is its own multi-step migration, not a single step: Studio Home migration → `P3-POLISH-13`;
   the capability-driven workspace shell → `P3-POLISH-15`.
 - **PAR sheet (§5)** → `P3-POLISH-22`.
-- **Outcome libraries and Stake Engine (§5)** → `P3-POLISH-21`.
-- **Adapter boundary (§6)** → `P3-POLISH-20`, the Build-Export step family that §5's Outcome-library/Stake-
-  Engine owner step (`P3-POLISH-21`) also belongs to; already resolved by explicit decision (v1.3 item 7), so
-  this owner step is only ever a documentation update, not a behavior change, unless it explicitly reopens the
-  decision itself.
+- **Outcome libraries and Stake Engine (§5)** → `P3-POLISH-21` for anything beyond the Build/Export nav
+  consolidation `P3-POLISH-20` already performed (see its own update note below) — the outcome-library
+  generator/registry and Stake Engine Export's own backend services are unchanged by that consolidation,
+  only how (and from where) Studio's nav reaches them.
+- **Adapter boundary (§6)** → `P3-POLISH-20`. The *architectural* decision itself (§6's own `src/externaladapter/`
+  vs. `src/stakeengine/` fork) was already resolved by explicit decision (v1.3 item 7) and stays exactly
+  that — `P3-POLISH-20` did not reopen or touch it; `StudioDeploymentService`/`ExternalDeploymentService` and
+  `StudioStakeEngineExportService`/`StakeEngineExporter` remain two separate pipelines, never merged. What
+  `P3-POLISH-20` *did* reopen, on explicit reviewer instruction, was §4's own Studio nav surface: Build/Export
+  (`ExportDeployTab`) became the sole surface those two pipelines (plus outcome-library generation) are
+  listed and reached from, and Deployment/Stake Engine Export/Outcome Libraries were removed as their own
+  top-level Advanced nav entries (deep links kept working, same convention `P2-POLISH-20` already established
+  for Deployment/Stake Engine Export) — a real UI/nav behavior change, not merely documentation, layered on
+  top of the still-unchanged backend split. See §4's own update note.
 
 Naming these owners here reserves *which* later step in the `P3-POLISH-*` series is accountable for each
 surface so a removal never lands without an explicit, reviewable decision against this baseline; it does not

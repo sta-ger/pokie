@@ -1,7 +1,7 @@
 import {Alert, Anchor, Badge, Button, Card, Group, NumberInput, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck, IconInfoCircle} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import {exportStakeEngine, getOutcomeLibraryRegistry, validateStakeEngineExport} from "../../api/apiClient";
+import {exportStakeEngine, getOutcomeLibraryRegistry, openOutputFolder, validateStakeEngineExport} from "../../api/apiClient";
 import type {OutcomeLibrarySelector, StudioOutcomeLibraryRegistryView, StudioStakeEngineExportModeInput} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
@@ -273,6 +273,24 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
 
     // ---- Export ----
     const [exportView, setExportView] = useState<StakeEngineExportRequestView>({status: "idle"});
+    // "Open output folder" (Review result step) -- opens the export's own outDir in the OS file manager
+    // on the machine running Studio's server, the same openOutputFolder call BlueprintBuildPanel's own
+    // "Open output folder" already uses. Never blocks/replaces the Review result view on failure -- a
+    // domain-level "unavailable"/"error" outcome just shows alongside it, exactly like exportView's own
+    // network-error handling.
+    const [openFolderError, setOpenFolderError] = useState<string>();
+    function handleOpenFolder(outputDir: string): void {
+        setOpenFolderError(undefined);
+        openOutputFolder(fetchImpl, outputDir)
+            .then((view) => {
+                if (view.status === "unavailable") {
+                    setOpenFolderError(view.reason);
+                } else if (view.status === "error") {
+                    setOpenFolderError(view.message);
+                }
+            })
+            .catch((error: unknown) => setOpenFolderError(errorMessage(error)));
+    }
     const exportRequestIdRef = useRef(0);
     const exportGuard = useDoubleSubmitGuard();
     // Same "outdated" distinction as validateOutdated above, for a completed Export silently invalidated
@@ -768,7 +786,11 @@ export function StakeEngineExportTab({projectRoot, onOpenOutcomeLibraries}: {pro
                             >
                                 Download manifest.json
                             </Button>
+                            <Button variant="default" onClick={() => handleOpenFolder(exportResult.outDir)}>
+                                Open output folder
+                            </Button>
                         </QuickActions>
+                        {openFolderError && <ErrorState message={openFolderError} />}
                     </div>
                 ))}
         </PageSection>

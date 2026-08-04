@@ -104,7 +104,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 9 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, or Stake Engine Export entries", async () => {
+    it("lists exactly the 8 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -116,7 +116,6 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
             "Overview",
             "Game Model",
             "Simulation",
-            "Analysis",
             "Replay",
             "Runtime",
             "Build/Export",
@@ -124,20 +123,25 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
             "Fairness",
         ]);
         // Exactly one "Advanced" section header for the whole nav (NavTabs only prints one when the
-        // section actually changes from the previous item's) -- Overview/Game Model/Simulation/Analysis
-        // stay ungrouped as the primary happy path; everything from Replay onward shares it. There's no
+        // section actually changes from the previous item's) -- Overview/Game Model/Simulation stay
+        // ungrouped as the primary happy path; everything from Replay onward shares it. There's no
         // "Validate" section any more (validation is now automatic diagnostics inside Overview -- see
-        // OverviewTab), and Deployment/Stake Engine Export are reachable only through Build/Export, not
-        // as their own top-level entries (their routes still work -- see the deep-link test below).
+        // OverviewTab), and Deployment/Stake Engine Export/Analysis (Outcome Libraries) are reachable only
+        // through Build/Export, not as their own top-level entries (their routes still work -- see the
+        // deep-link test below) -- Build/Export is the sole Studio build surface (see ExportDeployTab).
         expect(within(nav).getAllByText("Advanced")).toHaveLength(1);
     });
 
-    it("still deep-links to Deployment and Stake Engine Export even though neither has its own nav entry", async () => {
+    it("still deep-links to Deployment, Stake Engine Export, and Outcome Libraries even though none of them has its own nav entry", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "My Slot"});
         expect(screen.getByRole("button", {name: stepperStep("Select target", "Where to publish")})).toBeInTheDocument();
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+        expect(screen.getByRole("button", {name: stepperStep("Select/import", "Choose a library")})).toBeInTheDocument();
     });
 
     it("hides Game Model from the nav for a project this Studio can't edit as a Blueprint", async () => {

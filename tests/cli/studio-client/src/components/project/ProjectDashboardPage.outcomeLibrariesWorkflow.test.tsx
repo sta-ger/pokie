@@ -73,7 +73,6 @@ function okSelectView(libraryId: string, analysis: WeightedOutcomeLibraryAnalysi
 // Generate the same way a user clicking the Stepper's own "Select/import" step would.
 async function goToOutcomeLibrariesTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Analysis"}));
     await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
     await screen.findByLabelText("Library JSON path");
 }
@@ -86,7 +85,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
 
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
@@ -116,7 +115,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
 
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/bad.json");
@@ -137,7 +136,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: view}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
 
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
@@ -170,7 +169,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/outcome-libraries/compare": () => ({ok: true, status: 200, body: compareView}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
@@ -208,7 +207,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/outcome-libraries/compare": () => ({ok: true, status: 200, body: compareView}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
@@ -256,7 +255,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
 
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/a.json");
@@ -284,7 +283,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("lib-a")}),
         });
 
-        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/overview"]});
+        const first = renderRoutedApp({fetchImpl: fetchImplA, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
@@ -301,9 +300,8 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
             "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
         });
-        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Analysis"}));
         await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
 
         // A brand new project's Outcome Libraries tab must show no trace of the previous project's
@@ -335,7 +333,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
@@ -374,7 +372,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
@@ -413,7 +411,7 @@ describe("ProjectDashboardPage - Outcome Libraries workflow", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
         await user.type(screen.getByLabelText("Library JSON path"), "./libs/base.json");
         await user.click(screen.getByRole("button", {name: "Load library"}));
@@ -469,9 +467,8 @@ const GENERATE_RESULT: StudioOutcomeLibraryGenerateResultView = {
 };
 
 async function generateFromCurrentBuild(user: ReturnType<typeof userEvent.setup>, fetchImpl: FetchLike): Promise<void> {
-    renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+    renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Analysis"}));
 
     // Opens directly on the new primary Generate step -- no navigation needed to reach it.
     await user.type(screen.getByLabelText("Mode"), "base");
@@ -489,9 +486,8 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
             "/api/project/outcome-libraries/select": () => ({ok: true, status: 200, body: okSelectView("a-base")}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Analysis"}));
 
         // Opens directly on the new primary Generate step -- no navigation needed to reach it.
         await user.type(screen.getByLabelText("Mode"), "base");
@@ -534,9 +530,8 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Analysis"}));
         await user.type(screen.getByLabelText("Mode"), "base");
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
@@ -562,9 +557,8 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Analysis"}));
         await user.type(screen.getByLabelText("Mode"), "base");
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
@@ -639,7 +633,7 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch(BASE_ROUTES);
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await goToOutcomeLibrariesTab(user);
 
         expect(await screen.findByText("No library built yet")).toBeInTheDocument();
@@ -706,9 +700,8 @@ describe("ProjectDashboardPage - Outcome Libraries Generate step / Registry pane
             },
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Analysis"}));
 
         expect(await screen.findByText("No library built yet")).toBeInTheDocument();
 

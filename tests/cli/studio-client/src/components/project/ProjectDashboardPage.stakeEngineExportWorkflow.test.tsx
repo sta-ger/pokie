@@ -101,6 +101,31 @@ describe("ProjectDashboardPage - Stake Engine Export workflow", () => {
         expect(screen.getByText("index.json")).toBeInTheDocument();
     });
 
+    it("Review result offers Open output folder, opening the export's own outDir and showing a subject-specific error if the server can't", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/stakeengine/validate": () => ({ok: true, status: 200, body: okValidateView()}),
+            "/api/project/stakeengine/export": () => ({ok: true, status: 201, body: okExportView()}),
+            "/api/home/fs/open-folder": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "No file manager is available on this machine."}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
+        await goToStakeEngineExportTab();
+        await fillConfigureStep(user, "./outcomes/base.json");
+        await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
+        await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
+        await user.click(screen.getByRole("button", {name: "Continue to Export"}));
+        await user.click(screen.getByRole("button", {name: "Export to Stake Engine"}));
+        await user.click(await screen.findByRole("button", {name: "Continue to Review result"}));
+
+        await user.click(await screen.findByRole("button", {name: "Open output folder"}));
+
+        const openFolderCall = calls.find((call) => call.url === "/api/home/fs/open-folder");
+        expect(JSON.parse(openFolderCall?.init?.body ?? "{}")).toEqual({path: "/games/a/stakeengine"});
+        expect(await screen.findByText("No file manager is available on this machine.")).toBeInTheDocument();
+    });
+
     it("marks a completed Export (not Validate) as Outdated when only the output directory changes, and marks Validate Outdated instead when a mode changes", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

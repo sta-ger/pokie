@@ -33,12 +33,15 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
 }
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
-    it("classifies Stake Engine Export as a static export card and the registered local target as a local adapter card, keeping a remote-deployment placeholder", async () => {
+    it("classifies Outcome libraries and Stake Engine Export as builder cards and the registered local target as a local adapter card, keeping a remote-deployment placeholder", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
 
         const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         expect(within(staticExportSection).getByText("Stake Engine Export")).toBeInTheDocument();
@@ -50,14 +53,15 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(remoteSection).getByText("Remote deployment (none registered yet)")).toBeInTheDocument();
     });
 
-    it("pre-selects the target and hands off to the Deployment tab when a local adapter card is chosen", async () => {
+    it("pre-selects the target and hands off to the Deployment tab, labelled as a local build, when a local adapter card is chosen", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await screen.findByText("External Adapter: local-json-example");
-        await user.click(screen.getByRole("button", {name: "Select & configure in Deployment"}));
+        expect(screen.queryByRole("button", {name: "Configure & publish"})).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build locally"}));
 
         // Landed on the (unchanged) Deployment tab, with the same target already marked selected --
         // ExportDeployTab only pre-selects it, it never runs the deployment pipeline itself. It's also
@@ -77,13 +81,30 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByRole("button", {name: "Continue to Preview"})).toBeInTheDocument();
     });
 
-    it("keeps the legacy /project/deployment and /project/stakeEngineExport routes deep-link compatible", async () => {
+    it("hands off to the (unchanged) Outcome Libraries tab when the outcome-library card is chosen", async () => {
+        const user = userEvent.setup();
+        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(screen.getByRole("button", {name: "Open Outcome Libraries"}));
+
+        expect(await screen.findByLabelText("Mode")).toBeInTheDocument();
+    });
+
+    it("keeps the legacy /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes deep-link compatible, none of them shown in the nav", async () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
         // The only registered target is selected automatically, auto-advancing straight to Configure.
         expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Deployment"})).not.toBeInTheDocument();
 
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
         expect(await screen.findByText("Output directory")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Stake Engine Export"})).not.toBeInTheDocument();
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/outcomeLibraries"]});
+        expect(await screen.findByLabelText("Mode")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Analysis"})).not.toBeInTheDocument();
     });
 
     it("shows a subject-specific recovery message, never the raw backend text, when the deployment targets list fails to load", async () => {

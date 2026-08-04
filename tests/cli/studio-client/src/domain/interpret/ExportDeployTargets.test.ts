@@ -6,6 +6,15 @@ function target(overrides: Partial<StudioDeploymentTargetSummary> = {}): StudioD
 }
 
 describe("describeExportDeployTargetCards", () => {
+    it("always includes the outcome-library builder card, even with no registered targets", () => {
+        const cards = describeExportDeployTargetCards([]);
+        const outcomeLibraryCard = cards.find((card) => card.kind === "outcomeLibrary");
+        expect(outcomeLibraryCard).toBeDefined();
+        expect(outcomeLibraryCard?.id).toBe("outcome-library");
+        expect(outcomeLibraryCard?.deploymentTarget).toBeUndefined();
+        expect(outcomeLibraryCard?.locality).toBe("local");
+    });
+
     it("always includes the Stake Engine static-export card, even with no registered targets", () => {
         const cards = describeExportDeployTargetCards([]);
         const stakeCard = cards.find((card) => card.kind === "staticExport");
