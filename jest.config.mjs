@@ -58,13 +58,10 @@ const studioClientWorkflowsTestMatch = [
     "<rootDir>/tests/cli/studio-client/src/navigationGuardModal.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/home/HomePage.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.certificationWorkflow.test.tsx",
-    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeLibrariesWorkflow.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/routing.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.parSheetImportExport.test.tsx",
-    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.deploymentWorkflow.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.provablyFairWorkflow.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx",
-    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.stakeEngineExportWorkflow.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx",
 ];
 
@@ -83,13 +80,10 @@ const studioClientWorkflowsTestPathIgnorePatterns = [
     "/src/navigationGuardModal\\.test\\.tsx$",
     "/components/home/HomePage\\.test\\.tsx$",
     "/components/project/ProjectDashboardPage\\.certificationWorkflow\\.test\\.tsx$",
-    "/components/project/ProjectDashboardPage\\.outcomeLibrariesWorkflow\\.test\\.tsx$",
     "/src/routing\\.test\\.tsx$",
     "/components/blueprintEditor/BlueprintEditorPage\\.parSheetImportExport\\.test\\.tsx$",
-    "/components/project/ProjectDashboardPage\\.deploymentWorkflow\\.test\\.tsx$",
     "/components/project/ProjectDashboardPage\\.provablyFairWorkflow\\.test\\.tsx$",
     "/components/blueprintEditor/BlueprintEditorPage\\.sections\\.test\\.tsx$",
-    "/components/project/ProjectDashboardPage\\.stakeEngineExportWorkflow\\.test\\.tsx$",
     "/components/project/ProjectDashboardPage\\.test\\.tsx$",
 ];
 
