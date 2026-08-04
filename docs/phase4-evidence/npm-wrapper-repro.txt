@@ -1,0 +1,33 @@
+== Command ==
+$ npm test -- tests/cli/dispatch.test.ts
+== Output ==
+/usr/local/bin/npm: 9: Syntax error: word unexpected (expecting ")")
+
+== /usr/local/bin/npm contents (orchestrator-provisioned correction-round wrapper, outside this worktree/repo) ==
+#!/bin/sh
+set -eu
+allowed='
+tests/cli/commands/ReplayCommand.test.ts
+tests/cli/dispatch.test.ts
+tests/cli/materialize/BlueprintProjectMaterializer.test.ts
+'
+case " $* " in
+  *' check:fast '*|*' check:full '*|*' check:release '*|*' *' --selectProjects '*)
+    echo "POKIE correction policy: broad gates/projects are orchestrator-only" >&2; exit 126 ;;
+esac
+[ "${1:-}" = test ] || { echo "POKIE correction policy: only npm test is allowed" >&2; exit 126; }
+[ "${2:-}" = -- ] || { echo "POKIE correction policy: use npm test -- <saved failing test files>" >&2; exit 126; }
+shift 2
+[ "$#" -gt 0 ] || { echo "POKIE correction policy: no saved test file supplied" >&2; exit 126; }
+for file in "$@"; do
+  case "$allowed" in *"
+$file
+"*) ;; *)
+    echo "POKIE correction policy: test is not in failing_test_files: $file" >&2; exit 126 ;;
+  esac
+done
+exec /usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npm-cli.js test -- "$@"
+
+== Root cause: dash rejects the generated case-pattern alternative on line 9 ==
+/usr/local/bin/npm: 9: Syntax error: word unexpected (expecting ")")
+/usr/local/bin/npm: 9: Syntax error: word unexpected (expecting ")")

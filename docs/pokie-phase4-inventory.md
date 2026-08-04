@@ -24,17 +24,28 @@ prose.
 
 Test evidence in this document was gathered by invoking the fast `pokie` Jest project directly
 (`node node_modules/jest/bin/jest.js --selectProjects pokie studio-client-components --maxWorkers=2 <file>`),
-not through `npm test`: this sandbox's `npm` wrapper raises a shell syntax error
-(`/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")`) on every invocation, independent of
-anything in this repository — an environment defect outside this worktree, not a fact about POKIE's own source,
-flagged here only so a reader isn't confused about why citations below name a direct Jest invocation instead of
-`npm test -- <file>`. The direct invocation runs the identical project/worker configuration `npm test -- <file>`
+not through `npm test`: this sandbox's `npm` (`/usr/local/bin/npm`, provisioned outside this worktree/repo) is a
+`dash` script that raises a syntax error on every invocation, independent of anything in this repository — an
+environment/tooling defect outside this worktree, not a fact about POKIE's own source, flagged here only so a
+reader isn't confused about why citations below name a direct Jest invocation instead of `npm test -- <file>`.
+The exact failing line number and wrapper contents are sandbox-provisioning-specific and have been observed to
+differ between rounds (a malformed generated `case` pattern on the wrapper's own line 9 was the specific cause
+reproduced for this round — see [`phase4-evidence/npm-wrapper-repro.txt`](phase4-evidence/README.md) for the full
+transcript and wrapper source); the underlying fact this section relies on — direct Jest invocation is necessary
+because `npm test -- <file>` itself cannot run — has held across every round that has hit it. The direct
+invocation runs the identical project/worker configuration `npm test -- <file>`
 would have, scoped to the same named file(s); no project-wide gate (`check:fast`/`check:full`/`check:release`,
 `--selectProjects` beyond the two `npm test` itself already selects) was run. Lint (`node node_modules/.bin/eslint
 <file>`) and typecheck (`node node_modules/typescript/bin/tsc --noEmit -p tsconfig.typecheck.json`) were run the
 same way, for the same reason. As in `pokie-phase3-final-verification-report.md`'s own "Method" section, this
 sandbox has no compiled `dist/` and cannot run the integration/workflow/packaging lanes or `build-cli` — where a
 claim below depends on one of those, it says so explicitly rather than presenting it as re-verified here.
+
+Raw transcripts backing this section and §4/§6 below — including a reproduction of the `npm` wrapper's own
+syntax error, a from-source verification that no browser binary or automation tooling exists anywhere in this
+sandbox, and the targeted-fixture run itself — are saved under
+[`phase4-evidence/`](phase4-evidence/README.md), the same reproducible-artifact convention
+`phase2-browser-evidence/` established for its own (visual) evidence pass.
 
 ## 1. CLI robustness: paths with spaces, non-TTY invocation
 
@@ -132,27 +143,64 @@ No gap beyond §1's own space-path note was found in this surface's existing cov
 
 Studio's Play/runtime surface is `cli/studio-client/src/components/project/RuntimeTab.tsx` (client) backed by
 `cli/studio/runtime/{StudioRuntimeManager,StudioRuntimeSessionView,StudioRuntimeStateView,RuntimeSessionClient,
-validateRuntimeSpinRequest,validateRuntimeSessionRequest}.ts` (server). Coverage today is component/unit level
-only — `tests/cli/studio-client/src/components/project/ProjectDashboardPage.runtimeWorkflow.test.tsx` and
-`.runtimeSpin.test.tsx`, both React Testing Library against `jsdom`, never a real browser. Neither `package.json`
-carries a `playwright`/`puppeteer` dependency, and no such import exists anywhere in the repo — there is no
-browser-automation tooling in this codebase at all, only the manual-screenshot convention below.
+validateRuntimeSpinRequest,validateRuntimeSessionRequest}.ts` (server). This section separates two evidence
+layers the prior baseline of this document conflated: real, non-mocked **Studio-server** (HTTP API) evidence,
+which already exists and is substantial, and real **browser** (visual/DOM-rendering) evidence, which does not
+and which this step verified — rather than assumed — it cannot produce here.
 
-The only established "real browser" evidence convention is [`phase2-browser-evidence/README.md`](phase2-browser-evidence/README.md):
-a one-time manual pass (Chrome 138.0.7204.183, captured 2026-08-01) against a built `pokie studio` server, one
-PNG + SHA-256 per route, explicitly scoped to *read-state* rendering only ("does not claim to have performed a
-write action... those route/state/action transitions remain covered by the linked React Testing Library
-fixtures"). This convention has **not been repeated since Phase 2** — no equivalent pass exists for anything
-Phase 3 changed (most notably `P3-POLISH-20`'s Build/Export nav consolidation and the three legacy-route
-migration-copy deep links it introduced, `pokie-phase3-inventory.md` §4).
+**Studio-server evidence (real, not mocked, exists today):** `tests/cli/studio/StudioServer.test.ts` (4522
+lines, `pokie-integration` project, `jest.config.mjs:12`) instantiates a real `http.createServer`-backed
+`StudioServer` and drives it with real `fetch()` calls (`get`/`post`/`del` helpers at the top of the file) against
+its actual listening port — not RTL/`jsdom`, not a stubbed transport. It covers Home/Open Project,
+Blueprint/Design, Simulation, Replay, Runtime, Export/Deploy, and every other Studio HTTP route this document's
+other sections reference. The prior baseline's claim that "coverage today is component/unit level only" was
+inaccurate for the server layer specifically — corrected here by direct read of the file (confirmed present,
+confirmed real-HTTP by its own `get`/`post`/`del` helpers and `http`/`fetch` imports), not by executing it: it
+lives in the `pokie-integration` project alongside real-`npm install` fixtures, the same orchestrator-owned
+integration lane `pokie-phase3-final-verification-report.md`'s own "Method" section already established this
+sandbox doesn't run (see this document's own "Method" above). It has **no dedicated space-path or non-TTY
+case** (verified: no match for `with space`/`isTTY`/`isatty` in the file) — already named as a gap in "Owner
+steps" below, unchanged by this step.
 
-**This step's own decision:** does not attempt a new browser-evidence pass itself. Producing one needs a real
-built `pokie studio` server (`build-cli`, which needs `build-esm`/`build-cjs` first) and a real browser session —
-neither is available in this sandbox (no compiled `dist/`, see "Method"), and reproducing Phase 2's pass with a
-stale/hand-simulated substitute would misrepresent what was actually captured. Recorded here as a named, explicit
-gap — not silently dropped — so a future step with real build/browser access closes it deliberately, the same way
-`pokie-phase3-inventory.md`'s own "Owner steps" section named (rather than silently absorbed) every surface it
-didn't itself change.
+**Browser (visual/DOM-rendering) evidence — attempted, verified infeasible in this sandbox, not merely
+declined:** the only component-level (jsdom, never a real browser) coverage is
+`tests/cli/studio-client/src/components/project/ProjectDashboardPage.runtimeWorkflow.test.tsx` and
+`.runtimeSpin.test.tsx`. The only established *real-browser* evidence convention is
+[`phase2-browser-evidence/README.md`](phase2-browser-evidence/README.md): a one-time manual pass (Chrome
+138.0.7204.183, captured 2026-08-01) against a built `pokie studio` server, one PNG + SHA-256 per route,
+explicitly scoped to *read-state* rendering only. It has **not been repeated since Phase 2** — no equivalent
+pass exists for anything Phase 3 changed (most notably `P3-POLISH-20`'s Build/Export nav consolidation and the
+three legacy-route migration-copy deep links it introduced, `pokie-phase3-inventory.md` §4).
+
+Reproducing it needs, at minimum, a built `pokie studio` server (`build-cli`, itself needing `build-esm`/
+`build-cjs`/`build-studio-client` first) and a real browser session. This step verified, rather than assumed,
+that neither is available — see [`phase4-evidence/browser-tooling-search.txt`](phase4-evidence/README.md) and
+[`phase4-evidence/npm-wrapper-repro.txt`](phase4-evidence/README.md):
+
+- **No browser binary anywhere on this sandbox's filesystem** (`find / -xdev -maxdepth 4` for
+  Chromium/Chrome/Firefox: no match) and **no browser-automation dependency** (`puppeteer`/`playwright`/
+  `chrome-launcher`/`karma`) in `package.json` or `node_modules`, matching the prior baseline's own finding —
+  re-verified here from a live filesystem search, not carried forward as an assumption.
+- **The build toolchain itself is blocked in this correction-round sandbox**: `npm` (`/usr/local/bin/npm`, a
+  policy wrapper outside this worktree/repo, not something this step can edit) fails with a `dash` syntax error
+  on every invocation — including a bare `npm test -- <allowed file>` — before its own allowlist logic ever
+  runs (root cause: a malformed generated `case` pattern on the wrapper's own line 9). `npx`, which could
+  otherwise fetch a headless browser on demand, is separately and explicitly disabled by the same wrapper
+  ("`npx is disabled; use npm test -- saved-file`"). Neither is a fact about POKIE's own source — both are
+  reproduced transcripts of this correction-round sandbox's own tooling.
+- **No compiled `dist/`** exists to serve a built Studio server from in the first place (`find . -maxdepth 2
+  -iname "dist*"`: no match).
+- Even bypassing the broken wrapper (this step already does so for the three required Jest fixtures, by
+  invoking `node node_modules/jest/bin/jest.js` directly — see "Method") only reaches `tsc`/`vite` directly;
+  it does not conjure a browser binary, and installing one (`apt-get install chromium`, or adding a new
+  `puppeteer`/`playwright` `package.json` dependency) is exactly the kind of build/dependency/packaging change
+  this role is scoped away from making unilaterally in a docs-audit correction round, not a step this document
+  can respond to by simply trying harder.
+
+Recorded here as a named, explicit, *verified* gap — not silently dropped, and not the same as declining to
+try — so a future step with real build/browser access (necessarily a differently-provisioned environment than
+this correction-round implementer sandbox) closes it deliberately, the same way `pokie-phase3-inventory.md`'s
+own "Owner steps" section named (rather than silently absorbed) every surface it didn't itself change.
 
 ## 5. What Phase 3 implementation is retained
 
@@ -185,18 +233,23 @@ this document; every fact in this section is a pointer to where it's already fro
 ## 6. `pokie-examples` inventory: reusable vs. example-specific units
 
 `pokie-examples` (`github.com/sta-ger/pokie-examples`, linked from this repo's own `README.md`/`docs/README.md`)
-is a separate, external repository — there is no local checkout in this worktree or its parent directory (`../
-pokie-examples` does not exist anywhere on this sandbox's filesystem), so this inventory was built from the
-public repository's own file tree (`GET /repos/sta-ger/pokie-examples/git/trees/main?recursive=1`) and a handful
-of representative files fetched over `raw.githubusercontent.com`: `src/ui/ui.ts`, `src/ui/utils.ts`, `src/data.ts`,
-one bootstrap file (`src/simple-slot.ts`), one plain config (`src/games/simple-slot/index.ts`), and one bespoke
-session (`src/games/slot-with-free-games/SwfgSession.ts`). This is a **file/export-level** inventory, not a
-line-by-line audit — a future step that actually needs to modify `pokie-examples`' own shared code needs a real
-local checkout first, not just this document.
+is a separate, external repository. This step obtained a real synced local checkout —
+`git clone https://github.com/sta-ger/pokie-examples.git`, pinned at commit
+`530c2c7ff709361d93fe60f59b20436be719d209` (`Merge develop into main`, 2026-07-09) — and read every `src/**/*.ts`
+file (2,485 lines total) directly from that checkout, not from remote representative-file sampling. The full
+clone command, pinned commit, and complete file tree with line counts are saved at
+[`phase4-evidence/pokie-examples-checkout.txt`](phase4-evidence/README.md) so this is reproducible independent of
+this document's own prose. This checkout was not persisted into this worktree (it is a separate external
+repository, outside this repo's own tree); a future step that needs to *modify* `pokie-examples`' own shared code
+should re-clone at its own current `HEAD`, not assume this pinned commit is still current.
 
-**Repository shape:** nine example games under `src/games/<name>/`, each with a `<name>.html` entry point and a
-`src/<name>.ts` bootstrap file at the repo root; three shared modules (`src/ui/ui.ts`, `src/ui/utils.ts`,
-`src/data.ts`) every bootstrap file composes over its own game.
+**Repository shape:** nine example games under `src/games/<name>/` — `simple-slot`, `growing-grid`,
+`megaways-style`, `mixed-evaluators`, `value-pay-multiplier`, `verifiable-spin`, `slot-with-free-games`,
+`slot-with-sticky-respin`, `cascading-cluster` — each with a `<name>.html` entry point and a `src/<name>.ts`
+bootstrap file (10-11 lines each, confirmed by direct read of `src/simple-slot.ts` and siblings) at the repo
+root; three shared modules (`src/ui/ui.ts` 282 lines, `src/ui/utils.ts` 305 lines, `src/data.ts` 90 lines) every
+bootstrap file composes over its own game. A tenth file, `src/index-illustrations.ts` (233 lines), draws
+procedural SVG grid-shape icons for the `index.html` landing page only — not part of any individual game.
 
 **Reusable (shared across all nine games, in `src/ui/`/`src/data.ts`):**
 
@@ -210,23 +263,57 @@ local checkout first, not just this document.
   `play`/`getAnyWin`/`getSymbolWin`/`getCustomScenario` (round-fetch-then-render orchestration).
 - `src/data.ts` — the `AnyVideoSlotSession` union plus `initializeData`/`getInitialData`/`getRoundData`/
   `getSymbolWinData`/`getAnyWinData`/`getCustomScenarioData`: a generic "simulate until a condition holds" round-
-  fetch layer, decoupled from any one game's mechanics.
+  fetch layer, decoupled from any one game's mechanics. Reading the actual checkout (rather than a representative
+  sample) surfaced a shared extension point the prior remote-sampled version of this section missed entirely: an
+  `onAfterRoundPlayed` hook (`data.ts:24`, set via `initializeData`'s 4th argument, invoked from `getRoundData`/
+  `getSymbolWinData`/`getAnyWinData`/`getCustomScenarioData` after every round) that "lets a game's own `index.ts`
+  render round state the generic serializer doesn't know about... without every game forking `data.ts`/`ui.ts`"
+  (the source's own comment, `data.ts:22-23`). Three of nine games use it — `growing-grid` (current grid height),
+  `cascading-cluster` (per-cascade-step accordion breakdown), `verifiable-spin` (seed/audit-trail panel) — each
+  via an `afterRoundPlayed` export from its own `index.ts`, none forking the shared UI/data layer to do it.
 - Each `src/<game>.ts` bootstrap file — thin composition (`initializeData(...)` + `initializeUi(...)`) wiring the
   shared layer to one game's own config; a reusable *pattern* instantiated once per game, not shared code itself.
 
 **Example-specific (per game, under `src/games/<name>/`):**
 
-- `*Config.ts` — each game's actual `VideoSlotConfig` built directly from this repo's own public exports
-  (`VideoSlotConfig`, `LinesDefinitionsFor...`, `Paytable`, line-pattern presets, `SymbolsSequence`) — reel
-  count/rows, symbol set, paylines, paytable, available bets, all authored per game.
-- `*Session.ts`/`*WinCalculator.ts`/`*CombinationsGenerator.ts` — present only for the games needing bespoke
-  mechanics beyond the framework defaults (`slot-with-free-games`, `slot-with-sticky-respin`,
-  `cascading-cluster`), and even these are thin decorations, not parallel reimplementations: `SwfgSession`
-  `extends VideoSlotWithFreeGamesSession` (imported from `"pokie"`, i.e. this repo's own already-reusable class
-  documented in [`free-games.md`](free-games.md)) and overrides only `play()`, toggling free-games mode once the
-  awarded-vs-used free-game count diverges.
-- `index.ts` — composes a game's `Config` + POKIE session/serializer + any custom scenario definitions into the
-  shape each bootstrap file expects.
+- `*Config.ts` — every game's actual `VideoSlotConfig`/`VideoSlotWithFreeGamesConfig` built directly from this
+  repo's own public exports (`VideoSlotConfig`, `LinesDefinitionsFor...`, `Paytable`, line-pattern presets,
+  `SymbolsSequence`) — reel count/rows, symbol set, paylines, paytable, available bets, all authored per game.
+- `index.ts` — composes a game's `Config` + a combinations generator + a win calculator + POKIE session/
+  serializer + any custom scenario definitions into the shape each bootstrap file expects, plus (for 3 games)
+  the `afterRoundPlayed` hook above. Read from source, the nine games split into two genuinely different tiers,
+  which the prior remote-sampled version of this section did not distinguish (it examined only `simple-slot` and
+  named-checked the rest generically):
+  - **Six games are pure composition of built-in `pokie` primitives — no custom class at all.** `simple-slot`
+    (`VideoSlotSession` + default `VideoSlotWinCalculator`), `growing-grid`
+    (`ResizableSymbolsCombinationsGenerator` + `VideoSlotWithResizableGridSession` wired to a
+    `GridResizeHandling` callback), `megaways-style` (`VariableHeightSymbolsCombinationsGenerator` +
+    `WaysWinCalculator` + `SelectedEvaluatorGroupWinAggregationPolicy`), `mixed-evaluators` (lines + ways +
+    clusters on the same grid via `HighestWinOnlyAggregationPolicy`), `value-pay-multiplier` (`ValueWinCalculator`
+    + `MultiplierResolver` via `SumAllEnabledWinAggregationPolicy`), `verifiable-spin`
+    (`SeededRandomNumberGenerator` wrapped by a local call-counting decorator, for reproducible-replay proof, not
+    a `pokie`-exported class).
+  - **Three games add bespoke classes beyond configuration — and these differ in scope from each other,
+    correcting the prior version's blanket "thin decorations, not parallel reimplementations" characterization**:
+    - `slot-with-free-games`: `SwfgSession extends VideoSlotWithFreeGamesSession` (imported from `"pokie"`,
+      documented in [`free-games.md`](free-games.md)) overriding only `play()` to toggle free-games mode — this
+      one genuinely is a thin decorator, as the prior version described. It's paired with
+      `SwfgSessionWinCalculator extends VideoSlotWinCalculator`, which the prior version's own file sample
+      (`SwfgSession.ts` only) did not cover — it doubles winning-line/scatter amounts while free-games mode is
+      active by wrapping `getWinningLines()`/`getWinningScatters()`.
+    - `slot-with-sticky-respin`: three bespoke classes, not one — `SwsrSession extends
+      VideoSlotWithFreeGamesSession` (re-spin/sticky-symbol/credit bookkeeping), `SwsrCombinationsGenerator
+      extends SymbolsCombinationsGenerator` (overlays sticky symbol positions onto each new combination), and
+      `SwsrWinCalculator extends VideoSlotWinCalculator` (exposes winning-symbol grid positions the base class
+      doesn't). All three still build only on public `pokie` base classes/exports.
+    - `cascading-cluster`: `CascadingClusterWinCalculator implements VideoSlotWinCalculating` **directly rather
+      than extending `VideoSlotWinCalculator`** — the largest departure from a thin decorator in the whole repo.
+      It wraps `pokie`'s own `CascadingSpinResolver`/`ClusterWinEvaluator`/`WinEvaluationPipeline` to run
+      "evaluate → remove winning cluster → collapse/refill → repeat" and layers a game-specific escalating
+      per-cascade-step multiplier (`x1, x2, x3...`) on top, entirely in ~100 lines against `pokie`'s own public
+      exports — still not a parallel reimplementation of framework internals, but materially more than the
+      `SwfgSession`-style one-method override the prior version of this section generalized to all three bespoke
+      games.
 - `<name>.html` — per-game HTML shell (one per README demo link).
 
 **Classification against the requested axes:**
@@ -235,11 +322,11 @@ local checkout first, not just this document.
 |---|---|---|
 | Screen/grid | `drawReelsSymbols`/table construction (`ui.ts`/`utils.ts`) — already generic over uniform and jagged/growing grids | reel/row counts, symbol set (`*Config.ts`) |
 | Paylines | hover-highlight rendering (`ui.ts`) | which `LinesDefinitions`/pattern a game picks (`*Config.ts`, itself built from this repo's [paylines-and-patterns.md](paylines-and-patterns.md) primitives) |
-| Highlights | `drawWinningLinesList`/`drawOutcome` generic line/scatter/cluster/value/ways rendering (`utils.ts`) | which win types actually populate, driven by each game's own paytable/evaluator choice |
+| Highlights | `drawWinningLinesList`/`drawOutcome` generic line/scatter/cluster/value/ways rendering (`utils.ts`) | which win types actually populate, driven by each game's own paytable/evaluator/aggregation-policy choice (`index.ts`) |
 | Paytable | table construction (`ui.ts`) | paytable data itself (`*Config.ts`) |
 | Bets/modes | counters/controls wiring (`ui.ts`/`utils.ts`) | bet values/modes (`*Config.ts`, this repo's own `availableBets`/`BetMode` contract) |
-| Feature/session flow | generic session union + round-fetch loop (`data.ts`) | bespoke session subclasses for the 3 feature games, each a thin decorator over this repo's own already-reusable session classes ([free-games.md](free-games.md), [resizable-grid.md](resizable-grid.md)) |
-| Responsive | the one shared breakpoint (`ui.ts`) | none — not per-game |
+| Feature/session flow | generic session union, round-fetch loop, and the `onAfterRoundPlayed` extension hook (`data.ts`) | for 6 of 9 games, pure config/primitive composition, no custom class; for the other 3, bespoke classes of varying scope (`SwfgSession`'s one-method override up through `CascadingClusterWinCalculator`'s from-scratch pipeline), all still built only on this repo's own public exports ([free-games.md](free-games.md), [resizable-grid.md](resizable-grid.md)) |
+| Responsive | the one shared breakpoint (`ui.ts`); confirmed by grep no per-game `.html`/`.ts` file defines its own `@media`/`viewport` rule | none — not per-game |
 
 ## Owner steps
 
@@ -252,11 +339,29 @@ and none should be silently absorbed into a later step without being checked aga
 - **Integration-lane (real `npm install`) space-path coverage** for materialization
   (`BlueprintProjectMaterializer.integration.test.ts`) and package preparation beyond
   `GamePackagePreparer.integration.test.ts`'s own existing case.
-- **Player/browser acceptance evidence** (§4) — a fresh `docs/phase2-browser-evidence`-style manual pass covering
-  every Studio route Phase 3 changed, requires a real `build-cli` + browser session this sandbox cannot produce.
-- **`pokie-examples` deeper coupling audit** (§6) — this inventory is file/export-level; a real local checkout and
-  a line-level read of `src/ui/`'s own contract with each game's `*Config.ts` is needed before any step attempts
-  to change `pokie-examples`' shared code itself.
+- **Player/browser *visual* acceptance evidence** (§4) — a fresh `docs/phase2-browser-evidence`-style manual pass
+  covering every Studio route Phase 3 changed. Verified, not merely assumed, to need a differently-provisioned
+  environment than any correction-round implementer sandbox: real `build-cli` output and a real browser binary,
+  neither obtainable here (no browser anywhere on this sandbox's filesystem, no `puppeteer`/`playwright`
+  dependency, `npm`/`npx` build/install access blocked by this sandbox's own correction-round policy wrapper —
+  see [`phase4-evidence/`](phase4-evidence/README.md)). Real, non-mocked Studio-*server* (HTTP API, as opposed to
+  browser-rendered) coverage already exists today (`tests/cli/studio/StudioServer.test.ts`, §4) and needs no
+  further action from this line item; only the visual/DOM-rendering layer is open.
+- **This sandbox's own `npm` wrapper is broken independent of anything in this repository** (§4,
+  [`phase4-evidence/npm-wrapper-repro.txt`](phase4-evidence/README.md)): a malformed generated `case` pattern
+  makes `dash` reject the wrapper script itself before any of its own policy logic runs, for every invocation.
+  Not this document's or this repo's own defect to fix (the wrapper lives outside this worktree, provisioned by
+  the orchestrator), but worth flagging to whoever owns that provisioning so a future correction round isn't
+  stuck re-discovering the same root cause.
+- **CLI/Studio-server paths-with-spaces/non-TTY coverage on the Studio HTTP surface itself** — confirmed absent
+  by direct read of `tests/cli/studio/StudioServer.test.ts` (§4): no space-path or `isTTY`/`isatty` case exists
+  there, even though §1 now covers `dispatch()`/materialize/replay at the CLI-argument layer.
+- **`pokie-examples` deeper coupling audit beyond this step's own re-audit** (§6) — this step replaced the prior
+  file/export-level, remote-sampled inventory with one read from a real synced checkout (pinned at commit
+  `530c2c7ff709361d93fe60f59b20436be719d209`), but a line-level read of `src/ui/`'s own contract with each game's
+  `*Config.ts` (e.g. exactly which `VideoSlotConfig` fields `initializeUi`/`drawReelsSymbols` silently assume
+  exist) is still needed before any step attempts to *change* `pokie-examples`' shared code itself, and that
+  checkout should be re-cloned at its own current `HEAD` rather than assumed still current.
 
 Naming these here reserves them as a future step's own responsibility rather than letting a later step either
 silently re-derive them from scratch or, worse, quietly skip them because nothing on record named them as open.

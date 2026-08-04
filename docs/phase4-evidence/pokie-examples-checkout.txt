@@ -1,0 +1,75 @@
+== Clone command ==
+$ git clone --depth 1 https://github.com/sta-ger/pokie-examples.git
+
+== Pinned commit ==
+commit 530c2c7ff709361d93fe60f59b20436be719d209
+author date: 2026-07-09 11:24:32 +0200
+subject: Merge develop into main
+
+== git status (clean checkout, nothing local) ==
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+
+== Full source file tree with line counts ==
+    11 src/cascading-cluster.ts
+    90 src/data.ts
+    54 src/games/cascading-cluster/CascadingClusterConfig.ts
+   104 src/games/cascading-cluster/CascadingClusterWinCalculator.ts
+   139 src/games/cascading-cluster/index.ts
+    52 src/games/growing-grid/GrowingGridConfig.ts
+    54 src/games/growing-grid/index.ts
+    40 src/games/megaways-style/MegawaysStyleConfig.ts
+    38 src/games/megaways-style/index.ts
+    54 src/games/mixed-evaluators/MixedEvaluatorsConfig.ts
+    38 src/games/mixed-evaluators/index.ts
+   199 src/games/simple-slot/index.ts
+    77 src/games/slot-with-free-games/SwfgConfig.ts
+    24 src/games/slot-with-free-games/SwfgSession.ts
+    61 src/games/slot-with-free-games/SwfgSessionWinCalculator.ts
+   111 src/games/slot-with-free-games/index.ts
+    35 src/games/slot-with-sticky-respin/SwsrCombinationsGenerator.ts
+    65 src/games/slot-with-sticky-respin/SwsrSession.ts
+    38 src/games/slot-with-sticky-respin/SwsrWinCalculator.ts
+    46 src/games/slot-with-sticky-respin/index.ts
+    68 src/games/value-pay-multiplier/ValuePayMultiplierConfig.ts
+    49 src/games/value-pay-multiplier/index.ts
+    31 src/games/verifiable-spin/VerifiableSpinConfig.ts
+   104 src/games/verifiable-spin/index.ts
+    11 src/growing-grid.ts
+   233 src/index-illustrations.ts
+    10 src/megaways-style.ts
+    10 src/mixed-evaluators.ts
+    10 src/simple-slot.ts
+    10 src/slot-with-free-games.ts
+    10 src/slot-with-sticky-respin.ts
+   282 src/ui/ui.ts
+   305 src/ui/utils.ts
+    10 src/value-pay-multiplier.ts
+    11 src/verifiable-spin.ts
+     1 src/vite-env.d.ts
+  2485 total
+
+== package.json ==
+{
+    "name": "pokie-examples",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "pages": "npm run build && gh-pages -d dist"
+    },
+    "devDependencies": {
+        "gh-pages": "^5.0.0",
+        "prettier": "^2.8.8",
+        "typescript": "^5.0.2",
+        "vite": "^4.3.9"
+    },
+    "dependencies": {
+        "pokie": "^1.2.0"
+    }
+}

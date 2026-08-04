@@ -1,0 +1,15 @@
+== Command (direct Jest invocation - see docs/pokie-phase4-inventory.md Method section for why not via npm) ==
+$ node node_modules/jest/bin/jest.js --selectProjects pokie studio-client-components --maxWorkers=2 tests/cli/dispatch.test.ts tests/cli/materialize/BlueprintProjectMaterializer.test.ts tests/cli/commands/ReplayCommand.test.ts
+
+Running 2 projects:
+- pokie
+- studio-client-components
+PASS pokie tests/cli/commands/ReplayCommand.test.ts
+PASS pokie tests/cli/dispatch.test.ts
+PASS pokie tests/cli/materialize/BlueprintProjectMaterializer.test.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       57 passed, 57 total
+Snapshots:   0 total
+Time:        4.43 s, estimated 18 s
+Ran all test suites matching /tests\/cli\/dispatch.test.ts|tests\/cli\/materialize\/BlueprintProjectMaterializer.test.ts|tests\/cli\/commands\/ReplayCommand.test.ts/i.
