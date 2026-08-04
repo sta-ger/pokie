@@ -6,6 +6,8 @@ import {
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
+    WASM_EXPORT_CAPABILITY,
+    WASM_MANIFEST_READ_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 
@@ -29,7 +31,9 @@ describe("PROJECT_TYPE_CAPABILITIES", () => {
         expect(PROJECT_TYPE_CAPABILITIES.stakeAdapter).not.toContain(OUTCOME_SOURCE_SAMPLE_CAPABILITY);
     });
 
-    it("grants \"wasm\" no capabilities, since no operation against it is supported yet", () => {
-        expect(PROJECT_TYPE_CAPABILITIES.wasm).toEqual([]);
+    it("grants \"wasm\" only read-only manifest access, never export/build or runtime execution", () => {
+        expect(PROJECT_TYPE_CAPABILITIES.wasm).toEqual([WASM_MANIFEST_READ_CAPABILITY]);
+        expect(PROJECT_TYPE_CAPABILITIES.wasm).not.toContain(WASM_EXPORT_CAPABILITY);
+        expect(PROJECT_TYPE_CAPABILITIES.wasm).not.toContain(RUNTIME_EXECUTE_CAPABILITY);
     });
 });

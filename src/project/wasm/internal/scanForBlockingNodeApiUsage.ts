@@ -1,0 +1,300 @@
+import fs from "fs";
+import path from "path";
+import type {WasmPackagingBlockingApiUsage} from "../WasmPackagingPreflightReport.js";
+import {NODE_BUILTIN_MODULES} from "./NODE_BUILTIN_MODULES.js";
+
+const SCANNABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".tsx"]);
+const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git"]);
+
+// A line only worth scanning at all -- narrows every other line out before the (more expensive) specifier
+// patterns below ever run. Runs against the *masked* line (see maskCommentsAndStrings) so a keyword that only
+// exists inside a comment or a string literal never counts.
+const IMPORT_OR_REQUIRE_KEYWORD_PATTERN = /\b(?:import|require|export)\b/;
+
+// Each pattern below captures only the module specifier of an actual static import/export-from/require --
+// never an arbitrary quoted string elsewhere on the line (e.g. inside a comment or unrelated string literal
+// that merely shares the line with an import-related keyword). They run against the masked line produced by
+// maskCommentsAndStrings, where every comment is gone and every string/template literal's content has been
+// replaced by a placeholder token; a real specifier's placeholder is resolved back to its original text via
+// STRING_PLACEHOLDER_PATTERN afterwards, so a specifier is only ever real, executable source text.
+// import x from "y"; import {a, b} from "y"; import * as ns from "y"; import type x from "y"
+const IMPORT_FROM_SPECIFIER_PATTERN = /\bimport\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
+// import "y"; -- side-effect-only import with no "from"
+const IMPORT_SIDE_EFFECT_SPECIFIER_PATTERN = /\bimport\s*['"]([^'"]+)['"]/g;
+// import("y") -- dynamic import
+const DYNAMIC_IMPORT_SPECIFIER_PATTERN = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+// export {a} from "y"; export * from "y"; export * as ns from "y"
+const EXPORT_FROM_SPECIFIER_PATTERN = /\bexport\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
+// require("y")
+const REQUIRE_SPECIFIER_PATTERN = /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+const MODULE_SPECIFIER_PATTERNS = [
+    IMPORT_FROM_SPECIFIER_PATTERN,
+    IMPORT_SIDE_EFFECT_SPECIFIER_PATTERN,
+    DYNAMIC_IMPORT_SPECIFIER_PATTERN,
+    EXPORT_FROM_SPECIFIER_PATTERN,
+    REQUIRE_SPECIFIER_PATTERN,
+];
+
+// Delimits a string literal's placeholder in a masked line -- a token no real module specifier would ever
+// collide with, so a captured "specifier" is recognized as a placeholder only when it's exactly this shape.
+const STRING_PLACEHOLDER_PREFIX = "POKIE_WASM_PREFLIGHT_STRING_";
+const STRING_PLACEHOLDER_PATTERN = new RegExp(`^${STRING_PLACEHOLDER_PREFIX}(\\d+)$`);
+
+// One open template literal on the mask stack. `inExpression` is false while scanning inert literal text and
+// true while inside that literal's `${...}` interpolation, where the content is executable code and must be
+// scanned like any other code rather than masked away. `braceDepth` counts unmatched `{` seen since the
+// interpolation opened, so a nested object literal's own braces (`${JSON.stringify({a: 1})}`) don't get
+// mistaken for the closing `}` of the interpolation itself. `literalContent` accumulates the current inert-text
+// chunk so it can be masked as one placeholder once its extent -- ended by `${`, a closing backtick, or (for a
+// chunk spanning multiple lines) final flush -- is known.
+interface TemplateLiteralFrame {
+    inExpression: boolean;
+    braceDepth: number;
+    literalContent: string;
+}
+
+// Carries comment/string context from one line to the next -- a block comment or a template literal (including
+// one left open mid-interpolation) that doesn't close on the line it starts must keep masking every subsequent
+// line until it actually closes, rather than each line being scanned as if it started fresh at top-level code.
+// `templateStack` holds one frame per currently-open template literal, innermost last, so a template literal
+// nested inside another interpolation (`` `${`${x}`}` ``) tracks each level's own expression/text state and
+// brace depth independently.
+interface CommentStringMaskState {
+    inBlockComment: boolean;
+    templateStack: TemplateLiteralFrame[];
+}
+
+function createCommentStringMaskState(): CommentStringMaskState {
+    return {inBlockComment: false, templateStack: []};
+}
+
+// Scans inert template-literal text starting at `startIndex` in `line`, honoring backslash escapes (so an
+// escaped `` \` `` or `\$` never ends the chunk early). The chunk ends at whichever comes first: an unescaped
+// backtick (the literal closes -- `terminator: "backtick"`), an unescaped `${` (an interpolation opens --
+// `terminator: "expression"`, and `nextIndex` points just past the `{` so the caller resumes in code mode), or
+// the end of the line with neither found (`terminator: "eol"`, meaning the literal's inert text continues onto
+// the next line).
+function consumeTemplateLiteralTextChunk(
+    line: string,
+    startIndex: number
+): {content: string; nextIndex: number; terminator: "backtick" | "expression" | "eol"} {
+    let content = "";
+    let j = startIndex;
+    while (j < line.length) {
+        if (line[j] === "\\" && j + 1 < line.length) {
+            content += line[j] + line[j + 1];
+            j += 2;
+            continue;
+        }
+        if (line[j] === "`") {
+            return {content, nextIndex: j + 1, terminator: "backtick"};
+        }
+        if (line[j] === "$" && line[j + 1] === "{") {
+            return {content, nextIndex: j + 2, terminator: "expression"};
+        }
+        content += line[j];
+        j += 1;
+    }
+    return {content, nextIndex: line.length, terminator: "eol"};
+}
+
+// Strips `//` and `/* */` comments and replaces every inert string/template-text content with a placeholder
+// token, so the specifier patterns above can never match import-like text that only exists inside a comment
+// or an unrelated string -- while a template literal's `${...}` interpolation is left as live code in
+// `maskedLine` (recursively subject to these same comment/string/nested-template rules), since it actually
+// executes and a `require(...)`/`import(...)` written there is exactly as real as one at top level. Quote
+// characters are preserved (as a canonical `"`) so a real specifier's own quoted string is still recognized as
+// a string; `stringLiterals[i]` holds that placeholder's real content (escape sequences left as-is) for
+// resolving an extracted specifier back to its actual text. `state` is mutated in place so a block comment or a
+// template literal left open (whether mid-text or mid-interpolation) at the end of this line keeps masking
+// subsequent lines from the caller until it actually closes -- single/double-quoted strings and `//` comments
+// never legitimately span multiple lines, so those remain scoped to the current line only.
+function maskCommentsAndStrings(line: string, state: CommentStringMaskState): {maskedLine: string; stringLiterals: string[]} {
+    const stringLiterals: string[] = [];
+    let maskedLine = "";
+    let i = 0;
+
+    if (state.inBlockComment) {
+        const end = line.indexOf("*/");
+        if (end === -1) {
+            return {maskedLine, stringLiterals};
+        }
+        state.inBlockComment = false;
+        i = end + 2;
+    }
+
+    // Whether the very first template-text chunk consumed below is a continuation of a literal that was
+    // already open (mid-text) when this line started -- if so, the line break that separated it from the
+    // previous line's content is itself part of the literal's text and must be preserved when the chunk is
+    // finally flushed to a placeholder.
+    const topFrameAtEntry = state.templateStack[state.templateStack.length - 1];
+    let isFirstChunkContinuingAcrossLines = topFrameAtEntry !== undefined && !topFrameAtEntry.inExpression;
+
+    while (i < line.length) {
+        const topFrame: TemplateLiteralFrame | undefined = state.templateStack[state.templateStack.length - 1];
+
+        if (topFrame !== undefined && !topFrame.inExpression) {
+            const {content, nextIndex, terminator} = consumeTemplateLiteralTextChunk(line, i);
+            topFrame.literalContent += isFirstChunkContinuingAcrossLines ? `\n${content}` : content;
+            isFirstChunkContinuingAcrossLines = false;
+            i = nextIndex;
+            if (terminator === "eol") {
+                return {maskedLine, stringLiterals};
+            }
+            stringLiterals.push(topFrame.literalContent);
+            maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
+            topFrame.literalContent = "";
+            if (terminator === "expression") {
+                topFrame.inExpression = true;
+                topFrame.braceDepth = 0;
+            } else {
+                state.templateStack.pop();
+            }
+            continue;
+        }
+
+        const ch = line[i];
+        const next = line[i + 1];
+        if (ch === "/" && next === "/") {
+            break;
+        }
+        if (ch === "/" && next === "*") {
+            const end = line.indexOf("*/", i + 2);
+            if (end === -1) {
+                state.inBlockComment = true;
+                break;
+            }
+            i = end + 2;
+            continue;
+        }
+        if (ch === "`") {
+            state.templateStack.push({inExpression: false, braceDepth: 0, literalContent: ""});
+            i += 1;
+            continue;
+        }
+        if (topFrame !== undefined && topFrame.inExpression && ch === "{") {
+            topFrame.braceDepth += 1;
+            maskedLine += ch;
+            i += 1;
+            continue;
+        }
+        if (topFrame !== undefined && topFrame.inExpression && ch === "}") {
+            if (topFrame.braceDepth === 0) {
+                topFrame.inExpression = false;
+                i += 1;
+                continue;
+            }
+            topFrame.braceDepth -= 1;
+            maskedLine += ch;
+            i += 1;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            const quote = ch;
+            let content = "";
+            let j = i + 1;
+            while (j < line.length && line[j] !== quote) {
+                if (line[j] === "\\" && j + 1 < line.length) {
+                    content += line[j] + line[j + 1];
+                    j += 2;
+                    continue;
+                }
+                content += line[j];
+                j += 1;
+            }
+            stringLiterals.push(content);
+            maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
+            i = j + 1;
+            continue;
+        }
+        maskedLine += ch;
+        i += 1;
+    }
+    return {maskedLine, stringLiterals};
+}
+
+// Extracts every real module specifier on a masked line -- i.e. the argument of an import/export-from/require,
+// resolved back from its placeholder to the string literal's real content.
+function extractModuleSpecifiers(maskedLine: string, stringLiterals: string[]): string[] {
+    const specifiers: string[] = [];
+    for (const pattern of MODULE_SPECIFIER_PATTERNS) {
+        pattern.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(maskedLine)) !== null) {
+            const placeholderMatch = STRING_PLACEHOLDER_PATTERN.exec(match[1]);
+            if (placeholderMatch !== null) {
+                specifiers.push(stringLiterals[Number(placeholderMatch[1])]);
+            }
+        }
+    }
+    return specifiers;
+}
+
+function listFilesRecursively(rootPath: string): string[] {
+    const results: string[] = [];
+    const stack = [rootPath];
+    while (stack.length > 0) {
+        const current = stack.pop() as string;
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(current, {withFileTypes: true});
+        } catch {
+            continue;
+        }
+        for (const entry of entries) {
+            const entryPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                if (!SKIPPED_DIRECTORY_NAMES.has(entry.name)) {
+                    stack.push(entryPath);
+                }
+                continue;
+            }
+            if (entry.isFile() && SCANNABLE_EXTENSIONS.has(path.extname(entry.name))) {
+                results.push(entryPath);
+            }
+        }
+    }
+    return results;
+}
+
+// Whether a raw quoted specifier (e.g. "node:fs", "fs/promises", "fs-extra") names a Node built-in module --
+// strips an optional leading "node:", then compares only the specifier's own first path segment against
+// NODE_BUILTIN_MODULES, so a submodule import ("fs/promises", "stream/web") is still caught while a
+// merely-similarly-named npm package ("fs-extra", "path-to-regexp") is never mistaken for the builtin itself
+// (an npm package name may contain a "/" for a scoped package like "@scope/pkg", but "@scope" is never a
+// NODE_BUILTIN_MODULES entry, so it's correctly never matched either).
+function blockingBuiltinModuleOf(rawSpecifier: string): string | undefined {
+    const withoutNodePrefix = rawSpecifier.startsWith("node:") ? rawSpecifier.slice("node:".length) : rawSpecifier;
+    const base = withoutNodePrefix.split("/")[0];
+    return NODE_BUILTIN_MODULES.has(base) ? base : undefined;
+}
+
+// Statically scans every source file under `rootPath` (excluding "node_modules"/".git") for an import/require
+// of a Node.js built-in module -- a plain regex over import/require/export-from specifiers, deliberately not a
+// real JS/TS parser: good enough to *name* a blocker for a human to review (see assessWasmPackagingPreflight's
+// own doc comment for why this preflight is advisory, never a compiler), never a claim that the absence of a
+// match means the package is actually WASM-portable -- a builtin reached only through a re-exported wrapper,
+// a dynamically constructed specifier, or a transitive dependency is invisible to this scan.
+export function scanForBlockingNodeApiUsage(rootPath: string): WasmPackagingBlockingApiUsage[] {
+    const usages: WasmPackagingBlockingApiUsage[] = [];
+
+    for (const filePath of listFilesRecursively(rootPath)) {
+        const contents = fs.readFileSync(filePath, "utf-8");
+        const maskState = createCommentStringMaskState();
+        contents.split("\n").forEach((line, index) => {
+            const {maskedLine, stringLiterals} = maskCommentsAndStrings(line, maskState);
+            if (!IMPORT_OR_REQUIRE_KEYWORD_PATTERN.test(maskedLine)) {
+                return;
+            }
+            for (const specifier of extractModuleSpecifiers(maskedLine, stringLiterals)) {
+                const blockingModule = blockingBuiltinModuleOf(specifier);
+                if (blockingModule !== undefined) {
+                    usages.push({module: blockingModule, filePath: path.relative(rootPath, filePath), line: index + 1});
+                }
+            }
+        });
+    }
+
+    return usages;
+}

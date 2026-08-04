@@ -7,6 +7,7 @@ import {
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
+    WASM_MANIFEST_READ_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 
@@ -35,6 +36,19 @@ export const STAKE_ENGINE_DIFF_OPERATION: PokieOperation = "stakeEngine.diff";
 export const PAR_IMPORT_OPERATION: PokieOperation = "par.import";
 export const PAR_EXPORT_OPERATION: PokieOperation = "par.export";
 export const WASM_EXPORT_OPERATION: PokieOperation = "wasm.export";
+// Reads back a resolved "wasm" project's own PokieWasmComponentManifest (see readWasmComponentManifest) —
+// requires WASM_MANIFEST_READ_CAPABILITY, never RUNTIME_EXECUTE_CAPABILITY: POKIE has no WASM execution
+// backend, so this is metadata-only, the same "resolve read-only" boundary WasmProjectTargetAdapter itself
+// enforces at resolution time.
+export const WASM_INSPECT_OPERATION: PokieOperation = "wasm.inspect";
+// Statically assesses a "tsPackage" project's own source for Node built-in API usage/declared dependencies
+// that would block a hypothetical WASM build (see assessWasmPackagingPreflight) — requires
+// RUNTIME_EXECUTE_CAPABILITY, the same capability sim/replay/serve require, since only a "tsPackage" project
+// is a real, already-loadable source directory this preflight can scan; every other ProjectType has no
+// comparable source tree. Deliberately not gated on WASM_EXPORT_CAPABILITY (which nothing grants): this
+// preflight exists to assess a package *before* any WASM build capability could ever be granted to it, not to
+// gate on a capability that would make the preflight itself unreachable.
+export const WASM_PACKAGING_PREFLIGHT_OPERATION: PokieOperation = "wasm.packagingPreflight";
 // The outcome-source-driven counterparts to INSPECT/SIM/SERVE/REPLAY_OPERATION above — deliberately separate
 // operation ids, not a reuse of those, since they're satisfied a different way (a canonical outcome-source
 // reader/selector, never loadPokieGame) and by a different capability (OUTCOME_SOURCE_READ_CAPABILITY/
@@ -88,6 +102,8 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [PAR_IMPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [PAR_EXPORT_OPERATION]: PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     [WASM_EXPORT_OPERATION]: WASM_EXPORT_CAPABILITY,
+    [WASM_INSPECT_OPERATION]: WASM_MANIFEST_READ_CAPABILITY,
+    [WASM_PACKAGING_PREFLIGHT_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [OUTCOME_SOURCE_INSPECT_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
     [OUTCOME_SOURCE_ANALYZE_OPERATION]: OUTCOME_SOURCE_READ_CAPABILITY,
     [OUTCOME_SOURCE_SAMPLE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,

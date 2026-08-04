@@ -180,6 +180,14 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     identity-frozen registration) and one fully working local-filesystem example target,
     `createLocalJsonExternalDeploymentTarget` (atomic delivery, deterministic path-safe file naming). Ships no
     private RGS integration; implement the contracts directly for a real target.
+28. **[WASM Compatibility Boundary](wasm-compatibility-boundary.md)** — `PokieWasmComponentManifest`, the
+    versioned metadata contract a WASM component built against POKIE declares (session/play/state serialization
+    format ids, host RNG/services bindings, capability discovery), `PokieWasmComponentManifestValidator`/
+    `assessWasmComponentCompatibility` (shape and contract-version compatibility), `WasmProjectTargetAdapter`
+    (resolving a compatible `.wasm` + sidecar manifest as a read-only `"wasm"` `PokieProject`), and
+    `assessWasmPackagingPreflight` (an advisory scan naming a `tsPackage` project's own Node built-in API usage
+    and declared dependencies before anyone even considers a WASM build). POKIE has no WASM execution backend
+    and no package-to-WASM compiler — this module defines the compatibility boundary only.
 
 ## Core concepts at a glance
 
