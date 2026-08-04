@@ -1015,6 +1015,26 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
+## `pokie outcomesource inspect <path>` / `pokie outcomesource sample <path> --mode <modeName>`
+
+Operates directly on a resolved outcome-source project — an `outcomelibrary build` bundle or a `stakeengine
+export` directory — through its own canonical reader/selector, never `loadPokieGame` and never a re-derived
+game-model calculation.
+
+```
+pokie outcomesource inspect bundle
+pokie outcomesource sample bundle --mode base
+pokie outcomesource sample bundle --mode base --seed demo-seed
+```
+
+`inspect` prints the source's own kind/streaming/limitations plus, for a structurally valid source, an exact
+per-mode analysis (every outcome's own weight, enumerated exactly — no simulation). `sample` draws exactly one
+outcome from a native outcome library's own mode through the same selector/session/server path live and
+pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index) — `--seed <string>` makes
+the draw reproducible (`SeededWeightedOutcomeRandomSource`), omitted uses a cryptographically secure source. A
+Stake Engine export has no such draw contract, so `sample` against one reports the same missing-capability
+diagnostic every other unsupported project operation does, rather than attempting to run it.
+
 ## `pokie certification build <bundleDir> <config.json>`
 
 Builds a canonical [Certification/Evidence Bundle](certification-evidence-bundle.md) on top of an already-built

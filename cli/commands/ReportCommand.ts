@@ -4,7 +4,6 @@ import {
     MarkdownSimulationReportRenderer,
     OutcomeSourceProjectAnalyzer,
     OutcomeSourceProjectAnalyzing,
-    OutcomeSourceProjectReport,
     ProjectResolving,
     ProjectTargetResolver,
     SimulationReport,
@@ -14,6 +13,7 @@ import {
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
 type ReportFormat = "markdown" | "html";
 
@@ -196,7 +196,7 @@ export class ReportCommand implements CliCommandHandling {
         if (project.type === "outcomeLibrary" || project.type === "stakeAdapter") {
             try {
                 const report = await this.outcomeSourceAnalyzer.analyze(project);
-                return {rendered: this.renderOutcomeSourceReport(reportPath, report)};
+                return {rendered: renderOutcomeSourceReport(reportPath, report)};
             } catch {
                 return {error: fallbackError};
             }
@@ -209,40 +209,6 @@ export class ReportCommand implements CliCommandHandling {
                     `run that against this project first, then point "pokie report" at its output.`,
             ),
         };
-    }
-
-    // A native/Stake outcome source has no SimulationReport to hand to this.renderers -- its own descriptor
-    // (kind/streaming/limitations) and per-mode exact analysis are printed directly instead. "issues" wins
-    // over "modes" whenever this.outcomeSourceAnalyzer found a structural problem (see
-    // OutcomeSourceProjectReport's own doc comment): "modes" is always empty in that case, so there is never
-    // an exact analysis to print alongside a malformed source's own diagnostics.
-    private renderOutcomeSourceReport(reportPath: string, report: OutcomeSourceProjectReport): string {
-        const lines: string[] = [
-            `"${reportPath}" is a "${report.descriptor.kind}" canonical outcome source (streaming: ${report.descriptor.streaming}).`,
-            ...report.descriptor.limitations.map((limitation) => `  limitation: ${limitation}`),
-        ];
-
-        if (report.issues.length > 0) {
-            lines.push("", `${report.issues.length} issue(s) found while reading it:`);
-            for (const issue of report.issues) {
-                lines.push(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
-            }
-        }
-
-        if (report.modes.length === 0) {
-            return lines.join("\n");
-        }
-
-        lines.push("", "Exact analysis (no simulation -- every outcome's own weight, enumerated exactly):");
-        for (const mode of report.modes) {
-            lines.push(
-                `  mode "${mode.modeName}": rtp ${(mode.analysis.rtp * 100).toFixed(2)}%, ` +
-                    `hit frequency ${(mode.analysis.hitFrequency * 100).toFixed(2)}%, ` +
-                    `standard deviation ${mode.analysis.standardDeviation.toFixed(4)}`,
-            );
-        }
-
-        return lines.join("\n");
     }
 
     private isSimulationReport(value: unknown): value is SimulationReport {

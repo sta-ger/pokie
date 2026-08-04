@@ -14,6 +14,7 @@ import {InitCommand} from "./commands/InitCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
 import {NameCommand} from "./commands/NameCommand.js";
 import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
+import {OutcomeSourceCommand} from "./commands/OutcomeSourceCommand.js";
 import {ParCommand} from "./commands/ParCommand.js";
 import {ReelCommand} from "./commands/ReelCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
@@ -67,6 +68,7 @@ function run(): Promise<number> {
         new InspectCommand(),
         new NameCommand(),
         new OutcomeLibraryCommand(readOwnVersion()),
+        new OutcomeSourceCommand(),
         new ParCommand(readOwnVersion()),
         new ReelCommand(),
         new ReplayCommand(undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), REPLAY_OPERATION)),
