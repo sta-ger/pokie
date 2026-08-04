@@ -12,6 +12,8 @@ import {
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     SIM_OPERATION,
     WASM_EXPORT_OPERATION,
+    WASM_INSPECT_OPERATION,
+    WASM_PACKAGING_PREFLIGHT_OPERATION,
 } from "../../src/project/PokieOperation.js";
 import type {PokieProject} from "../../src/project/PokieProject.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
@@ -130,6 +132,32 @@ describe("describeUnsupportedProjectOperation", () => {
             missingCapability: "outcomeSource.read",
             alternatives: ["outcomeLibrary", "stakeAdapter"],
             message: expect.stringContaining("outcomeLibrary"),
+        });
+    });
+
+    it("supports wasm.inspect only for a wasm project, never via runtime.execute or wasm.export", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("wasm"), WASM_INSPECT_OPERATION)).toBeUndefined();
+
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("tsPackage"), WASM_INSPECT_OPERATION);
+        expect(diagnostic).toEqual({
+            detectedType: "tsPackage",
+            operation: WASM_INSPECT_OPERATION,
+            missingCapability: "wasm.manifest.read",
+            alternatives: ["wasm"],
+            message: expect.stringContaining("wasm"),
+        });
+    });
+
+    it("supports wasm.packagingPreflight only for a tsPackage project, never a wasm project", () => {
+        expect(describeUnsupportedProjectOperation(projectOf("tsPackage"), WASM_PACKAGING_PREFLIGHT_OPERATION)).toBeUndefined();
+
+        const diagnostic = describeUnsupportedProjectOperation(projectOf("wasm"), WASM_PACKAGING_PREFLIGHT_OPERATION);
+        expect(diagnostic).toEqual({
+            detectedType: "wasm",
+            operation: WASM_PACKAGING_PREFLIGHT_OPERATION,
+            missingCapability: "runtime.execute",
+            alternatives: ["tsPackage"],
+            message: expect.stringContaining("tsPackage"),
         });
     });
 

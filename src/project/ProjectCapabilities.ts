@@ -6,6 +6,7 @@ import {
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
+    WASM_MANIFEST_READ_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
 import type {ProjectType} from "./ProjectType.js";
@@ -17,10 +18,13 @@ import type {ProjectType} from "./ProjectType.js";
 export type ProjectCapabilities = readonly ProjectCapability[];
 
 // The one place that decides which ProjectCapability each ProjectType grants — every other file in this
-// module (a future ProjectResolving implementation stamping a resolved PokieProject,
-// describeUnsupportedProjectOperation when it looks for an alternative type) reads this map rather than
-// re-deciding "does this type support that capability" independently. "wasm" deliberately maps to an empty
-// array — see ProjectType.ts's own doc comment on that entry.
+// module (ProjectTargetResolver stamping a resolved PokieProject, describeUnsupportedProjectOperation when it
+// looks for an alternative type) reads this map rather than re-deciding "does this type support that
+// capability" independently. "wasm" maps to WASM_MANIFEST_READ_CAPABILITY alone — a resolved "wasm" project
+// (only ever produced by WasmProjectTargetAdapter recognizing a contract-compatible sidecar manifest, see that
+// adapter's own doc comment) can be inspected, never built/exported (WASM_EXPORT_CAPABILITY, still granted to
+// nothing today) or loaded/executed (RUNTIME_EXECUTE_CAPABILITY) — see ProjectType.ts's own doc comment on
+// that entry.
 //
 // "outcomeLibrary" and "stakeAdapter" are the two ProjectType values that carry more than one capability today
 // — both already have their own canonical outcome-source reader (OutcomeLibraryBundleReading /
@@ -34,6 +38,6 @@ export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapa
     tsPackage: [RUNTIME_EXECUTE_CAPABILITY],
     outcomeLibrary: [OUTCOME_LIBRARY_READ_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY, OUTCOME_SOURCE_SAMPLE_CAPABILITY],
     stakeAdapter: [STAKE_ADAPTER_EXCHANGE_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY],
-    wasm: [],
+    wasm: [WASM_MANIFEST_READ_CAPABILITY],
     parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY],
 };

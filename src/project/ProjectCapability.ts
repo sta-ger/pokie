@@ -32,6 +32,15 @@ export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: ProjectCapability = "parWorkbook.
 // unsupported with no alternatives, today.
 export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
 
+// A project whose own WASM component manifest (see project/wasm/PokieWasmComponentManifest.ts) can be read
+// back, metadata-only, via readWasmComponentManifest — what "wasm.inspect" requires. Only a "wasm" project
+// grants it, and only once WasmProjectTargetAdapter has already confirmed the manifest is contract-compatible
+// at resolution time (see that adapter's own doc comment). Deliberately distinct from WASM_EXPORT_CAPABILITY
+// above (which nothing grants) and from RUNTIME_EXECUTE_CAPABILITY: POKIE has no WASM execution backend, so a
+// resolved "wasm" project can be inspected — never built, loaded, run, sim'd, replayed, or served (see
+// docs/wasm-compatibility-boundary.md).
+export const WASM_MANIFEST_READ_CAPABILITY: ProjectCapability = "wasm.manifest.read";
+
 // A project whose own pre-computed outcomes can be inspected and exactly analyzed straight off disk, via its
 // own canonical outcome-source reader — never by loading or executing a PokieGame. What
 // "outcomeSource.inspect" and "outcomeSource.analyze" require. Granted to both "outcomeLibrary" (read via

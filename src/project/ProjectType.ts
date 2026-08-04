@@ -15,10 +15,14 @@ export type ProjectType =
     // A Stake Engine export directory — "pokie stakeengine export"'s own output (see
     // stakeengine/isRecognizedStakeEngineExportDirectory.ts).
     | "stakeAdapter"
-    // A WASM build target. Reserved for a future export target: as of this writing no ProjectCapability is
-    // granted to "wasm" (see ProjectCapabilities.ts), so every operation against a "wasm" project is
-    // unsupported today by design, not by omission — this is what exercises the "no alternatives" branch of
-    // an UnsupportedProjectOperationDiagnostic.
+    // A WASM component build target: a ".wasm" file paired with a sidecar PokieWasmComponentManifest
+    // WasmProjectTargetAdapter recognizes as contract-compatible (see project/wasm/PokieWasmComponentManifest.ts
+    // and docs/wasm-compatibility-boundary.md). Resolves read-only — ProjectCapabilities.ts grants "wasm" only
+    // WASM_MANIFEST_READ_CAPABILITY, never WASM_EXPORT_CAPABILITY (still granted to nothing — no builder
+    // produces a "wasm" artifact) or RUNTIME_EXECUTE_CAPABILITY (POKIE has no WASM execution backend). An
+    // ordinary ".wasm" file with no sidecar manifest, or one whose manifest fails validation/compatibility,
+    // is still not a supported POKIE project — see WasmProjectTargetAdapter's own doc comment for the exact
+    // three-way split.
     | "wasm"
     // A PAR sheet workbook file — "pokie par import"/"pokie par export"'s own .xlsx format (see
     // parsheet/ParSheetImporter.ts / ParSheetExporter.ts).

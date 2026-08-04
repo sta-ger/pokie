@@ -11,26 +11,28 @@ import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "./ProjectTargetUnsupportedError.js";
 import {StakeAdapterProjectTargetAdapter} from "./StakeAdapterProjectTargetAdapter.js";
 import {TsPackageProjectTargetAdapter} from "./TsPackageProjectTargetAdapter.js";
+import {WasmProjectTargetAdapter, wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 
 // The one file extension resolve() explicitly rejects rather than silently reporting undefined for — see its
 // ProjectTargetUnsupportedError usage below.
 const WASM_FILE_EXTENSION = ".wasm";
 
 // The default, fixed set of per-ProjectType adapters ProjectTargetResolver registers when constructed without
-// an explicit list — one per resolvable ProjectType. Deliberately excludes "wasm": recognizing an ordinary
-// .wasm file today would mean trusting its file extension alone (the same shortcut the prototype this module
-// replaces took), and POKIE has no versioned WASM export contract yet (no manifest/signature identifying a
-// .wasm file as its own) to recognize instead — see ProjectType.ts's own "wasm" doc comment. Until that
-// contract exists, an ordinary .wasm file is simply not recognized by any adapter here — but unlike a
-// genuinely unrelated unrecognized path, resolve() special-cases that one extension to throw
-// ProjectTargetUnsupportedError instead of quietly returning `undefined`, so a caller pointing POKIE at a
-// .wasm file learns *why* it was rejected rather than mistaking it for "not a POKIE target at all".
+// an explicit list — one per resolvable ProjectType, including "wasm" via WasmProjectTargetAdapter. That
+// adapter only ever recognizes a ".wasm" file paired with a sidecar PokieWasmComponentManifest it can validate
+// and confirm contract-compatible (see its own doc comment and docs/wasm-compatibility-boundary.md) — an
+// ordinary ".wasm" file with no such sidecar is simply not recognized by it, the same as before this adapter
+// existed. But unlike a genuinely unrelated unrecognized path, resolve() still special-cases that one
+// extension below to throw ProjectTargetUnsupportedError instead of quietly returning `undefined` when no
+// adapter recognized it, so a caller pointing POKIE at a bare ".wasm" file learns *why* it was rejected rather
+// than mistaking it for "not a POKIE target at all".
 const DEFAULT_PROJECT_TARGET_ADAPTERS: readonly ProjectTargetTypeAdapter[] = [
     new TsPackageProjectTargetAdapter(),
     new StakeAdapterProjectTargetAdapter(),
     new OutcomeLibraryProjectTargetAdapter(),
     new BlueprintProjectTargetAdapter(),
     new ParWorkbookProjectTargetAdapter(),
+    new WasmProjectTargetAdapter(),
 ];
 
 type ProjectTargetMatch = {readonly adapter: ProjectTargetTypeAdapter; readonly provenance: string};
@@ -93,9 +95,9 @@ export class ProjectTargetResolver implements ProjectResolving {
         if (matches.length === 0) {
             if (stat.isFile() && path.extname(resolvedPath).toLowerCase() === WASM_FILE_EXTENSION) {
                 throw new ProjectTargetUnsupportedError(
-                    `"${resolvedPath}" is a WASM build target, but POKIE has no versioned WASM export contract yet ` +
-                        `(see the "wasm" ProjectType doc comment) — this is not a supported POKIE project, and does not ` +
-                        `mean WASM execution is supported.`,
+                    `"${resolvedPath}" is a WASM target, but no compatible PokieWasmComponentManifest sidecar was found at ` +
+                        `"${wasmComponentManifestSidecarPath(resolvedPath)}" (see docs/wasm-compatibility-boundary.md) — this ` +
+                        `is not a supported POKIE project, and does not mean WASM execution is supported.`,
                 );
             }
             return undefined;
