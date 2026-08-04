@@ -1,13 +1,6 @@
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import type {
-    GameModelBasics,
-    GameModelPaytableRow,
-    GameModelProjection,
-    GameModelReelGenerationMode,
-    GameModelSection,
-    GameModelSymbol,
-    GameModelWinModel,
-} from "./GameModelProjection.js";
+import {buildGameModelReels} from "./buildGameModelReels.js";
+import type {GameModelBasics, GameModelPaytableRow, GameModelProjection, GameModelSection, GameModelSymbol, GameModelWinModel} from "./GameModelProjection.js";
 
 function available<T>(data: T): GameModelSection<T> {
     return {status: "available", data};
@@ -15,19 +8,6 @@ function available<T>(data: T): GameModelSection<T> {
 
 function unavailable<T>(reason: string): GameModelSection<T> {
     return {status: "unavailable", reason};
-}
-
-function describeReelGenerationMode(blueprint: GameBlueprint): GameModelReelGenerationMode {
-    if (blueprint.reelStrips !== undefined) {
-        return "reelStrips";
-    }
-    if (blueprint.reelStripGeneration !== undefined) {
-        return "reelStripGeneration";
-    }
-    if (blueprint.symbolWeights !== undefined) {
-        return "symbolWeights";
-    }
-    return "default";
 }
 
 // symbolId -> matchCount (string key) -> payout, the exact shape GameBlueprint.paytable is authored in
@@ -91,7 +71,7 @@ export function buildGameModelProjection(blueprint: GameBlueprint | undefined, f
             paylineCount: winModel.type === "lines" ? (blueprint.paylines?.length ?? 0) : undefined,
         }),
         symbols: available(symbols),
-        reels: available({generationMode: describeReelGenerationMode(blueprint)}),
+        reels: available(buildGameModelReels(blueprint)),
         paytable: available(flattenPaytable(blueprint.paytable)),
         betsAndModes: available({
             availableBets: blueprint.availableBets ?? [],

@@ -29,7 +29,8 @@ describe("buildGameModelProjection", () => {
                 {id: "S", isWild: false, isScatter: true},
             ],
         });
-        expect(projection.reels).toEqual({status: "available", data: {generationMode: "default"}});
+        expect(projection.reels.status).toEqual("available");
+        expect(projection.reels.status === "available" && projection.reels.data.generationMode).toEqual("default");
         expect(projection.paytable).toEqual({
             status: "available",
             data: [
@@ -42,14 +43,17 @@ describe("buildGameModelProjection", () => {
     });
 
     it("reports the reel generation mode from whichever of reelStrips/reelStripGeneration/symbolWeights is actually set", () => {
-        expect(buildGameModelProjection({...BASE_BLUEPRINT, reelStrips: [["A"], ["A"], ["A"]]}).reels).toEqual({
-            status: "available",
-            data: {generationMode: "reelStrips"},
-        });
-        expect(buildGameModelProjection({...BASE_BLUEPRINT, symbolWeights: {A: 1}}).reels).toEqual({
-            status: "available",
-            data: {generationMode: "symbolWeights"},
-        });
+        // The reels section's own full Game window/Full strips/Analysis/sample content -- for every
+        // generation mode -- is buildGameModelReels' own concern, exercised in depth by
+        // tests/project/buildGameModelReels.test.ts; this just confirms buildGameModelProjection wires
+        // its result straight through as `reels`, never re-deriving the generation mode itself.
+        const reelStripsReels = buildGameModelProjection({...BASE_BLUEPRINT, reelStrips: [["A"], ["A"], ["A"]]}).reels;
+        expect(reelStripsReels.status).toEqual("available");
+        expect(reelStripsReels.status === "available" && reelStripsReels.data.generationMode).toEqual("reelStrips");
+
+        const symbolWeightsReels = buildGameModelProjection({...BASE_BLUEPRINT, symbolWeights: {A: 1}}).reels;
+        expect(symbolWeightsReels.status).toEqual("available");
+        expect(symbolWeightsReels.status === "available" && symbolWeightsReels.data.generationMode).toEqual("symbolWeights");
     });
 
     it("omits paylineCount for a non-\"lines\" win model instead of reporting a possibly-misleading 0", () => {

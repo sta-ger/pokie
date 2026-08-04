@@ -73,7 +73,39 @@ export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
 export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
 
-export type GameModelReels = {generationMode: GameModelReelGenerationMode};
+export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
+
+export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]};
+
+export type GameModelReelStripPosition = {
+    index: number;
+    symbolId: string;
+    isWild: boolean;
+    isScatter: boolean;
+    locked: boolean;
+    stackSize: number;
+};
+
+export type GameModelResolvedReel = {
+    reelIndex: number;
+    source: "literal" | "generated" | "sample";
+    positions: GameModelReelStripPosition[];
+    analysis: ReelStripAnalysis;
+    generationDiagnostics?: ReelStripGenerationDiagnostic[];
+};
+
+export type GameModelUnresolvedReel = {reelIndex: number; source: "generated"; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
+
+export type GameModelReel = GameModelResolvedReel | GameModelUnresolvedReel;
+
+export type GameModelSharedWeightsSample = {weights: Record<string, number>; seed: number; sampleLength: number; conversion: ReelStripSymbolWeightsConversionDiagnostic};
+
+export type GameModelReels = {
+    generationMode: GameModelReelGenerationMode;
+    gameWindow: GameModelGameWindow;
+    reels: GameModelReel[];
+    sharedWeightsSample?: GameModelSharedWeightsSample;
+};
 
 export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
 
@@ -256,6 +288,14 @@ export type ReelStripGenerationDiagnostic = {
     accepted: boolean;
     violations: ReelStripConstraintViolation[];
     score?: number;
+};
+
+export type ReelStripSymbolWeightsConversionDiagnostic = {
+    weights: Record<string, number>;
+    counts: Record<string, number>;
+    targetProportions: Record<string, number>;
+    actualProportions: Record<string, number>;
+    deviations: Record<string, number>;
 };
 
 export type ReelStripAnalysis = {

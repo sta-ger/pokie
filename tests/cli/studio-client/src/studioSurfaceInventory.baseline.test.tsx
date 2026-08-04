@@ -196,7 +196,7 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
                     basics: {status: "available", data: {id: "my-slot", name: "My Slot", version: "1.0.0"}},
                     layout: {status: "available", data: {reels: 3, rows: 3, winModel: {type: "lines"}, paylineCount: 0}},
                     symbols: {status: "available", data: [{id: "A", isWild: false, isScatter: false}]},
-                    reels: {status: "available", data: {generationMode: "default"}},
+                    reels: {status: "available", data: {generationMode: "default", gameWindow: {reels: 0, rows: 0, wrapsAround: true, grid: []}, reels: []}},
                     paytable: {status: "available", data: []},
                     betsAndModes: {status: "available", data: {availableBets: [], betModes: []}},
                     mechanics: {status: "available", data: {}},
