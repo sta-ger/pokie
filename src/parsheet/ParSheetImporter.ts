@@ -117,7 +117,7 @@ export class ParSheetImporter implements ParSheetImporting {
 
         const gridFor = (name: string): SheetGrid => {
             const worksheet = sheetsByName.get(name);
-            return worksheet ? sheetToGrid(worksheet) : [];
+            return worksheet ? sheetToGrid(worksheet, name, issues) : [];
         };
 
         const manifestResult = this.manifestMapper.fromRows(gridFor("Manifest"));
@@ -266,16 +266,41 @@ export class ParSheetImporter implements ParSheetImporting {
     }
 }
 
-function sheetToGrid(worksheet: ExcelJS.Worksheet): SheetGrid {
+// Converts one worksheet to a plain SheetGrid, same as before, but also reports a "parsheet-formula-cell"
+// warning (once per sheet, counting every affected cell) whenever cellValueToPrimitive silently downgraded
+// a formula cell to its last computed result -- see that function's own doc comment for why the formula
+// itself is never imported. One aggregated issue per sheet, not one per cell: a sheet built from a
+// spreadsheet template can easily have dozens of formula cells (e.g. a "Total" column), and a separate
+// issue per cell would drown out every other diagnostic without adding information a reader couldn't
+// already get by opening the workbook itself.
+function sheetToGrid(worksheet: ExcelJS.Worksheet, sheetName: string, issues: ValidationIssue[]): SheetGrid {
     const grid: SheetGrid = [];
+    let formulaCellCount = 0;
     worksheet.eachRow({includeEmpty: true}, (row) => {
         const cells: unknown[] = [];
         row.eachCell({includeEmpty: true}, (cell) => {
+            if (isFormulaCellValue(cell.value)) {
+                formulaCellCount++;
+            }
             cells.push(cellValueToPrimitive(cell.value));
         });
         grid.push(cells);
     });
+    if (formulaCellCount > 0) {
+        issues.push({
+            code: "parsheet-formula-cell",
+            severity: "warning",
+            message:
+                `Sheet "${sheetName}" has ${formulaCellCount} cell(s) containing a formula -- "pokie par import" ` +
+                "never evaluates formulas; each cell's last computed result is imported as a plain value instead.",
+            details: {sheet: sheetName, count: formulaCellCount},
+        });
+    }
     return grid;
+}
+
+function isFormulaCellValue(value: ExcelJS.CellValue): value is ExcelJS.CellFormulaValue | ExcelJS.CellSharedFormulaValue {
+    return typeof value === "object" && value !== null && ("formula" in value || "sharedFormula" in value);
 }
 
 // Reduces exceljs's own CellValue union (formulas, rich text, hyperlinks, errors, dates, ...) down to
@@ -295,7 +320,7 @@ function cellValueToPrimitive(value: ExcelJS.CellValue): unknown {
     if ("richText" in value) {
         return value.richText.map((fragment) => fragment.text).join("");
     }
-    if ("formula" in value || "sharedFormula" in value) {
+    if (isFormulaCellValue(value)) {
         return cellValueToPrimitive(value.result ?? null);
     }
     if ("hyperlink" in value) {

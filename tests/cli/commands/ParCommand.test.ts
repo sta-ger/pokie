@@ -1,4 +1,13 @@
-import {GameBlueprint, ParSheetExporting, ParSheetImporting, ParSheetImportResult, ValidationIssue} from "pokie";
+import {
+    GameBlueprint,
+    ParSheetExporting,
+    ParSheetImporting,
+    ParSheetImportResult,
+    PokieProject,
+    ProjectResolving,
+    PROJECT_TYPE_CAPABILITIES,
+    ValidationIssue,
+} from "pokie";
 import {ParCommand} from "../../../cli/commands/ParCommand.js";
 
 function createStubImporter(result: ParSheetImportResult | Error): ParSheetImporting & {calledWith?: string} {
@@ -206,5 +215,81 @@ describe("ParCommand", () => {
 
             await expect(command.run(["export", "game.json", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
+    });
+});
+
+// Proves "pokie par import" resolves its input via ProjectResolving (see ParCommand's own
+// resolveProject field comment / checkImportTarget doc comment) before ever reaching the real
+// ParSheetImporting -- a recognized-but-wrong-type target reports a capability diagnostic instead of
+// a confusing raw ExcelJS/workbook error, while an unresolved path is completely unaffected.
+describe("ParCommand import resolved-project boundary", () => {
+    let logSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+        logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+    });
+
+    function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
+        const calls: string[] = [];
+        return {
+            calls,
+            resolve(targetPath: string) {
+                calls.push(targetPath);
+                return Promise.resolve(project);
+            },
+        };
+    }
+
+    it('reports a capability diagnostic, without ever calling the importer, for a resolved non-"parWorkbook" target', async () => {
+        const importer = createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []});
+        const project = {
+            type: "tsPackage",
+            rootPath: "/some/existing/package",
+            capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage,
+            provenance: "test fixture",
+        } as PokieProject;
+        const resolveProject = stubProjectResolver(project);
+        const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, undefined, resolveProject);
+
+        await expect(command.run(["import", "/some/existing/package"])).rejects.toThrow(
+            /"par\.import" is not supported for a "tsPackage" project \(missing the "parWorkbook\.exchange" capability\)/,
+        );
+
+        expect(resolveProject.calls).toEqual(["/some/existing/package"]);
+        expect(importer.calledWith).toBeUndefined();
+    });
+
+    it("still reaches the real importer unchanged for a path ProjectResolving doesn't recognize", async () => {
+        const importer = createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []});
+        const writeFile = jest.fn();
+        const resolveProject = stubProjectResolver(undefined);
+        const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, writeFile, resolveProject);
+
+        const exitCode = await command.run(["import", "game.xlsx"]);
+
+        expect(exitCode).toBe(0);
+        expect(resolveProject.calls).toEqual(["game.xlsx"]);
+        expect(importer.calledWith).toBe("game.xlsx");
+    });
+
+    it('reaches the real importer unchanged for a resolved "parWorkbook" target', async () => {
+        const importer = createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []});
+        const project = {
+            type: "parWorkbook",
+            rootPath: "/some/game.par.xlsx",
+            capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+            provenance: "test fixture",
+        } as PokieProject;
+        const resolveProject = stubProjectResolver(project);
+        const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, jest.fn(), resolveProject);
+
+        const exitCode = await command.run(["import", "/some/game.par.xlsx"]);
+
+        expect(exitCode).toBe(0);
+        expect(importer.calledWith).toBe("/some/game.par.xlsx");
     });
 });
