@@ -41,15 +41,76 @@ const MODULE_SPECIFIER_PATTERNS = [
 const STRING_PLACEHOLDER_PREFIX = "POKIE_WASM_PREFLIGHT_STRING_";
 const STRING_PLACEHOLDER_PATTERN = new RegExp(`^${STRING_PLACEHOLDER_PREFIX}(\\d+)$`);
 
+// Carries comment/string context from one line to the next -- a block comment or a template literal that
+// doesn't close on the line it starts must keep masking every subsequent line until it actually closes,
+// rather than each line being scanned as if it started fresh at top-level code.
+interface CommentStringMaskState {
+    inBlockComment: boolean;
+    inTemplateLiteral: boolean;
+    templateLiteralContent: string;
+}
+
+function createCommentStringMaskState(): CommentStringMaskState {
+    return {inBlockComment: false, inTemplateLiteral: false, templateLiteralContent: ""};
+}
+
+// Scans template-literal content starting at `startIndex` in `line`, honoring backslash escapes. When the
+// closing backtick is found on this line, `closingIndex` is the index right after it and scanning can resume
+// as normal code from there; otherwise `closingIndex` is -1 and `content` is the rest of the line, meaning the
+// literal continues onto the next line.
+function consumeTemplateLiteralChunk(line: string, startIndex: number): {content: string; closingIndex: number} {
+    let content = "";
+    let j = startIndex;
+    while (j < line.length && line[j] !== "`") {
+        if (line[j] === "\\" && j + 1 < line.length) {
+            content += line[j] + line[j + 1];
+            j += 2;
+            continue;
+        }
+        content += line[j];
+        j += 1;
+    }
+    if (j >= line.length) {
+        return {content, closingIndex: -1};
+    }
+    return {content, closingIndex: j + 1};
+}
+
 // Strips `//` and `/* */` comments and replaces every string/template literal's content with a placeholder
 // token, so the specifier patterns above can never match import-like text that only exists inside a comment
 // or an unrelated string. Quote characters are preserved (as a canonical `"`) so a real specifier's own
 // quoted string is still recognized as a string; `stringLiterals[i]` holds that placeholder's real content
-// (escape sequences left as-is) for resolving an extracted specifier back to its actual text.
-function maskCommentsAndStrings(line: string): {maskedLine: string; stringLiterals: string[]} {
+// (escape sequences left as-is) for resolving an extracted specifier back to its actual text. `state` is
+// mutated in place so a block comment or template literal left open at the end of this line keeps masking
+// subsequent lines from the caller until it actually closes -- single/double-quoted strings and `//` comments
+// never legitimately span multiple lines, so those remain scoped to the current line only.
+function maskCommentsAndStrings(line: string, state: CommentStringMaskState): {maskedLine: string; stringLiterals: string[]} {
     const stringLiterals: string[] = [];
     let maskedLine = "";
     let i = 0;
+
+    if (state.inBlockComment) {
+        const end = line.indexOf("*/");
+        if (end === -1) {
+            return {maskedLine, stringLiterals};
+        }
+        state.inBlockComment = false;
+        i = end + 2;
+    }
+
+    if (state.inTemplateLiteral) {
+        const {content, closingIndex} = consumeTemplateLiteralChunk(line, i);
+        if (closingIndex === -1) {
+            state.templateLiteralContent += `\n${content}`;
+            return {maskedLine, stringLiterals};
+        }
+        stringLiterals.push(`${state.templateLiteralContent}\n${content}`);
+        maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
+        state.inTemplateLiteral = false;
+        state.templateLiteralContent = "";
+        i = closingIndex;
+    }
+
     while (i < line.length) {
         const ch = line[i];
         const next = line[i + 1];
@@ -59,12 +120,25 @@ function maskCommentsAndStrings(line: string): {maskedLine: string; stringLitera
         if (ch === "/" && next === "*") {
             const end = line.indexOf("*/", i + 2);
             if (end === -1) {
+                state.inBlockComment = true;
                 break;
             }
             i = end + 2;
             continue;
         }
-        if (ch === '"' || ch === "'" || ch === "`") {
+        if (ch === "`") {
+            const {content, closingIndex} = consumeTemplateLiteralChunk(line, i + 1);
+            if (closingIndex === -1) {
+                state.inTemplateLiteral = true;
+                state.templateLiteralContent = content;
+                break;
+            }
+            stringLiterals.push(content);
+            maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
+            i = closingIndex;
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
             const quote = ch;
             let content = "";
             let j = i + 1;
@@ -155,8 +229,9 @@ export function scanForBlockingNodeApiUsage(rootPath: string): WasmPackagingBloc
 
     for (const filePath of listFilesRecursively(rootPath)) {
         const contents = fs.readFileSync(filePath, "utf-8");
+        const maskState = createCommentStringMaskState();
         contents.split("\n").forEach((line, index) => {
-            const {maskedLine, stringLiterals} = maskCommentsAndStrings(line);
+            const {maskedLine, stringLiterals} = maskCommentsAndStrings(line, maskState);
             if (!IMPORT_OR_REQUIRE_KEYWORD_PATTERN.test(maskedLine)) {
                 return;
             }

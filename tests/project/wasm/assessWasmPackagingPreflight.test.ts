@@ -92,6 +92,76 @@ describe("assessWasmPackagingPreflight", () => {
         }
     });
 
+    it("never flags import-like syntax inside a multi-line block comment", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            "/*\n" +
+                ' * import fs from "fs";\n' +
+                ' * const cmd = require("child_process");\n' +
+                " */\n" +
+                "export const noop = () => undefined;\n"
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            expect(result.report.blockingApiUsages).toEqual([]);
+        }
+    });
+
+    it("never flags import-like syntax inside a multi-line template literal", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            "const snippet = `\n" + '  import fs from "fs";\n' + '  const cmd = require("child_process");\n' + "`;\n"
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            expect(result.report.blockingApiUsages).toEqual([]);
+        }
+    });
+
+    it("still detects a real import that starts right after a multi-line block comment closes", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            "/*\n" + " * doc comment mentioning fs but not importing it\n" + " */\n" + 'import fs from "node:fs";\n'
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            const modules = result.report.blockingApiUsages.map((usage) => usage.module);
+            expect(modules).toEqual(["fs"]);
+        }
+    });
+
+    it("still detects a real import that follows a multi-line template literal on a later line", () => {
+        fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
+        fs.writeFileSync(
+            path.join(workDir, "src", "index.ts"),
+            "const snippet = `\n" + "  not an import\n" + "`;\n" + 'import path from "node:path";\n'
+        );
+        fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
+
+        const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
+
+        expect(result.supported).toBe(true);
+        if (result.supported) {
+            const modules = result.report.blockingApiUsages.map((usage) => usage.module);
+            expect(modules).toEqual(["path"]);
+        }
+    });
+
     it("never flags an npm package whose name merely looks like a Node builtin", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(path.join(workDir, "src", "index.ts"), 'import fsExtra from "fs-extra";\n');
