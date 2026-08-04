@@ -2806,7 +2806,13 @@ underlying flows, services, and API calls below are unchanged:
   fields, so this reuses the same JSON-editing affordance the whole-blueprint JSON view already has instead of one
   bespoke widget per type). Switching a reel between Literal/Generated, or a generated reel's own source between
   counts/weights, never discards what was already entered on the side being left — the previous configuration is
-  restored, not reset to defaults, the next time the toggle comes back around. **Resolve reels** calls `POST
+  restored, not reset to defaults, the next time the toggle comes back around. A generated reel's own **Length**
+  can be set automatically to the sum of its currently active counts/weights (**Auto length**); its `constraints`
+  can be started from a handful of built-in **presets** (still just plain `ReelStripConstraintSpec` objects appended
+  to the same JSON array — no separate preset vocabulary `pokie reel generate` wouldn't already understand); and a
+  reel's own draft can be replaced wholesale with another already-configured reel's own entry (**Copy from reel**),
+  as a starting point to tweak from — still just an ordinary draft edit, requiring the usual explicit Apply to
+  commit it. **Resolve reels** calls `POST
   /api/home/blueprints/reel-strip-generation-preview` (see the API section), which runs the exact same
   `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer` `pokie build` itself uses — never a
   reimplementation — and shows every reel's exact resulting symbol sequence, symbol-count analysis, and (for a

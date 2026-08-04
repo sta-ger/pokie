@@ -21,6 +21,13 @@ async function goToReelStripModeler(user: ReturnType<typeof userEvent.setup>): P
 const LITERAL_AB_ANALYSIS = {length: 2, symbolCounts: {A: 1, B: 1}, symbolFrequencies: {A: 0.5, B: 0.5}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {}};
 
 describe("BlueprintEditorPage - Reel Strip Modeler", () => {
+    // jsdom has no layout engine and doesn't implement Element.scrollIntoView -- Mantine's Combobox
+    // (used by the Auto length/Add preset/Copy from reel Select controls below) calls it when
+    // keyboard-navigating options.
+    beforeAll(() => {
+        Element.prototype.scrollIntoView = jest.fn();
+    });
+
     it("edits a literal reel's strip as a local draft, and only Apply commits it to the blueprint", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -635,5 +642,78 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("radio", {name: "Generated"}));
         expect(screen.getByLabelText("Length")).toHaveValue("1");
         expect(screen.getByLabelText("Seed")).toHaveValue("1");
+    });
+
+    it("computes a generated reel's own Length from its active counts/weights via Auto length", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+
+        await user.click(screen.getByRole("radio", {name: "JSON", hidden: true}));
+        const blueprintWithCounts = {
+            manifest: {id: "auto-length", name: "Auto Length", version: "0.1.0"},
+            reels: 1,
+            rows: 3,
+            symbols: [],
+            paytable: {},
+            availableBets: [1],
+            reelStripGeneration: [{type: "generated", length: 1, seed: 1, symbolCounts: {A: 2, B: 3}}],
+        };
+        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(blueprintWithCounts)}});
+        await user.click(screen.getByRole("button", {name: "Apply JSON"}));
+        await user.click(screen.getByRole("radio", {name: "Form", hidden: true}));
+
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        expect(screen.getByLabelText("Length")).toHaveValue("1");
+
+        await user.click(screen.getByRole("button", {name: "Set reel 1 length automatically from its own counts/weights"}));
+        expect(screen.getByLabelText("Length")).toHaveValue("5");
+    });
+
+    it("adds a constraint preset onto a generated reel's constraints array", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+
+        await user.click(screen.getByRole("combobox", {name: "Constraint preset for reel 1"}));
+        await user.keyboard("{ArrowDown}{Enter}");
+        await user.click(screen.getByRole("button", {name: "Add constraint preset to reel 1"}));
+
+        expect(screen.getByLabelText("Constraints for reel 1")).toHaveValue(JSON.stringify([{type: "maximumConsecutiveOccurrences", maximumConsecutive: 1}], null, 2));
+    });
+
+    it("copies another reel's own applied configuration into the current reel's draft via Copy from reel", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await user.clear(screen.getByLabelText("Length"));
+        await user.type(screen.getByLabelText("Length"), "12");
+        await user.clear(screen.getByLabelText("Seed"));
+        await user.type(screen.getByLabelText("Seed"), "99");
+        await user.tab();
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+
+        await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
+        await user.click(screen.getByRole("button", {name: "Select reel 2"}));
+
+        await user.click(screen.getByRole("combobox", {name: "Copy configuration into reel 2 from reel"}));
+        await user.keyboard("{ArrowDown}{Enter}");
+        await user.click(screen.getByRole("button", {name: "Copy into reel 2"}));
+
+        expect(screen.getByText("Unapplied changes")).toBeInTheDocument();
+        expect(screen.getByRole("radio", {name: "Generated"})).toBeChecked();
+        expect(screen.getByLabelText("Length")).toHaveValue("12");
+        expect(screen.getByLabelText("Seed")).toHaveValue("99");
     });
 });
