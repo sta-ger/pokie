@@ -71,6 +71,15 @@ export const BLUEPRINT_BUILD_CAPABILITY: StudioProjectCapability = "blueprint.bu
 // or BLUEPRINT_BUILD_CAPABILITY as sufficient for those tabs, rather than requiring this one specifically.
 export const RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "runtime.execute";
 
+// The capability a project that already holds a readable, pre-generated outcome-library bundle carries --
+// only a project resolved as "outcomeLibrary" grants it (see PROJECT_TYPE_CAPABILITIES). Unlike
+// BLUEPRINT_BUILD_CAPABILITY/RUNTIME_EXECUTE_CAPABILITY, this alone is never enough to reach the whole
+// Build/Export tab (see RUNTIME_CAPABLE_CAPABILITIES in ProjectDashboardPage.tsx -- there is no in-process
+// build/run to gate the tab's own generic "current project" framing on) -- but ExportDeployTargets.ts still
+// reads it to decide whether a *specific* card that only needs an already-existing canonical outcome
+// library (never one it has to generate itself) applies.
+export const OUTCOME_LIBRARY_READ_CAPABILITY: StudioProjectCapability = "outcomeLibrary.read";
+
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",
     tsPackage: "Package",

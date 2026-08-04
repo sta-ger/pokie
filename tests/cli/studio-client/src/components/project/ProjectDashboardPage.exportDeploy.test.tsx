@@ -13,6 +13,8 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+    // The External Adapter SDK's own local-json-example demo target -- registered by default, but never
+    // shown as a Build/Export card (see ExportDeployTargets.ts's own doc comment).
     "/api/project/deployment/targets": () => ({
         ok: true,
         status: 200,
@@ -33,7 +35,7 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
 }
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
-    it("classifies Outcome libraries and Stake Engine Export as builder cards and the registered local target as a local adapter card, keeping a remote-deployment placeholder", async () => {
+    it("classifies Outcome libraries and Stake Engine Export as builder cards, never surfaces the local-json-example demo target, and falls back to the remote-deployment placeholder when nothing else is registered", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
@@ -46,25 +48,29 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         expect(within(staticExportSection).getByText("Stake Engine Export")).toBeInTheDocument();
 
-        const localAdapterSection = screen.getByText("Local adapter").closest("fieldset") as HTMLElement;
-        expect(await within(localAdapterSection).findByText("External Adapter: local-json-example")).toBeInTheDocument();
+        expect(screen.queryByText("External Adapter: local-json-example")).not.toBeInTheDocument();
 
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
-        expect(within(remoteSection).getByText("Remote deployment (none registered yet)")).toBeInTheDocument();
+        expect(await within(remoteSection).findByText("Remote deployment (none registered yet)")).toBeInTheDocument();
     });
 
-    it("runs the local build right here (no hand-off to the Deployment tab) when a local adapter card's own Build locally is chosen", async () => {
+    it("runs a registered remote adapter target's own compatibility check right here (no hand-off to the Deployment tab), offering Publish once it comes back clean", async () => {
         const user = userEvent.setup();
         const routes = {
             ...BASE_ROUTES,
+            "/api/project/deployment/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [{id: "acme-rgs-v2", version: "0.1.0", requirements: {}, capabilities: []}],
+            }),
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
             "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
             "/api/project/deployment/runs": () => ({
                 ok: true,
                 status: 200,
                 body: {
-                    targetId: "local-json-example",
-                    publish: true,
+                    targetId: "acme-rgs-v2",
+                    publish: false,
                     stages: [],
                     descriptorIssues: [],
                     compatibilityIssues: [],
@@ -72,7 +78,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     generation: {artifacts: [], issues: []},
                     artifactIssues: [],
                     diagnostic: {ok: true, checks: []},
-                    delivery: {delivered: true},
+                    delivery: {delivered: false},
                 },
             }),
         };
@@ -80,16 +86,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await screen.findByText("External Adapter: local-json-example");
-        expect(screen.queryByRole("button", {name: "Configure & publish"})).not.toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Build locally"}));
+        await screen.findByText("External Adapter: acme-rgs-v2");
+        await user.click(screen.getByRole("button", {name: "Check compatibility"}));
 
-        // Runs the same runDeployment(publish: true) pipeline the Deployment tab itself drives, right
+        // Runs the same runDeployment(publish: false) pipeline the Deployment tab itself drives, right
         // here -- never navigating away to a separate Stepper-driven workflow first.
-        expect(await screen.findByText(/Build succeeded and was written to disk\./)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument();
-        expect(screen.getByRole("heading", {name: "A"})).toBeInTheDocument();
+        expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Publish"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Preview artifacts"})).not.toBeInTheDocument();
     });
 
     it("runs the Stake Engine Export right here (no hand-off to the Stake Engine Export tab) once a canonical outcome library is available", async () => {
@@ -172,18 +176,22 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
     });
 
-    it("keeps the legacy /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes deep-link compatible, none of them shown in the nav", async () => {
+    it("redirects the legacy /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes into Build/Export with migration guidance, never mounting their own old workflows", async () => {
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
-        // The only registered target is selected automatically, auto-advancing straight to Configure.
-        expect(await screen.findByRole("button", {name: "Run deployment preflight"})).toBeInTheDocument();
+        await screen.findByRole("heading", {name: "A"});
+        expect(screen.getByText("Deployment has moved into Build/Export")).toBeInTheDocument();
+        expect(await screen.findByText("Outcome library generator")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Deployment"})).not.toBeInTheDocument();
 
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
-        expect(await screen.findByText("Output directory")).toBeInTheDocument();
+        await screen.findByText("Stake Engine Export has moved into Build/Export");
+        expect(screen.queryByText("Output directory")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Stake Engine Export"})).not.toBeInTheDocument();
 
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/outcomeLibraries"]});
-        expect(await screen.findByLabelText("Mode")).toBeInTheDocument();
+        await screen.findByText("Outcome Libraries has moved into Build/Export");
+        expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Analysis"})).not.toBeInTheDocument();
     });
 

@@ -4,7 +4,7 @@ import type {StudioDeploymentTargetSummary, StudioProjectCapability} from "../..
 const BUILDABLE_CAPABILITIES: StudioProjectCapability[] = ["blueprint.build"];
 
 function target(overrides: Partial<StudioDeploymentTargetSummary> = {}): StudioDeploymentTargetSummary {
-    return {id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: [], ...overrides};
+    return {id: "acme-rgs-v2", version: "1.0.0", requirements: {}, capabilities: [], ...overrides};
 }
 
 describe("describeExportDeployTargetCards", () => {
@@ -34,23 +34,19 @@ describe("describeExportDeployTargetCards", () => {
         expect(remoteCards[0].locality).toBe("remote");
     });
 
-    it("classifies the local-json-example registered target as a local adapter, carrying the real descriptor through", () => {
+    it("never describes the External Adapter SDK's own local-json-example demo target as a card, even though it's registered", () => {
         const localTarget = target({id: "local-json-example", version: "2.3.0", capabilities: ["multiMode"]});
         const cards = describeExportDeployTargetCards([localTarget], BUILDABLE_CAPABILITIES);
-        const localCard = cards.find((card) => card.kind === "localAdapter");
-        expect(localCard).toBeDefined();
-        expect(localCard?.deploymentTarget).toBe(localTarget);
-        expect(localCard?.version).toBe("2.3.0");
-        expect(localCard?.locality).toBe("local");
-        expect(localCard?.capabilities).toEqual(["More than one bet mode in a single deployment"]);
+        expect(cards.some((card) => card.id === "local-json-example")).toBe(false);
 
-        // The placeholder is omitted once a real local target exists but no remote one does — only the
-        // group's own real cards should ever be shown.
-        expect(cards.filter((card) => card.kind === "remoteDeployment")).toHaveLength(1);
-        expect(cards.filter((card) => card.kind === "remoteDeployment")[0].id).toBe("remote-deployment-placeholder");
+        // Nothing else is registered, so the remote-deployment group still falls back to its own
+        // placeholder rather than silently disappearing or standing in the demo target's place.
+        const remoteCards = cards.filter((card) => card.kind === "remoteDeployment");
+        expect(remoteCards).toHaveLength(1);
+        expect(remoteCards[0].id).toBe("remote-deployment-placeholder");
     });
 
-    it("classifies any other registered target as remote deployment (a future adapter's extension point), dropping the placeholder", () => {
+    it("classifies any registered (non-demo) target as remote deployment, carrying the real descriptor through and dropping the placeholder", () => {
         const remoteTarget = target({id: "acme-rgs-v2", version: "0.1.0"});
         const cards = describeExportDeployTargetCards([remoteTarget], BUILDABLE_CAPABILITIES);
         const remoteCards = cards.filter((card) => card.kind === "remoteDeployment");
@@ -58,22 +54,31 @@ describe("describeExportDeployTargetCards", () => {
         expect(remoteCards[0].deploymentTarget).toBe(remoteTarget);
         expect(remoteCards[0].locality).toBe("remote");
         expect(remoteCards[0].id).toBe("acme-rgs-v2");
+        expect(remoteCards[0].version).toBe("0.1.0");
     });
 
-    it("describes an empty-requirements local target as having no special requirements", () => {
-        const localTarget = target({requirements: {}});
-        const cards = describeExportDeployTargetCards([localTarget], BUILDABLE_CAPABILITIES);
-        const localCard = cards.find((card) => card.kind === "localAdapter");
-        expect(localCard?.limits).toEqual(["No special requirements -- accepts any compatible outcome library."]);
+    it("classifies a registered target's own optional capabilities and describes an empty-requirements target as having no special requirements", () => {
+        const remoteTarget = target({requirements: {}, capabilities: ["multiMode"]});
+        const cards = describeExportDeployTargetCards([remoteTarget], BUILDABLE_CAPABILITIES);
+        const remoteCard = cards.find((card) => card.kind === "remoteDeployment");
+        expect(remoteCard?.capabilities).toEqual(["More than one bet mode in a single deployment"]);
+        expect(remoteCard?.limits).toEqual(["No special requirements -- accepts any compatible outcome library."]);
     });
 
-    it("returns no cards at all for a project this Studio can neither build nor run, even with registered targets", () => {
-        const cards = describeExportDeployTargetCards([target()], ["outcomeLibrary.read"]);
+    it("returns no cards at all for a project with no capability any builder here needs", () => {
+        const cards = describeExportDeployTargetCards([target()], ["stakeAdapter.exchange"]);
         expect(cards).toEqual([]);
     });
 
     it("includes every group once a project carries runtime.execute even without blueprint.build (e.g. a tsPackage project)", () => {
         const cards = describeExportDeployTargetCards([], ["runtime.execute"]);
         expect(cards.map((card) => card.kind).sort()).toEqual(["outcomeLibrary", "remoteDeployment", "staticExport"].sort());
+    });
+
+    it("includes Static export and adapter cards, but never the outcome-library generator, for a project that can only read an existing canonical outcome library (e.g. an outcomeLibrary project)", () => {
+        const remoteTarget = target({id: "acme-rgs-v2"});
+        const cards = describeExportDeployTargetCards([remoteTarget], ["outcomeLibrary.read"]);
+        expect(cards.map((card) => card.kind).sort()).toEqual(["remoteDeployment", "staticExport"].sort());
+        expect(cards.some((card) => card.kind === "outcomeLibrary")).toBe(false);
     });
 });

@@ -126,22 +126,25 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         // section actually changes from the previous item's) -- Overview/Game Model/Simulation stay
         // ungrouped as the primary happy path; everything from Replay onward shares it. There's no
         // "Validate" section any more (validation is now automatic diagnostics inside Overview -- see
-        // OverviewTab), and Deployment/Stake Engine Export/Analysis (Outcome Libraries) are reachable only
-        // through Build/Export, not as their own top-level entries (their routes still work -- see the
-        // deep-link test below) -- Build/Export is the sole Studio build surface (see ExportDeployTab).
+        // OverviewTab), and Deployment/Stake Engine Export/Analysis (Outcome Libraries) have no top-level
+        // entries at all any more -- their own routes still resolve (see the deep-link test below), but
+        // each one now redirects straight into Build/Export instead of mounting its own old workflow --
+        // Build/Export is the sole Studio build surface (see ExportDeployTab).
         expect(within(nav).getAllByText("Advanced")).toHaveLength(1);
     });
 
-    it("still deep-links to Deployment, Stake Engine Export, and Outcome Libraries even though none of them has its own nav entry", async () => {
+    it("still deep-links to Deployment, Stake Engine Export, and Outcome Libraries even though none of them has its own nav entry -- each now redirects into Build/Export with migration guidance instead of mounting its own old workflow", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
         await screen.findByRole("heading", {name: "My Slot"});
-        expect(screen.getByRole("button", {name: stepperStep("Select target", "Where to publish")})).toBeInTheDocument();
+        expect(screen.getByText("Deployment has moved into Build/Export")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: stepperStep("Select target", "Where to publish")})).not.toBeInTheDocument();
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
         await screen.findByRole("heading", {name: "My Slot"});
-        expect(screen.getByRole("button", {name: stepperStep("Select/import", "Choose a library")})).toBeInTheDocument();
+        expect(screen.getByText("Outcome Libraries has moved into Build/Export")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
     });
 
     it("hides Game Model from the nav for a project this Studio can't edit as a Blueprint", async () => {
@@ -325,18 +328,21 @@ describe("New Blueprint action surface baseline", () => {
     });
 });
 
-// The remaining describe blocks extend this baseline to the 7 "Advanced"-grouped Project Dashboard tabs
-// (Replay/Runtime/Certification/Provably Fair/Deployment/Outcome Libraries/Stake Engine Export), which
-// the Stepper audit table in docs/studio-frontend.md already classifies workflow-by-workflow but never
-// pinned as executable fixtures. Each tab already has its own deep, dedicated workflow test (e.g.
-// ProjectDashboardPage.replayWorkflow.test.tsx) covering gating/transitions/error-recovery in full --
-// this deliberately does not re-test that. It pins the narrower "whole-surface inventory" facts those
-// deep tests never assert as a single list: the complete, ordered Stepper step roster; which path/text
-// fields exist and what (if any) placeholder they show; which actions are disabled at first mount and
-// why; and a representative sample of the raw-error-surface pattern (every tab funnels a caught
-// exception's message straight into the shared, no-wrapping `ErrorState` component -- see
-// docs/studio-phase2-inventory.md for the full, line-cited enumeration of every occurrence across all 7
-// tabs, including the ones not re-demonstrated here as an executable fixture).
+// The remaining describe blocks extend this baseline to the 4 "Advanced"-grouped Project Dashboard tabs
+// that still mount their own workflow (Replay/Runtime/Certification/Provably Fair), which the Stepper
+// audit table in docs/studio-frontend.md already classifies workflow-by-workflow but never pinned as
+// executable fixtures. Deployment/Outcome Libraries/Stake Engine Export used to be three more of these --
+// each now redirects straight into Build/Export instead (see the deep-link test above), so they have no
+// Stepper/path-field/disabled-action surface of their own left to pin here any more; their own dedicated
+// workflow test files were retired for the same reason. Each remaining tab already has its own deep,
+// dedicated workflow test (e.g. ProjectDashboardPage.replayWorkflow.test.tsx) covering gating/transitions/
+// error-recovery in full -- this deliberately does not re-test that. It pins the narrower "whole-surface
+// inventory" facts those deep tests never assert as a single list: the complete, ordered Stepper step
+// roster; which path/text fields exist and what (if any) placeholder they show; which actions are
+// disabled at first mount and why; and a representative sample of the raw-error-surface pattern (every
+// tab funnels a caught exception's message straight into the shared, no-wrapping `ErrorState` component --
+// see docs/studio-phase2-inventory.md for the full, line-cited enumeration of every occurrence, including
+// the ones not re-demonstrated here as an executable fixture).
 
 describe("Advanced tab Stepper inventory baseline", () => {
     // Replay has no single sequential order shared by every source (a live spin has nothing to
@@ -429,55 +435,9 @@ describe("Advanced tab Stepper inventory baseline", () => {
         expect(steps[3]).toBeDisabled(); // Review diagnostics -- gated on a Verify result existing
     });
 
-    it("Deployment: Select target, Configure, Check compatibility, Preview artifacts, Deploy, Review result, in that order", async () => {
-        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        const steps = [
-            screen.getByRole("button", {name: stepperStep("Select target", "Where to publish")}),
-            screen.getByRole("button", {name: stepperStep("Configure", "Modes & libraries")}),
-            screen.getByRole("button", {name: stepperStep("Check compatibility", "Preflight")}),
-            screen.getByRole("button", {name: stepperStep("Preview artifacts", "What would be generated")}),
-            screen.getByRole("button", {name: stepperStep("Deploy", "Publish")}),
-            screen.getByRole("button", {name: stepperStep("Review result", "Outcome")}),
-        ];
-        expectStepsInOrder(steps);
-        // No target selected yet -- every step past "Select target" is gated, including "Configure"
-        // itself (unlike every other Advanced tab's own first content step).
-        expect(steps[1]).toBeDisabled();
-        expect(steps[2]).toBeDisabled();
-        expect(steps[3]).toBeDisabled();
-        expect(steps[4]).toBeDisabled();
-        expect(steps[5]).toBeDisabled();
-    });
-
-    it("Outcome Libraries: Select/import, Validate & analyze, Inspect, Compare or use, in that order", async () => {
-        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        expectStepsInOrder([
-            screen.getByRole("button", {name: stepperStep("Select/import", "Choose a library")}),
-            screen.getByRole("button", {name: stepperStep("Validate & analyze", "Diagnostics")}),
-            screen.getByRole("button", {name: stepperStep("Inspect", "Distribution & features")}),
-            screen.getByRole("button", {name: stepperStep("Compare or use", "Diff & hand-off")}),
-        ]);
-    });
-
-    it("Stake Engine Export: Configure, Preview, Validate diagnostics, Export, Review result, in that order", async () => {
-        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        expectStepsInOrder([
-            screen.getByRole("button", {name: stepperStep("Configure", "Source, modes & output")}),
-            screen.getByRole("button", {name: stepperStep("Preview", "What will be exported")}),
-            screen.getByRole("button", {name: stepperStep("Validate diagnostics", "Preflight & provenance")}),
-            screen.getByRole("button", {name: stepperStep("Export", "Write to disk")}),
-            screen.getByRole("button", {name: stepperStep("Review result", "Manifest & files")}),
-        ]);
-    });
+    // Deployment/Outcome Libraries/Stake Engine Export used to each have their own Stepper pinned here --
+    // all three now redirect straight into Build/Export instead of mounting a Stepper at all (see the
+    // deep-link test above), so there is no Stepper roster left for any of them to pin.
 });
 
 describe("Advanced tab path-field & disabled-action baseline", () => {
@@ -519,65 +479,10 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
         expect(computeButton).not.toBeDisabled();
     });
 
-    it("Deployment's Configure step: Mode name is a disabled Select with an explanatory placeholder until the current build's modes are known, and Outcome library path has no placeholder at all", async () => {
-        const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [target]}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        // A lone target auto-selects and lands straight on Configure -- no artificial Select-target click.
-        // PROJECT_ROUTES' own inspect route never declares `generated`, so the project's own build modes
-        // stay unavailable -- Mode name is a disabled Select (deployment modes only ever come from the
-        // current build, never a hand-typed field), explicit about why via its own placeholder.
-        const modeNameField = await screen.findByRole("combobox", {name: "Mode name"});
-        expect(modeNameField).toBeDisabled();
-        expect(modeNameField).toHaveAttribute("placeholder", "Build modes unavailable");
-        expect(screen.getByLabelText("Outcome library path")).not.toHaveAttribute("placeholder");
-    });
-
-    it("Outcome Libraries' Select/import step defaults to the JSON-file selector kind, and 'Load library' stays disabled until a path is typed", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
-        expect(screen.getByLabelText("Library JSON path")).toHaveAttribute("placeholder", "./outcomes/base.json");
-
-        const loadButton = screen.getByRole("button", {name: "Load library"});
-        expect(loadButton).toBeDisabled();
-        await user.type(screen.getByLabelText("Library JSON path"), "./outcomes/base.json");
-        expect(loadButton).not.toBeDisabled();
-    });
-
-    it("Stake Engine Export's Configure step: outDir is inferable (a real, non-blank 'stakeengine' initial value, not a placeholder) -- Mode name/Source canonical outcome library stay genuinely non-inferable placeholders", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        // [P2-POLISH-04]: outDir's own default output directory is a real code-backed convention (this
-        // tab's own state, mirrored nowhere else) -- it renders as an actual initial *value*, so its
-        // former "./stakeengine" placeholder (structurally unreachable, since the field is never blank)
-        // was removed rather than left as dead/misleading markup. Mode name and the source canonical
-        // outcome library have no such convention anywhere in the CLI (no command derives/writes a
-        // per-mode-name library path -- see docs/studio-phase2-inventory.md's own v5 update) --
-        // genuinely un-inferable, so they correctly keep their illustrative placeholders.
-        const outDirInput = screen.getByLabelText("Output directory") as HTMLInputElement;
-        expect(outDirInput.value).toBe("stakeengine");
-        expect(outDirInput).not.toHaveAttribute("placeholder");
-        expect(screen.getByLabelText("Mode name")).toHaveAttribute("placeholder", "base");
-        expect(screen.getByLabelText("Source: canonical outcome library")).toHaveAttribute("placeholder", "./outcomes/base.json");
-
-        const continueButton = screen.getByRole("button", {name: "Continue to Preview"});
-        expect(continueButton).toBeDisabled();
-        await user.type(screen.getByLabelText("Mode name"), "base");
-        await user.type(screen.getByLabelText("Source: canonical outcome library"), "./outcomes/base.json");
-        expect(continueButton).not.toBeDisabled();
-    });
+    // Deployment's Configure step, Outcome Libraries' Select/import step, and Stake Engine Export's
+    // Configure step used to each have their own path-field/disabled-action baseline here -- all three
+    // routes now redirect into Build/Export before any of those fields ever mount (see the deep-link test
+    // above), so there is nothing left of them to pin.
 });
 
 // Was "raw-error surface baseline" -- pinned the pre-[P2-POLISH-25] behavior where these three fetch
@@ -670,74 +575,10 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent === "bundle directory not found")).toBe(false);
     });
 
-    it("Deployment: a failed deployment preflight call is turned into outcome-library-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const target = {id: "target-1", version: "1.0.0", requirements: {minPokieVersion: "1.0.0"}, capabilities: ["multiMode"]};
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
-            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
-            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [target]}),
-            "/api/project/deployment/runs": () => ({ok: false, status: 500, body: {error: 'Could not read "./outcomes/base.json": ENOENT: no such file or directory'}}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        // A lone target auto-selects and lands straight on Configure -- no artificial Select-target click.
-        // The project's own sole build mode ("base") auto-selects into the row -- deployment modes only
-        // ever come from the current build, never a hand-typed name.
-        await waitFor(() => expect(screen.getByRole("combobox", {name: "Mode name"})).toHaveValue("base"));
-        await user.type(screen.getByLabelText("Outcome library path"), "./outcomes/missing.json");
-        await user.click(screen.getByRole("button", {name: "Run deployment preflight"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "The deployment's outcome library file could not be found. Check the path and try again.")).toBe(
-            true,
-        );
-        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
-    });
-
-    it("Outcome Libraries: a failed Load library call is turned into subject-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/outcome-libraries/select": () => ({ok: false, status: 500, body: {error: "EACCES: permission denied, open '/proj/outcomes/base.json'"}}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        await user.click(await screen.findByRole("button", {name: stepperStep("Select/import", "Choose a library")}));
-        await user.type(screen.getByLabelText("Library JSON path"), "./outcomes/base.json");
-        await user.click(screen.getByRole("button", {name: "Load library"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "The outcome library isn't readable. Check its permissions and try again.")).toBe(true);
-        expect(alerts.some((alert) => alert.textContent?.includes("EACCES"))).toBe(false);
-    });
-
-    it("Stake Engine Export: a failed Validate diagnostics call is turned into subject-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/stakeengine/validate": () => ({ok: false, status: 500, body: {error: 'mode "base": Could not read "./outcomes/base.json": ENOENT: no such file or directory'}}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/stakeEngineExport"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        await user.type(screen.getByLabelText("Mode name"), "base");
-        await user.type(screen.getByLabelText("Source: canonical outcome library"), "./outcomes/missing.json");
-        await user.click(screen.getByRole("button", {name: "Continue to Preview"}));
-        await user.click(screen.getByRole("button", {name: "Continue to Validate diagnostics"}));
-        await user.click(screen.getByRole("button", {name: "Run diagnostics"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(
-            alerts.some(
-                (alert) => alert.textContent === "The Stake Engine export's outcome library could not be found. Check the path and try again.",
-            ),
-        ).toBe(true);
-        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
-    });
+    // Deployment's own "Run deployment preflight", Outcome Libraries' own "Load library", and Stake
+    // Engine Export's own "Run diagnostics" path-action-error baselines used to live here -- all three
+    // routes now redirect into Build/Export before any of those actions ever mount (see the deep-link
+    // test above), so there is nothing left of them to pin.
 
     it("Provably Fair: a failed Compute commitments call is turned into bundle-directory-specific inline remediation, never the raw server error text", async () => {
         const user = userEvent.setup();

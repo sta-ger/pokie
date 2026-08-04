@@ -43,19 +43,17 @@ import {useRuntimeManager} from "../../hooks/useRuntimeManager";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {NextStepCallout} from "../common/NextStepCallout";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
-import {DeploymentTab} from "./DeploymentTab";
 import {ExportDeployTab} from "./ExportDeployTab";
 import {MechanicsEditorTab} from "./MechanicsEditorTab";
-import {OutcomeLibrariesTab} from "./OutcomeLibrariesTab";
 import {OverviewTab} from "./OverviewTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
-import {StakeEngineExportTab} from "./StakeEngineExportTab";
 
 export type ProjectTab =
     | "overview"
@@ -92,13 +90,14 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // visually separates them from the primary Overview -> Game Model -> Simulation -> Analysis flow --
 // everything's still one click away, just not presented as equal-weight to it.
 //
-// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface in front of
-// "deployment"/"stakeEngineExport"/"outcomeLibraries" (see ExportDeployTargets.ts's own doc comment) --
-// it never replaces any of those three, it lists the targets/builders they each own and hands off to
-// the applicable one. All three routes are deliberately kept in ALL_PROJECT_TABS, unchanged, so an
-// existing deep link to /project/deployment, /project/stakeEngineExport, or /project/outcomeLibraries
-// keeps working exactly as before -- they're simply no longer their own top-level nav entries (see
-// visibleProjectTabs), Build/Export is.
+// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is now the sole Studio build surface --
+// "deployment"/"stakeEngineExport"/"outcomeLibraries" no longer mount their own old Stepper-driven
+// workflow at all (see LEGACY_TAB_MIGRATION_COPY and the render tree below): each one instead redirects
+// straight into Build/Export, with a NextStepCallout explaining what moved. All three routes are
+// deliberately kept in ALL_PROJECT_TABS, unchanged, so an existing deep link to /project/deployment,
+// /project/stakeEngineExport, or /project/outcomeLibraries keeps resolving to a real, supported tab --
+// they're simply no longer their own top-level nav entries (see visibleProjectTabs) or their own mounted
+// workflow, Build/Export is both.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
     {value: "mechanicsEditor", label: "Game Model", requiredCapabilities: [BLUEPRINT_BUILD_CAPABILITY]},
@@ -155,14 +154,39 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView, ga
 // whose game model isn't introspectable at all has nothing for Game Model to show but an "unsupported"
 // diagnostic, so it isn't offered as a destination at all; same for every runtime-dependent section
 // against a project that isn't actually runnable). "deployment"/"stakeEngineExport"/"outcomeLibraries"
-// are deliberately never in this list (see ALL_PROJECT_TABS' own doc comment) -- all three stay reachable
-// through Build/Export (deployment/stakeEngineExport by picking a card, outcomeLibraries via its own
-// "Outcome libraries" card), just not as their own calm-workspace entries.
+// are deliberately never in this list (see ALL_PROJECT_TABS' own doc comment) -- all three now redirect
+// straight into Build/Export (see LEGACY_TAB_MIGRATION_COPY below), so they have nothing of their own
+// left to offer as a nav destination.
 function visibleProjectTabs(header: ProjectHeaderView, gameModelViewable: boolean): NavTabItem<ProjectTab>[] {
     return ALL_PROJECT_TABS.filter(
         (tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && tab.value !== "outcomeLibraries" && isTabSupported(tab, header, gameModelViewable),
     );
 }
+
+// The migration guidance shown instead of ever mounting Deployment/Stake Engine Export/Outcome Libraries'
+// own old Stepper-driven workflow again (see the render tree below) -- keyed by ProjectTab so a deep link
+// to any of the three legacy routes still resolves to a real, honest explanation of where its builders
+// went, rather than a blank/removed section. Every builder these three used to own is now one of
+// Build/Export's own cards (see ExportDeployTargets.ts) except Outcome Libraries' own select-an-existing-
+// library/inspect/compare tools, which have no Build/Export equivalent yet -- only generating a fresh
+// library does.
+const LEGACY_TAB_MIGRATION_COPY: Partial<Record<ProjectTab, {sourceLabel: string; description: string}>> = {
+    deployment: {
+        sourceLabel: "Deployment",
+        description:
+            "Deployment is no longer its own workspace -- every registered External Adapter SDK target it offered is now one of Build/Export's own cards, checked for compatibility and published right there.",
+    },
+    stakeEngineExport: {
+        sourceLabel: "Stake Engine Export",
+        description:
+            "Stake Engine Export is no longer its own workspace -- its static-export builder is now one of Build/Export's own cards, run right there against this project's own current build.",
+    },
+    outcomeLibraries: {
+        sourceLabel: "Outcome Libraries",
+        description:
+            "Outcome Libraries is no longer its own workspace -- generating a fresh canonical library is now Build/Export's own \"Outcome libraries\" card. Selecting an already-generated library, inspecting its distribution, or comparing two libraries has no Build/Export equivalent yet.",
+    },
+};
 
 // The explicit diagnostic a deep link to an unsupported operation shows instead of ever mounting that
 // tab's own workflow component (see the render tree below) -- mirrors
@@ -738,6 +762,7 @@ export function ProjectDashboardPage() {
 
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
+    const legacyTabMigration = LEGACY_TAB_MIGRATION_COPY[activeTab];
     // Whether the active tab's own workflow component should actually mount -- a deep link to an
     // unsupported operation (e.g. /project/simulation for a project that can't run in-process) shows
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
@@ -995,84 +1020,32 @@ export function ProjectDashboardPage() {
                             {activeTab === "exportDeploy" && (
                                 <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
                             )}
-                            {activeTab === "deployment" && (
-                                <DeploymentTab
-                                // Forces a full remount on a genuine project switch -- same reasoning as
-                                // RuntimeTab's own key above: DeploymentTab owns local stepper state
-                                // (activeStep/pendingAdvanceStepRef) that deployment.resetForProjectSwitch()
-                                // itself can't reach (it only resets the page-level hook's own state), and
-                                // ProjectDashboardPage deliberately never remounts itself on a project switch.
-                                    key={projectKey ?? "no-project"}
-                                    targetsView={deployment.targetsView}
-                                    targetsError={deployment.targetsError}
-                                    onRefreshTargets={deployment.refreshTargets}
-                                    selectedTarget={deployment.selectedTarget}
-                                    onSelectTarget={deployment.selectTarget}
-                                    modes={deployment.modes}
-                                    projectModesView={deployment.projectModesView}
-                                    registryView={deployment.registryView}
-                                    onSetModeName={deployment.setModeName}
-                                    onSetModeLibrarySelector={deployment.setModeLibrarySelector}
-                                    onAddMode={deployment.addMode}
-                                    onRemoveMode={deployment.removeMode}
-                                    onPreview={() => deployment.run(false)}
-                                    onDeploy={() => deployment.run(true)}
-                                    runResult={deployment.runResult}
-                                    runError={deployment.runError}
-                                    runLoading={deployment.runLoading}
-                                    preflightOutdated={deployment.preflightOutdated}
-                                    selectedArtifactPath={deployment.selectedArtifactPath}
-                                    onSelectArtifact={deployment.selectArtifact}
-                                    projectRoot={projectKey}
-                                    onOpenStakeEngineExport={() => setActiveTab("stakeEngineExport")}
-                                    onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
-                                />
-                            )}
-                            {activeTab === "outcomeLibraries" && (
-                            // Forces a full remount on a genuine project switch -- OutcomeLibrariesTab owns all
-                            // of its own state locally (no page-level hook), same reasoning as DeploymentTab's
-                            // own key above.
-                                <OutcomeLibrariesTab
-                                    key={projectKey ?? "no-project"}
-                                    projectRoot={projectKey}
-                                    onUseInRuntime={(selector, expectedHash) => {
-                                    // restart() (not start()) so this always takes effect, whether the
-                                    // runtime is currently stopped or already running some other
-                                    // configuration -- see StudioRuntimeManager.restart()'s own doc comment.
-                                    // expectedHash is the hash Outcome Libraries already showed for this
-                                    // library -- passing it lets the server refuse to silently start against
-                                    // content that changed on disk since (see StudioRuntimeManager.
-                                    // startInternal()'s own doc comment).
-                                        runtime.restart({preGeneratedLibrarySelector: selector, preGeneratedLibraryExpectedHash: expectedHash});
-                                        setActiveTab("runtime");
-                                    }}
-                                    onNavigateToTab={setActiveTab}
-                                />
+                            {legacyTabMigration && (
+                                <>
+                                    <NextStepCallout
+                                        title={`${legacyTabMigration.sourceLabel} has moved into Build/Export`}
+                                        description={legacyTabMigration.description}
+                                        actionLabel="Go to Build/Export"
+                                        onAction={() => setActiveTab("exportDeploy")}
+                                    />
+                                    <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
+                                </>
                             )}
                             {activeTab === "mechanicsEditor" && (
-                            // Same reasoning as OutcomeLibrariesTab's own key above -- MechanicsEditorTab owns
+                            // Same reasoning as RuntimeTab's own key above -- MechanicsEditorTab owns
                             // all of its own draft state locally (via useBlueprintEditor), so a genuine project
                             // switch is handled by a full remount rather than page-level cleanup.
                                 <MechanicsEditorTab key={projectKey ?? "no-project"} canEdit={canEditGameModel} onDirtyChange={handleMechanicsEditorDirtyChange} />
                             )}
                             {activeTab === "certification" && (
-                            // Same reasoning as OutcomeLibrariesTab's own key above -- CertificationTab owns
+                            // Same reasoning as RuntimeTab's own key above -- CertificationTab owns
                             // all of its own stepper state locally (no page-level hook).
                                 <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                             )}
                             {activeTab === "provablyFair" && (
-                            // Same reasoning as OutcomeLibrariesTab's own key above -- ProvablyFairTab owns
+                            // Same reasoning as RuntimeTab's own key above -- ProvablyFairTab owns
                             // all of its own stepper state locally (no page-level hook).
                                 <ProvablyFairTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
-                            )}
-                            {activeTab === "stakeEngineExport" && (
-                            // Same reasoning as OutcomeLibrariesTab's own key above -- StakeEngineExportTab
-                            // owns all of its own stepper state locally (no page-level hook).
-                                <StakeEngineExportTab
-                                    key={projectKey ?? "no-project"}
-                                    projectRoot={projectKey}
-                                    onOpenOutcomeLibraries={() => setActiveTab("outcomeLibraries")}
-                                />
                             )}
                         </>
                     )}

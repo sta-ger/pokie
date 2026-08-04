@@ -29,23 +29,20 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
         legend: "Static export",
         blurb: "Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.",
     },
-    localAdapter: {
-        legend: "Local adapter",
-        blurb: "A registered External Adapter SDK target that writes a build artifact to this machine's own filesystem -- nothing leaves this machine.",
-    },
     remoteDeployment: {
         legend: "Remote deployment",
-        blurb: "A registered External Adapter SDK target whose own runtime adapter publishes somewhere other than this machine -- an extension point for a future real RGS/aggregator integration.",
+        blurb: "A registered External Adapter SDK target, checked for compatibility before Publish is ever offered -- the SDK's own local-json-example demo target is deliberately never listed here (see ExportDeployTargets.ts's own doc comment); register a real target to replace this group's placeholder.",
     },
 };
 
-const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "localAdapter", "remoteDeployment"];
+const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
 // own first current build mode when known, "base" (the same fallback generateOutcomeLibrary's own
 // server-side request validator already applies) otherwise. Build/Export is deliberately a single-mode,
-// zero-configuration surface -- a project that genuinely needs a multi-mode bundle still has DeploymentTab/
-// StakeEngineExportTab/OutcomeLibrariesTab reachable by direct link (see docs/pokie-phase3-inventory.md).
+// zero-configuration surface -- this is the sole Studio build surface now (see ProjectDashboardPage.tsx's
+// own doc comment on the legacy Deployment/Stake Engine Export/Outcome Libraries routes), so a project
+// that genuinely needs a multi-mode bundle has no separate dedicated workflow to fall back to yet.
 function resolveDefaultModeName(projectModesView: DeploymentManager["projectModesView"]): string {
     return projectModesView.status === "ok" && projectModesView.modeIds.length > 0 ? projectModesView.modeIds[0] : "base";
 }
@@ -63,18 +60,6 @@ type StaticExportRunView =
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioStakeEngineExportView, {status: "ok"}>}
     | {status: "error"; message: string};
-
-// "Build locally"/"Check compatibility" are deliberately different labels for the same underlying
-// deployment.run() call (see TargetCard below) -- a localAdapter card's own run only ever writes a build
-// artifact to this machine, so it runs straight to publish:true and never needs a separate confirm step;
-// a remoteDeployment card's first click always previews (publish:false) instead, only ever offering
-// "Publish" once that preview comes back clean (see the "Publish" button beside it). A remoteDeployment
-// card only ever exists here once a real target is registered -- the placeholder (see
-// ExportDeployTargets.ts's own REMOTE_DEPLOYMENT_PLACEHOLDER_CARD) carries no deploymentTarget, so it
-// never reaches this button at all.
-function describeTargetActionLabel(card: ExportDeployTargetCard): string {
-    return card.kind === "localAdapter" ? "Build locally" : "Check compatibility";
-}
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
     if (view.status === "load-error") {
@@ -237,34 +222,6 @@ function TargetCard({
                 </>
             )}
 
-            {card.kind === "localAdapter" && card.deploymentTarget && (
-                <>
-                    <Button
-                        size="xs"
-                        mt="sm"
-                        loading={isActiveTarget && deployment.runLoading}
-                        onClick={() => deployment.run(true, card.deploymentTarget)}
-                    >
-                        {describeTargetActionLabel(card)}
-                    </Button>
-                    {isActiveTarget && deployment.runError && <ErrorState message={describeProjectActionError("The local build", deployment.runError)} />}
-                    {isActiveTarget && deployment.runResult && !deployment.runLoading && (
-                        deployment.runResult.ok ? (
-                            <Text size="sm" mt={4}>
-                                Build succeeded{deployment.runResult.delivered ? " and was written to disk." : "."}{" "}
-                                {deployment.runResult.delivered && (
-                                    <Button size="xs" variant="default" onClick={() => onOpenFolder(`deployment/${card.deploymentTarget?.id}`)}>
-                                        Open output folder
-                                    </Button>
-                                )}
-                            </Text>
-                        ) : (
-                            <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
-                        )
-                    )}
-                </>
-            )}
-
             {card.kind === "remoteDeployment" && card.deploymentTarget && (
                 <>
                     <Button
@@ -273,7 +230,7 @@ function TargetCard({
                         loading={isActiveTarget && deployment.runLoading}
                         onClick={() => deployment.run(false, card.deploymentTarget)}
                     >
-                        {describeTargetActionLabel(card)}
+                        Check compatibility
                     </Button>
                     {previewedOk && (
                         <Button size="xs" mt="xs" ml="xs" loading={isActiveTarget && deployment.runLoading} onClick={() => deployment.run(true, card.deploymentTarget)}>
@@ -306,12 +263,12 @@ function TargetCard({
 // separate legacy Stepper-driven workflow first. Deployment's own selection/run/registry state is owned by
 // the shared useDeploymentManager hook (see DeploymentManager) -- ExportDeployTab drives it directly
 // (deployment.run(publish, target)) instead of duplicating it, and outcome-library generation feeds its
-// result straight back into that hook's own first mode row (setModeName/setModeLibrarySelector) so a
-// local/remote adapter card run immediately afterward already points at the library just generated.
-// A local adapter's own action is deliberately labelled "Build locally" (it only ever writes a build
-// artifact to this machine, so it runs straight to publish:true) while a remote target's own action always
-// checks compatibility first (publish:false) and only offers "Publish" once that check comes back clean --
-// never a first-click auto-publish outside this machine.
+// result straight back into that hook's own first mode row (setModeName/setModeLibrarySelector) so an
+// adapter card run immediately afterward already points at the library just generated. Every adapter
+// card's own action always checks compatibility first (publish:false) and only offers "Publish" once that
+// check comes back clean -- never a first-click auto-publish outside this machine. (The SDK's own
+// local-json-example demo target -- the one case that could ever run straight to publish:true without a
+// preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
 export function ExportDeployTab({capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
     const fetchImpl = useStudioApi();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
@@ -408,10 +365,9 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             <Text size="sm" c="dimmed" mb="sm">
                 Every applicable way this project can be built or leave Studio, grouped by what it actually
                 does -- generating an outcome library is the source build step every other target here reads
-                from, a static export writes a standalone bundle with nothing registered, a local adapter
-                writes a build artifact to this machine via the External Adapter SDK, and a remote deployment
-                is that same SDK&apos;s own extension point for a future real RGS/aggregator integration.
-                Each card runs its own builder right here, against this project&apos;s own primary build mode
+                from, a static export writes a standalone bundle with nothing registered, and a remote
+                deployment is a registered External Adapter SDK target, checked for compatibility before
+                anything is published. Each card runs its own builder right here, against this project&apos;s own primary build mode
                 ({defaultModeName}) -- nothing here silently runs in the background, and nothing leaves this
                 tab to do it.
             </Text>
