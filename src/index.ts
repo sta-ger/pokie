@@ -271,6 +271,7 @@ export * from "./project/buildGameModelReels.js";
 export * from "./project/describeUnsupportedProjectOperation.js";
 export * from "./project/replayOutcomeSourceProject.js";
 export * from "./project/sampleOutcomeSourceProject.js";
+export * from "./project/simulateOutcomeSourceProject.js";
 export * from "./reels/CompositeReelStripConstraintValidator.js";
 export * from "./reels/LargestRemainderReelStripSymbolWeightsConverter.js";
 export * from "./reels/ReelStrip.js";

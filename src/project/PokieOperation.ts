@@ -46,6 +46,7 @@ export const OUTCOME_SOURCE_ANALYZE_OPERATION: PokieOperation = "outcomeSource.a
 export const OUTCOME_SOURCE_SAMPLE_OPERATION: PokieOperation = "outcomeSource.sample";
 export const OUTCOME_SOURCE_SERVE_OPERATION: PokieOperation = "outcomeSource.serve";
 export const OUTCOME_SOURCE_REPLAY_OPERATION: PokieOperation = "outcomeSource.replay";
+export const OUTCOME_SOURCE_SIMULATE_OPERATION: PokieOperation = "outcomeSource.simulate";
 
 // Which single ProjectCapability each known PokieOperation requires — the one place
 // describeUnsupportedProjectOperation reads from to decide whether a resolved PokieProject can perform a
@@ -76,4 +77,5 @@ export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, Proj
     [OUTCOME_SOURCE_SAMPLE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     [OUTCOME_SOURCE_SERVE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     [OUTCOME_SOURCE_REPLAY_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    [OUTCOME_SOURCE_SIMULATE_OPERATION]: OUTCOME_SOURCE_SAMPLE_CAPABILITY,
 };

@@ -6,6 +6,7 @@ import {
     OUTCOME_SOURCE_REPLAY_OPERATION,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
     OUTCOME_SOURCE_SERVE_OPERATION,
+    OUTCOME_SOURCE_SIMULATE_OPERATION,
     SIM_OPERATION,
     WASM_EXPORT_OPERATION,
 } from "../../src/project/PokieOperation.js";
@@ -80,11 +81,21 @@ describe("describeUnsupportedProjectOperation", () => {
         expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_SAMPLE_OPERATION)).toBeUndefined();
         expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_SERVE_OPERATION)).toBeUndefined();
         expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_REPLAY_OPERATION)).toBeUndefined();
+        expect(describeUnsupportedProjectOperation(projectOf("outcomeLibrary"), OUTCOME_SOURCE_SIMULATE_OPERATION)).toBeUndefined();
 
         const diagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SAMPLE_OPERATION);
         expect(diagnostic).toEqual({
             detectedType: "stakeAdapter",
             operation: OUTCOME_SOURCE_SAMPLE_OPERATION,
+            missingCapability: "outcomeSource.sample",
+            alternatives: ["outcomeLibrary"],
+            message: expect.stringContaining("outcomeLibrary"),
+        });
+
+        const simulateDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SIMULATE_OPERATION);
+        expect(simulateDiagnostic).toEqual({
+            detectedType: "stakeAdapter",
+            operation: OUTCOME_SOURCE_SIMULATE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
             message: expect.stringContaining("outcomeLibrary"),
