@@ -7,12 +7,16 @@ const SCANNABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".ts", ".tsx"]);
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git"]);
 
 // A line only worth scanning at all -- narrows every other line out before the (more expensive) specifier
-// patterns below ever run.
+// patterns below ever run. Runs against the *masked* line (see maskCommentsAndStrings) so a keyword that only
+// exists inside a comment or a string literal never counts.
 const IMPORT_OR_REQUIRE_KEYWORD_PATTERN = /\b(?:import|require|export)\b/;
 
 // Each pattern below captures only the module specifier of an actual static import/export-from/require --
 // never an arbitrary quoted string elsewhere on the line (e.g. inside a comment or unrelated string literal
-// that merely shares the line with an import-related keyword).
+// that merely shares the line with an import-related keyword). They run against the masked line produced by
+// maskCommentsAndStrings, where every comment is gone and every string/template literal's content has been
+// replaced by a placeholder token; a real specifier's placeholder is resolved back to its original text via
+// STRING_PLACEHOLDER_PATTERN afterwards, so a specifier is only ever real, executable source text.
 // import x from "y"; import {a, b} from "y"; import * as ns from "y"; import type x from "y"
 const IMPORT_FROM_SPECIFIER_PATTERN = /\bimport\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
 // import "y"; -- side-effect-only import with no "from"
@@ -32,15 +36,70 @@ const MODULE_SPECIFIER_PATTERNS = [
     REQUIRE_SPECIFIER_PATTERN,
 ];
 
-// Extracts every real module specifier on a line -- i.e. the argument of an import/export-from/require, never
-// an unrelated quoted string that happens to share the line with an import-related keyword.
-function extractModuleSpecifiers(line: string): string[] {
+// Delimits a string literal's placeholder in a masked line -- a token no real module specifier would ever
+// collide with, so a captured "specifier" is recognized as a placeholder only when it's exactly this shape.
+const STRING_PLACEHOLDER_PREFIX = "POKIE_WASM_PREFLIGHT_STRING_";
+const STRING_PLACEHOLDER_PATTERN = new RegExp(`^${STRING_PLACEHOLDER_PREFIX}(\\d+)$`);
+
+// Strips `//` and `/* */` comments and replaces every string/template literal's content with a placeholder
+// token, so the specifier patterns above can never match import-like text that only exists inside a comment
+// or an unrelated string. Quote characters are preserved (as a canonical `"`) so a real specifier's own
+// quoted string is still recognized as a string; `stringLiterals[i]` holds that placeholder's real content
+// (escape sequences left as-is) for resolving an extracted specifier back to its actual text.
+function maskCommentsAndStrings(line: string): {maskedLine: string; stringLiterals: string[]} {
+    const stringLiterals: string[] = [];
+    let maskedLine = "";
+    let i = 0;
+    while (i < line.length) {
+        const ch = line[i];
+        const next = line[i + 1];
+        if (ch === "/" && next === "/") {
+            break;
+        }
+        if (ch === "/" && next === "*") {
+            const end = line.indexOf("*/", i + 2);
+            if (end === -1) {
+                break;
+            }
+            i = end + 2;
+            continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") {
+            const quote = ch;
+            let content = "";
+            let j = i + 1;
+            while (j < line.length && line[j] !== quote) {
+                if (line[j] === "\\" && j + 1 < line.length) {
+                    content += line[j] + line[j + 1];
+                    j += 2;
+                    continue;
+                }
+                content += line[j];
+                j += 1;
+            }
+            stringLiterals.push(content);
+            maskedLine += `"${STRING_PLACEHOLDER_PREFIX}${stringLiterals.length - 1}"`;
+            i = j + 1;
+            continue;
+        }
+        maskedLine += ch;
+        i += 1;
+    }
+    return {maskedLine, stringLiterals};
+}
+
+// Extracts every real module specifier on a masked line -- i.e. the argument of an import/export-from/require,
+// resolved back from its placeholder to the string literal's real content.
+function extractModuleSpecifiers(maskedLine: string, stringLiterals: string[]): string[] {
     const specifiers: string[] = [];
     for (const pattern of MODULE_SPECIFIER_PATTERNS) {
         pattern.lastIndex = 0;
         let match: RegExpExecArray | null;
-        while ((match = pattern.exec(line)) !== null) {
-            specifiers.push(match[1]);
+        while ((match = pattern.exec(maskedLine)) !== null) {
+            const placeholderMatch = STRING_PLACEHOLDER_PATTERN.exec(match[1]);
+            if (placeholderMatch !== null) {
+                specifiers.push(stringLiterals[Number(placeholderMatch[1])]);
+            }
         }
     }
     return specifiers;
@@ -97,10 +156,11 @@ export function scanForBlockingNodeApiUsage(rootPath: string): WasmPackagingBloc
     for (const filePath of listFilesRecursively(rootPath)) {
         const contents = fs.readFileSync(filePath, "utf-8");
         contents.split("\n").forEach((line, index) => {
-            if (!IMPORT_OR_REQUIRE_KEYWORD_PATTERN.test(line)) {
+            const {maskedLine, stringLiterals} = maskCommentsAndStrings(line);
+            if (!IMPORT_OR_REQUIRE_KEYWORD_PATTERN.test(maskedLine)) {
                 return;
             }
-            for (const specifier of extractModuleSpecifiers(line)) {
+            for (const specifier of extractModuleSpecifiers(maskedLine, stringLiterals)) {
                 const blockingModule = blockingBuiltinModuleOf(specifier);
                 if (blockingModule !== undefined) {
                     usages.push({module: blockingModule, filePath: path.relative(rootPath, filePath), line: index + 1});
