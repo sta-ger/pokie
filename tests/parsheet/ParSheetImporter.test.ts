@@ -98,6 +98,27 @@ describe("ParSheetImporter", () => {
         );
     });
 
+    it("warns about formula cells and imports each one's last computed result, never the formula itself", async () => {
+        const workbook = new ExcelJS.Workbook();
+        for (const [name, rows] of Object.entries(validSheets)) {
+            const worksheet = workbook.addWorksheet(name);
+            rows.forEach((row) => worksheet.addRow(row));
+        }
+        const paytableSheet = workbook.getWorksheet("Paytable")!;
+        paytableSheet.getCell("C2").value = {formula: "2+3", result: 5};
+        await workbook.xlsx.writeFile(filePath);
+        const importer = new ParSheetImporter();
+
+        const {blueprint, issues} = await importer.importFromFile(filePath);
+
+        expect(blueprint.paytable).toEqual({A: {"2": 5}});
+        expect(issues).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({code: "parsheet-formula-cell", severity: "warning", details: {sheet: "Paytable", count: 1}}),
+            ]),
+        );
+    });
+
     it("warns when there is no Meta sheet", async () => {
         await writeWorkbook(validSheets);
         const importer = new ParSheetImporter();

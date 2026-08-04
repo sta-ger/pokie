@@ -312,12 +312,19 @@ export async function saveBlueprint(
 // throws for a domain-level outcome ("invalid-name"/"unavailable" are ordinary results of a manifest.id
 // this service can't turn into a safe directory segment, or a machine with no writable default project
 // location) -- same "only a malformed request throws" convention every other apiClient function here
-// follows.
-export async function saveManagedBlueprint(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioBlueprintSaveManagedView> {
+// follows. `sourceWorkbookPath`, when given, is the .xlsx workbook this blueprint was Applied from (see
+// BlueprintEditorPage's own handleApplyImportedBlueprint) -- recorded as this freshly-created managed
+// project's own provenance (see StudioProjectRegistryEntry's own doc comment), never sent for an ordinary
+// "first Save" with no PAR import behind it.
+export async function saveManagedBlueprint(
+    fetchImpl: FetchLike,
+    blueprint: unknown,
+    sourceWorkbookPath?: string,
+): Promise<StudioBlueprintSaveManagedView> {
     const response = await fetchImpl("/api/home/blueprints/save-managed", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint}),
+        body: JSON.stringify({blueprint, sourceWorkbookPath}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to save the project"));

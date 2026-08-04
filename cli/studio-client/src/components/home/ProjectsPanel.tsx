@@ -1,4 +1,4 @@
-import {Anchor, Button, Table, Text, TextInput} from "@mantine/core";
+import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
 import {useCallback, useEffect, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {listProjectRegistry, previewProjectImport, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
@@ -222,7 +222,12 @@ export function ProjectsPanel() {
                                             </Text>
                                         </Table.Td>
                                         <Table.Td>{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
-                                        <Table.Td>{entry.origin === "managed" ? "Managed" : "Registered"}</Table.Td>
+                                        <Table.Td>
+                                            <Group gap={6} wrap="nowrap">
+                                                <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
+                                                {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
+                                            </Group>
+                                        </Table.Td>
                                         <Table.Td>{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
                                         <Table.Td>
                                             <QuickActions>

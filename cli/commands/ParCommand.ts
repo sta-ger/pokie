@@ -1,7 +1,20 @@
 import fs from "fs";
 import path from "path";
-import {GameBlueprint, loadGameBlueprint, ParSheetExporter, ParSheetExporting, ParSheetImporter, ParSheetImporting, ValidationIssue} from "pokie";
+import {
+    describeUnsupportedProjectOperation,
+    GameBlueprint,
+    loadGameBlueprint,
+    PAR_IMPORT_OPERATION,
+    ParSheetExporter,
+    ParSheetExporting,
+    ParSheetImporter,
+    ParSheetImporting,
+    ProjectResolving,
+    ProjectTargetResolver,
+    ValidationIssue,
+} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
@@ -21,6 +34,7 @@ export class ParCommand implements CliCommandHandling {
     private readonly exporter: ParSheetExporting;
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly writeFile: (filePath: string, contents: string) => void;
+    private readonly resolveProject: ProjectResolving;
 
     constructor(
         pokieVersion: string,
@@ -28,11 +42,16 @@ export class ParCommand implements CliCommandHandling {
         exporter: ParSheetExporting = new ParSheetExporter(pokieVersion),
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
         writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
+        // Appended after every pre-existing param, same "never break an existing positional caller"
+        // convention BuildCommand's own resolveProject param follows -- see executeImport()'s own doc
+        // comment for what this adds on top of the importer itself.
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
     ) {
         this.importer = importer;
         this.exporter = exporter;
         this.loadBlueprint = loadBlueprint;
         this.writeFile = writeFile;
+        this.resolveProject = resolveProject;
     }
 
     public getName(): string {
@@ -122,7 +141,27 @@ export class ParCommand implements CliCommandHandling {
             });
     }
 
+    // Routes `inputPath` through the same ProjectTargetResolver every migrated CLI command already
+    // crosses (see BuildCommand's own analogous check) before ever handing it to the real
+    // ParSheetImporting -- but only ever rejects a *recognized*-but-wrong-type target (a tsPackage/
+    // outcomeLibrary/stakeAdapter/blueprint/wasm path someone pointed "pokie par import" at by mistake)
+    // with a capability diagnostic explaining exactly why import can't run against it. An unrecognized
+    // path -- resolve() returns undefined, e.g. a missing file or an ordinary/corrupt .xlsx that isn't a
+    // PAR sheet workbook at all -- falls straight through to the real importer exactly as it always has,
+    // so its own "load-error"/"missing sheet" diagnostics are unaffected.
+    private async checkImportTarget(inputPath: string): Promise<void> {
+        const project = await this.resolveProject.resolve(inputPath);
+        if (project === undefined || project.type === "parWorkbook") {
+            return;
+        }
+        const diagnostic = describeUnsupportedProjectOperation(project, PAR_IMPORT_OPERATION);
+        if (diagnostic !== undefined) {
+            throw new UnsupportedProjectOperationError(diagnostic);
+        }
+    }
+
     private async executeImport(inputPath: string, outPath: string, format: ImportFormat): Promise<number> {
+        await this.checkImportTarget(inputPath);
         const result = await this.importer.importFromFile(inputPath);
         const errors = result.issues.filter((issue) => issue.severity === "error");
         const warnings = result.issues.filter((issue) => issue.severity !== "error");

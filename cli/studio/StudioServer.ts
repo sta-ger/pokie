@@ -25,6 +25,10 @@ import {validateBlueprintRandomRequest, BlueprintRandomRequestInput} from "./blu
 import {validateParSheetExportRequest, ParSheetExportRequestInput} from "./blueprint/validateParSheetExportRequest.js";
 import {validateParSheetImportRequest, ParSheetImportRequestInput} from "./blueprint/validateParSheetImportRequest.js";
 import {validateSaveBlueprintRequest, SaveBlueprintRequestInput} from "./blueprint/validateSaveBlueprintRequest.js";
+import {
+    validateSaveManagedBlueprintRequest,
+    SaveManagedBlueprintRequestInput,
+} from "./blueprint/validateSaveManagedBlueprintRequest.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {validateCertificationBuildRequest, CertificationBuildRequestInput} from "./certification/validateCertificationBuildRequest.js";
 import {
@@ -1077,15 +1081,15 @@ export class StudioServer implements StudioServerHandling {
         const body = await this.readJsonBody(req);
         let validated;
         try {
-            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+            validated = validateSaveManagedBlueprintRequest((body ?? {}) as SaveManagedBlueprintRequestInput);
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        const result = this.blueprintService.saveManaged(validated.blueprint);
+        const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
         if (result.status === "ok") {
-            await this.projectRegistrationService.registerManaged(result.path, result.name);
+            await this.projectRegistrationService.registerManaged(result.path, result.name, result.sourceWorkbookPath);
         }
         this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }

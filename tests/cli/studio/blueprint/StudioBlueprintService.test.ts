@@ -821,6 +821,48 @@ describe("StudioBlueprintService", () => {
 
             expect(result).toEqual({status: "unavailable", error: "not writable"});
         });
+
+        // Covers the PAR Apply -> guided "first Save" lifecycle (see BlueprintEditorPage.tsx's own
+        // handleApplyImportedBlueprint/handleGuidedSave): once a PAR sheet is Applied and then saved for
+        // the first time, the resulting managed Blueprint Project must be traceable back to the .xlsx
+        // workbook it came from -- see StudioProjectRegistryEntry's own doc comment for why that
+        // provenance lives in the registry entry StudioServer registers from this result, never inside the
+        // blueprint file itself.
+        it("echoes sourceWorkbookPath back on ok when a PAR Apply is behind this first Save", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+
+            const result = service.saveManaged(buildBlueprint(), "/games/in.par.xlsx");
+
+            expect(result).toEqual({
+                status: "ok",
+                path: path.join(managedDir, "blueprint.json"),
+                name: "sample-slot",
+                blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                sourceWorkbookPath: "/games/in.par.xlsx",
+            });
+        });
+
+        it("omits sourceWorkbookPath entirely for an ordinary first Save with no PAR import behind it", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+
+            const result = service.saveManaged(buildBlueprint());
+
+            expect(result.status).toBe("ok");
+            expect((result as {sourceWorkbookPath?: string}).sourceWorkbookPath).toBeUndefined();
+        });
+
+        it("never writes sourceWorkbookPath into the blueprint file itself -- the managed Blueprint stays the one editable source", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+
+            service.saveManaged(buildBlueprint(), "/games/in.par.xlsx");
+
+            const written = fs.readFileSync(path.join(managedDir, "blueprint.json"), "utf-8");
+            expect(written).not.toContain("in.par.xlsx");
+            expect(JSON.parse(written)).toEqual(buildBlueprint());
+        });
     });
 
     describe("previewBuild", () => {

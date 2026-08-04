@@ -57,6 +57,31 @@ describe("StudioProjectRegistrationService", () => {
 
             expect((await registry.list()).map((e) => e.location)).toEqual([path.resolve("/projects/sample-slot")]);
         });
+
+        it("records the PAR sheet workbook it was Applied/saved from as importedFromParSheetPath when given", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/projects/sample-slot": blueprintProject("/projects/sample-slot/blueprint.json")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            const result = await service.registerManaged("/projects/sample-slot", "Sample Slot", "/games/in.par.xlsx");
+
+            expect(result).toEqual({
+                status: "ok",
+                entry: expect.objectContaining({origin: "managed", importedFromParSheetPath: "/games/in.par.xlsx"}),
+            });
+            expect((await registry.list())[0].importedFromParSheetPath).toBe("/games/in.par.xlsx");
+        });
+
+        it("omits importedFromParSheetPath entirely for an ordinary first Save with no PAR import behind it", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/projects/sample-slot": tsPackageProject("/projects/sample-slot")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            const result = await service.registerManaged("/projects/sample-slot", "Sample Slot");
+
+            expect(result.status).toBe("ok");
+            expect(result.status === "ok" && result.entry.importedFromParSheetPath).toBeUndefined();
+        });
     });
 
     describe("registerExternal", () => {
