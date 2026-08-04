@@ -270,6 +270,22 @@ async function pollUntilTerminal(url: string): Promise<{status: number; body: {[
     throw new Error(`Timed out waiting for ${url} to reach a terminal state.`);
 }
 
+// The background project-dashboard load (startProjectDashboardLoad) resolves through several chained
+// awaits -- including a real outcome-source resolution attempt -- before landing on "loaded"/"error", so
+// a single flushed tick isn't always enough for it to settle under load. Polls the same way
+// pollUntilTerminal does rather than relying on a fixed number of ticks.
+async function pollUntilProjectContextSettled(url: string): Promise<{status: number; body: {[key: string]: unknown; status: string}}> {
+    for (let i = 0; i < 2000; i++) {
+        const response = await get(url);
+        const body = response.body as {status: string};
+        if (body.status !== "loading") {
+            return response as {status: number; body: {[key: string]: unknown; status: string}};
+        }
+        await flushMacrotask();
+    }
+    throw new Error(`Timed out waiting for ${url} to leave "loading".`);
+}
+
 describe("StudioServer", () => {
     let studioRoot: string;
     let server: StudioServer;
@@ -2041,10 +2057,7 @@ describe("StudioServer", () => {
             const address = await projectServer.start();
             const projectBaseUrl = `http://${address.host}:${address.port}`;
 
-            await new Promise((resolve) => {
-                setTimeout(resolve, 0);
-            });
-            const context = await get(`${projectBaseUrl}/api/project/context`);
+            const context = await pollUntilProjectContextSettled(`${projectBaseUrl}/api/project/context`);
 
             expect(context.body).toEqual({
                 status: "error",
