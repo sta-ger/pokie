@@ -67,7 +67,7 @@ describe("assessWasmPackagingPreflight", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(
             path.join(workDir, "src", "index.ts"),
-            '// import fs from "fs";\n' + '/* const cmd = require("child_process"); */\n' + 'export const noop = () => undefined;\n'
+            '// import fs from "fs";\n/* const cmd = require("child_process"); */\nexport const noop = () => undefined;\n'
         );
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
 
@@ -96,11 +96,7 @@ describe("assessWasmPackagingPreflight", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(
             path.join(workDir, "src", "index.ts"),
-            "/*\n" +
-                ' * import fs from "fs";\n' +
-                ' * const cmd = require("child_process");\n' +
-                " */\n" +
-                "export const noop = () => undefined;\n"
+            '/*\n * import fs from "fs";\n * const cmd = require("child_process");\n */\nexport const noop = () => undefined;\n'
         );
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
 
@@ -116,7 +112,7 @@ describe("assessWasmPackagingPreflight", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(
             path.join(workDir, "src", "index.ts"),
-            "const snippet = `\n" + '  import fs from "fs";\n' + '  const cmd = require("child_process");\n' + "`;\n"
+            'const snippet = `\n  import fs from "fs";\n  const cmd = require("child_process");\n`;\n'
         );
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
 
@@ -132,7 +128,7 @@ describe("assessWasmPackagingPreflight", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(
             path.join(workDir, "src", "index.ts"),
-            "/*\n" + " * doc comment mentioning fs but not importing it\n" + " */\n" + 'import fs from "node:fs";\n'
+            '/*\n * doc comment mentioning fs but not importing it\n */\nimport fs from "node:fs";\n'
         );
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
 
@@ -183,7 +179,7 @@ describe("assessWasmPackagingPreflight", () => {
         fs.mkdirSync(path.join(workDir, "src"), {recursive: true});
         fs.writeFileSync(
             path.join(workDir, "src", "index.ts"),
-            "const snippet = `\n" + "  not an import\n" + "`;\n" + 'import path from "node:path";\n'
+            'const snippet = `\n  not an import\n`;\nimport path from "node:path";\n'
         );
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game", dependencies: {}}));
 
