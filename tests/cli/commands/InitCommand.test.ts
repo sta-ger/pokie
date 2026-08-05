@@ -1,39 +1,55 @@
-import {
-    GameBlueprint,
-    GameBlueprintValidating,
-    GamePackageGenerating,
-    GeneratedGamePackage,
-    PokieGameManifest,
-    PokieGamePackageValidating,
-    PokieGamePackageValidationReport,
-    ValidationIssue,
-} from "pokie";
-import {InitCommand} from "../../../cli/commands/InitCommand.js";
-import {GameBlueprintWizarding} from "../../../cli/wizard/GameBlueprintWizarding.js";
-import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
-import {WizardResult} from "../../../cli/wizard/WizardResult.js";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "pokie";
+import {defaultDirectoryNeedsConfirmation, InitCommand} from "../../../cli/commands/InitCommand.js";
+import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
+import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
+import {GamePackageMergeOverrides, GamePackageMerging} from "../../../cli/scaffold/GamePackageMerging.js";
+import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 
-function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
+const manifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+const scaffoldResult: ScaffoldResult = {
+    projectRoot: "/tmp/sample-slot",
+    manifest,
+    createdFiles: ["package.json", "tsconfig.json", "README.md", "src/index.ts"],
+    updatedFiles: [],
+    skippedFiles: [],
+};
+const validReport: PokieGamePackageValidationReport = {
+    packageRoot: scaffoldResult.projectRoot,
+    valid: true,
+    game: manifest,
+    errors: [],
+    warnings: [],
+    suggestions: [],
+};
+
+// Echoes back whatever projectRoot InitCommand actually resolved and passed in -- matching the real
+// GamePackageMerger's own contract (its ScaffoldResult.projectRoot is always exactly its `projectRoot`
+// argument) -- rather than a fixed fake path a caller could mismatch against the directory under test.
+function createStubMerger(
+    result: Omit<ScaffoldResult, "projectRoot"> = scaffoldResult,
+): GamePackageMerging & {calledWith?: {projectRoot: string; overrides?: GamePackageMergeOverrides}} {
     return {
-        validate(blueprint: unknown) {
-            this.calledWith = blueprint;
-            return issues;
+        merge(projectRoot: string, overrides?: GamePackageMergeOverrides) {
+            this.calledWith = {projectRoot, overrides};
+            return {...result, projectRoot};
         },
     };
 }
 
-function createStubGenerator(
-    result: GeneratedGamePackage,
-): GamePackageGenerating & {calledWith?: {blueprint: GameBlueprint; cwd: string; outDir?: string}} {
-    return {
-        generate(blueprint: GameBlueprint, cwd: string, outDir?: string) {
-            this.calledWith = {blueprint, cwd, outDir};
-            return result;
-        },
-    };
+function createRecordingRunCommand(): PackageCommandRunning & {calls: string[][]} {
+    const calls: string[][] = [];
+    const fn = ((_command: string, args: string[], _cwd: string): Promise<PackageCommandResult> => {
+        calls.push(args);
+        return Promise.resolve({stdout: "", stderr: ""});
+    }) as PackageCommandRunning & {calls: string[][]};
+    fn.calls = calls;
+    return fn;
 }
 
-function createStubPackageValidator(report: PokieGamePackageValidationReport): PokieGamePackageValidating & {calledWith?: string} {
+function createStubValidator(report: PokieGamePackageValidationReport = validReport): PokieGamePackageValidating & {calledWith?: string} {
     return {
         validate(packageRoot: string) {
             this.calledWith = packageRoot;
@@ -42,58 +58,14 @@ function createStubPackageValidator(report: PokieGamePackageValidationReport): P
     };
 }
 
-function createStubWizard(result: WizardResult | null | Error): GameBlueprintWizarding {
-    return {
-        run() {
-            return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
-        },
-    };
-}
-
-function createStubPrompt(): PromptAdapting & {closed: boolean} {
-    return {
-        closed: false,
-        ask() {
-            return Promise.resolve(null);
-        },
-        close() {
-            this.closed = true;
-        },
-    };
-}
-
-const starterBlueprint: GameBlueprint = {
-    manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
-    reels: 5,
-    rows: 3,
-    symbols: ["A", "K", "Q", "J"],
-    paytable: {A: {3: 5}},
-};
-
-const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
-const generatedResult: GeneratedGamePackage = {
-    projectRoot: "/tmp/sample-slot",
-    manifest,
-    createdFiles: ["package.json", "tsconfig.json", "README.md", "src/index.ts", "dist/index.js"],
-};
-const validReport: PokieGamePackageValidationReport = {
-    packageRoot: generatedResult.projectRoot,
-    valid: true,
-    game: manifest,
-    errors: [],
-    warnings: [],
-    suggestions: [],
-};
-
 function createCommand(
-    validator = createStubValidator([]),
-    generator = createStubGenerator(generatedResult),
-    packageValidator = createStubPackageValidator(validReport),
-    wizard: GameBlueprintWizarding | undefined = undefined,
-    createPrompt: (() => PromptAdapting) | undefined = undefined,
+    merger = createStubMerger(),
+    runCommand: PackageCommandRunning = createRecordingRunCommand(),
+    validator = createStubValidator(),
+    directoryNeedsConfirmation: (resolvedDir: string) => boolean = () => false,
 ) {
-    const command = new InitCommand("1.3.0", () => starterBlueprint, validator, generator, packageValidator, wizard, createPrompt);
-    return {command, validator, generator, packageValidator};
+    const command = new InitCommand("1.3.0", merger, runCommand, validator, directoryNeedsConfirmation);
+    return {command, merger, runCommand, validator};
 }
 
 describe("InitCommand", () => {
@@ -117,103 +89,241 @@ describe("InitCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    describe("with a name", () => {
-        it("generates, verifies, and reports a prepared package from the starter blueprint named after <name>", async () => {
-            const {command, generator, packageValidator} = createCommand();
+    it("describes itself as fully non-interactive -- never launching a wizard", () => {
+        const {command} = createCommand();
 
-            const exitCode = await command.run(["sample-slot"]);
+        expect(command.getDescription().toLowerCase()).not.toContain("wizard");
+        expect(command.getDescription().toLowerCase()).toContain("never asks reel/paytable/mechanics questions");
+    });
+
+    describe("default directory", () => {
+        it("merges into process.cwd() when no directory is given, then installs, builds, and verifies", async () => {
+            const {command, merger, runCommand} = createCommand();
+
+            const exitCode = await command.run([]);
 
             expect(exitCode).toBe(0);
-            expect(generator.calledWith?.blueprint.manifest).toEqual({id: "sample-slot", name: "Sample Slot", version: "0.1.0"});
-            expect(generator.calledWith).toMatchObject({cwd: process.cwd(), outDir: "sample-slot"});
-            expect(packageValidator.calledWith).toBe(generatedResult.projectRoot);
+            expect(merger.calledWith?.projectRoot).toBe(process.cwd());
+            expect((runCommand as ReturnType<typeof createRecordingRunCommand>).calls).toEqual([["install"], ["run", "build"]]);
 
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("created  package.json");
-            expect(printed).toContain(`prepared and verified in "${generatedResult.projectRoot}"`);
-            expect(printed).toContain(`loadPokieGame("${generatedResult.projectRoot}")`);
+            expect(printed).toContain(`prepared and verified in "${process.cwd()}"`);
+            expect(printed).toContain(`loadPokieGame("${process.cwd()}")`);
+            expect(printed).toContain("npm start");
+        });
+    });
+
+    describe("with an explicit directory and override flags", () => {
+        it("forwards --package-name/--game-id/--game-name/--version to the merger as overrides", async () => {
+            const {command, merger} = createCommand();
+
+            await command.run([
+                "some-dir",
+                "--package-name",
+                "custom-pkg",
+                "--game-id",
+                "custom-id",
+                "--game-name",
+                "Custom Name",
+                "--version",
+                "2.0.0",
+            ]);
+
+            expect(merger.calledWith?.overrides).toEqual({
+                packageName: "custom-pkg",
+                id: "custom-id",
+                name: "Custom Name",
+                version: "2.0.0",
+            });
         });
 
-        it("reports validation errors and returns 1 without generating a package", async () => {
-            const issues: ValidationIssue[] = [{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}];
-            const {command, generator} = createCommand(createStubValidator(issues));
+        it("resolves a relative directory against process.cwd() before merging", async () => {
+            const {command, merger} = createCommand();
 
-            const exitCode = await command.run(["sample-slot"]);
+            await command.run(["some-dir"]);
+
+            expect(merger.calledWith?.projectRoot).toBe(path.resolve("some-dir"));
+        });
+
+        it("accepts a directory whose name contains a space", async () => {
+            const {command, merger} = createCommand();
+
+            const exitCode = await command.run(["my game dir"]);
+
+            expect(exitCode).toBe(0);
+            expect(merger.calledWith?.projectRoot).toBe(path.resolve("my game dir"));
+        });
+    });
+
+    describe("the --yes confirmation guard", () => {
+        it("refuses a non-empty, not-yet-POKIE directory without --yes, and never merges", async () => {
+            const {command, merger} = createCommand(undefined, undefined, undefined, () => true);
+
+            const exitCode = await command.run(["existing-project"]);
 
             expect(exitCode).toBe(1);
-            expect(generator.calledWith).toBeUndefined();
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+            expect(merger.calledWith).toBeUndefined();
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("--yes"));
         });
 
-        it("reports the package as not prepared and returns 1 when verification fails", async () => {
+        it("proceeds once --yes is given, even when the directory needs confirmation", async () => {
+            const {command, merger} = createCommand(undefined, undefined, undefined, () => true);
+
+            const exitCode = await command.run(["existing-project", "--yes"]);
+
+            expect(exitCode).toBe(0);
+            expect(merger.calledWith).toBeDefined();
+        });
+
+        it("never needs --yes for an empty or not-yet-existing directory", () => {
+            const doesNotExist = "/tmp/pokie-init-command-test-does-not-exist-xyz";
+            expect(defaultDirectoryNeedsConfirmation(doesNotExist)).toBe(false);
+        });
+    });
+
+    describe("--no-install", () => {
+        it("skips 'npm install' but still builds and verifies", async () => {
+            const {command, runCommand, validator} = createCommand();
+
+            const exitCode = await command.run(["some-dir", "--no-install"]);
+
+            expect(exitCode).toBe(0);
+            expect((runCommand as ReturnType<typeof createRecordingRunCommand>).calls).toEqual([["run", "build"]]);
+            expect(validator.calledWith).toBe(path.resolve("some-dir"));
+        });
+    });
+
+    describe("--no-prepare", () => {
+        it("scaffolds in place and stops -- never installs, builds, or verifies", async () => {
+            const runCommand = jest.fn(() => {
+                throw new Error("must not be called");
+            }) as unknown as PackageCommandRunning;
+            const validator: PokieGamePackageValidating = {
+                validate: () => {
+                    throw new Error("must not be called");
+                },
+            };
+            const {command} = createCommand(undefined, runCommand, validator);
+
+            const exitCode = await command.run(["some-dir", "--no-prepare"]);
+
+            expect(exitCode).toBe(0);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("scaffolded in");
+            expect(printed).toContain('run "npm install" then "npm run build"');
+        });
+    });
+
+    describe("failures", () => {
+        it("rejects with a GamePackagePreparationError when 'npm install' fails", async () => {
+            const runCommand: PackageCommandRunning = () => Promise.reject(new Error("network unreachable"));
+            const {command} = createCommand(undefined, runCommand);
+
+            await expect(command.run(["some-dir"])).rejects.toMatchObject({phase: "dependencies"});
+        });
+
+        it("rejects with a GamePackagePreparationError when 'npm run build' fails", async () => {
+            const runCommand: PackageCommandRunning = (_command, args) =>
+                args[0] === "run" ? Promise.reject(new Error("tsc failed")) : Promise.resolve({stdout: "", stderr: ""});
+            const {command} = createCommand(undefined, runCommand);
+
+            await expect(command.run(["some-dir"])).rejects.toMatchObject({phase: "build"});
+        });
+
+        it("rejects with a GamePackagePreparationError (phase 'verify') and reports issues when verification fails", async () => {
             const invalidReport: PokieGamePackageValidationReport = {
                 ...validReport,
                 valid: false,
                 errors: [{code: "package-not-loadable", severity: "error", message: "dist/index.js is missing"}],
             };
-            const {command} = createCommand(undefined, undefined, createStubPackageValidator(invalidReport));
+            const {command} = createCommand(undefined, undefined, createStubValidator(invalidReport));
 
-            const exitCode = await command.run(["sample-slot"]);
-
-            expect(exitCode).toBe(1);
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("not a valid POKIE game"));
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("dist/index.js is missing"));
+            const rejection = command.run(["some-dir"]);
+            await expect(rejection).rejects.toMatchObject({phase: "verify"});
+            await expect(rejection).rejects.toThrow(/dist\/index\.js is missing/);
         });
 
-        it("throws a descriptive error for an invalid name", async () => {
-            const {command} = createCommand();
+        it("is retryable: a failed build followed by a successful re-run reports success", async () => {
+            let buildAttempts = 0;
+            const runCommand: PackageCommandRunning = (_command, args) => {
+                if (args[0] === "run") {
+                    buildAttempts += 1;
+                    if (buildAttempts === 1) {
+                        return Promise.reject(new Error("tsc failed"));
+                    }
+                }
+                return Promise.resolve({stdout: "", stderr: ""});
+            };
+            const {command} = createCommand(undefined, runCommand);
 
-            await expect(command.run(["../escape"])).rejects.toThrow(/is not a valid project name/);
+            await expect(command.run(["some-dir"])).rejects.toMatchObject({phase: "build"});
+            const secondExitCode = await command.run(["some-dir"]);
+
+            expect(secondExitCode).toBe(0);
+            expect(buildAttempts).toBe(2);
         });
 
+        it("throws GamePackagePreparationError instances (not a bare Error)", async () => {
+            const runCommand: PackageCommandRunning = () => Promise.reject(new Error("boom"));
+            const {command} = createCommand(undefined, runCommand);
+
+            let caught: unknown;
+            try {
+                await command.run(["some-dir"]);
+            } catch (error) {
+                caught = error;
+            }
+            expect(caught).toBeInstanceOf(GamePackagePreparationError);
+        });
+    });
+
+    describe("usage errors", () => {
         it("throws a descriptive error for an unknown option", () => {
             const {command} = createCommand();
 
-            expect(() => command.run(["sample-slot", "--bogus"])).toThrow(/Unknown option "--bogus"/);
+            expect(() => command.run(["some-dir", "--bogus"])).toThrow(/Unknown option "--bogus"/);
         });
 
         it("throws a descriptive error for an unexpected extra positional argument", () => {
             const {command} = createCommand();
 
-            expect(() => command.run(["name-one", "name-two"])).toThrow(/Unexpected extra argument "name-two"/);
+            expect(() => command.run(["dir-one", "dir-two"])).toThrow(/Unexpected extra argument "dir-two"/);
         });
     });
+});
 
-    describe("with no name (the interactive wizard)", () => {
-        it("builds, verifies, and reports a prepared package from the wizard's answers", async () => {
-            const wizardBlueprint: GameBlueprint = {...starterBlueprint, manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"}};
-            const wizard = createStubWizard({blueprint: wizardBlueprint, outDir: "custom-out"});
-            const prompt = createStubPrompt();
-            const {command, validator, generator} = createCommand(undefined, undefined, undefined, wizard, () => prompt);
+describe("defaultDirectoryNeedsConfirmation", () => {
+    let dir: string;
 
-            const exitCode = await command.run([]);
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-confirmation-test-"));
+    });
 
-            expect(exitCode).toBe(0);
-            expect(validator.calledWith).toBe(wizardBlueprint);
-            expect(generator.calledWith).toEqual({blueprint: wizardBlueprint, cwd: process.cwd(), outDir: "custom-out"});
-            expect(prompt.closed).toBe(true);
-        });
+    afterEach(() => {
+        fs.rmSync(dir, {recursive: true, force: true});
+    });
 
-        it("prints a cancellation message and returns 1 without generating when the wizard is cancelled", async () => {
-            const wizard = createStubWizard(null);
-            const prompt = createStubPrompt();
-            const {command, generator} = createCommand(undefined, undefined, undefined, wizard, () => prompt);
+    it("is false for a directory that doesn't exist yet", () => {
+        expect(defaultDirectoryNeedsConfirmation(path.join(dir, "not-created"))).toBe(false);
+    });
 
-            const exitCode = await command.run([]);
+    it("is false for an empty existing directory", () => {
+        expect(defaultDirectoryNeedsConfirmation(dir)).toBe(false);
+    });
 
-            expect(exitCode).toBe(1);
-            expect(generator.calledWith).toBeUndefined();
-            expect(prompt.closed).toBe(true);
-            expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("cancelled"));
-        });
+    it("is true for a non-empty directory with no package.json at all", () => {
+        fs.writeFileSync(path.join(dir, "notes.txt"), "hello");
+        expect(defaultDirectoryNeedsConfirmation(dir)).toBe(true);
+    });
 
-        it("closes the prompt even if the wizard rejects", async () => {
-            const wizard = createStubWizard(new Error("boom"));
-            const prompt = createStubPrompt();
-            const {command} = createCommand(undefined, undefined, undefined, wizard, () => prompt);
+    it("is true for an existing npm project whose package.json has no pokie dependency yet", () => {
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({name: "other-project", dependencies: {leftpad: "^1.0.0"}}));
+        expect(defaultDirectoryNeedsConfirmation(dir)).toBe(true);
+    });
 
-            await expect(command.run([])).rejects.toThrow("boom");
-            expect(prompt.closed).toBe(true);
-        });
+    it("is false once package.json already declares a pokie dependency (a prior/partial run of this same tool)", () => {
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({name: "my-game", dependencies: {pokie: "^1.3.0"}}));
+        expect(defaultDirectoryNeedsConfirmation(dir)).toBe(false);
     });
 });

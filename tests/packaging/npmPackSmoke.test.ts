@@ -349,27 +349,33 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         );
     });
 
-    it("builds a package from an Enter-only `pokie init` wizard run, then validates and simulates it", () => {
-        // More blank lines than the wizard has questions: the surplus is simply never read, and using
-        // an exact count here would encode the very question count the Enter-only contract is about.
-        const build = spawnSync(pokieBinPath, ["init"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            input: "\n".repeat(40),
-            timeout: 120000,
-        });
+    it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installs/builds it from the same packed tarball, then validates and simulates it", () => {
+        const projectRoot = path.join(installDir!, "sample-slot");
+        // --no-install: the scaffolded package.json's own "pokie" dependency (a plain semver range) may
+        // not be resolvable from the real registry yet for an as-yet-unpublished dev version -- unlike
+        // installDir's own outer install above, which already has tarballPath to install from directly.
+        // Rewritten below to point at that exact tarball before installing for real.
+        const init = spawnSync(pokieBinPath, ["init", projectRoot, "--no-install"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
-        expect(build.status).toBe(0);
+        expect(init.status).toBe(0);
+        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot, "src", "index.ts"))).toBe(true);
+        expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(false);
 
-        const projectRoot = (/prepared and verified in "(.+)"\.$/m).exec(build.stdout)?.[1];
-        expect(projectRoot).toBeDefined();
-        expect(fs.existsSync(path.join(projectRoot!, "dist", "index.js"))).toBe(true);
+        const packageJsonPath = path.join(projectRoot, "package.json");
+        const scaffoldedPkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {dependencies?: Record<string, string>};
+        scaffoldedPkg.dependencies = {...scaffoldedPkg.dependencies, pokie: tarballPath!};
+        fs.writeFileSync(packageJsonPath, `${JSON.stringify(scaffoldedPkg, null, 4)}\n`);
 
-        const validate = spawnSync(pokieBinPath, ["validate", projectRoot!], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        execFileSync("npm", ["install", "--no-audit", "--no-fund"], {cwd: projectRoot, encoding: "utf-8"});
+        execFileSync("npm", ["run", "build"], {cwd: projectRoot, encoding: "utf-8"});
+        expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+
+        const validate = spawnSync(pokieBinPath, ["validate", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         expect(validate.status).toBe(0);
 
-        const simFile = path.join(installDir!, "enter-only-sim.json");
-        const sim = spawnSync(pokieBinPath, ["sim", projectRoot!, "--rounds", "200", "--seed", "demo", "--out", simFile], {
+        const simFile = path.join(installDir!, "init-sim.json");
+        const sim = spawnSync(pokieBinPath, ["sim", projectRoot, "--rounds", "200", "--seed", "demo", "--out", simFile], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 120000,

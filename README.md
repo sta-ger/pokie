@@ -169,25 +169,19 @@ generator.generateSymbolsCombination(); // same seed always reproduces the same 
 
 ### CLI
 
-Scaffold a brand-new [game package](docs/game-packages.md) in a new directory:
+Turn a directory into a ready-to-run [game package](docs/game-packages.md) in place — merging into an existing
+npm project if there is one, scaffolding a fresh one if not:
 
 ```
 npm i -g pokie
-pokie init sample-slot
-```
-
-Or turn an existing empty npm project into one in place:
-
-```
-npm init -y
-npm i pokie
-npx pokie init
+mkdir sample-slot && cd sample-slot
+pokie init
 ```
 
 Then check a package's contract without playing it:
 
 ```
-pokie validate ./sample-slot
+pokie validate .
 ```
 
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`

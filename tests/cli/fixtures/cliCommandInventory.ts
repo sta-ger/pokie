@@ -317,15 +317,29 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "init",
         description:
-            'Create a prepared, immediately valid POKIE game package from "<name>": a real, editable ' +
-            'src/index.ts a developer owns, generated and verified on the spot, no separate npm install/build ' +
-            'step required -- the "programmer-first" package workflow. Run with no name for the same ' +
-            'interactive wizard "pokie create" offers. For an editable GameBlueprint JSON file instead, use ' +
-            '"pokie create".',
-        // No declared options -- "[name]" is its one positional, optional (no name launches the
-        // interactive wizard instead, itself fully dependency-injectable, so there's still an
-        // executable "valid" case below without touching real stdin/this repo's own working directory).
-        verbs: [{verb: undefined, usage: "Usage: pokie init [name]", positionals: ["name (optional)"], options: []}],
+            "Turn the current or given [directory] into a prepared, immediately valid POKIE game package in " +
+            "place, with no game-id subdirectory: merges/patches package.json, and writes tsconfig.json, " +
+            "README.md and a real, hand-editable src/index.ts wherever they're missing, then (unless " +
+            "--no-prepare) installs dependencies and builds and verifies dist/index.js -- entirely " +
+            "non-interactively, with --package-name/--game-id/--game-name/--version to override its " +
+            "directory-derived defaults. Never asks reel/paytable/mechanics questions; for those, design a " +
+            'Blueprint Project with "pokie create" and build it with "pokie build" instead.',
+        // Options left undeclared here (rather than exhaustively frozen the way e.g. "fairness"'s are) --
+        // --package-name/--game-id/--game-name/--version/--yes/--no-install/--no-prepare's own accepted/
+        // default/rejected-value contract is covered by InitCommand.test.ts and the real-npm
+        // InitCommandWorkflow.integration.test.ts instead, not duplicated a third time here. "usage" still
+        // documents every one of them, and the two invalid cases below (+ two valid ones) exercise this
+        // command's real dispatch the same as every other entry in this file.
+        verbs: [
+            {
+                verb: undefined,
+                usage:
+                    "Usage: pokie init [directory] [--package-name <name>] [--game-id <id>] [--game-name <name>] " +
+                    "[--version <version>] [--yes] [--no-install] [--no-prepare]",
+                positionals: ["directory (optional)"],
+                options: [],
+            },
+        ],
     },
     {
         name: "inspect",
@@ -1294,32 +1308,36 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     },
 
     // --- init ---
-    // No declared options to freeze coverage for (see the CLI_COMMAND_DESCRIPTORS entry above) — its
-    // one positional, "[name]", is optional, so neither of the two "valid" shapes below is invalid:
-    // omitted, it launches the interactive wizard (itself fully dependency-injectable, so this is
-    // exercisable without touching real stdin or this repo's own working directory); given, it runs
-    // the same validate/generate/verify pipeline non-interactively. It still has its own invalid
-    // shapes though — an unrecognized option, or more than one positional — same as "create"'s own.
+    // No declared options to freeze coverage for (see the CLI_COMMAND_DESCRIPTORS entry above). Its one
+    // positional, "[directory]", is optional (defaults to "."), so neither "valid" shape below is
+    // invalid: omitted, it merges/installs/builds/verifies in place non-interactively against a fully
+    // dependency-injected instance; given, an explicit directory plus every override flag does the same.
+    // It still has its own invalid shapes though — an unrecognized option, or more than one positional —
+    // same as every other command's own.
     {
         command: "init",
         kind: "invalid",
         label: "unknown option",
         args: ["sample-slot", "--bogus"],
         expectedExitCode: 1,
-        expectedError: 'Unknown option "--bogus". Usage: pokie init [name]',
+        expectedError:
+            'Unknown option "--bogus". Usage: pokie init [directory] [--package-name <name>] [--game-id <id>] ' +
+            "[--game-name <name>] [--version <version>] [--yes] [--no-install] [--no-prepare]",
     },
     {
         command: "init",
         kind: "invalid",
         label: "unexpected extra positional argument",
-        args: ["name-one", "name-two"],
+        args: ["dir-one", "dir-two"],
         expectedExitCode: 1,
-        expectedError: 'Unexpected extra argument "name-two". Usage: pokie init [name]',
+        expectedError:
+            'Unexpected extra argument "dir-two". Usage: pokie init [directory] [--package-name <name>] ' +
+            "[--game-id <id>] [--game-name <name>] [--version <version>] [--yes] [--no-install] [--no-prepare]",
     },
     {
         command: "init",
         kind: "valid",
-        label: "(no args — launches the interactive wizard via the injected wizard/prompt)",
+        label: "(no args — default directory, merges/installs/builds/verifies non-interactively)",
         args: [],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -1327,8 +1345,16 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "init",
         kind: "valid",
-        label: "<name> (non-interactive path, no wizard involved)",
-        args: ["sample-slot"],
+        label: "<directory> --package-name --game-id --game-name --version --yes (accepted overrides, non-interactive)",
+        args: ["sample-slot", "--package-name", "sample-slot", "--game-id", "sample-slot", "--game-name", "Sample Slot", "--version", "2.0.0", "--yes"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "init",
+        kind: "valid",
+        label: "<directory> --no-prepare (scaffolds in place, never installs/builds/verifies)",
+        args: ["sample-slot", "--no-prepare"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
