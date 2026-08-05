@@ -33,7 +33,6 @@ export type PackageOnlyCommandInput = {
 export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     // --- build: writes a package from a blueprint/config; never reads an existing package. ---
     {command: "build", verb: undefined, requiresLoadablePackage: false, primaryInput: "config.json (a GameBlueprint)"},
-    {command: "build", verb: "--init-blueprint", requiresLoadablePackage: false, primaryInput: "file (an output path -- writes a starter blueprint template, reads nothing)"},
     {command: "build", verb: "random", requiresLoadablePackage: false, primaryInput: "none (generates its own random blueprint)"},
 
     // --- certification: reads a previously-built outcome-library bundle / evidence bundle, never a package. ---

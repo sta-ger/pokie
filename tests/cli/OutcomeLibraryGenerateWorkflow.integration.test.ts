@@ -87,7 +87,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         const blueprintPath = path.join(workDir, `${dirName}.blueprint.json`);
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
         const outDir = path.join(workDir, dirName);
-        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
         expect(exitCode).toBe(0);
         return outDir;
     }

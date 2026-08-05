@@ -273,16 +273,16 @@ function reelGenerationObserver(key: string): typeof resolveReelStripGeneration 
 // else (argv parsing, control flow, console output, exit code) is the real, unstubbed command class.
 function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
     const builders: Record<string, (key: string) => CliCommandHandling> = {
-        "build::<config.json> (no --out, no --dry-run — writes via the injected generator using its own default output directory)": (key) =>
+        "build::<config.json> (no --target, no --dry-run — writes via the injected generator using its own default output directory)": (key) =>
             new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
                 undefined,
-                // Non-dry-run build with no --out: the generator actually runs with outDir === undefined
+                // Non-dry-run build with no --target: the generator actually runs with outDir === undefined
                 // (String(undefined) === "undefined"), and its being called at all is --dry-run's "false" evidence.
                 stub<GamePackageGenerating>({
                     generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--out", outDir);
+                        observe(key, "--target", outDir);
                         observe(key, "--dry-run", "false");
                         return {
                             createdFiles: ["package.json"],
@@ -294,7 +294,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 }),
             ),
-        "build::<config.json> --dry-run validates and previews without writing anything (default, no --out)": () =>
+        "build::<config.json> --dry-run validates and previews without writing anything (default, no --target)": () =>
             // --dry-run's accepted "true" is derived from the real captured stdout (see
             // STDOUT_BOOLEAN_MARKER_FLAGS above) -- a real dry-run never reaches generate() at all
             // (buildFromBlueprint returns before calling it), so the stub below still fails dispatch()
@@ -309,14 +309,14 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 }),
             ),
-        "build::<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)": (key) =>
+        "build::<config.json> --target <dir> (accepted --target value, default --dry-run, writes via the injected generator)": (key) =>
             new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
                 undefined,
                 stub<GamePackageGenerating>({
                     generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--out", outDir);
+                        observe(key, "--target", outDir);
                         observe(key, "--dry-run", "false");
                         return {
                             createdFiles: ["package.json"],
@@ -328,12 +328,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 }),
             ),
-        "build::--init-blueprint <file> writes the starter blueprint template": () =>
-            new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, () => undefined),
-        "build::random (no flags at all -- default --seed/--out/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)": (key) => {
-            // The one non-dry-run "random" case that also omits --seed/--preset: --out/--dry-run/--seed/--preset
+        "build::random (no flags at all -- default --seed/--target/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)": (key) => {
+            // The one non-dry-run "random" case that also omits --seed/--preset: --target/--dry-run/--seed/--preset
             // all reach a real seam here (GamePackageGenerating.generate() actually runs, unlike every --dry-run
-            // case above, so --out's default is genuinely observable; the random generator's own generate() always
+            // case above, so --target's default is genuinely observable; the random generator's own generate() always
             // runs regardless of --dry-run, so --seed/--preset are observable too).
             const defaultGenerator = new RandomGameBlueprintGenerator();
             return new BuildCommand(
@@ -342,7 +340,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 stub<GamePackageGenerating>({
                     generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--out", outDir);
+                        observe(key, "--target", outDir);
                         observe(key, "--dry-run", "false");
                         return {
                             createdFiles: ["package.json"],
@@ -353,9 +351,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         };
                     },
                 }),
-                undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -367,11 +362,11 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": (key) => {
-            // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (12th ctor param); wrapping
+            // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (7th ctor param); wrapping
             // a real one keeps its output byte-identical while observing --seed/--preset at its own generate() seam.
             // --dry-run's accepted "true" is derived from the real captured stdout (see
             // STDOUT_BOOLEAN_MARKER_FLAGS above); this dry-run build never reaches the GamePackageGenerating.generate()
-            // seam at all, so --out's own default evidence comes from a different, non-dry-run "random" case instead
+            // seam at all, so --target's own default evidence comes from a different, non-dry-run "random" case instead
             // (see the bare "random (...)" case below) -- the throw-stub here still fails dispatch() outright if
             // generate() is ever wrongly invoked during a dry run.
             const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
@@ -386,9 +381,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 }),
                 undefined,
                 undefined,
-                undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -398,9 +390,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             );
         },
-        "build::random --seed <integer> --out <dir> (accepted --out value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)": (key) => {
-            // Non-dry-run random build (preset defaults, so runRandom() uses the randomBlueprintGenerator, 10th ctor
-            // param): observes --out at GamePackageGenerating.generate()'s outDir, --dry-run "false" (generate ran),
+        "build::random --seed <integer> --target <dir> (accepted --target value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)": (key) => {
+            // Non-dry-run random build (preset defaults, so runRandom() uses the randomBlueprintGenerator, 5th ctor
+            // param): observes --target at GamePackageGenerating.generate()'s outDir, --dry-run "false" (generate ran),
             // and --preset "default" at the random generator's own seam; a real random build with a seed also runs
             // the post-build smoke simulation, hence the runSmoke stub.
             const defaultGenerator = new RandomGameBlueprintGenerator();
@@ -410,7 +402,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 stub<GamePackageGenerating>({
                     generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--out", outDir);
+                        observe(key, "--target", outDir);
                         observe(key, "--dry-run", "false");
                         return {
                             createdFiles: ["package.json"],
@@ -421,9 +413,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         };
                     },
                 }),
-                undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -434,15 +423,12 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
             );
         },
-        "build::random --out <dir> --dry-run (accepted --out value, default --seed/--preset)": (key) => {
-            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (8th
+        "build::random --target <dir> --dry-run (accepted --target value, default --seed/--preset)": (key) => {
+            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (5th
             // ctor param) runs with seed undefined; dry-run means the GamePackageGenerating seam is never reached.
             const defaultGenerator = new RandomGameBlueprintGenerator();
             return new BuildCommand(
                 TEST_VERSION,
-                undefined,
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,
@@ -455,7 +441,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             );
         },
-        "build::random --seed <integer> (default --dry-run/--out/--preset, writes via the injected generator, runs the smoke simulation)": () =>
+        "build::random --seed <integer> (default --dry-run/--target/--preset, writes via the injected generator, runs the smoke simulation)": () =>
             new BuildCommand(
                 TEST_VERSION,
                 undefined,
@@ -469,9 +455,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         unchanged: false,
                     }),
                 }),
-                undefined,
-                undefined,
-                undefined,
                 undefined,
                 () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
             ),
@@ -1140,7 +1123,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         "inspect::<packageRoot>": () =>
             new InspectCommand({
-                inspect: () => ({packageRoot: "pkg", valid: true, generated: false, packageJson: {name: "pkg", version: "0.1.0"}}),
+                inspect: () => ({packageRoot: "pkg", valid: true, packageJson: {name: "pkg", version: "0.1.0"}}),
             }),
 
         // --count/--theme/--words/--seed reach the generator's generateUnique(count, request); wrapping a real
@@ -1972,8 +1955,8 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
 // pick a subcommand, and is used purely to bucket test-fixture cases for the coverage assertions
 // below, never to assert behavior itself): a subcommand-style command (certification/fairness/
 // outcomelibrary/par/stakeengine) always has its verb literal as `args[0]`; "build"/"create" each have
-// one or more sentinel verbs recognized by a flag rather than a positional ("--init-blueprint"/"random"
-// for build, "--blank"/"--random" for create); every other command has exactly one verb (`undefined`).
+// one or more sentinel verbs recognized by a flag rather than a positional ("random" for build,
+// "--blank"/"--random" for create); every other command has exactly one verb (`undefined`).
 function deriveVerbForCase(commandName: string, args: string[]): string | undefined {
     const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === commandName);
     if (!descriptor) {
@@ -1982,9 +1965,6 @@ function deriveVerbForCase(commandName: string, args: string[]): string | undefi
     const verbLiterals = descriptor.verbs.map((verb) => verb.verb).filter((verb): verb is string => verb !== undefined);
     if (verbLiterals.length === 0) {
         return undefined;
-    }
-    if (verbLiterals.includes("--init-blueprint") && args[0] === "--init-blueprint") {
-        return "--init-blueprint";
     }
     if (verbLiterals.includes("random") && args[0] === "random") {
         return "random";

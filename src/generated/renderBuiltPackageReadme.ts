@@ -26,10 +26,10 @@ already sitting in this package.
   \`npm install\`/\`npm run build\` step; \`src/index.ts\` exists so a real \`npm run build\` (if you ever
   run one) reproduces an equivalent \`dist/index.js\`, rather than nothing at all.
 
-**Do not hand-edit \`src/index.ts\` or \`dist/index.js\`** — re-run \`pokie build <config.json> --out .\`
+**Do not hand-edit \`src/index.ts\` or \`dist/index.js\`** — re-run \`pokie build <config.json> --target .\`
 to regenerate this package after changing the blueprint. \`pokie build\` only ever writes into a
 missing or empty directory — there is no in-place merge/rebuild, so overwriting this package means
-removing it (or its contents) first, or building into a different \`--out\` directory.
+removing it (or its contents) first, or building into a different \`--target\` directory.
 
 ## Workflow
 

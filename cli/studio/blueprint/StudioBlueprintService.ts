@@ -1,7 +1,6 @@
 import {
     buildGameBuildInfo,
     computeGameBlueprintHash,
-    convertSharedWeightsToReelStrips,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -25,14 +24,12 @@ import {
 import fs from "fs";
 import path from "path";
 import {PokiePathResolver} from "../../paths/PokiePathResolver.js";
-import {applyGameBlueprintToProject} from "./applyGameBlueprintToProject.js";
 import {isPathWithin} from "../isPathWithin.js";
 import {previewBuildDestination} from "../previewBuildDestination.js";
 import type {StudioHomeService} from "../home/StudioHomeService.js";
 import type {StudioBuildPreviewView} from "../home/StudioBuildPreviewView.js";
 import type {StudioBuildResult} from "../home/StudioBuildResult.js";
 import {serializeGameBlueprint} from "./serializeGameBlueprint.js";
-import type {StudioBlueprintApplyView} from "./StudioBlueprintApplyView.js";
 import type {StudioBlueprintCheckView} from "./StudioBlueprintCheckView.js";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 import type {StudioBlueprintRandomView} from "./StudioBlueprintRandomView.js";
@@ -42,7 +39,6 @@ import type {StudioBlueprintValidationView} from "./StudioBlueprintValidationVie
 import type {StudioParSheetExportView} from "./StudioParSheetExportView.js";
 import type {StudioParSheetImportView} from "./StudioParSheetImportView.js";
 import type {StudioReelStripGenerationReelView, StudioReelStripGenerationView} from "./StudioReelStripGenerationView.js";
-import type {StudioSharedWeightsConversionView} from "./StudioSharedWeightsConversionView.js";
 
 const outsideStudioRootMessage = (rawPath: string): string =>
     `"${rawPath}" resolves inside POKIE Studio's own internal directory and cannot be used as a blueprint path.`;
@@ -475,32 +471,6 @@ export class StudioBlueprintService {
         return {status: "ok", errors, warnings, reels};
     }
 
-    // The Game Model view's own "Convert to editable per-reel strips" action (see
-    // GameModelView.tsx's SharedWeightsConversionTable) -- reuses the real core
-    // convertSharedWeightsToReelStrips() (src/project/buildGameModelReels.ts), the exact same
-    // weights -> sample math the read-only view already renders for a "symbolWeights"/"default"
-    // blueprint, never a second, independently re-derived conversion. Purely compute-and-return: the
-    // caller applies the result itself via the existing POST /api/project/blueprint/apply path, with
-    // its own already-loaded expectedHash -- this never writes anything.
-    public convertSharedWeightsToReelStrips(blueprint: unknown): StudioSharedWeightsConversionView {
-        if (!isPlainObject(blueprint)) {
-            return {status: "unsupported", error: "The blueprint must be a JSON object."};
-        }
-        if (blueprint.reelStrips !== undefined || blueprint.reelStripGeneration !== undefined) {
-            return {
-                status: "unsupported",
-                error: 'This blueprint already configures "reelStrips" or "reelStripGeneration" -- there is no shared-weights sample to convert.',
-            };
-        }
-
-        const validated = this.validate(blueprint);
-        if (validated.status === "invalid") {
-            return {status: "invalid", errors: validated.errors, warnings: validated.warnings};
-        }
-
-        return {status: "ok", reelStrips: convertSharedWeightsToReelStrips(blueprint as GameBlueprint)};
-    }
-
     public async build(blueprint: unknown, outDir?: string, sourcePath?: string): Promise<StudioBuildResult> {
         const validated = this.validate(blueprint);
         if (validated.status === "invalid") {
@@ -532,30 +502,5 @@ export class StudioBlueprintService {
             buildInfo: buildGameBuildInfo(blueprint as GameBlueprint, this.pokieVersion, sourcePath, undefined, generated.createdFiles),
             warnings: validated.warnings,
         };
-    }
-
-    // Commits an edited blueprint back to an already-open project's own source file and rebuilds its
-    // generated package in place, as a single conditional-commit "transaction" — see
-    // applyGameBlueprintToProject.ts for the hash-based conflict check and stage-then-atomically-
-    // publish-both semantics this only adds the path-containment guard on top of. `projectRoot`/
-    // `sourcePath` are expected to already be resolved by the caller (StudioServer, from the current
-    // project's own build-info.json — see GamePackageInspector) rather than taken from client input,
-    // but this still applies the same studioRoot containment guard save()/build() do, defensively.
-    public applyToProject(projectRoot: string, sourcePath: string, expectedHash: string, blueprint: unknown): StudioBlueprintApplyView {
-        if (isPathWithin(this.studioRoot, projectRoot)) {
-            return {status: "error", error: outsideStudioRootMessage(projectRoot)};
-        }
-        if (isPathWithin(this.studioRoot, sourcePath)) {
-            return {status: "error", error: outsideStudioRootMessage(sourcePath)};
-        }
-
-        return applyGameBlueprintToProject({
-            projectRoot,
-            sourcePath,
-            expectedHash,
-            blueprint,
-            blueprintValidator: this.blueprintValidator,
-            gamePackageGenerator: this.gamePackageGenerator,
-        });
     }
 }

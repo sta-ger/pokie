@@ -903,10 +903,9 @@ describe("StudioBlueprintService", () => {
             expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
             expect(preview.updateFiles).toEqual([]);
             expect(preview.deleteFiles).toEqual([]);
-            expect(preview.priorBuild).toBeUndefined();
         });
 
-        it("reports an already-built destination as having content, with no prior build recognized -- a current build no longer leaves anything behind to recognize itself by", async () => {
+        it("reports an already-built destination as having content", async () => {
             const service = createService();
             const outDir = path.join(tmpDir, "out");
             await service.build(buildBlueprint(), outDir, "blueprint.json");
@@ -924,7 +923,6 @@ describe("StudioBlueprintService", () => {
             expect(preview.destinationHasContent).toBe(true);
             expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
             expect(preview.updateFiles).toEqual([]);
-            expect(preview.priorBuild).toBeUndefined();
         });
     });
 

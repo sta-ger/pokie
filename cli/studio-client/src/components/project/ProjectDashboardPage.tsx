@@ -36,7 +36,6 @@ import {describeReplayActionError} from "../../domain/replayActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
-import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useRuntimeManager} from "../../hooks/useRuntimeManager";
@@ -48,7 +47,6 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
 import {ExportDeployTab} from "./ExportDeployTab";
-import {MechanicsEditorTab} from "./MechanicsEditorTab";
 import {OutcomeSourceOverview} from "./OutcomeSourceOverview";
 import {OverviewTab} from "./OverviewTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
@@ -64,7 +62,6 @@ export type ProjectTab =
     | "exportDeploy"
     | "deployment"
     | "outcomeLibraries"
-    | "mechanicsEditor"
     | "certification"
     | "provablyFair"
     | "stakeEngineExport";
@@ -88,8 +85,8 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // separate click-to-check tab. Every entry but Overview carries `requiredCapabilities` -- what actually
 // decides whether it's offered (see isTabSupported below), never just "the dashboard loaded at all".
 // Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs
-// visually separates them from the primary Overview -> Game Model -> Simulation -> Analysis flow --
-// everything's still one click away, just not presented as equal-weight to it.
+// visually separates them from the primary Overview -> Simulation -> Analysis flow -- everything's
+// still one click away, just not presented as equal-weight to it.
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is now the sole Studio build surface --
 // "deployment"/"stakeEngineExport"/"outcomeLibraries" no longer mount their own old Stepper-driven
@@ -101,7 +98,6 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // workflow, Build/Export is both.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
-    {value: "mechanicsEditor", label: "Game Model", requiredCapabilities: [BLUEPRINT_BUILD_CAPABILITY]},
     {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "outcomeLibraries", label: "Analysis", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
@@ -117,34 +113,11 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
-// Game Model's own reachability isn't a plain capability match like every other tab -- it's offered
-// whenever this project's game model is introspectable at all, which is true either because the project
-// carries BLUEPRINT_BUILD_CAPABILITY (a "blueprint" project, editable in place) or because Inspect found
-// "generated" provenance at all (an introspectable-but-not-editable package/WASM project that was
-// nonetheless built via "pokie build" -- see GameModelView/MechanicsEditorTab's own doc comments).
-// Deliberately does NOT also require a known source path: GET /api/project/gameModel (see
-// buildProjectGameModel.ts) still returns a real, truthful projection -- basics from the build record's
-// own manifest, every other section its own explicit "unavailable" diagnostic -- even when the tracked
-// source itself isn't known, so this tab always has real content to show either way.
-function canViewGameModel(header: ProjectHeaderView, inspection: InspectionResultView): boolean {
-    if (header.status !== "loaded") {
-        return false;
-    }
-    if (header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
-        return true;
-    }
-    return inspection.status === "loaded" && inspection.provenance.status === "generated";
-}
-
-// Whether `tab` is actually reachable for the loaded project. Game Model is special-cased to
-// `gameModelViewable` (see canViewGameModel above) rather than a plain capability match; every other tab
-// with no `requiredCapabilities` (Overview) is always supported, and everything else needs the project to
-// be "loaded" (a "loading"/"error"/"empty" header has no capabilities to check at all) and to carry at
-// least one of the capabilities it lists.
-function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView, gameModelViewable: boolean): boolean {
-    if (tab.value === "mechanicsEditor") {
-        return gameModelViewable;
-    }
+// Whether `tab` is actually reachable for the loaded project. A tab with no `requiredCapabilities`
+// (Overview) is always supported; everything else needs the project to be "loaded" (a "loading"/"error"/
+// "empty" header has no capabilities to check at all) and to carry at least one of the capabilities it
+// lists.
+function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): boolean {
     if (tab.requiredCapabilities === undefined) {
         return true;
     }
@@ -152,16 +125,12 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView, ga
 }
 
 // The nav items NavTabs actually renders -- each filtered solely by isTabSupported above (a project
-// whose game model isn't introspectable at all has nothing for Game Model to show but an "unsupported"
-// diagnostic, so it isn't offered as a destination at all; same for every runtime-dependent section
-// against a project that isn't actually runnable). "deployment"/"stakeEngineExport"/"outcomeLibraries"
-// are deliberately never in this list (see ALL_PROJECT_TABS' own doc comment) -- all three now redirect
-// straight into Build/Export (see LEGACY_TAB_MIGRATION_COPY below), so they have nothing of their own
-// left to offer as a nav destination.
-function visibleProjectTabs(header: ProjectHeaderView, gameModelViewable: boolean): NavTabItem<ProjectTab>[] {
-    return ALL_PROJECT_TABS.filter(
-        (tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && tab.value !== "outcomeLibraries" && isTabSupported(tab, header, gameModelViewable),
-    );
+// against a project that isn't actually runnable has nothing for a runtime-dependent section to show).
+// "deployment"/"stakeEngineExport"/"outcomeLibraries" are deliberately never in this list (see
+// ALL_PROJECT_TABS' own doc comment) -- all three now redirect straight into Build/Export (see
+// LEGACY_TAB_MIGRATION_COPY below), so they have nothing of their own left to offer as a nav destination.
+function visibleProjectTabs(header: ProjectHeaderView): NavTabItem<ProjectTab>[] {
+    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && tab.value !== "outcomeLibraries" && isTabSupported(tab, header));
 }
 
 // The migration guidance shown instead of ever mounting Deployment/Stake Engine Export/Outcome Libraries'
@@ -220,88 +189,6 @@ export function ProjectDashboardPage() {
             navigate(`/project/${value}`);
         },
         [navigate],
-    );
-
-    // MechanicsEditorTab owns its own draft entirely locally (no page-level hook, unlike every other
-    // tab's state) and reports its own dirty-ness up through this -- mirroring BlueprintEditorPage's own
-    // onDirtyChange prop exactly (see its doc comment).
-    const [isMechanicsEditorDirty, setIsMechanicsEditorDirty] = useState(false);
-    // Consumed by the blocker predicate to let exactly one subsequent navigate() through unblocked --
-    // same convention/reasoning as useDesignNavigationGuard's own suppressNextBlockRef (see its doc
-    // comment): react-router's useBlocker only re-registers its predicate via a useEffect, which runs
-    // *after* the commit that cleared isMechanicsEditorDirty -- a promise-chain navigate() (like Close
-    // project's own closeProject().then(() => navigate(...)) below) resolves via microtasks, which can
-    // race ahead of that effect and still see the *old* (dirty) predicate. Clearing isMechanicsEditorDirty
-    // alone is therefore not enough for a confirmed action with its own async work before its own
-    // navigate() call; this flag is what actually guarantees that navigate() isn't blocked a second time.
-    // Close project only sets this (and clears isMechanicsEditorDirty) inside closeProject()'s own
-    // .then(), never before the request starts -- until the request actually succeeds, the draft is
-    // still there and every other way of leaving Mechanics Editor must stay guarded, including a second
-    // Close attempt while the first is still pending or after it failed.
-    const suppressMechanicsEditorBlockRef = useRef(false);
-    // MechanicsEditorTab doesn't unmount in the same commit as a blocker-confirmed Leave (a NavTabs
-    // click or Back/Forward that the blocker below had to ask about) -- react-router keeps the outgoing
-    // route's tree mounted for one or more extra renders while the transition is in flight, and
-    // MechanicsEditorTab's own dirty-tracking effect (no dependency array, runs after every render --
-    // see its own doc comment) keeps re-reporting `true` during those renders, since the draft itself
-    // hasn't actually been discarded, only abandoned. Left unguarded, one of those stale echoes lands
-    // *after* onLeave's setIsMechanicsEditorDirty(false) and silently re-dirties this page's state
-    // forever (confirmed via instrumentation: the last dirty:true report before the real unmount always
-    // wins), which a *later* Close project would then wrongly warn about. This ref is what actually
-    // prevents that -- set the instant a Leave is confirmed, it makes handleMechanicsEditorDirtyChange
-    // below ignore every further report from *this* (doomed) instance; the effect right after it resets
-    // the ref the moment activeTab actually leaves "mechanicsEditor", which is the same commit
-    // MechanicsEditorTab itself unmounts in, so a genuinely fresh mount's reports are never mistakenly
-    // ignored. Close project doesn't need this: it lets its own navigate() through via
-    // suppressMechanicsEditorBlockRef regardless of isMechanicsEditorDirty's value, and the whole page
-    // (including this ref) unmounts with it either way.
-    const ignoreMechanicsEditorDirtyReportsRef = useRef(false);
-    useEffect(() => {
-        if (activeTab !== "mechanicsEditor") {
-            return undefined;
-        }
-        return () => {
-            ignoreMechanicsEditorDirtyReportsRef.current = false;
-        };
-    }, [activeTab]);
-    const handleMechanicsEditorDirtyChange = useCallback((dirty: boolean) => {
-        if (ignoreMechanicsEditorDirtyReportsRef.current) {
-            return;
-        }
-        setIsMechanicsEditorDirty(dirty);
-    }, []);
-    // Guards a dirty Mechanics Editor draft against *every* way of leaving it -- a NavTabs click, browser
-    // Back/Forward, and any other in-app navigate() call are all just "history transitions" to a data
-    // router, blocked uniformly by useNavigationBlockerConfirm's predicate below (the same mechanism
-    // useDesignNavigationGuard uses for a dirty Home Design Game draft -- see its own doc comment).
-    // Deliberately not the *full* guard system Home has (no guardedAction as its own exported action, no
-    // hashchange fallback, no beforeunload) -- Close project is this tab's only "action with a side
-    // effect before its own navigate() call", handled inline via suppressMechanicsEditorBlockRef instead
-    // of a second copy of guardedAction. onLeave clears isMechanicsEditorDirty and locks out further
-    // stale reports (see ignoreMechanicsEditorDirtyReportsRef above) the instant the user actually
-    // confirms leaving -- never on Cancel -- so a *later* Close project doesn't show a ghost "unapplied
-    // draft" warning for a draft the user already agreed to lose.
-    useNavigationBlockerConfirm(
-        ({currentLocation, nextLocation}) => {
-            const leavingMechanicsEditor = currentLocation.pathname === "/project/mechanicsEditor" && nextLocation.pathname !== currentLocation.pathname;
-            if (!isMechanicsEditorDirty || !leavingMechanicsEditor) {
-                return false;
-            }
-            if (suppressMechanicsEditorBlockRef.current) {
-                suppressMechanicsEditorBlockRef.current = false;
-                return false;
-            }
-            return true;
-        },
-        {
-            title: "Unsaved changes",
-            children: "You have unsaved changes in Game Model. Leave and lose them?",
-            labels: {confirm: "Leave", cancel: "Stay"},
-        },
-        () => {
-            ignoreMechanicsEditorDirtyReportsRef.current = true;
-            setIsMechanicsEditorDirty(false);
-        },
     );
 
     const header = useProjectContext();
@@ -758,9 +645,6 @@ export function ProjectDashboardPage() {
         runtime.running ||
         deployment.runLoading;
 
-    const gameModelViewable = canViewGameModel(header, inspection);
-    const canEditGameModel = header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
-
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
     const legacyTabMigration = LEGACY_TAB_MIGRATION_COPY[activeTab];
@@ -768,7 +652,7 @@ export function ProjectDashboardPage() {
     // unsupported operation (e.g. /project/simulation for a project that can't run in-process) shows
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
     // own hooks/fetches.
-    const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header, gameModelViewable);
+    const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
     const projectName = header.status === "loaded" ? header.name : "Project";
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -801,15 +685,6 @@ export function ProjectDashboardPage() {
         }
     };
 
-    // Only offered once the package is known to have come from a blueprint this Studio can reopen (a
-    // `pokie build` provenance with a real source path -- describeProvenance's own "(unknown)" sentinel
-    // means the path is genuinely not known, e.g. an older build-info without it).
-    const blueprintSource =
-        inspection.status === "loaded" && inspection.provenance.status === "generated" && inspection.provenance.source !== "(unknown)"
-            ? inspection.provenance.source
-            : undefined;
-    const onConfigureGameModel = blueprintSource ? () => navigate("/home/design", {state: {initialBlueprintPath: blueprintSource}}) : undefined;
-
     const [closeError, setCloseError] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
     const handleClose = (): void => {
@@ -817,56 +692,24 @@ export function ProjectDashboardPage() {
             if (!closeGuard.begin()) {
                 return;
             }
-            // Deliberately does NOT clear isMechanicsEditorDirty (or arm the suppress ref) here, before
-            // the request even starts -- the draft isn't actually gone until closeProject() genuinely
-            // succeeds. While the request is pending, or if it fails, the draft is exactly as unapplied
-            // as it was before this click, so the navigation-blocker guard above must keep protecting it
-            // against any other way of leaving Mechanics Editor -- clearing eagerly would open a window
-            // where a pending/failed close silently leaves the draft undefended.
             setCloseError(undefined);
             closeProject(fetchImpl)
                 .then(() => {
-                    // Only now is the draft actually gone -- this is the one call site with an async side
-                    // effect (closeProject) before its own eventual navigate() -- exactly
-                    // useDesignNavigationGuard's guardedAction shape (see its doc comment). Setting
-                    // isMechanicsEditorDirty alone would not be enough for that navigate() call below:
-                    // useBlocker re-registers its predicate via a useEffect, which runs after commit,
-                    // while navigate() here runs synchronously in this same microtask and could still see
-                    // the router's stale (dirty) predicate. The suppress ref is what actually lets this
-                    // specific navigate() through unblocked regardless.
-                    setIsMechanicsEditorDirty(false);
-                    suppressMechanicsEditorBlockRef.current = true;
                     navigate("/home/design");
                 })
-                // A failed close must be visible, not indistinguishable from the button silently doing
-                // nothing -- the guard is released here too, so the user can actually retry. Dirty state
-                // and the suppress ref were never touched above, so the draft and its guard are exactly
-                // as they were before this attempt.
                 .catch((error: unknown) => setCloseError(errorMessage(error)))
                 .finally(() => closeGuard.end());
         };
-        // Both risks named together when both apply -- a project can simultaneously have an unapplied
-        // Mechanics Editor draft *and* an active simulation/replay/deployment/runtime; picking only one
-        // to mention would silently hide the other.
-        const risks: string[] = [];
-        if (isMechanicsEditorDirty) {
-            risks.push("unsaved changes in Game Model");
-        }
-        if (hasActiveOperation) {
-            risks.push("an active simulation, replay, deployment, or running runtime");
-        }
-        if (risks.length === 0) {
+        if (!hasActiveOperation) {
             doClose();
             return;
         }
-        const risksText = risks.length === 2 ? `${risks[0]} and ${risks[1]}` : risks[0];
-        const lossWarning = isMechanicsEditorDirty ? " Any unsaved changes will be lost." : "";
-        confirm(`This project has ${risksText}. Close the project anyway?${lossWarning}`, doClose);
+        confirm(`This project has an active simulation, replay, deployment, or running runtime. Close the project anyway?`, doClose);
     };
 
     if (header.status === "empty") {
         return (
-            <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header, gameModelViewable)} active={activeTab} onSelect={setActiveTab} />}>
+            <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
                 <Text>
                     No active project. <Anchor href="#/home/design">Go to Home</Anchor>.
                 </Text>
@@ -876,7 +719,7 @@ export function ProjectDashboardPage() {
 
     return (
         <AppShellLayout
-            navbar={<NavTabs items={visibleProjectTabs(header, gameModelViewable)} active={activeTab} onSelect={setActiveTab} />}
+            navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
@@ -929,7 +772,6 @@ export function ProjectDashboardPage() {
                                     onRevalidate={runValidate}
                                     nextAction={nextAction}
                                     onNextAction={onNextAction}
-                                    onConfigureGameModel={onConfigureGameModel}
                                     onReinspect={refreshInspect}
                                 />
                             )}
@@ -1036,12 +878,6 @@ export function ProjectDashboardPage() {
                                     />
                                     <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
                                 </>
-                            )}
-                            {activeTab === "mechanicsEditor" && (
-                            // Same reasoning as RuntimeTab's own key above -- MechanicsEditorTab owns
-                            // all of its own draft state locally (via useBlueprintEditor), so a genuine project
-                            // switch is handled by a full remount rather than page-level cleanup.
-                                <MechanicsEditorTab key={projectKey ?? "no-project"} canEdit={canEditGameModel} onDirtyChange={handleMechanicsEditorDirtyChange} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as RuntimeTab's own key above -- CertificationTab owns

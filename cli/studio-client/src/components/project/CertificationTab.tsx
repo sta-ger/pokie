@@ -1,10 +1,9 @@
-import {Alert, Anchor, Button, CopyButton, Group, NumberInput, Select, Stepper, Table, Text, TextInput} from "@mantine/core";
+import {Alert, Anchor, Button, CopyButton, Group, NumberInput, Stepper, Table, Text, TextInput} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState, type ReactNode} from "react";
-import {browseFilesystem, buildCertificationEvidenceBundle, inspectProject, loadBlueprint, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
+import {browseFilesystem, buildCertificationEvidenceBundle, validateCertificationSourceBundle, type CertificationBuildModeInput} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
-import {asBetModesList} from "../../domain/blueprintFormOps";
 import {errorMessage} from "../../domain/errorMessage";
 import {
     describeCertificationBuildResult,
@@ -62,23 +61,6 @@ const EMPTY_MODE: ModeFields = {modeName: "", seed: "", sampleCount: RECOMMENDED
 const DETECTED_BUNDLE_RELATIVE_PATH = "outcomes/bundle";
 
 type DetectedBundleView = {status: "loading"} | {status: "found"; path: string} | {status: "not-found"};
-
-// A deterministic, reproducible-by-construction default seed for a freshly auto-filled mode row --
-// scoped to the mode name so two modes never collide, and stable across reloads so re-running the same
-// project's certification later starts from the same suggestion (see docs/certification-evidence-
-// bundle.md's own "same input always reproduces the same output" contract this whole tab is built on).
-function defaultSeedForMode(modeName: string): string {
-    return `cert-${modeName}`;
-}
-
-type ProjectModesView = {status: "loading"} | {status: "unavailable"} | {status: "ok"; modeIds: readonly string[]};
-
-// The set of project mode ids already claimed by some *other* row -- used both to restrict a given
-// row's own Select to the modes still available to it, and to decide whether "Add mode" has anything
-// left to offer at all.
-function usedModeNames(modes: readonly ModeFields[], excludeIndex: number): Set<string> {
-    return new Set(modes.filter((_, index) => index !== excludeIndex).map((mode) => mode.modeName.trim()).filter((name) => name.length > 0));
-}
 
 const CERTIFICATION_STORAGE_PREFIX = "pokie-studio:certification:";
 
@@ -196,10 +178,6 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const [detectedBundle, setDetectedBundle] = useState<DetectedBundleView>({status: "loading"});
     const [generatePanelOpened, {toggle: toggleGeneratePanel}] = useDisclosure(false);
 
-    // ---- Project modes (for auto-filling/restricting mode rows) ----
-    const [projectModesView, setProjectModesView] = useState<ProjectModesView>({status: "loading"});
-    const autoFilledFirstRowRef = useRef(false);
-
     // ---- Validate ----
     const [validateView, setValidateView] = useState<CertificationSourceValidateRequestView>({status: "idle"});
     const validateRequestIdRef = useRef(0);
@@ -276,7 +254,6 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
         setBundleDir("");
         setOutDir("certification");
         setModes([{...EMPTY_MODE}]);
-        autoFilledFirstRowRef.current = false;
         if (validateView.status !== "idle") {
             invalidateValidate();
         }
@@ -284,8 +261,8 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
 
     // Runs once per mount -- CertificationTab is remounted wholesale (key={projectKey}) on a genuine
     // project switch, so there's no separate "project changed" case to handle here. Never blocks the
-    // rest of the tab: a failed/unsupported detection just leaves "Use detected"/the auto-filled mode
-    // row unavailable, same as a project with no matching bundle or tracked blueprint at all.
+    // rest of the tab: a failed detection just leaves "Use detected" unavailable, same as a project with
+    // no matching bundle at all.
     useEffect(() => {
         let cancelled = false;
         browseFilesystem(fetchImpl, DETECTED_BUNDLE_RELATIVE_PATH, projectRoot, "directory")
@@ -301,58 +278,11 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                 }
             });
 
-        inspectProject(fetchImpl)
-            .then((report) => {
-                if (cancelled) {
-                    return undefined;
-                }
-                if (!report.generated || report.buildInfo?.source === undefined) {
-                    setProjectModesView({status: "unavailable"});
-                    return undefined;
-                }
-                return loadBlueprint(fetchImpl, report.buildInfo.source).then((result) => {
-                    if (cancelled) {
-                        return;
-                    }
-                    if (result.status === "load-error") {
-                        setProjectModesView({status: "unavailable"});
-                        return;
-                    }
-                    const blueprint = result.blueprint as Record<string, unknown> | null;
-                    const modeIds = asBetModesList(blueprint?.betModes)
-                        .map((mode) => mode.id.trim())
-                        .filter((id) => id.length > 0);
-                    setProjectModesView(modeIds.length > 0 ? {status: "ok", modeIds} : {status: "unavailable"});
-                });
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setProjectModesView({status: "unavailable"});
-                }
-            });
-
         return () => {
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    // Auto-fills the first mode row from the project's own modes exactly once, and only when there's
-    // nothing more specific to respect: a session restore (persistedFields) already reflects the user's
-    // own prior choice (including a deliberate blank), and a row the user has since touched themselves
-    // must never be clobbered by a slow project-modes response landing late.
-    useEffect(() => {
-        if (projectModesView.status !== "ok" || autoFilledFirstRowRef.current || persistedFields !== undefined) {
-            return;
-        }
-        autoFilledFirstRowRef.current = true;
-        if (modes.length !== 1 || classifyModeRow(modes[0]) !== "empty") {
-            return;
-        }
-        const modeName = projectModesView.modeIds[0];
-        handleModesChange([{modeName, seed: defaultSeedForMode(modeName), sampleCount: RECOMMENDED_SAMPLE_COUNT}]);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectModesView]);
 
     function runValidate(): void {
         if (bundleDir.trim().length === 0 || !validateGuard.begin()) {
@@ -457,20 +387,6 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
         }
         return [];
     }
-
-    // Modes still available to the row at `index` -- every project mode not already claimed by some
-    // *other* row, plus this row's own current selection (so choosing it never makes it vanish from its
-    // own dropdown). Empty (and unused for restriction) whenever project modes aren't known.
-    function remainingModeChoicesFor(index: number): string[] {
-        if (projectModesView.status !== "ok") {
-            return [];
-        }
-        const usedByOtherRows = usedModeNames(modes, index);
-        const ownValue = modes[index].modeName.trim();
-        return projectModesView.modeIds.filter((id) => id === ownValue || !usedByOtherRows.has(id));
-    }
-
-    const allProjectModesUsed = projectModesView.status === "ok" && projectModesView.modeIds.every((id) => usedModeNames(modes, -1).has(id));
 
     function handleAddMode(): void {
         handleModesChange([...modes, {...EMPTY_MODE}]);
@@ -700,36 +616,18 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                     <Text size="sm" fw={600} mb={4}>
                         Modes to sample
                     </Text>
-                    {projectModesView.status === "unavailable" && (
-                        <Text size="xs" c="dimmed" mb="sm">
-                            This project isn&apos;t built from a tracked source blueprint, so its modes can&apos;t be
-                            listed automatically -- enter mode names below as free text.
-                        </Text>
-                    )}
                     {modes.map((mode, index) => {
                         const warnings = modeFieldWarnings(mode);
                         const canRemove = classifyModeRow(mode) !== "empty" || modes.length > 1;
                         return (
                             <Group key={index} gap="sm" wrap="wrap" mb="sm" align="flex-end">
                                 <div>
-                                    {projectModesView.status === "ok" ? (
-                                        <Select
-                                            label="Mode name"
-                                            placeholder="Choose a mode…"
-                                            data={remainingModeChoicesFor(index)}
-                                            value={mode.modeName.trim().length > 0 ? mode.modeName : null}
-                                            onChange={(value) =>
-                                                handleModesChange(modes.map((m, i) => (i === index ? {...m, modeName: value ?? ""} : m)))
-                                            }
-                                        />
-                                    ) : (
-                                        <TextInput
-                                            label="Mode name"
-                                            placeholder="base"
-                                            value={mode.modeName}
-                                            onChange={(event) => handleModesChange(modes.map((m, i) => (i === index ? {...m, modeName: event.currentTarget.value} : m)))}
-                                        />
-                                    )}
+                                    <TextInput
+                                        label="Mode name"
+                                        placeholder="base"
+                                        value={mode.modeName}
+                                        onChange={(event) => handleModesChange(modes.map((m, i) => (i === index ? {...m, modeName: event.currentTarget.value} : m)))}
+                                    />
                                     <FieldWarningText message={warnings.modeName} />
                                 </div>
                                 <div>
@@ -760,19 +658,13 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
                         );
                     })}
                     <QuickActions>
-                        <Button variant="default" onClick={handleAddMode} disabled={allProjectModesUsed}>
+                        <Button variant="default" onClick={handleAddMode}>
                             Add mode
                         </Button>
                         <Button onClick={() => setActiveStep(1)} disabled={!validateReachable}>
                             Continue to Validate
                         </Button>
                     </QuickActions>
-                    {allProjectModesUsed && projectModesView.status === "ok" && (
-                        <Text size="xs" c="dimmed" mb="sm">
-                            All {projectModesView.modeIds.length} project mode{projectModesView.modeIds.length === 1 ? "" : "s"} (
-                            {projectModesView.modeIds.join(", ")}) already have a row above.
-                        </Text>
-                    )}
                     {!validateReachable && (
                         <IssueList title="Before you can continue" issues={[{message: "Enter a source outcome-library bundle directory above."}]} />
                     )}

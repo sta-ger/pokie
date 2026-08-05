@@ -7,10 +7,6 @@ import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGen
 // its own (see GamePackageGenerator's own doc comment) — this type only describes what a *caller*
 // computed, not something read back from disk. "schemaVersion" tracks the GameBlueprint JSON shape
 // itself (see GAME_BLUEPRINT_SCHEMA_VERSION in GameBlueprint.ts), not this GameBuildInfo type.
-//
-// Still recognized when reading an *older* package a pre-migration "pokie build" produced (see
-// GamePackageInspector) — "files" there doubled as a manifest of exactly what that run generated, used
-// to recognize a safe rebuild. New builds no longer write anything this could be read back from.
 export type GameBuildInfo = {
     schemaVersion: number;
     generatedBy: string;

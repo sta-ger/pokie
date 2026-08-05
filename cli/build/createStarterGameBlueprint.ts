@@ -1,11 +1,10 @@
 import type {GameBlueprint} from "pokie";
 
-// The canonical starter game this CLI offers in two places: the template "pokie build
-// --init-blueprint <file>" writes out, and every default the interactive "pokie build" wizard offers
-// (see GameBlueprintWizard, which reads its symbols/paytable/weights/bets straight off this rather
-// than restating them — so pressing Enter through the whole wizard yields this same known-good game).
-// Small enough to read and edit by hand in one sitting, but a complete example of every field a
-// first "pokie build <file>" needs —
+// The canonical starter game this CLI offers by default: what "pokie init <name>" writes directly, and
+// every default the interactive "pokie create"/"pokie init" wizard offers (see GameBlueprintWizard,
+// which reads its symbols/paytable/weights/bets straight off this rather than restating them — so
+// pressing Enter through the whole wizard yields this same known-good game). Small enough to read and
+// edit by hand in one sitting, but a complete example of every field a first "pokie build <file>" needs —
 // paylines, paytable, and symbolWeights are all present with valid example values (not omitted to
 // fall back on VideoSlotConfig's own defaults, unlike examples/blueprints/sample-slot.blueprint.json)
 // so there's something concrete to edit for each one. Passes GameBlueprintValidator with zero errors

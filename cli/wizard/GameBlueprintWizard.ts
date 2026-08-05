@@ -48,17 +48,17 @@ class WizardCancelled extends Error {}
 // see docs/cli.md#pokie-build-configjson and src/generated/GameBlueprint.ts for the target shape.
 // Covers the same fields Studio's own guided "Design Game" editor does (basics, layout, symbols/roles,
 // reels, paytable, bets), plus the scatter-triggered free games mechanic Studio's guided editor doesn't
-// offer yet -- see MechanicsEditorTab.tsx's own doc comment. Everything it produces still goes through
-// the same GameBlueprintValidator/GamePackageGenerator as the config-driven path, so it's the only
-// place that shape's validation/generation rules live.
+// offer at all. Everything it produces still goes through the same GameBlueprintValidator/
+// GamePackageGenerator as the config-driven path, so it's the only place that shape's validation/
+// generation rules live.
 export class GameBlueprintWizard implements GameBlueprintWizarding {
     private readonly nameGenerator: SlotGameNameGenerating;
     private readonly defaults: GameBlueprint;
 
-    // Every default this wizard offers is read off the same canonical starter blueprint that
-    // "pokie build --init-blueprint" writes out, rather than being restated here — pressing Enter
-    // through the whole wizard therefore produces that known-good blueprint (modulo the generated
-    // manifest and the output directory), which is exactly what makes an Enter-only run valid.
+    // Every default this wizard offers is read off the same canonical starter blueprint
+    // createStarterGameBlueprint() builds, rather than being restated here — pressing Enter through
+    // the whole wizard therefore produces that known-good blueprint (modulo the generated manifest and
+    // the output directory), which is exactly what makes an Enter-only run valid.
     constructor(
         nameGenerator: SlotGameNameGenerating = new SlotGameNameGenerator(),
         createDefaultBlueprint: () => GameBlueprint = createStarterGameBlueprint,

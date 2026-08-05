@@ -51,11 +51,8 @@ POKIE goes well beyond classic paylines:
 - **[CLI](docs/cli.md)** — `npx pokie build <config.json>` generates a working game package straight from a JSON
   `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated via
   `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
-  [`examples/blueprints`](examples/blueprints)); `npx pokie build` with no config path launches an interactive
-  wizard that asks for the same fields on the terminal instead; `npx pokie build --init-blueprint <file>` writes a
-  small, hand-editable example `GameBlueprint` to `<file>` instead of building anything, ready for the
-  `--init-blueprint -> edit -> --dry-run -> --out` loop (`--dry-run` validates and previews a blueprint without
-  writing anything); `npx pokie build random` (or `npx pokie create [name] --random`) generates and builds a
+  [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing
+  anything; `npx pokie build random` (or `npx pokie create [name] --random`) generates and builds a
   structurally-valid `GameBlueprint` with no config file at all — seeded/reproducible, smoke-simulated before it's
   reported done; `npx pokie name` prints deterministic, offline-generated slot game name(s) without building
   anything; `npx pokie inspect

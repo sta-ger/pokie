@@ -5,7 +5,7 @@
 // explicit editor actions (see StudioBlueprintValidationView).
 //
 // "blueprintHash" is the loaded content's own exact-content hash (see computeGameBlueprintHash) — a
-// caller that later wants to commit an edit back to this same path (see StudioBlueprintApplyView) uses
-// it as the snapshot/"expectedHash" its request was built from, without needing to keep (or re-hash)
-// the full content itself just to detect whether the file changed on disk in between.
+// caller that later wants to save an edit back to this same path uses it as the snapshot/"expectedHash"
+// its request was built from, without needing to keep (or re-hash) the full content itself just to
+// detect whether the file changed on disk in between.
 export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown; blueprintHash: string} | {status: "load-error"; error: string};

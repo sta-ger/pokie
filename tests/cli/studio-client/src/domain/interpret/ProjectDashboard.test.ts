@@ -1,9 +1,4 @@
-import {
-    describeInspection,
-    describeProjectHeader,
-    describeProvenance,
-    describeValidationSummary,
-} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
+import {describeInspection, describeProjectHeader, describeValidationSummary} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
 import type {GamePackageInspectionReport, PokieGamePackageValidationReport} from "../../../../../../cli/studio-client/src/api/types";
 
 describe("describeProjectHeader", () => {
@@ -86,106 +81,12 @@ describe("describeProjectHeader", () => {
     });
 });
 
-describe("describeProvenance", () => {
-    it("reports not-generated for a package with no buildInfo (pokie create/init scaffold)", () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: true,
-            packageJson: {name: "a", version: "1.0.0"},
-            generated: false,
-        };
-
-        expect(describeProvenance(report)).toEqual({status: "not-generated"});
-    });
-
-    it("reports not-generated for a package whose build-info.json was corrupt/unparseable", () => {
-        // GamePackageInspector.readBuildInfo already treats a build-info.json that fails to parse
-        // (or wasn't written by "pokie build") the same as "absent" — describeProvenance must not
-        // second-guess that and invent a separate state for it.
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: true,
-            packageJson: {name: "a", version: "1.0.0"},
-            generated: false,
-        };
-
-        expect(describeProvenance(report)).toEqual({status: "not-generated"});
-    });
-
-    it("reports error (not not-generated) for an invalid/unreadable package (missing or corrupt package.json)", () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: false,
-            generated: false,
-            error: '"/a/package.json" does not exist.',
-        };
-
-        expect(describeProvenance(report)).toEqual({status: "error", message: '"/a/package.json" does not exist.'});
-    });
-
-    it("falls back to a generic message when an invalid report has no error text", () => {
-        const report: GamePackageInspectionReport = {packageRoot: "/a", valid: false, generated: false};
-
-        expect(describeProvenance(report)).toEqual({status: "error", message: "Inspection failed."});
-    });
-
-    it("extracts buildInfo fields for a generated package", () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: true,
-            packageJson: {name: "a", version: "0.1.0"},
-            generated: true,
-            buildInfo: {
-                schemaVersion: 1,
-                generatedBy: "pokie build",
-                pokieVersion: "1.3.0",
-                generatedAt: "2026-01-02T03:04:05.000Z",
-                blueprintHash: "sha256:abc123",
-                source: "sample-slot.blueprint.json",
-                files: ["package.json", "src/generated/index.js"],
-                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-            },
-        };
-
-        expect(describeProvenance(report)).toEqual({
-            status: "generated",
-            blueprintHash: "sha256:abc123",
-            source: "sample-slot.blueprint.json",
-            pokieVersion: "1.3.0",
-            generatedAt: "2026-01-02T03:04:05.000Z",
-            files: ["package.json", "src/generated/index.js"],
-        });
-    });
-
-    it('defaults an unknown source to "(unknown)" and files to an empty list', () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: true,
-            generated: true,
-            buildInfo: {
-                schemaVersion: 1,
-                generatedBy: "pokie build",
-                pokieVersion: "1.3.0",
-                generatedAt: "2026-01-02T03:04:05.000Z",
-                blueprintHash: "sha256:abc123",
-                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-            },
-        };
-
-        const view = describeProvenance(report);
-        expect(view).toEqual(
-            expect.objectContaining({status: "generated", source: "(unknown)", files: []}),
-        );
-    });
-});
-
 describe("describeInspection", () => {
-    it("wraps a valid, not-generated report with its package name/version/root", () => {
+    it("wraps a valid report with its package name/version/root", () => {
         const report: GamePackageInspectionReport = {
             packageRoot: "/a",
             valid: true,
             packageJson: {name: "a", version: "1.0.0"},
-            generated: false,
         };
 
         expect(describeInspection(report)).toEqual({
@@ -193,57 +94,23 @@ describe("describeInspection", () => {
             packageRoot: "/a",
             packageName: "a",
             packageVersion: "1.0.0",
-            provenance: {status: "not-generated"},
         });
     });
 
-    it("wraps a generated report with its provenance", () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: true,
-            packageJson: {name: "a", version: "0.1.0"},
-            generated: true,
-            buildInfo: {
-                schemaVersion: 1,
-                generatedBy: "pokie build",
-                pokieVersion: "1.3.0",
-                generatedAt: "2026-01-02T03:04:05.000Z",
-                blueprintHash: "sha256:abc123",
-                source: "sample-slot.blueprint.json",
-                files: ["package.json"],
-                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-            },
-        };
-
-        const view = describeInspection(report);
-        expect(view.status).toBe("loaded");
-        if (view.status === "loaded") {
-            expect(view.provenance).toEqual({
-                status: "generated",
-                blueprintHash: "sha256:abc123",
-                source: "sample-slot.blueprint.json",
-                pokieVersion: "1.3.0",
-                generatedAt: "2026-01-02T03:04:05.000Z",
-                files: ["package.json"],
-            });
-        }
-    });
-
-    it("wraps an invalid report as loaded, with the error carried by its nested provenance", () => {
+    it("reports invalid (not loaded) for an invalid/unreadable package (missing or corrupt package.json)", () => {
         const report: GamePackageInspectionReport = {
             packageRoot: "/a",
             valid: false,
-            generated: false,
             error: '"/a/package.json" does not exist.',
         };
 
-        expect(describeInspection(report)).toEqual({
-            status: "loaded",
-            packageRoot: "/a",
-            packageName: undefined,
-            packageVersion: undefined,
-            provenance: {status: "error", message: '"/a/package.json" does not exist.'},
-        });
+        expect(describeInspection(report)).toEqual({status: "invalid", message: '"/a/package.json" does not exist.'});
+    });
+
+    it("falls back to a generic message when an invalid report has no error text", () => {
+        const report: GamePackageInspectionReport = {packageRoot: "/a", valid: false};
+
+        expect(describeInspection(report)).toEqual({status: "invalid", message: "Inspection failed."});
     });
 });
 

@@ -104,7 +104,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 8 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
+    it("lists exactly the 7 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -112,24 +112,15 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
 
         const nav = screen.getByRole("navigation", {name: "Sections"});
         const tabButtons = within(nav).getAllByRole("button");
-        expect(tabButtons.map((button) => button.textContent)).toEqual([
-            "Overview",
-            "Game Model",
-            "Simulation",
-            "Replay",
-            "Runtime",
-            "Build/Export",
-            "Certification",
-            "Fairness",
-        ]);
+        expect(tabButtons.map((button) => button.textContent)).toEqual(["Overview", "Simulation", "Replay", "Runtime", "Build/Export", "Certification", "Fairness"]);
         // Exactly one "Advanced" section header for the whole nav (NavTabs only prints one when the
-        // section actually changes from the previous item's) -- Overview/Game Model/Simulation stay
-        // ungrouped as the primary happy path; everything from Replay onward shares it. There's no
-        // "Validate" section any more (validation is now automatic diagnostics inside Overview -- see
-        // OverviewTab), and Deployment/Stake Engine Export/Analysis (Outcome Libraries) have no top-level
-        // entries at all any more -- their own routes still resolve (see the deep-link test below), but
-        // each one now redirects straight into Build/Export instead of mounting its own old workflow --
-        // Build/Export is the sole Studio build surface (see ExportDeployTab).
+        // section actually changes from the previous item's) -- Overview/Simulation stay ungrouped as the
+        // primary happy path; everything from Replay onward shares it. There's no "Validate" section any
+        // more (validation is now automatic diagnostics inside Overview -- see OverviewTab), and
+        // Deployment/Stake Engine Export/Analysis (Outcome Libraries) have no top-level entries at all any
+        // more -- their own routes still resolve (see the deep-link test below), but each one now redirects
+        // straight into Build/Export instead of mounting its own old workflow -- Build/Export is the sole
+        // Studio build surface (see ExportDeployTab).
         expect(within(nav).getAllByText("Advanced")).toHaveLength(1);
     });
 
@@ -145,119 +136,6 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         await screen.findByRole("heading", {name: "My Slot"});
         expect(screen.getByText("Outcome Libraries has moved into Build/Export")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
-    });
-
-    it("hides Game Model from the nav for a project this Studio can't edit as a Blueprint", async () => {
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/context": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "loaded", projectRoot: "/games/my-slot", game: {id: "my-slot", name: "My Slot", version: "1.0.0"}, type: "tsPackage", capabilities: ["runtime.execute"]},
-            }),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        const nav = screen.getByRole("navigation", {name: "Sections"});
-        expect(within(nav).queryByRole("button", {name: "Game Model"})).not.toBeInTheDocument();
-    });
-
-    // P3-POLISH-16: unlike the test above (no capability *and* no tracked source at all), a tsPackage/WASM
-    // project built *from* a tracked blueprint (Inspect's own "generated" provenance) is introspectable
-    // even without BLUEPRINT_BUILD_CAPABILITY -- Game Model is offered read-only, never editable, for it.
-    // See GameModelView/MechanicsEditorTab's own doc comments. Content comes from the server/core-owned
-    // GameModelProjection (GET /api/project/gameModel), never a raw blueprint this client parses itself.
-    it("shows Game Model, read-only, for an introspectable-but-not-editable tsPackage project built from a tracked blueprint", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/context": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "loaded", projectRoot: "/games/my-slot", game: {id: "my-slot", name: "My Slot", version: "1.0.0"}, type: "tsPackage", capabilities: ["runtime.execute"]},
-            }),
-            "/api/project/inspect": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    packageRoot: "/games/my-slot",
-                    valid: true,
-                    generated: true,
-                    buildInfo: {
-                        schemaVersion: 1,
-                        generatedBy: "pokie build",
-                        pokieVersion: "1.3.0",
-                        generatedAt: "2026-01-01T00:00:00.000Z",
-                        blueprintHash: "sha256:blueprint",
-                        source: "/games/my-slot-source/blueprint.json",
-                        game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
-                    },
-                },
-            }),
-            "/api/project/gameModel": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    basics: {status: "available", data: {id: "my-slot", name: "My Slot", version: "1.0.0"}},
-                    layout: {status: "available", data: {reels: 3, rows: 3, winModel: {type: "lines"}, paylineCount: 0}},
-                    symbols: {status: "available", data: [{id: "A", isWild: false, isScatter: false}]},
-                    reels: {status: "available", data: {generationMode: "default", gameWindow: {reels: 0, rows: 0, wrapsAround: true, grid: []}, reels: []}},
-                    paytable: {status: "available", data: []},
-                    betsAndModes: {status: "available", data: {availableBets: [], betModes: []}},
-                    mechanics: {status: "available", data: {}},
-                },
-            }),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        const nav = screen.getByRole("navigation", {name: "Sections"});
-        await user.click(within(nav).getByRole("button", {name: "Game Model"}));
-
-        expect(await screen.findByText("Id: my-slot")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Edit"})).not.toBeInTheDocument();
-        expect(screen.getByText(/Read-only/)).toBeInTheDocument();
-    });
-
-    // P3-POLISH-16's own fix: unlike the introspectable-but-not-editable test above (a known tracked
-    // source path), Game Model must still be reachable -- with honest per-section diagnostics, not hidden
-    // entirely -- for a generated project whose build record simply never recorded which source blueprint
-    // it came from (an older build, or one that otherwise didn't retain "source" in build-info.json).
-    it("shows Game Model in the nav for a generated project even when its build record has no tracked source path on record", async () => {
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/context": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "loaded", projectRoot: "/games/my-slot", game: {id: "my-slot", name: "My Slot", version: "1.0.0"}, type: "tsPackage", capabilities: ["runtime.execute"]},
-            }),
-            "/api/project/inspect": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    packageRoot: "/games/my-slot",
-                    valid: true,
-                    generated: true,
-                    buildInfo: {
-                        schemaVersion: 1,
-                        generatedBy: "pokie build",
-                        pokieVersion: "1.3.0",
-                        generatedAt: "2026-01-01T00:00:00.000Z",
-                        blueprintHash: "sha256:blueprint",
-                        game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
-                    },
-                },
-            }),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        const nav = screen.getByRole("navigation", {name: "Sections"});
-        expect(within(nav).getByRole("button", {name: "Game Model"})).toBeInTheDocument();
     });
 
     it("lists only Overview for a read-only/package-exchange project (e.g. an outcome library), hiding every runtime-dependent section", async () => {

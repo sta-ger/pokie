@@ -25,9 +25,12 @@ non-zero.
 
 ## `pokie create [name]`
 
-Designs an editable **Blueprint Project** — a hand-editable `GameBlueprint` JSON file (reels, symbols, paytable,
-reel weighting) — through an interactive wizard, rather than a ready-to-run package. For a prepared, immediately
-valid package instead, see [`pokie init`](#pokie-init-name) below.
+Designs a **Blueprint Project** — a standalone `GameBlueprint` JSON file (reels, symbols, paytable, reel
+weighting) — through an interactive wizard, rather than a ready-to-run package. Reach for this when you want that
+Blueprint file on its own: to build it with [`pokie build <file> --target <dir>`](#pokie-build-configjson), or to
+feed it into another tool (PAR sheet import/export, reel strip generation, a build pipeline of your own). To get a
+ready-to-run package directly instead — the recommended way to start a new game — use
+[`pokie init`](#pokie-init-name) below.
 
 ```
 npm i -g pokie
@@ -56,12 +59,9 @@ Save this blueprint? [Y/n]: y
 
 Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
-Edit it by hand, then run:
+Build it:
   pokie build ./sample-slot.blueprint.json --dry-run
-  pokie build ./sample-slot.blueprint.json --out <dir>
-
-Note: "pokie create" now writes an editable Blueprint Project (a GameBlueprint JSON file) -- it no longer writes a
-ready-to-run package. For a prepared, immediately valid package instead, run: pokie init [name]
+  pokie build ./sample-slot.blueprint.json --target <dir>
 ```
 
 Declining that confirmation, cancelling (**Ctrl+C**), or closing the input stream (**EOF**) at any point — including
@@ -82,15 +82,12 @@ Options:
 
 - `--blank` — **non-interactively** write the bare-minimum blueprint (3x3, three symbols, one payout each, no
   paylines/`symbolWeights`/`availableBets`) instead of running the wizard — never prompts, for someone who wants to
-  author every field themselves or run this from a script. `<name>` still overrides the manifest id/name (via the
-  same name-derivation rules the old scaffold used); `--out <file>` still picks the destination.
+  author every field themselves or run this from a script. `<name>` still overrides the manifest id/name;
+  `--out <file>` still picks the destination.
 - `--out <file>` — the wizard's own destination question defaults to this instead of
   `./<manifest.id>.blueprint.json` (still editable, like every other question); with `--blank`/`--random`, writes
   here directly, without asking. It fails if the destination file already exists — pick a different `--out` path,
   or remove/edit the existing file first.
-
-Every successful run prints a migration note (shown above) — this command used to write a hand-editable npm
-package directly; that "programmer-first" role now belongs to `pokie init`.
 
 ### `pokie create [name] --random`
 
@@ -116,7 +113,7 @@ pokie create --random --out my-game.blueprint.json # write to a specific path in
 filename); omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
 validation error exits non-zero with a printed explanation instead of writing anything — but, unlike `pokie build
 random`, nothing is ever built or smoke-simulated: `pokie create --random` only ever writes the blueprint file. Feed
-the result into `pokie build <file> --out <dir>` for a real, playable package.
+the result into `pokie build <file> --target <dir>` for a real, playable package.
 
 ## `pokie build [config.json]`
 
@@ -128,19 +125,17 @@ first: it's immediately loadable by every other command below, with `src/index.t
 (if you ever run one) still reproduces an equivalent `dist/index.js`. (`pokie create`, unlike `pokie build`/`pokie
 init`, never writes a package at all — see [`pokie create [name]`](#pokie-create-name) above.)
 
-There are three ways to provide the blueprint:
+There are two ways to provide the blueprint:
 
 - **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
-- **starter template** — `pokie build --init-blueprint <file>` writes a small, hand-editable example
-  `GameBlueprint` to `<file>` instead of building anything, for editing by hand and feeding back into the
-  config-driven path above (see [Starter template](#starter-template-pokie-build---init-blueprint-file) below);
 - **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file) and builds it
   immediately (see [Random generation](#random-generation-pokie-build-random) below).
 
-(For interactive, wizard-driven creation instead — the same `GameBlueprint` wizard `pokie build` used to offer —
-see [`pokie init [name]`](#pokie-init-name) below, which now owns it.)
+To design the `GameBlueprint` first instead of building directly, use [`pokie create [name]`](#pokie-create-name)
+to write a Blueprint Project file, then feed it into `pokie build <file> --target <dir>` above. (For a ready-to-run
+package directly instead, see [`pokie init [name]`](#pokie-init-name) below.)
 
-All three produce the exact same `GameBlueprint` shape, go through the exact same validation
+Both produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
 the resulting package supports the exact same
 [`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev).
@@ -152,8 +147,8 @@ npm install
 ```
 
 `pokie build <config.json>` validates the blueprint first (see below) and, if it has no errors, creates
-`./<manifest.id>` (or `--out <dir>`) — which must not already exist, or must be empty (see [Building into an
-existing `--out` directory](#building-into-an-existing---out-directory) below) — and writes:
+`./<manifest.id>` (or `--target <dir>`) — which must not already exist, or must be empty (see [Building into an
+existing `--target` directory](#building-into-an-existing---target-directory) below) — and writes:
 
 - `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
   omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
@@ -177,7 +172,7 @@ existing `--out` directory](#building-into-an-existing---out-directory) below) �
 The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
 build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,
 or is constrained by, whatever produced it originally; see
-[Building into an existing `--out` directory](#building-into-an-existing---out-directory) below.
+[Building into an existing `--target` directory](#building-into-an-existing---target-directory) below.
 
 After generation, `pokie build` prints a build summary to stdout: the files it wrote, package root,
 game id/name/version, blueprint hash, and source path (when known) — all computed purely for this printout, never
@@ -185,58 +180,11 @@ persisted into the package itself.
 
 Options:
 
-- `--out <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
+- `--target <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
 - `--dry-run` — validate the blueprint and print a preview (game id/name/version, reels x rows, symbol count,
   payline count, bets, blueprint hash, and the files a real build would generate) without creating or touching
-  the `--out` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
+  the `--target` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
   errors, `0` if it's valid (warnings included).
-
-### Starter template (`pokie build --init-blueprint <file>`)
-
-For editing by hand rather than writing a `GameBlueprint` from scratch or answering [`pokie init`'s interactive
-wizard](#interactive-mode-pokie-init-with-no-name)'s prompts:
-
-```
-pokie build --init-blueprint my-game.blueprint.json
-```
-
-```
-Created starter blueprint "my-game.blueprint.json".
-
-Edit it by hand, then run:
-  pokie build my-game.blueprint.json --dry-run
-  pokie build my-game.blueprint.json --out <dir>
-```
-
-Writes a small-but-complete, formatted `GameBlueprint` JSON file to `<file>` — game id/name/version, reels/rows,
-symbols, available bets, paylines, a paytable, and symbol weights, all filled with valid example values (not the
-minimum required to pass validation) so there's something concrete to edit for every field. It passes
-[`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --out
-<dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
-to your own game, and build that.
-
-This same template is the single source of [`pokie init`'s interactive
-wizard](#interactive-mode-pokie-init-with-no-name)'s defaults, so the two never drift apart: an Enter-only wizard
-run describes the game this file describes.
-
-The full starter-template workflow — scaffold, hand-edit, validate-only preview, then a real build:
-
-```
-pokie build --init-blueprint my-game.blueprint.json
-# ...edit my-game.blueprint.json by hand...
-pokie build my-game.blueprint.json --dry-run    # re-run after every edit until it looks right
-pokie build my-game.blueprint.json --out my-game
-```
-
-[`--dry-run`](#pokie-build-configjson) validates the edited blueprint and prints the same preview a real build
-would (game info, reels/rows, symbol/payline/bet counts, blueprint hash, expected files) without creating or
-touching `--out` — so a mistake in a hand-edit is caught immediately, with the same error messages a real build
-would print, before anything is generated.
-
-`--init-blueprint` only ever writes `<file>` itself: it doesn't launch the wizard, validate anything beyond what's
-needed to write the template, or call `GamePackageGenerator` — no package is generated, and nothing else on disk is
-touched. If `<file>` already exists, it's left untouched and the command exits with an error instead of silently
-overwriting it — remove or rename the existing file first, or pick a different `<file>`.
 
 ### Random generation (`pokie build random`)
 
@@ -278,7 +226,7 @@ Both take an optional integer `seed`: the same seed (and, for the blueprint, the
 the exact same name/blueprint. No file is ever written for the blueprint itself; it goes straight into the same
 validate → generate pipeline `pokie build <config.json>` uses.
 
-Options (`--out`/`--dry-run` behave exactly as for a config-driven build):
+Options (`--target`/`--dry-run` behave exactly as for a config-driven build):
 
 - `--seed <integer>` — reproduce a specific earlier random game. Omit it to mint a fresh one — the seed actually
   used is always echoed back on the first line, together with the exact command to reproduce it.
@@ -294,7 +242,7 @@ Options (`--out`/`--dry-run` behave exactly as for a config-driven build):
     `GameBlueprintValidator` warns on that combination).
   Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
   produces a different game, since it selects an entirely different strategy.
-- `--out <dir>` — same as [`pokie build <config.json> --out <dir>`](#pokie-build-configjson): write to `<dir>`
+- `--target <dir>` — same as [`pokie build <config.json> --target <dir>`](#pokie-build-configjson): write to `<dir>`
   instead of `./<manifest.id>`.
 - `--dry-run` — validate and preview only; skips both the real build and the smoke simulation below.
 
@@ -327,7 +275,7 @@ underneath it — neither ever fails the build on its own (see the no-target-RTP
 `pokie create [name] --random` (see [`pokie create [name] --random`](#pokie-create-name---random) above) shares
 this same generation pipeline (the provenance/reproduce-command lines, and validation against the same
 `GameBlueprintValidator`) but never builds or smoke-simulates a package — it only writes the resulting blueprint to
-a Blueprint Project file, for hand-editing before a real `pokie build`/`pokie init`.
+a Blueprint Project file, ready to feed into a real `pokie build <file> --target <dir>`.
 
 #### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
 
@@ -584,30 +532,30 @@ Every error is printed with its code and message, followed by a one-line pointer
 
 Failure modes:
 
-- A missing `<config.json>` (`pokie build` with no arguments at all — for interactive, wizard-driven creation
-  instead, see [`pokie init`](#pokie-init-name)) or an unknown option throws a `Usage: pokie build <config.json>
-  [--out <dir>]` error (plus the same doc pointer as above).
+- A missing `<config.json>` (`pokie build` with no arguments at all — for a ready-to-run package instead, see
+  [`pokie init`](#pokie-init-name)) or an unknown option throws a `Usage: pokie build <config.json>
+  [--target <dir>]` error (plus the same doc pointer as above).
 - A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
   anything.
-- The output directory (`./<manifest.id>` or `--out <dir>`) already existing as a *file* (not a directory)
-  throws — pick a different `--out` or remove it first.
+- The output directory (`./<manifest.id>` or `--target <dir>`) already existing as a *file* (not a directory)
+  throws — pick a different `--target` or remove it first.
 - The output directory already existing and having any content in it at all — even just your own unrelated
   `package.json`, or a directory a previous `pokie build` run itself produced — throws, naming the directory.
   See the next section.
 
-### Building into an existing `--out` directory
+### Building into an existing `--target` directory
 
 `pokie build` only ever writes into a missing or empty directory — there is no in-place merge/rebuild, and no
 recognition of "this directory is safe to overwrite because a prior `pokie build` produced it": a built package
 carries no metadata of its own for a later build to recognize itself by (see above). Building again — after
 editing the blueprint, or just to pick up a newer `pokie` version — means removing the destination (or its
-contents) first, or pointing `--out` at a different, empty directory.
+contents) first, or pointing `--target` at a different, empty directory.
 
 Building the *same* blueprint with the same `pokie` version, into two different empty directories, reproduces
 every generated file byte-for-byte — every build is a pure function of the blueprint, never dependent on
 whatever (if anything) previously occupied the destination. Want to check this without writing anything at all?
 `pokie build <config.json> --dry-run` validates and prints the same blueprint hash a real build would produce,
-with no `--out` directory created or touched.
+with no `--target` directory created or touched.
 
 ### Workflow: `build` -> `inspect` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 
@@ -1272,9 +1220,9 @@ Next:
   pokie dev ./sample-slot
 ```
 
-`pokie init <name>` writes the same filled-in [starter template](#starter-template-pokie-build---init-blueprint-file)
-`pokie create`/`pokie build --init-blueprint` do (manifest overridden to `<name>`, same as `pokie create <name>`'s
-own name-derivation rules), then runs it through the exact same validate/generate pipeline
+`pokie init <name>` writes the same filled-in starter blueprint `pokie create <name>` does (manifest overridden to
+`<name>`, same as `pokie create <name>`'s own name-derivation rules), then runs it through the exact same
+validate/generate pipeline
 [`pokie build`](#pokie-build-configjson) does — `package.json`, `package-lock.json`, `tsconfig.json`, `README.md`,
 `src/index.ts`, `dist/index.js`, written to `./<name>` and immediately loadable, no `npm install`/`npm run build`
 step of its own — and then, unlike `pokie build`, verifies the freshly generated package actually loads (the same
@@ -1304,18 +1252,16 @@ pokie init
 
 Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; wild symbols;
 scatter symbols; available bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips);
-scatter-triggered free games (only asked at all if a scatter symbol was declared); and the output directory. This
-is the same `GameBlueprint` wizard `pokie build` used to offer before this workflow moved to `pokie init` — the
-wizard's own logic is unchanged, only which command launches it — and [`pokie create`](#pokie-create-name) above
-now offers it too, for a Blueprint Project file instead of a package.
+scatter-triggered free games (only asked at all if a scatter symbol was declared); and the output directory.
+[`pokie create`](#pokie-create-name) above runs this same wizard, for a Blueprint Project file instead of a
+package.
 
 **Every question has a default and shows it in `[brackets]`**, so pressing Enter through the entire wizard — without
 typing a single answer — produces a complete, valid package: one that passes [`pokie
 validate`](#pokie-validate-packageroot) with no errors and simulates with [`pokie sim`](#pokie-sim-packageroot)
 straight away. Those defaults are not a second set of values maintained here: they are read off the same canonical
-starter blueprint [`pokie build --init-blueprint <file>`](#starter-template-pokie-build---init-blueprint-file) writes
-out, so an Enter-only run and an unedited `--init-blueprint` template describe the same game (5×3, symbols
-`A,K,Q,J`, their payouts and weights) apart from the generated id/name.
+starter blueprint `createStarterGameBlueprint()` builds internally, so an Enter-only run describes the same game
+(5×3, symbols `A,K,Q,J`, their payouts and weights) apart from the generated id/name.
 
 Typing an answer always overrides the default, so symbols, paytable entries and reel weighting can still be
 specified by hand exactly as before. Two questions additionally accept `-` to opt out of the default entirely
@@ -2008,13 +1954,9 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 ## `pokie inspect <packageRoot>`
 
-Prints a package's provenance — reading `package.json` and, when present, a legacy `src/generated/build-info.json`
-— without loading or running the game at all. Where `pokie validate` answers "does this package satisfy the
-`PokieGame` contract", `pokie inspect` answers "what is this package and where did it come from".
-
-A package the *current* `pokie build`/`pokie init` produces carries no such provenance file (see
-[Building into an existing `--out` directory](#building-into-an-existing---out-directory) above) — `pokie inspect`
-always reports it as not-generated:
+Prints a package's `package.json` identity — name, version, description — without loading or running the game at
+all. Where `pokie validate` answers "does this package satisfy the `PokieGame` contract", `pokie inspect` answers
+"what package is this":
 
 ```
 pokie inspect ./sample-slot
@@ -2024,20 +1966,12 @@ pokie inspect ./sample-slot
 Inspecting package at "./sample-slot"
 
   package.json     name: "sample-slot", version: "0.1.0"
-
-This package does not look like it was generated by "pokie build" (no src/generated/build-info.json found).
 ```
 
-`src/generated/build-info.json` is only ever recognized when it's already there, parses, and its `generatedBy`
-is `"pokie build"` — true of a package an *older*, pre-migration `pokie build` produced, never something a
-current build writes. When recognized, `pokie inspect` prints the fuller provenance that file carries instead:
-game id/name/version, blueprint hash, source path (when known), generation timestamp, `pokie` version, and the
-files that older run generated.
-
-`pokie inspect` never writes or modifies anything. Exit code is `0` for a normal inspection either way (generated
-or not) — it's only `1` when `<packageRoot>` itself doesn't exist/isn't a directory, or its `package.json` is
-missing or fails to parse; the error is printed to stderr in that case. Only usage mistakes (missing
-`<packageRoot>`, an unexpected extra argument) throw the usual `Usage: pokie inspect ...` error.
+`pokie inspect` never writes or modifies anything. Exit code is `0` for a valid, readable package and `1` when
+`<packageRoot>` itself doesn't exist/isn't a directory, or its `package.json` is missing or fails to parse; the
+error is printed to stderr in that case. Only usage mistakes (missing `<packageRoot>`, an unexpected extra
+argument) throw the usual `Usage: pokie inspect ...` error.
 
 ## `pokie name`
 
@@ -2912,29 +2846,26 @@ Opening or creating a project — or launching Studio directly with `pokie .`/`p
 — switches Studio into the **Project** mode/route, identified by that project's `projectRoot`, and shows the
 **Project Dashboard**.
 
-The Dashboard has eleven tabs today, switched client-side with no full page reload — **Overview**, **Validate**,
+The Dashboard has ten tabs today, switched client-side with no full page reload — **Overview**, **Validate**,
 and **Simulation & Reports** first (the primary flow, in that order), then **Replay**, **Runtime**,
-**Deployment**, **Outcome Libraries**, **Mechanics Editor**, **Certification**, **Provably Fair**, and **Stake
+**Deployment**, **Outcome Libraries**, **Certification**, **Provably Fair**, and **Stake
 Engine Export** grouped as "Advanced" in the navigation (still one click away, just visually secondary — see
 [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current tab list).
 Overview also shows a status summary recommending the next action (validate → fix issues → simulate → view
-report) and, when the package was built from a known blueprint path, a **Configure Game Model** button back to
-Home's Design & Build tab:
+report):
 
-- **Overview** shows the game's name/id/version, the absolute `projectRoot`, and a **provenance** panel — if the
-  package was generated by [`pokie build`](#pokie-build-configjson), its blueprint hash, source path, `pokie`
-  version, and generated-files list (the exact same data [`pokie inspect`](#pokie-inspect-packageroot) prints);
-  otherwise a "not built via `pokie build`" message. An **Inspect** quick action re-runs this (handy after
-  rebuilding without restarting Studio).
+- **Overview** shows the game's name/id/version, the absolute `projectRoot`, and its `package.json` identity
+  (name, version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints). An **Inspect** quick
+  action re-runs this (handy after rebuilding without restarting Studio).
 - **Validate** shows the result of its own "Run Validate" button: valid/invalid, errors, warnings, and
   suggestions — the exact same report [`pokie validate`](#pokie-validate-packageroot) produces.
 - **Simulation & Reports** — see its own section below (still named "Simulation"/"Reports" there).
 - **Replay** — see its own section below.
 - **Runtime** — see its own section below.
 - **Deployment** — see its own section below.
-- **Outcome Libraries**, **Mechanics Editor**, **Certification**, **Provably Fair**, and **Stake Engine
+- **Outcome Libraries**, **Certification**, **Provably Fair**, and **Stake Engine
   Export** are thin GUI wrappers over the exact same backend building blocks their CLI counterparts use —
-  [`pokie outcomelibrary`](#pokie-outcomelibrary-build-configjson), the `GameBlueprint` mechanics editor,
+  [`pokie outcomelibrary`](#pokie-outcomelibrary-build-configjson),
   [`pokie certification`](#pokie-certification-build-bundledir-configjson),
   [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite), and
   [`pokie stakeengine export`](#pokie-stakeengine-export-configjson) respectively — with no dedicated
@@ -3500,7 +3431,7 @@ All 18 top-level commands this file documents (`build`/`create`/`init`/`inspect`
 build|validate`/`certification build|verify`/`fairness seed-commit|commit|reveal|verify`/`studio`) are shipped
 today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
 `PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) already covers most of
-these workflows with a real GUI, not just the CLI: Create/Init, the Mechanics Editor (build/validate),
+these workflows with a real GUI, not just the CLI: Create/Init, build/validate,
 Outcome Libraries, PAR Sheet import/export, Certification/Evidence Bundle, Provably Fair, Stake Engine
 export/import, Deployment, Runtime, Replay, and Simulation all have a working Studio surface — see each tab
 under [`ProjectDashboardPage`](studio-frontend.md). The generic `StudioToolHandling` extension seam

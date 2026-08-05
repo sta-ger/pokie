@@ -148,11 +148,11 @@ function describeGuidedBuildBlockedMessage(status: BlueprintValidationView["stat
 // Tools" raw editor's own usage), this component renders exactly as it always has. `guided` adds a step
 // indicator + next-step hint and tucks JSON mode/Load-by-path/Save/PAR Sheet Import-Export behind an
 // "advanced options" disclosure, since Build works directly off the in-memory blueprint and doesn't
-// strictly need any of them in the guided happy path. `initialPath` (set when arriving via Project
-// Overview's "Configure Game Model" link) auto-loads that blueprint on mount, reusing the exact same
-// handleLoad a manual Load click would use. `initialParSheetPath` (set when Home's own Projects "Import
-// Project" action detects a PAR sheet -- see HomePage's own doc comment) opens the advanced disclosure
-// and hands the path to ParSheetImportExportPanel, which auto-runs Import against it on mount.
+// strictly need any of them in the guided happy path. `initialPath`, when set, auto-loads that blueprint
+// on mount, reusing the exact same handleLoad a manual Load click would use. `initialParSheetPath` (set
+// when Home's own Projects "Import Project" action detects a PAR sheet -- see HomePage's own doc
+// comment) opens the advanced disclosure and hands the path to ParSheetImportExportPanel, which
+// auto-runs Import against it on mount.
 export function BlueprintEditorPage({
     guided = false,
     initialPath,
@@ -174,9 +174,9 @@ export function BlueprintEditorPage({
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
     // recovery slot (see blueprintDraftStorage.ts) -- undefined when there's nothing to recover, storage
-    // is unusable, or this page mounted with an explicit `initialPath` (a deliberate Open/Configure-from-
-    // Overview navigation that already knows exactly which blueprint it wants -- see the initialPath
-    // effect below, which would otherwise race this same draft for "what the editor opens showing"). A
+    // is unusable, or this page mounted with an explicit `initialPath` (a deliberate navigation that
+    // already knows exactly which blueprint it wants -- see the initialPath effect below, which would
+    // otherwise race this same draft for "what the editor opens showing"). A
     // once-only useState (its setter is never called) rather than a ref, since a ref's `.current` can't
     // be read during render -- same pattern CertificationTab's own persistedFields uses.
     const [persistedDraft] = useState(() => (guided && !initialPath ? loadPersistedBlueprintDraft() : undefined));

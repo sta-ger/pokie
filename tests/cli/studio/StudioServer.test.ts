@@ -6,7 +6,6 @@ import {
     ExternalDeploymentProjectedModeInput,
     ExternalDeploymentTarget,
     ExternalRoundProjector,
-    GameBuildInfo,
     GamePackageInspector,
     GamePackageInspectionReport,
     GameSessionHandling,
@@ -1843,24 +1842,12 @@ describe("StudioServer", () => {
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./sample-slot"});
         }
 
-        it("forwards a generated package's provenance/build-info as-is", async () => {
+        it("forwards a package's inspection report as-is", async () => {
             await openSampleSlot();
-            const buildInfo: GameBuildInfo = {
-                schemaVersion: 1,
-                generatedBy: "pokie build",
-                pokieVersion: "1.3.0",
-                generatedAt: "2026-01-02T03:04:05.000Z",
-                blueprintHash: "sha256:abc123",
-                source: "sample-slot.blueprint.json",
-                files: ["package.json", "src/generated/index.js"],
-                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-            };
             const report: GamePackageInspectionReport = {
                 packageRoot: "./sample-slot",
                 valid: true,
                 packageJson: {name: "sample-slot", version: "0.1.0"},
-                generated: true,
-                buildInfo,
             };
             inspect.mockReturnValue(report);
 
@@ -1871,28 +1858,11 @@ describe("StudioServer", () => {
             expect(inspect).toHaveBeenCalledWith(path.resolve("./sample-slot"));
         });
 
-        it("forwards a regular (non-generated) package's inspection report", async () => {
-            await openSampleSlot();
-            const report: GamePackageInspectionReport = {
-                packageRoot: "./sample-slot",
-                valid: true,
-                packageJson: {name: "sample-slot", version: "0.1.0"},
-                generated: false,
-            };
-            inspect.mockReturnValue(report);
-
-            const {status, body} = await get(`${baseUrl}/api/project/inspect`);
-
-            expect(status).toBe(200);
-            expect(body).toEqual(report);
-        });
-
         it("forwards a missing/corrupt package.json inspection failure without a stack trace", async () => {
             await openSampleSlot();
             const report: GamePackageInspectionReport = {
                 packageRoot: "./sample-slot",
                 valid: false,
-                generated: false,
                 error: '"./sample-slot/package.json" does not exist.',
             };
             inspect.mockReturnValue(report);
@@ -2106,7 +2076,7 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
 
                 expect(status).toBe(200);
-                expect(body).toMatchObject({packageRoot: projectRoot, valid: false, generated: false});
+                expect(body).toMatchObject({packageRoot: projectRoot, valid: false});
                 expect((body as {error: string}).error).toContain("is not valid JSON");
                 expect(JSON.stringify(body)).not.toContain("\\n    at ");
             } finally {
@@ -2122,51 +2092,9 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
 
                 expect(status).toBe(200);
-                expect(body).toMatchObject({packageRoot: projectRoot, valid: false, generated: false});
+                expect(body).toMatchObject({packageRoot: projectRoot, valid: false});
                 expect((body as {error: string}).error).toContain("does not exist");
                 expect(JSON.stringify(body)).not.toContain("\\n    at ");
-            } finally {
-                fs.rmSync(projectRoot, {recursive: true, force: true});
-            }
-        });
-
-        it("treats a corrupt/unparseable build-info.json as not-generated, not an error", async () => {
-            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-corrupt-build-info-"));
-            try {
-                fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "a", version: "1.0.0"}));
-                fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
-                fs.writeFileSync(path.join(projectRoot, "src", "generated", "build-info.json"), "{ not valid json");
-                const projectBaseUrl = await startServerForProject(projectRoot);
-
-                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
-
-                expect(status).toBe(200);
-                expect(body).toEqual({
-                    packageRoot: projectRoot,
-                    valid: true,
-                    packageJson: {name: "a", version: "1.0.0", description: undefined},
-                    generated: false,
-                });
-            } finally {
-                fs.rmSync(projectRoot, {recursive: true, force: true});
-            }
-        });
-
-        it("treats a build-info.json not written by pokie build as not-generated", async () => {
-            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wrong-build-info-"));
-            try {
-                fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "a", version: "1.0.0"}));
-                fs.mkdirSync(path.join(projectRoot, "src", "generated"), {recursive: true});
-                fs.writeFileSync(
-                    path.join(projectRoot, "src", "generated", "build-info.json"),
-                    JSON.stringify({generatedBy: "someone-else"}),
-                );
-                const projectBaseUrl = await startServerForProject(projectRoot);
-
-                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
-
-                expect(status).toBe(200);
-                expect(body).toMatchObject({valid: true, generated: false});
             } finally {
                 fs.rmSync(projectRoot, {recursive: true, force: true});
             }
@@ -3386,7 +3314,7 @@ describe("StudioServer", () => {
                 undefined,
                 gate.yieldToEventLoop,
             );
-            const inspectStub = jest.fn().mockReturnValue({packageRoot: "/tmp/sample-slot", valid: true, generated: false});
+            const inspectStub = jest.fn().mockReturnValue({packageRoot: "/tmp/sample-slot", valid: true});
             const validateStub = jest.fn().mockResolvedValue({packageRoot: "/tmp/sample-slot", valid: true, game: manifest, errors: [], warnings: [], suggestions: []});
 
             projectServer = new StudioServer({

@@ -217,7 +217,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         let projectRoot: string;
 
         beforeAll(() => {
-            const build = spawnSync(pokieBinPath, ["build", "random", "--seed", "4242", "--out", "./startup-project"], {
+            const build = spawnSync(pokieBinPath, ["build", "random", "--seed", "4242", "--target", "./startup-project"], {
                 cwd: installDir,
                 encoding: "utf-8",
                 timeout: 120000,
@@ -397,7 +397,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }),
         );
         const packageRoot = path.join(installDir!, "outcomelibrary-pkg");
-        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--out", packageRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", packageRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         expect(build.status).toBe(0);
 
         const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
@@ -453,7 +453,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }),
         );
         const packageRoot = path.join(installDir!, "npm-pack-built-package");
-        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--out", packageRoot], {
+        const build = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", packageRoot], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,

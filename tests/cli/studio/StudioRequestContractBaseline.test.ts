@@ -1,4 +1,3 @@
-import {validateApplyProjectBlueprintRequest} from "../../../cli/studio/blueprint/validateApplyProjectBlueprintRequest.js";
 import {validateLoadBlueprintRequest} from "../../../cli/studio/blueprint/validateLoadBlueprintRequest.js";
 import {validateSaveBlueprintRequest} from "../../../cli/studio/blueprint/validateSaveBlueprintRequest.js";
 import {validateOpenProjectRequest} from "../../../cli/studio/home/validateOpenProjectRequest.js";
@@ -23,23 +22,10 @@ import {validateFairnessVerifyRequest} from "../../../cli/studio/fairness/valida
 // validateReplayRequest.test.ts) -- it exists to pin the *cross-flow* shape differences and gaps an
 // isolated per-file test suite doesn't make visible on its own.
 
-describe("Contract baseline: New Blueprint (New / Open / Apply-to-project)", () => {
+describe("Contract baseline: New Blueprint (Open)", () => {
     it("Open Project takes only a projectRoot -- no blueprint, mode, or credentials", () => {
         expect(validateOpenProjectRequest({projectRoot: "/games/a"})).toEqual({projectRoot: "/games/a"});
         expect(() => validateOpenProjectRequest({})).toThrow('"projectRoot" is required.');
-    });
-
-    it("Apply-to-project (the guided flow's 'New Blueprint' target) takes a blueprint + expectedHash, never a projectRoot/sourcePath", () => {
-        const blueprint = {manifest: {id: "a", name: "A", version: "0.1.0"}};
-        expect(validateApplyProjectBlueprintRequest({blueprint, expectedHash: "abc123"})).toEqual({blueprint, expectedHash: "abc123"});
-        expect(() => validateApplyProjectBlueprintRequest({expectedHash: "abc123"})).toThrow('"blueprint" is required.');
-        expect(() => validateApplyProjectBlueprintRequest({blueprint})).toThrow('"expectedHash" is required and must be a non-empty string.');
-        // No projectRoot/sourcePath field exists to send at all -- passing one is simply ignored, not
-        // rejected, since the validator only ever reads `blueprint`/`expectedHash` off the input.
-        expect(validateApplyProjectBlueprintRequest({blueprint, expectedHash: "abc123", projectRoot: "/elsewhere"} as never)).toEqual({
-            blueprint,
-            expectedHash: "abc123",
-        });
     });
 });
 
@@ -173,7 +159,7 @@ describe("Contract baseline: Outcome Libraries selector, and the missing package
 
     // "missing package-to-library" contract: neither a Deployment nor a Stake Engine Export mode's
     // `modeName` is ever checked, at this request-validation layer, against the bet modes the active
-    // project's own game package actually declares (see BetModesEditor/GameBlueprint's `availableBets`).
+    // project's own game package actually declares (see GameBlueprint's own `betModes`/`availableBets`).
     // A modeName that doesn't correspond to any real package bet mode is accepted here exactly like one
     // that does -- the only place that distinction is *ever* enforced is StakeEngineExportValidator's own
     // domain-level pass (modeName format/uniqueness/provenance across an already-loaded set of libraries,

@@ -90,34 +90,27 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "build",
         description:
-            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            'or write an editable starter blueprint via --init-blueprint <file> (for interactive, wizard-driven ' +
-            'creation instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
-            "(--seed to reproduce it, --preset default|variant to pick the generation strategy). --dry-run " +
-            "validates and previews without writing anything.",
+            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable) " +
+            '(for a ready-to-run package instead, see "pokie init"). "random"/--random generates a first-class ' +
+            "random game instead (--seed to reproduce it, --preset default|variant to pick the generation " +
+            "strategy). --dry-run validates and previews without writing anything.",
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie build <config.json> [--out <dir>] [--dry-run]",
+                usage: "Usage: pokie build <config.json> [--target <dir>] [--dry-run]",
                 positionals: ["config.json"],
                 options: [
-                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "customOutDir"},
+                    {flag: "--target", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "customOutDir"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
             {
-                verb: "--init-blueprint",
-                usage: "Usage: pokie build --init-blueprint <file>",
-                positionals: ["file"],
-                options: [],
-            },
-            {
                 verb: "random",
-                usage: "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+                usage: "Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
                 positionals: [],
                 options: [
                     {flag: "--seed", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "4242"},
-                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "random-accepted-out-dir"},
+                    {flag: "--target", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "random-accepted-out-dir"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                     {flag: "--preset", required: false, kind: "validated", defaultValue: "default", acceptedValue: "variant"},
                 ],
@@ -172,15 +165,15 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "create",
         description:
-            "Design an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
-            "paytable, reel weighting) -- through an interactive wizard when run in a terminal with no --blank/" +
-            '--random ("pokie create <name>" pre-fills the name), or write one straight from the filled-in ' +
-            "starter template non-interactively via --blank for a bare-minimum one, or --random for an " +
-            "always-valid randomly generated one, with its reel weighting already expressed as valid per-reel " +
-            "generation (--seed to reproduce it, --preset default|variant to pick the generation strategy). For " +
-            'a prepared, immediately valid package instead, use "pokie init".',
+            "Design a Blueprint Project -- a standalone GameBlueprint JSON file (reels, symbols, paytable, reel " +
+            "weighting) that feeds into \"pokie build\" -- through an interactive wizard when run in a terminal " +
+            "with no --blank/--random (\"pokie create <name>\" pre-fills the name), or write one straight from " +
+            "the filled-in starter template non-interactively via --blank for a bare-minimum one, or --random " +
+            "for an always-valid randomly generated one, with its reel weighting already expressed as valid " +
+            "per-reel generation (--seed to reproduce it, --preset default|variant to pick the generation " +
+            'strategy). For a prepared, immediately valid package instead, use "pokie init".',
         // Three independent verbs, same "sentinel flag rather than a positional" shape "build" already
-        // uses for "--init-blueprint"/"random" (see deriveVerbForCase's own doc comment): the bare/named
+        // uses for "random" (see deriveVerbForCase's own doc comment): the bare/named
         // path (no --blank/--random) always runs the interactive wizard (fully dependency-injectable, so
         // still exercisable without a real terminal or touching this repo's own working directory -- see
         // "init"'s own descriptor comment for the same pattern); "--blank" and "--random" are its two
@@ -322,11 +315,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "init",
         description:
-            "Create a prepared, immediately valid POKIE game package -- interactively via a wizard when run " +
-            'with no name (the same GameBlueprint wizard "pokie build" used to offer), or from the filled-in ' +
-            'starter blueprint named "<name>" otherwise. The "programmer-first" package workflow: a real, ' +
-            "editable src/index.ts a developer owns, generated and verified on the spot, no separate npm " +
-            'install/build step required. For an editable GameBlueprint JSON file instead, use "pokie create".',
+            'Create a prepared, immediately valid POKIE game package from "<name>": a real, editable ' +
+            'src/index.ts a developer owns, generated and verified on the spot, no separate npm install/build ' +
+            'step required -- the "programmer-first" package workflow. Run with no name for the same ' +
+            'interactive wizard "pokie create" offers. For an editable GameBlueprint JSON file instead, use ' +
+            '"pokie create".',
         // No declared options -- "[name]" is its one positional, optional (no name launches the
         // interactive wizard instead, itself fully dependency-injectable, so there's still an
         // executable "valid" case below without touching real stdin/this repo's own working directory).
@@ -334,8 +327,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "inspect",
-        description:
-            'Print a package\'s provenance (game, blueprint hash, source, "pokie build" version) from package.json and src/generated/build-info.json, without running it.',
+        description: "Print a package's package.json (name, version, description) without running it.",
         verbs: [{verb: undefined, usage: "Usage: pokie inspect <packageRoot>", positionals: ["packageRoot"], options: []}],
     },
     {
@@ -701,17 +693,17 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [""],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie build <config.json> [--out <dir>] [--dry-run]\n" +
+            "Usage: pokie build <config.json> [--target <dir>] [--dry-run]\n" +
             "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.",
     },
     {
         // Placed before the --dry-run case so it is the case groupCasesByVerb().valid.find() picks as the
-        // default (omitted) evidence for both --out and --dry-run: a non-dry-run build with no --out, whose
+        // default (omitted) evidence for both --target and --dry-run: a non-dry-run build with no --target, whose
         // injected generator therefore actually runs with outDir === undefined (String(undefined) === "undefined")
         // and whose being-called-at-all is --dry-run's own "false" evidence.
         command: "build",
         kind: "valid",
-        label: "<config.json> (no --out, no --dry-run — writes via the injected generator using its own default output directory)",
+        label: "<config.json> (no --target, no --dry-run — writes via the injected generator using its own default output directory)",
         args: ["config.json"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -719,7 +711,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "build",
         kind: "valid",
-        label: "<config.json> --dry-run validates and previews without writing anything (default, no --out)",
+        label: "<config.json> --dry-run validates and previews without writing anything (default, no --target)",
         args: ["config.json", "--dry-run"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -727,24 +719,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "build",
         kind: "valid",
-        label: "<config.json> --out <dir> (accepted --out value, default --dry-run, writes via the injected generator)",
-        args: ["config.json", "--out", "customOutDir"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-    {
-        command: "build",
-        kind: "invalid",
-        label: "--init-blueprint missing <file>",
-        args: ["--init-blueprint"],
-        expectedExitCode: 1,
-        expectedError: "Usage: pokie build --init-blueprint <file>",
-    },
-    {
-        command: "build",
-        kind: "valid",
-        label: "--init-blueprint <file> writes the starter blueprint template",
-        args: ["--init-blueprint", "starter-blueprint.json"],
+        label: "<config.json> --target <dir> (accepted --target value, default --dry-run, writes via the injected generator)",
+        args: ["config.json", "--target", "customOutDir"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -755,7 +731,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["random", "--seed", "notanumber"],
         expectedExitCode: 1,
         expectedError:
-            "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+            "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
     },
     {
         command: "build",
@@ -764,18 +740,18 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["random", "--seed", "1", "--preset", "bogus"],
         expectedExitCode: 1,
         expectedError:
-            "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+            "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
     },
     {
-        // Placed before every other "random" case so it wins the default (omitted) evidence for --out,
+        // Placed before every other "random" case so it wins the default (omitted) evidence for --target,
         // --seed, and --preset all at once: it's a genuine non-dry-run random build (--dry-run's own default
         // evidence is read from stdout, see STDOUT_BOOLEAN_MARKER_FLAGS, so it doesn't need this case's help),
         // so GamePackageGenerating.generate() actually runs with outDir undefined, unlike every other case here
-        // that omits --out but is also a --dry-run build (where generate() never runs at all, so --out's value
+        // that omits --target but is also a --dry-run build (where generate() never runs at all, so --target's value
         // can't be observed).
         command: "build",
         kind: "valid",
-        label: "random (no flags at all -- default --seed/--out/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)",
+        label: "random (no flags at all -- default --seed/--target/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)",
         args: ["random"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -789,30 +765,30 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectStdout: "text",
     },
     {
-        // Placed before the "random --out <dir> --dry-run" case so it wins the accepted-value lookup for random's
-        // --out (that dry-run case never calls GamePackageGenerating.generate, so --out's value cannot be observed
+        // Placed before the "random --target <dir> --dry-run" case so it wins the accepted-value lookup for random's
+        // --target (that dry-run case never calls GamePackageGenerating.generate, so --target's value cannot be observed
         // there) and is also the default (omitted) evidence for random's --dry-run (a non-dry-run random build
         // whose generator actually runs; it also runs the post-build smoke simulation, which every random build
         // does when a seed is present).
         command: "build",
         kind: "valid",
-        label: "random --seed <integer> --out <dir> (accepted --out value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)",
-        args: ["random", "--seed", "999", "--out", "random-accepted-out-dir"],
+        label: "random --seed <integer> --target <dir> (accepted --target value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)",
+        args: ["random", "--seed", "999", "--target", "random-accepted-out-dir"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
     {
         command: "build",
         kind: "valid",
-        label: "random --out <dir> --dry-run (accepted --out value, default --seed/--preset)",
-        args: ["random", "--out", "random-out-dir", "--dry-run"],
+        label: "random --target <dir> --dry-run (accepted --target value, default --seed/--preset)",
+        args: ["random", "--target", "random-out-dir", "--dry-run"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
     {
         command: "build",
         kind: "valid",
-        label: "random --seed <integer> (default --dry-run/--out/--preset, writes via the injected generator, runs the smoke simulation)",
+        label: "random --seed <integer> (default --dry-run/--target/--preset, writes via the injected generator, runs the smoke simulation)",
         args: ["random", "--seed", "777"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -2366,10 +2342,10 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "build",
         kind: "invalid",
-        label: "--out given with no value",
-        args: ["config.json", "--out"],
+        label: "--target given with no value",
+        args: ["config.json", "--target"],
         expectedExitCode: 1,
-        expectedError: "--out requires a directory path. Usage: pokie build <config.json> [--out <dir>] [--dry-run]",
+        expectedError: "--target requires a directory path. Usage: pokie build <config.json> [--target <dir>] [--dry-run]",
     },
     {
         command: "build",
@@ -2377,15 +2353,15 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "random --seed given with no value",
         args: ["random", "--seed"],
         expectedExitCode: 1,
-        expectedError: "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+        expectedError: "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
     },
     {
         command: "build",
         kind: "invalid",
-        label: "random --out given with no value",
-        args: ["random", "--out"],
+        label: "random --target given with no value",
+        args: ["random", "--target"],
         expectedExitCode: 1,
-        expectedError: "--out requires a directory path. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+        expectedError: "--target requires a directory path. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
     },
     {
         command: "build",
@@ -2393,7 +2369,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "random --preset given with no value",
         args: ["random", "--preset"],
         expectedExitCode: 1,
-        expectedError: "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]",
+        expectedError: "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
     },
 
     // --- certification: missing-value cases ---
