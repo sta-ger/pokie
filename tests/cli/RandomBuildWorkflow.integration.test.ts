@@ -143,7 +143,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
             const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "default-line-pay"\./);
-            expect(printed).toContain('pokie init');
+            expect(printed).toContain("pokie build");
 
             const projectRoot = path.join(workDir, "my-random-game");
             const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", projectRoot]);

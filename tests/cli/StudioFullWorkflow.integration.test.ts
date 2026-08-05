@@ -121,11 +121,12 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
         expect(opened.status).toBe(200);
         expect((opened.body as {context: unknown}).context).toEqual({mode: "project", projectRoot});
 
-        // 4. Inspect. A built package carries no build-info.json of its own (see GamePackageGenerator's
-        // own doc comment), so it inspects as valid but not "generated".
+        // 4. Inspect. A built package carries no provenance metadata of its own (see
+        // GamePackageInspectionReport's own doc comment), so it inspects as valid with just its
+        // package.json contents.
         const inspected = await get(`${baseUrl}/api/project/inspect`);
         expect(inspected.status).toBe(200);
-        expect(inspected.body).toMatchObject({valid: true, generated: false});
+        expect(inspected.body).toMatchObject({valid: true});
 
         // 5. Validate.
         const validated = await get(`${baseUrl}/api/project/validate`);
