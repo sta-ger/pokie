@@ -155,6 +155,29 @@ describe("BlueprintProjectMaterializer", () => {
         expect(packageValidator.calls).toEqual([runner.calls[0].cwd]);
     });
 
+    it("materializes identically when the source blueprint directory, cache root, and blueprint file name all contain spaces", async () => {
+        const spacedCacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie materialize cache with spaces "));
+        const spacedSourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie materialize source with spaces "));
+        try {
+            const runner = createRecordingRunner();
+            const packageValidator = createStubPackageValidator(validReport);
+            const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, packageValidator, spacedCacheRoot);
+            const blueprintPath = writeBlueprint(spacedSourceDir, "game with spaces.json", createStarterGameBlueprint());
+
+            const result = await materializer.materialize(blueprintProjectOf(blueprintPath));
+
+            expect(fs.existsSync(path.join(result.runtimePath, "package.json"))).toBe(true);
+            expect(fs.existsSync(path.join(result.runtimePath, "dist", "index.js"))).toBe(true);
+            expect(result.runtimePath.startsWith(spacedCacheRoot)).toBe(true);
+            expect(runner.calls).toHaveLength(1);
+            expect(runner.calls[0].cwd).toContain(" ");
+            expect(packageValidator.calls).toEqual([runner.calls[0].cwd]);
+        } finally {
+            fs.rmSync(spacedCacheRoot, {recursive: true, force: true});
+            fs.rmSync(spacedSourceDir, {recursive: true, force: true});
+        }
+    });
+
     it("reuses the same cache directory for an unchanged blueprint and pokie version, without regenerating, reinstalling, or reverifying", async () => {
         const runner = createRecordingRunner();
         const packageValidator = createStubPackageValidator(validReport);

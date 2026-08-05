@@ -1,0 +1,20 @@
+== Search for any browser binary anywhere on this sandbox's filesystem ==
+$ find / -xdev -maxdepth 4 \( -iname "*chromium*" -o -iname "google-chrome*" -o -iname "*firefox*" \) 2>/dev/null
+(no output above = none found)
+
+== Search this repo for browser-automation tooling (puppeteer/playwright/karma) ==
+$ grep -rliE "puppeteer|playwright|chrome-launcher|karma" --include="*.json" --include="*.yml" --include="*.yaml" --include="*.md" . | grep -v node_modules
+docs/pokie-phase4-inventory.md
+
+== node_modules: no puppeteer/playwright package installed ==
+$ ls node_modules | grep -iE "puppeteer|playwright"
+(no output above = none installed)
+
+== npx is explicitly disabled by the correction-round wrapper (would be needed to fetch one on demand) ==
+#!/bin/sh
+echo 'POKIE correction policy: npx is disabled; use npm test -- saved-file' >&2
+exit 126
+
+== No compiled dist/ exists to serve a built Studio server from ==
+$ find . -maxdepth 2 -iname "dist*"
+(no output above = none)

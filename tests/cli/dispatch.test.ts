@@ -131,4 +131,35 @@ describe("dispatch (the real top-level CLI dispatcher cli/pokie.ts's run() deleg
         expect(exitCode).toBe(1);
         expect(errorSpy).toHaveBeenCalledWith("synchronous boom");
     });
+
+    // dispatch() (and everything it calls: CliCommandHandling.run(), buildUsageText()) never reads
+    // process.stdout.isTTY/process.stdin.isTTY -- confirmed by a whole-tree grep turning up zero isTTY/
+    // isatty usage in cli/ or src/. This pins that as an executable fact rather than an unverified
+    // grep result: the same dispatch, run under every TTY/non-TTY combination a real invocation could
+    // have (a genuine terminal, a pipe, or -- as in a spawned child process with no controlling
+    // terminal at all -- undefined), produces byte-identical output and exit codes.
+    it.each([
+        ["genuinely interactive (both isTTY true)", true, true],
+        ["piped/redirected (both isTTY false)", false, false],
+        ["no controlling terminal at all (both isTTY undefined)", undefined, undefined],
+    ])("prints identical usage output and exit code when %s", async (_label, stdoutIsTTY, stdinIsTTY) => {
+        const originalStdoutIsTTY = process.stdout.isTTY;
+        const originalStdinIsTTY = process.stdin.isTTY;
+        Reflect.defineProperty(process.stdout, "isTTY", {value: stdoutIsTTY, configurable: true});
+        Reflect.defineProperty(process.stdin, "isTTY", {value: stdinIsTTY, configurable: true});
+
+        try {
+            const commands = [new FakeCommand("build"), new FakeCommand("sim")];
+
+            const exitCode = await dispatch(commands, ["node", "pokie", "--help"]);
+
+            expect(exitCode).toBe(0);
+            expect(logSpy).toHaveBeenCalledTimes(1);
+            expect(logSpy.mock.calls[0][0]).toContain("Usage: pokie <command>");
+            expect(errorSpy).not.toHaveBeenCalled();
+        } finally {
+            Reflect.defineProperty(process.stdout, "isTTY", {value: originalStdoutIsTTY, configurable: true});
+            Reflect.defineProperty(process.stdin, "isTTY", {value: originalStdinIsTTY, configurable: true});
+        }
+    });
 });
