@@ -49,11 +49,11 @@ export class InitCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Create a prepared, immediately valid POKIE game package -- interactively via a wizard when run " +
-            "with no name (the same GameBlueprint wizard \"pokie build\" used to offer), or from the filled-in " +
-            'starter blueprint named "<name>" otherwise. The "programmer-first" package workflow: a real, ' +
-            "editable src/index.ts a developer owns, generated and verified on the spot, no separate npm " +
-            'install/build step required. For an editable GameBlueprint JSON file instead, use "pokie create".'
+            'Create a prepared, immediately valid POKIE game package from "<name>": a real, editable ' +
+            'src/index.ts a developer owns, generated and verified on the spot, no separate npm install/build ' +
+            'step required -- the "programmer-first" package workflow. Run with no name for the same ' +
+            'interactive wizard "pokie create" offers. For an editable GameBlueprint JSON file instead, use ' +
+            '"pokie create".'
         );
     }
 

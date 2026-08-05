@@ -91,8 +91,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         name: "build",
         description:
             "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            'or write an editable starter blueprint via --init-blueprint <file> (for interactive, wizard-driven ' +
-            'creation instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
+            'or write an editable starter blueprint via --init-blueprint <file> (for a ready-to-run package ' +
+            'instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
             "(--seed to reproduce it, --preset default|variant to pick the generation strategy). --dry-run " +
             "validates and previews without writing anything.",
         verbs: [
@@ -322,11 +322,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "init",
         description:
-            "Create a prepared, immediately valid POKIE game package -- interactively via a wizard when run " +
-            'with no name (the same GameBlueprint wizard "pokie build" used to offer), or from the filled-in ' +
-            'starter blueprint named "<name>" otherwise. The "programmer-first" package workflow: a real, ' +
-            "editable src/index.ts a developer owns, generated and verified on the spot, no separate npm " +
-            'install/build step required. For an editable GameBlueprint JSON file instead, use "pokie create".',
+            'Create a prepared, immediately valid POKIE game package from "<name>": a real, editable ' +
+            'src/index.ts a developer owns, generated and verified on the spot, no separate npm install/build ' +
+            'step required -- the "programmer-first" package workflow. Run with no name for the same ' +
+            'interactive wizard "pokie create" offers. For an editable GameBlueprint JSON file instead, use ' +
+            '"pokie create".',
         // No declared options -- "[name]" is its one positional, optional (no name launches the
         // interactive wizard instead, itself fully dependency-injectable, so there's still an
         // executable "valid" case below without touching real stdin/this repo's own working directory).

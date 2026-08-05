@@ -26,8 +26,10 @@ non-zero.
 ## `pokie create [name]`
 
 Designs an editable **Blueprint Project** — a hand-editable `GameBlueprint` JSON file (reels, symbols, paytable,
-reel weighting) — through an interactive wizard, rather than a ready-to-run package. For a prepared, immediately
-valid package instead, see [`pokie init`](#pokie-init-name) below.
+reel weighting) — through an interactive wizard, rather than a ready-to-run package. Reach for this when you
+specifically want that standalone JSON file to hand-edit or feed into another tool (PAR sheet import/export, reel
+strip generation, a build pipeline of your own). To get a ready-to-run package instead — the recommended way to
+start a new game — use [`pokie init`](#pokie-init-name) below.
 
 ```
 npm i -g pokie
@@ -56,7 +58,7 @@ Save this blueprint? [Y/n]: y
 
 Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
-Edit it by hand, then run:
+Build it as-is, or edit ./sample-slot.blueprint.json by hand first:
   pokie build ./sample-slot.blueprint.json --dry-run
   pokie build ./sample-slot.blueprint.json --out <dir>
 ```
@@ -131,7 +133,7 @@ There are three ways to provide the blueprint:
 - **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file) and builds it
   immediately (see [Random generation](#random-generation-pokie-build-random) below).
 
-(For interactive, wizard-driven creation instead, see [`pokie init [name]`](#pokie-init-name) below.)
+(For a ready-to-run package instead, see [`pokie init [name]`](#pokie-init-name) below.)
 
 All three produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
@@ -577,8 +579,8 @@ Every error is printed with its code and message, followed by a one-line pointer
 
 Failure modes:
 
-- A missing `<config.json>` (`pokie build` with no arguments at all — for interactive, wizard-driven creation
-  instead, see [`pokie init`](#pokie-init-name)) or an unknown option throws a `Usage: pokie build <config.json>
+- A missing `<config.json>` (`pokie build` with no arguments at all — for a ready-to-run package instead, see
+  [`pokie init`](#pokie-init-name)) or an unknown option throws a `Usage: pokie build <config.json>
   [--out <dir>]` error (plus the same doc pointer as above).
 - A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
   anything.

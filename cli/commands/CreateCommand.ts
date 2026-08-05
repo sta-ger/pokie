@@ -302,7 +302,7 @@ export class CreateCommand implements CliCommandHandling {
     private printCreated(blueprint: GameBlueprint, filePath: string): void {
         console.log(`  created  ${filePath}`);
         console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
-        console.log(`\nEdit it by hand, then run:`);
+        console.log(`\nBuild it as-is, or edit ${filePath} by hand first:`);
         console.log(`  pokie build ${filePath} --dry-run`);
         console.log(`  pokie build ${filePath} --out <dir>`);
     }

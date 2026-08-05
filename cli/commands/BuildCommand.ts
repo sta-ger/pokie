@@ -96,8 +96,8 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            "or write an editable starter blueprint via --init-blueprint <file> (for interactive, wizard-driven " +
-            'creation instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
+            'or write an editable starter blueprint via --init-blueprint <file> (for a ready-to-run package ' +
+            'instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
             "(--seed to reproduce it, --preset default|variant to pick the generation strategy). --dry-run " +
             "validates and previews without writing anything."
         );
