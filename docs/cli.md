@@ -1295,11 +1295,15 @@ Next:
 `pokie init` never asks a single reel/paytable/mechanics question — it is entirely non-interactive, every default
 coming from the target directory itself:
 
-1. **Merge/create `package.json`** — a pre-existing `package.json` is patched in place (its own `name`, `version`,
-   and any other fields are preserved; only `main`/`exports`/`pokie.entry`/`scripts.build`/the `pokie` dependency
-   are forced or filled in). With no `package.json` yet, one is created fresh, with its `name` defaulting to the
-   target directory's own basename (slugified into a valid npm package name — lowercased, spaces/invalid characters
-   replaced — since a directory name was never chosen to double as one).
+1. **Merge/create `package.json`** — a pre-existing `package.json` is patched in place: its own `name`, `version`,
+   and any other fields are preserved, and `main`/`exports`/`pokie.entry`/`scripts.build`/the `pokie` dependency
+   are filled in wherever they're missing. If one of those already has a *different* value — a real npm
+   project's own build output, or a `package.json` hand-edited since a previous `pokie init` — nothing is forced
+   over it: `pokie init` fails with exactly which field(s) conflict and leaves `package.json` completely
+   unmodified, so re-running after resolving the conflict by hand is always safe. With no `package.json` yet, one
+   is created fresh, with its `name` defaulting to the target directory's own basename (slugified into a valid
+   npm package name — lowercased, spaces/invalid characters replaced — since a directory name was never chosen
+   to double as one).
 2. **Write `tsconfig.json`, `README.md`, `src/index.ts` wherever they're missing** — an existing one of these is
    never overwritten, only reported as `skipped`, so re-running `pokie init` in a directory you've already started
    hand-editing never clobbers your changes.

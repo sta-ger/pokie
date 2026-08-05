@@ -2,10 +2,21 @@ import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch, PackageJsonLike, PokieGameManifest, renderTsconfig} from "pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
+import {GamePackageMergeConflictError, PackageJsonFieldConflict} from "./GamePackageMergeConflictError.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "./GamePackageMerging.js";
 import {renderEntryModule} from "./renderEntryModule.js";
 import {renderPackageReadme} from "./renderPackageReadme.js";
 import {ScaffoldResult} from "./ScaffoldResult.js";
+
+// The POKIE-owned package.json fields merge() refuses to force over a conflicting pre-existing value
+// (see detectFieldConflicts) -- each paired with how to read it off a PackageJsonLike so the same list
+// drives both the comparison and the error message.
+const POKIE_OWNED_FIELDS: {field: string; read: (pkg: PackageJsonLike) => unknown}[] = [
+    {field: "main", read: (pkg) => pkg.main},
+    {field: "exports", read: (pkg) => pkg.exports},
+    {field: "scripts.build", read: (pkg) => pkg.scripts?.build},
+    {field: "pokie.entry", read: (pkg) => pkg.pokie?.entry},
+];
 
 const DEFAULT_VERSION = "0.1.0";
 const FALLBACK_PACKAGE_NAME = "my-game";
@@ -32,8 +43,6 @@ export class GamePackageMerger implements GamePackageMerging {
     }
 
     public merge(projectRoot: string, overrides?: GamePackageMergeOverrides): ScaffoldResult {
-        fs.mkdirSync(path.join(projectRoot, "src"), {recursive: true});
-
         const packageJsonPath = path.join(projectRoot, "package.json");
         const packageJsonExisted = fs.existsSync(packageJsonPath);
         const existingPkg: PackageJsonLike = packageJsonExisted
@@ -53,11 +62,23 @@ export class GamePackageMerger implements GamePackageMerging {
             version,
         };
 
+        const patchedPackageJson = buildPackageJsonPatch({...existingPkg, name: packageName, version}, this.pokieVersion);
+
+        // Compared against pristine defaults (an empty input pkg), not `patchedPackageJson` above --
+        // buildPackageJsonPatch fills in "scripts.build" from `existingPkg` itself when present, so
+        // diffing against the patch of `existingPkg` would never see a pre-existing custom build script
+        // as anything other than already-agreeing with itself.
+        const conflicts = this.detectFieldConflicts(existingPkg, buildPackageJsonPatch({}, this.pokieVersion));
+        if (conflicts.length > 0) {
+            throw new GamePackageMergeConflictError(projectRoot, conflicts);
+        }
+
+        fs.mkdirSync(path.join(projectRoot, "src"), {recursive: true});
+
         const createdFiles: string[] = [];
         const updatedFiles: string[] = [];
         const skippedFiles: string[] = [];
 
-        const patchedPackageJson = buildPackageJsonPatch({...existingPkg, name: packageName, version}, this.pokieVersion);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patchedPackageJson, null, 4)}\n`);
         (packageJsonExisted ? updatedFiles : createdFiles).push("package.json");
 
@@ -72,6 +93,24 @@ export class GamePackageMerger implements GamePackageMerging {
         );
 
         return {projectRoot, manifest, createdFiles, updatedFiles, skippedFiles};
+    }
+
+    // A field only conflicts when `existingPkg` already defines it (an absent field is simply filled
+    // in, same as always) to something other than what POKIE requires there -- compared with
+    // JSON.stringify so an object-shaped "exports" is diffed structurally rather than by reference.
+    private detectFieldConflicts(existingPkg: PackageJsonLike, requiredPkg: PackageJsonLike): PackageJsonFieldConflict[] {
+        const conflicts: PackageJsonFieldConflict[] = [];
+        for (const {field, read} of POKIE_OWNED_FIELDS) {
+            const existingValue = read(existingPkg);
+            if (existingValue === undefined) {
+                continue;
+            }
+            const requiredValue = read(requiredPkg);
+            if (JSON.stringify(existingValue) !== JSON.stringify(requiredValue)) {
+                conflicts.push({field, existingValue: JSON.stringify(existingValue)!, requiredValue: JSON.stringify(requiredValue)!});
+            }
+        }
+        return conflicts;
     }
 
     // An explicit --package-name always wins verbatim (a caller who typed one owns the consequences,

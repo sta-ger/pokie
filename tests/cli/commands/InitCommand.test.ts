@@ -5,6 +5,7 @@ import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "poki
 import {defaultDirectoryNeedsConfirmation, InitCommand} from "../../../cli/commands/InitCommand.js";
 import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
 import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
+import {GamePackageMergeConflictError} from "../../../cli/scaffold/GamePackageMergeConflictError.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "../../../cli/scaffold/GamePackageMerging.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 
@@ -275,6 +276,23 @@ describe("InitCommand", () => {
                 caught = error;
             }
             expect(caught).toBeInstanceOf(GamePackagePreparationError);
+        });
+
+        it("propagates a GamePackageMergeConflictError from the merger untouched -- never installs/builds and never swallows it", async () => {
+            const conflictError = new GamePackageMergeConflictError("/tmp/some-dir", [
+                {field: "main", existingValue: '"./lib/custom.js"', requiredValue: '"./dist/index.js"'},
+            ]);
+            const merger: GamePackageMerging = {
+                merge() {
+                    throw conflictError;
+                },
+            };
+            const runCommand = jest.fn(() => {
+                throw new Error("must not be called");
+            }) as unknown as PackageCommandRunning;
+            const {command} = createCommand(merger, runCommand);
+
+            await expect(command.run(["some-dir"])).rejects.toBe(conflictError);
         });
     });
 

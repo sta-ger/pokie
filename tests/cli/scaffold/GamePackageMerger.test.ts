@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {GamePackageMergeConflictError} from "../../../cli/scaffold/GamePackageMergeConflictError.js";
 import {GamePackageMerger} from "../../../cli/scaffold/GamePackageMerger.js";
 
 describe("GamePackageMerger", () => {
@@ -93,6 +94,76 @@ describe("GamePackageMerger", () => {
         expect(second.createdFiles).toEqual([]);
         expect(second.skippedFiles.sort()).toEqual(["README.md", "src/index.ts", "tsconfig.json"].sort());
         expect(second.updatedFiles).toEqual(["package.json"]);
+    });
+
+    describe("conflicting POKIE-owned fields", () => {
+        it("throws GamePackageMergeConflictError and leaves package.json untouched when \"main\" disagrees", () => {
+            const original = JSON.stringify({name: "already-here", version: "9.9.9", main: "./lib/custom.js"});
+            fs.writeFileSync(path.join(projectRoot, "package.json"), original);
+            const merger = new GamePackageMerger("1.2.1");
+
+            expect(() => merger.merge(projectRoot)).toThrow(GamePackageMergeConflictError);
+            expect(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")).toBe(original);
+            expect(fs.existsSync(path.join(projectRoot, "src"))).toBe(false);
+        });
+
+        it("throws when \"exports\" disagrees", () => {
+            fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "already-here", exports: "./lib/custom.js"}));
+            const merger = new GamePackageMerger("1.2.1");
+
+            expect(() => merger.merge(projectRoot)).toThrow(GamePackageMergeConflictError);
+        });
+
+        it("throws when \"scripts.build\" disagrees with the required \"tsc\"", () => {
+            fs.writeFileSync(
+                path.join(projectRoot, "package.json"),
+                JSON.stringify({name: "already-here", scripts: {build: "webpack --config webpack.custom.js"}}),
+            );
+            const merger = new GamePackageMerger("1.2.1");
+
+            expect(() => merger.merge(projectRoot)).toThrow(GamePackageMergeConflictError);
+        });
+
+        it("throws when \"pokie.entry\" disagrees", () => {
+            fs.writeFileSync(
+                path.join(projectRoot, "package.json"),
+                JSON.stringify({name: "already-here", dependencies: {pokie: "^1.0.0"}, pokie: {entry: "./dist/other.js"}}),
+            );
+            const merger = new GamePackageMerger("1.2.1");
+
+            expect(() => merger.merge(projectRoot)).toThrow(GamePackageMergeConflictError);
+        });
+
+        it("reports every conflicting field at once, each naming the found and required value", () => {
+            fs.writeFileSync(
+                path.join(projectRoot, "package.json"),
+                JSON.stringify({name: "already-here", main: "./lib/custom.js", scripts: {build: "webpack"}}),
+            );
+            const merger = new GamePackageMerger("1.2.1");
+
+            let caught: GamePackageMergeConflictError | undefined;
+            try {
+                merger.merge(projectRoot);
+            } catch (error) {
+                caught = error as GamePackageMergeConflictError;
+            }
+
+            expect(caught).toBeInstanceOf(GamePackageMergeConflictError);
+            expect(caught!.conflicts.map((conflict) => conflict.field).sort()).toEqual(["main", "scripts.build"]);
+            expect(caught!.message).toContain("./lib/custom.js");
+            expect(caught!.message).toContain("./dist/index.js");
+            expect(caught!.message).toContain("webpack");
+            expect(caught!.message).toContain("tsc");
+        });
+
+        it("does not conflict, and remains idempotently retryable, once main/exports/pokie.entry/scripts.build already hold POKIE's own values", () => {
+            const merger = new GamePackageMerger("1.2.1");
+            merger.merge(projectRoot);
+
+            expect(() => merger.merge(projectRoot)).not.toThrow();
+            const result = merger.merge(projectRoot);
+            expect(result.updatedFiles).toEqual(["package.json"]);
+        });
     });
 
     describe("overrides", () => {
