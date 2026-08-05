@@ -42,10 +42,12 @@ function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageComma
         return base(command, args, cwd);
     };
     // Object.assign copies a getter's *current value*, not the accessor itself -- defineProperty is what
-    // keeps `.calls` live across every subsequent invocation of `runner`.
+    // keeps `.calls` live across every subsequent invocation of `runner`. Object.defineProperty's own
+    // return type is just the input's type (not the widened intersection), so the added property needs
+    // an explicit cast here.
     return Object.defineProperty(runner, "calls", {
         get: () => calls,
-    });
+    }) as PackageCommandRunning & {calls: number};
 }
 
 // Proves BlueprintProjectMaterializer's real, shipped offline mechanism (withLocalPokieInstall, wired in
