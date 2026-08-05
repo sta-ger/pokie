@@ -78,9 +78,21 @@ const wizardBlueprint: GameBlueprint = {
     paytable: {A: {3: 5}},
 };
 
+// CreateCommand's own write seam never takes a plain "write these bytes" callback -- it commits via an
+// atomic, create-only abstraction (see writeBlueprintFileAtomically.ts) that reports whether the commit
+// actually landed or lost a race against an existing destination, instead of silently overwriting one.
+// Defaulting to "ok" here mirrors that abstraction's own default (no destination in the way).
+function createOkWriteResult() {
+    return {status: "ok" as const};
+}
+
+function createConflictWriteResult() {
+    return {status: "conflict" as const};
+}
+
 function createCommand(
     fileExists: jest.Mock = jest.fn().mockReturnValue(false),
-    writeFile: jest.Mock = jest.fn(),
+    writeBlueprintFileAtomically: jest.Mock = jest.fn().mockReturnValue(createOkWriteResult()),
     validator = createStubValidator([]),
     randomGenerator: RandomGameBlueprintGenerating | undefined = undefined,
     variantRandomGenerator: RandomGameBlueprintGenerating | undefined = undefined,
@@ -95,13 +107,13 @@ function createCommand(
         validator,
         randomGenerator,
         fileExists,
-        writeFile,
+        writeBlueprintFileAtomically,
         variantRandomGenerator,
         wizard,
         createPrompt,
         isInteractiveTerminal,
     );
-    return {command, fileExists, writeFile, validator};
+    return {command, fileExists, writeFile: writeBlueprintFileAtomically, validator};
 }
 
 describe("CreateCommand", () => {
@@ -285,6 +297,37 @@ describe("CreateCommand", () => {
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('"./wiz-slot.blueprint.json" already exists'));
         });
 
+        // The fileExists() check above is only a best-effort head start (skip prompting for a save that's
+        // already doomed) -- it can still race against something else creating the destination in the
+        // window between that check and the actual commit. commitBlueprintFile()'s own atomic, create-only
+        // write (writeBlueprintFileAtomically.ts) is the authoritative guard: even when fileExists() said
+        // "no conflict" and the user already confirmed, a "conflict" reported at that final commit must
+        // still stop the save cold -- reporting the same error, never claiming success over a destination
+        // this call never actually verified it was safe to write.
+        it("reports a conflict and writes nothing when the destination is created between the early check and the final atomic commit", async () => {
+            const wizard = createStubWizard({blueprint: wizardBlueprint, outDir: "./wiz-slot.blueprint.json"});
+            const prompt = createControllablePrompt("y");
+            const writeBlueprintFileAtomically = jest.fn().mockReturnValue(createConflictWriteResult());
+            const {command} = createCommand(
+                jest.fn().mockReturnValue(false),
+                writeBlueprintFileAtomically,
+                undefined,
+                undefined,
+                undefined,
+                wizard,
+                () => prompt,
+                () => true,
+            );
+
+            const exitCode = await command.run([]);
+
+            expect(exitCode).toBe(1);
+            expect(writeBlueprintFileAtomically).toHaveBeenCalledWith("./wiz-slot.blueprint.json", `${JSON.stringify(wizardBlueprint, null, 4)}\n`);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('"./wiz-slot.blueprint.json" already exists'));
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).not.toContain('created at "./wiz-slot.blueprint.json"');
+        });
+
         it("closes the prompt even if the wizard rejects", async () => {
             const wizard = createStubWizard(new Error("boom"));
             const prompt = createControllablePrompt("y");
@@ -379,9 +422,11 @@ describe("CreateCommand", () => {
 
         // The blank path resolves synchronously (see CreateCommand.run()'s own doc comment) -- a
         // parse/validation failure throws straight out of run() rather than rejecting the returned
-        // promise.
+        // promise. --blank never pre-checks fileExists() itself -- it routes straight through the same
+        // atomic, create-only commit the interactive wizard's own final write uses (see
+        // writeBlueprintFileAtomically.ts), so a "conflict" result from that commit is what surfaces here.
         it("throws a clear error instead of silently overwriting an existing file", () => {
-            const {command} = createCommand(jest.fn().mockReturnValue(true));
+            const {command} = createCommand(undefined, jest.fn().mockReturnValue(createConflictWriteResult()));
 
             expect(() => command.run(["--blank"])).toThrow(/"\.\/blank-slot\.blueprint\.json" already exists/);
         });
@@ -429,7 +474,7 @@ describe("CreateCommand", () => {
 
         function createRandomCommand(
             fileExists: jest.Mock = jest.fn().mockReturnValue(false),
-            writeFile: jest.Mock = jest.fn(),
+            writeFile: jest.Mock = jest.fn().mockReturnValue(createOkWriteResult()),
             validator = createStubValidator([]),
             randomGenerator = createStubRandomBlueprintGenerator(randomResult),
             variantRandomGenerator = createStubRandomBlueprintGenerator({
@@ -526,6 +571,16 @@ describe("CreateCommand", () => {
             expect(exitCode).toBe(1);
             expect(writeFile).not.toHaveBeenCalled();
             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+        });
+
+        // --random routes through the exact same atomic, create-only commit --blank and the interactive
+        // wizard's own confirmed save use (see writeBlueprintFileAtomically.ts) -- it never overwrites an
+        // existing destination, surfacing a commit-time conflict as a thrown error the same way --blank's
+        // own synchronous save does.
+        it("throws a clear error instead of silently overwriting an existing file", async () => {
+            const {command} = createRandomCommand(undefined, jest.fn().mockReturnValue(createConflictWriteResult()));
+
+            await expect(command.run(["--random"])).rejects.toThrow(/"\.\/blazing-riches-4821\.blueprint\.json" already exists/);
         });
 
         it("throws a descriptive error for an unknown option", async () => {

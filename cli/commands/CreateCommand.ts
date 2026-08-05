@@ -1,5 +1,4 @@
 import fs from "fs";
-import path from "path";
 import {
     GameBlueprint,
     GameBlueprintValidating,
@@ -19,6 +18,7 @@ import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {BlueprintFileWriteResult, writeBlueprintFileAtomically as writeBlueprintFileAtomicallyDefault} from "./internal/writeBlueprintFileAtomically.js";
 
 type RandomPreset = "default" | "variant";
 
@@ -49,7 +49,7 @@ export class CreateCommand implements CliCommandHandling {
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly fileExists: (filePath: string) => boolean;
-    private readonly writeFile: (filePath: string, contents: string) => void;
+    private readonly writeBlueprintFileAtomically: (filePath: string, contents: string) => BlueprintFileWriteResult;
     private readonly wizard: GameBlueprintWizarding;
     private readonly createPrompt: () => PromptAdapting;
     private readonly isInteractiveTerminal: () => boolean;
@@ -61,7 +61,11 @@ export class CreateCommand implements CliCommandHandling {
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
         fileExists: (filePath: string) => boolean = (filePath) => fs.existsSync(filePath),
-        writeFile: (filePath: string, contents: string) => void = (filePath, contents) => fs.writeFileSync(filePath, contents, "utf-8"),
+        // Atomic and create-only by default (see writeBlueprintFileAtomically's own doc): every save
+        // path below (the confirmed interactive wizard, --blank, --random) routes through this same
+        // abstraction, so none of them can ever leave a partial destination behind, or silently clobber
+        // a destination that was created by something else after an earlier fileExists() check ran.
+        writeBlueprintFileAtomically: (filePath: string, contents: string) => BlueprintFileWriteResult = writeBlueprintFileAtomicallyDefault,
         variantRandomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(
             new SlotGameNameGenerator(),
             new RandomGameBlueprintVariantStrategy(),
@@ -80,7 +84,7 @@ export class CreateCommand implements CliCommandHandling {
         this.validator = validator;
         this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.fileExists = fileExists;
-        this.writeFile = writeFile;
+        this.writeBlueprintFileAtomically = writeBlueprintFileAtomically;
         this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
         this.wizard = wizard;
         this.createPrompt = createPrompt;
@@ -202,8 +206,9 @@ export class CreateCommand implements CliCommandHandling {
     // wizard designs the same GameBlueprint fields ("pokie init"'s own wizard, and Studio's guided
     // Design Game editor, both use the exact same canonical model/validation), previews the result,
     // and only writes it once the user confirms -- a destination conflict, Ctrl+C, EOF, or "n" at the
-    // confirmation all leave no file behind, since writeBlueprintFile() is the only thing that ever
-    // touches the filesystem here, and it only runs after every one of those has already passed.
+    // confirmation all leave no file behind, since commitBlueprintFile() is the only thing that ever
+    // writes into the filesystem here, and it only runs after every one of those has already passed (and
+    // is itself the atomic, create-only commit -- see writeBlueprintFileAtomically's own doc comment).
     private async runDefault(parsed: {name?: string; out?: string}): Promise<number> {
         if (!this.isInteractiveTerminal()) {
             console.error(GUIDANCE_NOT_INTERACTIVE);
@@ -240,7 +245,7 @@ export class CreateCommand implements CliCommandHandling {
                 return 1;
             }
             if (this.fileExists(filePath)) {
-                console.error(`"${filePath}" already exists. Choose a different path, or remove/edit the existing file first.`);
+                console.error(this.alreadyExistsMessage(filePath));
                 return 1;
             }
 
@@ -251,7 +256,15 @@ export class CreateCommand implements CliCommandHandling {
                 return 1;
             }
 
-            this.writeBlueprintFile(filePath, blueprint);
+            // The fileExists() check above is only a best-effort "don't bother asking to confirm a save
+            // that's already doomed" -- it can still race against something else creating filePath in the
+            // window between that check and this commit (or between confirmation and this commit, while
+            // waiting on the user). commitBlueprintFile() is the authoritative check: it never overwrites
+            // an existing destination, however/whenever it appeared.
+            if (this.commitBlueprintFile(filePath, blueprint).status === "conflict") {
+                console.error(this.alreadyExistsMessage(filePath));
+                return 1;
+            }
             this.printCreated(blueprint, filePath);
             return 0;
         } finally {
@@ -367,15 +380,22 @@ export class CreateCommand implements CliCommandHandling {
         return `./${id}.blueprint.json`;
     }
 
+    // --blank/--random's own synchronous save: same atomic, create-only commit runDefault's confirmed
+    // wizard save uses (see commitBlueprintFile), just thrown as an Error instead of a console.error +
+    // exit code -- matching how a usage error on either of these two paths has always surfaced (see
+    // run()'s own doc comment on why they stay synchronous).
     private writeBlueprintFile(filePath: string, blueprint: GameBlueprint): void {
-        if (this.fileExists(filePath)) {
-            throw new Error(`"${filePath}" already exists. Choose a different path, or remove/edit the existing file first.`);
+        if (this.commitBlueprintFile(filePath, blueprint).status === "conflict") {
+            throw new Error(this.alreadyExistsMessage(filePath));
         }
-        const dir = path.dirname(filePath);
-        if (dir && dir !== ".") {
-            fs.mkdirSync(dir, {recursive: true});
-        }
-        this.writeFile(filePath, `${JSON.stringify(blueprint, null, 4)}\n`);
+    }
+
+    private commitBlueprintFile(filePath: string, blueprint: GameBlueprint): BlueprintFileWriteResult {
+        return this.writeBlueprintFileAtomically(filePath, `${JSON.stringify(blueprint, null, 4)}\n`);
+    }
+
+    private alreadyExistsMessage(filePath: string): string {
+        return `"${filePath}" already exists. Choose a different path, or remove/edit the existing file first.`;
     }
 
     private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset; out?: string} {

@@ -538,7 +538,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => false,
-                (filePath) => observe(key, "--out", filePath),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return {status: "ok"} as const;
+                },
                 undefined,
                 {
                     run: (_prompt, options) =>
@@ -564,7 +567,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => false,
-                (filePath) => observe(key, "destination", filePath),
+                (filePath) => {
+                    observe(key, "destination", filePath);
+                    return {status: "ok"} as const;
+                },
                 undefined,
                 {
                     run: (_prompt, options) => {
@@ -592,7 +598,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => false,
-                (filePath) => observe(key, "--out", filePath),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return {status: "ok"} as const;
+                },
                 undefined,
                 {
                     run: (_prompt, options) =>
@@ -629,10 +638,16 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => false,
-                (filePath) => observe(key, "--out", filePath),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return {status: "ok"} as const;
+                },
             ),
         "create::--blank --out <file> (accepted --out value)": (key) =>
-            new CreateCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, (filePath) => observe(key, "--out", filePath)),
+            new CreateCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, (filePath) => {
+                observe(key, "--out", filePath);
+                return {status: "ok"} as const;
+            }),
 
         // --random cases: fileExists/writeFile are still faked (no real I/O), but the blueprint itself comes
         // from a REAL RandomGameBlueprintGenerator (default preset) so it goes through CreateCommand's own
@@ -654,7 +669,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 },
                 () => false,
-                (filePath) => observe(key, "--out", filePath),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return {status: "ok"} as const;
+                },
             );
         },
         "create::--random --preset variant (accepted --preset value, default --seed, default --out)": (key) => {
@@ -666,7 +684,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 undefined,
                 () => false,
-                () => undefined,
+                () => ({status: "ok"} as const),
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -685,7 +703,10 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 undefined,
                 {generate: (input) => defaultGenerator.generate(input)},
                 () => false,
-                (filePath) => observe(key, "--out", filePath),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return {status: "ok"} as const;
+                },
             );
         },
 
