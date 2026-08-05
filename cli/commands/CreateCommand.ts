@@ -87,13 +87,13 @@ export class CreateCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Design an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
-            "paytable, reel weighting) -- through an interactive wizard when run in a terminal with no --blank/" +
-            "--random (\"pokie create <name>\" pre-fills the name), or write one straight from the filled-in " +
-            "starter template non-interactively via --blank for a bare-minimum one, or --random for an " +
-            "always-valid randomly generated one, with its reel weighting already expressed as valid per-reel " +
-            "generation (--seed to reproduce it, --preset default|variant to pick the generation strategy). For " +
-            'a prepared, immediately valid package instead, use "pokie init".'
+            "Design a Blueprint Project -- a standalone GameBlueprint JSON file (reels, symbols, paytable, reel " +
+            "weighting) that feeds into \"pokie build\" -- through an interactive wizard when run in a terminal " +
+            "with no --blank/--random (\"pokie create <name>\" pre-fills the name), or write one straight from " +
+            "the filled-in starter template non-interactively via --blank for a bare-minimum one, or --random " +
+            "for an always-valid randomly generated one, with its reel weighting already expressed as valid " +
+            "per-reel generation (--seed to reproduce it, --preset default|variant to pick the generation " +
+            'strategy). For a prepared, immediately valid package instead, use "pokie init".'
         );
     }
 
@@ -302,7 +302,7 @@ export class CreateCommand implements CliCommandHandling {
     private printCreated(blueprint: GameBlueprint, filePath: string): void {
         console.log(`  created  ${filePath}`);
         console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
-        console.log(`\nBuild it as-is, or edit ${filePath} by hand first:`);
+        console.log(`\nBuild it:`);
         console.log(`  pokie build ${filePath} --dry-run`);
         console.log(`  pokie build ${filePath} --target <dir>`);
     }

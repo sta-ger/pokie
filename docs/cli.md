@@ -25,11 +25,12 @@ non-zero.
 
 ## `pokie create [name]`
 
-Designs an editable **Blueprint Project** — a hand-editable `GameBlueprint` JSON file (reels, symbols, paytable,
-reel weighting) — through an interactive wizard, rather than a ready-to-run package. Reach for this when you
-specifically want that standalone JSON file to hand-edit or feed into another tool (PAR sheet import/export, reel
-strip generation, a build pipeline of your own). To get a ready-to-run package instead — the recommended way to
-start a new game — use [`pokie init`](#pokie-init-name) below.
+Designs a **Blueprint Project** — a standalone `GameBlueprint` JSON file (reels, symbols, paytable, reel
+weighting) — through an interactive wizard, rather than a ready-to-run package. Reach for this when you want that
+Blueprint file on its own: to build it with [`pokie build <file> --target <dir>`](#pokie-build-configjson), or to
+feed it into another tool (PAR sheet import/export, reel strip generation, a build pipeline of your own). To get a
+ready-to-run package directly instead — the recommended way to start a new game — use
+[`pokie init`](#pokie-init-name) below.
 
 ```
 npm i -g pokie
@@ -58,7 +59,7 @@ Save this blueprint? [Y/n]: y
 
 Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
-Build it as-is, or edit ./sample-slot.blueprint.json by hand first:
+Build it:
   pokie build ./sample-slot.blueprint.json --dry-run
   pokie build ./sample-slot.blueprint.json --target <dir>
 ```
@@ -130,9 +131,9 @@ There are two ways to provide the blueprint:
 - **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file) and builds it
   immediately (see [Random generation](#random-generation-pokie-build-random) below).
 
-To hand-edit a `GameBlueprint` before building it, use [`pokie create [name]`](#pokie-create-name) to write an
-editable Blueprint Project file first, then feed the edited result into `pokie build <file> --target <dir>` above.
-(For a ready-to-run package instead, see [`pokie init [name]`](#pokie-init-name) below.)
+To design the `GameBlueprint` first instead of building directly, use [`pokie create [name]`](#pokie-create-name)
+to write a Blueprint Project file, then feed it into `pokie build <file> --target <dir>` above. (For a ready-to-run
+package directly instead, see [`pokie init [name]`](#pokie-init-name) below.)
 
 Both produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
@@ -184,11 +185,6 @@ Options:
   payline count, bets, blueprint hash, and the files a real build would generate) without creating or touching
   the `--target` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
   errors, `0` if it's valid (warnings included).
-
-To hand-edit a `GameBlueprint` before building it, use [`pokie create [name]`](#pokie-create-name) — it writes an
-editable Blueprint Project file (through an interactive wizard, or non-interactively via `--blank`/`--random`) that
-you can open in an editor, change, and then feed into `pokie build <file> --target <dir>` above, previewing with
-[`--dry-run`](#pokie-build-configjson) after each edit until it looks right.
 
 ### Random generation (`pokie build random`)
 
@@ -279,7 +275,7 @@ underneath it — neither ever fails the build on its own (see the no-target-RTP
 `pokie create [name] --random` (see [`pokie create [name] --random`](#pokie-create-name---random) above) shares
 this same generation pipeline (the provenance/reproduce-command lines, and validation against the same
 `GameBlueprintValidator`) but never builds or smoke-simulates a package — it only writes the resulting blueprint to
-a Blueprint Project file, for hand-editing before a real `pokie build`/`pokie init`.
+a Blueprint Project file, ready to feed into a real `pokie build <file> --target <dir>`.
 
 #### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
 

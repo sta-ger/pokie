@@ -165,13 +165,13 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "create",
         description:
-            "Design an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
-            "paytable, reel weighting) -- through an interactive wizard when run in a terminal with no --blank/" +
-            '--random ("pokie create <name>" pre-fills the name), or write one straight from the filled-in ' +
-            "starter template non-interactively via --blank for a bare-minimum one, or --random for an " +
-            "always-valid randomly generated one, with its reel weighting already expressed as valid per-reel " +
-            "generation (--seed to reproduce it, --preset default|variant to pick the generation strategy). For " +
-            'a prepared, immediately valid package instead, use "pokie init".',
+            "Design a Blueprint Project -- a standalone GameBlueprint JSON file (reels, symbols, paytable, reel " +
+            "weighting) that feeds into \"pokie build\" -- through an interactive wizard when run in a terminal " +
+            "with no --blank/--random (\"pokie create <name>\" pre-fills the name), or write one straight from " +
+            "the filled-in starter template non-interactively via --blank for a bare-minimum one, or --random " +
+            "for an always-valid randomly generated one, with its reel weighting already expressed as valid " +
+            "per-reel generation (--seed to reproduce it, --preset default|variant to pick the generation " +
+            'strategy). For a prepared, immediately valid package instead, use "pokie init".',
         // Three independent verbs, same "sentinel flag rather than a positional" shape "build" already
         // uses for "random" (see deriveVerbForCase's own doc comment): the bare/named
         // path (no --blank/--random) always runs the interactive wizard (fully dependency-injectable, so
