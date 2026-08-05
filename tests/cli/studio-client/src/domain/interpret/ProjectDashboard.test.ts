@@ -97,20 +97,20 @@ describe("describeInspection", () => {
         });
     });
 
-    it("reports error (not loaded) for an invalid/unreadable package (missing or corrupt package.json)", () => {
+    it("reports invalid (not loaded) for an invalid/unreadable package (missing or corrupt package.json)", () => {
         const report: GamePackageInspectionReport = {
             packageRoot: "/a",
             valid: false,
             error: '"/a/package.json" does not exist.',
         };
 
-        expect(describeInspection(report)).toEqual({status: "error", message: '"/a/package.json" does not exist.'});
+        expect(describeInspection(report)).toEqual({status: "invalid", message: '"/a/package.json" does not exist.'});
     });
 
     it("falls back to a generic message when an invalid report has no error text", () => {
         const report: GamePackageInspectionReport = {packageRoot: "/a", valid: false};
 
-        expect(describeInspection(report)).toEqual({status: "error", message: "Inspection failed."});
+        expect(describeInspection(report)).toEqual({status: "invalid", message: "Inspection failed."});
     });
 });
 
