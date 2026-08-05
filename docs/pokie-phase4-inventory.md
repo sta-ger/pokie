@@ -90,7 +90,10 @@ materialization, and `pokie replay` specifically — it is *not yet* pinned by a
 `validate`, `serve`, `dev`, `inspect`, `client`, or any Studio server-side project-open route
 (`loadProjectDashboardContext` and friends), nor for the `pokie-integration` lane's own real-`npm install` path
 beyond `GamePackagePreparer`'s existing coverage (e.g. `BlueprintProjectMaterializer.integration.test.ts` has no
-space-path case). Left to a future, not-yet-scheduled step — named here so it isn't silently dropped.
+space-path case). This is not unowned: `sim`/`validate`/`inspect` (the create/package-inspection commands) are
+`P4-POLISH-02`'s own surface, `serve`/`dev`/`client` (the player/preview commands) are `P4-POLISH-05`'s, the
+Studio server-side project-open route is `P4-POLISH-06`'s, and the `pokie-integration` real-`npm install` gap is
+`P4-POLISH-03`'s — see "Owner steps" below for the full mapping and its rationale.
 
 ## 2. Materialization
 
@@ -160,8 +163,8 @@ confirmed real-HTTP by its own `get`/`post`/`del` helpers and `http`/`fetch` imp
 lives in the `pokie-integration` project alongside real-`npm install` fixtures, the same orchestrator-owned
 integration lane `pokie-phase3-final-verification-report.md`'s own "Method" section already established this
 sandbox doesn't run (see this document's own "Method" above). It has **no dedicated space-path or non-TTY
-case** (verified: no match for `with space`/`isTTY`/`isatty` in the file) — already named as a gap in "Owner
-steps" below, unchanged by this step.
+case** (verified: no match for `with space`/`isTTY`/`isatty` in the file) — owned by `P4-POLISH-06` (Studio Play),
+already named as a gap in "Owner steps" below, unchanged by this step.
 
 **Browser (visual/DOM-rendering) evidence — real host pass, 2026-08-05:** the component-level (jsdom, never a
 real browser) coverage remains
@@ -313,38 +316,59 @@ procedural SVG grid-shape icons for the `index.html` landing page only — not p
 
 ## Owner steps
 
-Named here as explicit, not-yet-scheduled gaps this step's own audit surfaced — none are closed by this step,
-and none should be silently absorbed into a later step without being checked against this list first:
+Named here as explicit gaps this step's own audit surfaced — none are closed by this step, and every one of them
+is mapped below to the later roadmap step that already owns the surface it touches, so none is silently absorbed
+into the wrong step or dropped for lack of an owner.
 
-- **CLI paths-with-spaces/non-TTY coverage** beyond `dispatch()`/materialize/replay (§1) — `sim`, `validate`,
-  `serve`, `dev`, `inspect`, `client`, and Studio's server-side project-open routes still have no dedicated
-  space-path regression, and no lane here has non-TTY coverage beyond `dispatch()` itself.
+**Owner-step mapping used below:** this step's own instruction names the roadmap's remaining journeys in their
+own sequence — create, materialization, Replay, player, Studio Play, help, …, final browser acceptance — which
+this document anchors against the one step number already fixed by an earlier round of this baseline,
+`P4-POLISH-13` for "final browser acceptance" (§4). Read in that same sequence, the roadmap's own step numbers
+for the journeys this audit's gaps touch are: `P4-POLISH-02` (create — including the package-inspection commands
+`sim`/`validate`/`inspect`, which read a package the same non-interactive way `create`'s own output does),
+`P4-POLISH-03` (materialization), `P4-POLISH-04` (Replay), `P4-POLISH-05` (player — the `serve`/`dev`/`client`
+reference-preview commands), `P4-POLISH-06` (Studio Play — Studio's server-side project-open routes and its HTTP
+surface generally), `P4-POLISH-07` (help — the docs/example surface), through `P4-POLISH-13` (final browser
+acceptance). This is a mapping of existing steps to existing gaps, not new or reordered roadmap work: no gap
+below is assigned a step outside this already-named sequence, and no step's own scope is expanded beyond what its
+name already implies.
+
+- **CLI paths-with-spaces/non-TTY coverage** beyond `dispatch()`/materialize/replay (§1) — `sim`, `validate`, and
+  `inspect` are `P4-POLISH-02`'s own surface; `serve`, `dev`, and `client` are `P4-POLISH-05`'s; Studio's
+  server-side project-open routes are `P4-POLISH-06`'s. None of the three has a dedicated space-path regression
+  yet, and no lane here has non-TTY coverage beyond `dispatch()` itself.
 - **Integration-lane (real `npm install`) space-path coverage** for materialization
   (`BlueprintProjectMaterializer.integration.test.ts`) and package preparation beyond
-  `GamePackagePreparer.integration.test.ts`'s own existing case.
+  `GamePackagePreparer.integration.test.ts`'s own existing case — owned by `P4-POLISH-03` (materialization).
 - **Final player/browser acceptance matrix** — §4 now contains a real host-side baseline capture for the
   Blueprint/materialization, Overview, Replay and Runtime decision surfaces, including space-containing paths.
-  P4-POLISH-13 must expand that into the final post-implementation matrix (Play, player interactions, features,
-  reconnect/error, responsive/narrow screen and every changed route). The historical implementer sandbox's
-  browser/build constraint remains recorded in [`phase4-evidence/`](phase4-evidence/README.md), but it is no
-  longer a blocker for this baseline step. Real Studio-server HTTP coverage remains in
-  `tests/cli/studio/StudioServer.test.ts` (§4).
+  `P4-POLISH-13` (final browser acceptance) must expand that into the final post-implementation matrix (Play,
+  player interactions, features, reconnect/error, responsive/narrow screen and every changed route). The
+  historical implementer sandbox's browser/build constraint remains recorded in
+  [`phase4-evidence/`](phase4-evidence/README.md), but it is no longer a blocker for this baseline step. Real
+  Studio-server HTTP coverage remains in `tests/cli/studio/StudioServer.test.ts` (§4), `P4-POLISH-06`'s (Studio
+  Play) own surface.
 - **This sandbox's own `npm` wrapper is broken independent of anything in this repository** (§4,
   [`phase4-evidence/npm-wrapper-repro.txt`](phase4-evidence/README.md)): a malformed generated `case` pattern
   makes `dash` reject the wrapper script itself before any of its own policy logic runs, for every invocation.
   Not this document's or this repo's own defect to fix (the wrapper lives outside this worktree, provisioned by
-  the orchestrator), but worth flagging to whoever owns that provisioning so a future correction round isn't
-  stuck re-discovering the same root cause.
+  the orchestrator) and not a product journey any roadmap step owns — worth flagging to whoever owns that
+  provisioning so a future correction round isn't stuck re-discovering the same root cause, but deliberately left
+  off the mapping above.
 - **CLI/Studio-server paths-with-spaces/non-TTY coverage on the Studio HTTP surface itself** — confirmed absent
   by direct read of `tests/cli/studio/StudioServer.test.ts` (§4): no space-path or `isTTY`/`isatty` case exists
-  there, even though §1 now covers `dispatch()`/materialize/replay at the CLI-argument layer.
+  there, even though §1 now covers `dispatch()`/materialize/replay at the CLI-argument layer. Owned by
+  `P4-POLISH-06` (Studio Play), the same step that owns Studio's server-side project-open routes above.
 - **`pokie-examples` deeper coupling audit beyond this step's own re-audit** (§6) — this step replaced the prior
   file/export-level, remote-sampled inventory with one read from a real synced `develop` checkout (pinned at
   commit `af432206a435db5c1063ca5cd9dd81652b886a6e`), but a line-level read of `src/ui/`'s own contract with each
   game's
   `*Config.ts` (e.g. exactly which `VideoSlotConfig` fields `initializeUi`/`drawReelsSymbols` silently assume
   exist) is still needed before any step attempts to *change* `pokie-examples`' shared code itself, and that
-  checkout should be re-cloned at its own current `HEAD` rather than assumed still current.
+  checkout should be re-cloned at its own current `HEAD` rather than assumed still current. Owned by
+  `P4-POLISH-07` (help) — `pokie-examples` is the demo/documentation surface linked from this repo's own
+  `README.md`/`docs/README.md`, the same journey that step already covers.
 
-Naming these here reserves them as a future step's own responsibility rather than letting a later step either
-silently re-derive them from scratch or, worse, quietly skip them because nothing on record named them as open.
+Naming these here, against the owning step each already maps to above, reserves them as that step's own
+responsibility rather than letting a later step either silently re-derive them from scratch or, worse, quietly
+skip them because nothing on record named them as open.
