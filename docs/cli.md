@@ -1313,10 +1313,11 @@ coming from the target directory itself:
    A validation error or a failed build/load exits non-zero with the printed issues instead of silently leaving a
    broken package on disk.
 
-`--package-name <name>` overrides `package.json`'s own `name` field directly; `--game-id <id>`/`--game-name
-<name>`/`--version <version>` override the game manifest's `id`/`name`/`version` (and, absent a `--package-name`,
-also seed the derived `package.json` name) — independently of whatever the target directory or an existing
-`package.json` would otherwise default to.
+`--package-name <name>` overrides `package.json`'s own `name` field directly; short of that, an existing
+`package.json`'s own `name` is preserved untouched, and only with neither does the target directory's own
+basename become the default. `--game-id <id>`/`--game-name <name>`/`--version <version>` override the game
+manifest's `id`/`name`/`version` only — `--game-id` never seeds or otherwise changes `package.json`'s `name`,
+which is controlled solely by `--package-name`/the existing name/the directory-derived default above.
 
 **Safety guard:** a directory that already has files in it, and doesn't yet look like a package `pokie init`
 itself produced or is resuming (no `package.json`, or one whose `pokie.entry` doesn't already match what a fresh
