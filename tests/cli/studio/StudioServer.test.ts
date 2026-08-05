@@ -450,7 +450,7 @@ describe("StudioServer", () => {
             const project = {type: "blueprint", rootPath: rawProjectRoot, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"} as PokieProject;
             const resolveProject = stubProjectResolver(project);
             const materializer = fakeMaterializer(materializedRuntimePath);
-            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {resolveProject, materializer});
 
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             const materializingLoadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
@@ -494,7 +494,7 @@ describe("StudioServer", () => {
             } as PokieProject;
             const resolveProject = stubProjectResolver(project);
             const materializer = rejectingMaterializer("must not be called for a project lacking runtime.execute");
-            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {resolveProject, materializer});
 
             const diagnosticLoadGame = jest.fn();
             const diagnosticHomeService = new StudioHomeService("1.0.0", undefined, diagnosticLoadGame, undefined, resolveRuntimePackageRoot);

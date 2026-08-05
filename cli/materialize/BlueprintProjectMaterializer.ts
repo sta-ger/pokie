@@ -232,9 +232,26 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         try {
             await this.runCommand("npm", ["install"], stagingDir);
         } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
-            throw new BlueprintMaterializationError("dependencies", `"npm install" failed in "${stagingDir}": ${detail}`);
+            throw new BlueprintMaterializationError(
+                "dependencies",
+                `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
+                    "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
+                    "for the exact npm output.",
+                this.extractNpmStderr(error) ?? (error instanceof Error ? error.message : String(error)),
+            );
         }
+    }
+
+    // execFile/execFileAsync's own rejection carries the failed command's real stderr as a plain "stderr"
+    // property alongside its (much noisier, command-line-and-exit-code-prefixed) "message" -- preferred here
+    // as the "details" a human might actually want to read, falling back to the raw error's own message only
+    // for a runCommand implementation that doesn't shape its rejections that way.
+    private extractNpmStderr(error: unknown): string | undefined {
+        if (typeof error !== "object" || error === null || !("stderr" in error)) {
+            return undefined;
+        }
+        const stderr = (error as {stderr?: unknown}).stderr;
+        return typeof stderr === "string" && stderr.trim().length > 0 ? stderr : undefined;
     }
 
     private async runVerifyPhase(stagingDir: string, blueprintPath: string): Promise<void> {

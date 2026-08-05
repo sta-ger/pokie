@@ -1,6 +1,6 @@
 import {STUDIO_OPERATION} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createMaterializingRuntimePackageResolver} from "../materialize/materializeRuntimePackage.js";
+import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
@@ -51,13 +51,21 @@ export class StudioCommand implements CliCommandHandling {
     private readonly studioRoot: string;
     private readonly process: NodeJS.Process;
     private readonly pokieVersion: string;
+    // The one materializing resolver this command builds -- shared, by identity, between homeService's
+    // own Open/Recent-Projects flow and the Project Dashboard/Play runtime StudioServer drives once
+    // started (see run() below), rather than each independently building its own. Both go through the
+    // exact same BlueprintProjectMaterializer instance (same cacheRoot, same pokiePackageRoot), so "one
+    // materialization service" is true by construction, not just by the cache directory happening to
+    // agree.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
-    constructor(pokieVersion: string, dependencies: StudioCommandDependencies = {}) {
+    constructor(pokieVersion: string, pokiePackageRoot: string, dependencies: StudioCommandDependencies = {}) {
         this.pokieVersion = pokieVersion;
         this.createServer = dependencies.createServer ?? ((options) => new StudioServer(options));
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
         const projectRegistrationService = createDefaultStudioProjectRegistrationService();
+        this.resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION, pokiePackageRoot);
         this.homeService =
             dependencies.homeService ??
             new StudioHomeService(
@@ -65,7 +73,7 @@ export class StudioCommand implements CliCommandHandling {
                 undefined,
                 undefined,
                 undefined,
-                createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION),
+                this.resolveRuntimePackageRoot,
                 (location) => projectRegistrationService.describeLocation(location),
             );
         this.studioRoot = dependencies.studioRoot ?? "";
@@ -94,6 +102,7 @@ export class StudioCommand implements CliCommandHandling {
             initialContext: context,
             homeService: this.homeService,
             blueprintService: this.blueprintService,
+            resolveRuntimePackageRoot: this.resolveRuntimePackageRoot,
         });
         const address = await server.start();
 

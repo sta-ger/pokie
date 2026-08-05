@@ -81,7 +81,7 @@ function registerCommands(): CliCommandHandling[] {
         new ServeCommand(),
         new SimCommand(),
         new StakeEngineCommand(TEST_VERSION),
-        new StudioCommand(TEST_VERSION),
+        new StudioCommand(TEST_VERSION, "/fake/pokie/root"),
         new ValidateCommand(),
     ];
 }
@@ -1794,7 +1794,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
         "studio::--no-open (home mode: no projectRoot given, skips the accepted-but-unexercised browser-open step)": (key) => {
             let openBrowserCalled = false;
             deferValueUnlessCalled(key, "--no-open", () => openBrowserCalled, "true");
-            return new StudioCommand(TEST_VERSION, {
+            return new StudioCommand(TEST_VERSION, "/fake/pokie/root", {
                 createServer: (options) => {
                     observe(key, "--port", options.port);
                     observe(key, "--host", options.host);
@@ -1808,7 +1808,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             });
         },
         "studio::--port --host (accepted values, default --no-open triggers the injected openBrowser stub)": (key) => {
-            return new StudioCommand(TEST_VERSION, {
+            return new StudioCommand(TEST_VERSION, "/fake/pokie/root", {
                 createServer: (options) => {
                     observe(key, "--port", options.port);
                     observe(key, "--host", options.host);
