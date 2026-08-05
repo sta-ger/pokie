@@ -79,11 +79,12 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     via `reelStripGeneration` and `ReelStripGenerator`), no compile step required; `pokie build random`/`pokie
     build --random`, which generates a structurally-valid random `GameBlueprint` (via `RandomGameBlueprintGenerator`)
     and builds it, no config file at all, seeded/reproducible and smoke-simulated before it's reported done; `pokie
-    create [name]`, which writes an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
-    than a package, and `pokie init [name]`, which produces a prepared, immediately valid game package instead
-    (interactively via a wizard when run with no name); `pokie create [name] --random`, the same random-generation
-    pipeline as `pokie build random`, named after `<name>` or a generated id, written to a Blueprint Project file
-    rather than built; `pokie name`, which prints one or more
+    create [name]`, which designs an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
+    than a package, interactively via a wizard when run in a terminal (`<name>` pre-fills it, `--blank`/`--random`
+    write one non-interactively instead), and `pokie init [name]`, which produces a prepared, immediately valid
+    game package instead (interactively via that same wizard when run with no name); `pokie create [name]
+    --random`, the same random-generation pipeline as `pokie build random`, named after `<name>` or a generated id,
+    written to a Blueprint Project file rather than built; `pokie name`, which prints one or more
     deterministic, offline-generated slot game name(s) (via `SlotGameNameGenerator`) without building anything;
     `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without

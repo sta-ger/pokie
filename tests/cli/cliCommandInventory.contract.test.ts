@@ -525,45 +525,113 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 return stubAddressServer(options.port ?? 4444);
             }),
 
-        // Every non-"--random" case below fakes only fileExists/writeFile (CreateCommand's own I/O seam) --
-        // createStarterBlueprint/createBlankBlueprint are wrapped, not replaced, so the actual written content
-        // is CreateCommand's own real starter/blank template, observed at the "--blank" seam by which of the
-        // two the command actually calls.
-        "create::(no name, no options — writes the starter blueprint to its own default path)": (key) =>
+        // The bare/named path (no --blank/--random) always runs the interactive wizard -- see
+        // CreateCommand's own doc comment -- so these three cases stub isInteractiveTerminal true, the
+        // wizard itself (echoing back whatever GameBlueprintWizardOptions CreateCommand passed it, the
+        // same way "init::(no args — launches the interactive wizard...)" below stubs InitCommand's own
+        // wizard), and an auto-confirming prompt for the post-wizard "Save this blueprint?" question.
+        "create::(no name, no options, interactive terminal — runs the wizard, default destination)": (key) =>
             new CreateCommand(
                 TEST_VERSION,
-                () => {
-                    observe(key, "--blank", "false");
-                    return createStarterGameBlueprint();
-                },
+                undefined,
                 undefined,
                 undefined,
                 undefined,
                 () => false,
                 (filePath) => observe(key, "--out", filePath),
+                undefined,
+                {
+                    run: (_prompt, options) =>
+                        Promise.resolve({
+                            blueprint: {
+                                manifest: {id: "wiz-slot", name: "Wiz Slot", version: "0.1.0"},
+                                reels: 3,
+                                rows: 3,
+                                symbols: ["A", "B"],
+                                paytable: {A: {3: 5}},
+                            },
+                            outDir: options?.destination?.defaultPathFor("wiz-slot"),
+                        }),
+                },
+                () => ({ask: () => Promise.resolve(""), close: () => undefined}),
+                () => true,
             ),
-        "create::<name>": () =>
-            new CreateCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, () => undefined),
-        "create::--blank (accepted --blank value)": (key) =>
+        "create::<name> (interactive terminal — the wizard runs with the name pre-filled)": (key) =>
             new CreateCommand(
                 TEST_VERSION,
                 undefined,
-                () => {
-                    observe(key, "--blank", "true");
-                    return {
-                        manifest: {id: "blank-slot", name: "Blank Slot", version: "0.1.0"},
-                        reels: 3,
-                        rows: 3,
-                        symbols: ["A", "B", "C"],
-                        paytable: {A: {3: 5}},
-                    };
-                },
+                undefined,
                 undefined,
                 undefined,
                 () => false,
-                () => undefined,
+                (filePath) => observe(key, "destination", filePath),
+                undefined,
+                {
+                    run: (_prompt, options) => {
+                        const id = options?.presetName ?? "wiz-slot";
+                        return Promise.resolve({
+                            blueprint: {
+                                manifest: {id, name: "Sample Slot", version: "0.1.0"},
+                                reels: 3,
+                                rows: 3,
+                                symbols: ["A", "B"],
+                                paytable: {A: {3: 5}},
+                            },
+                            outDir: options?.destination?.defaultPathFor(id),
+                        });
+                    },
+                },
+                () => ({ask: () => Promise.resolve(""), close: () => undefined}),
+                () => true,
             ),
-        "create::--out <file> (accepted --out value, default --blank)": (key) =>
+        "create::--out <file> (accepted --out value, interactive terminal)": (key) =>
+            new CreateCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => false,
+                (filePath) => observe(key, "--out", filePath),
+                undefined,
+                {
+                    run: (_prompt, options) =>
+                        Promise.resolve({
+                            blueprint: {
+                                manifest: {id: "wiz-slot", name: "Wiz Slot", version: "0.1.0"},
+                                reels: 3,
+                                rows: 3,
+                                symbols: ["A", "B"],
+                                paytable: {A: {3: 5}},
+                            },
+                            outDir: options?.destination?.defaultPathFor("wiz-slot"),
+                        }),
+                },
+                () => ({ask: () => Promise.resolve(""), close: () => undefined}),
+                () => true,
+            ),
+
+        // "--blank" is its own explicit non-interactive shortcut -- never touches the wizard/prompt at
+        // all, so these two fake only fileExists/writeFile (CreateCommand's own I/O seam), the same way
+        // the "--random" cases below fake theirs; createBlankBlueprint is wrapped, not replaced, so the
+        // actual written content is CreateCommand's own real blank template.
+        "create::--blank (writes the blank template directly, no wizard)": (key) =>
+            new CreateCommand(
+                TEST_VERSION,
+                undefined,
+                () => ({
+                    manifest: {id: "blank-slot", name: "Blank Slot", version: "0.1.0"},
+                    reels: 3,
+                    rows: 3,
+                    symbols: ["A", "B", "C"],
+                    paytable: {A: {3: 5}},
+                }),
+                undefined,
+                undefined,
+                () => false,
+                (filePath) => observe(key, "--out", filePath),
+            ),
+        "create::--blank --out <file> (accepted --out value)": (key) =>
             new CreateCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, (filePath) => observe(key, "--out", filePath)),
 
         // --random cases: fileExists/writeFile are still faked (no real I/O), but the blueprint itself comes
@@ -1883,8 +1951,8 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
 // pick a subcommand, and is used purely to bucket test-fixture cases for the coverage assertions
 // below, never to assert behavior itself): a subcommand-style command (certification/fairness/
 // outcomelibrary/par/stakeengine) always has its verb literal as `args[0]`; "build"/"create" each have
-// one sentinel verb recognized by a flag rather than a positional ("--init-blueprint"/"random" for
-// build, "--random" for create); every other command has exactly one verb (`undefined`).
+// one or more sentinel verbs recognized by a flag rather than a positional ("--init-blueprint"/"random"
+// for build, "--blank"/"--random" for create); every other command has exactly one verb (`undefined`).
 function deriveVerbForCase(commandName: string, args: string[]): string | undefined {
     const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === commandName);
     if (!descriptor) {
@@ -1902,6 +1970,9 @@ function deriveVerbForCase(commandName: string, args: string[]): string | undefi
     }
     if (verbLiterals.includes("--random") && args.includes("--random")) {
         return "--random";
+    }
+    if (verbLiterals.includes("--blank") && args.includes("--blank")) {
+        return "--blank";
     }
     if (args[0] !== undefined && verbLiterals.includes(args[0])) {
         return args[0];

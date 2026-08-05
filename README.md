@@ -60,8 +60,9 @@ POKIE goes well beyond classic paylines:
   reported done; `npx pokie name` prints deterministic, offline-generated slot game name(s) without building
   anything; `npx pokie inspect
   <packageRoot>` prints a package's provenance (game, blueprint hash, source, `pokie` version) without running it;
-  `npx pokie create <name>` scaffolds a brand-new game package,
-  `npx pokie init` scaffolds an existing npm project in place, both minimal, buildable, and loadable; `npx pokie
+  `npx pokie create [name]` designs an editable Blueprint Project (a `GameBlueprint` JSON file) through an
+  interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead), `npx pokie
+  init` prepares an immediately valid game package, interactively via that same wizard when run with no name; `npx pokie
   sim <packageRoot>` runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie
   validate <packageRoot>`
   checks a package's contract without playing it; `npx pokie report <simulationReportJson>` renders a `pokie sim`
@@ -175,7 +176,7 @@ Scaffold a brand-new [game package](docs/game-packages.md) in a new directory:
 
 ```
 npm i -g pokie
-pokie create sample-slot
+pokie init sample-slot
 ```
 
 Or turn an existing empty npm project into one in place:

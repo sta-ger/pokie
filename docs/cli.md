@@ -25,19 +25,36 @@ non-zero.
 
 ## `pokie create [name]`
 
-Writes an editable **Blueprint Project** — a hand-editable `GameBlueprint` JSON file (reels, symbols, paytable,
-reel weighting) — rather than a ready-to-run package. For a prepared, immediately valid package instead, see
-[`pokie init`](#pokie-init-name) below.
+Designs an editable **Blueprint Project** — a hand-editable `GameBlueprint` JSON file (reels, symbols, paytable,
+reel weighting) — through an interactive wizard, rather than a ready-to-run package. For a prepared, immediately
+valid package instead, see [`pokie init`](#pokie-init-name) below.
 
 ```
 npm i -g pokie
 pokie create sample-slot
 ```
 
+Run in a terminal, `pokie create [name]` launches the same interactive wizard [`pokie init`](#pokie-init-name)'s own
+"no name" mode does — see [Interactive mode](#interactive-mode-pokie-init-with-no-name) for the full per-question
+walkthrough — except it designs a standalone Blueprint Project file rather than a package, and a given `<name>`
+*pre-fills* the id/name questions' own default instead of requiring "no name" to launch it at all: typing a
+different answer, as always, still overrides that default. Once every question is answered, it prints a preview of
+the resulting blueprint and asks for confirmation before writing anything:
+
 ```
+Preview:
+  Game:        Sample Slot (id: "sample-slot", v0.1.0)
+  Layout:      5 reels x 3 rows
+  Symbols:     A, K, Q, J
+  Paytable:    4 symbol(s) with payouts
+  Bets:        1, 2, 5
+  Mechanics:   (none)
+  Destination: ./sample-slot.blueprint.json
+
+Save this blueprint? [Y/n]: y
   created  ./sample-slot.blueprint.json
 
-Game blueprint "sample-slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
+Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
 Edit it by hand, then run:
   pokie build ./sample-slot.blueprint.json --dry-run
@@ -47,20 +64,30 @@ Note: "pokie create" now writes an editable Blueprint Project (a GameBlueprint J
 ready-to-run package. For a prepared, immediately valid package instead, run: pokie init [name]
 ```
 
-`pokie create [name]` writes the same filled-in [starter template](#starter-template-pokie-build---init-blueprint-file)
-`pokie build --init-blueprint <file>` does — reels/rows, symbols, available bets, paylines, a paytable, and symbol
-weights, all filled with valid example values — to `./<manifest.id>.blueprint.json` by default, or `--out <file>` to
-pick a different path. `<name>`, when given, overrides the template's own manifest id/name (via the same
-name-derivation rules the old scaffold used), which in turn changes the default output filename; omitted, the
-template's own default id/name (and filename) is used instead. It fails if the destination file already exists —
-pick a different `--out` path, or remove/edit the existing file first.
+Declining that confirmation, cancelling (**Ctrl+C**), or closing the input stream (**EOF**) at any point — including
+at the confirmation itself, or because the destination already exists — leaves no file behind; nothing is ever
+written until every question has been answered and the preview has been confirmed.
+
+Without a real terminal to run the wizard in (a script, CI, or any other non-interactive invocation), `pokie
+create`/`pokie create <name>` exits immediately with guidance toward its two non-interactive shortcuts below,
+instead of hanging or silently cancelling:
+
+```
+pokie create needs an interactive terminal to run its Blueprint wizard, and this one is not connected to one.
+Re-run inside a terminal, or use a non-interactive shortcut instead: "pokie create --blank" (a bare-minimum
+blueprint) or "pokie create --random" (an always-valid randomly generated one).
+```
 
 Options:
 
-- `--blank` — write the bare-minimum blueprint (3x3, three symbols, one payout each, no
-  paylines/`symbolWeights`/`availableBets`) instead of the fuller starter template, for someone who wants to author
-  every field themselves.
-- `--out <file>` — write to `<file>` instead of the default `./<manifest.id>.blueprint.json`.
+- `--blank` — **non-interactively** write the bare-minimum blueprint (3x3, three symbols, one payout each, no
+  paylines/`symbolWeights`/`availableBets`) instead of running the wizard — never prompts, for someone who wants to
+  author every field themselves or run this from a script. `<name>` still overrides the manifest id/name (via the
+  same name-derivation rules the old scaffold used); `--out <file>` still picks the destination.
+- `--out <file>` — the wizard's own destination question defaults to this instead of
+  `./<manifest.id>.blueprint.json` (still editable, like every other question); with `--blank`/`--random`, writes
+  here directly, without asking. It fails if the destination file already exists — pick a different `--out` path,
+  or remove/edit the existing file first.
 
 Every successful run prints a migration note (shown above) — this command used to write a hand-editable npm
 package directly; that "programmer-first" role now belongs to `pokie init`.
@@ -1275,10 +1302,12 @@ From here, replace the generated `src/index.ts` with your own symbols, paytable,
 pokie init
 ```
 
-Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; available
-bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips); and the output directory. This
+Runs a wizard on the terminal that asks, in order, for: game id/name/version; reels/rows; symbols; wild symbols;
+scatter symbols; available bets; paylines; paytable; reel weighting (symbol weights or explicit reel strips);
+scatter-triggered free games (only asked at all if a scatter symbol was declared); and the output directory. This
 is the same `GameBlueprint` wizard `pokie build` used to offer before this workflow moved to `pokie init` — the
-wizard's own logic is unchanged, only which command launches it.
+wizard's own logic is unchanged, only which command launches it — and [`pokie create`](#pokie-create-name) above
+now offers it too, for a Blueprint Project file instead of a package.
 
 **Every question has a default and shows it in `[brackets]`**, so pressing Enter through the entire wizard — without
 typing a single answer — produces a complete, valid package: one that passes [`pokie
@@ -1293,10 +1322,13 @@ specified by hand exactly as before. Two questions additionally accept `-` to op
 rather than replace it: a paytable symbol answered with `-` gets no payout at all, and reel weighting answered
 with `-` leaves weighting to the engine (no `symbolWeights`/`reelStrips` in the blueprint).
 
-The wizard is deliberately minimal:
-it asks for the same fields `pokie build <config.json>` needs for a line-pay video slot and nothing more (no
-wilds/scatters yet) — add those by hand-editing the generated blueprint's config-driven equivalent, or wait for a
-future wizard pass.
+The wizard covers the same fields Studio's own guided **Design Game** editor does (game basics, layout, symbols and
+their wild/scatter roles, reels, paytable, bets), plus the one mechanic Studio's guided editor doesn't offer yet:
+scatter-triggered free games (see `mechanics.freeGames`) — asked only when at least one scatter symbol was
+declared, since a free games award needs a scatter symbol to trigger off of. A symbol marked wild never gets its
+own paytable question — an all-wild line resolves to no winning symbol id, so a payout for one would be dead data —
+it always ends up with no payout in the written blueprint. Selectable bet modes (`betModes`) aren't offered yet;
+add those by hand-editing the generated blueprint.
 
 The game id question offers a ready-made suggestion rather than requiring one to be typed: the wizard mints a
 single [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) result once at the start of
@@ -1341,6 +1373,16 @@ Per-question input handling:
   exceed `reels`, and matching more never pays less). Answer `-` to leave a symbol without a payout.
 - Symbol ids can't contain `:` — the wizard's own prompts reuse it as a pair separator later on (paytable, symbol
   weights), so a symbol id containing one would be unparseable there.
+- Wild/scatter symbols must each be one of the symbols already entered, and a symbol can't be both at once. Leaving
+  either question blank omits `wilds`/`scatters` from the blueprint entirely, rather than writing out an empty list.
+- Free games, when asked at all, offers the first declared scatter as the trigger symbol's own default (or `-` to
+  skip the mechanic entirely), then asks for its `matchCount:games` award pairs (e.g. `3:8,4:15,5:20`).
+
+`pokie create`'s own wizard run differs from `pokie init`'s in three ways: a given `<name>` pre-fills the id/name
+questions' own default instead of requiring "no name"; the final question asks for a **Blueprint file** (defaulting
+to `./<manifest.id>.blueprint.json`, or `--out <file>`'s value if given) rather than a package **directory**; and it
+prints a preview of the assembled blueprint and asks for one more confirmation before ever writing anything — see
+[`pokie create [name]`](#pokie-create-name) above.
 
 Answers can also be piped/scripted (e.g. `printf '...\n...\n' | pokie init`, or piping a saved answers file) —
 each question is answered from the piped input in the same order it would be asked interactively, one line per

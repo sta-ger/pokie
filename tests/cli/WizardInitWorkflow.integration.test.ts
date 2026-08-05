@@ -79,6 +79,8 @@ describe("CLI workflow (integration): pokie init (wizard) output passes validate
             "", // reels -> default 5
             "", // rows -> default 3
             "A,K,Q", // symbols
+            "", // wilds -> none
+            "", // scatters -> none
             "", // availableBets -> default
             "", // paylines -> default (omitted)
             "3:5,4:10,5:20", // paytable A
