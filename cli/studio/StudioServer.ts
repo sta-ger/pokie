@@ -874,7 +874,12 @@ export class StudioServer implements StudioServerHandling {
         const dashboard = await this.homeService.openProject(validated.projectRoot);
         if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source") {
             const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
-            this.sendJson(res, 400, {error: message});
+            // "detail" -- e.g. a failed materialization "npm install"'s own raw stderr (see
+            // ProjectDashboardContext's own doc comment on "errorDetail") -- rides alongside the primary
+            // human-readable "error" as its own field, never folded into it, so a client can offer it as
+            // expandable diagnostic detail instead of always rendering a wall of npm output up front.
+            const detail = dashboard.status === "error" ? dashboard.errorDetail : undefined;
+            this.sendJson(res, 400, {error: message, detail});
             return;
         }
 

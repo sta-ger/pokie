@@ -1,9 +1,12 @@
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {DEV_OPERATION} from "pokie";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
+import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
@@ -16,11 +19,10 @@ const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulatio
 // since "pokie" itself, and every one of its own runtime dependencies (e.g. "exceljs"), are always
 // resolved locally (via withLocalPokieInstall -- production's own mechanism, used completely
 // unmodified here, never a test-only stand-in for it) rather than looked up against a registry at all.
-const UNPUBLISHED_POKIE_VERSION = "0.0.0-offline-e2e-unpublished";
-
-function blueprintProject(rootPath: string): unknown {
-    return {type: "blueprint", rootPath, capabilities: [], provenance: "test fixture"};
-}
+// Randomized per test run (never a fixed literal) so a materialize() call below always performs a
+// genuine fresh install -- proving the real npm mechanism runs, not just that a stale cache entry left
+// over from a previous run of this same file gets borrowed.
+const UNPUBLISHED_POKIE_VERSION = `0.0.0-offline-e2e-unpublished-${crypto.randomBytes(4).toString("hex")}`;
 
 // Fails the very first "npm install" it's asked to run (a real, structured rejection shaped like a real
 // execFile failure -- a message plus a separate "stderr") and delegates every call after that to `base` --
@@ -42,31 +44,47 @@ function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageComma
         return base(command, args, cwd);
     };
     // Object.assign copies a getter's *current value*, not the accessor itself -- defineProperty is what
-    // keeps `.calls` live across every subsequent invocation of `runner`. Object.defineProperty's own
-    // return type is just the input's type (not the widened intersection), so the added property needs
-    // an explicit cast here.
-    return Object.defineProperty(runner, "calls", {
+    // keeps `.calls` live across every subsequent invocation of `runner`. Reflect.defineProperty returns
+    // a success boolean, not the target, so the added property needs an explicit cast on `runner` itself
+    // afterward.
+    Reflect.defineProperty(runner, "calls", {
         get: () => calls,
-    }) as PackageCommandRunning & {calls: number};
+    });
+    return runner as PackageCommandRunning & {calls: number};
 }
 
-// Proves BlueprintProjectMaterializer's real, shipped offline mechanism (withLocalPokieInstall, wired in
-// by materializeRuntimePackage.ts's default resolver for every CLI/Studio operation) end to end: a real
-// GamePackageGenerator, a real spawned "npm install" that never reaches a registry -- not for "pokie"
-// itself, and not for any of its own runtime dependencies (e.g. "exceljs", which alone pulls in dozens
-// of transitive packages of its own -- see withLocalPokieDependencyClosure's own doc comment in
-// PackageCommandRunner.ts) -- and a real PokieGamePackageValidator loading the result, against a
-// pokieVersion that could never resolve from a registry at all. `withLocalPokieInstall` is used exactly
-// as every real CLI/Studio call site uses it, bound to this checkout's own REPO_ROOT (standing in for
-// "the running POKIE installation's own root directory" -- see cli/pokie.ts's readOwnPackageRoot()) --
-// never wrapped in any test-only dependency override, so this proves the actual shipped mechanism, not
-// a stand-in for it. Slow (real npm), same "pokie-integration" project as
-// BlueprintProjectMaterializer.integration.test.ts (see jest.config.mjs's `*.integration.test.ts` glob).
-describe("BlueprintProjectMaterializer (offline end-to-end: unpublished pokie version, real npm, no registry)", () => {
+// Proves BlueprintProjectMaterializer's real, shipped offline mechanism end to end, through the actual
+// production entry point (createMaterializingRuntimePackageResolver) every CLI/Studio operation that
+// loads a POKIE game package is built from -- not a hand-constructed BlueprintProjectMaterializer
+// standing in for it. A real ProjectTargetResolver recognizes the raw blueprint file exactly as a bare
+// `pokie <blueprint.json>` launch would; a real GamePackageGenerator, a real spawned "npm install" that
+// never reaches a registry (see below), and a real PokieGamePackageValidator load the result.
+//
+// `pokiePackageRootWithSpaces` stands in for "the running POKIE installation's own root directory" (see
+// cli/pokie.ts's readOwnPackageRoot()) at a path shaped the way a real end user's machine easily
+// produces one (e.g. under "Program Files", "My Projects") -- a symlink to this checkout's own
+// REPO_ROOT, so every provenance withLocalPokieDependency's own doc comment lists (a dev checkout, an
+// npm-linked target, a tarball-installed or ordinarily npm-installed copy) is equally well represented:
+// the mechanism only ever cares about the resolved absolute path, never how it got there, and a symlink
+// resolves to exactly the same kind of absolute path any of them would.
+//
+// Every "npm install" spawned below also runs with the registry forced unreachable and npm's own
+// `--offline` mode forced on (see beforeAll) -- so an unpublished pokieVersion alone could never be
+// mistaken for proof that *every* transitive dependency avoids registry resolution (e.g. "exceljs" alone
+// pulls in dozens of packages of its own -- see withLocalPokieDependencyClosure's own doc comment in
+// PackageCommandRunner.ts): if this checkout's own dependency-closure rewrite ever missed one, npm would
+// fail fast here instead of silently succeeding against a reachable registry.
+//
+// Slow (real npm), same "pokie-integration" project as BlueprintProjectMaterializer.integration.test.ts
+// (see jest.config.mjs's `*.integration.test.ts` glob).
+describe("BlueprintProjectMaterializer (offline end-to-end: default production resolver, unpublished pokie version, real npm, no registry, spaced installation path)", () => {
     jest.setTimeout(300000);
 
     let cacheRoot: string;
     let sourceDir: string;
+    let pokiePackageRootWithSpaces: string;
+    let originalNpmOffline: string | undefined;
+    let originalNpmRegistry: string | undefined;
 
     beforeAll(() => {
         ensureCompiledTestOutput({
@@ -75,11 +93,31 @@ describe("BlueprintProjectMaterializer (offline end-to-end: unpublished pokie ve
             lockName: "compiled-runtime",
             command: ["npm", "run", "build-test-runtime"],
         });
+
+        pokiePackageRootWithSpaces = path.join(os.tmpdir(), `pokie install root with spaces ${crypto.randomBytes(4).toString("hex")}`);
+        fs.symlinkSync(REPO_ROOT, pokiePackageRootWithSpaces, "dir");
+
+        // Forces any npm dependency resolution that isn't already rewritten to a local `file:` spec to
+        // fail loudly and immediately, instead of silently succeeding against a reachable registry in a
+        // network-connected dev/CI environment -- see this describe block's own doc comment. `offline`
+        // alone already guarantees zero network requests of any kind (a DNS-independent, deterministic
+        // failure mode); the unreachable registry URL is defense in depth in case any single install
+        // step doesn't inherit that flag.
+        originalNpmOffline = process.env.npm_config_offline;
+        originalNpmRegistry = process.env.npm_config_registry;
+        process.env["npm_config_offline"] = "true";
+        process.env["npm_config_registry"] = "http://127.0.0.1:1/";
+    });
+
+    afterAll(() => {
+        fs.rmSync(pokiePackageRootWithSpaces, {force: true});
+        restoreEnv("npm_config_offline", originalNpmOffline);
+        restoreEnv("npm_config_registry", originalNpmRegistry);
     });
 
     beforeEach(() => {
-        cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-materialize-cache-offline-e2e-"));
-        sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-materialize-source-offline-e2e-"));
+        cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie materialize cache offline e2e "));
+        sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie materialize source offline e2e "));
     });
 
     afterEach(() => {
@@ -87,36 +125,45 @@ describe("BlueprintProjectMaterializer (offline end-to-end: unpublished pokie ve
         fs.rmSync(sourceDir, {recursive: true, force: true});
     });
 
-    it("materializes a genuinely loadable runtime and reuses the cache, for a pokieVersion that has never been published", async () => {
-        const runner = withLocalPokieInstall(REPO_ROOT);
-        const materializer = new BlueprintProjectMaterializer(UNPUBLISHED_POKIE_VERSION, undefined, undefined, undefined, runner, undefined, cacheRoot);
+    function writeStarterBlueprint(): string {
         const blueprintPath = path.join(sourceDir, "game.json");
         fs.writeFileSync(blueprintPath, JSON.stringify(createStarterGameBlueprint(), null, 4));
-        const project = blueprintProject(blueprintPath);
+        return blueprintPath;
+    }
 
-        const first = await materializer.materialize(project as never);
-        const second = await materializer.materialize(project as never);
+    it("materializes a genuinely loadable runtime through the default production resolver and reuses the cache -- fully offline, registry unreachable, pokieVersion never published, installation path containing spaces", async () => {
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(UNPUBLISHED_POKIE_VERSION, DEV_OPERATION, pokiePackageRootWithSpaces);
+        const blueprintPath = writeStarterBlueprint();
 
-        expect(second.runtimePath).toBe(first.runtimePath);
+        const first = await resolveRuntimePackageRoot(blueprintPath);
+        try {
+            // "pokie" really did resolve to this exact (spaced-path) checkout, not any registry-published
+            // version.
+            const installedPokiePackageJson = JSON.parse(
+                fs.readFileSync(path.join(first.runtimePath, "node_modules", "pokie", "package.json"), "utf-8"),
+            ) as {name: string};
+            expect(installedPokiePackageJson.name).toBe("pokie");
 
-        // "pokie" really did resolve to this exact checkout, not any registry-published version.
-        const installedPokiePackageJson = JSON.parse(
-            fs.readFileSync(path.join(first.runtimePath, "node_modules", "pokie", "package.json"), "utf-8"),
-        ) as {name: string};
-        expect(installedPokiePackageJson.name).toBe("pokie");
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const entry = require(path.join(first.runtimePath, "dist", "index.js"));
+            const game = entry.default ?? entry;
+            expect(game.getManifest().id).toBe("starter-slot");
+        } finally {
+            await first.release();
+        }
 
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const entry = require(path.join(first.runtimePath, "dist", "index.js"));
-        const game = entry.default ?? entry;
-        expect(game.getManifest().id).toBe("starter-slot");
+        const second = await resolveRuntimePackageRoot(blueprintPath);
+        try {
+            expect(second.runtimePath).toBe(first.runtimePath);
+        } finally {
+            await second.release();
+        }
     });
 
-    it("recovers from a failed staging build, leaves no cache artifacts, and safely retries without a second install once cached", async () => {
-        const blueprintPath = path.join(sourceDir, "game.json");
-        fs.writeFileSync(blueprintPath, JSON.stringify(createStarterGameBlueprint(), null, 4));
-        const project = blueprintProject(blueprintPath);
+    it("recovers from a failed staging build through the production resolver, leaves no cache artifacts, and safely retries without a second install once cached", async () => {
+        const blueprintPath = writeStarterBlueprint();
 
-        const flakyRunner = failFirstInstallThenDelegate(withLocalPokieInstall(REPO_ROOT));
+        const flakyRunner = failFirstInstallThenDelegate(withLocalPokieInstall(pokiePackageRootWithSpaces));
         const materializer = new BlueprintProjectMaterializer(
             UNPUBLISHED_POKIE_VERSION,
             undefined,
@@ -126,8 +173,11 @@ describe("BlueprintProjectMaterializer (offline end-to-end: unpublished pokie ve
             undefined,
             cacheRoot,
         );
+        // `resolveProject` stays the real default (undefined) -- only the materializer's own runCommand
+        // needs to be flaky here, so project resolution is exercised exactly as production does it.
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(UNPUBLISHED_POKIE_VERSION, DEV_OPERATION, undefined, {materializer});
 
-        const caught = await materializer.materialize(project as never).catch((error: unknown) => error);
+        const caught = await resolveRuntimePackageRoot(blueprintPath).catch((error: unknown) => error);
 
         expect(caught).toBeInstanceOf(BlueprintMaterializationError);
         const materializationError = caught as BlueprintMaterializationError;
@@ -140,13 +190,29 @@ describe("BlueprintProjectMaterializer (offline end-to-end: unpublished pokie ve
         expect(materializationError.details).toContain("npm ERR! simulated transient local npm failure");
         expect(fs.readdirSync(cacheRoot)).toEqual([]);
 
-        const retried = await materializer.materialize(project as never);
-        expect(fs.existsSync(path.join(retried.runtimePath, "dist", "index.js"))).toBe(true);
-        expect(fs.existsSync(path.join(retried.runtimePath, "node_modules", "pokie"))).toBe(true);
-        expect(flakyRunner.calls).toBe(2);
+        const retried = await resolveRuntimePackageRoot(blueprintPath);
+        try {
+            expect(fs.existsSync(path.join(retried.runtimePath, "dist", "index.js"))).toBe(true);
+            expect(fs.existsSync(path.join(retried.runtimePath, "node_modules", "pokie"))).toBe(true);
+            expect(flakyRunner.calls).toBe(2);
 
-        const cachedAfterRetry = await materializer.materialize(project as never);
-        expect(cachedAfterRetry.runtimePath).toBe(retried.runtimePath);
-        expect(flakyRunner.calls).toBe(2);
+            const cachedAfterRetry = await resolveRuntimePackageRoot(blueprintPath);
+            try {
+                expect(cachedAfterRetry.runtimePath).toBe(retried.runtimePath);
+                expect(flakyRunner.calls).toBe(2);
+            } finally {
+                await cachedAfterRetry.release();
+            }
+        } finally {
+            await retried.release();
+        }
     });
 });
+
+function restoreEnv(name: string, value: string | undefined): void {
+    if (value === undefined) {
+        Reflect.deleteProperty(process.env, name);
+    } else {
+        process.env[name] = value;
+    }
+}
