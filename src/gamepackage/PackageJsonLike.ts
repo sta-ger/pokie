@@ -7,5 +7,6 @@ export type PackageJsonLike = {
     scripts?: Record<string, string>;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
+    overrides?: Record<string, string>;
     pokie?: {entry?: string};
 };

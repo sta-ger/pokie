@@ -150,7 +150,7 @@ describe("BlueprintProjectMaterializer", () => {
         // result.runtimePath (same cache key, ".staging-" suffix), not result.runtimePath itself.
         expect(runner.calls).toHaveLength(1);
         expect(runner.calls[0].command).toBe("npm");
-        expect(runner.calls[0].args).toEqual(["install"]);
+        expect(runner.calls[0].args).toEqual(["install", "--omit=dev"]);
         expect(runner.calls[0].cwd).toContain(`${path.basename(result.runtimePath)}.staging-`);
         expect(packageValidator.calls).toEqual([runner.calls[0].cwd]);
     });

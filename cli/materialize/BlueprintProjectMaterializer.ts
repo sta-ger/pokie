@@ -230,7 +230,14 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
 
     private async runDependenciesPhase(stagingDir: string): Promise<void> {
         try {
-            await this.runCommand("npm", ["install"], stagingDir);
+            // "--omit=dev": a staged runtime's dist/index.js is already generated here (never compiled --
+            // see this class's own doc comment), so its devDependencies (e.g. "typescript") are never
+            // actually needed. Skipping them is also what makes this install genuinely offline end to end
+            // when composed with withLocalPokieInstall's own dependency-closure rewrite (see
+            // PackageCommandRunner.ts): a real running POKIE installation that isn't a dev checkout (e.g.
+            // "npm install -g pokie") never has its own devDependencies installed either, so there'd be
+            // nothing on disk for that mechanism to point "typescript" at anyway.
+            await this.runCommand("npm", ["install", "--omit=dev"], stagingDir);
         } catch (error) {
             throw new BlueprintMaterializationError(
                 "dependencies",

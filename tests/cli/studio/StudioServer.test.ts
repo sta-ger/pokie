@@ -9,6 +9,7 @@ import {
     GamePackageInspector,
     GamePackageInspectionReport,
     GameSessionHandling,
+    loadPokieGame,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -29,7 +30,10 @@ import fs from "fs";
 import http, {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
+import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
+import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
@@ -46,6 +50,12 @@ import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
+import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
+import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
+
+const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
+const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
+const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -526,6 +536,150 @@ describe("StudioServer", () => {
             } finally {
                 await diagnosticServer.stop();
             }
+        });
+    });
+
+    // The block above proves StudioServer's HTTP route reaches whatever resolver it was configured
+    // with, using fakeMaterializer/rejectingMaterializer as a stand-in for BlueprintProjectMaterializer's
+    // own generate/install/verify lifecycle. This block instead wires a *real* BlueprintProjectMaterializer,
+    // driven through withLocalPokieInstall bound to this checkout's own REPO_ROOT (standing in for "the
+    // running POKIE installation's own root directory" -- see cli/pokie.ts's readOwnPackageRoot()) --
+    // the identical mechanism createMaterializingRuntimePackageResolver builds for every real CLI/Studio
+    // call site (see StudioCommand's own construction), never a Studio-specific stand-in for it -- so it
+    // proves Home Open Project materializes a real, genuinely offline runtime through Studio's own HTTP
+    // route (the same production offline mechanism BlueprintProjectMaterializer.offline.integration.test.ts
+    // proves against the CLI's own boundary), and that a failed install followed by a retry, and a cached
+    // second Open, both behave correctly reached through that route. Only `resolveProject` stays a stub
+    // (project-resolution itself is covered above and in ProjectTargetResolver's own tests) -- everything
+    // from `materialize()` down is real. Real npm -- slow, same "pokie-integration" project this whole
+    // file already belongs to (see jest.config.mjs).
+    describe("Home Open Project runtime package materialization (real BlueprintProjectMaterializer, offline)", () => {
+        jest.setTimeout(300000);
+
+        const UNPUBLISHED_POKIE_VERSION = "0.0.0-studio-offline-e2e-unpublished";
+
+        let materializeCacheRoot: string;
+        let blueprintSourceDir: string;
+        let materializingServer: StudioServer | undefined;
+
+        beforeAll(() => {
+            ensureCompiledTestOutput({
+                repositoryRoot: REPO_ROOT,
+                outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
+                lockName: "compiled-runtime",
+                command: ["npm", "run", "build-test-runtime"],
+            });
+        });
+
+        beforeEach(() => {
+            materializeCacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-materialize-cache-offline-"));
+            blueprintSourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-materialize-source-offline-"));
+        });
+
+        afterEach(async () => {
+            const server = materializingServer;
+            materializingServer = undefined;
+            if (server) {
+                await server.stop();
+            }
+            fs.rmSync(materializeCacheRoot, {recursive: true, force: true});
+            fs.rmSync(blueprintSourceDir, {recursive: true, force: true});
+        });
+
+        // Fails the very first "npm install" it's asked to run (a real, structured rejection shaped like
+        // a real execFile failure -- a message plus a separate "stderr") and delegates every call after
+        // that to `base` -- standing in for a real, transient local npm failure followed by a successful
+        // retry, without ever faking BlueprintProjectMaterializer's own recovery logic. Same shape as
+        // BlueprintProjectMaterializer.offline.integration.test.ts's own helper.
+        function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageCommandRunning & {calls: number} {
+            let calls = 0;
+            let failed = false;
+            const runner = (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
+                calls++;
+                if (args[0] === "install" && !failed) {
+                    failed = true;
+                    return Promise.reject(
+                        Object.assign(new Error("Command failed: npm install\nnpm ERR! simulated transient local npm failure"), {
+                            stderr: "npm ERR! simulated transient local npm failure -- e.g. a momentarily locked npm cache",
+                        }),
+                    );
+                }
+                return base(command, args, cwd);
+            };
+            return Object.assign(runner, {
+                get calls() {
+                    return calls;
+                },
+            });
+        }
+
+        function writeStarterBlueprint(): string {
+            const blueprintPath = path.join(blueprintSourceDir, "game.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify(createStarterGameBlueprint(), null, 4));
+            return blueprintPath;
+        }
+
+        async function startMaterializingServer(runCommand: PackageCommandRunning): Promise<{baseUrl: string; rawProjectRoot: string}> {
+            const rawProjectRoot = writeStarterBlueprint();
+            const project = {type: "blueprint", rootPath: rawProjectRoot, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"} as PokieProject;
+            const resolveProject = stubProjectResolver(project);
+            const materializer = new BlueprintProjectMaterializer(
+                UNPUBLISHED_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                withLocalPokieInstall(REPO_ROOT, runCommand),
+                undefined,
+                materializeCacheRoot,
+            );
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {resolveProject, materializer});
+
+            const homeService = new StudioHomeService("1.0.0", undefined, loadPokieGame, undefined, resolveRuntimePackageRoot);
+            materializingServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+                loadGame: loadPokieGame,
+            });
+            const address = await materializingServer.start();
+            return {baseUrl: `http://${address.host}:${address.port}`, rawProjectRoot};
+        }
+
+        it("materializes a genuinely loadable runtime through Home Open Project, offline, and reuses the cache on a second Open", async () => {
+            const {baseUrl, rawProjectRoot} = await startMaterializingServer(runPackageCommand);
+
+            const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(first.status).toBe(200);
+            const firstBody = first.body as {context: {projectRoot: string}; manifest: PokieGameManifest};
+            expect(firstBody.manifest.id).toBe("starter-slot");
+
+            await post(`${baseUrl}/api/projects/close`);
+            const second = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(second.status).toBe(200);
+            expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
+        });
+
+        it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 500, a retry succeeds, and a later Open reuses the cache without a second install", async () => {
+            const flakyRunner = failFirstInstallThenDelegate(runPackageCommand);
+            const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
+
+            const failed = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(failed.status).toBe(500);
+            const failedBody = failed.body as {error: string};
+            expect(failedBody.error).not.toContain("npm ERR!");
+            expect(failedBody.error.toLowerCase()).toContain("dependencies");
+
+            const retried = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(retried.status).toBe(200);
+            expect(flakyRunner.calls).toBe(2);
+
+            await post(`${baseUrl}/api/projects/close`);
+            const cachedAfterRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(cachedAfterRetry.status).toBe(200);
+            expect(flakyRunner.calls).toBe(2);
         });
     });
 

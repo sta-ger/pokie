@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
+import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 
 type RecordedCall = {command: string; args: string[]; cwd: string};
 
@@ -77,6 +78,41 @@ describe("withLocalPokieInstall", () => {
         expect(patched.devDependencies).toEqual({typescript: "^5.0.4"});
         expect(patched.name).toBe("starter-slot");
         expect(patched.version).toBe("0.1.0");
+    });
+
+    // REPO_ROOT is a real, already-`npm install`ed POKIE checkout (this repository itself) -- standing
+    // in for a real "the running POKIE installation's own root directory" (pokiePackageRoot), unlike
+    // every other test in this file's fake, nonexistent "/opt/pokie-checkout" (whose own package.json
+    // can't be read, so resolveLocalPokieDependencyClosure trivially yields an empty closure there).
+    // This is what proves withLocalPokieInstall's own offline mechanism covers "pokie"'s full runtime
+    // dependency closure, not just "pokie" itself -- see PackageCommandRunner.ts's own doc comment on
+    // withLocalPokieDependencyClosure for why that distinction is the one this whole mechanism exists
+    // for.
+    it("also rewrites every one of pokie's own real runtime dependencies to this running installation's already-resolved copies", async () => {
+        writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+        const runner = withLocalPokieInstall(REPO_ROOT, createRecordingBase());
+
+        await runner("npm", ["install"], projectDir);
+
+        const patched = readPackageJson(projectDir) as {dependencies: Record<string, string>; overrides: Record<string, string>};
+        expect(patched.dependencies.pokie).toBe(`file:${REPO_ROOT}`);
+        // "commander" and "exceljs" are pokie's own direct dependencies (package.json); "dayjs" is one
+        // of exceljs's own transitive dependencies -- proving the closure really is walked, not just
+        // one level deep.
+        expect(patched.overrides.commander).toBe(`file:${path.join(REPO_ROOT, "node_modules", "commander")}`);
+        expect(patched.overrides.exceljs).toBe(`file:${path.join(REPO_ROOT, "node_modules", "exceljs")}`);
+        expect(patched.overrides.dayjs).toBe(`file:${path.join(REPO_ROOT, "node_modules", "dayjs")}`);
+    });
+
+    it("rewrites a closure name already declared as a direct dependency in place, instead of adding it to overrides (npm rejects an overrides entry for a direct dependency it doesn't match)", async () => {
+        writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0", commander: "^14.0.0"}});
+        const runner = withLocalPokieInstall(REPO_ROOT, createRecordingBase());
+
+        await runner("npm", ["install"], projectDir);
+
+        const patched = readPackageJson(projectDir) as {dependencies: Record<string, string>; overrides?: Record<string, string>};
+        expect(patched.dependencies.commander).toBe(`file:${path.join(REPO_ROOT, "node_modules", "commander")}`);
+        expect(patched.overrides?.commander).toBeUndefined();
     });
 
     it("resolves against a pokiePackageRoot containing spaces", async () => {
