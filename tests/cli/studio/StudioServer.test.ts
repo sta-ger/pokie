@@ -606,10 +606,10 @@ describe("StudioServer", () => {
                 }
                 return base(command, args, cwd);
             };
-            return Object.assign(runner, {
-                get calls() {
-                    return calls;
-                },
+            // Object.assign copies a getter's *current value*, not the accessor itself -- defineProperty is
+            // what keeps `.calls` live across every subsequent invocation of `runner`.
+            return Object.defineProperty(runner, "calls", {
+                get: () => calls,
             });
         }
 
@@ -662,12 +662,12 @@ describe("StudioServer", () => {
             expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
         });
 
-        it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 500, a retry succeeds, and a later Open reuses the cache without a second install", async () => {
+        it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 400 domain error (same convention as every other Home Open Project failure), a retry succeeds, and a later Open reuses the cache without a second install", async () => {
             const flakyRunner = failFirstInstallThenDelegate(runPackageCommand);
             const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
 
             const failed = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(failed.status).toBe(500);
+            expect(failed.status).toBe(400);
             const failedBody = failed.body as {error: string};
             expect(failedBody.error).not.toContain("npm ERR!");
             expect(failedBody.error.toLowerCase()).toContain("dependencies");

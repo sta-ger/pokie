@@ -41,10 +41,10 @@ function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageComma
         }
         return base(command, args, cwd);
     };
-    return Object.assign(runner, {
-        get calls() {
-            return calls;
-        },
+    // Object.assign copies a getter's *current value*, not the accessor itself -- defineProperty is what
+    // keeps `.calls` live across every subsequent invocation of `runner`.
+    return Object.defineProperty(runner, "calls", {
+        get: () => calls,
     });
 }
 
