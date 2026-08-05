@@ -2,11 +2,12 @@ import type {GameBlueprint} from "pokie";
 
 // The blank counterpart to createStarterGameBlueprint.ts: the smallest GameBlueprint that still passes
 // GameBlueprintValidator with zero errors or warnings (see createBlankGameBlueprint.test.ts) -- a bare
-// canvas ("pokie create --blank") for someone who wants to author every field themselves, rather than
-// starter's fuller worked example ("pokie create"/"pokie create <name>") with paylines/symbolWeights/
-// availableBets already filled in. reels/rows are kept at 3x3 (the smallest a video slot's own
-// maxMatchCount math still allows a 3-of-a-kind payout for) so the single paytable entry per symbol
-// below stays valid without inventing extra match-count tiers just to fill out the template.
+// canvas ("pokie create --blank", never prompting) for someone who wants to author every field
+// themselves, rather than starter's fuller worked example (every default the interactive
+// "pokie create"/"pokie create <name>" wizard offers) with paylines/symbolWeights/availableBets
+// already filled in. reels/rows are kept at 3x3 (the smallest a video slot's own maxMatchCount math
+// still allows a 3-of-a-kind payout for) so the single paytable entry per symbol below stays valid
+// without inventing extra match-count tiers just to fill out the template.
 export function createBlankGameBlueprint(): GameBlueprint {
     return {
         manifest: {

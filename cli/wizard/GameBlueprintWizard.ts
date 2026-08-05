@@ -1,6 +1,13 @@
-import {SlotGameNameGenerator, type GameBlueprint, type GameBlueprintManifest, type SlotGameNameGenerating} from "pokie";
+import {
+    SlotGameNameGenerator,
+    type GameBlueprint,
+    type GameBlueprintManifest,
+    type GameBlueprintMechanics,
+    type SlotGameNameGenerating,
+} from "pokie";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
-import type {GameBlueprintWizarding} from "./GameBlueprintWizarding.js";
+import {deriveManifestDefaults} from "../scaffold/deriveManifestDefaults.js";
+import type {GameBlueprintWizarding, GameBlueprintWizardOptions} from "./GameBlueprintWizarding.js";
 import type {PromptAdapting} from "./PromptAdapting.js";
 import type {WizardResult} from "./WizardResult.js";
 
@@ -39,9 +46,11 @@ class WizardCancelled extends Error {}
 
 // Interactively builds the same GameBlueprint shape "pokie build <config.json>" reads from a file —
 // see docs/cli.md#pokie-build-configjson and src/generated/GameBlueprint.ts for the target shape.
-// Deliberately asks for the minimal field set for a line-pay video slot (no wilds/scatters yet);
-// everything it produces still goes through the same GameBlueprintValidator/GamePackageGenerator as
-// the config-driven path, so it's the only place that shape's validation/generation rules live.
+// Covers the same fields Studio's own guided "Design Game" editor does (basics, layout, symbols/roles,
+// reels, paytable, bets), plus the scatter-triggered free games mechanic Studio's guided editor doesn't
+// offer yet -- see MechanicsEditorTab.tsx's own doc comment. Everything it produces still goes through
+// the same GameBlueprintValidator/GamePackageGenerator as the config-driven path, so it's the only
+// place that shape's validation/generation rules live.
 export class GameBlueprintWizard implements GameBlueprintWizarding {
     private readonly nameGenerator: SlotGameNameGenerating;
     private readonly defaults: GameBlueprint;
@@ -58,11 +67,11 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         this.defaults = createDefaultBlueprint();
     }
 
-    public async run(prompt: PromptAdapting): Promise<WizardResult | null> {
+    public async run(prompt: PromptAdapting, options?: GameBlueprintWizardOptions): Promise<WizardResult | null> {
         try {
             console.log("Building a GameBlueprint interactively. Press Ctrl+C at any time to cancel.\n");
 
-            const manifest = await this.askManifest(prompt);
+            const manifest = await this.askManifest(prompt, options?.presetName);
             const reels = await this.askPositiveInt(
                 prompt,
                 `Number of reels (most games use 3-7) [${this.defaults.reels}]: `,
@@ -74,11 +83,14 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                 this.defaults.rows,
             );
             const symbols = await this.askSymbols(prompt);
+            const wilds = await this.askWilds(prompt, symbols);
+            const scatters = await this.askScatters(prompt, symbols, wilds ?? []);
             const availableBets = await this.askAvailableBets(prompt);
             const paylines = await this.askPaylines(prompt, reels, rows);
-            const paytable = await this.askPaytable(prompt, symbols, reels);
+            const paytable = await this.askPaytable(prompt, symbols, reels, wilds ?? []);
             const {reelStrips, symbolWeights} = await this.askReelWeighting(prompt, symbols, reels);
-            const outDir = await this.askOutDir(prompt, manifest.id);
+            const mechanics = await this.askMechanics(prompt, scatters ?? []);
+            const outDir = await this.askOutDir(prompt, manifest.id, options?.destination);
 
             const blueprint: GameBlueprint = {
                 manifest,
@@ -86,10 +98,13 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                 rows,
                 symbols,
                 paytable,
+                ...(wilds !== undefined ? {wilds} : {}),
+                ...(scatters !== undefined ? {scatters} : {}),
                 ...(paylines !== undefined ? {paylines} : {}),
                 ...(reelStrips !== undefined ? {reelStrips} : {}),
                 ...(symbolWeights !== undefined ? {symbolWeights} : {}),
                 ...(availableBets !== undefined ? {availableBets} : {}),
+                ...(mechanics !== undefined ? {mechanics} : {}),
             };
 
             return {blueprint, outDir};
@@ -104,15 +119,20 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     // Minted once per wizard run (before the id question's own retry loop below), so it stays the
     // same suggestion across however many invalid attempts the id question takes -- SlotGameNameGenerator
     // itself would mint a fresh random name on every call, which would otherwise make the offered
-    // default drift on each reprompt.
-    private async askManifest(prompt: PromptAdapting): Promise<GameBlueprintManifest> {
-        const suggestion = this.nameGenerator.generate();
+    // default drift on each reprompt. A given "presetName" (e.g. "pokie create <name>") replaces the
+    // generator call entirely -- its own derivation (deriveManifestDefaults) is what
+    // applyBlueprintNameOverride uses for the same "<name>" argument on the non-interactive paths, so
+    // an accepted suggestion here always agrees with what a non-interactive run of the same name would
+    // have produced.
+    private async askManifest(prompt: PromptAdapting, presetName?: string): Promise<GameBlueprintManifest> {
+        const preset = presetName !== undefined ? deriveManifestDefaults(presetName) : undefined;
+        const suggestion = preset === undefined ? this.nameGenerator.generate() : undefined;
 
         // packageName, not slug: both are minted from the same title, but slug carries a numeric
         // uniqueness suffix ("blazing-riches-4821") that has no business in a game id someone is about
         // to name their project after. The suffixed form stays available where it's actually useful —
         // see "pokie name", which still prints it alongside the plain one.
-        const suggestedId = suggestion.packageName;
+        const suggestedId = preset?.id ?? suggestion!.packageName;
 
         const id = await this.askUntilValid(prompt, `Game id [${suggestedId}]: `, (raw) => {
             if (raw.length === 0) {
@@ -124,14 +144,66 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             return raw;
         });
 
-        // Only the accepted-suggestion id gets the generator's own title as its name default -- a
-        // manually typed id falls back to title-casing that id instead.
-        const defaultName = id === suggestedId ? suggestion.title : this.titleCaseFromId(id);
+        // Only the accepted-suggestion id gets the generator's/preset's own title as its name default --
+        // a manually typed id falls back to title-casing that id instead.
+        const defaultName = id === suggestedId ? (preset?.name ?? suggestion!.title) : this.titleCaseFromId(id);
         const name = await this.askWithDefault(prompt, `Game name [${defaultName}]: `, defaultName);
         const defaultVersion = this.defaults.manifest.version;
         const version = await this.askWithDefault(prompt, `Version [${defaultVersion}]: `, defaultVersion);
 
         return {id, name, version};
+    }
+
+    // Both ask for symbol ids drawn from the declared "symbols" list; a symbol may be at most one of
+    // wild/scatter (askScatters rejects any overlap with the wilds already collected -- see
+    // GameBlueprintValidator's own "blueprint-wilds-scatters-overlap"). Returns undefined (not an empty
+    // array) on a blank Enter, same as every other optional-field question here, so an Enter-only run
+    // omits the field entirely rather than writing out "wilds": [].
+    private askWilds(prompt: PromptAdapting, symbols: string[]): Promise<string[] | undefined> {
+        const knownSymbols = new Set(symbols);
+        return this.askUntilValid(
+            prompt,
+            `Wild symbols, comma-separated (from: ${symbols.join(",")}), or Enter for none: `,
+            (raw) => {
+                if (raw.length === 0) {
+                    return undefined;
+                }
+                const wilds = this.splitList(raw);
+                const unknown = wilds.filter((symbol) => !knownSymbols.has(symbol));
+                if (unknown.length > 0) {
+                    return new WizardParseError(
+                        `Unknown symbol(s) "${unknown.join(", ")}" — not among the symbols entered earlier (${symbols.join(", ")}).`,
+                    );
+                }
+                return wilds;
+            },
+        );
+    }
+
+    private askScatters(prompt: PromptAdapting, symbols: string[], wilds: string[]): Promise<string[] | undefined> {
+        const knownSymbols = new Set(symbols);
+        const wildSet = new Set(wilds);
+        return this.askUntilValid(
+            prompt,
+            `Scatter symbols, comma-separated (from: ${symbols.join(",")}), or Enter for none: `,
+            (raw) => {
+                if (raw.length === 0) {
+                    return undefined;
+                }
+                const scatters = this.splitList(raw);
+                const unknown = scatters.filter((symbol) => !knownSymbols.has(symbol));
+                if (unknown.length > 0) {
+                    return new WizardParseError(
+                        `Unknown symbol(s) "${unknown.join(", ")}" — not among the symbols entered earlier (${symbols.join(", ")}).`,
+                    );
+                }
+                const overlap = scatters.filter((symbol) => wildSet.has(symbol));
+                if (overlap.length > 0) {
+                    return new WizardParseError(`Symbol(s) "${overlap.join(", ")}" can't be both a wild and a scatter.`);
+                }
+                return scatters;
+            },
+        );
     }
 
     private askPositiveInt(prompt: PromptAdapting, question: string, defaultValue: number): Promise<number> {
@@ -226,14 +298,22 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
         prompt: PromptAdapting,
         symbols: string[],
         reels: number,
+        wilds: string[],
     ): Promise<Record<string, Record<string, number>>> {
         console.log(
             `\nPaytable — for each symbol, enter matchCount:multiplier pairs (e.g. 3:5,4:10,5:20), Enter for the ` +
                 `default shown, or "${SKIP_ANSWER}" to leave that symbol without a payout.`,
         );
 
+        const wildSet = new Set(wilds);
         const paytable: Record<string, Record<string, number>> = {};
         for (const [index, symbol] of symbols.entries()) {
+            // A wild's paytable entry is dead data (an all-wild line resolves to no winning symbol id —
+            // see GameBlueprintValidator's own "blueprint-paytable-wild-symbol" warning), so this
+            // question is never even asked for one — it always gets no payout, not a default guess.
+            if (wildSet.has(symbol)) {
+                continue;
+            }
             const defaultPayouts = this.defaultPayoutsFor(symbol, index, symbols.length, reels);
             const payouts = await this.askUntilValid(prompt, `  "${symbol}" [${this.formatPayouts(defaultPayouts)}]: `, (raw) => {
                 if (raw.length === 0) {
@@ -401,9 +481,72 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             .join(",");
     }
 
-    private async askOutDir(prompt: PromptAdapting, id: string): Promise<string | undefined> {
-        const raw = await this.ask(prompt, `Output directory [./${id}]: `);
-        return raw.length > 0 ? raw : undefined;
+    // Only reachable at all with at least one declared scatter -- a scatter-triggered free games award
+    // needs a scatter symbol to trigger off of (GameBlueprintValidator's own
+    // "blueprint-mechanics-freegames-unknown-scatter"), so with none declared this mechanic has nothing
+    // valid to configure and the question is skipped entirely, same as askPaytable skipping wilds.
+    private async askMechanics(prompt: PromptAdapting, scatters: string[]): Promise<GameBlueprintMechanics | undefined> {
+        if (scatters.length === 0) {
+            return undefined;
+        }
+
+        const scatterSymbol = await this.askUntilValid(
+            prompt,
+            `Free games — trigger scatter symbol [${scatters[0]}] (or "${SKIP_ANSWER}" to skip this mechanic): `,
+            (raw) => {
+                if (raw.length === 0) {
+                    return scatters[0];
+                }
+                if (raw === SKIP_ANSWER) {
+                    return null;
+                }
+                if (!scatters.includes(raw)) {
+                    return new WizardParseError(`Unknown scatter "${raw}" — not among the scatters entered earlier (${scatters.join(", ")}).`);
+                }
+                return raw;
+            },
+        );
+        if (scatterSymbol === null) {
+            return undefined;
+        }
+
+        const awardsByCount = await this.askUntilValid(
+            prompt,
+            `Free games awards as matchCount:games pairs, comma-separated (e.g. 3:8,4:15,5:20): `,
+            (raw) => {
+                const pairs = this.splitList(raw);
+                if (pairs.length === 0) {
+                    return new WizardParseError("Enter at least one matchCount:games pair.");
+                }
+                const awards: Record<string, number> = {};
+                for (const pair of pairs) {
+                    const [timesRaw, gamesRaw] = pair.split(":").map((part) => part.trim());
+                    const times = Number(timesRaw);
+                    const games = Number(gamesRaw);
+                    if (!Number.isInteger(times) || times < 2 || !Number.isInteger(games) || games <= 0) {
+                        return new WizardParseError(`Invalid pair "${pair}" — expected matchCount:games, matchCount >= 2, e.g. "3:8".`);
+                    }
+                    awards[String(times)] = games;
+                }
+                return awards;
+            },
+        );
+
+        return {freeGames: {scatterSymbol, awardsByCount}};
+    }
+
+    private async askOutDir(
+        prompt: PromptAdapting,
+        id: string,
+        destination?: {label: string; defaultPathFor: (id: string) => string},
+    ): Promise<string | undefined> {
+        if (destination === undefined) {
+            const raw = await this.ask(prompt, `Output directory [./${id}]: `);
+            return raw.length > 0 ? raw : undefined;
+        }
+        const defaultPath = destination.defaultPathFor(id);
+        const raw = await this.ask(prompt, `${destination.label} [${defaultPath}]: `);
+        return raw.length > 0 ? raw : defaultPath;
     }
 
     private askWithDefault(prompt: PromptAdapting, question: string, defaultValue: string): Promise<string> {

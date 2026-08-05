@@ -76,6 +76,8 @@ describe("GameBlueprintWizard", () => {
             "", // reels -> default 5
             "", // rows -> default 3
             "A,K", // symbols
+            "", // wilds -> none
+            "", // scatters -> none
             "", // availableBets -> default
             "", // paylines -> default (omitted)
             "3:5,4:10,5:20", // paytable A
@@ -111,6 +113,8 @@ describe("GameBlueprintWizard", () => {
             "5",
             "3",
             "A",
+            "",
+            "",
             "-",
             "",
             "",
@@ -133,6 +137,8 @@ describe("GameBlueprintWizard", () => {
             "", // reels -> default
             "", // rows -> default
             "A",
+            "",
+            "",
             "-",
             "",
             "",
@@ -150,7 +156,7 @@ describe("GameBlueprintWizard", () => {
 
     it("offers the plain name as the game id, never the generator's numerically suffixed slug", async () => {
         const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
-        const prompt = new FakePromptAdapting(Array.from({length: 14}, () => ""));
+        const prompt = new FakePromptAdapting(Array.from({length: 16}, () => ""));
 
         const result = await new GameBlueprintWizard(nameGenerator).run(prompt);
 
@@ -159,7 +165,7 @@ describe("GameBlueprintWizard", () => {
     });
 
     it("asks for the game id without an inline example, since the default already shows the shape", async () => {
-        const prompt = new FakePromptAdapting(Array.from({length: 14}, () => ""));
+        const prompt = new FakePromptAdapting(Array.from({length: 16}, () => ""));
 
         await new GameBlueprintWizard(new FakeSlotGameNameGenerating(SUGGESTION)).run(prompt);
 
@@ -175,6 +181,8 @@ describe("GameBlueprintWizard", () => {
             "",
             "",
             "A",
+            "",
+            "",
             "-",
             "",
             "",
@@ -198,6 +206,8 @@ describe("GameBlueprintWizard", () => {
             "", // reels
             "", // rows
             "A", // symbols
+            "", // wilds
+            "", // scatters
             "-", // availableBets
             "", // paylines
             "", // paytable A
@@ -223,6 +233,8 @@ describe("GameBlueprintWizard", () => {
             "5",
             "3",
             "A",
+            "",
+            "",
             "-",
             "",
             "",
@@ -245,6 +257,8 @@ describe("GameBlueprintWizard", () => {
             "",
             "A,A",
             "A,K",
+            "",
+            "",
             "-",
             "",
             "",
@@ -259,7 +273,7 @@ describe("GameBlueprintWizard", () => {
     });
 
     it("omits availableBets when answered with \"-\"", async () => {
-        const prompt = new FakePromptAdapting(["sample-slot", "", "", "", "", "A", "-", "", "", "", ""]);
+        const prompt = new FakePromptAdapting(["sample-slot", "", "", "", "", "A", "", "", "-", "", "", "", ""]);
 
         const result = await new GameBlueprintWizard().run(prompt);
 
@@ -274,11 +288,13 @@ describe("GameBlueprintWizard", () => {
             "2", // reels
             "2", // rows
             "A,B",
+            "", // wilds
+            "", // scatters
             "-",
             "0,0,0", // wrong length for 2 reels -> reprompt
             "0,0;1,1", // valid: two paylines of length 2
-            "", // paytable A -> skip
-            "", // paytable B -> skip
+            "", // paytable A -> default
+            "", // paytable B -> default
             "", // reel weighting -> engine default
             "", // outDir -> default
         ]);
@@ -299,6 +315,8 @@ describe("GameBlueprintWizard", () => {
             "2", // reels
             "",
             "A,B",
+            "", // wilds
+            "", // scatters
             "-",
             "",
             "-", // paytable A -> no payout at all
@@ -321,7 +339,7 @@ describe("GameBlueprintWizard", () => {
     });
 
     it("omits both reelStrips and symbolWeights when reel weighting is skipped with \"-\" (engine default)", async () => {
-        const prompt = new FakePromptAdapting(["sample-slot", "", "", "", "", "A", "-", "", "", "-", ""]);
+        const prompt = new FakePromptAdapting(["sample-slot", "", "", "", "", "A", "", "", "-", "", "", "-", ""]);
 
         const result = await new GameBlueprintWizard().run(prompt);
 
@@ -337,6 +355,8 @@ describe("GameBlueprintWizard", () => {
             "3", // reels
             "",
             "A",
+            "",
+            "",
             "-",
             "",
             "5:10", // paytable A attempt 1: matchCount 5 > reels 3 -> reprompt
@@ -358,6 +378,8 @@ describe("GameBlueprintWizard", () => {
             "",
             "",
             "A,B",
+            "",
+            "",
             "-",
             "",
             "",
@@ -381,6 +403,8 @@ describe("GameBlueprintWizard", () => {
             "2", // reels
             "",
             "A,B",
+            "",
+            "",
             "-",
             "",
             "",
@@ -409,6 +433,8 @@ describe("GameBlueprintWizard", () => {
             "",
             "A,B:1", // "B:1" isn't parseable later (paytable/weights use ":" as a separator) -> reprompt
             "A,B",
+            "",
+            "",
             "-",
             "",
             "",
@@ -422,15 +448,292 @@ describe("GameBlueprintWizard", () => {
         expect(result?.blueprint.symbols).toEqual(["A", "B"]);
     });
 
+    describe("wilds/scatters (symbol roles)", () => {
+        it("collects wilds and scatters, skipping a wild's own paytable question entirely", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,B,C", // symbols
+                "B", // wilds
+                "C", // scatters
+                "-", // availableBets
+                "", // paylines
+                "3:5", // paytable A
+                "3:2", // paytable C (B is wild, never asked)
+                "", // reel weighting
+                "-", // mechanics: skip
+                "", // outDir
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.wilds).toEqual(["B"]);
+            expect(result?.blueprint.scatters).toEqual(["C"]);
+            expect(result?.blueprint.paytable).toEqual({A: {"3": 5}, C: {"3": 2}});
+            expect(prompt.questions.some((q) => q.startsWith('  "B"'))).toBe(false);
+        });
+
+        it("omits wilds/scatters on a blank Enter rather than writing out empty arrays", async () => {
+            const prompt = new FakePromptAdapting(["sample-slot", "", "", "", "", "A", "", "", "-", "", "", "", ""]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.wilds).toBeUndefined();
+            expect(result?.blueprint.scatters).toBeUndefined();
+        });
+
+        it("reprompts on an unknown wild symbol", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,B",
+                "X", // unknown -> reprompt
+                "A", // valid
+                "",
+                "-",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.wilds).toEqual(["A"]);
+            expect(prompt.questions.filter((q) => q.startsWith("Wild symbols")).length).toBe(2);
+        });
+
+        it("reprompts when scatters overlap the declared wilds", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,B",
+                "A", // wilds
+                "A", // scatters attempt 1: overlaps wild -> reprompt
+                "B", // scatters attempt 2: valid
+                "-",
+                "",
+                "", // paytable B (A is wild, never asked)
+                "",
+                "-", // mechanics: skip
+                "",
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.wilds).toEqual(["A"]);
+            expect(result?.blueprint.scatters).toEqual(["B"]);
+            expect(prompt.questions.filter((q) => q.startsWith("Scatter symbols")).length).toBe(2);
+        });
+
+        it("reprompts on an unknown scatter symbol", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,B",
+                "",
+                "X", // unknown -> reprompt
+                "B", // valid
+                "-",
+                "",
+                "",
+                "",
+                "",
+                "-",
+                "",
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.scatters).toEqual(["B"]);
+        });
+    });
+
+    describe("mechanics (scatter-triggered free games)", () => {
+        it("is never asked when no scatter symbol was declared", async () => {
+            const prompt = new FakePromptAdapting(["sample-slot", "", "", "", "", "A", "", "", "-", "", "", "", ""]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.mechanics).toBeUndefined();
+            expect(prompt.questions.some((q) => q.startsWith("Free games"))).toBe(false);
+        });
+
+        it("builds a scatter-triggered free games mechanic when a scatter is declared", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,B,S",
+                "", // wilds -> none
+                "S", // scatters
+                "-",
+                "",
+                "3:5", // paytable A
+                "3:2", // paytable B
+                "3:1", // paytable S
+                "", // reel weighting
+                "", // mechanics scatter symbol -> default "S"
+                "3:8,4:15,5:20", // mechanics awards
+                "", // outDir
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.mechanics).toEqual({
+                freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8, "4": 15, "5": 20}},
+            });
+        });
+
+        it('skips the mechanic entirely when answered with "-"', async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,S",
+                "",
+                "S",
+                "-",
+                "",
+                "3:5",
+                "3:1",
+                "",
+                "-", // mechanics: skip
+                "",
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.mechanics).toBeUndefined();
+        });
+
+        it("reprompts on an unknown trigger scatter", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,S",
+                "",
+                "S",
+                "-",
+                "",
+                "3:5",
+                "3:1",
+                "",
+                "X", // unknown scatter -> reprompt
+                "S", // valid
+                "3:8",
+                "",
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.mechanics).toEqual({freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8}}});
+        });
+
+        it("reprompts on an invalid free games awards pair", async () => {
+            const prompt = new FakePromptAdapting([
+                "sample-slot",
+                "",
+                "",
+                "",
+                "",
+                "A,S",
+                "",
+                "S",
+                "-",
+                "",
+                "3:5",
+                "3:1",
+                "",
+                "", // mechanics scatter -> default "S"
+                "bogus", // invalid pair -> reprompt
+                "3:8", // valid
+                "",
+            ]);
+
+            const result = await new GameBlueprintWizard().run(prompt);
+
+            expect(result?.blueprint.mechanics).toEqual({freeGames: {scatterSymbol: "S", awardsByCount: {"3": 8}}});
+        });
+    });
+
+    describe("run() options (presetName/destination)", () => {
+        it("pre-fills the id/name questions from a given presetName instead of minting a random suggestion", async () => {
+            const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+            const prompt = new FakePromptAdapting(Array.from({length: 16}, () => ""));
+
+            const result = await new GameBlueprintWizard(nameGenerator).run(prompt, {presetName: "my-cool-game"});
+
+            expect(result?.blueprint.manifest.id).toBe("my-cool-game");
+            expect(result?.blueprint.manifest.name).toBe("My Cool Game");
+            expect(prompt.questions[0]).toBe("Game id [my-cool-game]: ");
+            expect(nameGenerator.generateCalls).toBe(0);
+        });
+
+        it("still lets a manually typed id override a given presetName", async () => {
+            const prompt = new FakePromptAdapting(["typed-id", ...Array.from({length: 15}, () => "")]);
+
+            const result = await new GameBlueprintWizard().run(prompt, {presetName: "preset-name"});
+
+            expect(result?.blueprint.manifest.id).toBe("typed-id");
+            expect(result?.blueprint.manifest.name).toBe("Typed Id");
+        });
+
+        it("resolves the destination question to a concrete path (never undefined) when a destination option is given", async () => {
+            const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+            const prompt = new FakePromptAdapting(Array.from({length: 16}, () => ""));
+
+            const result = await new GameBlueprintWizard(nameGenerator).run(prompt, {
+                destination: {label: "Blueprint file", defaultPathFor: (id) => `./${id}.blueprint.json`},
+            });
+
+            expect(result?.outDir).toBe("./blazing-riches.blueprint.json");
+            expect(prompt.questions[prompt.questions.length - 1]).toBe("Blueprint file [./blazing-riches.blueprint.json]: ");
+        });
+
+        it("accepts a typed destination answer verbatim, overriding the shown default", async () => {
+            const nameGenerator = new FakeSlotGameNameGenerating(SUGGESTION);
+            const answers = Array.from({length: 15}, () => "");
+            answers.push("custom/path.blueprint.json");
+            const prompt = new FakePromptAdapting(answers);
+
+            const result = await new GameBlueprintWizard(nameGenerator).run(prompt, {
+                destination: {label: "Blueprint file", defaultPathFor: (id) => `./${id}.blueprint.json`},
+            });
+
+            expect(result?.outDir).toBe("custom/path.blueprint.json");
+        });
+    });
+
     // The Enter-only contract: every question has to both *show* a default and *accept* it, and the
     // blueprint that falls out has to be the canonical starter preset (modulo the generated manifest
     // and the omitted output dir) rather than a half-populated one. See
     // WizardBuildWorkflow.integration.test.ts for the same run taken all the way to a built package
     // that validates and simulates.
     describe("Enter-only run", () => {
-        // id, name, version, reels, rows, symbols, availableBets, paylines,
+        // id, name, version, reels, rows, symbols, wilds, scatters, availableBets, paylines,
         // paytable A/K/Q/J (one question per default symbol), reel weighting, outDir.
-        const ENTER_ONLY_ANSWERS = Array.from({length: 14}, () => "");
+        const ENTER_ONLY_ANSWERS = Array.from({length: 16}, () => "");
 
         it("builds the canonical starter blueprint when every question is answered with Enter", async () => {
             const prompt = new FakePromptAdapting(ENTER_ONLY_ANSWERS);
@@ -457,7 +760,7 @@ describe("GameBlueprintWizard", () => {
         });
 
         it("takes its defaults from the injected canonical preset rather than restating them", async () => {
-            const prompt = new FakePromptAdapting(Array.from({length: 12}, () => ""));
+            const prompt = new FakePromptAdapting(Array.from({length: 14}, () => ""));
 
             const result = await new GameBlueprintWizard(new FakeSlotGameNameGenerating(SUGGESTION), () => ({
                 manifest: {id: "other", name: "Other", version: "9.9.9"},
@@ -495,6 +798,8 @@ describe("GameBlueprintWizard", () => {
             expect(asked("Number of reels")).toContain("[5]");
             expect(asked("Number of rows")).toContain("[3]");
             expect(asked("Symbols")).toContain("[A,K,Q,J]");
+            expect(asked("Wild symbols")).toContain("Enter for none");
+            expect(asked("Scatter symbols")).toContain("Enter for none");
             expect(asked("Available bets")).toContain("[1,2,5]");
             expect(asked("Paylines")).toContain("Enter for the default");
             expect(asked('"A"')).toContain("[3:5,4:10,5:20]");
@@ -517,7 +822,7 @@ describe("GameBlueprintWizard", () => {
         });
 
         it("defaults reel weighting to weights covering exactly the symbols in play", async () => {
-            const prompt = new FakePromptAdapting(["", "", "", "", "", "P,Q,R", "", "", "", "", "", "", ""]);
+            const prompt = new FakePromptAdapting(["", "", "", "", "", "P,Q,R", "", "", "", "", "", "", "", "", ""]);
 
             const result = await new GameBlueprintWizard(new FakeSlotGameNameGenerating(SUGGESTION)).run(prompt);
 
@@ -528,7 +833,7 @@ describe("GameBlueprintWizard", () => {
         });
 
         it("derives valid default payouts for symbols and reel counts the preset knows nothing about", async () => {
-            const prompt = new FakePromptAdapting(["", "", "", "3", "", "P,R", "", "", "", "", "", ""]);
+            const prompt = new FakePromptAdapting(["", "", "", "3", "", "P,R", "", "", "", "", "", "", "", ""]);
 
             const result = await new GameBlueprintWizard(new FakeSlotGameNameGenerating(SUGGESTION)).run(prompt);
 
@@ -553,6 +858,8 @@ describe("GameBlueprintWizard", () => {
             "",
             "",
             "A,K",
+            "",
+            "",
             "-",
             "",
             "3:5,4:10,5:20", // paytable A

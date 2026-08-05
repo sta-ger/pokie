@@ -172,29 +172,38 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "create",
         description:
-            "Write an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
-            "paytable, reel weighting) -- from the filled-in starter template, --blank for a bare-minimum one, " +
-            "or --random for an always-valid randomly generated one, with its reel weighting already expressed " +
-            "as valid per-reel generation (--seed to reproduce it, --preset default|variant to pick the " +
-            'generation strategy). For a prepared, immediately valid package instead, use "pokie init".',
+            "Design an editable Blueprint Project -- a hand-editable GameBlueprint JSON file (reels, symbols, " +
+            "paytable, reel weighting) -- through an interactive wizard when run in a terminal with no --blank/" +
+            '--random ("pokie create <name>" pre-fills the name), or write one straight from the filled-in ' +
+            "starter template non-interactively via --blank for a bare-minimum one, or --random for an " +
+            "always-valid randomly generated one, with its reel weighting already expressed as valid per-reel " +
+            "generation (--seed to reproduce it, --preset default|variant to pick the generation strategy). For " +
+            'a prepared, immediately valid package instead, use "pokie init".',
+        // Three independent verbs, same "sentinel flag rather than a positional" shape "build" already
+        // uses for "--init-blueprint"/"random" (see deriveVerbForCase's own doc comment): the bare/named
+        // path (no --blank/--random) always runs the interactive wizard (fully dependency-injectable, so
+        // still exercisable without a real terminal or touching this repo's own working directory -- see
+        // "init"'s own descriptor comment for the same pattern); "--blank" and "--random" are its two
+        // explicit non-interactive shortcuts, neither of which ever prompts.
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie create [name] [--blank] [--out <file>]",
+                usage: "Usage: pokie create [name] [--out <file>]",
                 positionals: ["name (optional)"],
-                options: [
-                    {flag: "--blank", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
-                    // defaultValue "./starter-slot.blueprint.json": CreateCommand's own defaultBlueprintPath(),
-                    // derived from the starter template's own manifest id -- observed at the injected writeFile's
-                    // own filePath argument.
-                    {
-                        flag: "--out",
-                        required: false,
-                        kind: "unvalidated",
-                        defaultValue: "./starter-slot.blueprint.json",
-                        acceptedValue: "custom-blueprint-out.json",
-                    },
-                ],
+                // defaultValue/acceptedValue: both observed at the injected writeFile's own filePath
+                // argument, once a stubbed wizard/prompt run the interactive path to completion --
+                // "./wiz-slot.blueprint.json" is CreateCommand's own defaultBlueprintPath() for that
+                // stub's manifest id, reached via the destination question's own defaultPathFor(id).
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "./wiz-slot.blueprint.json", acceptedValue: "custom-blueprint-out.json"}],
+            },
+            {
+                verb: "--blank",
+                usage: "Usage: pokie create [name] --blank [--out <file>]",
+                positionals: ["name (optional)"],
+                // defaultValue "./blank-slot.blueprint.json": CreateCommand's own defaultBlueprintPath(),
+                // derived from the blank template's own manifest id -- observed at the injected writeFile's
+                // own filePath argument. Never prompts -- no wizard/prompt stubbing needed for this verb.
+                options: [{flag: "--out", required: false, kind: "unvalidated", defaultValue: "./blank-slot.blueprint.json", acceptedValue: "custom-blank-out.json"}],
             },
             {
                 verb: "--random",
@@ -925,7 +934,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "create",
         kind: "valid",
-        label: "(no name, no options — writes the starter blueprint to its own default path)",
+        label: "(no name, no options, interactive terminal — runs the wizard, default destination)",
         args: [],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -933,7 +942,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "create",
         kind: "valid",
-        label: "<name>",
+        label: "<name> (interactive terminal — the wizard runs with the name pre-filled)",
         args: ["sample-slot"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -941,7 +950,15 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "create",
         kind: "valid",
-        label: "--blank (accepted --blank value)",
+        label: "--out <file> (accepted --out value, interactive terminal)",
+        args: ["--out", "custom-blueprint-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "create",
+        kind: "valid",
+        label: "--blank (writes the blank template directly, no wizard)",
         args: ["--blank"],
         expectedExitCode: 0,
         expectStdout: "text",
@@ -949,8 +966,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "create",
         kind: "valid",
-        label: "--out <file> (accepted --out value, default --blank)",
-        args: ["--out", "custom-blueprint-out.json"],
+        label: "--blank --out <file> (accepted --out value)",
+        args: ["--blank", "--out", "custom-blank-out.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2438,7 +2455,15 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie create [name] [--blank] [--out <file>]",
+        expectedError: "--out requires a file path. Usage: pokie create [name] [--out <file>]",
+    },
+    {
+        command: "create",
+        kind: "invalid",
+        label: "--blank --out given with no value",
+        args: ["--blank", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie create [name] --blank [--out <file>]",
     },
     {
         command: "create",
