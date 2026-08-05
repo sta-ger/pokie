@@ -13,11 +13,23 @@ describe("describeProjectHeader", () => {
         });
     });
 
-    it("passes through the error state with its message", () => {
+    it("passes through the error state with its message, leaving errorDetail undefined when absent", () => {
         expect(describeProjectHeader({status: "error", projectRoot: "/a", error: "boom"})).toEqual({
             status: "error",
             projectRoot: "/a",
             message: "boom",
+            errorDetail: undefined,
+        });
+    });
+
+    it("carries a materialization failure's raw errorDetail through alongside its human-readable message", () => {
+        expect(
+            describeProjectHeader({status: "error", projectRoot: "/a", error: "Installing dependencies failed.", errorDetail: "npm ERR! simulated failure"}),
+        ).toEqual({
+            status: "error",
+            projectRoot: "/a",
+            message: "Installing dependencies failed.",
+            errorDetail: "npm ERR! simulated failure",
         });
     });
 

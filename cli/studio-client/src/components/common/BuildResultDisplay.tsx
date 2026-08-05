@@ -20,7 +20,7 @@ export function BuildResultDisplay({view, onOpen, onOpenFolder}: {view: BuildPro
         return <LoadingState label="Working…" />;
     }
     if (view.status === "error" || view.status === "load-error" || view.status === "failed") {
-        return <ErrorState message={view.message} />;
+        return <ErrorState message={view.message} detail={view.status === "error" ? view.detail : undefined} />;
     }
     if (view.status === "invalid") {
         return <ErrorState message={`Blueprint is invalid — ${view.errors.length} error(s).`} />;
