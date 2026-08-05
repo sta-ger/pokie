@@ -1,5 +1,6 @@
 import {loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, type ProjectType} from "pokie";
 import path from "path";
+import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
@@ -46,8 +47,10 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
 // (e.g. a bare `pokie <blueprint.json>` launch) is materialized into a real runtime first, and an
 // unsupported project type (outcomeLibrary/stakeAdapter/parWorkbook/wasm) surfaces its
 // UnsupportedProjectOperationError's own message as this result's "error", never a raw loadPokieGame
-// failure a user would have to guess the cause of. Defaults to a no-op passthrough so every existing
-// caller/test keeps behaving exactly as before this boundary existed.
+// failure a user would have to guess the cause of. A BlueprintMaterializationError's own "details" (a
+// failed materialization "npm install"'s real stderr) rides along separately as this result's own
+// "errorDetail" -- see ProjectDashboardContext's own doc comment. Defaults to a no-op passthrough so
+// every existing caller/test keeps behaving exactly as before this boundary existed.
 //
 // `describeLocation` (typically StudioProjectRegistrationService.describeLocation) separately answers
 // "what is `projectRoot` itself" -- type/capabilities/origin, for Overview -- and is deliberately never
@@ -98,6 +101,11 @@ export async function loadProjectDashboardContext(
             await resolution.release();
         }
     } catch (error) {
-        return {status: "error", projectRoot: resolvedRoot, error: error instanceof Error ? error.message : String(error)};
+        return {
+            status: "error",
+            projectRoot: resolvedRoot,
+            error: error instanceof Error ? error.message : String(error),
+            errorDetail: error instanceof BlueprintMaterializationError ? error.details : undefined,
+        };
     }
 }

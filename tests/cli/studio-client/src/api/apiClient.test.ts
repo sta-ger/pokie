@@ -27,6 +27,7 @@ import {
     previewBlueprintBuild,
     previewProjectImport,
     previewReelStripGeneration,
+    ProjectOpenError,
     registerProjectImport,
     removeProjectRegistryEntry,
     restartRuntime,
@@ -541,6 +542,29 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: "not a pokie game package"}}));
 
             await expect(openProject(fetchImpl, "./bogus")).rejects.toThrow("not a pokie game package");
+        });
+
+        it("carries the server's raw npm diagnostic as ProjectOpenError.detail when a materialization fails", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: false,
+                status: 400,
+                body: {error: "Installing dependencies failed.", detail: "npm ERR! simulated failure"},
+            }));
+
+            const failure: unknown = await openProject(fetchImpl, "./bogus").catch((error: unknown) => error);
+
+            expect(failure).toBeInstanceOf(ProjectOpenError);
+            expect((failure as ProjectOpenError).message).toBe("Installing dependencies failed.");
+            expect((failure as ProjectOpenError).detail).toBe("npm ERR! simulated failure");
+        });
+
+        it("leaves ProjectOpenError.detail undefined when the server doesn't supply one", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: "not a pokie game package"}}));
+
+            const failure: unknown = await openProject(fetchImpl, "./bogus").catch((error: unknown) => error);
+
+            expect(failure).toBeInstanceOf(ProjectOpenError);
+            expect((failure as ProjectOpenError).detail).toBeUndefined();
         });
     });
 

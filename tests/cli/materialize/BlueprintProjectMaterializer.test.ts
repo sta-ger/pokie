@@ -150,7 +150,7 @@ describe("BlueprintProjectMaterializer", () => {
         // result.runtimePath (same cache key, ".staging-" suffix), not result.runtimePath itself.
         expect(runner.calls).toHaveLength(1);
         expect(runner.calls[0].command).toBe("npm");
-        expect(runner.calls[0].args).toEqual(["install"]);
+        expect(runner.calls[0].args).toEqual(["install", "--omit=dev"]);
         expect(runner.calls[0].cwd).toContain(`${path.basename(result.runtimePath)}.staging-`);
         expect(packageValidator.calls).toEqual([runner.calls[0].cwd]);
     });
@@ -902,7 +902,7 @@ describe("createMaterializingRuntimePackageResolver", () => {
         const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, createStubPackageValidator(validReport), cacheRoot);
         const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
         const resolveProject = stubProjectResolver(blueprintProjectOf(blueprintPath));
-        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, {resolveProject, materializer});
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
 
         const resolution = await resolveRuntimePackageRoot(blueprintPath);
 
@@ -926,7 +926,7 @@ describe("createMaterializingRuntimePackageResolver", () => {
         const materializer = rejectingMaterializer("must not be called for a tsPackage project");
         const project = {type: "tsPackage", rootPath: "/some/existing/package", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage, provenance: "test fixture"} as PokieProject;
         const resolveProject = stubProjectResolver(project);
-        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, {resolveProject, materializer});
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
 
         const resolution = await resolveRuntimePackageRoot("/some/existing/package");
 
@@ -937,7 +937,7 @@ describe("createMaterializingRuntimePackageResolver", () => {
     it("passes a path ProjectResolving doesn't recognize straight through, never invoking the materializer", async () => {
         const materializer = rejectingMaterializer("must not be called for an unresolved path");
         const resolveProject = stubProjectResolver(undefined);
-        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, {resolveProject, materializer});
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
 
         const resolution = await resolveRuntimePackageRoot("/does/not/resolve");
 
@@ -950,7 +950,7 @@ describe("createMaterializingRuntimePackageResolver", () => {
         const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, failingRunner, createStubPackageValidator(validReport), cacheRoot);
         const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
         const resolveProject = stubProjectResolver(blueprintProjectOf(blueprintPath));
-        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, {resolveProject, materializer});
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
 
         // Mirrors exactly how a migrated operation uses this boundary: resolve, then (only on success)
         // load. A fake standing in for loadPokieGame proves the operation itself is never reached.
@@ -973,7 +973,7 @@ describe("createMaterializingRuntimePackageResolver", () => {
             provenance: "test fixture",
         } as PokieProject;
         const resolveProject = stubProjectResolver(project);
-        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, {resolveProject, materializer});
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {resolveProject, materializer});
 
         const caught = await resolveRuntimePackageRoot("/some/outcome-library").catch((error: unknown) => error);
 

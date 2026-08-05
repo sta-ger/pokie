@@ -92,7 +92,10 @@ export type ProjectDashboardContext =
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReportView;
       }
-    | {status: "error"; projectRoot: string; error: string};
+    // `errorDetail` -- a failed Blueprint materialization's own raw npm diagnostic, kept separate from
+    // `error`'s already-curated human message (see the server's own ProjectDashboardContext doc comment) --
+    // absent for every other kind of open failure.
+    | {status: "error"; projectRoot: string; error: string; errorDetail?: string};
 
 export type GameBuildInfo = {
     schemaVersion: number;

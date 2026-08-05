@@ -1,6 +1,6 @@
 import {Button, Stack, Text} from "@mantine/core";
 import {useEffect, useId, useRef, useState} from "react";
-import {buildBlueprint, openOutputFolder, previewBlueprintBuild} from "../../api/apiClient";
+import {buildBlueprint, openOutputFolder, previewBlueprintBuild, ProjectOpenError} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {BuildPreviewDisplay} from "../common/BuildPreviewDisplay";
 import {BuildResultDisplay} from "../common/BuildResultDisplay";
@@ -462,7 +462,13 @@ export function BlueprintBuildPanel({
                     snapshot={builtSnapshot}
                     blueprint={blueprint}
                     onOpen={() =>
-                        openAndNavigate(builtSnapshot.projectRoot).catch((error: unknown) => setResult({status: "error", message: errorMessage(error)}))
+                        openAndNavigate(builtSnapshot.projectRoot).catch((error: unknown) =>
+                            setResult({
+                                status: "error",
+                                message: errorMessage(error),
+                                detail: error instanceof ProjectOpenError ? error.detail : undefined,
+                            }),
+                        )
                     }
                     onOpenFolder={() => handleOpenFolder(builtSnapshot.projectRoot)}
                     onRestore={handleRestoreBuilt}

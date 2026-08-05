@@ -1,4 +1,5 @@
 import {CliCommandHandling} from "./CliCommandHandling.js";
+import {BlueprintMaterializationError} from "./materialize/BlueprintMaterializationError.js";
 import {isTopLevelHelpRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
 import {buildUsageText} from "./usageText.js";
 
@@ -61,6 +62,13 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[]): 
         return exitCode ?? 0;
     } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
+        // A BlueprintMaterializationError's own "details" (a failed "npm install"'s raw npm stderr) is
+        // deliberately never folded into the human-readable message above -- printed here, after it and
+        // clearly labeled, so the human explanation always leads and the technical output stays a
+        // secondary, skippable block rather than the first thing a reader hits.
+        if (error instanceof BlueprintMaterializationError && error.details !== undefined) {
+            console.error(`\nnpm output:\n${error.details}`);
+        }
         return 1;
     }
 }

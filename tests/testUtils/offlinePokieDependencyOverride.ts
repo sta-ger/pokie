@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {PackageCommandResult, PackageCommandRunning, runPackageCommand} from "../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 
 export const REPO_ROOT = path.join(__dirname, "..", "..");
 
@@ -13,7 +13,9 @@ export const REPO_ROOT = path.join(__dirname, "..", "..");
 // kind of fetch a network-restricted CI sandbox can't complete. Redirecting all of them to this checkout's own
 // already-installed copies via `file:` (direct deps) and `overrides` (the full transitive closure, which a
 // scaffolded/generated package never declares directly) means "npm install" here never needs the registry at
-// all, and always resolves "pokie" to this exact checkout rather than a possibly-stale published version.
+// all. "pokie" itself is never rewritten here -- that's production's own job (withLocalPokieInstall, the same
+// mechanism BlueprintProjectMaterializer's real materialize() calls go through), so exercising it here proves
+// the real, shipped offline-materialization behavior rather than a test-only stand-in for it.
 export function collectTransitiveDependencyNames(rootNames: string[]): string[] {
     const collected = new Set<string>();
     const queue = [...rootNames];
@@ -31,6 +33,12 @@ export function collectTransitiveDependencyNames(rootNames: string[]): string[] 
 }
 
 export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
+    // withLocalPokieInstall is production's own mechanism for pointing a staged/generated package's "pokie"
+    // dependency at this exact running installation (see BlueprintProjectMaterializer's real materialize()
+    // calls) -- composed here, rather than reimplemented, so this offline test override only ever adds what
+    // it uniquely needs (typescript and the rest of this checkout's own transitive closure), never diverging
+    // from what production actually does for "pokie" itself.
+    const withLocalPokie = withLocalPokieInstall(REPO_ROOT, realRunCommand);
     return (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
         if (args[0] === "install") {
             const packageJsonPath = path.join(cwd, "package.json");
@@ -43,7 +51,6 @@ export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning
                 dependencies?: Record<string, string>;
             };
             const localFileSpec = (name: string): string => `file:${path.join(REPO_ROOT, "node_modules", name)}`;
-            packageJson.dependencies = {...packageJson.dependencies, pokie: `file:${REPO_ROOT}`};
             packageJson.devDependencies = {...packageJson.devDependencies, typescript: localFileSpec("typescript")};
             const transitiveNames = collectTransitiveDependencyNames(Object.keys(repoPackageJson.dependencies ?? {}));
             const overrideNames: string[] = [];
@@ -67,6 +74,6 @@ export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning
             };
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 4));
         }
-        return realRunCommand(command, args, cwd);
+        return withLocalPokie(command, args, cwd);
     };
 }

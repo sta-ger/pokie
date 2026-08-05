@@ -40,4 +40,9 @@ export type ProjectDashboardContext =
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReport;
       }
-    | {status: "error"; projectRoot: string; error: string};
+    // `errorDetail` carries a failure's own raw technical diagnostic text, kept separate from `error`'s
+    // plain-English summary -- currently only populated from a BlueprintMaterializationError's own
+    // "details" (a failed materialization "npm install"'s real stderr; see that class's own doc comment
+    // for why it's never folded into the primary message), so a client can offer it as expandable detail
+    // rather than always rendering a wall of npm output as the primary failure message.
+    | {status: "error"; projectRoot: string; error: string; errorDetail?: string};

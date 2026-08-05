@@ -28,11 +28,30 @@ import {DEV_OPERATION, REPLAY_OPERATION, SERVE_OPERATION, SIM_OPERATION, VALIDAT
 import {dispatch} from "./dispatch.js";
 import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
 
+// This compiled file always lives at "<pokiePackageRoot>/dist/cli/pokie.js", regardless of how the
+// running POKIE installation actually got onto disk -- a dev checkout, an npm-linked target (Node's own
+// module loader resolves a symlinked entry to its real, target-side path before import.meta.url is ever
+// read), a tarball install, or an ordinary registry install all share that same two-levels-up shape. That
+// makes this the one safe place every materialization call site (below, and StudioCommand's own) gets
+// both the running version and the running installation's own root from -- see readOwnPackageRoot()'s
+// own doc comment for what the latter is for.
+function ownPackageDir(): string {
+    return path.dirname(fileURLToPath(import.meta.url));
+}
+
 function readOwnVersion(): string {
-    const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const packageJsonPath = path.join(currentDir, "../../package.json");
+    const packageJsonPath = path.join(ownPackageDir(), "../../package.json");
     const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {version: string};
     return pkg.version;
+}
+
+// The running POKIE installation's own root directory -- passed into every
+// createMaterializingRuntimePackageResolver() call (and StudioCommand) as `pokiePackageRoot`, so a
+// materialized Blueprint's own "npm install" can resolve "pokie" against this exact installation (via
+// withLocalPokieInstall) instead of a registry. See this file's own ownPackageDir() doc comment for why
+// the same "two levels up from this compiled file" computation is correct across every install mechanism.
+function readOwnPackageRoot(): string {
+    return path.join(ownPackageDir(), "../..");
 }
 
 // Where the compiled cli/client assets live relative to this compiled file (dist/cli/pokie.js) —
@@ -51,6 +70,7 @@ function ownStudioRoot(): string {
 }
 
 function run(): Promise<number> {
+    const pokiePackageRoot = readOwnPackageRoot();
     const commands: CliCommandHandling[] = [
         new BuildCommand(readOwnVersion()),
         new CertificationCommand(readOwnVersion()),
@@ -60,7 +80,7 @@ function run(): Promise<number> {
             undefined,
             undefined,
             {clientRoot: ownClientRoot()},
-            createMaterializingRuntimePackageResolver(readOwnVersion(), DEV_OPERATION),
+            createMaterializingRuntimePackageResolver(readOwnVersion(), DEV_OPERATION, pokiePackageRoot),
         ),
         new DiffCommand(),
         new FairnessCommand(),
@@ -71,20 +91,29 @@ function run(): Promise<number> {
         new OutcomeSourceCommand(),
         new ParCommand(readOwnVersion()),
         new ReelCommand(),
-        new ReplayCommand(undefined, undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), REPLAY_OPERATION)),
+        new ReplayCommand(
+            undefined,
+            undefined,
+            undefined,
+            createMaterializingRuntimePackageResolver(readOwnVersion(), REPLAY_OPERATION, pokiePackageRoot),
+        ),
         new ReportCommand(),
-        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), SERVE_OPERATION)),
+        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), SERVE_OPERATION, pokiePackageRoot)),
         new SimCommand(
             undefined,
             undefined,
             undefined,
             undefined,
             undefined,
-            createMaterializingRuntimePackageResolver(readOwnVersion(), SIM_OPERATION),
+            createMaterializingRuntimePackageResolver(readOwnVersion(), SIM_OPERATION, pokiePackageRoot),
         ),
         new StakeEngineCommand(readOwnVersion()),
-        new StudioCommand(readOwnVersion(), {studioRoot: ownStudioRoot()}),
-        new ValidateCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), VALIDATE_OPERATION)),
+        new StudioCommand(readOwnVersion(), pokiePackageRoot, {studioRoot: ownStudioRoot()}),
+        new ValidateCommand(
+            undefined,
+            undefined,
+            createMaterializingRuntimePackageResolver(readOwnVersion(), VALIDATE_OPERATION, pokiePackageRoot),
+        ),
     ];
     return dispatch(commands, process.argv);
 }

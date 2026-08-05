@@ -36,7 +36,9 @@ export function describeBuildPreview(preview: StudioBuildPreviewView): BuildPrev
 export type BuildProjectView =
     | {status: "idle"}
     | {status: "loading"}
-    | {status: "error"; message: string}
+    // `detail` -- present only for a failed Open (see apiClient's ProjectOpenError) that carried the
+    // server's own raw npm diagnostic; never set for any other apiClient-call-level failure.
+    | {status: "error"; message: string; detail?: string}
     | {status: "load-error"; message: string}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "failed"; message: string}

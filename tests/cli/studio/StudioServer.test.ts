@@ -9,6 +9,7 @@ import {
     GamePackageInspector,
     GamePackageInspectionReport,
     GameSessionHandling,
+    loadPokieGame,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -25,11 +26,15 @@ import {
     WinEvaluationResult,
 } from "pokie";
 import ExcelJS from "exceljs";
+import crypto from "crypto";
 import fs from "fs";
 import http, {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
+import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
+import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
@@ -46,6 +51,20 @@ import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
+import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
+import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
+
+const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
+const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
+const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
+
+function restoreEnv(name: string, value: string | undefined): void {
+    if (value === undefined) {
+        Reflect.deleteProperty(process.env, name);
+    } else {
+        process.env[name] = value;
+    }
+}
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -450,7 +469,7 @@ describe("StudioServer", () => {
             const project = {type: "blueprint", rootPath: rawProjectRoot, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test fixture"} as PokieProject;
             const resolveProject = stubProjectResolver(project);
             const materializer = fakeMaterializer(materializedRuntimePath);
-            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {resolveProject, materializer});
 
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             const materializingLoadGame = jest.fn().mockResolvedValue(createFakeGame(manifest));
@@ -494,7 +513,7 @@ describe("StudioServer", () => {
             } as PokieProject;
             const resolveProject = stubProjectResolver(project);
             const materializer = rejectingMaterializer("must not be called for a project lacking runtime.execute");
-            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, {resolveProject, materializer});
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {resolveProject, materializer});
 
             const diagnosticLoadGame = jest.fn();
             const diagnosticHomeService = new StudioHomeService("1.0.0", undefined, diagnosticLoadGame, undefined, resolveRuntimePackageRoot);
@@ -526,6 +545,209 @@ describe("StudioServer", () => {
             } finally {
                 await diagnosticServer.stop();
             }
+        });
+    });
+
+    // The block above proves StudioServer's HTTP route reaches whatever resolver it was configured
+    // with, using fakeMaterializer/rejectingMaterializer as a stand-in for BlueprintProjectMaterializer's
+    // own generate/install/verify lifecycle. This block instead wires a *real* BlueprintProjectMaterializer,
+    // driven through withLocalPokieInstall bound to `pokiePackageRootWithSpaces` (standing in for "the
+    // running POKIE installation's own root directory" -- see cli/pokie.ts's readOwnPackageRoot()) --
+    // the identical mechanism createMaterializingRuntimePackageResolver builds for every real CLI/Studio
+    // call site (see StudioCommand's own construction), never a Studio-specific stand-in for it -- so it
+    // proves Home Open Project materializes a real, genuinely offline runtime through Studio's own HTTP
+    // route (the same production offline mechanism BlueprintProjectMaterializer.offline.integration.test.ts
+    // proves against the CLI's own boundary), and that a failed install followed by a retry, and a cached
+    // second Open, both behave correctly reached through that route. Real npm, with the registry forced
+    // unreachable and npm's own offline mode forced on (see beforeAll below) -- so an unpublished
+    // pokieVersion alone could never be mistaken for proof that every transitive dependency avoids
+    // registry resolution. Slow -- same "pokie-integration" project this whole file already belongs to
+    // (see jest.config.mjs).
+    describe("Home Open Project runtime package materialization (real BlueprintProjectMaterializer, offline)", () => {
+        jest.setTimeout(300000);
+
+        const UNPUBLISHED_POKIE_VERSION = `0.0.0-studio-offline-e2e-unpublished-${crypto.randomBytes(4).toString("hex")}`;
+
+        let materializeCacheRoot: string;
+        let blueprintSourceDir: string;
+        let materializingServer: StudioServer | undefined;
+        // Stands in for "the running POKIE installation's own root directory" at a path shaped the way a
+        // real end user's machine easily produces one (e.g. under "Program Files", "My Projects") -- a
+        // symlink to this checkout's own REPO_ROOT, so every provenance withLocalPokieDependency's own
+        // doc comment lists (a dev checkout, an npm-linked target, a tarball-installed or ordinarily
+        // npm-installed copy) is equally well represented: the mechanism only ever cares about the
+        // resolved absolute path, never how it got there.
+        let pokiePackageRootWithSpaces: string;
+        let originalNpmOffline: string | undefined;
+        let originalNpmRegistry: string | undefined;
+
+        beforeAll(() => {
+            ensureCompiledTestOutput({
+                repositoryRoot: REPO_ROOT,
+                outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
+                lockName: "compiled-runtime",
+                command: ["npm", "run", "build-test-runtime"],
+            });
+
+            pokiePackageRootWithSpaces = path.join(os.tmpdir(), `pokie studio install root with spaces ${crypto.randomBytes(4).toString("hex")}`);
+            fs.symlinkSync(REPO_ROOT, pokiePackageRootWithSpaces, "dir");
+
+            // Forces any npm dependency resolution that isn't already rewritten to a local `file:` spec
+            // to fail loudly and immediately, instead of silently succeeding against a reachable registry
+            // in a network-connected dev/CI environment -- see this describe block's own doc comment.
+            originalNpmOffline = process.env.npm_config_offline;
+            originalNpmRegistry = process.env.npm_config_registry;
+            process.env["npm_config_offline"] = "true";
+            process.env["npm_config_registry"] = "http://127.0.0.1:1/";
+        });
+
+        afterAll(() => {
+            fs.rmSync(pokiePackageRootWithSpaces, {force: true});
+            restoreEnv("npm_config_offline", originalNpmOffline);
+            restoreEnv("npm_config_registry", originalNpmRegistry);
+        });
+
+        beforeEach(() => {
+            materializeCacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-materialize-cache-offline-"));
+            blueprintSourceDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-materialize-source-offline-"));
+        });
+
+        afterEach(async () => {
+            const server = materializingServer;
+            materializingServer = undefined;
+            if (server) {
+                await server.stop();
+            }
+            fs.rmSync(materializeCacheRoot, {recursive: true, force: true});
+            fs.rmSync(blueprintSourceDir, {recursive: true, force: true});
+        });
+
+        // Fails the very first "npm install" it's asked to run (a real, structured rejection shaped like
+        // a real execFile failure -- a message plus a separate "stderr") and delegates every call after
+        // that to `base` -- standing in for a real, transient local npm failure followed by a successful
+        // retry, without ever faking BlueprintProjectMaterializer's own recovery logic. Same shape as
+        // BlueprintProjectMaterializer.offline.integration.test.ts's own helper.
+        function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageCommandRunning & {calls: number} {
+            let calls = 0;
+            let failed = false;
+            const runner = (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
+                calls++;
+                if (args[0] === "install" && !failed) {
+                    failed = true;
+                    return Promise.reject(
+                        Object.assign(new Error("Command failed: npm install\nnpm ERR! simulated transient local npm failure"), {
+                            stderr: "npm ERR! simulated transient local npm failure -- e.g. a momentarily locked npm cache",
+                        }),
+                    );
+                }
+                return base(command, args, cwd);
+            };
+            // Object.assign copies a getter's *current value*, not the accessor itself -- defineProperty is
+            // what keeps `.calls` live across every subsequent invocation of `runner`. Reflect.defineProperty
+            // returns a success boolean, not the target, so the added property needs an explicit cast on
+            // `runner` itself afterward.
+            Reflect.defineProperty(runner, "calls", {
+                get: () => calls,
+            });
+            return runner as PackageCommandRunning & {calls: number};
+        }
+
+        function writeStarterBlueprint(): string {
+            const blueprintPath = path.join(blueprintSourceDir, "game.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify(createStarterGameBlueprint(), null, 4));
+            return blueprintPath;
+        }
+
+        // The fully default production wiring -- StudioCommand's own construction, unmodified: no
+        // `resolveProject`/`materializer` override, just `createMaterializingRuntimePackageResolver`
+        // given `pokiePackageRootWithSpaces` the same way StudioCommand hands it readOwnPackageRoot()'s
+        // result. Proves Studio's real Home Open Project route reaches the actual default resolver, not
+        // a stand-in for it -- see this describe block's own doc comment.
+        async function startDefaultMaterializingServer(): Promise<{baseUrl: string; rawProjectRoot: string}> {
+            const rawProjectRoot = writeStarterBlueprint();
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(UNPUBLISHED_POKIE_VERSION, STUDIO_OPERATION, pokiePackageRootWithSpaces);
+
+            const homeService = new StudioHomeService("1.0.0", undefined, loadPokieGame, undefined, resolveRuntimePackageRoot);
+            materializingServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+                loadGame: loadPokieGame,
+            });
+            const address = await materializingServer.start();
+            return {baseUrl: `http://${address.host}:${address.port}`, rawProjectRoot};
+        }
+
+        // Needs a flaky `runCommand` to prove the failed-staging/retry/cache-reuse lifecycle
+        // deterministically, so (unlike startDefaultMaterializingServer above) this one still injects a
+        // `materializer` -- but built from the exact same real BlueprintProjectMaterializer and
+        // withLocalPokieInstall(pokiePackageRootWithSpaces) production uses, wrapped only at the
+        // runCommand boundary, and project resolution stays the real default (undefined) ProjectTargetResolver.
+        async function startMaterializingServer(runCommand: PackageCommandRunning): Promise<{baseUrl: string; rawProjectRoot: string}> {
+            const rawProjectRoot = writeStarterBlueprint();
+            const materializer = new BlueprintProjectMaterializer(
+                UNPUBLISHED_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                withLocalPokieInstall(pokiePackageRootWithSpaces, runCommand),
+                undefined,
+                materializeCacheRoot,
+            );
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {materializer});
+
+            const homeService = new StudioHomeService("1.0.0", undefined, loadPokieGame, undefined, resolveRuntimePackageRoot);
+            materializingServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+                loadGame: loadPokieGame,
+            });
+            const address = await materializingServer.start();
+            return {baseUrl: `http://${address.host}:${address.port}`, rawProjectRoot};
+        }
+
+        it("materializes a genuinely loadable runtime through Home Open Project using the fully default production resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
+            const {baseUrl, rawProjectRoot} = await startDefaultMaterializingServer();
+
+            const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(first.status).toBe(200);
+            const firstBody = first.body as {context: {projectRoot: string}; manifest: PokieGameManifest};
+            expect(firstBody.manifest.id).toBe("starter-slot");
+
+            await post(`${baseUrl}/api/projects/close`);
+            const second = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(second.status).toBe(200);
+            expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
+        });
+
+        it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 400 domain error carrying the raw npm diagnostic as a separate 'detail' field (same convention as every other Home Open Project failure), a retry succeeds, and a later Open reuses the cache without a second install", async () => {
+            const flakyRunner = failFirstInstallThenDelegate(runPackageCommand);
+            const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
+
+            const failed = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(failed.status).toBe(400);
+            const failedBody = failed.body as {error: string; detail?: string};
+            expect(failedBody.error).not.toContain("npm ERR!");
+            expect(failedBody.error.toLowerCase()).toContain("dependencies");
+            // The raw npm diagnostic is still reachable -- as its own separate field, never folded into
+            // the primary human message above -- so a client can offer it as expandable detail.
+            expect(failedBody.detail).toContain("npm ERR! simulated transient local npm failure");
+
+            const retried = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(retried.status).toBe(200);
+            expect(flakyRunner.calls).toBe(2);
+
+            await post(`${baseUrl}/api/projects/close`);
+            const cachedAfterRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(cachedAfterRetry.status).toBe(200);
+            expect(flakyRunner.calls).toBe(2);
         });
     });
 

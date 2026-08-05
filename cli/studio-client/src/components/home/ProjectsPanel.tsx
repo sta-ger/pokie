@@ -1,7 +1,7 @@
 import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
 import {useCallback, useEffect, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
-import {listProjectRegistry, previewProjectImport, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
+import {listProjectRegistry, previewProjectImport, ProjectOpenError, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
@@ -17,7 +17,13 @@ import {PageSection} from "../common/PageSection";
 import {PathInput} from "../common/PathInput";
 import {QuickActions} from "../common/QuickActions";
 
-type ListView = {status: "loading"} | {status: "error"; message: string} | {status: "empty"} | {status: "loaded"; entries: StudioProjectRegistryView[]};
+type ListView =
+    | {status: "loading"}
+    // `detail` -- present only when the failure was a Home Open Project that carried the server's own raw
+    // npm diagnostic (see apiClient's ProjectOpenError); absent for every other listView failure.
+    | {status: "error"; message: string; detail?: string}
+    | {status: "empty"}
+    | {status: "loaded"; entries: StudioProjectRegistryView[]};
 
 type RecognizedPreview = Extract<StudioProjectImportPreviewResult, {status: "recognized"}>;
 
@@ -102,7 +108,11 @@ export function ProjectsPanel() {
         setOpeningLocation(entry.location);
         openAndNavigate(entry.location)
             .catch((error: unknown) =>
-                setListView({status: "error", message: describePathActionError("The project directory", errorMessage(error))}),
+                setListView({
+                    status: "error",
+                    message: describePathActionError("The project directory", errorMessage(error)),
+                    detail: error instanceof ProjectOpenError ? error.detail : undefined,
+                }),
             )
             .finally(() => {
                 openGuard.end();
@@ -198,7 +208,7 @@ export function ProjectsPanel() {
         <div>
             <PageSection legend="Your projects">
                 {listView.status === "loading" && <LoadingState />}
-                {listView.status === "error" && <ErrorState message={listView.message} />}
+                {listView.status === "error" && <ErrorState message={listView.message} detail={listView.detail} />}
                 {listView.status === "empty" && <EmptyState message="No projects yet -- import or design one below." />}
                 {listView.status === "loaded" && (
                     <Table.ScrollContainer minWidth={640}>

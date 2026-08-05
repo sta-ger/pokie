@@ -1,4 +1,5 @@
 import {describeUnsupportedProjectOperation, PokieOperation, PokieProject, ProjectMaterializing, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {withLocalPokieInstall} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
@@ -45,13 +46,30 @@ export type MaterializingRuntimePackageResolverDependencies = {
 // materialization failure (a BlueprintMaterializationError, carrying which phase failed) propagates
 // straight out of the returned function -- never caught or rewrapped here -- so a caller can only ever
 // reach loadPokieGame with a genuinely materialized runtime, never after a failed one.
+//
+// `pokiePackageRoot` -- the running POKIE installation's own root directory (see cli/pokie.ts's
+// readOwnPackageRoot()) -- is what lets the default materializer's own "npm install" resolve its
+// generated "pokie" dependency against this exact installation (via withLocalPokieInstall) instead of a
+// registry, so a Blueprint materializes offline even when the running version has never been published.
+// Optional only so a caller that already supplies its own `materializer` (every test below) never has to
+// pass a real filesystem path it doesn't need; every real production call site (cli/pokie.ts,
+// StudioCommand) always passes one.
 export function createMaterializingRuntimePackageResolver(
     pokieVersion: string,
     operation: PokieOperation,
+    pokiePackageRoot?: string,
     dependencies: MaterializingRuntimePackageResolverDependencies = {},
 ): RuntimePackageResolving {
     const resolveProject = dependencies.resolveProject ?? new ProjectTargetResolver();
-    const materializer = dependencies.materializer ?? new BlueprintProjectMaterializer(pokieVersion);
+    const materializer =
+        dependencies.materializer ??
+        new BlueprintProjectMaterializer(
+            pokieVersion,
+            undefined,
+            undefined,
+            undefined,
+            pokiePackageRoot !== undefined ? withLocalPokieInstall(pokiePackageRoot) : undefined,
+        );
 
     return async (packageRoot: string): Promise<RuntimePackageResolution> => {
         const project: PokieProject | undefined = await resolveProject.resolve(packageRoot);

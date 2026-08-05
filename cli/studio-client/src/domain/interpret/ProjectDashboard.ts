@@ -18,7 +18,7 @@ import {isSimulationActive} from "./Simulation";
 export type ProjectHeaderView =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
-    | {status: "error"; projectRoot: string; message: string}
+    | {status: "error"; projectRoot: string; message: string; errorDetail?: string}
     | {
           status: "loaded";
           projectRoot: string;
@@ -50,7 +50,7 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
         return {status: "loading", projectRoot: context.projectRoot};
     }
     if (context.status === "error") {
-        return {status: "error", projectRoot: context.projectRoot, message: context.error};
+        return {status: "error", projectRoot: context.projectRoot, message: context.error, errorDetail: context.errorDetail};
     }
     if (context.status === "outcome-source") {
         return {

@@ -317,4 +317,35 @@ describe("ProjectDashboardPage", () => {
             await waitFor(() => expect(screen.queryByRole("heading", {name: "Sample Slot"})).not.toBeInTheDocument());
         });
     });
+
+    // A "pokie ." boot straight into Project mode: a failed Blueprint materialization (e.g. a broken
+    // "npm install") settles /api/project/context into "error" with both the curated human message and
+    // the raw npm diagnostic as its own separate `errorDetail` field.
+    it("shows a failed Blueprint materialization's human-readable error up front, with the raw npm diagnostic reachable only through a collapsed disclosure", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "error",
+                    projectRoot: "/games/broken-slot",
+                    error: "Installing dependencies for \"/games/broken-slot\" failed.",
+                    errorDetail: "npm ERR! simulated transient local npm failure",
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        const alert = await screen.findByRole("alert");
+        expect(alert.textContent).toContain('Installing dependencies for "/games/broken-slot" failed.');
+
+        const summary = screen.getByText("Technical details");
+        const details = summary.closest("details");
+        expect(details).not.toBeNull();
+        expect(alert.contains(details)).toBe(true);
+        // Collapsed by default: the raw diagnostic lives inside the disclosure, never rendered up front.
+        expect(details).not.toHaveAttribute("open");
+        expect(details?.textContent).toContain("npm ERR! simulated transient local npm failure");
+    });
 });

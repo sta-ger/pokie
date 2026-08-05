@@ -750,7 +750,7 @@ export function ProjectDashboardPage() {
             )}
             {header.status === "error" && (
                 <div style={{marginTop: "1rem"}}>
-                    <ErrorState message={header.message} />
+                    <ErrorState message={header.message} detail={header.errorDetail} />
                 </div>
             )}
             {header.status === "outcome-source" && (

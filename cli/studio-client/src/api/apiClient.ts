@@ -388,6 +388,20 @@ export async function buildBlueprint(
     return (await response.json()) as StudioBuildResult;
 }
 
+// Thrown by openProject on a failed Home Open Project (e.g. a Blueprint whose materialization "npm
+// install" failed) -- `detail` carries the server's own raw npm diagnostic (StudioServer's "detail"
+// field, alongside `message`), never folded into `message` itself, so a caller can offer it as an
+// expandable technical disclosure instead of a bare thrown message losing it outright.
+export class ProjectOpenError extends Error {
+    public readonly detail?: string;
+
+    constructor(message: string, detail?: string) {
+        super(message);
+        this.name = "ProjectOpenError";
+        this.detail = detail;
+    }
+}
+
 export async function openProject(fetchImpl: FetchLike, projectRoot: string): Promise<ProjectActionResult> {
     const response = await fetchImpl("/api/home/projects/open", {
         method: "POST",
@@ -395,7 +409,13 @@ export async function openProject(fetchImpl: FetchLike, projectRoot: string): Pr
         body: JSON.stringify({projectRoot}),
     });
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to open project"));
+        let body: {error?: string; detail?: string} = {};
+        try {
+            body = (await response.json()) as {error?: string; detail?: string};
+        } catch {
+            // Falls through to the generic fallback message below.
+        }
+        throw new ProjectOpenError(body.error ?? `Failed to open project (HTTP ${response.status}).`, body.detail);
     }
     return (await response.json()) as ProjectActionResult;
 }

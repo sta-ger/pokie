@@ -42,20 +42,20 @@ class FakeProcess {
 
 describe("StudioCommand", () => {
     it("has the expected name and description", () => {
-        const command = new StudioCommand("1.0.0");
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root");
 
         expect(command.getName()).toBe("studio");
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
     it("throws a descriptive error for an unknown option", async () => {
-        const command = new StudioCommand("1.0.0", {createServer: () => createStubServer({host: "127.0.0.1", port: 3200})});
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {createServer: () => createStubServer({host: "127.0.0.1", port: 3200})});
 
         await expect(command.run(["--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
     });
 
     it("throws a descriptive error for a non-numeric --port", async () => {
-        const command = new StudioCommand("1.0.0", {createServer: () => createStubServer({host: "127.0.0.1", port: 3200})});
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {createServer: () => createStubServer({host: "127.0.0.1", port: 3200})});
 
         await expect(command.run(["--port", "nope"])).rejects.toThrow(/--port must be a non-negative integer/);
     });
@@ -65,7 +65,7 @@ describe("StudioCommand", () => {
         let receivedOptions: StudioServerOptions | undefined;
         let openedUrl: string | undefined;
 
-        const command = new StudioCommand("1.0.0", {
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {
             createServer: (options) => {
                 receivedOptions = options;
                 return server;
@@ -92,7 +92,7 @@ describe("StudioCommand", () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
         let receivedOptions: StudioServerOptions | undefined;
 
-        const command = new StudioCommand("1.0.0", {
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {
             createServer: (options) => {
                 receivedOptions = options;
                 return server;
@@ -116,7 +116,7 @@ describe("StudioCommand", () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
         let openBrowserCalls = 0;
 
-        const command = new StudioCommand("1.0.0", {
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {
             createServer: () => server,
             openBrowser: () => {
                 openBrowserCalls++;
@@ -137,7 +137,7 @@ describe("StudioCommand", () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200});
         const fakeProcess = new FakeProcess();
 
-        const command = new StudioCommand("1.0.0", {
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {
             createServer: () => server,
             openBrowser: () => undefined,
             studioRoot: "/fake/studio/root",
@@ -161,7 +161,7 @@ describe("StudioCommand", () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200}, () => Promise.reject(new Error("stop failed")));
         const fakeProcess = new FakeProcess();
 
-        const command = new StudioCommand("1.0.0", {
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {
             createServer: () => server,
             openBrowser: () => undefined,
             studioRoot: "/fake/studio/root",

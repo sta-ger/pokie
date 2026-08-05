@@ -106,6 +106,7 @@ export * from "./gamepackage/loadPokieGame.js";
 export * from "./gamepackage/readPokiePackageConfig.js";
 export * from "./gamepackage/renderTsconfig.js";
 export * from "./gamepackage/resolvePokieGameEntryModule.js";
+export * from "./gamepackage/withLocalPokieDependency.js";
 export * from "./generated/BetModeRuntimeSemanticsInvalidError.js";
 export * from "./generated/DefaultGameMechanicCompatibilityPolicy.js";
 export * from "./generated/DefaultRandomGameBlueprintStrategy.js";
