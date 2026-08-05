@@ -23,8 +23,12 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     // the fake-driven tests there, where progress advances in lockstep with queued microtasks, but
     // real worker threads take real wall-clock time to spin up/load/compute, which thousands of
     // back-to-back setImmediate ticks don't reliably span. This polls with a real delay instead.
+    // Bounded to comfortably fit inside the jest.setTimeout(120000) above (rather than the far
+    // shorter cap this loop used to carry), since the biggest job here (200,000 rounds across real
+    // worker threads) is exactly the case the full-gate contention headroom above was raised for --
+    // a loop ceiling well under that budget defeated the point of raising it.
     async function waitForTerminalRealTime(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
-        for (let i = 0; i < 1000; i++) {
+        for (let i = 0; i < 5000; i++) {
             const job = service.getStatus(id);
             if (job && job.status !== "queued" && job.status !== "running") {
                 return job;
@@ -41,7 +45,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     // job.roundsCompleted bookkeeping) already proves the workers are live and computing, with no
     // test-only lifecycle hook needed.
     async function waitForProgressRealTime(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
-        for (let i = 0; i < 1000; i++) {
+        for (let i = 0; i < 3000; i++) {
             const job = service.getStatus(id);
             if (job && job.roundsCompleted > 0) {
                 return job;
