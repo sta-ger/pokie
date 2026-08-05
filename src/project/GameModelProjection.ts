@@ -2,13 +2,12 @@ import type {ReelStripAnalysis} from "../reels/ReelStripAnalysis.js";
 import type {ReelStripGenerationDiagnostic} from "../reels/ReelStripGenerationDiagnostic.js";
 import type {ReelStripSymbolWeightsConversionDiagnostic} from "../reels/ReelStripSymbolWeightsConversionDiagnostic.js";
 
-// The canonical, server/core-owned read model for POKIE Studio's Game Model tab (see
-// buildGameModelProjection.ts for how this is computed and cli/studio-client's own GameModelView.tsx for
-// the one place it's rendered) -- every section is either "available" (this project's own tracked source
-// GameBlueprint really has this data, however empty) or "unavailable" (this project's introspection is
-// only partial -- no tracked source recorded, a load failure, ... -- with `reason` explaining exactly
-// why), so a caller never has to flatten a paytable, infer a reel generation mode, or otherwise re-derive
-// any of this from a raw blueprint record itself; it only ever renders what this projection already says.
+// A canonical read model for a project's own GameBlueprint (see buildGameModelProjection.ts for how
+// this is computed) -- every section is either "available" (the underlying GameBlueprint really has this
+// data, however empty) or "unavailable" (no blueprint was available to project at all, with `reason`
+// explaining exactly why), so a caller never has to flatten a paytable, infer a reel generation mode, or
+// otherwise re-derive any of this from a raw blueprint record itself; it only ever renders what this
+// projection already says.
 export type GameModelSection<T> = {status: "available"; data: T} | {status: "unavailable"; reason: string};
 
 export type GameModelBasics = {id?: string; name?: string; version?: string; description?: string; author?: string};

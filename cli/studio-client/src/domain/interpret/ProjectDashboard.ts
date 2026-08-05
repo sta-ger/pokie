@@ -124,54 +124,28 @@ export function describeCapability(capability: StudioProjectCapability): string 
     return CAPABILITY_LABEL[capability] ?? capability;
 }
 
-export type ProvenanceView =
-    | {status: "generated"; blueprintHash: string; source: string; pokieVersion: string; generatedAt: string; files: string[]}
-    | {status: "not-generated"}
-    | {status: "error"; message: string};
-
-// Three distinct states, deliberately not collapsed into one another:
-// - "generated" — a valid inspection with build-info present (built via `pokie build`).
-// - "not-generated" — a *valid* inspection with no build-info (a `pokie create`/`pokie init`
-//   scaffold, or a build-info.json that failed to parse/wasn't written by `pokie build` — see
-//   GamePackageInspector.readBuildInfo, which already treats either the same way as "absent").
-// - "error" — the inspection report itself is invalid (`report.valid === false`, e.g. a missing or
-//   corrupt package.json): this is not "not generated", it's "couldn't even be read", and must show
-//   the report's own safe error message, not be silently folded into "not built via pokie build".
-export function describeProvenance(report: GamePackageInspectionReport): ProvenanceView {
-    if (!report.valid) {
-        return {status: "error", message: report.error ?? "Inspection failed."};
-    }
-    if (!report.buildInfo) {
-        return {status: "not-generated"};
-    }
-    const {buildInfo} = report;
-    return {
-        status: "generated",
-        blueprintHash: buildInfo.blueprintHash,
-        source: buildInfo.source ?? "(unknown)",
-        pokieVersion: buildInfo.pokieVersion,
-        generatedAt: buildInfo.generatedAt,
-        files: buildInfo.files ?? [],
-    };
-}
-
-// The full Inspect result block — not just the provenance sub-panel: package name/version/root, plus
-// nested provenance. "loading"/"error" here are about the /api/project/inspect call itself (in
-// flight, or failing outright — e.g. a 409 when there's no active project); a *successful* call that
-// reports an invalid package still comes back as "loaded", with the invalidity carried by its
-// nested `provenance` (status "error") — see describeProvenance above.
+// The full Inspect result block: package name/version/root. "loading"/"error" are about the
+// /api/project/inspect call itself (in flight, or failing outright, e.g. a network failure or a 409 when
+// there's no active project) -- their message is a raw exception, run through describeProjectActionError
+// like every other action failure. "invalid" is different: a *successful* call whose own report says the
+// package itself couldn't be read (`report.valid === false`, e.g. a missing/corrupt package.json) --
+// `message` there is the report's own safe, already-curated error text, shown verbatim rather than
+// folded into generic remediation copy.
 export type InspectionResultView =
     | {status: "loading"}
     | {status: "error"; message: string}
-    | {status: "loaded"; packageRoot: string; packageName?: string; packageVersion?: string; provenance: ProvenanceView};
+    | {status: "invalid"; message: string}
+    | {status: "loaded"; packageRoot: string; packageName?: string; packageVersion?: string};
 
 export function describeInspection(report: GamePackageInspectionReport): InspectionResultView {
+    if (!report.valid) {
+        return {status: "invalid", message: report.error ?? "Inspection failed."};
+    }
     return {
         status: "loaded",
         packageRoot: report.packageRoot,
         packageName: report.packageJson?.name,
         packageVersion: report.packageJson?.version,
-        provenance: describeProvenance(report),
     };
 }
 

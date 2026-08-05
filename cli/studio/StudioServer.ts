@@ -15,8 +15,6 @@ import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
-import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
-import {validateApplyProjectBlueprintRequest, ApplyProjectBlueprintRequestInput} from "./blueprint/validateApplyProjectBlueprintRequest.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
 import {validateLoadBlueprintRequest, LoadBlueprintRequestInput} from "./blueprint/validateLoadBlueprintRequest.js";
@@ -455,11 +453,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (method === "POST" && url.pathname === "/api/home/blueprints/shared-weights-conversion") {
-            await this.handleBlueprintSharedWeightsConversion(req, res);
-            return;
-        }
-
         if (method === "POST" && url.pathname === "/api/home/blueprints/par-import") {
             await this.handleBlueprintParImport(req, res);
             return;
@@ -496,11 +489,6 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/inspect") {
             this.handleInspectProject(res);
-            return;
-        }
-
-        if (method === "GET" && url.pathname === "/api/project/gameModel") {
-            this.handleGameModel(res);
             return;
         }
 
@@ -692,11 +680,6 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/stakeengine/export") {
             await this.handleExportStakeEngine(req, res);
-            return;
-        }
-
-        if (method === "POST" && url.pathname === "/api/project/blueprint/apply") {
-            await this.handleApplyProjectBlueprint(req, res);
             return;
         }
 
@@ -1122,23 +1105,6 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, this.blueprintService.previewReelStripGeneration(validated.blueprint));
     }
 
-    // Same request shape as /validate (just "blueprint") -- reuses validateBlueprintValidationRequest
-    // rather than a near-duplicate validator. Always 200: "unsupported"/"invalid" are ordinary domain
-    // outcomes carried in the body, never a write either way (see
-    // StudioBlueprintService.convertSharedWeightsToReelStrips's own doc comment).
-    private async handleBlueprintSharedWeightsConversion(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        this.sendJson(res, 200, this.blueprintService.convertSharedWeightsToReelStrips(validated.blueprint));
-    }
-
     private async handleBlueprintParImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -1193,19 +1159,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, this.gamePackageInspector.inspect(this.currentContext.projectRoot));
-    }
-
-    // Studio's Game Model tab (see GameModelView.tsx/MechanicsEditorTab.tsx) never parses a raw blueprint
-    // or inspect report itself -- this is the one place that DTO is actually assembled, from the same
-    // GamePackageInspector.inspect() /api/project/inspect itself uses, plus (when a tracked source is
-    // known) StudioBlueprintService's own load() -- see buildProjectGameModel.ts's own doc comment.
-    private handleGameModel(res: ServerResponse): void {
-        if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
-            return;
-        }
-        const report = this.gamePackageInspector.inspect(this.currentContext.projectRoot);
-        this.sendJson(res, 200, buildProjectGameModel(report, (path) => this.blueprintService.load(path)));
     }
 
     private async handleValidateProject(res: ServerResponse): Promise<void> {
@@ -1536,38 +1489,6 @@ export class StudioServer implements StudioServerHandling {
         if (status === "ok") {
             return 201;
         }
-        return status === "conflict" ? 409 : 200;
-    }
-
-    // projectRoot/sourcePath are always resolved here, from the current project's own build-info.json
-    // (the same GamePackageInspector.inspect() /api/project/inspect itself uses) — never taken from the
-    // request body — so a client can never point this at a path outside the project it actually opened.
-    private async handleApplyProjectBlueprint(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
-            return;
-        }
-
-        const report = this.gamePackageInspector.inspect(this.currentContext.projectRoot);
-        if (!report.generated || report.buildInfo?.source === undefined) {
-            this.sendJson(res, 200, {status: "error", error: "This project wasn't built from a tracked source blueprint, so it has nothing to apply to."});
-            return;
-        }
-
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateApplyProjectBlueprintRequest((body ?? {}) as ApplyProjectBlueprintRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        const result = this.blueprintService.applyToProject(this.currentContext.projectRoot, report.buildInfo.source, validated.expectedHash, validated.blueprint);
-        this.sendJson(res, this.statusForApplyProjectBlueprint(result.status), result);
-    }
-
-    private statusForApplyProjectBlueprint(status: "ok" | "conflict" | "invalid" | "error"): number {
         return status === "conflict" ? 409 : 200;
     }
 

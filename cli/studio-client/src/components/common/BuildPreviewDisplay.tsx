@@ -45,16 +45,6 @@ export function BuildPreviewDisplay({view}: {view: BuildPreviewView}) {
                         Destination: {view.projectRoot}
                         {view.destinationHasContent ? " (already exists — building will fail unless it's empty)" : " (does not exist yet — building will create it)"}
                     </Text>
-                    {view.priorBuild && view.priorBuild.version !== view.manifest.version && (
-                        <Text size="sm">
-                            Version change: {view.priorBuild.version} → {view.manifest.version}
-                        </Text>
-                    )}
-                    {view.priorBuild && view.priorBuild.version === view.manifest.version && (
-                        <Text size="xs" c="dimmed">
-                            Version unchanged: {view.priorBuild.version}
-                        </Text>
-                    )}
                     <FileList title="Files to create" files={view.createFiles} />
                     <FileList title="Files to update" files={view.updateFiles} />
                     <FileList title="Files to delete" files={view.deleteFiles} />

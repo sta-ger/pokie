@@ -27,16 +27,6 @@ const BLANK_USAGE = "Usage: pokie create [name] --blank [--out <file>]";
 const RANDOM_USAGE = "Usage: pokie create [name] --random [--seed <integer>] [--preset default|variant] [--out <file>]";
 const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
 
-// Printed after every successful "pokie create" — this command used to write a hand-editable npm
-// package directly (see GamePackageCreator), the same "programmer-first" role "pokie init" now owns
-// (see InitCommand). A silent switch would leave anyone still expecting that old package output
-// (package.json, src/index.ts, "npm install && npm run build") staring at a lone JSON file with no
-// explanation; this line is that explanation, on every run, not just a doc update someone has to go
-// looking for.
-const MIGRATION_NOTE =
-    '\nNote: "pokie create" now writes an editable Blueprint Project (a GameBlueprint JSON file) -- it no ' +
-    "longer writes a ready-to-run package. For a prepared, immediately valid package instead, run: pokie init [name]";
-
 const GUIDANCE_NOT_INTERACTIVE =
     'pokie create needs an interactive terminal to run its Blueprint wizard, and this one is not connected to one. ' +
     "Re-run inside a terminal, or use a non-interactive shortcut instead: \"pokie create --blank\" (a bare-minimum " +
@@ -315,7 +305,6 @@ export class CreateCommand implements CliCommandHandling {
         console.log(`\nEdit it by hand, then run:`);
         console.log(`  pokie build ${filePath} --dry-run`);
         console.log(`  pokie build ${filePath} --out <dir>`);
-        console.log(MIGRATION_NOTE);
     }
 
     // --random: a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly,

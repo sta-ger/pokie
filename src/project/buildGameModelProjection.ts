@@ -30,16 +30,15 @@ export type GameModelProjectionFallback = {
     // nothing at all is known, which is what makes `basics` itself "unavailable" too.
     manifest?: GameModelBasics;
     // Why every other section (and `basics`, when `manifest` is also omitted) is "unavailable" -- shown
-    // to the user verbatim as that section's own diagnostic (see GameModelView.tsx).
+    // to the user verbatim as that section's own diagnostic.
     reason: string;
 };
 
-// The one place a project's GameBlueprint (or the lack of one) is turned into the Game Model tab's own
-// canonical read model -- see GameModelProjection.ts's own doc comment for why every section is wrapped
-// in an explicit available/unavailable status rather than a caller having to guess "empty" from "not
-// introspectable". Pure and synchronous: resolving *which* blueprint (if any) applies to the current
-// project -- inspecting build-info, loading a tracked source path, handling a load failure -- is the
-// caller's own concern (see cli/studio's buildProjectGameModel.ts), not this function's.
+// The one place a project's GameBlueprint (or the lack of one) is turned into its own canonical read
+// model -- see GameModelProjection.ts's own doc comment for why every section is wrapped in an explicit
+// available/unavailable status rather than a caller having to guess "empty" from "not introspectable".
+// Pure and synchronous: resolving *which* blueprint (if any) applies to the current project is the
+// caller's own concern, not this function's.
 export function buildGameModelProjection(blueprint: GameBlueprint | undefined, fallback?: GameModelProjectionFallback): GameModelProjection {
     if (blueprint === undefined) {
         const reason = fallback?.reason ?? "This project's game model isn't available.";

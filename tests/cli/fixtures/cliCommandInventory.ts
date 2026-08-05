@@ -334,8 +334,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "inspect",
-        description:
-            'Print a package\'s provenance (game, blueprint hash, source, "pokie build" version) from package.json and src/generated/build-info.json, without running it.',
+        description: "Print a package's package.json (name, version, description) without running it.",
         verbs: [{verb: undefined, usage: "Usage: pokie inspect <packageRoot>", positionals: ["packageRoot"], options: []}],
     },
     {

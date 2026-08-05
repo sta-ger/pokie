@@ -172,7 +172,6 @@ describe("CreateCommand", () => {
             expect(printed).toContain("Preview:");
             expect(printed).toContain('Destination: ./wiz-slot.blueprint.json');
             expect(printed).toContain('created at "./wiz-slot.blueprint.json"');
-            expect(printed).toContain("pokie init");
         });
 
         it("accepts a blank Enter at the confirmation as yes", async () => {
@@ -384,7 +383,6 @@ describe("CreateCommand", () => {
             expect(writeFile).toHaveBeenCalledWith("./blank-slot.blueprint.json", `${JSON.stringify(blankBlueprint, null, 4)}\n`);
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('created at "./blank-slot.blueprint.json"');
-            expect(printed).toContain("pokie init");
         });
 
         it("overrides the manifest id/name from a given name, and writes to <name>.blueprint.json", async () => {

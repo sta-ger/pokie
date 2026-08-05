@@ -94,7 +94,7 @@ tabs never loses in-progress work):
 
 **Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Validate, Simulation & Reports**
 (the primary flow, in that order), then a visually separated **Advanced** group — Replay, Runtime, Deployment,
-Outcome Libraries, Mechanics Editor, Certification, Provably Fair, Stake Engine Export (`NavTabItem`'s optional
+Outcome Libraries, Certification, Provably Fair, Stake Engine Export (`NavTabItem`'s optional
 `section` field drives the grouping in `NavTabs`; see `PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact,
 current tab list). "Validation" was renamed to "Validate" for consistent task-verb naming; Simulation and
 Reports were later merged into one "Simulation & Reports" tab.
@@ -110,11 +110,7 @@ Reports were later merged into one "Simulation & Reports" tab.
   completes — **warnings never block this progression**, only errors or an outright invalid report do
   (`ValidationSummaryView.blocking`, kept distinct from `hasIssues`); `BlueprintBuildPanel`'s "Build
   Package" mirrors this at the blueprint level, disabled only when the blueprint is known-invalid, never
-  for warnings-only. When the package's provenance links back to a known blueprint source path (from
-  `pokie build`'s own `build-info.json`), a "Configure Game Model" button navigates back to Home's Design &
-  Build tab with that blueprint pre-loading (`navigate("/home/design", {state: {initialBlueprintPath}})`,
-  read by `HomePage` via `useLocation().state`) — closing the loop so the game model stays editable from an
-  already-open project too, not just at creation time.
+  for warnings-only.
 
 **Breadcrumbs, page titles & focus** — `AppShellLayout`'s optional `breadcrumbs` prop renders a Mantine
 `Breadcrumbs` trail in the header (Home passes none, showing just the "POKIE Studio" home link; the Project
@@ -312,7 +308,6 @@ for a flow with no order dependency at all (that belongs in tabs) or for a flow 
 | Runtime | `project/RuntimeTab.tsx` | Nonlinear | **Changed.** The prior `Stepper` forced Create/restore → Play → Inspect → Continue → Debug into one order, even though a real session is used cyclically (spin, inspect, spin again, pick an older round from history, retry or debug it, spin some more) with no inherent sequence. Replaced with always-mounted panels (Server, Current session, Inspect round, Round history for this session, Retry & Debug) that each degrade to an explanatory `EmptyState`/`RecoveryNotice` instead of being gated away; a selected round (auto-set from the round just played, or picked from round history) drives Inspect/Retry/Debug alike, and every create/load/spin/refresh/restart path clears it so it can never point at stale data (see `RuntimeTab.tsx`'s own doc comment and `ProjectDashboardPage.runtimeWorkflow.test.tsx`). |
 | Provably Fair | `project/ProvablyFairTab.tsx` | Partially linear | Kept as `Stepper`. "Verify" is always reachable regardless of prior state -- gating only applies to the two steps that need a prior result to show. |
 | Simulation | `project/SimulationTab.tsx` | Partially linear | Kept as `Stepper`. Auto-advances when a running job goes terminal; the pattern Replay's own auto-advance explicitly mirrors. |
-| Mechanics Editor | `project/MechanicsEditorTab.tsx` | Partially linear | Kept as `Stepper`. Section steps are ungated (free navigation among content sections); only the final "Apply" action is separately blocked by validation status, at the button level, not the Stepper level. |
 | Stake Engine Export | `project/StakeEngineExportTab.tsx` | Partially linear | Kept as `Stepper`. Straightforward forward-gated chain, no backward lock. |
 | Outcome Libraries | `project/OutcomeLibrariesTab.tsx` | Partially linear | Kept as `Stepper`. Gated on a selection result existing; no backward lock. |
 | PAR Sheet Import/Export | `blueprintEditor/ParSheetImportExportPanel.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; final step never disabled. |

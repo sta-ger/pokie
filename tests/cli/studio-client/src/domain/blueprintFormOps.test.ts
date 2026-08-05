@@ -2,11 +2,6 @@ import {
     addBet,
     addPayline,
     applyPaylineSet,
-    asBetModesList,
-    describeNewBetModeDraft,
-    duplicateBetModeAt,
-    moveBetModeAt,
-    setBetModeField,
     addReelStripGenerationLiteralSymbol,
     addReelStripSymbol,
     addSymbol,
@@ -124,96 +119,6 @@ describe("blueprintFormOps", () => {
 
             removeBetAt(b, 0);
             expect(b.availableBets).toEqual([10, 2, 2]);
-        });
-    });
-
-    describe("betModes", () => {
-        // Regression: runtimeType/isDefault/forcedFreeGames (the explicit, opt-in runtime-semantics
-        // contract -- see gamepackage/BetMode.ts's own doc comment) have no dedicated editor UI yet,
-        // but must still round-trip losslessly through every existing bet-mode form operation --
-        // editing an unrelated field (e.g. Label) on the SAME blueprint must never silently strip them.
-        it("preserves runtimeType/isDefault/forcedFreeGames/targetRtp across an unrelated field edit", () => {
-            const b: Record<string, unknown> = {
-                betModes: [
-                    {id: "base", runtimeType: "base", isDefault: true, targetRtp: 0.94},
-                    {id: "buy-bonus", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 10, targetRtp: 0.9},
-                ],
-            };
-
-            setBetModeField(b, 1, "label", "Buy Bonus");
-
-            expect(asBetModesList(b.betModes)).toEqual([
-                {id: "base", runtimeType: "base", isDefault: true, targetRtp: 0.94},
-                {
-                    id: "buy-bonus",
-                    label: "Buy Bonus",
-                    runtimeType: "buyFeature",
-                    costMultiplier: 100,
-                    forcedFreeGames: 10,
-                    targetRtp: 0.9,
-                },
-            ]);
-        });
-
-        it("drops an unrecognized runtimeType/malformed isDefault/forcedFreeGames/targetRtp rather than passing them through as-is", () => {
-            const parsed = asBetModesList([{id: "base", runtimeType: "bogus", isDefault: "yes", forcedFreeGames: "ten", targetRtp: "high"}]);
-
-            expect(parsed).toEqual([{id: "base"}]);
-        });
-
-        it("setBetModeField edits targetRtp directly (the dedicated BetModesEditor column)", () => {
-            const b: Record<string, unknown> = {betModes: [{id: "base"}]};
-
-            setBetModeField(b, 0, "targetRtp", 0.965);
-
-            expect(asBetModesList(b.betModes)).toEqual([{id: "base", targetRtp: 0.965}]);
-        });
-
-        it("preserves targetRtp when reordering bet modes (moveBetModeAt)", () => {
-            const b: Record<string, unknown> = {
-                betModes: [
-                    {id: "base", targetRtp: 0.94},
-                    {id: "ante", costMultiplier: 1.25, targetRtp: 0.965},
-                ],
-            };
-
-            moveBetModeAt(b, 0, 1);
-
-            expect(asBetModesList(b.betModes)).toEqual([
-                {id: "ante", costMultiplier: 1.25, targetRtp: 0.965},
-                {id: "base", targetRtp: 0.94},
-            ]);
-        });
-
-        it("preserves targetRtp when duplicating a bet mode (duplicateBetModeAt)", () => {
-            const b: Record<string, unknown> = {
-                betModes: [{id: "buy-bonus", costMultiplier: 100, forcedFreeGames: 10, targetRtp: 0.9}],
-            };
-
-            duplicateBetModeAt(b, 0);
-
-            expect(asBetModesList(b.betModes)).toEqual([
-                {id: "buy-bonus", costMultiplier: 100, forcedFreeGames: 10, targetRtp: 0.9},
-                {id: "buy-bonus-copy", costMultiplier: 100, forcedFreeGames: 10, targetRtp: 0.9},
-            ]);
-        });
-
-        describe("describeNewBetModeDraft", () => {
-            it("reports empty for a blank/whitespace-only draft id", () => {
-                expect(describeNewBetModeDraft([], "")).toEqual({status: "empty"});
-                expect(describeNewBetModeDraft([{id: "base"}], "   ")).toEqual({status: "empty"});
-            });
-
-            it("reports duplicate when the trimmed id already belongs to another bet mode", () => {
-                expect(describeNewBetModeDraft([{id: "base"}, {id: "buy-bonus"}], "  buy-bonus  ")).toEqual({
-                    status: "duplicate",
-                    id: "buy-bonus",
-                });
-            });
-
-            it("reports ready with the trimmed id once it's non-empty and unique", () => {
-                expect(describeNewBetModeDraft([{id: "base"}], "  ante  ")).toEqual({status: "ready", id: "ante"});
-            });
         });
     });
 

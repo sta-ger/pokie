@@ -110,79 +110,6 @@ export type GamePackageInspectionReport = {
     valid: boolean;
     error?: string;
     packageJson?: {name?: string; version?: string; description?: string};
-    generated: boolean;
-    buildInfo?: GameBuildInfo;
-};
-
-// GET /api/project/gameModel's own DTO -- mirrors the "pokie" package's own GameModelProjection (see
-// src/project/GameModelProjection.ts's own doc comment), kept as a separate client-side copy, same
-// convention as every other type in this file. Every section is either "available" (with its own,
-// already-computed `data`) or "unavailable" (with a plain-language `reason`) -- GameModelView.tsx renders
-// exactly this, never flattening a paytable or inferring a reel generation mode itself.
-export type GameModelSection<T> = {status: "available"; data: T} | {status: "unavailable"; reason: string};
-
-export type GameModelBasics = {id?: string; name?: string; version?: string; description?: string; author?: string};
-
-export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClusterSize?: number};
-
-export type GameModelLayout = {reels?: number; rows?: number; winModel: GameModelWinModel; paylineCount?: number};
-
-export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
-
-export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
-
-export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
-
-export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]};
-
-export type GameModelReelStripPosition = {
-    index: number;
-    symbolId: string;
-    isWild: boolean;
-    isScatter: boolean;
-    locked: boolean;
-    stackSize: number;
-};
-
-export type GameModelResolvedReel = {
-    reelIndex: number;
-    source: "literal" | "generated" | "sample";
-    positions: GameModelReelStripPosition[];
-    analysis: ReelStripAnalysis;
-    generationDiagnostics?: ReelStripGenerationDiagnostic[];
-};
-
-export type GameModelUnresolvedReel = {reelIndex: number; source: "generated"; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
-
-export type GameModelReel = GameModelResolvedReel | GameModelUnresolvedReel;
-
-export type GameModelSharedWeightsSample = {weights: Record<string, number>; seed: number; sampleLength: number; conversion: ReelStripSymbolWeightsConversionDiagnostic};
-
-export type GameModelReels = {
-    generationMode: GameModelReelGenerationMode;
-    gameWindow: GameModelGameWindow;
-    reels: GameModelReel[];
-    sharedWeightsSample?: GameModelSharedWeightsSample;
-};
-
-export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
-
-export type GameModelBetMode = {id: string; label?: string; costMultiplier?: number; targetRtp?: number};
-
-export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameModelBetMode[]};
-
-export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<string, number>};
-
-export type GameModelMechanics = {freeGames?: GameModelFreeGames};
-
-export type GameModelProjection = {
-    basics: GameModelSection<GameModelBasics>;
-    layout: GameModelSection<GameModelLayout>;
-    symbols: GameModelSection<GameModelSymbol[]>;
-    reels: GameModelSection<GameModelReels>;
-    paytable: GameModelSection<GameModelPaytableRow[]>;
-    betsAndModes: GameModelSection<GameModelBetsAndModes>;
-    mechanics: GameModelSection<GameModelMechanics>;
 };
 
 export type ValidationIssue = {
@@ -298,7 +225,6 @@ export type BuildDestinationPreview = {
     createFiles: string[];
     updateFiles: string[];
     deleteFiles: string[];
-    priorBuild?: {version: string; blueprintHash: string; generatedAt: string};
 };
 
 // POST /api/home/blueprints/build-preview's own DTO — see cli/studio/home/StudioBuildPreviewView.ts's
@@ -404,20 +330,10 @@ export type StudioReelStripGenerationView = {
     reels: StudioReelStripGenerationReelView[];
 };
 
-// POST /api/home/blueprints/shared-weights-conversion's own DTO -- see
-// cli/studio/blueprint/StudioSharedWeightsConversionView.ts's own doc comment. `reelStrips` is the exact
-// same reproducible sample GameModelView's own Reels views already render for a "symbolWeights"/"default"
-// blueprint -- never re-derived here. Never the result of anything being written -- persisting it is a
-// separate, caller-driven applyProjectBlueprint call with the caller's own already-loaded expectedHash.
-export type StudioSharedWeightsConversionView =
-    | {status: "ok"; reelStrips: string[][]}
-    | {status: "unsupported"; error: string}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]};
-
 // POST /api/home/blueprints/load's own DTO — see cli/studio/blueprint/StudioBlueprintLoadView.ts's own
 // doc comment. `blueprint` is the raw parsed JSON value (unknown), not yet validated. `blueprintHash`
-// is that content's own exact-content hash — carry it forward as the "expectedHash" a later
-// POST /api/project/blueprint/apply call is built from (see StudioBlueprintApplyView).
+// is that content's own exact-content hash — carry it forward as the "expectedHash" a later save is
+// built from.
 export type StudioBlueprintLoadView = {status: "ok"; path: string; blueprint: unknown; blueprintHash: string} | {status: "load-error"; error: string};
 
 // POST /api/home/blueprints/check-source's own DTO — see cli/studio/blueprint/StudioBlueprintCheckView.ts's
@@ -465,15 +381,6 @@ export type StudioBlueprintSaveManagedView =
     | {status: "ok"; path: string; name: string; blueprintHash: string; sourceWorkbookPath?: string}
     | {status: "invalid-name"; error: string}
     | {status: "unavailable"; error: string}
-    | {status: "error"; error: string};
-
-// POST /api/project/blueprint/apply's own DTO — see cli/studio/blueprint/StudioBlueprintApplyView.ts's
-// own doc comment for the conditional-commit semantics behind it. "conflict" means the source
-// blueprint on disk no longer matches the snapshot this request was built from — never a write.
-export type StudioBlueprintApplyView =
-    | {status: "ok"; blueprintHash: string; warnings: ValidationIssue[]}
-    | {status: "conflict"; currentHash: string}
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "error"; error: string};
 
 // Read from (or written to) a PAR sheet's own "Meta" sheet — never fed back into GameBlueprint fields,

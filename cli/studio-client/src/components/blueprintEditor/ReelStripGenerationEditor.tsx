@@ -460,8 +460,6 @@ export function DiagnosticsList({diagnostics}: {diagnostics: ReelStripGeneration
     );
 }
 
-// Reused as-is by GameModelView's own Reels Analysis view (see its own doc comment) -- the same
-// counts/shares/distances table, never a second implementation of it.
 export function AnalysisTable({analysis}: {analysis: ReelStripAnalysis}) {
     const symbolIds = Object.keys(analysis.symbolCounts);
     if (symbolIds.length === 0) {

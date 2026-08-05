@@ -48,10 +48,9 @@ function isHomeTab(value: string | undefined): value is HomeTab {
 // Blueprint Editor state -- same "don't unmount, hide" principle ProjectDashboardPage's own tabs rely on,
 // applied directly to the tab bodies here since BlueprintEditorPage's state is non-trivial.
 //
-// `location.state?.initialBlueprintPath` is how Project Overview's "Configure Game Model" link (see
-// ProjectDashboardPage's onConfigureGameModel) sends the user back here already on the right tab with
-// the right blueprint loading. `location.state?.initialParSheetPath` is the same idea for Projects' own
-// "Import Project" -> PAR sheet routing (see ProjectsPanel's `handleGoToDesignGame`).
+// `location.state?.initialBlueprintPath`, when set by a caller, lands on the right tab already loading
+// the given blueprint. `location.state?.initialParSheetPath` is the same idea for Projects' own "Import
+// Project" -> PAR sheet routing (see ProjectsPanel's `handleGoToDesignGame`).
 export function HomePage() {
     const navigate = useNavigate();
     const {tab} = useParams<{tab: string}>();

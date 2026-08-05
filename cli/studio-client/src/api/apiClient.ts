@@ -1,13 +1,11 @@
 import type {
     FairnessCommitment,
-    GameModelProjection,
     GamePackageInspectionReport,
     OutcomeLibrarySelector,
     OutcomeSourceSampleView,
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
-    StudioBlueprintApplyView,
     StudioBlueprintCheckView,
     StudioBlueprintLoadView,
     StudioBlueprintRandomView,
@@ -45,7 +43,6 @@ import type {
     StudioProjectRegistrationResult,
     StudioProjectRegistryView,
     StudioReelStripGenerationView,
-    StudioSharedWeightsConversionView,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
@@ -224,21 +221,6 @@ export async function previewReelStripGeneration(fetchImpl: FetchLike, blueprint
     return (await response.json()) as StudioReelStripGenerationView;
 }
 
-// Never writes/reads anything on disk — see StudioBlueprintService.convertSharedWeightsToReelStrips's
-// own doc comment. `reelStrips` on "ok" is the exact same core-computed sample GameModelView's own Reels
-// views already render; persisting it is a separate, caller-driven applyProjectBlueprint call.
-export async function convertSharedWeightsToReelStrips(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioSharedWeightsConversionView> {
-    const response = await fetchImpl("/api/home/blueprints/shared-weights-conversion", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint}),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to convert shared weights to reel strips"));
-    }
-    return (await response.json()) as StudioSharedWeightsConversionView;
-}
-
 export async function loadBlueprint(fetchImpl: FetchLike, path: string): Promise<StudioBlueprintLoadView> {
     const response = await fetchImpl("/api/home/blueprints/load", {
         method: "POST",
@@ -330,27 +312,6 @@ export async function saveManagedBlueprint(
         throw new Error(await extractErrorMessage(response, "Failed to save the project"));
     }
     return (await response.json()) as StudioBlueprintSaveManagedView;
-}
-
-// Commits an edited blueprint back to the current project's own source file and rebuilds its
-// generated package in place, as a single conditional-commit request — see
-// cli/studio/blueprint/applyGameBlueprintToProject.ts for the hash-based conflict check and atomic
-// publish semantics. `expectedHash` is the snapshot (see StudioBlueprintLoadView.blueprintHash) this
-// draft was built from; a 409 ("conflict") means the source changed on disk since — an expected
-// domain outcome, not a failed request, so it's parsed and returned as a typed result, not thrown.
-export async function applyProjectBlueprint(fetchImpl: FetchLike, blueprint: unknown, expectedHash: string): Promise<StudioBlueprintApplyView> {
-    const response = await fetchImpl("/api/project/blueprint/apply", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint, expectedHash}),
-    });
-    if (response.status === 409) {
-        return (await response.json()) as StudioBlueprintApplyView;
-    }
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to apply blueprint"));
-    }
-    return (await response.json()) as StudioBlueprintApplyView;
 }
 
 // Never writes anything — see StudioBlueprintService.importParSheet()'s own doc comment. Domain-level
@@ -478,17 +439,6 @@ export async function inspectProject(fetchImpl: FetchLike): Promise<GamePackageI
         throw new Error(await extractErrorMessage(response, "Failed to inspect the project"));
     }
     return (await response.json()) as GamePackageInspectionReport;
-}
-
-// Backs the Game Model tab (see MechanicsEditorTab.tsx/GameModelView.tsx) -- the server/core-owned
-// canonical projection (see buildProjectGameModel.ts's own doc comment), never a raw blueprint or
-// inspect report this client would have to interpret itself.
-export async function loadGameModel(fetchImpl: FetchLike): Promise<GameModelProjection> {
-    const response = await fetchImpl("/api/project/gameModel");
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to load the project's game model"));
-    }
-    return (await response.json()) as GameModelProjection;
 }
 
 export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePackageValidationReport> {
