@@ -325,10 +325,10 @@ materialization, Replay, player, Studio Play, help/`pokie-examples`, …, final 
 this document maps to the actual step number that owns it in the supplied Phase 4 roadmap, not to the order these
 journeys happen to be discussed in above or elsewhere in this document. Those step numbers are: `P4-POLISH-02`
 (create — including the package-inspection commands `sim`/`validate`/`inspect`, which read a package the same
-non-interactive way `create`'s own output does), `P4-POLISH-04` (materialization), `P4-POLISH-06` (help — the
-docs/example surface, including `pokie-examples`), `P4-POLISH-08` (Replay), `P4-POLISH-09` (player — the
-`serve`/`dev`/`client` reference-preview commands), `P4-POLISH-11` (Studio Play — Studio's server-side
-project-open routes and its HTTP surface generally), and `P4-POLISH-13` (final browser acceptance). This is a
+non-interactive way `create`'s own output does), `P4-POLISH-04` (materialization), `P4-POLISH-06` (exhaustive
+Commander help), `P4-POLISH-08` (Replay), `P4-POLISH-09` (player — the `serve`/`dev`/`client` reference-preview
+commands, and extracting the canonical Game Player from `pokie-examples`), `P4-POLISH-11` (Studio Play — Studio's
+server-side project-open routes and its HTTP surface generally), and `P4-POLISH-13` (final browser acceptance). This is a
 mapping of existing gaps to the roadmap's own already-fixed step numbers, not new or invented roadmap work: no
 gap below is assigned a step outside the supplied roadmap, and no step's own scope is expanded beyond what its
 name already implies.
@@ -366,8 +366,9 @@ name already implies.
   `*Config.ts` (e.g. exactly which `VideoSlotConfig` fields `initializeUi`/`drawReelsSymbols` silently assume
   exist) is still needed before any step attempts to *change* `pokie-examples`' shared code itself, and that
   checkout should be re-cloned at its own current `HEAD` rather than assumed still current. Owned by
-  `P4-POLISH-06` (help) — `pokie-examples` is the demo/documentation surface linked from this repo's own
-  `README.md`/`docs/README.md`, the same journey that step already covers.
+  `P4-POLISH-09` — that step's own supplied roadmap scope is extracting the canonical Game Player from
+  `pokie-examples`, so the deeper coupling audit that must precede any such extraction belongs to it, not to
+  `P4-POLISH-06`'s exhaustive Commander-help scope.
 
 Naming these here, against the owning step each already maps to above, reserves them as that step's own
 responsibility rather than letting a later step either silently re-derive them from scratch or, worse, quietly
