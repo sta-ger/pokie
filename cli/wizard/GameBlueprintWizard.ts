@@ -55,10 +55,10 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
     private readonly nameGenerator: SlotGameNameGenerating;
     private readonly defaults: GameBlueprint;
 
-    // Every default this wizard offers is read off the same canonical starter blueprint that
-    // "pokie build --init-blueprint" writes out, rather than being restated here — pressing Enter
-    // through the whole wizard therefore produces that known-good blueprint (modulo the generated
-    // manifest and the output directory), which is exactly what makes an Enter-only run valid.
+    // Every default this wizard offers is read off the same canonical starter blueprint
+    // createStarterGameBlueprint() builds, rather than being restated here — pressing Enter through
+    // the whole wizard therefore produces that known-good blueprint (modulo the generated manifest and
+    // the output directory), which is exactly what makes an Enter-only run valid.
     constructor(
         nameGenerator: SlotGameNameGenerating = new SlotGameNameGenerator(),
         createDefaultBlueprint: () => GameBlueprint = createStarterGameBlueprint,

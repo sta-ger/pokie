@@ -328,8 +328,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     },
                 }),
             ),
-        "build::--init-blueprint <file> writes the starter blueprint template": () =>
-            new BuildCommand(TEST_VERSION, undefined, undefined, undefined, undefined, () => false, () => undefined),
         "build::random (no flags at all -- default --seed/--target/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)": (key) => {
             // The one non-dry-run "random" case that also omits --seed/--preset: --target/--dry-run/--seed/--preset
             // all reach a real seam here (GamePackageGenerating.generate() actually runs, unlike every --dry-run
@@ -353,9 +351,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         };
                     },
                 }),
-                undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -367,7 +362,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": (key) => {
-            // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (12th ctor param); wrapping
+            // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (7th ctor param); wrapping
             // a real one keeps its output byte-identical while observing --seed/--preset at its own generate() seam.
             // --dry-run's accepted "true" is derived from the real captured stdout (see
             // STDOUT_BOOLEAN_MARKER_FLAGS above); this dry-run build never reaches the GamePackageGenerating.generate()
@@ -386,9 +381,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 }),
                 undefined,
                 undefined,
-                undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -399,7 +391,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "build::random --seed <integer> --target <dir> (accepted --target value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)": (key) => {
-            // Non-dry-run random build (preset defaults, so runRandom() uses the randomBlueprintGenerator, 10th ctor
+            // Non-dry-run random build (preset defaults, so runRandom() uses the randomBlueprintGenerator, 5th ctor
             // param): observes --target at GamePackageGenerating.generate()'s outDir, --dry-run "false" (generate ran),
             // and --preset "default" at the random generator's own seam; a real random build with a seed also runs
             // the post-build smoke simulation, hence the runSmoke stub.
@@ -421,9 +413,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         };
                     },
                 }),
-                undefined,
-                undefined,
-                undefined,
                 {
                     generate: (input) => {
                         observe(key, "--seed", input?.seed);
@@ -435,14 +424,11 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
         "build::random --target <dir> --dry-run (accepted --target value, default --seed/--preset)": (key) => {
-            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (8th
+            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (5th
             // ctor param) runs with seed undefined; dry-run means the GamePackageGenerating seam is never reached.
             const defaultGenerator = new RandomGameBlueprintGenerator();
             return new BuildCommand(
                 TEST_VERSION,
-                undefined,
-                undefined,
-                undefined,
                 undefined,
                 undefined,
                 undefined,
@@ -469,9 +455,6 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                         unchanged: false,
                     }),
                 }),
-                undefined,
-                undefined,
-                undefined,
                 undefined,
                 () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
             ),
@@ -1972,8 +1955,8 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
 // pick a subcommand, and is used purely to bucket test-fixture cases for the coverage assertions
 // below, never to assert behavior itself): a subcommand-style command (certification/fairness/
 // outcomelibrary/par/stakeengine) always has its verb literal as `args[0]`; "build"/"create" each have
-// one or more sentinel verbs recognized by a flag rather than a positional ("--init-blueprint"/"random"
-// for build, "--blank"/"--random" for create); every other command has exactly one verb (`undefined`).
+// one or more sentinel verbs recognized by a flag rather than a positional ("random" for build,
+// "--blank"/"--random" for create); every other command has exactly one verb (`undefined`).
 function deriveVerbForCase(commandName: string, args: string[]): string | undefined {
     const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === commandName);
     if (!descriptor) {
@@ -1982,9 +1965,6 @@ function deriveVerbForCase(commandName: string, args: string[]): string | undefi
     const verbLiterals = descriptor.verbs.map((verb) => verb.verb).filter((verb): verb is string => verb !== undefined);
     if (verbLiterals.length === 0) {
         return undefined;
-    }
-    if (verbLiterals.includes("--init-blueprint") && args[0] === "--init-blueprint") {
-        return "--init-blueprint";
     }
     if (verbLiterals.includes("random") && args[0] === "random") {
         return "random";

@@ -90,11 +90,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "build",
         description:
-            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable), " +
-            'or write an editable starter blueprint via --init-blueprint <file> (for a ready-to-run package ' +
-            'instead, see "pokie init"). "random"/--random generates a first-class random game instead ' +
-            "(--seed to reproduce it, --preset default|variant to pick the generation strategy). --dry-run " +
-            "validates and previews without writing anything.",
+            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable) " +
+            '(for a ready-to-run package instead, see "pokie init"). "random"/--random generates a first-class ' +
+            "random game instead (--seed to reproduce it, --preset default|variant to pick the generation " +
+            "strategy). --dry-run validates and previews without writing anything.",
         verbs: [
             {
                 verb: undefined,
@@ -104,12 +103,6 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     {flag: "--target", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "customOutDir"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
-            },
-            {
-                verb: "--init-blueprint",
-                usage: "Usage: pokie build --init-blueprint <file>",
-                positionals: ["file"],
-                options: [],
             },
             {
                 verb: "random",
@@ -180,7 +173,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             "generation (--seed to reproduce it, --preset default|variant to pick the generation strategy). For " +
             'a prepared, immediately valid package instead, use "pokie init".',
         // Three independent verbs, same "sentinel flag rather than a positional" shape "build" already
-        // uses for "--init-blueprint"/"random" (see deriveVerbForCase's own doc comment): the bare/named
+        // uses for "random" (see deriveVerbForCase's own doc comment): the bare/named
         // path (no --blank/--random) always runs the interactive wizard (fully dependency-injectable, so
         // still exercisable without a real terminal or touching this repo's own working directory -- see
         // "init"'s own descriptor comment for the same pattern); "--blank" and "--random" are its two
@@ -728,22 +721,6 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<config.json> --target <dir> (accepted --target value, default --dry-run, writes via the injected generator)",
         args: ["config.json", "--target", "customOutDir"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-    {
-        command: "build",
-        kind: "invalid",
-        label: "--init-blueprint missing <file>",
-        args: ["--init-blueprint"],
-        expectedExitCode: 1,
-        expectedError: "Usage: pokie build --init-blueprint <file>",
-    },
-    {
-        command: "build",
-        kind: "valid",
-        label: "--init-blueprint <file> writes the starter blueprint template",
-        args: ["--init-blueprint", "starter-blueprint.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },

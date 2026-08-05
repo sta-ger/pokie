@@ -124,18 +124,17 @@ first: it's immediately loadable by every other command below, with `src/index.t
 (if you ever run one) still reproduces an equivalent `dist/index.js`. (`pokie create`, unlike `pokie build`/`pokie
 init`, never writes a package at all — see [`pokie create [name]`](#pokie-create-name) above.)
 
-There are three ways to provide the blueprint:
+There are two ways to provide the blueprint:
 
 - **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
-- **starter template** — `pokie build --init-blueprint <file>` writes a small, hand-editable example
-  `GameBlueprint` to `<file>` instead of building anything, for editing by hand and feeding back into the
-  config-driven path above (see [Starter template](#starter-template-pokie-build---init-blueprint-file) below);
 - **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file) and builds it
   immediately (see [Random generation](#random-generation-pokie-build-random) below).
 
+To hand-edit a `GameBlueprint` before building it, use [`pokie create [name]`](#pokie-create-name) to write an
+editable Blueprint Project file first, then feed the edited result into `pokie build <file> --target <dir>` above.
 (For a ready-to-run package instead, see [`pokie init [name]`](#pokie-init-name) below.)
 
-All three produce the exact same `GameBlueprint` shape, go through the exact same validation
+Both produce the exact same `GameBlueprint` shape, go through the exact same validation
 ([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
 the resulting package supports the exact same
 [`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev).
@@ -186,52 +185,10 @@ Options:
   the `--target` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
   errors, `0` if it's valid (warnings included).
 
-### Starter template (`pokie build --init-blueprint <file>`)
-
-For editing by hand rather than writing a `GameBlueprint` from scratch or answering [`pokie init`'s interactive
-wizard](#interactive-mode-pokie-init-with-no-name)'s prompts:
-
-```
-pokie build --init-blueprint my-game.blueprint.json
-```
-
-```
-Created starter blueprint "my-game.blueprint.json".
-
-Edit it by hand, then run:
-  pokie build my-game.blueprint.json --dry-run
-  pokie build my-game.blueprint.json --target <dir>
-```
-
-Writes a small-but-complete, formatted `GameBlueprint` JSON file to `<file>` — game id/name/version, reels/rows,
-symbols, available bets, paylines, a paytable, and symbol weights, all filled with valid example values (not the
-minimum required to pass validation) so there's something concrete to edit for every field. It passes
-[`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --target
-<dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
-to your own game, and build that.
-
-This same template is the single source of [`pokie init`'s interactive
-wizard](#interactive-mode-pokie-init-with-no-name)'s defaults, so the two never drift apart: an Enter-only wizard
-run describes the game this file describes.
-
-The full starter-template workflow — scaffold, hand-edit, validate-only preview, then a real build:
-
-```
-pokie build --init-blueprint my-game.blueprint.json
-# ...edit my-game.blueprint.json by hand...
-pokie build my-game.blueprint.json --dry-run    # re-run after every edit until it looks right
-pokie build my-game.blueprint.json --target my-game
-```
-
-[`--dry-run`](#pokie-build-configjson) validates the edited blueprint and prints the same preview a real build
-would (game info, reels/rows, symbol/payline/bet counts, blueprint hash, expected files) without creating or
-touching `--target` — so a mistake in a hand-edit is caught immediately, with the same error messages a real build
-would print, before anything is generated.
-
-`--init-blueprint` only ever writes `<file>` itself: it doesn't launch the wizard, validate anything beyond what's
-needed to write the template, or call `GamePackageGenerator` — no package is generated, and nothing else on disk is
-touched. If `<file>` already exists, it's left untouched and the command exits with an error instead of silently
-overwriting it — remove or rename the existing file first, or pick a different `<file>`.
+To hand-edit a `GameBlueprint` before building it, use [`pokie create [name]`](#pokie-create-name) — it writes an
+editable Blueprint Project file (through an interactive wizard, or non-interactively via `--blank`/`--random`) that
+you can open in an editor, change, and then feed into `pokie build <file> --target <dir>` above, previewing with
+[`--dry-run`](#pokie-build-configjson) after each edit until it looks right.
 
 ### Random generation (`pokie build random`)
 
@@ -1267,9 +1224,9 @@ Next:
   pokie dev ./sample-slot
 ```
 
-`pokie init <name>` writes the same filled-in [starter template](#starter-template-pokie-build---init-blueprint-file)
-`pokie create`/`pokie build --init-blueprint` do (manifest overridden to `<name>`, same as `pokie create <name>`'s
-own name-derivation rules), then runs it through the exact same validate/generate pipeline
+`pokie init <name>` writes the same filled-in starter blueprint `pokie create <name>` does (manifest overridden to
+`<name>`, same as `pokie create <name>`'s own name-derivation rules), then runs it through the exact same
+validate/generate pipeline
 [`pokie build`](#pokie-build-configjson) does — `package.json`, `package-lock.json`, `tsconfig.json`, `README.md`,
 `src/index.ts`, `dist/index.js`, written to `./<name>` and immediately loadable, no `npm install`/`npm run build`
 step of its own — and then, unlike `pokie build`, verifies the freshly generated package actually loads (the same
@@ -1307,9 +1264,8 @@ package.
 typing a single answer — produces a complete, valid package: one that passes [`pokie
 validate`](#pokie-validate-packageroot) with no errors and simulates with [`pokie sim`](#pokie-sim-packageroot)
 straight away. Those defaults are not a second set of values maintained here: they are read off the same canonical
-starter blueprint [`pokie build --init-blueprint <file>`](#starter-template-pokie-build---init-blueprint-file) writes
-out, so an Enter-only run and an unedited `--init-blueprint` template describe the same game (5×3, symbols
-`A,K,Q,J`, their payouts and weights) apart from the generated id/name.
+starter blueprint `createStarterGameBlueprint()` builds internally, so an Enter-only run describes the same game
+(5×3, symbols `A,K,Q,J`, their payouts and weights) apart from the generated id/name.
 
 Typing an answer always overrides the default, so symbols, paytable entries and reel weighting can still be
 specified by hand exactly as before. Two questions additionally accept `-` to opt out of the default entirely
