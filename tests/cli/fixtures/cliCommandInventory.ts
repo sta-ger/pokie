@@ -18,8 +18,10 @@
 // positionals/options before any I/O, so a missing-positional or bad-flag-value case is always
 // reachable without touching the filesystem, binding a port, or spawning a subprocess (see this
 // repo's "never spawn a CLI command as a subprocess in tests" convention — tests/packaging/
-// npmPackSmoke.test.ts is the one sanctioned exception, for packaging itself, not per-command
-// behavior). "valid" cases replay a real accepted argv, but only ever against a command instance
+// npmPackSmoke.test.ts and tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts
+// are the two sanctioned exceptions, for packaging and running-installation-root discovery
+// respectively, neither for per-command behavior). "valid" cases replay a real accepted argv, but only
+// ever against a command instance
 // built with every I/O-touching dependency (filesystem, server, worker) swapped for a fast,
 // deterministic fake via that class's own constructor injection points (see
 // registerCommandsForValidCases() in cliCommandInventory.contract.test.ts) — never a real file, a

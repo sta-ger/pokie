@@ -7,12 +7,15 @@ import {ensureFixturesCanRequirePokie} from "../cli/fixtures/ensureFixturesCanRe
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
-// Only place in the suite where a CLI command is legitimately spawned as a real subprocess (see the
-// project's own "never spawn a CLI command as a subprocess" convention for Studio's in-process
+// One of two places in the suite where a CLI command is legitimately spawned as a real subprocess (see
+// the project's own "never spawn a CLI command as a subprocess" convention for Studio's in-process
 // features) — this test isn't exercising Studio internals, it's exercising *packaging*: whether the
 // tarball `npm publish` would actually ship contains everything the installed `pokie` binary needs to
 // run standalone, outside this repo's own dev tree (studioRoot resolution via import.meta.url, the
-// dual CJS/ESM dist layout, etc.).
+// dual CJS/ESM dist layout, etc.). The other is
+// tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts's own CLI command
+// coverage describe block, which spawns the built (not packed/installed) executable to prove
+// running-installation-root discovery against a spaced path, not packaging.
 function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs = 60000): Promise<number> {
     return new Promise((resolve, reject) => {
         let output = "";
