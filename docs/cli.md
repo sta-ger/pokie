@@ -1319,8 +1319,8 @@ also seed the derived `package.json` name) — independently of whatever the tar
 `package.json` would otherwise default to.
 
 **Safety guard:** a directory that already has files in it, and doesn't yet look like a package `pokie init`
-itself produced or is resuming (no `package.json`, or one with no `pokie` dependency yet), is left untouched unless
-`--yes` is given:
+itself produced or is resuming (no `package.json`, or one whose `pokie.entry` doesn't already match what a fresh
+merge would write there), is left untouched unless `--yes` is given:
 
 ```
 $ pokie init ./some-other-project
@@ -1333,10 +1333,12 @@ $ pokie init ./some-other-project --yes
 ```
 
 An empty or not-yet-existing directory never needs `--yes`, and neither does re-running `pokie init` again in a
-directory it already merged into (its own `package.json` already carries the `pokie` dependency that marks it as
+directory it already merged into (its own `package.json` already carries the `pokie.entry` field that marks it as
 such) — the natural way to **retry** after a failed `npm install`/`npm run build`: fix whatever failed and re-run
 the exact same `pokie init` invocation. Nothing from a prior attempt needs to be cleaned up first — every step
-above is safe to repeat.
+above is safe to repeat. Merely depending on `pokie` as a library isn't enough on its own — an existing npm project
+that uses `pokie` but was never merged by this command (no matching `pokie.entry`) still needs `--yes`, the same as
+any other non-empty directory.
 
 The result is loadable like any other [game package](game-packages.md):
 

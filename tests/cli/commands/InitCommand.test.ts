@@ -340,8 +340,21 @@ describe("defaultDirectoryNeedsConfirmation", () => {
         expect(defaultDirectoryNeedsConfirmation(dir)).toBe(true);
     });
 
-    it("is false once package.json already declares a pokie dependency (a prior/partial run of this same tool)", () => {
+    it("is true for an existing npm project that merely depends on pokie as a library, with no compatible pokie.entry", () => {
         fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({name: "my-game", dependencies: {pokie: "^1.3.0"}}));
+        expect(defaultDirectoryNeedsConfirmation(dir)).toBe(true);
+    });
+
+    it("is false once package.json already carries the pokie.entry this command's own merge writes (a prior/partial run of this same tool)", () => {
+        fs.writeFileSync(
+            path.join(dir, "package.json"),
+            JSON.stringify({
+                name: "my-game",
+                main: "./dist/index.js",
+                dependencies: {pokie: "^1.3.0"},
+                pokie: {entry: "./dist/index.js"},
+            }),
+        );
         expect(defaultDirectoryNeedsConfirmation(dir)).toBe(false);
     });
 });

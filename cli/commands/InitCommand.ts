@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
+import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GamePackagePreparationError, GamePackagePreparationPhase} from "../prepare/GamePackagePreparationError.js";
 import {PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
@@ -26,10 +26,10 @@ type ParsedInitArgs = {
 
 // True for a directory this command should refuse to touch without an explicit --yes: it already
 // exists, already has *something* in it, and that something isn't recognizable as this tool's own
-// earlier work (a package.json this command itself has already patched, identifiable by its "pokie"
-// dependency). An empty or not-yet-existing directory, and a directory this command already merged
-// into (a retry after a failed install/build, or simply running "pokie init" again), both return
-// false -- neither ever needs --yes.
+// earlier work (a package.json this command itself has already patched -- see isCompatiblePokiePackage).
+// An empty or not-yet-existing directory, and a directory this command already merged into (a retry
+// after a failed install/build, or simply running "pokie init" again), both return false -- neither
+// ever needs --yes.
 export function defaultDirectoryNeedsConfirmation(resolvedDir: string): boolean {
     if (!fs.existsSync(resolvedDir)) {
         return false;
@@ -44,10 +44,23 @@ export function defaultDirectoryNeedsConfirmation(resolvedDir: string): boolean 
     }
     try {
         const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as PackageJsonLike;
-        return !(pkg.dependencies && "pokie" in pkg.dependencies);
+        return !isCompatiblePokiePackage(pkg);
     } catch {
         return true;
     }
+}
+
+// Merely depending on "pokie" doesn't prove a package.json is this tool's own earlier work -- any npm
+// project that uses pokie as a library would match that. "pokie.entry" is different: GamePackageMerger
+// (buildPackageJsonPatch) always writes it, atomically alongside main/exports/scripts.build, to the
+// exact same fixed path every time it patches package.json, and no other tool has a reason to write
+// that specific field. So a package.json whose own "pokie.entry" already matches what a fresh merge
+// would write there is unambiguously a package this command already merged into (or one authored to be
+// resumable by it) -- safe to retry without --yes -- while one that merely lists "pokie" as a dependency
+// is not.
+function isCompatiblePokiePackage(pkg: PackageJsonLike): boolean {
+    const requiredEntry = buildPackageJsonPatch({}, "0.0.0").pokie?.entry;
+    return pkg.pokie?.entry !== undefined && pkg.pokie.entry === requiredEntry;
 }
 
 export class InitCommand implements CliCommandHandling {
