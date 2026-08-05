@@ -60,7 +60,7 @@ Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.bluep
 
 Build it as-is, or edit ./sample-slot.blueprint.json by hand first:
   pokie build ./sample-slot.blueprint.json --dry-run
-  pokie build ./sample-slot.blueprint.json --out <dir>
+  pokie build ./sample-slot.blueprint.json --target <dir>
 ```
 
 Declining that confirmation, cancelling (**Ctrl+C**), or closing the input stream (**EOF**) at any point — including
@@ -112,7 +112,7 @@ pokie create --random --out my-game.blueprint.json # write to a specific path in
 filename); omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
 validation error exits non-zero with a printed explanation instead of writing anything — but, unlike `pokie build
 random`, nothing is ever built or smoke-simulated: `pokie create --random` only ever writes the blueprint file. Feed
-the result into `pokie build <file> --out <dir>` for a real, playable package.
+the result into `pokie build <file> --target <dir>` for a real, playable package.
 
 ## `pokie build [config.json]`
 
@@ -147,8 +147,8 @@ npm install
 ```
 
 `pokie build <config.json>` validates the blueprint first (see below) and, if it has no errors, creates
-`./<manifest.id>` (or `--out <dir>`) — which must not already exist, or must be empty (see [Building into an
-existing `--out` directory](#building-into-an-existing---out-directory) below) — and writes:
+`./<manifest.id>` (or `--target <dir>`) — which must not already exist, or must be empty (see [Building into an
+existing `--target` directory](#building-into-an-existing---target-directory) below) — and writes:
 
 - `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
   omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
@@ -172,7 +172,7 @@ existing `--out` directory](#building-into-an-existing---out-directory) below) �
 The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
 build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,
 or is constrained by, whatever produced it originally; see
-[Building into an existing `--out` directory](#building-into-an-existing---out-directory) below.
+[Building into an existing `--target` directory](#building-into-an-existing---target-directory) below.
 
 After generation, `pokie build` prints a build summary to stdout: the files it wrote, package root,
 game id/name/version, blueprint hash, and source path (when known) — all computed purely for this printout, never
@@ -180,10 +180,10 @@ persisted into the package itself.
 
 Options:
 
-- `--out <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
+- `--target <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
 - `--dry-run` — validate the blueprint and print a preview (game id/name/version, reels x rows, symbol count,
   payline count, bets, blueprint hash, and the files a real build would generate) without creating or touching
-  the `--out` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
+  the `--target` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
   errors, `0` if it's valid (warnings included).
 
 ### Starter template (`pokie build --init-blueprint <file>`)
@@ -200,13 +200,13 @@ Created starter blueprint "my-game.blueprint.json".
 
 Edit it by hand, then run:
   pokie build my-game.blueprint.json --dry-run
-  pokie build my-game.blueprint.json --out <dir>
+  pokie build my-game.blueprint.json --target <dir>
 ```
 
 Writes a small-but-complete, formatted `GameBlueprint` JSON file to `<file>` — game id/name/version, reels/rows,
 symbols, available bets, paylines, a paytable, and symbol weights, all filled with valid example values (not the
 minimum required to pass validation) so there's something concrete to edit for every field. It passes
-[`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --out
+[`GameBlueprintValidator`](#validation) with zero errors or warnings as written, and `pokie build <file> --target
 <dir>` works on it completely unedited — but the point is to open it in an editor, change the numbers/symbols/ids
 to your own game, and build that.
 
@@ -220,12 +220,12 @@ The full starter-template workflow — scaffold, hand-edit, validate-only previe
 pokie build --init-blueprint my-game.blueprint.json
 # ...edit my-game.blueprint.json by hand...
 pokie build my-game.blueprint.json --dry-run    # re-run after every edit until it looks right
-pokie build my-game.blueprint.json --out my-game
+pokie build my-game.blueprint.json --target my-game
 ```
 
 [`--dry-run`](#pokie-build-configjson) validates the edited blueprint and prints the same preview a real build
 would (game info, reels/rows, symbol/payline/bet counts, blueprint hash, expected files) without creating or
-touching `--out` — so a mistake in a hand-edit is caught immediately, with the same error messages a real build
+touching `--target` — so a mistake in a hand-edit is caught immediately, with the same error messages a real build
 would print, before anything is generated.
 
 `--init-blueprint` only ever writes `<file>` itself: it doesn't launch the wizard, validate anything beyond what's
@@ -273,7 +273,7 @@ Both take an optional integer `seed`: the same seed (and, for the blueprint, the
 the exact same name/blueprint. No file is ever written for the blueprint itself; it goes straight into the same
 validate → generate pipeline `pokie build <config.json>` uses.
 
-Options (`--out`/`--dry-run` behave exactly as for a config-driven build):
+Options (`--target`/`--dry-run` behave exactly as for a config-driven build):
 
 - `--seed <integer>` — reproduce a specific earlier random game. Omit it to mint a fresh one — the seed actually
   used is always echoed back on the first line, together with the exact command to reproduce it.
@@ -289,7 +289,7 @@ Options (`--out`/`--dry-run` behave exactly as for a config-driven build):
     `GameBlueprintValidator` warns on that combination).
   Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
   produces a different game, since it selects an entirely different strategy.
-- `--out <dir>` — same as [`pokie build <config.json> --out <dir>`](#pokie-build-configjson): write to `<dir>`
+- `--target <dir>` — same as [`pokie build <config.json> --target <dir>`](#pokie-build-configjson): write to `<dir>`
   instead of `./<manifest.id>`.
 - `--dry-run` — validate and preview only; skips both the real build and the smoke simulation below.
 
@@ -581,28 +581,28 @@ Failure modes:
 
 - A missing `<config.json>` (`pokie build` with no arguments at all — for a ready-to-run package instead, see
   [`pokie init`](#pokie-init-name)) or an unknown option throws a `Usage: pokie build <config.json>
-  [--out <dir>]` error (plus the same doc pointer as above).
+  [--target <dir>]` error (plus the same doc pointer as above).
 - A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
   anything.
-- The output directory (`./<manifest.id>` or `--out <dir>`) already existing as a *file* (not a directory)
-  throws — pick a different `--out` or remove it first.
+- The output directory (`./<manifest.id>` or `--target <dir>`) already existing as a *file* (not a directory)
+  throws — pick a different `--target` or remove it first.
 - The output directory already existing and having any content in it at all — even just your own unrelated
   `package.json`, or a directory a previous `pokie build` run itself produced — throws, naming the directory.
   See the next section.
 
-### Building into an existing `--out` directory
+### Building into an existing `--target` directory
 
 `pokie build` only ever writes into a missing or empty directory — there is no in-place merge/rebuild, and no
 recognition of "this directory is safe to overwrite because a prior `pokie build` produced it": a built package
 carries no metadata of its own for a later build to recognize itself by (see above). Building again — after
 editing the blueprint, or just to pick up a newer `pokie` version — means removing the destination (or its
-contents) first, or pointing `--out` at a different, empty directory.
+contents) first, or pointing `--target` at a different, empty directory.
 
 Building the *same* blueprint with the same `pokie` version, into two different empty directories, reproduces
 every generated file byte-for-byte — every build is a pure function of the blueprint, never dependent on
 whatever (if anything) previously occupied the destination. Want to check this without writing anything at all?
 `pokie build <config.json> --dry-run` validates and prints the same blueprint hash a real build would produce,
-with no `--out` directory created or touched.
+with no `--target` directory created or touched.
 
 ### Workflow: `build` -> `inspect` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 

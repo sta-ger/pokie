@@ -304,7 +304,7 @@ export class CreateCommand implements CliCommandHandling {
         console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
         console.log(`\nBuild it as-is, or edit ${filePath} by hand first:`);
         console.log(`  pokie build ${filePath} --dry-run`);
-        console.log(`  pokie build ${filePath} --out <dir>`);
+        console.log(`  pokie build ${filePath} --target <dir>`);
     }
 
     // --random: a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly,

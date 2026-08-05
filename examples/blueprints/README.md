@@ -26,7 +26,7 @@ the whole shape shown below.
 Try it from the repository root:
 
 ```
-npx pokie build examples/blueprints/sample-slot.blueprint.json --out /tmp/sample-slot
+npx pokie build examples/blueprints/sample-slot.blueprint.json --target /tmp/sample-slot
 cd /tmp/sample-slot && npm install
 npx pokie inspect .
 npx pokie validate .
@@ -36,7 +36,7 @@ Or the `reelStripGeneration` example — its `src/generated/build-info.json` add
 *generated* reel, that reel's own original config (including its seed) and the resulting exact strip:
 
 ```
-npx pokie build examples/blueprints/generated-reels.blueprint.json --out /tmp/generated-reels
+npx pokie build examples/blueprints/generated-reels.blueprint.json --target /tmp/generated-reels
 cat /tmp/generated-reels/src/generated/build-info.json
 ```
 

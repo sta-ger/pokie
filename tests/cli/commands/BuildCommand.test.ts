@@ -152,7 +152,7 @@ describe("BuildCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain('Created starter blueprint "my-blueprint.json"');
             expect(printed).toContain("pokie build my-blueprint.json --dry-run");
-            expect(printed).toContain("pokie build my-blueprint.json --out <dir>");
+            expect(printed).toContain("pokie build my-blueprint.json --target <dir>");
         });
 
         it("throws a clear error instead of silently overwriting an existing file", async () => {
@@ -178,10 +178,10 @@ describe("BuildCommand", () => {
         });
     });
 
-    it("throws a descriptive error when --out is given no value", async () => {
+    it("throws a descriptive error when --target is given no value", async () => {
         const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
 
-        await expect(command.run(["config.json", "--out"])).rejects.toThrow(/--out requires a directory path/);
+        await expect(command.run(["config.json", "--target"])).rejects.toThrow(/--target requires a directory path/);
     });
 
     it("loads the blueprint from the given config path and validates it", async () => {
@@ -219,11 +219,11 @@ describe("BuildCommand", () => {
         expect(generator.calledWith).toBeDefined();
     });
 
-    it("generates the package using the cwd and forwards --out", async () => {
+    it("generates the package using the cwd and forwards --target", async () => {
         const generator = createStubGenerator(generatedResult);
         const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), generator);
 
-        await command.run(["config.json", "--out", "somewhere"]);
+        await command.run(["config.json", "--target", "somewhere"]);
 
         expect(generator.calledWith).toEqual({
             blueprint: rawBlueprint,
@@ -588,10 +588,10 @@ describe("BuildCommand", () => {
             await expect(command.run(["random", "--seed", "abc"])).rejects.toThrow(/--seed requires an integer value/);
         });
 
-        it("forwards --out to the package generator", async () => {
+        it("forwards --target to the package generator", async () => {
             const {command, generator} = createCommand();
 
-            await command.run(["random", "--out", "somewhere"]);
+            await command.run(["random", "--target", "somewhere"]);
 
             expect(generator.calledWith).toMatchObject({outDir: "somewhere"});
         });

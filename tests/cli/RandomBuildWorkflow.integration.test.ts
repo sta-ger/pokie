@@ -38,7 +38,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
     it('"pokie build random --seed <n>" builds a real package that validates and plays, deterministically for the same seed', async () => {
         const outDir = path.join(workDir, "built-game-1");
-        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "20260721", "--out", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "20260721", "--target", outDir]);
 
         expect(exitCode).toBe(0);
         expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
@@ -63,11 +63,11 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         const outDirB = path.join(workDir, "built-variant-b");
         const logSpy = console.log as jest.Mock;
 
-        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--out", outDirA]);
+        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--target", outDirA]);
         expect(exitCode).toBe(0);
         const printedA = logSpy.mock.calls.map((call) => call[0]).join("\n");
         logSpy.mockClear();
-        await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--out", outDirB]);
+        await new BuildCommand("1.3.0").run(["random", "--seed", "99", "--preset", "variant", "--target", outDirB]);
         const printedB = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
         const validateExitCode = await new ValidateCommand().run([outDirA]);
@@ -85,10 +85,10 @@ describe("CLI workflow (integration): first-class random game generation", () =>
         const outDirB = path.join(workDir, "built-game-b");
         const logSpy = console.log as jest.Mock;
 
-        await new BuildCommand("1.3.0").run(["random", "--seed", "777", "--out", outDirA]);
+        await new BuildCommand("1.3.0").run(["random", "--seed", "777", "--target", outDirA]);
         const printedA = logSpy.mock.calls.map((call) => call[0]).join("\n");
         logSpy.mockClear();
-        await new BuildCommand("1.3.0").run(["random", "--seed", "777", "--out", outDirB]);
+        await new BuildCommand("1.3.0").run(["random", "--seed", "777", "--target", outDirB]);
         const printedB = logSpy.mock.calls.map((call) => call[0]).join("\n");
 
         expect(extractBlueprintHash(printedA)).toBe(extractBlueprintHash(printedB));
@@ -102,7 +102,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
     it('"pokie build --random" (the flag form) behaves identically to "pokie build random"', async () => {
         const outDir = path.join(workDir, "built-game-flag-form");
-        const exitCode = await new BuildCommand("1.3.0").run(["--random", "--seed", "42", "--out", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run(["--random", "--seed", "42", "--target", outDir]);
 
         expect(exitCode).toBe(0);
         const validateExitCode = await new ValidateCommand().run([outDir]);
@@ -111,7 +111,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
 
     it('"pokie build random --dry-run" validates and previews without writing anything', async () => {
         const outDir = path.join(workDir, "not-built");
-        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "1", "--dry-run", "--out", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run(["random", "--seed", "1", "--dry-run", "--target", outDir]);
 
         expect(exitCode).toBe(0);
         expect(fs.existsSync(outDir)).toBe(false);
@@ -146,7 +146,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             expect(printed).toContain('pokie init');
 
             const projectRoot = path.join(workDir, "my-random-game");
-            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", projectRoot]);
+            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", projectRoot]);
             expect(buildExitCode).toBe(0);
             expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
@@ -175,7 +175,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
             expect(printed).toMatch(/Provenance: generator [\d.]+, strategy "random-variant"\./);
 
             const projectRoot = path.join(workDir, "my-variant-game");
-            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", projectRoot]);
+            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", projectRoot]);
             expect(buildExitCode).toBe(0);
 
             const validateExitCode = await new ValidateCommand().run([projectRoot]);

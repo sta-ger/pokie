@@ -36,7 +36,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
     });
 
     it("builds, validates, simulates, reports, replays, serves, and dev-serves the generated package", async () => {
-        const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
+        const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
         expect(buildExitCode).toBe(0);
         // The complete canonical package file set -- same as pokie create/pokie init's own
         // create -> install -> build -> verify lifecycle produces (see BUILT_PACKAGE_FILES).
@@ -145,17 +145,17 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         }
     });
 
-    it("refuses to rebuild into the same --out once it's already populated -- there is no rebuild/merge recognition", async () => {
-        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
+    it("refuses to rebuild into the same --target once it's already populated -- there is no rebuild/merge recognition", async () => {
+        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
         expect(first).toBe(0);
 
-        await expect(new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir])).rejects.toThrow(/already exists and is not empty/);
+        await expect(new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir])).rejects.toThrow(/already exists and is not empty/);
     });
 
-    it("--dry-run validates and previews the real example blueprint without creating --out at all", async () => {
+    it("--dry-run validates and previews the real example blueprint without creating --target at all", async () => {
         const logSpy = console.log as jest.Mock;
 
-        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir, "--dry-run"]);
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir, "--dry-run"]);
 
         expect(exitCode).toBe(0);
         expect(fs.existsSync(outDir)).toBe(false);

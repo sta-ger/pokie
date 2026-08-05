@@ -64,7 +64,7 @@ describe("Stake Engine Export: package -> generate library -> registry discovery
         const blueprintPath = path.join(workDir, `${dirName}.blueprint.json`);
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
         const outDir = path.join(workDir, dirName);
-        const exitCode = await new BuildCommand(POKIE_VERSION).run([blueprintPath, "--out", outDir]);
+        const exitCode = await new BuildCommand(POKIE_VERSION).run([blueprintPath, "--target", outDir]);
         expect(exitCode).toBe(0);
         return outDir;
     }

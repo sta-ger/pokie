@@ -109,7 +109,7 @@ describe("InspectCommand (integration, real GamePackageInspector)", () => {
         const outDir = path.join(workDir, "built-game");
         const blueprintPath = path.join(__dirname, "..", "..", "..", "examples", "blueprints", "sample-slot.blueprint.json");
         try {
-            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--out", outDir]);
+            const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
             expect(buildExitCode).toBe(0);
             logSpy.mockClear();
 

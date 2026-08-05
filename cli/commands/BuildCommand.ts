@@ -34,11 +34,11 @@ type RandomBuildOptions = {
     preset: RandomPreset;
 };
 
-const USAGE = "Usage: pokie build <config.json> [--out <dir>] [--dry-run]";
+const USAGE = "Usage: pokie build <config.json> [--target <dir>] [--dry-run]";
 const BLUEPRINT_HINT =
     "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.";
 const INIT_BLUEPRINT_USAGE = "Usage: pokie build --init-blueprint <file>";
-const RANDOM_USAGE = "Usage: pokie build random [--seed <integer>] [--out <dir>] [--dry-run] [--preset default|variant]";
+const RANDOM_USAGE = "Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]";
 const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
 
 export class BuildCommand implements CliCommandHandling {
@@ -127,7 +127,7 @@ export class BuildCommand implements CliCommandHandling {
     }
 
     // Writes a small-but-complete, hand-editable GameBlueprint JSON template to `<file>` — no wizard
-    // prompts, no GamePackageGenerator call, nothing else touched. Point "pokie build <file> --out
+    // prompts, no GamePackageGenerator call, nothing else touched. Point "pokie build <file> --target
     // <dir>" at the edited result once it looks right; see createStarterGameBlueprint.ts for what the
     // template contains and why it's guaranteed to pass GameBlueprintValidator as-is.
     private runInitBlueprint(rest: string[]): number {
@@ -149,7 +149,7 @@ export class BuildCommand implements CliCommandHandling {
                 console.log(`Created starter blueprint "${file}".`);
                 console.log(`\nEdit it by hand, then run:`);
                 console.log(`  pokie build ${file} --dry-run`);
-                console.log(`  pokie build ${file} --out <dir>`);
+                console.log(`  pokie build ${file} --target <dir>`);
                 exitCode = 0;
             });
 
@@ -169,9 +169,9 @@ export class BuildCommand implements CliCommandHandling {
         const command = createCommanderCliCommand("build")
             .argument("<configPath>")
             .argument("[excess...]")
-            .option("--out <dir>")
+            .option("--target <dir>")
             .option("--dry-run")
-            .action(async (configPath: string, excess: string[], options: {out?: string; dryRun?: boolean}) => {
+            .action(async (configPath: string, excess: string[], options: {target?: string; dryRun?: boolean}) => {
                 // An empty-string positional ("pokie build ''") is present as far as Commander's own
                 // required-argument check is concerned, but the pre-Commander behavior this preserves
                 // treated it the same as an entirely missing one (`!configPath`) -- a truly empty argv
@@ -194,7 +194,7 @@ export class BuildCommand implements CliCommandHandling {
                     }
                 }
                 const blueprint = this.loadBlueprint(configPath);
-                exitCode = await this.buildFromBlueprint(blueprint, options.out, configPath, options.dryRun ?? false);
+                exitCode = await this.buildFromBlueprint(blueprint, options.target, configPath, options.dryRun ?? false);
             });
 
         return command
@@ -204,7 +204,8 @@ export class BuildCommand implements CliCommandHandling {
                 throw translateCommanderError(error, {
                     missingArgument: `${USAGE}\n${BLUEPRINT_HINT}`,
                     unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
-                    optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`),
+                    optionMissingArgument: (flag) =>
+                        flag === "--target" ? `--target requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`,
                 });
             });
     }
@@ -227,7 +228,7 @@ export class BuildCommand implements CliCommandHandling {
                 }
                 return Number(value);
             })
-            .option("--out <dir>")
+            .option("--target <dir>")
             .option("--dry-run")
             .option(
                 "--preset <preset>",
@@ -240,11 +241,11 @@ export class BuildCommand implements CliCommandHandling {
                 },
                 "default" as RandomPreset,
             )
-            .action(async (excess: string[], options: {seed?: number; out?: string; dryRun?: boolean; preset: RandomPreset}) => {
+            .action(async (excess: string[], options: {seed?: number; target?: string; dryRun?: boolean; preset: RandomPreset}) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${RANDOM_USAGE}`);
                 }
-                exitCode = await this.executeRandom({seed: options.seed, outDir: options.out, dryRun: options.dryRun ?? false, preset: options.preset});
+                exitCode = await this.executeRandom({seed: options.seed, outDir: options.target, dryRun: options.dryRun ?? false, preset: options.preset});
             });
 
         return command
@@ -255,7 +256,7 @@ export class BuildCommand implements CliCommandHandling {
                     unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
                     optionMissingArgument: (flag) => {
                         if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
-                        if (flag === "--out") return `--out requires a directory path. ${RANDOM_USAGE}`;
+                        if (flag === "--target") return `--target requires a directory path. ${RANDOM_USAGE}`;
                         if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
                         return `Unknown option "${flag}". ${RANDOM_USAGE}`;
                     },
@@ -376,7 +377,7 @@ export class BuildCommand implements CliCommandHandling {
 
     // Previews what "pokie build" would generate without touching the filesystem: same validation,
     // same blueprintHash computation (buildGameBuildInfo is a pure function — no file I/O), just no
-    // GamePackageGenerator.generate() call, so there's no --out directory to reason about at all.
+    // GamePackageGenerator.generate() call, so there's no --target directory to reason about at all.
     private printDryRunSummary(blueprint: GameBlueprint, sourcePath: string | undefined): void {
         const buildInfo = buildGameBuildInfo(blueprint, this.pokieVersion, sourcePath);
         const paylines = blueprint.paylines ? String(blueprint.paylines.length) : "default (one horizontal line per row)";

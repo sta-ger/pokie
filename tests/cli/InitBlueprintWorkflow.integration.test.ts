@@ -6,7 +6,7 @@ import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 // End-to-end happy path for "pokie build --init-blueprint <file>": a real BuildCommand (no stubbed
 // fs/validator/generator) writes the starter template to disk, and the file it wrote is then fed
-// straight into "pokie build <file> --out <dir>" unedited — proving the template isn't just valid
+// straight into "pokie build <file> --target <dir>" unedited — proving the template isn't just valid
 // in isolation (see createStarterGameBlueprint.test.ts) but actually round-trips through the same
 // GameBlueprintValidator/GamePackageGenerator a hand-edited copy would.
 describe("CLI workflow (integration): pokie build --init-blueprint", () => {
@@ -40,10 +40,10 @@ describe("CLI workflow (integration): pokie build --init-blueprint", () => {
 
         const initPrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(initPrinted).toContain(`pokie build ${blueprintFile} --dry-run`);
-        expect(initPrinted).toContain(`pokie build ${blueprintFile} --out <dir>`);
+        expect(initPrinted).toContain(`pokie build ${blueprintFile} --target <dir>`);
         logSpy.mockClear();
 
-        const dryRunExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--out", outDir, "--dry-run"]);
+        const dryRunExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--target", outDir, "--dry-run"]);
         expect(dryRunExitCode).toBe(0);
         expect(fs.existsSync(outDir)).toBe(false);
 
@@ -52,7 +52,7 @@ describe("CLI workflow (integration): pokie build --init-blueprint", () => {
         expect(dryRunPrinted).toContain('game             Starter Slot (id: "starter-slot", v0.1.0)');
         logSpy.mockClear();
 
-        const buildExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--out", outDir]);
+        const buildExitCode = await new BuildCommand("1.3.0").run([blueprintFile, "--target", outDir]);
         expect(buildExitCode).toBe(0);
         expect(fs.existsSync(path.join(outDir, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
