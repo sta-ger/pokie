@@ -18,5 +18,13 @@ export interface SpinCommandHandling {
     // caller-declared precondition ("I expect the session to still be at version N"), distinct from
     // the handler's own storage-level optimistic-locking save (which always uses the version it just
     // loaded, regardless of what a caller expected). Ignored when the repository isn't versioned.
-    handle(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult>;
+    //
+    // `bet` is optional and additive: when given, it's applied via session.setBet() before
+    // canPlayNextGame()/play() run, so this spin (and every subsequent one, until changed again) is
+    // staked at that amount instead of whatever the session's own current bet already was. Rejected
+    // as "blocked" (not silently clamped or ignored) when it isn't one of session.getAvailableBets()
+    // — a caller offering a bet a session doesn't actually support should see that, not have it
+    // silently substituted. Ignored on a cache-hit requestId replay, same as every other input: a
+    // retried command reproduces its own original result, it never re-derives one from new inputs.
+    handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number): Promise<SpinCommandResult>;
 }

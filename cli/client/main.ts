@@ -137,7 +137,13 @@ function deriveStaticVideoSlotView(response: SessionResponse): StaticVideoSlotVi
     };
 }
 
-function renderVideoSlotRound(elements: Elements, response: VideoSlotRoundResponse & {reelsSymbols: string[][]}, staticView: StaticVideoSlotView): void {
+function renderVideoSlotRound(
+    elements: Elements,
+    response: VideoSlotRoundResponse & {reelsSymbols: string[][]},
+    staticView: StaticVideoSlotView,
+    selectedBet: number | undefined,
+    onSelectBet: (bet: number) => void,
+): void {
     renderReelsGrid(elements.playerGridContainer, response.reelsSymbols);
 
     const highlights = deriveWinHighlights(response);
@@ -146,7 +152,7 @@ function renderVideoSlotRound(elements: Elements, response: VideoSlotRoundRespon
     renderWinHighlightsList(elements.playerWinsList, elements.playerGridContainer, highlights);
 
     renderFeatureCounters(elements.playerFeatures, deriveFeatureCounters(response));
-    renderBetInfo(elements.playerBetInfo, staticView.availableBets, typeof response.bet === "number" ? response.bet : undefined);
+    renderBetInfo(elements.playerBetInfo, staticView.availableBets, selectedBet, onSelectBet);
     renderLineDefinitionsList(elements.playerLinesList, elements.playerGridContainer, staticView.lines);
     renderPaytable(elements.playerPaytableHead, elements.playerPaytableBody, staticView.paytable);
 }
@@ -157,6 +163,8 @@ function render(
     staticView: StaticVideoSlotView,
     stageIndex: number,
     onStageChange: (index: number) => void,
+    selectedBet: number | undefined,
+    onSelectBet: (bet: number) => void,
 ): void {
     elements.gameTitle.textContent = `${response.game.name} — POKIE client preview`;
     renderRoundView(elements, extractKnownRoundView(response));
@@ -165,7 +173,7 @@ function render(
     elements.playerSection.hidden = !isVideoSlot;
     elements.screen.hidden = isVideoSlot;
     if (isVideoSlot) {
-        renderVideoSlotRound(elements, response, staticView);
+        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet);
     }
 
     renderRawJson(elements.rawJson, response);
@@ -232,12 +240,24 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
         let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl);
         let stageIndex = 0;
         const staticView = deriveStaticVideoSlotView(current);
+        let selectedBet = typeof current.bet === "number" ? current.bet : staticView.availableBets[0];
 
         const rerender = (): void => {
-            render(elements, current, staticView, stageIndex, (nextIndex) => {
-                stageIndex = nextIndex;
-                rerender();
-            });
+            render(
+                elements,
+                current,
+                staticView,
+                stageIndex,
+                (nextIndex) => {
+                    stageIndex = nextIndex;
+                    rerender();
+                },
+                selectedBet,
+                (bet) => {
+                    selectedBet = bet;
+                    rerender();
+                },
+            );
         };
 
         renderStatus(elements.status, `Connected to ${apiBaseUrl}`);
@@ -246,10 +266,11 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
 
         const attemptSpin = (): void => {
             elements.spinButton.disabled = true;
-            spin(fetchImpl, apiBaseUrl, current.sessionId)
+            spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet)
                 .then((response) => {
                     current = response;
                     stageIndex = 0;
+                    selectedBet = typeof current.bet === "number" ? current.bet : selectedBet;
                     elements.spinError.hidden = true;
                     rerender();
                 })

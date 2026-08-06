@@ -266,8 +266,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return this.reconciliationService;
     }
 
-    public handle(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult> {
-        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion));
+    public handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number): Promise<SpinCommandResult> {
+        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet));
     }
 
     // Chains `work` onto whatever is already queued for `sessionId`, so it only starts once every
@@ -287,7 +287,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return result;
     }
 
-    private async handleSerialized(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult> {
+    private async handleSerialized(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number): Promise<SpinCommandResult> {
         if (requestId !== undefined) {
             const cached = await this.idempotencyRepository.load(sessionId, requestId);
             if (cached !== undefined) {
@@ -319,6 +319,17 @@ export class SpinCommandHandler implements SpinCommandHandling {
         }
 
         const session = this.resolveSession(sessionId, state);
+
+        if (bet !== undefined && !session.getAvailableBets().includes(bet)) {
+            return {
+                status: "blocked",
+                sessionId,
+                reason: `Session "${sessionId}" does not support bet ${bet} (available bets: ${session.getAvailableBets().join(", ")}).`,
+            };
+        }
+        if (bet !== undefined) {
+            session.setBet(bet);
+        }
 
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);
         session.setCreditsAmount(balanceBeforePlay);

@@ -4,13 +4,19 @@
     "description": "A server-side video slot game logic framework for JavaScript and TypeScript.",
     "type": "module",
     "exports": {
-        "import": {
-            "types": "./dist/esm/index.d.ts",
-            "default": "./dist/esm/index.js"
+        ".": {
+            "import": {
+                "types": "./dist/esm/index.d.ts",
+                "default": "./dist/esm/index.js"
+            },
+            "require": {
+                "types": "./dist/cjs/index.d.ts",
+                "default": "./dist/cjs/index.js"
+            }
         },
-        "require": {
-            "types": "./dist/cjs/index.d.ts",
-            "default": "./dist/cjs/index.js"
+        "./client/player": {
+            "types": "./dist/cli/client/player/index.d.ts",
+            "default": "./dist/cli/client/player/index.js"
         }
     },
     "main": "./dist/cjs/index.js",

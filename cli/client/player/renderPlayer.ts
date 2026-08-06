@@ -220,11 +220,14 @@ export function renderPaytable(headEl: HTMLElement, bodyEl: HTMLElement, paytabl
     });
 }
 
-// Bet selection is display-only for now: the reference dev server (see src/server/PokieDevServer.ts)
-// doesn't accept a per-spin bet override yet, so every available bet is listed but only the round's own
-// current bet is ever actually active. Kept generic/name-agnostic rather than omitted, so a future
-// server-side bet-selection endpoint only needs to wire an onSelect handler here, not build this list.
-export function renderBetInfo(el: HTMLElement, availableBets: number[], currentBet: number | undefined): void {
+// Interactive whenever the runtime actually exposes more than one bet to choose from (see
+// deriveAvailableBets/GameSessionHandling.getAvailableBets() -- every video-slot session always
+// reports its own real availableBets, never an invented list) -- clicking a bet other than the
+// round's own current one calls onSelectBet(bet), which the caller wires to spin()'s own optional
+// bet parameter (see cli/client/apiClient.ts and src/server/spin/SpinCommandHandling.ts) so the next
+// spin actually runs staked at that amount, not just displays it. A single available bet renders as
+// plain text -- nothing to choose between, so no button.
+export function renderBetInfo(el: HTMLElement, availableBets: number[], currentBet: number | undefined, onSelectBet: (bet: number) => void): void {
     clearChildren(el);
     if (currentBet !== undefined) {
         const current = document.createElement("span");
@@ -232,12 +235,22 @@ export function renderBetInfo(el: HTMLElement, availableBets: number[], currentB
         current.textContent = `Bet: ${currentBet}`;
         el.appendChild(current);
     }
-    if (availableBets.length > 1) {
-        const options = document.createElement("span");
-        options.className = "player-bet-options";
-        options.textContent = `Available bets: ${availableBets.join(", ")}`;
-        el.appendChild(options);
+    if (availableBets.length <= 1) {
+        return;
     }
+
+    const options = document.createElement("span");
+    options.className = "player-bet-options";
+    availableBets.forEach((bet) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "player-bet-option" + (bet === currentBet ? " player-bet-option-selected" : "");
+        button.textContent = String(bet);
+        button.disabled = bet === currentBet;
+        button.addEventListener("click", () => onSelectBet(bet));
+        options.appendChild(button);
+    });
+    el.appendChild(options);
 }
 
 // A short, readable message plus the raw technical detail (an Error's message/stack, or a response

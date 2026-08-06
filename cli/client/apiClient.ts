@@ -42,8 +42,16 @@ export async function spin(
     apiBaseUrl: string,
     sessionId: string,
     requestId?: string,
+    bet?: number,
 ): Promise<SessionResponse> {
-    const body = requestId === undefined ? undefined : JSON.stringify({requestId});
+    const payload: {requestId?: string; bet?: number} = {};
+    if (requestId !== undefined) {
+        payload.requestId = requestId;
+    }
+    if (bet !== undefined) {
+        payload.bet = bet;
+    }
+    const body = Object.keys(payload).length === 0 ? undefined : JSON.stringify(payload);
     const response = await fetchImpl(`${apiBaseUrl}/sessions/${encodeURIComponent(sessionId)}/spin`, {
         method: "POST",
         headers: body === undefined ? undefined : {"Content-Type": "application/json"},

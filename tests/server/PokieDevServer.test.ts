@@ -59,6 +59,41 @@ function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?:
     };
 }
 
+// Same shape as createFakeSession, but with a real (non-no-op) setBet() and more than one
+// availableBets entry — what the spin-bet-selection tests below need to prove a caller-supplied
+// bet actually reaches session.setBet() over HTTP, not just a display-only echo.
+function createFakeSessionWithSelectableBet(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
+    let credits = 1000;
+    let bet = 5;
+    let round = 0;
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: (value: number) => {
+            bet = value;
+        },
+        getAvailableBets: () => [5, 10, 20],
+        canPlayNextGame: () => credits >= bet,
+        play: () => {
+            round++;
+            credits -= bet;
+        },
+        getWinAmount: () => 0,
+        getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
+    };
+}
+
+function createFakeGameWithSelectableBet(manifest: PokieGameManifest): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createFakeSessionWithSelectableBet(),
+    };
+}
+
 // A custom serializer whose getRoundData() includes a field ("lastSymbolsCombination") that
 // getInitialData() never does — proof that PokieDevServer keeps initial/round payloads genuinely
 // separate rather than always exposing the union of both, except where GET /sessions/:id
@@ -304,6 +339,64 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
 
         expect(status).toBe(400);
         expect(typeof body.error).toBe("string");
+    });
+
+    it("returns 400 when the spin request body's bet is not a number", async () => {
+        const created = await postJson(`${baseUrl}/sessions`);
+        const sessionId = created.body.sessionId as string;
+
+        const {status, body} = await postJson(`${baseUrl}/sessions/${sessionId}/spin`, {bet: "5"});
+
+        expect(status).toBe(400);
+        expect(typeof body.error).toBe("string");
+    });
+
+    it("applies an explicit bet from the spin request body via session.setBet(), when it's one of the session's own availableBets", async () => {
+        const multiBetGame = createFakeGameWithSelectableBet(manifest);
+        const multiBetServer = new PokieDevServer(multiBetGame, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new InMemorySessionRepository(),
+        });
+        const multiBetAddress = await multiBetServer.start();
+        try {
+            const multiBetBaseUrl = `http://127.0.0.1:${multiBetAddress.port}`;
+            const created = await postJson(`${multiBetBaseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+            expect(created.body.bet).toBe(5);
+
+            const spun = await postJson(`${multiBetBaseUrl}/sessions/${sessionId}/spin`, {bet: 20});
+
+            expect(spun.status).toBe(200);
+            expect(spun.body.bet).toBe(20);
+        } finally {
+            await multiBetServer.stop();
+        }
+    });
+
+    it("returns 400 (blocked) for a bet that isn't one of the session's own availableBets, leaving session state unchanged", async () => {
+        const multiBetGame = createFakeGameWithSelectableBet(manifest);
+        const multiBetServer = new PokieDevServer(multiBetGame, {
+            host: "127.0.0.1",
+            port: 0,
+            sessionRepository: new InMemorySessionRepository(),
+        });
+        const multiBetAddress = await multiBetServer.start();
+        try {
+            const multiBetBaseUrl = `http://127.0.0.1:${multiBetAddress.port}`;
+            const created = await postJson(`${multiBetBaseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${multiBetBaseUrl}/sessions/${sessionId}/spin`, {bet: 7});
+
+            expect(spun.status).toBe(400);
+            expect(spun.body.error).toContain("7");
+
+            const restored = await getJson(`${multiBetBaseUrl}/sessions/${sessionId}`);
+            expect(restored.body.bet).toBe(5);
+        } finally {
+            await multiBetServer.stop();
+        }
     });
 
     it("returns 404 for an unknown sessionId", async () => {

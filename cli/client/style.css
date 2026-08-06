@@ -117,6 +117,21 @@ pre {
     flex-wrap: wrap;
 }
 
+.player-bet-options {
+    display: inline-flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.player-bet-option {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.6rem;
+}
+
+.player-bet-option-selected {
+    font-weight: bold;
+}
+
 .player-highlight-item {
     display: inline-block;
     padding-right: 1rem;
