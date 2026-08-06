@@ -176,6 +176,11 @@ export default {
                 "/node_modules/",
                 "\\.test\\.tsx$",
                 "/tests/packaging/npmPackSmoke\\.test\\.ts$",
+                // Frozen file snapshots embedded as phase 4 audit evidence, not this project's own
+                // test suite -- they mirror pokie-examples' own tests/ui.test.ts (already exercised
+                // for real by the "pokie-examples" project above) and don't resolve against this
+                // project's dist-facing moduleNameMapper.
+                "/docs/phase4-evidence/",
                 ...integrationTestPathIgnorePatterns,
             ],
         },

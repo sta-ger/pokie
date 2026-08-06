@@ -997,10 +997,8 @@ describe("SpinCommandHandler", () => {
         });
 
         it("surfaces setBetMode()'s own rejection (e.g. a forcing mode while a zero-stake round is active) as blocked rather than throwing", async () => {
-            const game = createFakeGameWithSelectableBetMode();
             const sessionRepository = new InMemorySessionRepository();
             const wallet = new RecordingTransactionalWallet();
-            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
             await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
             // The fake's own getAvailableBetModeIds() doesn't list "buyFeature", so the pre-check
             // above would already block it before ever reaching setBetMode() — widen it here to
