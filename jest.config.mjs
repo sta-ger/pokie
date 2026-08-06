@@ -107,6 +107,23 @@ const sourceTestModuleNameMapper = {
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };
 
+// pokie-examples is a separate sibling checkout (see this repo's own package.json "./client/player"
+// export and pokie-examples' own vite.config.js alias, which this mirrors for tests) -- its own
+// tests live outside this config's rootDir entirely, so this project needs its own `roots` to have
+// Jest discover them at all. "pokie"/"pokie/client/player" resolve the same way pokie-examples'
+// own vite.config.js/tsconfig.json resolve them: straight to this repo's own source, not a built
+// npm package, so a test here always exercises the exact same code the "pokie" project's own tests
+// (tests/cli/client/player/videoSlotRoundView.test.ts) do.
+const pokieExamplesModuleNameMapper = {
+    "^pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
+    "^pokie$": "<rootDir>/src/index.ts",
+    "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
+};
+
+const pokieExamplesTransform = {
+    "^.+\\.ts$": ["ts-jest", {tsconfig: "../pokie-examples/tsconfig.test.json"}],
+};
+
 // Coverage options only take effect at the top level under a multi-project ("projects") config --
 // Jest ignores per-project collectCoverage*/coveragePathIgnorePatterns settings. collectCoverage
 // itself is intentionally NOT set here: coverage instrumentation is opt-in via the `--coverage` CLI
@@ -161,6 +178,22 @@ export default {
                 "/tests/packaging/npmPackSmoke\\.test\\.ts$",
                 ...integrationTestPathIgnorePatterns,
             ],
+        },
+        {
+            displayName: "pokie-examples",
+            testEnvironment: "jsdom",
+            // jest-environment-jsdom defaults package "exports" resolution to the "browser" condition,
+            // which sends "pokie" -> src/index.ts's own exceljs dependency down to uuid's ESM browser
+            // build (a real "Unexpected token export" parse failure, not related to anything under
+            // test here) -- overriding back to jest-environment-node's own default ("node"/"node-addons")
+            // keeps this project's own DOM-heavy tests on jsdom while resolving "pokie"'s dependency
+            // tree the same CJS-friendly way the "pokie" project's (node-environment) tests already do.
+            testEnvironmentOptions: {customExportConditions: ["node", "node-addons"]},
+            moduleFileExtensions: ["ts", "js"],
+            roots: ["<rootDir>/../pokie-examples"],
+            testPathIgnorePatterns: ["/node_modules/"],
+            transform: pokieExamplesTransform,
+            moduleNameMapper: pokieExamplesModuleNameMapper,
         },
         {
             displayName: "studio-client-components",
