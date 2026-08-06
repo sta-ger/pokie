@@ -1,6 +1,6 @@
 import {Button, Text} from "@mantine/core";
 import {useClipboard} from "@mantine/hooks";
-import {useEffect} from "react";
+import {useEffect, useRef} from "react";
 import type {StartRuntimeOptions} from "../../api/apiClient";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import type {RuntimeSessionResultView, RuntimeSpinResultView, RuntimeStateView} from "../../domain/interpret/Runtime";
@@ -21,6 +21,12 @@ type Session = RuntimeSessionResultView | RuntimeSpinResultView;
 // start this").
 const DEFAULT_PLAY_START_OPTIONS: StartRuntimeOptions = {debug: true, repositoryMode: "memory"};
 
+// How often Play silently re-GETs the session while the embedded player is up -- see
+// onRefreshSession's own doc comment on why a GET is what picks up a round played through the
+// iframe at all. Short enough that "Last round" catches up soon after an actual spin without feeling
+// stale, long enough not to spam the runtime with a request every render.
+const SESSION_POLL_INTERVAL_MS = 2000;
+
 // Studio's own "normal game mode" -- unlike Runtime (an HTTP API testing/diagnostics harness: raw
 // session JSON, manual spin requestId/version overrides, retry/debug), Play never talks to the runtime
 // API itself. It materializes/starts (or attaches to an already-running) runtime, creates or restores
@@ -32,11 +38,15 @@ const DEFAULT_PLAY_START_OPTIONS: StartRuntimeOptions = {debug: true, repository
 // instead of quietly creating a second, unrelated one of its own. Every actual round played from here on
 // goes straight from the embedded player to the runtime's real HTTP API, same as "Open Player" always
 // has -- Studio itself is never in that request path, so this never reimplements the player's own
-// gameplay UI (reels, paytable, bet selection, win highlights) as a Play-local clone. Whenever this same
-// shared `session` slot does carry a played round (e.g. one played from Runtime's own Spin, since Play and
-// Runtime read the same session state -- see the effect below), "Last round" renders it through the exact
+// gameplay UI (reels, paytable, bet selection, win highlights) as a Play-local clone. Studio does still
+// find out about that round, though: the runtime persists every round's screen/win/bet as part of the
+// session's own state (see PokieDevServer's own mergeSerializedPayloads() doc comment), so a plain GET
+// of the same session id -- which onRefreshSession issues on a short timer below, same as a round played
+// from Runtime's own Spin (Play and Runtime read the same session state) -- picks it up too. Either way,
+// "Last round" renders whatever `session` ends up holding through the exact
 // RoundSummary/RoundArtifactInspector/GameScreenView chain Runtime's own "Inspect round" and Replay
-// already use, so Play never grows its own bespoke screen/win/payline/paytable/feature presentation.
+// already use, so Play never grows its own bespoke screen/win/payline/paytable/feature presentation, and
+// never recomputes what the runtime itself already produced.
 export function PlayTab({
     state,
     running,
@@ -44,6 +54,7 @@ export function PlayTab({
     sessionId,
     onStart,
     onCreateSession,
+    onRefreshSession,
 }: {
     state: RuntimeStateView;
     running: boolean;
@@ -51,6 +62,7 @@ export function PlayTab({
     sessionId: string | undefined;
     onStart: (options: StartRuntimeOptions) => void;
     onCreateSession: (seed?: string, initialBalance?: number) => void;
+    onRefreshSession: () => void;
 }) {
     const clipboard = useClipboard();
 
@@ -63,6 +75,27 @@ export function PlayTab({
             onCreateSession();
         }
     }, [running, sessionId, session.status, onCreateSession]);
+
+    // Keeps `session` -- and so "Last round" below -- caught up with a round played straight through the
+    // embedded canonical player: that player talks directly to the runtime's own HTTP API (see this
+    // component's own doc comment), never through Studio, so nothing here is ever told about it the way
+    // Runtime's own Spin tells this same shared session state. Polling the exact same GET
+    // useRuntimeManager's own loadSession() issues is what closes that gap instead -- see
+    // onRefreshSession's own doc comment for why a plain GET is enough. Scoped to exactly the span this
+    // iframe is up (`running && sessionId !== undefined`, the same condition that renders it below), via
+    // `onRefreshSession` itself (a ref so this effect's own cleanup/re-run never depends on that
+    // callback's identity) rather than `setInterval`'s own callback capturing a stale one.
+    const onRefreshSessionRef = useRef(onRefreshSession);
+    useEffect(() => {
+        onRefreshSessionRef.current = onRefreshSession;
+    });
+    useEffect(() => {
+        if (!running || sessionId === undefined) {
+            return undefined;
+        }
+        const timer = setInterval(() => onRefreshSessionRef.current(), SESSION_POLL_INTERVAL_MS);
+        return () => clearInterval(timer);
+    }, [running, sessionId]);
 
     if (!running) {
         return (
@@ -110,10 +143,13 @@ export function PlayTab({
 
     // Whether `session` actually reflects a played round -- as opposed to the just-created session it
     // starts out as -- the same distinction Runtime's own "Inspect round" draws (there, via a never-
-    // auto-selected `selectedRound`; here, via the one session slot Play and Runtime already share, see
-    // this component's own doc comment). `screen` is only ever present on a round's own response, never
-    // on a plain create/get-session one (see StudioRuntimeSessionView's own doc comment) -- checking it
-    // is what keeps this from showing a stale/misleading "Round complete" the moment a session is created.
+    // auto-selected `selectedRound`; here, via the one session slot Play, Runtime, and now a poll of the
+    // embedded player's own session already share, see this component's own doc comment). `screen` is
+    // never present on a fresh POST /sessions response, but is present on both a spin's own response and
+    // a plain GET /sessions/:id once at least one round has been played (the runtime persists it as part
+    // of the session's own state -- see PokieDevServer's own mergeSerializedPayloads() doc comment) --
+    // checking it is what keeps this from showing a stale/misleading "Round complete" before any round
+    // has actually been played this session.
     const playedRound = session.status === "ok" && session.session.screen !== undefined ? session.session : undefined;
 
     return (
@@ -137,15 +173,16 @@ export function PlayTab({
             />
 
             {/* Every round actually played goes straight from the embedded player to the runtime's own
-                HTTP API (see this component's own doc comment) -- Studio never sees it, so this can only
-                ever reflect a round played through this same shared `session` slot from elsewhere in
-                Studio (Runtime's own Spin, or a round restored by id). It renders through the identical
-                RoundSummary/RoundArtifactInspector/GameScreenView chain Runtime's "Inspect round" and
-                Replay already use, rather than a Play-local re-presentation of the same screen/win/
-                payline/paytable/feature data -- whenever this session does have one to show. */}
+                HTTP API (see this component's own doc comment) -- Studio is never in that request path,
+                but the periodic onRefreshSession poll above (or a round played from elsewhere in Studio,
+                e.g. Runtime's own Spin, since they share the same `session` slot) catches up on it within
+                one poll tick. It renders through the identical RoundSummary/RoundArtifactInspector/
+                GameScreenView chain Runtime's "Inspect round" and Replay already use, rather than a
+                Play-local re-presentation of the same screen/win/payline/paytable/feature data --
+                whenever this session does have one to show. */}
             <PageSection legend="Last round (from this Studio session)">
                 {playedRound === undefined ? (
-                    <EmptyState message="No round played through Studio yet this session -- spin using the player above (its rounds aren't visible to Studio), or from Runtime, and a round played from Runtime will appear here." />
+                    <EmptyState message="No round played through Studio yet this session -- spin using the player above, or from Runtime, and it will appear here within a few seconds." />
                 ) : (
                     <RoundSummary session={playedRound} />
                 )}

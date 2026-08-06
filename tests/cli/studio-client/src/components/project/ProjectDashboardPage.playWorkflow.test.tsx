@@ -147,6 +147,58 @@ describe("ProjectDashboardPage - Play", () => {
         expect(within(lastRound).getByText("cherry").closest(".mantine-ScrollArea-root")).not.toBeNull();
     }, 60000);
 
+    // The embedded canonical player never talks to Studio -- it spins straight against the runtime's
+    // real HTTP API (see PlayTab's own doc comment) -- so this proves Last round catches up on that
+    // round through Studio's own periodic re-GET of the same session (onRefreshSession/
+    // SESSION_POLL_INTERVAL_MS in PlayTab.tsx), not through Runtime's own Spin proxy: the session GET
+    // route below only starts returning a played round on its *second* call (simulating a round the
+    // player finished between two poll ticks), and the assertion at the end proves Studio's own
+    // per-session spin endpoint was never called at all.
+    it("Last round catches up on a round played through the embedded canonical player itself -- via Studio's own session poll, not Runtime's Spin -- with the same shared narrow-layout rendering", async () => {
+        const user = userEvent.setup();
+        let sessionGetCalls = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, win: 0})}}),
+            "/api/project/runtime/sessions/sess-1": () => {
+                sessionGetCalls += 1;
+                if (sessionGetCalls < 2) {
+                    return {ok: true, status: 200, body: {status: "ok", session: sessionFor({bet: 5, win: 0})}};
+                }
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "ok",
+                        session: sessionFor({credits: 1020, bet: 5, win: 20, sessionVersion: 2, screen: [["wild", "orange"], ["plum", "bell"]]}),
+                    },
+                };
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "Start playing"}));
+        await screen.findByTitle("POKIE player");
+
+        const findLastRoundFieldset = () => screen.getByText("Last round (from this Studio session)", {selector: "legend"}).closest("fieldset") as HTMLElement;
+        expect(within(findLastRoundFieldset()).getByText(/No round played through Studio yet this session/)).toBeInTheDocument();
+
+        await waitFor(() => expect(within(findLastRoundFieldset()).getByText("wild")).toBeInTheDocument());
+
+        const lastRound = findLastRoundFieldset();
+        expect(within(lastRound).getByText("bell")).toBeInTheDocument();
+        expect(within(lastRound).getByText(/You won 20\.00/)).toBeInTheDocument();
+        // The same horizontal-scroll containment every other screen-rendering surface relies on -- proves
+        // this is the shared ScreenTable-based rendering, not a bespoke narrow-unfriendly table.
+        expect(within(lastRound).getByText("wild").closest(".mantine-ScrollArea-root")).not.toBeNull();
+        // Studio's own per-session spin proxy (what a Runtime-tab Spin calls) was never hit -- this round
+        // reached "Last round" purely through the session GET poll above.
+        expect(calls.some((call) => call.url === "/api/project/runtime/sessions/sess-1/spins")).toBe(false);
+    }, 30000);
+
     it("Last round shows an honest empty state, never a misleading 'Round complete', before any round has been played through Studio this session", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

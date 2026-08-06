@@ -794,6 +794,7 @@ export function ProjectDashboardPage() {
                                     sessionId={runtime.sessionId}
                                     onStart={runtime.start}
                                     onCreateSession={runtime.createSession}
+                                    onRefreshSession={runtime.refreshSession}
                                 />
                             )}
                             {activeTab === "simulation" && (
