@@ -4,13 +4,19 @@
     "description": "A server-side video slot game logic framework for JavaScript and TypeScript.",
     "type": "module",
     "exports": {
-        "import": {
-            "types": "./dist/esm/index.d.ts",
-            "default": "./dist/esm/index.js"
+        ".": {
+            "import": {
+                "types": "./dist/esm/index.d.ts",
+                "default": "./dist/esm/index.js"
+            },
+            "require": {
+                "types": "./dist/cjs/index.d.ts",
+                "default": "./dist/cjs/index.js"
+            }
         },
-        "require": {
-            "types": "./dist/cjs/index.d.ts",
-            "default": "./dist/cjs/index.js"
+        "./client/player": {
+            "types": "./dist/cli/client/player/index.d.ts",
+            "default": "./dist/cli/client/player/index.js"
         }
     },
     "main": "./dist/cjs/index.js",
@@ -23,10 +29,10 @@
         "lint": "eslint . --ext .ts,.tsx",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
         "pretest": "npm run lint",
-        "test": "jest --selectProjects pokie studio-client-components --maxWorkers=2",
+        "test": "jest --selectProjects pokie pokie-examples studio-client-components --maxWorkers=2",
         "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
         "test:workflows": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects studio-client-workflows --maxWorkers=2 --workerIdleMemoryLimit=192MB",
-        "test:coverage": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie studio-client-components pokie-integration studio-client-workflows --coverage --maxWorkers=2 --workerIdleMemoryLimit=192MB",
+        "test:coverage": "node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --selectProjects pokie pokie-examples studio-client-components pokie-integration studio-client-workflows --coverage --maxWorkers=2 --workerIdleMemoryLimit=192MB",
         "test:packaging": "jest --selectProjects pokie-packaging --runInBand",
         "test:report": "node scripts/report-test-timings.mjs",
         "bench": "node --expose-gc ./node_modules/jest/bin/jest.js --selectProjects pokie-benchmarks --runInBand",

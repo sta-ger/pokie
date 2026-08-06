@@ -18,5 +18,22 @@ export interface SpinCommandHandling {
     // caller-declared precondition ("I expect the session to still be at version N"), distinct from
     // the handler's own storage-level optimistic-locking save (which always uses the version it just
     // loaded, regardless of what a caller expected). Ignored when the repository isn't versioned.
-    handle(sessionId: string, requestId?: string, expectedVersion?: number): Promise<SpinCommandResult>;
+    //
+    // `bet` is optional and additive: when given, it's applied via session.setBet() before
+    // canPlayNextGame()/play() run, so this spin (and every subsequent one, until changed again) is
+    // staked at that amount instead of whatever the session's own current bet already was. Rejected
+    // as "blocked" (not silently clamped or ignored) when it isn't one of session.getAvailableBets()
+    // — a caller offering a bet a session doesn't actually support should see that, not have it
+    // silently substituted. Ignored on a cache-hit requestId replay, same as every other input: a
+    // retried command reproduces its own original result, it never re-derives one from new inputs.
+    //
+    // `mode` is optional and additive, same shape as `bet`: when given, it's applied via
+    // session.setBetMode() before canPlayNextGame()/play() run. Only meaningful for a session that
+    // opts into bet-mode selection at all (see supportsBetModeSelecting) — given for one that
+    // doesn't, or given an id outside that session's own getAvailableBetModeIds(), it's rejected as
+    // "blocked", the same as an unsupported bet, rather than silently ignored. A mode rejected by
+    // setBetMode() itself (e.g. ForcingBetModeSelectionRejectedError, selecting a one-shot buy while
+    // already mid a zero-stake feature round) is also surfaced as "blocked", not thrown. Ignored on a
+    // cache-hit requestId replay, same as `bet`.
+    handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult>;
 }

@@ -13,7 +13,38 @@
         <p id="status">Connecting…</p>
     </header>
     <main>
+        <section id="connection-error" hidden>
+            <p id="connection-error-message"></p>
+            <details>
+                <summary>Technical details</summary>
+                <pre id="connection-error-detail"></pre>
+            </details>
+            <button id="connection-retry-button" type="button">Retry</button>
+        </section>
         <section id="round-view">
+            <div id="player-section" hidden>
+                <div id="player-bet-info" class="player-bet-info"></div>
+                <div id="player-mode-info" class="player-mode-info"></div>
+                <div id="player-grid-container"></div>
+                <dl id="player-features" class="stats" hidden></dl>
+                <section id="player-wins-section" hidden>
+                    <h2>Winning lines</h2>
+                    <div id="player-wins-list"></div>
+                </section>
+                <details id="player-lines-details">
+                    <summary>Lines definitions</summary>
+                    <div id="player-lines-list"></div>
+                </details>
+                <details id="player-paytable-details">
+                    <summary>Paytable</summary>
+                    <table class="paytable">
+                        <thead>
+                            <tr id="player-paytable-head"></tr>
+                        </thead>
+                        <tbody id="player-paytable-body"></tbody>
+                    </table>
+                </details>
+            </div>
             <div id="screen" class="screen"></div>
             <dl class="stats">
                 <dt>Bet</dt>
@@ -23,6 +54,17 @@
                 <dt>Win</dt>
                 <dd id="win">—</dd>
             </dl>
+            <section id="spin-error" hidden>
+                <p id="spin-error-message"></p>
+                <details>
+                    <summary>Technical details</summary>
+                    <pre id="spin-error-detail"></pre>
+                </details>
+                <div class="spin-error-actions">
+                    <button id="spin-retry-button" type="button">Retry spin</button>
+                    <button id="spin-reconnect-button" type="button">Reconnect</button>
+                </div>
+            </section>
             <button id="spin-button" type="button" disabled>Spin</button>
         </section>
         <section id="stages-section" hidden>

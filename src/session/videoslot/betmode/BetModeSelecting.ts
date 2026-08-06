@@ -15,4 +15,11 @@ export interface BetModeSelecting {
     getBetModeId(): string;
 
     setBetMode(modeId: string): void;
+
+    // The full set of ids setBetMode() will accept -- a caller (or a network-facing serializer, see
+    // VideoSlotSessionSerializer) enumerates this to offer real choices instead of guessing at what a
+    // session supports; setBetMode() itself remains the single source of truth for actually rejecting
+    // an id not in this list (UnknownBetModeError), so this is additive/informational, never enforced
+    // here.
+    getAvailableBetModeIds(): string[];
 }

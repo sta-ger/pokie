@@ -30,3 +30,14 @@ while advising manual JSON editing — the precise regression Stage 4 must fix.
 | `browser/package-overview.png` | Real loaded tsPackage at a space-containing path; Overview shows valid metadata/capability. | `dd008ef3dc22e71cf7e6d1035ca4454aec44af13ac44a01e7424cef39da34d33` |
 | `browser/package-replay.png` | Current Replay source split and best-effort reproduction language. | `5b50f34472a915224d417482522e5c35bce1d539a655c2b84f1f08bc252073ef` |
 | `browser/package-runtime.png` | Current Runtime is a technical server/session/debug panel, not player-first Play. | `83071927cf1e513318feb202e7fe52403dbd634afcc51c311887c81ddef415bf` |
+
+## Other steps' evidence in this directory
+
+This directory also holds correction-round evidence for later Phase 4 steps whose own review needed
+proof that lives partly outside this repo's own `git diff`:
+
+| Artifact | Step | What it proves |
+| --- | --- | --- |
+| `p4-polish-09-pokie-examples-migration.txt` | `P4-POLISH-09` | Narrative index for the companion `pokie-examples` repository's committed shared-player migration plus its follow-up round-error-visibility fix, both targeted tests' real passing output, and a regression check proving the new visibility assertions actually fail against the pre-fix markup. |
+| `p4-polish-09-pokie-examples-migration.patch` | `P4-POLISH-09` | The full `git diff af43220..cce8062` from the companion repo (wide context), `git apply`-able — the actual migration + visibility-fix diff, not a summary of it. |
+| `pokie-examples-migration/` | `P4-POLISH-09` | Byte-for-byte post-fix snapshots of `src/data.ts`, `src/ui/ui.ts`, `tests/ui.test.ts`, `vite.config.js`, `tsconfig.json`, `tsconfig.test.json` from the companion checkout at commit `cce8062` — the migrated (and now visibly-working) source itself, physically present in this repo's own `base_sha..head_sha` diff (`src/ui/utils.ts` is deliberately absent: the migration deletes it). |

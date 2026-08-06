@@ -342,7 +342,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     }
 
     private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse, includeInternal: boolean): Promise<void> {
-        let spinRequest: {requestId?: string; expectedVersion?: number};
+        let spinRequest: {requestId?: string; expectedVersion?: number; bet?: number; mode?: string};
         try {
             spinRequest = await this.readSpinRequest(req);
         } catch (error) {
@@ -350,7 +350,13 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
-        const result = await this.spinCommandHandler.handle(sessionId, spinRequest.requestId, spinRequest.expectedVersion);
+        const result = await this.spinCommandHandler.handle(
+            sessionId,
+            spinRequest.requestId,
+            spinRequest.expectedVersion,
+            spinRequest.bet,
+            spinRequest.mode,
+        );
 
         if (result.status === "not-found") {
             this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
@@ -649,8 +655,13 @@ export class PokieDevServer implements PokieDevServerHandling {
 
     // `requestId` (idempotency, see the class doc comment) and `expectedVersion` (a caller-declared
     // optimistic-locking precondition — see SpinCommandHandling.handle()'s own doc comment) are both
-    // optional and read from the same JSON body.
-    private async readSpinRequest(req: IncomingMessage): Promise<{requestId?: string; expectedVersion?: number}> {
+    // optional and read from the same JSON body. `bet` and `mode` are also optional and additive: a
+    // caller switching to a different one of the session's own availableBets/availableBetModeIds
+    // before this spin — see SpinCommandHandling.handle()'s own doc comment for how an unsupported
+    // value is rejected.
+    private async readSpinRequest(
+        req: IncomingMessage,
+    ): Promise<{requestId?: string; expectedVersion?: number; bet?: number; mode?: string}> {
         const raw = await this.readBody(req);
         if (!raw) {
             return {};
@@ -666,7 +677,12 @@ export class PokieDevServer implements PokieDevServerHandling {
             return {};
         }
 
-        const {requestId, expectedSessionVersion} = parsed as {requestId?: unknown; expectedSessionVersion?: unknown};
+        const {requestId, expectedSessionVersion, bet, mode} = parsed as {
+            requestId?: unknown;
+            expectedSessionVersion?: unknown;
+            bet?: unknown;
+            mode?: unknown;
+        };
 
         if (requestId !== undefined && typeof requestId !== "string") {
             throw new Error('"requestId" must be a string.');
@@ -679,9 +695,19 @@ export class PokieDevServer implements PokieDevServerHandling {
             throw new Error('"expectedSessionVersion" must be a positive integer.');
         }
 
+        if (bet !== undefined && typeof bet !== "number") {
+            throw new Error('"bet" must be a number.');
+        }
+
+        if (mode !== undefined && typeof mode !== "string") {
+            throw new Error('"mode" must be a string.');
+        }
+
         return {
             requestId: requestId as string | undefined,
             expectedVersion: expectedSessionVersion as number | undefined,
+            bet: bet as number | undefined,
+            mode: mode as string | undefined,
         };
     }
 

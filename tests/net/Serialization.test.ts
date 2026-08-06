@@ -1,4 +1,6 @@
 import {
+    BetModeDefinition,
+    BetModesConfig,
     GameSession,
     GameSessionConfig,
     GameSessionSerializer,
@@ -7,6 +9,7 @@ import {
     VideoSlotSession,
     VideoSlotSessionSerializer,
     VideoSlotWinCalculator,
+    VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesSession,
     VideoSlotWithFreeGamesSessionSerializer,
 } from "pokie";
@@ -108,6 +111,32 @@ describe("VideoSlotSessionSerializer", () => {
         const serialized = JSON.stringify(roundData);
         expect(serialized).not.toContain("winningLines");
         expect(serialized).not.toContain("undefined");
+    });
+
+    test("betModeId/availableBetModeIds are absent for a plain session that never opted into bet-mode selection", () => {
+        const session = buildWinningSession();
+        session.play();
+
+        const serializer = new VideoSlotSessionSerializer();
+        expect(serializer.getInitialData(session).availableBetModeIds).toBeUndefined();
+        expect(serializer.getRoundData(session).betModeId).toBeUndefined();
+        expect(JSON.stringify(serializer.getInitialData(session))).not.toContain("betMode");
+    });
+
+    test("betModeId/availableBetModeIds reflect a VideoSlotWithBetModesSession's own configured modes and current selection, and roundtrip through JSON unchanged", () => {
+        const betModesConfig = new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})], "base");
+        const session = new VideoSlotWithBetModesSession(buildWinningSession(), betModesConfig);
+        session.setBetMode("ante");
+        session.play();
+
+        const serializer = new VideoSlotSessionSerializer();
+        const initialData = serializer.getInitialData(session);
+        const roundData = serializer.getRoundData(session);
+
+        expect(initialData.availableBetModeIds).toEqual(["base", "ante"]);
+        expect(roundData.betModeId).toBe("ante");
+        expect(roundtripThroughJson(initialData)).toEqual(initialData);
+        expect(roundtripThroughJson(roundData)).toEqual(roundData);
     });
 });
 

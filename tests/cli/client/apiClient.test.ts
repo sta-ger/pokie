@@ -108,6 +108,30 @@ describe("apiClient", () => {
             expect(calls[0].init?.body).toBe(JSON.stringify({requestId: "req-1"}));
         });
 
+        it("includes a JSON bet body when a bet is given, so the runtime's own setBet()/availableBets choice actually reaches the server", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({
+                ok: true,
+                status: 200,
+                body: {sessionId: "s1", game: {}, credits: 980, bet: 20},
+            }));
+
+            await spin(fetchImpl, "http://api.test", "s1", undefined, 20);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({bet: 20}));
+        });
+
+        it("includes both requestId and bet in the same body when both are given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({
+                ok: true,
+                status: 200,
+                body: {sessionId: "s1", game: {}, credits: 980},
+            }));
+
+            await spin(fetchImpl, "http://api.test", "s1", "req-1", 20);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({requestId: "req-1", bet: 20}));
+        });
+
         it("throws with the server's own error message when the spin is blocked", async () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: "cannot play next round"}}));
 

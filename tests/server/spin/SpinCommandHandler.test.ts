@@ -12,6 +12,8 @@ import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
 import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
 import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
 import {StakeAmountDetermining} from "../../../src/session/StakeAmountDetermining.js";
+import {BetModeSelecting} from "../../../src/session/videoslot/betmode/BetModeSelecting.js";
+import {ForcingBetModeSelectionRejectedError} from "../../../src/session/videoslot/betmode/ForcingBetModeSelectionRejectedError.js";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
@@ -49,6 +51,95 @@ function createFakeGame(): PokieGame {
     return {
         getManifest: () => manifest,
         createSession: () => createFakeSession(),
+    };
+}
+
+// Same shape as createFakeSession, but with a real (non-no-op) setBet() and more than one
+// availableBets entry — what handle()'s bet selection tests below need to prove a caller-supplied
+// bet is actually applied, not just accepted and ignored like createFakeSession's own stub.
+function createFakeSessionWithSelectableBet(
+    stats: FakeGameStats = {createSessionCalls: 0, playCalls: 0},
+): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
+    let credits = 1000;
+    let bet = 5;
+    let round = 0;
+    let winAmount = 0;
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: (value: number) => {
+            bet = value;
+        },
+        getAvailableBets: () => [5, 10, 20],
+        canPlayNextGame: () => credits >= bet,
+        play: () => {
+            stats.playCalls++;
+            round++;
+            winAmount = 0;
+            credits = credits - bet + winAmount;
+        },
+        getWinAmount: () => winAmount,
+        getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
+    };
+}
+
+function createFakeGameWithSelectableBet(): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createFakeSessionWithSelectableBet(),
+    };
+}
+
+// Same shape as createFakeSessionWithSelectableBet, plus a real BetModeSelecting implementation
+// (getBetModeId/setBetMode/getAvailableBetModeIds) — what handle()'s mode selection tests below need
+// to prove a caller-supplied mode is actually applied via setBetMode(), and that an id outside
+// getAvailableBetModeIds() or one setBetMode() itself rejects both come back "blocked" rather than
+// throwing across handle()'s own boundary.
+function createFakeSessionWithSelectableBetMode(
+    stats: FakeGameStats = {createSessionCalls: 0, playCalls: 0},
+): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} & BetModeSelecting {
+    let credits = 1000;
+    const bet = 5;
+    let round = 0;
+    let winAmount = 0;
+    let betModeId = "base";
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        canPlayNextGame: () => credits >= bet,
+        play: () => {
+            stats.playCalls++;
+            round++;
+            winAmount = 0;
+            credits = credits - bet + winAmount;
+        },
+        getWinAmount: () => winAmount,
+        getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
+        getBetModeId: () => betModeId,
+        getAvailableBetModeIds: () => ["base", "ante"],
+        setBetMode: (modeId: string) => {
+            if (modeId === "buyFeature") {
+                throw new ForcingBetModeSelectionRejectedError(modeId);
+            }
+            betModeId = modeId;
+        },
+    };
+}
+
+function createFakeGameWithSelectableBetMode(): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createFakeSessionWithSelectableBetMode(),
     };
 }
 
@@ -791,6 +882,160 @@ describe("SpinCommandHandler", () => {
             const result = await handler.handle("session-1", undefined, 999);
 
             expect(result).toMatchObject({status: "played", win: 0});
+        });
+    });
+
+    describe("bet selection (handle()'s fourth parameter)", () => {
+        it("applies a caller-supplied bet via session.setBet() before playing, when it's one of the session's own availableBets", async () => {
+            const game = createFakeGameWithSelectableBet();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const result = await handler.handle("session-1", undefined, undefined, 20);
+
+            expect(result).toMatchObject({status: "played", credits: 980});
+            await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 20});
+            await expect(wallet.getBalance("session-1")).resolves.toBe(980);
+        });
+
+        it("rejects a bet that isn't one of the session's own availableBets as blocked, without playing or touching the wallet", async () => {
+            const game = createFakeGameWithSelectableBet();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+            const result = await handler.handle("session-1", undefined, undefined, 7);
+
+            expect(result.status).toBe("blocked");
+            if (result.status === "blocked") {
+                expect(result.reason).toContain("7");
+                expect(result.reason).toContain("5, 10, 20");
+            }
+            expect(wallet.debitCalls).toEqual([]);
+            expect(wallet.creditCalls).toEqual([]);
+            await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+        });
+
+        it("plays at the session's own current bet, unchanged, when no bet is given", async () => {
+            const game = createFakeGameWithSelectableBet();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const result = await handler.handle("session-1");
+
+            expect(result).toMatchObject({status: "played", credits: 995});
+            await expect(sessionRepository.load("session-1")).resolves.toMatchObject({bet: 5});
+        });
+
+        it("ignores a bet given on a cache-hit requestId replay, reproducing the original result rather than re-deriving one", async () => {
+            const game = createFakeGameWithSelectableBet();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet, new InMemoryIdempotencyRepository());
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const first = await handler.handle("session-1", "req-1", undefined, 10);
+            expect(first).toMatchObject({status: "played", credits: 990});
+
+            const replay = await handler.handle("session-1", "req-1", undefined, 20);
+
+            expect(replay).toEqual(first);
+            await expect(wallet.getBalance("session-1")).resolves.toBe(990);
+        });
+    });
+
+    describe("bet mode selection (handle()'s fifth parameter)", () => {
+        it("applies a caller-supplied mode via session.setBetMode() before playing, when it's one of the session's own getAvailableBetModeIds()", async () => {
+            const game = createFakeGameWithSelectableBetMode();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const result = await handler.handle("session-1", undefined, undefined, undefined, "ante");
+
+            expect(result).toMatchObject({status: "played"});
+        });
+
+        it("rejects a mode that isn't one of the session's own getAvailableBetModeIds() as blocked, without playing or touching the wallet", async () => {
+            const game = createFakeGameWithSelectableBetMode();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+            const result = await handler.handle("session-1", undefined, undefined, undefined, "double-or-nothing");
+
+            expect(result.status).toBe("blocked");
+            if (result.status === "blocked") {
+                expect(result.reason).toContain("double-or-nothing");
+                expect(result.reason).toContain("base, ante");
+            }
+            expect(wallet.debitCalls).toEqual([]);
+            expect(wallet.creditCalls).toEqual([]);
+        });
+
+        it("rejects a mode a session doesn't support bet-mode selection for at all as blocked", async () => {
+            const game = createFakeGameWithSelectableBet();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet);
+            await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+
+            const result = await handler.handle("session-1", undefined, undefined, undefined, "ante");
+
+            expect(result.status).toBe("blocked");
+            if (result.status === "blocked") {
+                expect(result.reason).toContain("does not support bet mode selection");
+            }
+            expect(wallet.debitCalls).toEqual([]);
+        });
+
+        it("surfaces setBetMode()'s own rejection (e.g. a forcing mode while a zero-stake round is active) as blocked rather than throwing", async () => {
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            await createSpinnableSessionOn(sessionRepository, wallet, "session-1", 1000);
+            // The fake's own getAvailableBetModeIds() doesn't list "buyFeature", so the pre-check
+            // above would already block it before ever reaching setBetMode() — widen it here to
+            // prove the *setBetMode() itself throws* path, not just the membership pre-check.
+            const gameWithBuyFeatureListed: PokieGame = {
+                getManifest: () => manifest,
+                createSession: () => {
+                    const session = createFakeSessionWithSelectableBetMode();
+                    const originalGetAvailableBetModeIds = session.getAvailableBetModeIds.bind(session);
+                    session.getAvailableBetModeIds = () => [...originalGetAvailableBetModeIds(), "buyFeature"];
+                    return session;
+                },
+            };
+            const handlerWithBuyFeature = new SpinCommandHandler(gameWithBuyFeatureListed, sessionRepository, wallet);
+
+            const result = await handlerWithBuyFeature.handle("session-1", undefined, undefined, undefined, "buyFeature");
+
+            expect(result.status).toBe("blocked");
+            if (result.status === "blocked") {
+                expect(result.reason).toContain("buyFeature");
+            }
+            expect(wallet.debitCalls).toEqual([]);
+        });
+
+        it("ignores a mode given on a cache-hit requestId replay, reproducing the original result rather than re-deriving one", async () => {
+            const game = createFakeGameWithSelectableBetMode();
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(game, sessionRepository, wallet, new InMemoryIdempotencyRepository());
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const first = await handler.handle("session-1", "req-1", undefined, undefined, "ante");
+            expect(first).toMatchObject({status: "played"});
+
+            const replay = await handler.handle("session-1", "req-1", undefined, undefined, "double-or-nothing");
+
+            expect(replay).toEqual(first);
         });
     });
 });

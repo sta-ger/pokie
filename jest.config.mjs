@@ -1,4 +1,17 @@
+import {existsSync} from "fs";
+import {fileURLToPath} from "url";
+import path from "path";
 import jestConfigIgnore from "./jest.config.ignore.mjs";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+// The "pokie-examples" project below discovers tests in a sibling checkout that isn't part of
+// this repo's own git history (see its own comment). That sibling is present in some sandboxes
+// but not guaranteed in every environment that runs this config (eg. a fresh clone of just this
+// repo) -- and Jest's `roots` validation hard-fails config parsing (killing the *entire*
+// multi-project run, every other project included) if a listed root doesn't exist on disk. Detect
+// availability up front so absence degrades to "this one project matches zero tests" instead of
+// crashing every project's test run.
+const pokieExamplesAvailable = existsSync(path.join(configDir, "..", "pokie-examples"));
 
 // Integration/workflow/server/worker/filesystem-heavy test files that get their own slower
 // "pokie-integration" project instead of running in the default fast "pokie" lane. Kept as one
@@ -107,6 +120,23 @@ const sourceTestModuleNameMapper = {
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };
 
+// pokie-examples is a separate sibling checkout (see this repo's own package.json "./client/player"
+// export and pokie-examples' own vite.config.js alias, which this mirrors for tests) -- its own
+// tests live outside this config's rootDir entirely, so this project needs its own `roots` to have
+// Jest discover them at all. "pokie"/"pokie/client/player" resolve the same way pokie-examples'
+// own vite.config.js/tsconfig.json resolve them: straight to this repo's own source, not a built
+// npm package, so a test here always exercises the exact same code the "pokie" project's own tests
+// (tests/cli/client/player/videoSlotRoundView.test.ts) do.
+const pokieExamplesModuleNameMapper = {
+    "^pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
+    "^pokie$": "<rootDir>/src/index.ts",
+    "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
+};
+
+const pokieExamplesTransform = {
+    "^.+\\.ts$": ["ts-jest", {tsconfig: "../pokie-examples/tsconfig.test.json"}],
+};
+
 // Coverage options only take effect at the top level under a multi-project ("projects") config --
 // Jest ignores per-project collectCoverage*/coveragePathIgnorePatterns settings. collectCoverage
 // itself is intentionally NOT set here: coverage instrumentation is opt-in via the `--coverage` CLI
@@ -159,8 +189,35 @@ export default {
                 "/node_modules/",
                 "\\.test\\.tsx$",
                 "/tests/packaging/npmPackSmoke\\.test\\.ts$",
+                // Frozen file snapshots embedded as phase 4 audit evidence, not this project's own
+                // test suite -- they mirror pokie-examples' own tests/ui.test.ts (already exercised
+                // for real by the "pokie-examples" project above) and don't resolve against this
+                // project's dist-facing moduleNameMapper.
+                "/docs/phase4-evidence/",
                 ...integrationTestPathIgnorePatterns,
             ],
+        },
+        {
+            displayName: "pokie-examples",
+            testEnvironment: "jsdom",
+            // jest-environment-jsdom defaults package "exports" resolution to the "browser" condition,
+            // which sends "pokie" -> src/index.ts's own exceljs dependency down to uuid's ESM browser
+            // build (a real "Unexpected token export" parse failure, not related to anything under
+            // test here) -- overriding back to jest-environment-node's own default ("node"/"node-addons")
+            // keeps this project's own DOM-heavy tests on jsdom while resolving "pokie"'s dependency
+            // tree the same CJS-friendly way the "pokie" project's (node-environment) tests already do.
+            testEnvironmentOptions: {customExportConditions: ["node", "node-addons"]},
+            moduleFileExtensions: ["ts", "js"],
+            // Fall back to this repo's own (always-present) rootDir with a testMatch that can
+            // never match anything real, rather than pointing `roots` at a directory that doesn't
+            // exist -- see pokieExamplesAvailable above.
+            roots: pokieExamplesAvailable ? ["<rootDir>/../pokie-examples"] : ["<rootDir>"],
+            ...(pokieExamplesAvailable
+                ? {}
+                : {testMatch: ["<rootDir>/__pokie_examples_unavailable__/*.test.ts"]}),
+            testPathIgnorePatterns: ["/node_modules/"],
+            transform: pokieExamplesTransform,
+            moduleNameMapper: pokieExamplesModuleNameMapper,
         },
         {
             displayName: "studio-client-components",

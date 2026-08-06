@@ -87,3 +87,110 @@ pre {
     max-height: 20rem;
     overflow: auto;
 }
+
+.player-grid {
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+
+.player-reel {
+    vertical-align: top;
+    padding: 0;
+}
+
+.player-cell {
+    height: 3rem;
+    min-width: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: bold;
+    border: 3px solid currentColor;
+    overflow: hidden;
+}
+
+.player-bet-info {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.player-bet-options {
+    display: inline-flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.player-bet-option {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.6rem;
+}
+
+.player-bet-option-selected {
+    font-weight: bold;
+}
+
+.player-mode-info {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.player-mode-options {
+    display: inline-flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.player-mode-option {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.6rem;
+}
+
+.player-mode-option-selected {
+    font-weight: bold;
+}
+
+.player-highlight-item {
+    display: inline-block;
+    padding-right: 1rem;
+    padding-bottom: 0.5rem;
+}
+
+.player-highlight-button {
+    font-size: 0.875rem;
+    padding: 0.35rem 0.75rem;
+}
+
+.paytable {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.paytable th,
+.paytable td {
+    border: 1px solid currentColor;
+    padding: 0.35rem 0.6rem;
+    text-align: center;
+}
+
+#connection-error,
+#spin-error {
+    border-color: #b00020;
+}
+
+.spin-error-actions {
+    display: flex;
+    gap: 0.75rem;
+}
+
+@media (max-width: 480px) {
+    .player-cell {
+        height: 2.25rem;
+        min-width: 2.25rem;
+        font-size: 0.75rem;
+    }
+}
