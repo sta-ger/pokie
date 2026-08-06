@@ -1,7 +1,35 @@
-import {screen} from "@testing-library/react";
+import {screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+
+const GAME = {id: "a", name: "A", version: "1.0.0"};
+
+const DRAWN_WIN = {
+    type: "line",
+    id: "w1",
+    symbolId: "cherry",
+    winAmount: 5,
+    winningPositions: [[0, 0], [1, 0]],
+    multiplierBreakdown: [],
+    metadata: {},
+};
+
+// A full RoundArtifact -- no `hash` (a drawn outcome carries no content hash of its own, see
+// RoundArtifactDisplayView's own doc comment) -- big enough to exercise RoundArtifactInspector's own
+// screen/wins presentation, the same shared component Replay and Session Spin render an artifact through.
+const DRAWN_ARTIFACT = {
+    schemaVersion: 1,
+    roundId: "base-lib:2",
+    provenance: {game: GAME, pokieVersion: "1.0.0"},
+    betMode: "base",
+    stake: 1,
+    totalWin: 5,
+    payoutMultiplier: 5,
+    screen: [["cherry", "lemon"], ["cherry", "bar"]],
+    steps: [{index: 0, screen: [["cherry", "lemon"], ["cherry", "bar"]], totalWin: 5, wins: [DRAWN_WIN]}],
+    wins: [DRAWN_WIN],
+};
 
 const NATIVE_LIBRARY_CONTEXT = {
     status: "outcome-source",
@@ -56,7 +84,7 @@ describe("ProjectDashboardPage - Outcome Source workflow", () => {
                         libraryId: "base-lib",
                         libraryHash: "hash-1234",
                         totalWeight: 1000,
-                        outcome: {id: "2", weight: 150, artifact: {payoutMultiplier: 5, totalWin: 5}},
+                        outcome: {id: "2", weight: 150, artifact: DRAWN_ARTIFACT},
                     },
                 },
             }),
@@ -72,8 +100,14 @@ describe("ProjectDashboardPage - Outcome Source workflow", () => {
 
         await userEvent.click(screen.getByRole("button", {name: "Draw an outcome"}));
 
-        expect(await screen.findByText('Drew outcome "2"')).toBeInTheDocument();
-        expect(screen.getByText(/payout multiplier 5/)).toBeInTheDocument();
+        const drawn = (await screen.findByText('Drew outcome "2"')).closest(".mantine-Alert-root") as HTMLElement;
+        expect(within(drawn).getByText(/weight 150 of 1000/)).toBeInTheDocument();
+
+        // The drawn round itself renders through RoundArtifactInspector -- the same shared component
+        // Replay and Session Spin render an artifact through -- not a page-local flat multiplier summary.
+        const winsTable = within(drawn).getByText("Positions").closest("table") as HTMLElement;
+        expect(within(winsTable).getByText("cherry")).toBeInTheDocument();
+        expect(within(winsTable).getByText("5.00 (5.00x stake)")).toBeInTheDocument();
     });
 
     it("renders a Stake Engine export's own descriptor/limitations/exact analysis with no sample action offered", async () => {

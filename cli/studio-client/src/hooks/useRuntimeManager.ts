@@ -67,6 +67,7 @@ export function useRuntimeManager() {
     const createSessionGuard = useDoubleSubmitGuard();
     const loadSessionGuard = useDoubleSubmitGuard();
     const spinGuard = useDoubleSubmitGuard();
+    const refreshSessionGuard = useDoubleSubmitGuard();
 
     const pushHistory = useCallback((action: string, summary: string) => {
         setHistory((prev) => [{timestamp: formatTimestamp(Date.now()), action, summary}, ...prev].slice(0, HISTORY_LIMIT));
@@ -262,6 +263,41 @@ export function useRuntimeManager() {
         [fetchImpl, pushHistory],
     );
 
+    // Silently re-GETs the current session -- the runtime's own GET /sessions/:id returns the
+    // session's persisted last-round screen/win/bet (see PokieDevServer's own mergeSerializedPayloads()
+    // doc comment) regardless of *what* played that round, so this is what lets Play notice a round
+    // played straight through the embedded canonical player (which talks to the runtime's real HTTP API
+    // directly -- see PlayTab's own doc comment -- and so never goes through this hook's own spin()
+    // above). Unlike loadSession(), never flips `session` to "loading" first, so it can run unattended
+    // on a timer without flashing "Preparing your session…" over whatever round is already showing; a
+    // failed refresh is silently dropped rather than surfaced as an error for the same reason -- the
+    // next poll tick just tries again. Skipped outright while any session-mutating call is already in
+    // flight (create/load/spin, or another refresh), and its own response is discarded if
+    // sessionRequestIdRef moved on before it landed -- the same staleness guard those calls use, except
+    // this one never *bumps* that ref itself, so a background refresh can never invalidate a mutating
+    // call's own in-flight response.
+    const refreshSession = useCallback(() => {
+        if (
+            sessionId === undefined ||
+            createSessionGuard.isBlocked() ||
+            loadSessionGuard.isBlocked() ||
+            spinGuard.isBlocked() ||
+            !refreshSessionGuard.begin()
+        ) {
+            return;
+        }
+        const requestId = sessionRequestIdRef.current;
+        getRuntimeSession(fetchImpl, sessionId)
+            .then((result) => {
+                if (requestId === sessionRequestIdRef.current) {
+                    setSession(describeSessionResult(result));
+                }
+            })
+            .catch(() => undefined)
+            .finally(() => refreshSessionGuard.end());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fetchImpl, sessionId]);
+
     const spin = useCallback(
         (requestId?: string, expectedVersion?: number) => {
             if (sessionId === undefined || !spinGuard.begin()) {
@@ -307,6 +343,7 @@ export function useRuntimeManager() {
         restart,
         createSession,
         loadSession,
+        refreshSession,
         spin,
         repeatSpin,
         resetForProjectSwitch,

@@ -1,5 +1,6 @@
 import type {
     ReplayDescriptor,
+    RoundArtifact,
     RoundArtifactJson,
     StudioReplayJobView,
     StudioReplayListEntry,
@@ -43,16 +44,21 @@ export function isReplayTerminal(job: StudioReplayJobView): boolean {
     return job.status === "completed" || job.status === "failed" || job.status === "cancelled";
 }
 
-// A RoundArtifactJson with every screen (round-level and each step's own) pre-formatted to display
+// A RoundArtifact with every screen (round-level and each step's own) pre-formatted to display
 // strings via formatScreenCell, ready for ScreenTable — everything else (wins, feature events,
-// provenance, hash, debug) passes through as-is, since it's already the exact JSON-safe shape the
-// Inspect step needs.
-export type RoundArtifactDisplayView = Omit<RoundArtifactJson, "screen" | "steps"> & {
+// provenance, debug) passes through as-is, since it's already the exact JSON-safe shape the Inspect
+// step needs. `hash` is optional, not `RoundArtifactJson`'s own required field -- this is the one
+// shared shape every "round we can inspect" is normalized into (Replay's own recorded/recreated
+// artifacts, Session Spin's `debug.artifact`, and an Outcome Source draw's `selection.outcome.artifact`
+// -- see RoundArtifactInspector's own callers), and only the first of those three ever actually carries
+// a content hash.
+export type RoundArtifactDisplayView = Omit<RoundArtifact, "screen" | "steps"> & {
+    hash?: string;
     screen: string[][];
-    steps: (Omit<RoundArtifactJson["steps"][number], "screen"> & {screen: string[][]})[];
+    steps: (Omit<RoundArtifact["steps"][number], "screen"> & {screen: string[][]})[];
 };
 
-export function describeRoundArtifact(artifact: RoundArtifactJson): RoundArtifactDisplayView {
+export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string}): RoundArtifactDisplayView {
     return {
         ...artifact,
         screen: formatScreenGrid(artifact.screen),

@@ -11,8 +11,6 @@ import {useConfirm} from "../../hooks/useConfirm";
 import {
     describeDebugAvailability,
     describeRetryRequest,
-    describeRuntimeScreen,
-    extractAdditionalRoundFields,
     type RecentSpinsListView,
     type RuntimeSessionResultView,
     type RuntimeSpinResultView,
@@ -27,7 +25,7 @@ import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
-import {ScreenTable} from "../common/ScreenTable";
+import {RoundSummary} from "../common/RoundSummary";
 
 type StartFormValues = {host: string; port: string; debug: boolean; repositoryMode: "memory" | "file"; seed: string};
 type RestoreMethod = "new" | "restore";
@@ -50,119 +48,11 @@ function runtimeStateLabel(state: RuntimeStateView): string {
     return state.status;
 }
 
-function formatFieldValue(value: unknown): string {
-    if (typeof value === "string") {
-        return value;
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-        return String(value);
-    }
-    if (value === null || value === undefined) {
-        return "—";
-    }
-    return JSON.stringify(value);
-}
-
 function describeRoundEntry(entry: StudioRuntimeSessionView): string {
     return (
         `Round ${entry.studioRound ?? "?"} in session ${entry.sessionId} — credits ${entry.credits.toFixed(2)}, win ${(entry.win ?? 0).toFixed(2)}` +
         (entry.studioRequestId ? `, request ${entry.studioRequestId}` : "") +
         (entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : "")
-    );
-}
-
-// The Inspect panel's core view for a selected round (either the just-played one or one picked from
-// history below) -- a readable balance/bet/win/screen breakdown plus whatever extra public fields the
-// game's own serializer returned (see extractAdditionalRoundFields's own doc comment for why that's the
-// entire "feature progress" story), with the raw public/internal JSON tucked behind Advanced details,
-// same convention as RoundArtifactInspector in the Replay & Debug tab.
-function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
-    // studioRequestId/studioRound/studioRecordedAt/studioSource are all Studio's own bookkeeping (see
-    // StudioRuntimeSessionView's own doc comment), never part of the game's actual public response --
-    // excluded here alongside `debug` so "Public response" stays an honest dump of what the game server
-    // itself returned.
-    const {
-        debug,
-        studioRequestId: _studioRequestId,
-        studioRound: _studioRound,
-        studioRecordedAt: _studioRecordedAt,
-        studioSource: _studioSource,
-        ...publicFields
-    } = session;
-    const additional = extractAdditionalRoundFields(session);
-    const hasAdditional = Object.keys(additional).length > 0;
-
-    return (
-        <div>
-            {session.win !== undefined && session.win > 0 ? (
-                <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title="Round complete" mb="md">
-                    You won {session.win.toFixed(2)}.
-                </Alert>
-            ) : (
-                <Text size="sm" c="dimmed" mb="md">
-                    Round complete — no win this round.
-                </Text>
-            )}
-
-            <Table withRowBorders={false} mb="sm">
-                <Table.Tbody>
-                    <Table.Tr>
-                        <Table.Th>Session id</Table.Th>
-                        <Table.Td style={{overflowWrap: "anywhere"}}>{session.sessionId}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Round</Table.Th>
-                        <Table.Td>{session.studioRound ?? "—"}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Credits</Table.Th>
-                        <Table.Td>{session.credits.toFixed(2)}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Bet</Table.Th>
-                        <Table.Td>{session.bet !== undefined ? session.bet.toFixed(2) : "—"}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Win</Table.Th>
-                        <Table.Td>{session.win !== undefined ? session.win.toFixed(2) : "—"}</Table.Td>
-                    </Table.Tr>
-                </Table.Tbody>
-            </Table>
-
-            {session.screen && <ScreenTable screen={describeRuntimeScreen(session.screen) ?? []} />}
-
-            {hasAdditional && (
-                <PageSection legend="Additional round data">
-                    <Table withRowBorders={false}>
-                        <Table.Tbody>
-                            {Object.entries(additional).map(([key, value]) => (
-                                <Table.Tr key={key}>
-                                    <Table.Th>{key}</Table.Th>
-                                    <Table.Td style={{overflowWrap: "anywhere"}}>{formatFieldValue(value)}</Table.Td>
-                                </Table.Tr>
-                            ))}
-                        </Table.Tbody>
-                    </Table>
-                </PageSection>
-            )}
-
-            <AdvancedDisclosure detail="raw JSON, debug data">
-                <Text size="sm" fw={600} mb={4}>
-                    Public response
-                </Text>
-                <CodeBlock>{JSON.stringify(publicFields, null, 2)}</CodeBlock>
-                <Text size="sm" fw={600} mt="sm" mb={4}>
-                    Debug response
-                </Text>
-                {debug === undefined ? (
-                    <Text size="sm" c="dimmed">
-                        Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
-                    </Text>
-                ) : (
-                    <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>
-                )}
-            </AdvancedDisclosure>
-        </div>
     );
 }
 

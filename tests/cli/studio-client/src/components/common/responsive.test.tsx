@@ -6,9 +6,11 @@ import {CodeBlock} from "../../../../../../cli/studio-client/src/components/comm
 import {EmptyState} from "../../../../../../cli/studio-client/src/components/common/EmptyState";
 import {ErrorState} from "../../../../../../cli/studio-client/src/components/common/ErrorState";
 import {LoadingState} from "../../../../../../cli/studio-client/src/components/common/LoadingState";
+import {PaytableView} from "../../../../../../cli/studio-client/src/components/common/PaytableView";
 import {QuickActions} from "../../../../../../cli/studio-client/src/components/common/QuickActions";
 import {ScreenTable} from "../../../../../../cli/studio-client/src/components/common/ScreenTable";
 import {SuccessResult} from "../../../../../../cli/studio-client/src/components/common/SuccessResult";
+import {WinOverlay} from "../../../../../../cli/studio-client/src/components/common/WinOverlay";
 
 const LONG_UNBROKEN_TEXT = "a".repeat(500);
 
@@ -22,6 +24,42 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         const cell = screen.getByText(LONG_UNBROKEN_TEXT);
         // Table.ScrollContainer (default type="scrollarea") renders Mantine's ScrollArea as the table's
         // ancestor -- its presence is what confines an arbitrarily wide table to its own scroll region.
+        expect(cell.closest(".mantine-ScrollArea-root")).not.toBeNull();
+    });
+
+    // P4-POLISH-12: WinOverlay (the composite GameScreenView delegates to) renders through ScreenTable
+    // the same as a bare ScreenTable does -- proving the payline/winning-position overlay machinery
+    // never opts out of the same horizontal-scroll containment every other screen-rendering surface
+    // relies on, even on an arbitrarily wide/narrow viewport.
+    it("WinOverlay (the shared payline/winning-position overlay) stays inside the same scrollable container ScreenTable itself uses", () => {
+        renderWithMantine(
+            <WinOverlay
+                screen={[[LONG_UNBROKEN_TEXT, "B", "C"]]}
+                wins={[
+                    {
+                        type: "line",
+                        id: "w1",
+                        symbolId: "cherry",
+                        winAmount: 1,
+                        winningPositions: [[0, 0]],
+                        multiplierBreakdown: [],
+                        metadata: {definition: [0]},
+                    },
+                ]}
+            />,
+        );
+        const cell = screen.getByText(LONG_UNBROKEN_TEXT);
+        expect(cell.closest(".mantine-ScrollArea-root")).not.toBeNull();
+        expect(cell.closest("td")).toHaveAttribute("data-winning", "true");
+        expect(cell.closest("td")).toHaveAttribute("data-payline", "true");
+    });
+
+    // PaytableView's own real-data table (a symbol column plus one column per match count) can grow
+    // arbitrarily wide for a game with many symbols/match counts -- must stay confined the same way
+    // every other wide table in this client does, not just when it's rendering its "unavailable" text.
+    it("PaytableView wraps its real-data table in a horizontally-scrollable container instead of letting it expand the page", () => {
+        renderWithMantine(<PaytableView paytable={{[LONG_UNBROKEN_TEXT]: {"3": 5}}} />);
+        const cell = screen.getByText(LONG_UNBROKEN_TEXT);
         expect(cell.closest(".mantine-ScrollArea-root")).not.toBeNull();
     });
 
@@ -141,7 +179,8 @@ describe("Wide tables stay wrapped in Table.ScrollContainer (source guard)", () 
     const filesRequiringScrollContainer = [
         "common/ScreenTable.tsx",
         "common/SimulationReportDisplay.tsx",
-        "common/RoundArtifactInspector.tsx",
+        "common/RoundWinsTable.tsx",
+        "common/PaytableView.tsx",
         "home/ProjectsPanel.tsx",
         "blueprintEditor/SymbolWeightsEditor.tsx",
         "blueprintEditor/PaytableEditor.tsx",

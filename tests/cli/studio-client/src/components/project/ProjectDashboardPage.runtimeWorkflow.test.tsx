@@ -1392,4 +1392,185 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         // The current session itself is untouched -- still sess-1, no create/load request was fired.
         expect(screen.getByText(/Session sess-1/)).toBeInTheDocument();
     }, 60000);
+
+    // P4-POLISH-12: once a played round's session captured a full RoundArtifact (`debug.artifact`, only
+    // present under debug mode for a session that supports building one -- see StudioRuntimeSessionView's
+    // own doc comment), "Inspect round" renders it through the exact same RoundArtifactInspector Replay's
+    // own recorded/recreated/simulation-sampled rounds already use (see ReplayTab.tsx), not a page-local,
+    // less detailed summary -- proving Runtime inspection is a genuine consumer of the shared component,
+    // not just Replay.
+    it("shows the played round through the same RoundArtifactInspector Replay uses, once the session captured a full RoundArtifact", async () => {
+        const user = userEvent.setup();
+        const winningWin = {
+            type: "line",
+            id: "w1",
+            symbolId: "cherry",
+            winAmount: 12.5,
+            winningPositions: [[0, 0], [1, 0]],
+            multiplierBreakdown: [],
+            metadata: {},
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE_DEBUG}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        credits: 1005,
+                        win: 12.5,
+                        sessionVersion: 2,
+                        debug: {
+                            requestId: "req-1",
+                            stateBefore: {phase: "base"},
+                            stateAfter: {phase: "base"},
+                            artifact: {
+                                schemaVersion: 1,
+                                roundId: "sess-1:1",
+                                provenance: {game: GAME, pokieVersion: "1.0.0"},
+                                betMode: "base",
+                                stake: 5,
+                                totalWin: 12.5,
+                                payoutMultiplier: 2.5,
+                                screen: [["cherry", "lemon"], ["cherry", "bar"]],
+                                steps: [{index: 0, screen: [["cherry", "lemon"], ["cherry", "bar"]], totalWin: 12.5, wins: [winningWin]}],
+                                wins: [winningWin],
+                                hash: "hash-1",
+                            },
+                        },
+                    }),
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+
+        const inspect = section("Inspect round");
+        // RoundArtifactInspector's own wins table (a "Positions" column header) -- never reachable from
+        // the flat RoundSummary fallback, which has no per-win table at all. Scoped to the wins table
+        // itself (not just "Inspect round") since the round-level ScreenTable also legitimately contains
+        // a "cherry" cell.
+        await within(inspect).findByText("Positions");
+        const winsTable = within(inspect).getByText("Positions").closest("table") as HTMLElement;
+        expect(within(winsTable).getByText("cherry")).toBeInTheDocument();
+        expect(within(winsTable).getByText("12.50 (2.50x stake)")).toBeInTheDocument();
+        expect(within(inspect).queryByText("Additional round data")).not.toBeInTheDocument();
+    }, 60000);
+
+    // P4-POLISH-12: a played round's own "line" win metadata (straight off LineWinComponent's own
+    // "definition" field, set server-side) drives the same WinOverlay/PaylineOverlay Replay's own
+    // RoundArtifactInspector renders -- and, since Runtime never fetches a blueprint alongside a round,
+    // the same PaytableView "unavailable" state -- proving Runtime inspection genuinely shares both
+    // overlay presentation and the honest paytable-unavailable diagnostic, not just the wins table.
+    it("shows the payline path traced from a line win's own metadata, and an explicit paytable-unavailable state, through the same shared WinOverlay/PaytableView Replay uses", async () => {
+        const user = userEvent.setup();
+        const winningWin = {
+            type: "line",
+            id: "w1",
+            symbolId: "cherry",
+            winAmount: 12.5,
+            winningPositions: [[0, 0]],
+            multiplierBreakdown: [],
+            metadata: {definition: [0, 0]},
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE_DEBUG}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        credits: 1005,
+                        win: 12.5,
+                        sessionVersion: 2,
+                        debug: {
+                            requestId: "req-1",
+                            stateBefore: {phase: "base"},
+                            stateAfter: {phase: "base"},
+                            artifact: {
+                                schemaVersion: 1,
+                                roundId: "sess-1:1",
+                                provenance: {game: GAME, pokieVersion: "1.0.0"},
+                                betMode: "base",
+                                stake: 5,
+                                totalWin: 12.5,
+                                payoutMultiplier: 2.5,
+                                screen: [["cherry", "lemon"], ["cherry", "bar"]],
+                                steps: [{index: 0, screen: [["cherry", "lemon"], ["cherry", "bar"]], totalWin: 12.5, wins: [winningWin]}],
+                                wins: [winningWin],
+                                hash: "hash-1",
+                            },
+                        },
+                    }),
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+
+        const inspect = section("Inspect round");
+        await within(inspect).findByText("Positions");
+        const screenTable = within(inspect).getByText("lemon").closest("table") as HTMLElement;
+        const cherryCells = within(screenTable).getAllByText("cherry").map((textNode) => textNode.closest("td"));
+        expect(cherryCells).toHaveLength(2);
+        for (const cherryCell of cherryCells) {
+            expect(cherryCell).toHaveAttribute("data-payline", "true");
+        }
+        expect(within(inspect).getByText(/Paytable unavailable/)).toBeInTheDocument();
+    }, 60000);
+
+    // A round played without debug mode on (so no debug.artifact) still has a screen -- RoundSummary's
+    // own flat fallback (see its doc comment) renders that screen through the exact same GameScreenView
+    // component the artifact-backed path above renders through, rather than a page-local ScreenTable
+    // clone -- this is what "non-artifact Runtime rounds" migrating onto the shared presentation
+    // components actually means in practice, not just the artifact-backed path.
+    it("still renders the played round's screen through the shared GameScreenView when the session captured no debug artifact", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1005, win: 0, sessionVersion: 2, screen: [["cherry", "lemon"]]})},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+
+        const inspect = section("Inspect round");
+        await within(inspect).findByText("cherry");
+        expect(within(inspect).getByText("lemon")).toBeInTheDocument();
+        // No wins table (that's an artifact-only piece of RoundArtifactInspector) -- confirms this
+        // genuinely took the flat fallback branch, still rendering the screen through GameScreenView.
+        expect(within(inspect).queryByText("Positions")).not.toBeInTheDocument();
+    }, 60000);
 });
