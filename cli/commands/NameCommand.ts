@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     ALL_SLOT_GAME_NAME_THEMES,
     SlotGameNameGenerating,
@@ -7,7 +8,7 @@ import {
     SlotGameNameTheme,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]";
 
@@ -35,6 +36,10 @@ export class NameCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
         try {
             const options = this.parseArgs(args);
@@ -49,8 +54,68 @@ export class NameCommand implements CliCommandHandling {
 
             return Promise.resolve(0);
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve(0);
+            }
             return Promise.reject(error);
         }
+    }
+
+    // NameCommand has no positionals at all, so a trailing "[excess...]" catches every stray bare
+    // token (the original loop's default case treated ANY unmatched token -- flag-shaped or not -- as
+    // an "Unknown option"). Each validated option uses a custom parser for an invalid *provided* value,
+    // and optionMissingArgument maps a structurally *missing* value (the flag given with nothing after
+    // it) back to the exact same message, matching each original case's own single combined check
+    // (e.g. "value === undefined ? NaN : Number(value)").
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {value?: NameOptions} = {}): Command {
+        return createCommanderCliCommand("name")
+            .description(this.getDescription())
+            .argument("[excess...]", "rejected if present -- this command takes no positionals")
+            .option(
+                "--count <count>",
+                "how many unique names to generate (default: 1)",
+                (value: string) => {
+                    const parsed = Number(value);
+                    if (!Number.isInteger(parsed) || parsed <= 0) {
+                        throw new Error(`--count requires a positive integer. ${USAGE}`);
+                    }
+                    return parsed;
+                },
+                1,
+            )
+            .option("--theme <theme>", `restrict generation to one theme (one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")})`, (value: string) => {
+                if (!ALL_SLOT_GAME_NAME_THEMES.includes(value as SlotGameNameTheme)) {
+                    throw new Error(`--theme must be one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")}. ${USAGE}`);
+                }
+                return value as SlotGameNameTheme;
+            })
+            .option("--words <words>", "number of words per name, 2 or 3 (default: the generator's own choice)", (value: string) => {
+                if (value !== "2" && value !== "3") {
+                    throw new Error(`--words must be 2 or 3. ${USAGE}`);
+                }
+                return Number(value) as 2 | 3;
+            })
+            .option("--seed <integer>", "seed for reproducible generation (default: a random seed)", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed)) {
+                    throw new Error(`--seed requires an integer value. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--json", "print the raw SlotGameNameResult[] JSON instead of a human-readable list")
+            .action(
+                (excess: string[], options: {count: number; theme?: SlotGameNameTheme; words?: 2 | 3; seed?: number; json?: boolean}) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                    }
+                    resultRef.value = {count: options.count, theme: options.theme, wordCount: options.words, seed: options.seed, json: options.json ?? false};
+                },
+            );
     }
 
     private printHuman(results: SlotGameNameResult[], options: NameOptions): void {
@@ -64,60 +129,17 @@ export class NameCommand implements CliCommandHandling {
         console.log(`\nReproduce with: pokie name --seed ${results[0].seed}${countFlag}${themeFlag}${wordsFlag}`);
     }
 
-    // NameCommand has no positionals at all, so a trailing "[excess...]" catches every stray bare
-    // token (the original loop's default case treated ANY unmatched token -- flag-shaped or not -- as
-    // an "Unknown option"). Each validated option uses a custom parser for an invalid *provided* value,
-    // and optionMissingArgument maps a structurally *missing* value (the flag given with nothing after
-    // it) back to the exact same message, matching each original case's own single combined check
-    // (e.g. "value === undefined ? NaN : Number(value)").
+
     private parseArgs(args: string[]): NameOptions {
-        let result: NameOptions | undefined;
-        const command = createCommanderCliCommand("name")
-            .argument("[excess...]")
-            .option(
-                "--count <count>",
-                "",
-                (value: string) => {
-                    const parsed = Number(value);
-                    if (!Number.isInteger(parsed) || parsed <= 0) {
-                        throw new Error(`--count requires a positive integer. ${USAGE}`);
-                    }
-                    return parsed;
-                },
-                1,
-            )
-            .option("--theme <theme>", "", (value: string) => {
-                if (!ALL_SLOT_GAME_NAME_THEMES.includes(value as SlotGameNameTheme)) {
-                    throw new Error(`--theme must be one of: ${ALL_SLOT_GAME_NAME_THEMES.join(", ")}. ${USAGE}`);
-                }
-                return value as SlotGameNameTheme;
-            })
-            .option("--words <words>", "", (value: string) => {
-                if (value !== "2" && value !== "3") {
-                    throw new Error(`--words must be 2 or 3. ${USAGE}`);
-                }
-                return Number(value) as 2 | 3;
-            })
-            .option("--seed <integer>", "", (value: string) => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed)) {
-                    throw new Error(`--seed requires an integer value. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--json")
-            .action(
-                (excess: string[], options: {count: number; theme?: SlotGameNameTheme; words?: 2 | 3; seed?: number; json?: boolean}) => {
-                    if (excess.length > 0) {
-                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                    }
-                    result = {count: options.count, theme: options.theme, wordCount: options.words, seed: options.seed, json: options.json ?? false};
-                },
-            );
+        const resultRef: {value?: NameOptions} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) => {
@@ -136,6 +158,6 @@ export class NameCommand implements CliCommandHandling {
                 },
             });
         }
-        return result!;
+        return resultRef.value!;
     }
 }

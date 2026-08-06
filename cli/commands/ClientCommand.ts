@@ -1,6 +1,7 @@
+import {Command} from "commander";
 import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const DEFAULT_API_HOST = "127.0.0.1";
 const DEFAULT_API_PORT = 3000;
@@ -43,12 +44,55 @@ export class ClientCommand implements CliCommandHandling {
         return "Experimental: serve the universal browser preview UI for a running \"pokie serve\" API.";
     }
 
-    public async run(args: string[]): Promise<void> {
-        let host: string | undefined;
-        let port: number | undefined;
-        let apiHost: string | undefined;
-        let apiPort: number | undefined;
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
 
+    public async run(args: string[]): Promise<void> {
+        const resultRef: {host?: string; port?: number; apiHost?: string; apiPort?: number} = {};
+        const command = this.buildCommand(resultRef);
+
+        try {
+            command.parse(args, {from: "user"});
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw translateCommanderError(error, {
+                missingArgument: USAGE,
+                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                optionMissingArgument: (flag) =>
+                    flag === "--port" || flag === "--api-port"
+                        ? `${flag} must be a non-negative integer. ${USAGE}`
+                        : `${flag} requires a value. ${USAGE}`,
+            });
+        }
+
+        const resolvedApiHost = resultRef.apiHost ?? DEFAULT_API_HOST;
+        const resolvedApiPort = resultRef.apiPort ?? DEFAULT_API_PORT;
+
+        const server = this.createServer(this.clientRoot, {
+            host: resultRef.host,
+            port: resultRef.port,
+            apiAddress: {host: resolvedApiHost, port: resolvedApiPort},
+        });
+        const address = await server.start();
+
+        console.log(`POKIE client preview (experimental) listening on http://${address.host}:${address.port}`);
+        console.log(
+            `Talking to a pokie serve API expected at http://${resolvedApiHost}:${resolvedApiPort} — start it separately ` +
+                '(e.g. "pokie serve") or use "pokie dev" to run both together.',
+        );
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `resultRef` is written by the action; run() supplies its own real box
+    // and reads it back once parsing resolves, while getCommanderCommand() never parses this tree at
+    // all, so its own default box is never read.
+    private buildCommand(
+        resultRef: {host?: string; port?: number; apiHost?: string; apiPort?: number} = {},
+    ): Command {
         const parsePort = (flag: string) => (value: string) => {
             const parsed = Number(value);
             if (!Number.isInteger(parsed) || parsed < 0) {
@@ -57,13 +101,14 @@ export class ClientCommand implements CliCommandHandling {
             return parsed;
         };
 
-        const command = createCommanderCliCommand("client")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--port <number>", "port to listen on", parsePort("--port"))
-            .option("--host <string>", "host to listen on")
-            .option("--api-port <number>", "port of the pokie serve API to talk to", parsePort("--api-port"))
-            .option("--api-host <string>", "host of the pokie serve API to talk to")
+        return createCommanderCliCommand("client")
+            .description(this.getDescription())
+            .argument("<packageRoot>", "an existing POKIE game package (unused -- see this class's own doc comment)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--port <number>", "port to listen on (default: an available port)", parsePort("--port"))
+            .option("--host <string>", "host to listen on (default: loopback only)")
+            .option("--api-port <number>", `port of the pokie serve API to talk to (default: ${DEFAULT_API_PORT})`, parsePort("--api-port"))
+            .option("--api-host <string>", `host of the pokie serve API to talk to (default: ${DEFAULT_API_HOST})`)
             .action(
                 (
                     root: string,
@@ -76,40 +121,11 @@ export class ClientCommand implements CliCommandHandling {
                     if (!root || excess.length > 0) {
                         throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
                     }
-                    host = options.host;
-                    port = options.port;
-                    apiHost = options.apiHost;
-                    apiPort = options.apiPort;
+                    resultRef.host = options.host;
+                    resultRef.port = options.port;
+                    resultRef.apiHost = options.apiHost;
+                    resultRef.apiPort = options.apiPort;
                 },
             );
-
-        try {
-            command.parse(args, {from: "user"});
-        } catch (error) {
-            throw translateCommanderError(error, {
-                missingArgument: USAGE,
-                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
-                optionMissingArgument: (flag) =>
-                    flag === "--port" || flag === "--api-port"
-                        ? `${flag} must be a non-negative integer. ${USAGE}`
-                        : `${flag} requires a value. ${USAGE}`,
-            });
-        }
-
-        const resolvedApiHost = apiHost ?? DEFAULT_API_HOST;
-        const resolvedApiPort = apiPort ?? DEFAULT_API_PORT;
-
-        const server = this.createServer(this.clientRoot, {
-            host,
-            port,
-            apiAddress: {host: resolvedApiHost, port: resolvedApiPort},
-        });
-        const address = await server.start();
-
-        console.log(`POKIE client preview (experimental) listening on http://${address.host}:${address.port}`);
-        console.log(
-            `Talking to a pokie serve API expected at http://${resolvedApiHost}:${resolvedApiPort} — start it separately ` +
-                '(e.g. "pokie serve") or use "pokie dev" to run both together.',
-        );
     }
 }

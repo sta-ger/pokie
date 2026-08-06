@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
@@ -17,7 +18,7 @@ import {
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie certification build <bundleDir> <config.json> [--out <dir>]\n" +
@@ -71,6 +72,10 @@ export class CertificationCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     // Two ordinary-word verbs ("build"/"verify") sharing one parent Commander instance — real nested
     // subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself both
     // dispatches by exact verb name and validates each verb's own args/options. The messages passed
@@ -87,38 +92,8 @@ export class CertificationCommand implements CliCommandHandling {
             return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("certification");
-
-        parent
-            .command("build")
-            .argument("<bundleDir>")
-            .argument("<config.json>")
-            .argument("[excess...]")
-            .option("--out <dir>")
-            .action(async (bundleDir: string, configPath: string, excess: string[], options: {out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
-                }
-                const outDir = options.out ?? path.join(path.dirname(configPath), "certification");
-                exitCode = await this.executeBuild(bundleDir, configPath, outDir);
-            });
-
-        parent
-            .command("verify")
-            .argument("<certDir>")
-            .argument("[excess...]")
-            .option("--source <bundleDir>")
-            .action(async (certDir: string, excess: string[], options: {source?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
-                }
-                if (options.source === undefined) {
-                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
-                }
-                exitCode = await this.executeVerify(certDir, options.source);
-            });
-
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
         const verb = args[0];
         let verbMessages: CommanderErrorMessages = {};
         if (verb === "build") {
@@ -137,14 +112,59 @@ export class CertificationCommand implements CliCommandHandling {
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     ...verbMessages,
                     unknownCommand: `${USAGE}\n${CONFIG_HINT}`,
                     noCommand: `${USAGE}\n${CONFIG_HINT}`,
                 });
             });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
+    // run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("certification").description(this.getDescription());
+
+        parent
+            .command("build")
+            .description("Build a canonical certification/evidence bundle on top of an outcome-library bundle.")
+            .argument("<bundleDir>", "an existing outcome-library bundle directory (see \"pokie outcomelibrary build\")")
+            .argument("<config.json>", "lists one sample source per mode -- see docs/certification-evidence-bundle.md")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <dir>", "output directory (default: a \"certification\" sibling of <config.json>)")
+            .action(async (bundleDir: string, configPath: string, excess: string[], options: {out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
+                }
+                const outDir = options.out ?? path.join(path.dirname(configPath), "certification");
+                exitCodeRef.value = await this.executeBuild(bundleDir, configPath, outDir);
+            });
+
+        parent
+            .command("verify")
+            .description("Verify a certification/evidence bundle against its outcome-library source.")
+            .argument("<certDir>", "an existing certification/evidence bundle directory built by \"pokie certification build\"")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--source <bundleDir>", "the outcome-library bundle the certification bundle was built from (required)")
+            .action(async (certDir: string, excess: string[], options: {source?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
+                }
+                if (options.source === undefined) {
+                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
+                }
+                exitCodeRef.value = await this.executeVerify(certDir, options.source);
+            });
+
+        return parent;
     }
 
     private async executeBuild(bundleDir: string, configPath: string, outDir: string): Promise<number> {

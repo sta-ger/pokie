@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {dispatch} from "../../cli/dispatch.js";
 
@@ -26,6 +27,10 @@ class FakeCommand implements CliCommandHandling {
     public run(args: string[]): Promise<void | number> {
         this.receivedArgs = args;
         return this.runImpl(args);
+    }
+
+    public getCommanderCommand(): Command {
+        throw new Error("FakeCommand.getCommanderCommand is never called by dispatch.");
     }
 }
 

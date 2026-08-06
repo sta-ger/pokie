@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     loadPokieGame,
     OutcomeSourceReplayResult,
@@ -13,7 +14,7 @@ import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ReplayOptions = {
     packageRoot: string;
@@ -75,8 +76,20 @@ export class ReplayCommand implements CliCommandHandling {
         return "Best-effort replay of a single round (by seed + round index) from a POKIE game package.";
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let options: ReplayOptions;
+        try {
+            options = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
 
         // A resolved "outcomeLibrary"/"stakeAdapter" project is routed through the outcome-source selector
         // path below instead -- neither ever reaches resolveRuntimePackageRoot/loadGame (see
@@ -110,6 +123,57 @@ export class ReplayCommand implements CliCommandHandling {
         }
     }
 
+    // Commander declares/validates <packageRoot>, --seed/--out (unvalidated), --round (a custom parser
+    // for a positive integer), and --format (validated to only accept "json", but per the original its
+    // parsed value is never actually wired into anything else -- kept "validated but inert" here too).
+    // --round is deliberately left a plain (non-required) option rather than Commander's own
+    // .requiredOption() -- see the "required options" gotcha in CommanderCliAdapter.ts's callers -- so
+    // its presence is checked manually in the action, in the same relative position (after all other
+    // parsing/validation succeeds) the original's end-of-loop "if (round === undefined)" check occupied.
+    // A trailing "[excess...]" catches any stray bare positional, matching the original loop's default
+    // case treating any unmatched token as an "Unknown option".
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {value?: ReplayOptions} = {}): Command {
+        return createCommanderCliCommand("replay")
+            .description(this.getDescription())
+            .argument("<packageRoot>", "an existing POKIE game package, or a native outcome-library bundle (with --mode)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--seed <string>", "seed to replay against (required for a native outcome-library bundle)")
+            .option("--round <number>", "round index to replay (required)", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 1) {
+                    throw new Error(`--round must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--out <file>", "write the replay descriptor JSON to this path")
+            .option("--format <format>", "only \"json\" is supported (validated, but the output is always JSON)", (value: string) => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${USAGE}`);
+                }
+                return value;
+            })
+            // Only meaningful when packageRoot resolves to an "outcomeLibrary" project -- see
+            // runOutcomeSourceReplay -- but declared/validated here alongside every other option rather
+            // than a bespoke second parse, same as OutcomeSourceCommand's own "sample" verb.
+            .option("--mode <modeName>", "outcome-library mode to replay (required when <packageRoot> is a native outcome-library bundle)")
+            .action(
+                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string}) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                    }
+                    if (options.round === undefined) {
+                        throw new Error(`--round is required. ${USAGE}`);
+                    }
+                    resultRef.value = {packageRoot, seed: options.seed, round: options.round, out: options.out, mode: options.mode};
+                },
+            );
+    }
+
     private async runOutcomeSourceReplay(project: PokieProject, options: ReplayOptions): Promise<void> {
         if (!options.mode) {
             throw new Error(`--mode is required to replay a native outcome-library round. ${USAGE}`);
@@ -134,54 +198,17 @@ export class ReplayCommand implements CliCommandHandling {
         }
     }
 
-    // Commander declares/validates <packageRoot>, --seed/--out (unvalidated), --round (a custom parser
-    // for a positive integer), and --format (validated to only accept "json", but per the original its
-    // parsed value is never actually wired into anything else -- kept "validated but inert" here too).
-    // --round is deliberately left a plain (non-required) option rather than Commander's own
-    // .requiredOption() -- see the "required options" gotcha in CommanderCliAdapter.ts's callers -- so
-    // its presence is checked manually in the action, in the same relative position (after all other
-    // parsing/validation succeeds) the original's end-of-loop "if (round === undefined)" check occupied.
-    // A trailing "[excess...]" catches any stray bare positional, matching the original loop's default
-    // case treating any unmatched token as an "Unknown option".
+
     private parseArgs(args: string[]): ReplayOptions {
-        let result: ReplayOptions | undefined;
-        const command = createCommanderCliCommand("replay")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--seed <string>")
-            .option("--round <number>", "", (value: string) => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed < 1) {
-                    throw new Error(`--round must be a positive integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--out <file>")
-            .option("--format <format>", "", (value: string) => {
-                if (value !== "json") {
-                    throw new Error(`--format only supports "json". ${USAGE}`);
-                }
-                return value;
-            })
-            // Only meaningful when packageRoot resolves to an "outcomeLibrary" project -- see
-            // runOutcomeSourceReplay -- but declared/validated here alongside every other option rather
-            // than a bespoke second parse, same as OutcomeSourceCommand's own "sample" verb.
-            .option("--mode <modeName>")
-            .action(
-                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string}) => {
-                    if (excess.length > 0) {
-                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                    }
-                    if (options.round === undefined) {
-                        throw new Error(`--round is required. ${USAGE}`);
-                    }
-                    result = {packageRoot, seed: options.seed, round: options.round, out: options.out, mode: options.mode};
-                },
-            );
+        const resultRef: {value?: ReplayOptions} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
@@ -203,6 +230,6 @@ export class ReplayCommand implements CliCommandHandling {
                 },
             });
         }
-        return result!;
+        return resultRef.value!;
     }
 }

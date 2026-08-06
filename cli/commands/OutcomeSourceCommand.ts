@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     describeUnsupportedProjectOperation,
     diffOutcomeSourceProjects,
@@ -18,7 +19,7 @@ import {
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
@@ -95,60 +96,17 @@ export class OutcomeSourceCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
         if (args.length === 0) {
             return Promise.reject(new Error(USAGE));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("outcomesource");
-
-        parent
-            .command("inspect")
-            .argument("<path>")
-            .argument("[excess...]")
-            .action(async (targetPath: string, excess: string[]) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${INSPECT_USAGE}`);
-                }
-                exitCode = await this.executeInspect(targetPath);
-            });
-
-        parent
-            .command("sample")
-            .argument("<path>")
-            .argument("[excess...]")
-            .option("--mode <modeName>")
-            .option("--seed <value>")
-            .action(async (targetPath: string, excess: string[], options: SampleCliOptions) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${SAMPLE_USAGE}`);
-                }
-                if (!options.mode) {
-                    throw new Error(`--mode is required. ${SAMPLE_USAGE}`);
-                }
-                exitCode = await this.executeSample(targetPath, options.mode, options.seed);
-            });
-
-        parent
-            .command("diff")
-            .argument("<leftPath>")
-            .argument("<rightPath>")
-            .argument("[excess...]")
-            .option("--format <format>", "", (value: string) => {
-                if (value !== "json") {
-                    throw new Error(`--format only supports "json". ${DIFF_USAGE}`);
-                }
-                return "json" as DiffFormat;
-            })
-            .option("--out <file>")
-            .action(async (leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${DIFF_USAGE}`);
-                }
-                exitCode = await this.executeDiff(leftPath, rightPath, {format: options.format ?? "summary", out: options.out});
-            });
-
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
         const verb = args[0];
         let verbMessages = {};
         if (verb === "inspect") {
@@ -171,10 +129,73 @@ export class OutcomeSourceCommand implements CliCommandHandling {
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {...verbMessages, unknownCommand: USAGE, noCommand: USAGE});
             });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
+    // run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("outcomesource").description(this.getDescription());
+
+        parent
+            .command("inspect")
+            .description("Inspect a resolved outcome-library/Stake Engine outcome source through its own canonical reader.")
+            .argument("<path>", "an outcome-library bundle or Stake Engine export directory")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .action(async (targetPath: string, excess: string[]) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${INSPECT_USAGE}`);
+                }
+                exitCodeRef.value = await this.executeInspect(targetPath);
+            });
+
+        parent
+            .command("sample")
+            .description("Draw one outcome from a native outcome library through the same selector path live/pre-generated play uses.")
+            .argument("<path>", "an outcome-library bundle directory")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--mode <modeName>", "bet mode to draw from (required)")
+            .option("--seed <value>", "seed for a reproducible draw (default: a securely random draw)")
+            .action(async (targetPath: string, excess: string[], options: SampleCliOptions) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${SAMPLE_USAGE}`);
+                }
+                if (!options.mode) {
+                    throw new Error(`--mode is required. ${SAMPLE_USAGE}`);
+                }
+                exitCodeRef.value = await this.executeSample(targetPath, options.mode, options.seed);
+            });
+
+        parent
+            .command("diff")
+            .description("Diff two resolved outcome sources' own exact analyses.")
+            .argument("<leftPath>", "an outcome-library bundle or Stake Engine export directory")
+            .argument("<rightPath>", "an outcome-library bundle or Stake Engine export directory")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--format <format>", "only \"json\" is supported (default: a human-readable summary)", (value: string) => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${DIFF_USAGE}`);
+                }
+                return "json" as DiffFormat;
+            })
+            .option("--out <file>", "write the diff report JSON to this path")
+            .action(async (leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${DIFF_USAGE}`);
+                }
+                exitCodeRef.value = await this.executeDiff(leftPath, rightPath, {format: options.format ?? "summary", out: options.out});
+            });
+
+        return parent;
     }
 
     private async executeInspect(targetPath: string): Promise<number> {

@@ -17,11 +17,12 @@ import {
     resolveReelStripGeneration,
     SlotGameNameGenerator,
 } from "pokie";
+import {Command} from "commander";
 import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
 
@@ -90,31 +91,71 @@ export class BuildCommand implements CliCommandHandling {
         );
     }
 
-    // "random"/"--random" is a flag-like verb selector rather than an ordinary positional command name, so
-    // Commander (whose subcommand matching only recognizes non-"-"-prefixed tokens, and has no concept of a
-    // second spelling for the same subcommand) can't itself pick it out; this is the same kind of
-    // pre-Commander routing cli/dispatch.ts's own resolveCliInvocation() already does one level up to pick a
-    // command by name. Once a verb is selected, its own args/options/aliases are declared and validated by
-    // Commander alone — see runRandom/runDefault, neither of which hand-parses a flag or coerces a value.
-    public run(args: string[]): Promise<number> {
-        try {
-            if (args[0] === "random" || args[0] === "--random") {
-                return this.runRandom(args.slice(1));
-            }
-
-            return this.runDefault(args);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
     }
 
-    private runDefault(args: string[]): Promise<number> {
-        let exitCode = 0;
-        const command = createCommanderCliCommand("build")
-            .argument("<configPath>")
-            .argument("[excess...]")
-            .option("--target <dir>")
-            .option("--dry-run")
+    public run(args: string[]): Promise<number> {
+        // "--random" is a pre-Commander alias for the real "random" subcommand -- Commander's own
+        // subcommand matching only recognizes non-"-"-prefixed tokens, and has no concept of a second
+        // spelling for the same subcommand -- so it's normalized here, before the real, unified
+        // Commander tree (see buildCommand()) ever sees it. Everything else (positionals, options,
+        // validation) is declared and validated by Commander alone.
+        const normalizedArgs = args[0] === "--random" ? ["random", ...args.slice(1)] : args;
+        const isRandom = normalizedArgs[0] === "random";
+
+        const exitCodeRef = {value: 0};
+        const command = this.buildCommand(exitCodeRef);
+
+        return command
+            .parseAsync(normalizedArgs, {from: "user"})
+            .then(() => exitCodeRef.value)
+            .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
+                if (isRandom) {
+                    throw translateCommanderError(error, {
+                        unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
+                        optionMissingArgument: (flag) => {
+                            if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
+                            if (flag === "--target") return `--target requires a directory path. ${RANDOM_USAGE}`;
+                            if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
+                            return `Unknown option "${flag}". ${RANDOM_USAGE}`;
+                        },
+                    });
+                }
+                throw translateCommanderError(error, {
+                    missingArgument: `${USAGE}\n${BLUEPRINT_HINT}`,
+                    unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                    optionMissingArgument: (flag) =>
+                        flag === "--target" ? `--target requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`,
+                });
+            });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart: the default "<config.json>" action lives on the parent itself, and
+    // "random" is a genuine Commander subcommand (`.command("random")`), so "pokie build --help" lists
+    // it and "pokie build random --help" answers its own help, with no second, hand-maintained tree.
+    // "--random" (the flag spelling) is a pre-Commander alias, not a second subcommand -- Commander's
+    // own subcommand matching only recognizes non-"-"-prefixed tokens -- normalized to "random" by
+    // run() below before this tree ever sees it.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("build")
+            // Positional options: once "random" (a subcommand name, not a value for <configPath>) is
+            // seen, every option after it belongs to "random"'s own parser, not the parent's -- without
+            // this, the parent's own parseOptions() greedily consumes any --target/--dry-run it
+            // recognizes from the FULL remaining argv (regardless of position) before subcommand
+            // dispatch ever runs, leaving "random"'s own action with none of them. See Commander's own
+            // enablePositionalOptions() doc comment ("lets subcommands reuse the same option names").
+            .enablePositionalOptions()
+            .description(this.getDescription())
+            .argument("<configPath>", "a GameBlueprint JSON config (see docs/cli.md#pokie-build-configjson)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--target <dir>", "output directory (default: the generator's own default output directory)")
+            .option("--dry-run", "validate and preview without writing anything")
             .action(async (configPath: string, excess: string[], options: {target?: string; dryRun?: boolean}) => {
                 // An empty-string positional ("pokie build ''") is present as far as Commander's own
                 // required-argument check is concerned, but the pre-Commander behavior this preserves
@@ -138,42 +179,29 @@ export class BuildCommand implements CliCommandHandling {
                     }
                 }
                 const blueprint = this.loadBlueprint(configPath);
-                exitCode = await this.buildFromBlueprint(blueprint, options.target, configPath, options.dryRun ?? false);
+                exitCodeRef.value = await this.buildFromBlueprint(blueprint, options.target, configPath, options.dryRun ?? false);
             });
 
-        return command
-            .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
-            .catch((error: unknown) => {
-                throw translateCommanderError(error, {
-                    missingArgument: `${USAGE}\n${BLUEPRINT_HINT}`,
-                    unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
-                    optionMissingArgument: (flag) =>
-                        flag === "--target" ? `--target requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`,
-                });
-            });
-    }
-
-    // "random"/"--random": generates a fresh, always-valid GameBlueprint (see
-    // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
-    // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
-    // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
-    // smoke simulation, which a hand-authored blueprint build never runs. "--preset" only selects which
-    // already-registered RandomGameBlueprintStrategy generates the mechanics (default-line-pay vs the
-    // richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset always
-    // reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
-    private runRandom(args: string[]): Promise<number> {
-        let exitCode = 0;
-        const command = createCommanderCliCommand("build random")
-            .argument("[excess...]")
+        // "random"/"--random": generates a fresh, always-valid GameBlueprint (see
+        // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
+        // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
+        // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
+        // smoke simulation, which a hand-authored blueprint build never runs. "--preset" only selects
+        // which already-registered RandomGameBlueprintStrategy generates the mechanics (default-line-pay
+        // vs the richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset
+        // always reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
+        parent
+            .command("random")
+            .description("Generate a first-class random game instead of loading a config file.")
+            .argument("[excess...]", "rejected if present -- this verb takes no positionals")
             .option("--seed <integer>", "reproduce a specific random game", (value: string) => {
                 if (!Number.isInteger(Number(value))) {
                     throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
                 }
                 return Number(value);
             })
-            .option("--target <dir>")
-            .option("--dry-run")
+            .option("--target <dir>", "output directory (default: the generator's own default output directory)")
+            .option("--dry-run", "validate and preview without writing anything")
             .option(
                 "--preset <preset>",
                 "which generation strategy to use",
@@ -189,23 +217,10 @@ export class BuildCommand implements CliCommandHandling {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${RANDOM_USAGE}`);
                 }
-                exitCode = await this.executeRandom({seed: options.seed, outDir: options.target, dryRun: options.dryRun ?? false, preset: options.preset});
+                exitCodeRef.value = await this.executeRandom({seed: options.seed, outDir: options.target, dryRun: options.dryRun ?? false, preset: options.preset});
             });
 
-        return command
-            .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
-            .catch((error: unknown) => {
-                throw translateCommanderError(error, {
-                    unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
-                    optionMissingArgument: (flag) => {
-                        if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
-                        if (flag === "--target") return `--target requires a directory path. ${RANDOM_USAGE}`;
-                        if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
-                        return `Unknown option "${flag}". ${RANDOM_USAGE}`;
-                    },
-                });
-            });
+        return parent;
     }
 
     // "random"/"--random": generates a fresh, always-valid GameBlueprint (see

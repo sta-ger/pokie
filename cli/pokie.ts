@@ -2,31 +2,8 @@
 import fs from "fs";
 import path from "path";
 import {fileURLToPath} from "url";
-import {CliCommandHandling} from "./CliCommandHandling.js";
-import {BuildCommand} from "./commands/BuildCommand.js";
-import {CertificationCommand} from "./commands/CertificationCommand.js";
-import {ClientCommand} from "./commands/ClientCommand.js";
-import {CreateCommand} from "./commands/CreateCommand.js";
-import {DevCommand} from "./commands/DevCommand.js";
-import {DiffCommand} from "./commands/DiffCommand.js";
-import {FairnessCommand} from "./commands/FairnessCommand.js";
-import {InitCommand} from "./commands/InitCommand.js";
-import {InspectCommand} from "./commands/InspectCommand.js";
-import {NameCommand} from "./commands/NameCommand.js";
-import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
-import {OutcomeSourceCommand} from "./commands/OutcomeSourceCommand.js";
-import {ParCommand} from "./commands/ParCommand.js";
-import {ReelCommand} from "./commands/ReelCommand.js";
-import {ReplayCommand} from "./commands/ReplayCommand.js";
-import {ReportCommand} from "./commands/ReportCommand.js";
-import {ServeCommand} from "./commands/ServeCommand.js";
-import {SimCommand} from "./commands/SimCommand.js";
-import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
-import {StudioCommand} from "./commands/StudioCommand.js";
-import {ValidateCommand} from "./commands/ValidateCommand.js";
-import {DEV_OPERATION, REPLAY_OPERATION, SERVE_OPERATION, SIM_OPERATION, VALIDATE_OPERATION} from "pokie";
 import {dispatch} from "./dispatch.js";
-import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
+import {registerCliCommands} from "./registerCliCommands.js";
 
 // This compiled file always lives at "<pokiePackageRoot>/dist/cli/pokie.js", regardless of how the
 // running POKIE installation actually got onto disk -- a dev checkout, an npm-linked target (Node's own
@@ -70,51 +47,12 @@ function ownStudioRoot(): string {
 }
 
 function run(): Promise<number> {
-    const pokiePackageRoot = readOwnPackageRoot();
-    const commands: CliCommandHandling[] = [
-        new BuildCommand(readOwnVersion()),
-        new CertificationCommand(readOwnVersion()),
-        new ClientCommand(undefined, ownClientRoot()),
-        new CreateCommand(readOwnVersion()),
-        new DevCommand(
-            undefined,
-            undefined,
-            {clientRoot: ownClientRoot()},
-            createMaterializingRuntimePackageResolver(readOwnVersion(), DEV_OPERATION, pokiePackageRoot),
-        ),
-        new DiffCommand(),
-        new FairnessCommand(),
-        new InitCommand(readOwnVersion()),
-        new InspectCommand(),
-        new NameCommand(),
-        new OutcomeLibraryCommand(readOwnVersion()),
-        new OutcomeSourceCommand(),
-        new ParCommand(readOwnVersion()),
-        new ReelCommand(),
-        new ReplayCommand(
-            undefined,
-            undefined,
-            undefined,
-            createMaterializingRuntimePackageResolver(readOwnVersion(), REPLAY_OPERATION, pokiePackageRoot),
-        ),
-        new ReportCommand(),
-        new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(readOwnVersion(), SERVE_OPERATION, pokiePackageRoot)),
-        new SimCommand(
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            createMaterializingRuntimePackageResolver(readOwnVersion(), SIM_OPERATION, pokiePackageRoot),
-        ),
-        new StakeEngineCommand(readOwnVersion()),
-        new StudioCommand(readOwnVersion(), pokiePackageRoot, {studioRoot: ownStudioRoot()}),
-        new ValidateCommand(
-            undefined,
-            undefined,
-            createMaterializingRuntimePackageResolver(readOwnVersion(), VALIDATE_OPERATION, pokiePackageRoot),
-        ),
-    ];
+    const commands = registerCliCommands({
+        version: readOwnVersion(),
+        pokiePackageRoot: readOwnPackageRoot(),
+        clientRoot: ownClientRoot(),
+        studioRoot: ownStudioRoot(),
+    });
     return dispatch(commands, process.argv);
 }
 

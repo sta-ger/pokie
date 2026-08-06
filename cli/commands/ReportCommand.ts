@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     HtmlSimulationReportRenderer,
     isSimulationReportSet,
@@ -12,7 +13,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
 type ReportFormat = "markdown" | "html";
@@ -64,8 +65,21 @@ export class ReportCommand implements CliCommandHandling {
         return "Render a pokie sim JSON report (see pokie sim --out) as a human-readable Markdown or HTML document.";
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public async run(args: string[]): Promise<void> {
-        const {reportPath, format, out} = this.parseArgs(args);
+        let parsedArgs: {reportPath: string; format: ReportFormat; out?: string};
+        try {
+            parsedArgs = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
+        const {reportPath, format, out} = parsedArgs;
 
         let parsed: SimulationReport | SimulationReportSet;
         try {
@@ -82,6 +96,36 @@ export class ReportCommand implements CliCommandHandling {
         const renderer = this.renderers[format];
         const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
         this.emit(rendered, out);
+    }
+
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {reportPath?: string; format?: ReportFormat; out?: string} = {}): Command {
+        return createCommanderCliCommand("report")
+            .description(this.getDescription())
+            .argument("<simulationReportJson>", "a pokie sim JSON report (see \"pokie sim --out\")")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--format <value>", '"markdown" or "html" (default: "markdown")', (value: string) => {
+                if (value !== "markdown" && value !== "html") {
+                    throw new Error(`--format must be "markdown" or "html". ${USAGE}`);
+                }
+                return value as ReportFormat;
+            })
+            .option("--out <file>", "file path to write the rendered report to")
+            .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string}) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!path || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                }
+                resultRef.reportPath = path;
+                resultRef.format = options.format ?? "markdown";
+                resultRef.out = options.out;
+            });
     }
 
     private emit(rendered: string, out?: string): void {
@@ -103,36 +147,17 @@ export class ReportCommand implements CliCommandHandling {
         return renderer.renderSet(reportSet);
     }
 
-    private parseArgs(args: string[]): {reportPath: string; format: ReportFormat; out?: string} {
-        let reportPath!: string;
-        let format!: ReportFormat;
-        let out: string | undefined;
 
-        const command = createCommanderCliCommand("report")
-            .argument("<simulationReportJson>")
-            .argument("[excess...]")
-            .option("--format <value>", '"markdown" or "html"', (value: string) => {
-                if (value !== "markdown" && value !== "html") {
-                    throw new Error(`--format must be "markdown" or "html". ${USAGE}`);
-                }
-                return value as ReportFormat;
-            })
-            .option("--out <file>", "file path to write the rendered report to")
-            .action((path: string, excess: string[], options: {format?: ReportFormat; out?: string}) => {
-                // An empty-string positional is "present" as far as Commander's own required-argument
-                // check is concerned, but the pre-Commander behavior this preserves treated it the same
-                // as an entirely missing one.
-                if (!path || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
-                }
-                reportPath = path;
-                format = options.format ?? "markdown";
-                out = options.out;
-            });
+    private parseArgs(args: string[]): {reportPath: string; format: ReportFormat; out?: string} {
+        const resultRef: {reportPath?: string; format?: ReportFormat; out?: string} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
@@ -141,7 +166,7 @@ export class ReportCommand implements CliCommandHandling {
             });
         }
 
-        return {reportPath, format, out};
+        return {reportPath: resultRef.reportPath!, format: resultRef.format!, out: resultRef.out};
     }
 
     private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {

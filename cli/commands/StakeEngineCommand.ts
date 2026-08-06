@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
@@ -25,7 +26,7 @@ import {
     WeightedOutcomeLibrary,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
@@ -137,14 +138,10 @@ export class StakeEngineCommand implements CliCommandHandling {
         );
     }
 
-    // Four ordinary-word verbs ("export"/"import"/"analyze"/"diff") sharing one parent Commander
-    // instance — real nested subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so
-    // Commander itself both dispatches by exact verb name and validates each verb's own
-    // args/options. The messages passed to translateCommanderError are picked per-verb (from
-    // args[0], read before parsing) since a structural error caught at the shared
-    // parent.parseAsync() call doesn't otherwise say which subcommand it came from; an
-    // empty/unrecognized verb falls back to the combined USAGE+hint the original hand-rolled
-    // switch's own `default` case threw.
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
         // An empty argv has no verb for Commander to dispatch on at all; rather than lean on
         // Commander's own incidental "commander.help" throw for this (still handled below via
@@ -154,87 +151,8 @@ export class StakeEngineCommand implements CliCommandHandling {
             return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("stakeengine");
-
-        parent
-            .command("export")
-            .argument("<config.json>")
-            .argument("[excess...]")
-            .option("--out <dir>")
-            .action(async (configPath: string, excess: string[], options: {out?: string}) => {
-                // An empty-string positional is present as far as Commander's own required-argument
-                // check is concerned, but the pre-Commander behavior this preserves treated it the
-                // same as an entirely missing one (`!configPath`).
-                if (!configPath || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${EXPORT_USAGE}` : `${EXPORT_USAGE}\n${CONFIG_HINT}`);
-                }
-                const outDir = options.out ?? path.join(path.dirname(configPath), "stakeengine");
-                exitCode = await this.runExport({configPath, outDir});
-            });
-
-        parent
-            .command("import")
-            .argument("<stakeDir>")
-            .argument("[excess...]")
-            .option("--out <dir>")
-            .action(async (stakeDir: string, excess: string[], options: {out?: string}) => {
-                if (!stakeDir || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${IMPORT_USAGE}` : `${IMPORT_USAGE}\n${STAKE_DIR_HINT}`);
-                }
-                const outDir = options.out ?? path.join(path.dirname(stakeDir), `${path.basename(stakeDir)}-imported`);
-                exitCode = await this.runImport({stakeDir, outDir});
-            });
-
-        parent
-            .command("analyze")
-            .argument("<stakeDir>")
-            .argument("[excess...]")
-            .option(
-                "--format <format>",
-                'output format ("summary" or "json")',
-                (value: string) => {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${ANALYZE_USAGE}`);
-                    }
-                    return "json" as AnalyzeFormat;
-                },
-                "summary" as AnalyzeFormat,
-            )
-            .option("--out <file>")
-            .action(async (stakeDir: string, excess: string[], options: {format: AnalyzeFormat; out?: string}) => {
-                if (!stakeDir || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${ANALYZE_USAGE}` : `${ANALYZE_USAGE}\n${ANALYZE_STAKE_DIR_HINT}`);
-                }
-                exitCode = await this.runAnalyze({stakeDir, format: options.format, out: options.out});
-            });
-
-        parent
-            .command("diff")
-            .argument("<leftStakeDir>")
-            .argument("<rightStakeDir>")
-            .argument("[excess...]")
-            .option(
-                "--format <format>",
-                'output format ("summary" or "json")',
-                (value: string) => {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${DIFF_USAGE}`);
-                    }
-                    return "json" as AnalyzeFormat;
-                },
-                "summary" as AnalyzeFormat,
-            )
-            .option("--out <file>")
-            .action(async (leftStakeDir: string, rightStakeDir: string, excess: string[], options: {format: AnalyzeFormat; out?: string}) => {
-                // A single combined check, not one per side, matches the pre-Commander behavior:
-                // either side missing (or an empty-string positional) produces the same message.
-                if (!leftStakeDir || !rightStakeDir || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${DIFF_USAGE}` : `${DIFF_USAGE}\n${DIFF_STAKE_DIR_HINT}`);
-                }
-                exitCode = await this.runDiff({leftStakeDir, rightStakeDir, format: options.format, out: options.out});
-            });
-
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
         const verb = args[0];
         let verbMessages: CommanderErrorMessages = {};
         if (verb === "export") {
@@ -273,14 +191,118 @@ export class StakeEngineCommand implements CliCommandHandling {
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     ...verbMessages,
                     unknownCommand: `${USAGE}\n${CONFIG_HINT}`,
                     noCommand: `${USAGE}\n${CONFIG_HINT}`,
                 });
             });
+    }
+
+    // Four ordinary-word verbs ("export"/"import"/"analyze"/"diff") sharing one parent Commander
+    // instance — real nested subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so
+    // Commander itself both dispatches by exact verb name and validates each verb's own
+    // args/options. The messages passed to translateCommanderError are picked per-verb (from
+    // args[0], read before parsing) since a structural error caught at the shared
+    // parent.parseAsync() call doesn't otherwise say which subcommand it came from; an
+    // empty/unrecognized verb falls back to the combined USAGE+hint the original hand-rolled
+    // switch's own `default` case threw.
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
+    // run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("stakeengine").description(this.getDescription());
+
+        parent
+            .command("export")
+            .description("Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format.")
+            .argument("<config.json>", CONFIG_HINT)
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <dir>", "output directory (default: a \"stakeengine\" sibling of <config.json>)")
+            .action(async (configPath: string, excess: string[], options: {out?: string}) => {
+                // An empty-string positional is present as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the
+                // same as an entirely missing one (`!configPath`).
+                if (!configPath || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${EXPORT_USAGE}` : `${EXPORT_USAGE}\n${CONFIG_HINT}`);
+                }
+                const outDir = options.out ?? path.join(path.dirname(configPath), "stakeengine");
+                exitCodeRef.value = await this.runExport({configPath, outDir});
+            });
+
+        parent
+            .command("import")
+            .description("Import a Stake Engine export directory back into WeightedOutcomeLibrary JSON files.")
+            .argument("<stakeDir>", STAKE_DIR_HINT)
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <dir>", "output directory (default: <stakeDir> suffixed with \"-imported\")")
+            .action(async (stakeDir: string, excess: string[], options: {out?: string}) => {
+                if (!stakeDir || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${IMPORT_USAGE}` : `${IMPORT_USAGE}\n${STAKE_DIR_HINT}`);
+                }
+                const outDir = options.out ?? path.join(path.dirname(stakeDir), `${path.basename(stakeDir)}-imported`);
+                exitCodeRef.value = await this.runImport({stakeDir, outDir});
+            });
+
+        parent
+            .command("analyze")
+            .description("Standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required.")
+            .argument("<stakeDir>", ANALYZE_STAKE_DIR_HINT)
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option(
+                "--format <format>",
+                'output format ("summary" or "json", default "summary")',
+                (value: string) => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${ANALYZE_USAGE}`);
+                    }
+                    return "json" as AnalyzeFormat;
+                },
+                "summary" as AnalyzeFormat,
+            )
+            .option("--out <file>", "write the analysis report JSON to this path")
+            .action(async (stakeDir: string, excess: string[], options: {format: AnalyzeFormat; out?: string}) => {
+                if (!stakeDir || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${ANALYZE_USAGE}` : `${ANALYZE_USAGE}\n${ANALYZE_STAKE_DIR_HINT}`);
+                }
+                exitCodeRef.value = await this.runAnalyze({stakeDir, format: options.format, out: options.out});
+            });
+
+        parent
+            .command("diff")
+            .description("Diff two Stake Engine outcome directories/analyses.")
+            .argument("<leftStakeDir>", DIFF_STAKE_DIR_HINT)
+            .argument("<rightStakeDir>", DIFF_STAKE_DIR_HINT)
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option(
+                "--format <format>",
+                'output format ("summary" or "json", default "summary")',
+                (value: string) => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${DIFF_USAGE}`);
+                    }
+                    return "json" as AnalyzeFormat;
+                },
+                "summary" as AnalyzeFormat,
+            )
+            .option("--out <file>", "write the diff report JSON to this path")
+            .action(async (leftStakeDir: string, rightStakeDir: string, excess: string[], options: {format: AnalyzeFormat; out?: string}) => {
+                // A single combined check, not one per side, matches the pre-Commander behavior:
+                // either side missing (or an empty-string positional) produces the same message.
+                if (!leftStakeDir || !rightStakeDir || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${DIFF_USAGE}` : `${DIFF_USAGE}\n${DIFF_STAKE_DIR_HINT}`);
+                }
+                exitCodeRef.value = await this.runDiff({leftStakeDir, rightStakeDir, format: options.format, out: options.out});
+            });
+
+        return parent;
     }
 
     private async runExport(options: ExportOptions): Promise<number> {

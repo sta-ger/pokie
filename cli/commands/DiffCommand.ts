@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     isSimulationReportSet,
     SimulationReport,
@@ -11,7 +12,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type DiffFormat = "summary" | "json";
 
@@ -50,6 +51,10 @@ export class DiffCommand implements CliCommandHandling {
         return "Compare two pokie sim JSON reports (see pokie sim --out) and highlight what changed.";
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<void> {
         try {
             const options = this.parseArgs(args);
@@ -78,8 +83,43 @@ export class DiffCommand implements CliCommandHandling {
 
             return Promise.resolve();
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve();
+            }
             return Promise.reject(error);
         }
+    }
+
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read. Commander declares/validates
+    // <leftReportJson> <rightReportJson>, --format (a custom parser that only accepts the literal
+    // "json", same as the original), and --out (unvalidated). A trailing "[excess...]" catches any
+    // stray bare positional (the original loop's default case treated any unmatched token as an
+    // "Unknown option", including a non-flag one). --format's structurally *missing* value (flag given
+    // with nothing after it) maps to the same message as an invalid provided value, matching the
+    // original's single "value !== 'json'" check (undefined !== "json").
+    private buildCommand(resultRef: {value?: DiffOptions} = {}): Command {
+        return createCommanderCliCommand("diff")
+            .description(this.getDescription())
+            .argument("<leftReportJson>", "a pokie sim JSON report (see \"pokie sim --out\")")
+            .argument("<rightReportJson>", "a pokie sim JSON report (see \"pokie sim --out\")")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--format <format>", "only \"json\" is supported (default: a human-readable summary)", (value: string) => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${USAGE}`);
+                }
+                return "json" as DiffFormat;
+            })
+            .option("--out <file>", "write the diff JSON to this path")
+            .action((leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                }
+                resultRef.value = {leftPath, rightPath, format: options.format ?? "summary", out: options.out};
+            });
     }
 
     private buildDiffJsonAndPrint(left: SimulationReport, right: SimulationReport, options: DiffOptions): string {
@@ -106,35 +146,17 @@ export class DiffCommand implements CliCommandHandling {
         return json;
     }
 
-    // Commander declares/validates <leftReportJson> <rightReportJson>, --format (a custom parser that
-    // only accepts the literal "json", same as the original), and --out (unvalidated). A trailing
-    // "[excess...]" catches any stray bare positional (the original loop's default case treated any
-    // unmatched token as an "Unknown option", including a non-flag one). --format's structurally
-    // *missing* value (flag given with nothing after it) maps to the same message as an invalid
-    // provided value, matching the original's single "value !== 'json'" check (undefined !== "json").
+
     private parseArgs(args: string[]): DiffOptions {
-        let result: DiffOptions | undefined;
-        const command = createCommanderCliCommand("diff")
-            .argument("<leftReportJson>")
-            .argument("<rightReportJson>")
-            .argument("[excess...]")
-            .option("--format <format>", "", (value: string) => {
-                if (value !== "json") {
-                    throw new Error(`--format only supports "json". ${USAGE}`);
-                }
-                return "json" as DiffFormat;
-            })
-            .option("--out <file>")
-            .action((leftPath: string, rightPath: string, excess: string[], options: {format?: DiffFormat; out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                }
-                result = {leftPath, rightPath, format: options.format ?? "summary", out: options.out};
-            });
+        const resultRef: {value?: DiffOptions} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
@@ -149,7 +171,7 @@ export class DiffCommand implements CliCommandHandling {
                 },
             });
         }
-        return result!;
+        return resultRef.value!;
     }
 
     private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {

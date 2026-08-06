@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
@@ -22,7 +23,7 @@ import {
     loadPokieGame,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {streamJsonlOutcomes} from "./internal/streamJsonlOutcomes.js";
 
 const USAGE =
@@ -175,6 +176,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     // Three ordinary-word verbs ("generate"/"build"/"validate") sharing one parent Commander instance —
     // real nested subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself
     // both dispatches by exact verb name and validates each verb's own args/options. The messages passed
@@ -191,75 +196,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("outcomelibrary");
-
-        parent
-            .command("build")
-            .argument("<config.json>")
-            .argument("[excess...]")
-            .option("--out <dir>")
-            .action(async (configPath: string, excess: string[], options: {out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
-                }
-                const outDir = options.out ?? path.join(path.dirname(configPath), "outcomelibrary");
-                exitCode = await this.executeBuild(configPath, outDir);
-            });
-
-        parent
-            .command("validate")
-            .argument("<bundleDir>")
-            .argument("[excess...]")
-            .option("--deep")
-            .action(async (bundleDir: string, excess: string[], options: {deep?: boolean}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${VALIDATE_USAGE}`);
-                }
-                exitCode = await this.executeValidate(bundleDir, options.deep ?? false);
-            });
-
-        parent
-            .command("generate")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--mode <betModeId>")
-            .option("--stake <number>", "", (value: string): number => {
-                const parsed = Number(value);
-                if (!Number.isFinite(parsed) || parsed <= 0) {
-                    throw new Error(`--stake must be a positive number. ${GENERATE_USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--config-hash <hash>")
-            .option("--library-id <id>")
-            .option("--max-outcome-space-size <n>", "", (value: string): bigint => parsePositiveBigIntOption(value, "--max-outcome-space-size"))
-            .option("--bounded")
-            .option("--sample-size <n>", "", (value: string): bigint => parsePositiveBigIntOption(value, "--sample-size"))
-            .option("--seed <string>")
-            .option("--estimate")
-            .option("--dry-run")
-            .option("--out <file>")
-            .option("--resume <file>")
-            .option("--progress")
-            .option(
-                "--format <format>",
-                "",
-                (value: string): GenerateFormat => {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${GENERATE_USAGE}`);
-                    }
-                    return "json";
-                },
-                "summary" as GenerateFormat,
-            )
-            .action(async (packageRoot: string, excess: string[], options: GenerateCliOptions) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${GENERATE_USAGE}`);
-                }
-                exitCode = await this.executeGenerate(packageRoot, options);
-            });
-
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
         const verb = args[0];
         let verbMessages: CommanderErrorMessages = {};
         if (verb === "build") {
@@ -308,14 +246,101 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     ...verbMessages,
                     unknownCommand: `${USAGE}\n${CONFIG_HINT}`,
                     noCommand: `${USAGE}\n${CONFIG_HINT}`,
                 });
             });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
+    // run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("outcomelibrary").description(this.getDescription());
+
+        parent
+            .command("build")
+            .description("Build a canonical outcome-library persistence bundle from WeightedOutcomeLibrary JSON/JSONL files.")
+            .argument("<config.json>", "lists one outcome source per mode -- see docs/outcome-library-bundle.md")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <dir>", "output directory (default: an \"outcomelibrary\" sibling of <config.json>)")
+            .action(async (configPath: string, excess: string[], options: {out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${BUILD_USAGE}`);
+                }
+                const outDir = options.out ?? path.join(path.dirname(configPath), "outcomelibrary");
+                exitCodeRef.value = await this.executeBuild(configPath, outDir);
+            });
+
+        parent
+            .command("validate")
+            .description("Validate an outcome-library persistence bundle.")
+            .argument("<bundleDir>", "an existing outcome-library bundle directory built by \"pokie outcomelibrary build\"")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--deep", "also validate every outcome's own weight/artifact shape, not just the bundle's index")
+            .action(async (bundleDir: string, excess: string[], options: {deep?: boolean}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${VALIDATE_USAGE}`);
+                }
+                exitCodeRef.value = await this.executeValidate(bundleDir, options.deep ?? false);
+            });
+
+        parent
+            .command("generate")
+            .description("Generate a WeightedOutcomeLibrary from a built package's own runtime via exact reel-stop enumeration.")
+            .argument("<packageRoot>", GENERATE_HINT)
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--mode <betModeId>", "bet mode to generate for (default: the game's own default bet mode)")
+            .option("--stake <number>", "stake to generate for (default: the game's own default stake)", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                    throw new Error(`--stake must be a positive number. ${GENERATE_USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--config-hash <hash>", "recorded verbatim into the generated library's own diagnostics")
+            .option("--library-id <id>", "id for the generated library (default: derived from the game manifest/mode)")
+            .option(
+                "--max-outcome-space-size <n>",
+                "above this raw outcome count, generation requires --bounded instead of an exact sweep",
+                (value: string): bigint => parsePositiveBigIntOption(value, "--max-outcome-space-size"),
+            )
+            .option("--bounded", "sample a bounded coverage of the outcome space instead of an exact sweep (requires --sample-size/--seed)")
+            .option("--sample-size <n>", "number of raw draws to sample (requires --bounded)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample-size"))
+            .option("--seed <string>", "seed for the bounded sample (requires --bounded)")
+            .option("--estimate", "print the outcome space size/strategy without enumerating or sampling anything")
+            .option("--dry-run", "alias for --estimate")
+            .option("--out <file>", "write the generated library JSON to this path")
+            .option("--resume <file>", "resume from a checkpoint written by an earlier cancelled run")
+            .option("--progress", "print periodic progress to stderr while generating")
+            .option(
+                "--format <format>",
+                'only "json" is supported (default: a human-readable summary)',
+                (value: string): GenerateFormat => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${GENERATE_USAGE}`);
+                    }
+                    return "json";
+                },
+                "summary" as GenerateFormat,
+            )
+            .action(async (packageRoot: string, excess: string[], options: GenerateCliOptions) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${GENERATE_USAGE}`);
+                }
+                exitCodeRef.value = await this.executeGenerate(packageRoot, options);
+            });
+
+        return parent;
     }
 
     // The runtime-to-library counterpart to executeBuild/executeValidate: loads a real, executable

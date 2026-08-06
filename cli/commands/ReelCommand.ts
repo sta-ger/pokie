@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import {
     GameBlueprint,
@@ -9,7 +10,7 @@ import {
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]";
 
@@ -63,6 +64,10 @@ export class ReelCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
         // An empty argv has no verb for Commander to dispatch on at all; rejected explicitly up front
         // (same reasoning as ParCommand's own args.length === 0 check) rather than relying on
@@ -71,13 +76,45 @@ export class ReelCommand implements CliCommandHandling {
             return Promise.reject(new Error(USAGE));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("reel");
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
+
+        return parent
+            .parseAsync(args, {from: "user"})
+            .then(() => exitCodeRef.value)
+            .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
+                throw translateCommanderError(error, {
+                    missingArgument: USAGE,
+                    unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
+                    optionMissingArgument: (flag) => {
+                        if (flag === "--reel") return `--reel must be a non-negative integer. ${USAGE}`;
+                        if (flag === "--seed") return `--seed requires an integer value. ${USAGE}`;
+                        if (flag === "--out") return `--out requires a file path. ${USAGE}`;
+                        if (flag === "--format") return `--format only supports "json". ${USAGE}`;
+                        return `Unknown option "${flag}". ${USAGE}`;
+                    },
+                    unknownCommand: USAGE,
+                    noCommand: USAGE,
+                });
+            });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by the "generate" verb's own action; run()
+    // supplies its own real box and reads it back once parsing resolves, while getCommanderCommand()
+    // never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("reel").description(this.getDescription());
 
         parent
             .command("generate")
-            .argument("<blueprint.json>")
-            .argument("[excess...]")
+            .description('Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares.')
+            .argument("<blueprint.json>", "an existing Blueprint Project file with a reelStripGeneration entry")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--reel <index>", 'target a single reel index (default: every "generated" reel)', (value: string): number => {
                 const parsed = parseCanonicalNonNegativeInteger(value);
                 if (parsed === undefined) {
@@ -95,7 +132,7 @@ export class ReelCommand implements CliCommandHandling {
             .option("--out <file>", "write the applied blueprint to a different path (default: overwrite <blueprint.json>)")
             .option(
                 "--format <value>",
-                'only "json" is supported',
+                'only "json" is supported (default: a human-readable summary)',
                 (value: string): ReelGenerateFormat => {
                     if (value !== "json") {
                         throw new Error(`--format only supports "json". ${USAGE}`);
@@ -108,7 +145,7 @@ export class ReelCommand implements CliCommandHandling {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                 }
-                exitCode = await this.executeGenerate(blueprintPath, {
+                exitCodeRef.value = await this.executeGenerate(blueprintPath, {
                     reel: options.reel,
                     seed: options.seed,
                     apply: options.apply ?? false,
@@ -117,24 +154,7 @@ export class ReelCommand implements CliCommandHandling {
                 });
             });
 
-        return parent
-            .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
-            .catch((error: unknown) => {
-                throw translateCommanderError(error, {
-                    missingArgument: USAGE,
-                    unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
-                    optionMissingArgument: (flag) => {
-                        if (flag === "--reel") return `--reel must be a non-negative integer. ${USAGE}`;
-                        if (flag === "--seed") return `--seed requires an integer value. ${USAGE}`;
-                        if (flag === "--out") return `--out requires a file path. ${USAGE}`;
-                        if (flag === "--format") return `--format only supports "json". ${USAGE}`;
-                        return `Unknown option "${flag}". ${USAGE}`;
-                    },
-                    unknownCommand: USAGE,
-                    noCommand: USAGE,
-                });
-            });
+        return parent;
     }
 
     private async executeGenerate(blueprintPath: string, options: ReelGenerateOptions): Promise<number> {

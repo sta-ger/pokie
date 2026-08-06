@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     describeUnsupportedProjectOperation,
     loadPokieGame,
@@ -14,7 +15,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]";
 
@@ -65,8 +66,20 @@ export class ServeCommand implements CliCommandHandling {
         return "Experimental: serve a POKIE game package over local HTTP (dev/reference server, not a casino backend/RGS).";
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let options: ServeOptions;
+        try {
+            options = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
 
         // A resolved "outcomeLibrary"/"stakeAdapter" project is routed through the outcome-source-backed
         // server below instead -- neither ever reaches resolveRuntimePackageRoot/loadGame/PokieDevServer
@@ -94,6 +107,39 @@ export class ServeCommand implements CliCommandHandling {
         console.log("This is a local/dev reference server for a single game package — not a casino backend or RGS.");
     }
 
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {value?: ServeOptions} = {}): Command {
+        return createCommanderCliCommand("serve")
+            .description(this.getDescription())
+            .argument("<packageRoot>", "an existing POKIE game package, or a native outcome-library bundle (with --mode)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--port <number>", "port to listen on (default: an available port)", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 0) {
+                    throw new Error(`--port must be a non-negative integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--host <string>", "host to listen on (default: loopback only)")
+            // Only meaningful when packageRoot resolves to an "outcomeLibrary" project -- see
+            // runOutcomeSourceServe -- but declared/validated here alongside every other option rather
+            // than a bespoke second parse, same as ReplayCommand's own "--mode".
+            .option("--mode <modeName>", "outcome-library mode to serve (required when <packageRoot> is a native outcome-library bundle)")
+            .action((root: string, excess: string[], options: {port?: number; host?: string; mode?: string}) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!root || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                }
+                resultRef.value = {packageRoot: root, host: options.host, port: options.port, mode: options.mode};
+            });
+    }
+
     // The diagnostic check runs before the --mode requirement below, so a resolved "stakeAdapter" project
     // is rejected with the structured outcomeSource.serve capability diagnostic regardless of whether
     // --mode was even given -- it never reaches package runtime loading either way.
@@ -114,37 +160,17 @@ export class ServeCommand implements CliCommandHandling {
         console.log("Serving draws from a native outcome library — not a casino backend or RGS.");
     }
 
-    private parseArgs(args: string[]): ServeOptions {
-        let result: ServeOptions | undefined;
 
-        const command = createCommanderCliCommand("serve")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--port <number>", "port to listen on", (value: string) => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed < 0) {
-                    throw new Error(`--port must be a non-negative integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--host <string>", "host to listen on")
-            // Only meaningful when packageRoot resolves to an "outcomeLibrary" project -- see
-            // runOutcomeSourceServe -- but declared/validated here alongside every other option rather
-            // than a bespoke second parse, same as ReplayCommand's own "--mode".
-            .option("--mode <modeName>", "outcome-library mode to serve")
-            .action((root: string, excess: string[], options: {port?: number; host?: string; mode?: string}) => {
-                // An empty-string positional is "present" as far as Commander's own required-argument
-                // check is concerned, but the pre-Commander behavior this preserves treated it the same
-                // as an entirely missing one.
-                if (!root || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
-                }
-                result = {packageRoot: root, host: options.host, port: options.port, mode: options.mode};
-            });
+    private parseArgs(args: string[]): ServeOptions {
+        const resultRef: {value?: ServeOptions} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
@@ -160,6 +186,6 @@ export class ServeCommand implements CliCommandHandling {
                 },
             });
         }
-        return result!;
+        return resultRef.value!;
     }
 }

@@ -20,6 +20,7 @@ import {
     SlotGameNameGenerator,
     StakeEngineStandaloneAnalyzer,
 } from "pokie";
+import {Command} from "commander";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {ClientCommand} from "../../cli/commands/ClientCommand.js";
@@ -45,8 +46,10 @@ import path from "path";
 import {createStarterGameBlueprint} from "../../cli/build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {dispatch} from "../../cli/dispatch.js";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {buildUsageText} from "../../cli/usageText.js";
 import {CliContractCase, CLI_COMMAND_DESCRIPTORS, CLI_CONTRACT_CASES, CLI_TOP_LEVEL_DISPATCH_CASES} from "./fixtures/cliCommandInventory.js";
+import {isCommanderHelpDisplay} from "../../cli/commands/internal/CommanderCliAdapter.js";
 
 const TEST_VERSION = "1.3.0";
 
@@ -1911,8 +1914,8 @@ describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)"
 });
 
 // Some commands' run() throws synchronously rather than returning a rejected promise (e.g.
-// CreateCommand's plain "missing <name>" branch isn't wrapped in a try/catch, since it never awaits
-// anything before that check) — a real, if inconsistent, part of today's contract. A plain
+// InitCommand's own parseArgs() failure is rethrown directly, never wrapped in Promise.reject) — a
+// real, if inconsistent, part of today's contract. A plain
 // `expect(command.run(args)).rejects...` would blow up evaluating that argument before `expect` ever
 // runs for those cases, so every case goes through this helper instead, which catches both a
 // synchronous throw and a rejected promise uniformly.
@@ -2299,5 +2302,184 @@ describe("CLI command test coverage (structural link to tests/cli/commands/*.tes
             const testFile = path.join(COMMANDS_TEST_DIR, `${command.constructor.name}.test.ts`);
             expect(fs.existsSync(testFile)).toBe(true);
         }
+    });
+});
+
+// Guarantees --help/-h works, exits 0, and touches no file/wizard/runtime/network side effect across
+// the ENTIRE registered command tree -- derived ENTIRELY from each command's own real, live
+// getCommanderCommand() (see CliCommandHandling.ts's own doc comment on that method): every node this
+// walk finds (a top-level command, or any nested subcommand) is a Command object Commander itself would
+// use to parse that exact argv, never a hand-maintained descriptor of one. There is deliberately no
+// separate per-command/per-verb inventory here (contrast CLI_COMMAND_DESCRIPTORS above, which exists
+// only for the unrelated per-option VALUE contract CLI_CONTRACT_CASES checks) and no per-command
+// exception: `commands` below is built by registerCliCommands() -- the exact same factory
+// cli/pokie.ts's own run() calls to build the real, live `pokie` command tree -- so "pokie
+// outcomesource" (which registerCommands()'s own separate, hand-maintained CLI_CONTRACT_CASES mirror
+// above doesn't track) is swept up by the exact same recursive walk as everything else, with no second,
+// hand-rolled registration list and no per-command exception. A command/subcommand registered without a
+// real Commander .description() (on itself, every argument, and every option) -- including one added
+// later with no matching update here -- fails the "declares complete help metadata" check below before
+// ever reaching the rendered-help assertions.
+//
+// registerCliCommands() itself needs no real filesystem paths or version string to build a
+// side-effect-free Commander tree (see that function's own doc comment) -- the fake strings below are
+// never read by anything this block exercises, since --help/-h always short-circuits before any
+// command's real action (the materializing runtime resolvers registerCliCommands() wires in are
+// likewise only ever invoked from inside that action). A regression that let --help fall through into a
+// command's real action would either throw (failing the exit-code/stderr assertions below and almost
+// certainly touching this sandbox's real filesystem/network on the way) or, if it somehow resolved
+// anyway, would still be caught by the "no console.error, exactly the expected stdout shape" assertions
+// below. A verb literal alone (no positionals/required options) is always enough to trigger help:
+// Commander checks for --help/-h before validating required arguments/options (see
+// CommanderCliAdapter.ts's own isCommanderHelpDisplay doc comment), so this never needs to fabricate a
+// valid <config.json>/<packageRoot>/... for any node.
+const ANSI_ESCAPE = String.fromCharCode(27) + "[";
+
+describe("CLI help coverage (recursively walks the real registered Commander tree, side-effect-free)", () => {
+    const commands: CliCommandHandling[] = registerCliCommands({
+        version: TEST_VERSION,
+        pokiePackageRoot: "/fake/pokie/root",
+        clientRoot: "/fake/pokie/root/dist/cli/client",
+        studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+    });
+
+    // One discovered node per real Commander Command in the tree -- the top-level command itself
+    // (`path: []`) plus every nested subcommand, found by walking `.commands` (exactly what Commander
+    // itself dispatches through, e.g. "certification build", "build random") -- never a hand-maintained
+    // verb list. `path` is the argv Commander needs, relative to the command's own args (dispatch.ts
+    // already consumes the top-level command name itself).
+    type CommanderNode = {path: string[]; command: Command};
+
+    function collectCommanderNodes(root: Command, path: string[] = []): CommanderNode[] {
+        const nodes: CommanderNode[] = [{path, command: root}];
+        for (const child of root.commands) {
+            nodes.push(...collectCommanderNodes(child, [...path, child.name()]));
+        }
+        return nodes;
+    }
+
+    async function runHelp(commandName: string, args: string[]): Promise<{exitCode: number; stdout: string}> {
+        const command = commands.find((candidate) => candidate.getName() === commandName);
+        if (!command) {
+            throw new Error(`No registered command named "${commandName}".`);
+        }
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            const exitCode = await dispatch([command], ["node", "pokie", commandName, ...args]);
+            expect(errorSpy).not.toHaveBeenCalled();
+            return {exitCode, stdout: logSpy.mock.calls.map((call) => String(call[0])).join("\n")};
+        } finally {
+            logSpy.mockRestore();
+            errorSpy.mockRestore();
+        }
+    }
+
+    for (const command of commands) {
+        const nodes = collectCommanderNodes(command.getCommanderCommand());
+
+        describe(`"pokie ${command.getName()}"`, () => {
+            for (const node of nodes) {
+                const nodeLabel = node.path.length > 0 ? node.path.join(" ") : "(root)";
+                const argvLabel = [command.getName(), ...node.path].join(" ");
+
+                // Complete help metadata, checked directly against the real Command object itself --
+                // catches a registered command/subcommand/argument/option with no description before
+                // ever getting to what its rendered --help text contains.
+                it(`"${nodeLabel}" declares a description, and a description for every argument/option`, () => {
+                    expect(node.command.description().length).toBeGreaterThan(0);
+                    for (const argument of node.command.registeredArguments) {
+                        expect(argument.description.length).toBeGreaterThan(0);
+                    }
+                    for (const option of node.command.options) {
+                        expect(option.description.length).toBeGreaterThan(0);
+                    }
+                });
+
+                it.each(["--help", "-h"])(`"pokie ${argvLabel}" %s exits 0 with complete rendered help and no side effect`, async (flag) => {
+                    const {exitCode, stdout} = await runHelp(command.getName(), [...node.path, flag]);
+                    expect(exitCode).toBe(0);
+                    expect(stdout).toContain("Usage:");
+                    // NO_COLOR is trivially coherent here: Commander's own default help renderer never
+                    // emits an ANSI escape at all (see CommanderCliAdapter.ts's own doc comment on
+                    // COMMANDER_OUTPUT_CONFIG), so there is nothing for a NO_COLOR-respecting terminal to
+                    // strip.
+                    expect(stdout.includes(ANSI_ESCAPE)).toBe(false);
+                    // Every argument/option this exact node declares -- and, for a parent with children
+                    // (e.g. bare "pokie certification"/"pokie build"), every child subcommand's own name
+                    // -- must actually appear in what Commander rendered, not just be declared.
+                    for (const argument of node.command.registeredArguments) {
+                        expect(stdout).toContain(argument.name());
+                    }
+                    for (const option of node.command.options) {
+                        expect(stdout).toContain(option.flags);
+                    }
+                    for (const child of node.command.commands) {
+                        expect(stdout).toContain(child.name());
+                    }
+                });
+            }
+        });
+    }
+
+    // Unknown-command/option coherence: an unrelated bad flag alongside --help never prevents help from
+    // winning (Commander checks for the help flag before validating/rejecting anything else it parsed —
+    // see CommanderCliAdapter.ts's own isCommanderHelpDisplay doc comment) — same "help always short-
+    // circuits" guarantee the per-node cases above already prove, just with a second, invalid token
+    // riding alongside it.
+    it('"pokie build --bogus --help" still exits 0 with usage text (help wins over an unrelated bad flag)', async () => {
+        const {exitCode, stdout} = await runHelp("build", ["--bogus", "--help"]);
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain("Usage:");
+    });
+
+    // Non-TTY/narrow-terminal coherence: Commander's own default help width already adapts to
+    // process.stdout.columns only when stdout is a TTY, falling back to a fixed 80 columns otherwise
+    // (see commander/lib/command.js's own getOutHelpWidth) — this only proves that real behavior keeps
+    // producing complete, non-empty help text at both ends (no TTY at all, and a pathologically narrow
+    // real terminal) rather than crashing or truncating away the "Usage:" line itself.
+    it("renders complete help text against a non-TTY stdout", async () => {
+        const originalIsTTY = process.stdout.isTTY;
+        Reflect.defineProperty(process.stdout, "isTTY", {value: false, configurable: true});
+        try {
+            const {exitCode, stdout} = await runHelp("sim", ["--help"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Usage:");
+        } finally {
+            Reflect.defineProperty(process.stdout, "isTTY", {value: originalIsTTY, configurable: true});
+        }
+    });
+
+    it("renders complete help text against a narrow (40-column) real terminal", async () => {
+        const originalIsTTY = process.stdout.isTTY;
+        const originalColumns = process.stdout.columns;
+        Reflect.defineProperty(process.stdout, "isTTY", {value: true, configurable: true});
+        Reflect.defineProperty(process.stdout, "columns", {value: 40, configurable: true});
+        try {
+            const {exitCode, stdout} = await runHelp("sim", ["--help"]);
+            expect(exitCode).toBe(0);
+            expect(stdout).toContain("Usage:");
+        } finally {
+            Reflect.defineProperty(process.stdout, "isTTY", {value: originalIsTTY, configurable: true});
+            Reflect.defineProperty(process.stdout, "columns", {value: originalColumns, configurable: true});
+        }
+    });
+});
+
+describe("isCommanderHelpDisplay (CommanderCliAdapter.ts)", () => {
+    it("recognizes a genuine --help/-h CommanderError and nothing else", async () => {
+        const command = new BuildCommand(TEST_VERSION);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            // Never observed directly by production code (each command's own catch block already checks
+            // this before ever re-throwing/translating) -- exercised here only to pin the exported
+            // predicate's own contract against a real Commander invocation, not a hand-built CommanderError.
+            expect(await command.run(["--help"])).toBe(0);
+            expect(logSpy.mock.calls.join("\n")).toContain("Usage:");
+        } finally {
+            logSpy.mockRestore();
+        }
+        expect(isCommanderHelpDisplay(new Error("not a commander error"))).toBe(false);
+        expect(isCommanderHelpDisplay(undefined)).toBe(false);
     });
 });
