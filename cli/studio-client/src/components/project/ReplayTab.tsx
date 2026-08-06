@@ -26,11 +26,11 @@ import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
+import {GameScreenView} from "../common/GameScreenView";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RoundArtifactInspector} from "../common/RoundArtifactInspector";
-import {ScreenTable} from "../common/ScreenTable";
 
 export type ExpectedReplayState =
     | {status: "empty"}
@@ -746,7 +746,7 @@ export function ReplayTab({
                                     </Table>
 
                                     {selectedSpin.screen ? (
-                                        <ScreenTable screen={describeRuntimeScreen(selectedSpin.screen) ?? []} />
+                                        <GameScreenView screen={describeRuntimeScreen(selectedSpin.screen) ?? []} />
                                     ) : (
                                         <Text size="sm" c="dimmed">
                                             No screen available.
@@ -1002,7 +1002,7 @@ export function ReplayTab({
                                         </Table.Tbody>
                                     </Table>
                                     {result.screen ? (
-                                        <ScreenTable screen={result.screen} />
+                                        <GameScreenView screen={result.screen} />
                                     ) : (
                                         <Text size="sm" c="dimmed">
                                             No screen available — this game&apos;s session doesn&apos;t expose a symbols combination.

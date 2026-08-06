@@ -1466,4 +1466,39 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(within(winsTable).getByText("12.50 (2.50x stake)")).toBeInTheDocument();
         expect(within(inspect).queryByText("Additional round data")).not.toBeInTheDocument();
     }, 60000);
+
+    // A round played without debug mode on (so no debug.artifact) still has a screen -- RoundSummary's
+    // own flat fallback (see its doc comment) renders that screen through the exact same GameScreenView
+    // component the artifact-backed path above renders through, rather than a page-local ScreenTable
+    // clone -- this is what "non-artifact Runtime rounds" migrating onto the shared presentation
+    // components actually means in practice, not just the artifact-backed path.
+    it("still renders the played round's screen through the shared GameScreenView when the session captured no debug artifact", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1005, win: 0, sessionVersion: 2, screen: [["cherry", "lemon"]]})},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToRuntimeTab(user);
+        await startRuntime(user);
+
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+
+        const inspect = section("Inspect round");
+        await within(inspect).findByText("cherry");
+        expect(within(inspect).getByText("lemon")).toBeInTheDocument();
+        // No wins table (that's an artifact-only piece of RoundArtifactInspector) -- confirms this
+        // genuinely took the flat fallback branch, still rendering the screen through GameScreenView.
+        expect(within(inspect).queryByText("Positions")).not.toBeInTheDocument();
+    }, 60000);
 });

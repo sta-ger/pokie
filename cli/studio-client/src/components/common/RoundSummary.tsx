@@ -5,9 +5,9 @@ import {describeRoundArtifact} from "../../domain/interpret/Replay";
 import {describeRuntimeScreen, extractAdditionalRoundFields} from "../../domain/interpret/Runtime";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
+import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
 import {RoundArtifactInspector} from "./RoundArtifactInspector";
-import {ScreenTable} from "./ScreenTable";
 
 function formatFieldValue(value: unknown): string {
     if (typeof value === "string") {
@@ -97,7 +97,7 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                 </Table.Tbody>
             </Table>
 
-            {session.screen && <ScreenTable screen={describeRuntimeScreen(session.screen) ?? []} />}
+            {session.screen && <GameScreenView screen={describeRuntimeScreen(session.screen) ?? []} />}
 
             {hasAdditional && (
                 <PageSection legend="Additional round data">

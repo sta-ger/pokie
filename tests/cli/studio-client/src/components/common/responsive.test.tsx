@@ -141,7 +141,7 @@ describe("Wide tables stay wrapped in Table.ScrollContainer (source guard)", () 
     const filesRequiringScrollContainer = [
         "common/ScreenTable.tsx",
         "common/SimulationReportDisplay.tsx",
-        "common/RoundArtifactInspector.tsx",
+        "common/RoundWinsTable.tsx",
         "home/ProjectsPanel.tsx",
         "blueprintEditor/SymbolWeightsEditor.tsx",
         "blueprintEditor/PaytableEditor.tsx",

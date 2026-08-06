@@ -1,5 +1,5 @@
 import {MantineProvider} from "@mantine/core";
-import {render, within} from "@testing-library/react";
+import {fireEvent, render, within} from "@testing-library/react";
 import type {RoundArtifact, RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
 import {RoundSummary} from "../../../../../../cli/studio-client/src/components/common/RoundSummary";
@@ -387,5 +387,155 @@ describe("Cross-surface round presentation parity", () => {
         // reachable without an artifact -- confirms this genuinely took the flat fallback branch, not a
         // RoundArtifactInspector render of some default/empty artifact.
         expect(queryByText("Positions")).toBeNull();
+    });
+
+    // Even a non-artifact round (no wins/positions data at all) still has a screen -- it must render
+    // through the same GameScreenView every artifact-backed round renders through, not a page-local
+    // ScreenTable clone, so a screen orientation fix (or a highlighting change) only ever has to be made
+    // in one place.
+    it("RoundSummary's non-artifact fallback still renders the round's screen through the shared GameScreenView", () => {
+        const {getByText} = renderWithMantine(
+            <RoundSummary session={{sessionId: "sess-1", game: GAME, credits: 1005, bet: 5, win: 0, screen: [["cherry", "lemon"]]}} />,
+        );
+        expect(getByText("cherry")).toBeTruthy();
+        expect(getByText("lemon")).toBeTruthy();
+    });
+});
+
+// P4-POLISH-12: GameScreenView is the shared "screen, with whatever won on it highlighted" contract
+// RoundArtifactInspector renders both the round-level and (when there's more than one step) each step's
+// own screen through -- resolved straight from that screen's own wins' winningPositions, covering every
+// win shape the win-evaluation pipeline can attribute to specific cells (a single line win, several
+// simultaneous wins of different types on the same screen -- e.g. a ways win alongside a scatter win --
+// each contributing its own positions to the same overlay).
+describe("GameScreenView win-position highlighting (via RoundArtifactInspector)", () => {
+    function cell(container: HTMLElement, text: string): HTMLElement {
+        const found = within(container).getByText(text);
+        const td = found.closest("td");
+        if (!td) {
+            throw new Error(`Expected "${text}" to render inside a <td>.`);
+        }
+        return td;
+    }
+
+    it("highlights every position across multiple simultaneous wins of different types on the same screen, and leaves non-winning cells alone", () => {
+        const artifact = describeRoundArtifact(
+            artifactFor({
+                stake: 1,
+                totalWin: 8,
+                payoutMultiplier: 8,
+                screen: [
+                    ["cherry", "wild", "R0P2"],
+                    ["cherry", "scatter", "R1P2"],
+                    ["lemon", "scatter", "R2P2"],
+                ],
+                steps: [
+                    {
+                        index: 0,
+                        screen: [
+                            ["cherry", "wild", "R0P2"],
+                            ["cherry", "scatter", "R1P2"],
+                            ["lemon", "scatter", "R2P2"],
+                        ],
+                        totalWin: 8,
+                        wins: [
+                            {type: "ways", id: "w1", symbolId: "cherry", winAmount: 3, winningPositions: [[0, 0], [1, 0]], multiplierBreakdown: [], metadata: {}},
+                            {type: "scatter", id: "w2", symbolId: "scatter", winAmount: 5, winningPositions: [[1, 1], [2, 1]], multiplierBreakdown: [], metadata: {}},
+                        ],
+                    },
+                ],
+                wins: [
+                    {type: "ways", id: "w1", symbolId: "cherry", winAmount: 3, winningPositions: [[0, 0], [1, 0]], multiplierBreakdown: [], metadata: {}},
+                    {type: "scatter", id: "w2", symbolId: "scatter", winAmount: 5, winningPositions: [[1, 1], [2, 1]], multiplierBreakdown: [], metadata: {}},
+                ],
+            }),
+        );
+        const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+
+        // Scoped to the screen table specifically -- "cherry"/"scatter" also appear in the wins table's
+        // own Symbol column below, which must never be mistaken for a highlighted screen cell.
+        const screenTable = within(container).getByText("R0P2").closest("table");
+        if (!screenTable) {
+            throw new Error("Expected the round-level screen table to render an ancestor <table>.");
+        }
+
+        // The round-level screen table renders every winning cell across both wins (reel 0 row 0, reel 1
+        // row 0 from the ways win; reel 1 row 1, reel 2 row 1 from the scatter win) as highlighted --
+        // "cherry" appears at both [0,0] and [1,0] (both winning), so getAllByText covers that ambiguity.
+        const cherryCells = within(screenTable).getAllByText("cherry");
+        expect(cherryCells).toHaveLength(2);
+        for (const cherryCell of cherryCells) {
+            expect(cherryCell.closest("td")).toHaveAttribute("data-winning", "true");
+        }
+        const scatterCells = within(screenTable).getAllByText("scatter");
+        expect(scatterCells).toHaveLength(2);
+        for (const scatterCell of scatterCells) {
+            expect(scatterCell.closest("td")).toHaveAttribute("data-winning", "true");
+        }
+        // ...while a cell no win actually landed on (wild at [0,1], every R#P2 filler cell) stays plain.
+        expect(cell(screenTable, "wild")).not.toHaveAttribute("data-winning");
+        expect(cell(screenTable, "R0P2")).not.toHaveAttribute("data-winning");
+        expect(cell(screenTable, "R1P2")).not.toHaveAttribute("data-winning");
+        expect(cell(screenTable, "R2P2")).not.toHaveAttribute("data-winning");
+    });
+
+    it("highlights nothing on a screen with no wins, rather than marking every cell winning by default", () => {
+        const artifact = describeRoundArtifact(artifactFor());
+        const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        for (const text of ["R0P0", "R0P1", "R0P2", "R1P0", "R1P1", "R1P2", "R2P0", "R2P1", "R2P2"]) {
+            expect(cell(container, text)).not.toHaveAttribute("data-winning");
+        }
+    });
+});
+
+// FeatureStateView: a step's own featureEvents render as a plain list of event types (unchanged
+// behavior), but any event that also carries its own free-form `data` payload (a multiplier/scatter/ways/
+// cluster feature's own detail -- shape not standardized across games) surfaces that data too, collapsed
+// behind Advanced details rather than silently dropped -- previously nothing on this client ever rendered
+// a feature event's own data at all.
+describe("FeatureStateView feature event data (via RoundArtifactInspector)", () => {
+    it("shows a feature event's own data collapsed by default, and reveals it on toggle", () => {
+        const artifact = describeRoundArtifact(
+            artifactFor({
+                steps: [
+                    {
+                        index: 0,
+                        screen: [["R0P0", "R0P1", "R0P2"]],
+                        totalWin: 0,
+                        wins: [],
+                        featureEvents: [{type: "free-spins-triggered", data: {count: 10, multiplier: 2}}],
+                    },
+                ],
+            }),
+        );
+        const {getAllByText, getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+
+        // Appears twice: once in the plain "Feature events" list, once as the collapsed section's own
+        // heading for this event's data.
+        expect(getAllByText("free-spins-triggered")).toHaveLength(2);
+
+        // Scoped to FeatureStateView's own section -- the round's "Full artifact" dump at the bottom of
+        // Advanced details also happens to contain this same "count": 10 substring, and must not be
+        // mistaken for this section's own (still-collapsed) copy.
+        const featureSection = getByText("Feature events").closest("div");
+        if (!featureSection) {
+            throw new Error("Expected the Feature events section to render an ancestor <div>.");
+        }
+        expect(within(featureSection).queryByText(/"count": 10/)).not.toBeVisible();
+
+        fireEvent.click(within(featureSection).getByText("Show advanced details (feature event data)"));
+        expect(within(featureSection).getByText(/"count": 10/)).toBeVisible();
+    });
+
+    it("omits the feature event data disclosure entirely when no event in the step carries a data payload", () => {
+        const artifact = describeRoundArtifact(
+            artifactFor({
+                steps: [{index: 0, screen: [["R0P0", "R0P1", "R0P2"]], totalWin: 0, wins: [], featureEvents: [{type: "free-spins-triggered"}]}],
+            }),
+        );
+        const {getByText, queryByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+
+        expect(getByText("free-spins-triggered")).toBeTruthy();
+        expect(queryByText("Show advanced details (feature event data)")).toBeNull();
     });
 });
