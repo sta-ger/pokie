@@ -30,3 +30,12 @@ while advising manual JSON editing — the precise regression Stage 4 must fix.
 | `browser/package-overview.png` | Real loaded tsPackage at a space-containing path; Overview shows valid metadata/capability. | `dd008ef3dc22e71cf7e6d1035ca4454aec44af13ac44a01e7424cef39da34d33` |
 | `browser/package-replay.png` | Current Replay source split and best-effort reproduction language. | `5b50f34472a915224d417482522e5c35bce1d539a655c2b84f1f08bc252073ef` |
 | `browser/package-runtime.png` | Current Runtime is a technical server/session/debug panel, not player-first Play. | `83071927cf1e513318feb202e7fe52403dbd634afcc51c311887c81ddef415bf` |
+
+## Other steps' evidence in this directory
+
+This directory also holds correction-round evidence for later Phase 4 steps whose own review needed
+proof that lives partly outside this repo's own `git diff`:
+
+| Artifact | Step | What it proves |
+| --- | --- | --- |
+| `p4-polish-09-pokie-examples-migration.txt` | `P4-POLISH-09` | The companion `pokie-examples` repository's own committed shared-player migration (`ui.ts`/`data.ts`/`vite.config.js`/`tsconfig*.json`, `utils.ts` deleted, `tests/ui.test.ts` added) — a separate git repository whose changes can never appear in this repo's own `base_sha..head_sha` diff — plus both targeted tests' real passing output. |

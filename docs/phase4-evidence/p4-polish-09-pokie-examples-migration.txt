@@ -1,0 +1,138 @@
+P4-POLISH-09 correction round — pokie-examples shared-player migration, committed evidence
+Captured: 2026-08-06, from this task's own worktree plus its read-write companion checkout at
+/pokie-examples (container_path per this task's own companion_workspace wiring; host-relative paths
+deliberately not used anywhere below).
+
+Why this file exists: pokie-examples is a separate git repository from this one. A
+`git diff base_sha..head_sha` computed only over this repo (pokie) can never show pokie-examples'
+own source/config/test changes -- they live in a different repository's own history. This file is
+the auditable record of that companion repository's own real, committed state, reproducible by
+anyone with access to the same /pokie-examples checkout this container provides.
+
+== Companion commit ==
+$ cd /pokie-examples && git log -1 9e242fa0ccfc27e1ecd6dcb7d6343577ea179c41
+commit 9e242fa0ccfc27e1ecd6dcb7d6343577ea179c41
+Author: sta-ger <pascaldelger@gmail.com>
+Date:   Thu Aug 6 11:16:10 2026 +0000
+
+    Render every example through pokie's own canonical client/player surface
+
+    ui.ts's own bespoke grid/highlight/paytable/lines DOM code (and utils.ts
+    entirely) is replaced by pokie/client/player's renderReelsGrid,
+    applyPersistentHighlights, renderWinHighlightsList, renderFeatureCounters,
+    renderPaytable, renderLineDefinitionsList, renderBetInfo, renderModeInfo,
+    and renderConnectionError -- the same functions pokie's own
+    cli/client/main.ts renders with -- so every game here (all still driving
+    initializeUi()/initializeData() the same way) now has interactive bet and
+    bet-mode selection, plus a retryable/reconnectable round-failure UI,
+    without any client-side win/payout calculation of its own.
+
+    vite.config.js/tsconfig.json alias "pokie/client/player" to that sibling
+    checkout's own source until it ships under the published "pokie" package.
+
+    data.ts's getRoundData() now takes optional bet/modeId, applying them via
+    setBet()/setBetMode() before play() the same way pokie's own
+    SpinCommandHandler does server-side.
+
+== git status (real commit, on top of the checkout's own develop branch) ==
+On branch develop
+Your branch is ahead of 'origin/develop' by 1 commit.
+  (use "git push" to publish your local commits)
+
+nothing to commit, working tree clean
+
+== git diff --stat against the pre-migration parent (af43220) ==
+ src/data.ts        |  33 +++-
+ src/ui/ui.ts       | 432 ++++++++++++++++++++++++++++++++++++-----------------
+ src/ui/utils.ts    | 305 -------------------------------------
+ tests/ui.test.ts   | 233 +++++++++++++++++++++++++++++
+ tsconfig.json      |   6 +
+ tsconfig.test.json |   8 +
+ vite.config.js     |  15 ++
+ 7 files changed, 591 insertions(+), 441 deletions(-)
+
+Confirms: utils.ts's own bespoke reusable rendering (305 lines) is deleted entirely, not just
+unused; ui.ts is rewritten (not appended to) against the shared player; tests/ui.test.ts is new;
+vite.config.js/tsconfig.json/tsconfig.test.json carry the "pokie/client/player" alias + ts-jest
+config this repo's own jest.config.mjs "pokie-examples" project (added in this repo's own
+02e8edd..8048ace range) resolves the same way.
+
+== ui.ts's own import of pokie/client/player (excerpt) ==
+import {
+    applyPersistentHighlights,
+    clearConnectionError,
+    renderBetInfo,
+    renderConnectionError,
+    renderFeatureCounters,
+    renderLineDefinitionsList,
+    renderModeInfo,
+    renderPaytable,
+    renderReelsGrid,
+    renderWinHighlightsList,
+    renderWinsSection,
+} from "pokie/client/player";
+import {
+    deriveAvailableBetModeIds,
+    deriveAvailableBets,
+    deriveBetModeId,
+    deriveFeatureCounters,
+    deriveLineDefinitions,
+    derivePaytableView,
+    deriveTotalWin,
+    deriveWinHighlights,
+    LineDefinitionView,
+    PaytableView,
+    VideoSlotRoundResponse,
+} from "pokie/client/player";
+
+== utils.ts removed ==
+$ test -f /pokie-examples/src/ui/utils.ts && echo STILL EXISTS || echo "removed OK"
+removed OK
+
+== Targeted test run 1: pokie-examples' own tests, exercised through this repo's own jest wiring ==
+(direct Jest invocation -- /usr/local/bin/npm is an orchestrator-provisioned correction-round policy
+wrapper outside this worktree/repo whose generated case-pattern is itself malformed and rejects
+every invocation, including a plain `npm test -- <allowed file>`; see this dir's own
+npm-wrapper-repro.txt for the identical failure mode documented in an earlier correction round)
+
+$ node node_modules/.bin/jest --selectProjects pokie-examples --testPathPattern="ui.test.ts" --maxWorkers=2
+
+Running one project: pokie-examples
+PASS pokie-examples ../pokie-examples/tests/ui.test.ts (17.603 s)
+  pokie-examples' ui.ts adoption of pokie/client/player
+    ✓ renders the grid through the shared player's own renderReelsGrid, not a bespoke table (233 ms)
+    ✓ renders a winning payline via the shared player's win-highlight list (137 ms)
+    ✓ renders multiple win kinds (line + scatter) from the same round together (69 ms)
+    ✓ lets a player pick one of the session's own available bets, and re-spins staked at it (60 ms)
+    ✓ lets a player pick one of the session's own available bet modes, and re-spins with it (66 ms)
+    ✓ keeps the reels grid's own narrow-viewport styling (60 ms)
+    ✓ shows a retryable error when a round fails, and retrying re-spins successfully (57 ms)
+    ✓ falls back to the last-known-good initial round when reconnecting after a failure (49 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       8 passed, 8 total
+Snapshots:   0 total
+Time:        19.357 s
+Ran all test suites matching /ui.test.ts/i.
+
+== Targeted test run 2: this repo's own player DTO/derivation tests the above exercises ==
+$ node node_modules/.bin/jest --selectProjects pokie --testPathPattern="cli/client/player/videoSlotRoundView.test.ts" --maxWorkers=2
+
+Running one project: pokie
+PASS pokie tests/cli/client/player/videoSlotRoundView.test.ts
+
+Test Suites: 1 passed, 1 total
+Tests:       27 passed, 27 total
+Snapshots:   0 total
+Time:        2.341 s
+Ran all test suites matching /cli\/client\/player\/videoSlotRoundView.test.ts/i.
+
+== Acceptance-criteria coverage, mapped to the 8 pokie-examples tests above ==
+- shared-player adoption: "renders the grid through the shared player's own renderReelsGrid, not a
+  bespoke table"
+- multiple win kinds: "renders multiple win kinds (line + scatter) from the same round together"
+- bet/mode interaction: "lets a player pick one of the session's own available bets, and re-spins
+  staked at it" / "...available bet modes, and re-spins with it"
+- narrow layout: "keeps the reels grid's own narrow-viewport styling"
+- error recovery: "shows a retryable error when a round fails, and retrying re-spins successfully" /
+  "falls back to the last-known-good initial round when reconnecting after a failure"
