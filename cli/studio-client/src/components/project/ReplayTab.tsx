@@ -698,6 +698,39 @@ export function ReplayTab({
                                                 </Table.Td>
                                             </Table.Tr>
                                             <Table.Tr>
+                                                <Table.Th>Session</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.sessionId}</Table.Td>
+                                            </Table.Tr>
+                                            {selectedSpin.studioRound !== undefined && (
+                                                <Table.Tr>
+                                                    <Table.Th>Round</Table.Th>
+                                                    <Table.Td>
+                                                        Round {selectedSpin.studioRound} in session {selectedSpin.sessionId} -- this session&apos;s own
+                                                        round count, not a global one.
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            )}
+                                            {selectedSpin.studioRequestId && (
+                                                <Table.Tr>
+                                                    <Table.Th>Request id</Table.Th>
+                                                    <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.studioRequestId}</Table.Td>
+                                                </Table.Tr>
+                                            )}
+                                            {selectedSpin.studioRecordedAt && (
+                                                <Table.Tr>
+                                                    <Table.Th>Recorded</Table.Th>
+                                                    <Table.Td>{new Date(selectedSpin.studioRecordedAt).toLocaleString()}</Table.Td>
+                                                </Table.Tr>
+                                            )}
+                                            {selectedSpin.studioSource && (
+                                                <Table.Tr>
+                                                    <Table.Th>Source</Table.Th>
+                                                    <Table.Td>
+                                                        {selectedSpin.studioSource === "pre-generated" ? "Pre-generated outcome library" : "Live spin"}
+                                                    </Table.Td>
+                                                </Table.Tr>
+                                            )}
+                                            <Table.Tr>
                                                 <Table.Th>Credits</Table.Th>
                                                 <Table.Td>{selectedSpin.credits}</Table.Td>
                                             </Table.Tr>

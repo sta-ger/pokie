@@ -155,7 +155,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         await waitFor(() => expect(screen.getByText("Step 1 of 2")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByText("No wins on this step.")).toBeInTheDocument();
@@ -204,7 +204,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.type(screen.getByLabelText(/^Target round number in a new replay session/), "3");
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         await waitFor(() => expect(screen.getByRole("cell", {name: "fresh-session-42"})).toBeInTheDocument(), {timeout: 15000});
         // The job id that tracked the run is shown too, but under its own distinct label -- never as
@@ -247,7 +247,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         await waitFor(() => expect(screen.getByText(/Snapshot captured for this round/)).toBeInTheDocument(), {timeout: 15000});
         expect(screen.queryByText("State snapshot unavailable for this game/session type.")).not.toBeInTheDocument();
@@ -292,7 +292,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         await waitFor(() => expect(screen.getByText("State snapshot unavailable for this game/session type.")).toBeInTheDocument(), {timeout: 15000});
         expect(screen.queryByText("Before")).not.toBeInTheDocument();
@@ -325,7 +325,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         const advancedToggle = await screen.findByRole("button", {name: /Show advanced details/}, {timeout: 15000});
         // Not visible before opening Advanced details -- it's technical/internal, same treatment as the
@@ -919,7 +919,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         await waitFor(() => expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-export/download"), {
             timeout: 15000,
@@ -1147,7 +1147,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
         await waitFor(() => expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument(), {timeout: 15000});
 
         // Switch source -- the just-reproduced round/result must not linger under the new source.
@@ -1212,7 +1212,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument();
 
@@ -1223,7 +1223,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Load"}));
 
         expect(await screen.findByText(/Round 1, seed other-seed\./)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Reproduce"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Run again"})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Run again with the same parameters"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
         expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
@@ -1232,7 +1232,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // The newly loaded target's own reproduction still works end to end -- scoping the stale job
         // away doesn't break the cancel/terminal/result/export behavior of the reproduction that
         // *does* belong to it.
-        await user.click(screen.getByRole("button", {name: "Reproduce"}));
+        await user.click(screen.getByRole("button", {name: "Run again"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
         expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-2/download");
     }, 60000);
@@ -1440,10 +1440,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         const alert = await screen.findByRole("alert", undefined, {timeout: 15000});
-        expect(alert).toHaveTextContent("Reproduce failed");
+        expect(alert).toHaveTextContent("Run failed");
         expect(alert).toHaveTextContent(/bug in the game's own logic/);
 
         // The raw message is present in the DOM (not dropped) but hidden until Advanced details opens --
@@ -1473,7 +1473,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
-        await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
 
         expect(await screen.findByText(/This replay request couldn't reach the Studio server\./)).toBeInTheDocument();
         expect(screen.queryByText(/ECONNREFUSED talking to the game sandbox/)).not.toBeInTheDocument();

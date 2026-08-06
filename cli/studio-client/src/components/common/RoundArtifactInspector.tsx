@@ -176,7 +176,9 @@ export function RoundArtifactInspector({
                     <Table.Tr>
                         <Table.Th>Game</Table.Th>
                         <Table.Td style={{overflowWrap: "anywhere"}}>
-                            {artifact.provenance.game.name} (id: &quot;{artifact.provenance.game.id}&quot;, v{artifact.provenance.game.version})
+                            {artifact.provenance.game
+                                ? `${artifact.provenance.game.name} (id: "${artifact.provenance.game.id}", v${artifact.provenance.game.version})`
+                                : "Unavailable -- this artifact has no recorded game id/version provenance."}
                         </Table.Td>
                     </Table.Tr>
                     <Table.Tr>
