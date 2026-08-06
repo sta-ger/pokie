@@ -453,7 +453,14 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 this.capturePolicy.mode === "full"
                     ? {
                         roundId,
-                        provenance: {game: this.game.getManifest(), pokieVersion: this.pokieVersion},
+                        provenance: {
+                            game: this.game.getManifest(),
+                            pokieVersion: this.pokieVersion,
+                            // Only ever set when the loaded game actually exposes its own authoritative
+                            // config hash (see PokieGame.getConfigHash's own doc comment) — never invented
+                            // when it doesn't.
+                            ...(this.game.getConfigHash ? {configHash: this.game.getConfigHash()} : {}),
+                        },
                         stake: stakeAmount,
                         command: "spin",
                         credits: newBalance,

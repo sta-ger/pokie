@@ -759,6 +759,43 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
         });
     });
 
+    describe('"full" against a game that exposes PokieGame.getConfigHash() — provenance.configHash is captured, never fabricated', () => {
+        const hashFixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-config-hash");
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = await loadPokieGame(hashFixtureRoot);
+            server = new PokieDevServer(game, {
+                host: "127.0.0.1",
+                port: 0,
+                sessionCapturePolicyMode: "full",
+                pokieVersion: "9.9.9",
+            });
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("carries the game's own authoritative configHash into the persisted RoundArtifact's provenance", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            expect(artifact.provenance).toEqual({
+                game: {id: "playable-game-with-config-hash", name: "Playable Game With Config Hash", version: "1.0.0"},
+                pokieVersion: "9.9.9",
+                configHash: "sha256:fixture-config-hash",
+            });
+        });
+    });
+
     describe('"full" against a session that isn\'t video-slot shaped — an honest availability diagnostic, never a fabricated artifact', () => {
         const manifest: PokieGameManifest = {id: "non-video-slot", name: "Non Video Slot", version: "1.0.0"};
         let server: PokieDevServer;

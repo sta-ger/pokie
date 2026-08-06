@@ -103,6 +103,19 @@ function fakeLoadVideoSlotGame(): () => Promise<PokieGame> {
     return () => Promise.resolve(createFakeVideoSlotGame());
 }
 
+// A twin of createFakeVideoSlotGame that additionally implements the optional
+// PokieGame.getConfigHash() hook -- proves a real spin through StudioRuntimeManager's own runtime
+// (always "full" capture, see startInternal()) carries that authoritative hash into the persisted
+// RoundArtifact's provenance.configHash, without StudioRuntimeManager itself needing any wiring of
+// its own (it hands the loaded game straight to PokieDevServer/SpinCommandHandler).
+function createFakeVideoSlotGameWithConfigHash(): PokieGame {
+    return {getManifest: () => manifest, createSession: () => createFakeVideoSlotSession(), getConfigHash: () => "sha256:fake-config-hash"};
+}
+
+function fakeLoadVideoSlotGameWithConfigHash(): () => Promise<PokieGame> {
+    return () => Promise.resolve(createFakeVideoSlotGameWithConfigHash());
+}
+
 function startOptions(overrides: Partial<ValidatedStartRuntimeRequest> = {}): ValidatedStartRuntimeRequest {
     return {debug: false, repositoryMode: "memory", port: 0, ...overrides};
 }
@@ -444,6 +457,29 @@ describe("StudioRuntimeManager", () => {
             expect(Array.isArray(artifact.wins)).toBe(true);
             expect(Array.isArray(artifact.steps)).toBe(true);
             expect((artifact.debug as Record<string, unknown>).command).toBe("spin");
+
+            await manager.stop();
+        });
+
+        it("carries the loaded game's own PokieGame.getConfigHash() into the persisted RoundArtifact's provenance.configHash", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadVideoSlotGameWithConfigHash(), undefined, undefined, undefined, "5.5.5");
+            await manager.start("/fake/project", startOptions({debug: true}));
+
+            const created = await manager.createSession();
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+
+            const spun = await manager.spin(created.session.sessionId);
+            expect(spun.status).toBe("ok");
+            if (spun.status !== "ok") {
+                return;
+            }
+
+            const stateAfter = spun.session.debug?.stateAfter as Record<string, unknown> | undefined;
+            const artifact = stateAfter?.roundArtifact as Record<string, unknown>;
+            expect(artifact.provenance).toEqual({game: manifest, pokieVersion: "5.5.5", configHash: "sha256:fake-config-hash"});
 
             await manager.stop();
         });
