@@ -120,6 +120,47 @@ describe("ClientCommand", () => {
 
         logSpy.mockRestore();
     });
+
+    it("opens a browser pointed at the client preview by default, same as pokie dev/pokie studio", async () => {
+        const stubServer = createStubServer({host: "127.0.0.1", port: 3100});
+        let openedUrl: string | undefined;
+        const command = new ClientCommand(() => stubServer, "/fake/client/root", (url) => {
+            openedUrl = url;
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./sample-slot"]);
+
+        expect(openedUrl).toBe("http://127.0.0.1:3100");
+
+        logSpy.mockRestore();
+    });
+
+    it("does not open a browser when --no-open is given", async () => {
+        const stubServer = createStubServer({host: "127.0.0.1", port: 3100});
+        let openBrowserCalls = 0;
+        const command = new ClientCommand(() => stubServer, "/fake/client/root", () => {
+            openBrowserCalls++;
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./sample-slot", "--no-open"]);
+
+        expect(openBrowserCalls).toBe(0);
+
+        logSpy.mockRestore();
+    });
+
+    it("accepts a packageRoot containing spaces without touching the game package itself", async () => {
+        const stubServer = createStubServer({host: "127.0.0.1", port: 3100});
+        const command = new ClientCommand(() => stubServer, "/fake/client/root", () => undefined);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await expect(command.run(["./my game/sample slot", "--no-open"])).resolves.toBeUndefined();
+        expect(stubServer.startCalls).toBe(1);
+
+        logSpy.mockRestore();
+    });
 });
 
 describe("ClientCommand (integration, real PokieClientServer)", () => {

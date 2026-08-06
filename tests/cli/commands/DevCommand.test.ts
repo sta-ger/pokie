@@ -493,4 +493,45 @@ describe("DevCommand runtime package materialization boundary", () => {
         expect(loadGame).not.toHaveBeenCalled();
         expect(apiServer.startCalls).toBe(0);
     });
+
+    // No shell/path-splitting hazard exists in this boundary (see resolveRuntimePackageRoot/loadGame
+    // above -- both plain function calls, never a spawned shell command), but this pins the actual
+    // observable behavior: a space-containing packageRoot reaches both the resolver and loadGame byte
+    // for byte, exactly as a space-free one would -- closing the "dev" gap the phase 4 CLI-robustness
+    // audit named (pokie-phase4-inventory.md §1's "remaining gap" for serve/dev/client).
+    it("carries a space-containing packageRoot through resolveRuntimePackageRoot and loadGame unmangled", async () => {
+        const spacedPackageRoot = "/my game dir/sample slot";
+        const resolveCalls: string[] = [];
+        const resolveRuntimePackageRoot = (packageRoot: string) => {
+            resolveCalls.push(packageRoot);
+            return Promise.resolve({runtimePath: packageRoot, release: () => Promise.resolve()});
+        };
+        const loadCalls: string[] = [];
+        const loadGame = (packageRoot: string) => {
+            loadCalls.push(packageRoot);
+            return Promise.resolve(createFakeGame(manifest));
+        };
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const clientServer = createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 3100});
+
+        const command = new DevCommand(
+            loadGame,
+            () => apiServer,
+            {
+                createClientServer: () => clientServer,
+                waitForHealth: () => Promise.resolve(),
+                openBrowser: () => undefined,
+                clientRoot: "/fake/client/root",
+                process: new FakeProcess() as unknown as NodeJS.Process,
+            },
+            resolveRuntimePackageRoot,
+        );
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([spacedPackageRoot, "--no-open"]);
+
+        logSpy.mockRestore();
+        expect(resolveCalls).toEqual([spacedPackageRoot]);
+        expect(loadCalls).toEqual([spacedPackageRoot]);
+    });
 });

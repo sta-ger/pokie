@@ -2656,6 +2656,12 @@ Options:
 - `--host <string>` — host/interface to bind (default `127.0.0.1`).
 - `--api-host <string>` / `--api-port <number>` — where to expect the `pokie serve` API (default
   `127.0.0.1:3000`).
+- `--no-open` — don't try to open a browser.
+
+Once listening, `pokie client` best-effort opens a browser pointed at the preview it just started — the same
+`open`/`start`/`xdg-open` mechanism, and the same `--no-open` escape hatch, `pokie dev` (below) uses. A two-step
+`pokie serve` + `pokie client` workflow ends up at the exact same canonical player, opened the exact same way, as
+running `pokie dev` directly.
 
 `<packageRoot>` is required — for signature symmetry with `pokie serve`/`pokie dev`, and because the scaffolded
 `"client": "pokie client ."` script always passes one — but it's **never loaded**: the browser preview is entirely

@@ -150,7 +150,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             {
                 verb: undefined,
                 usage:
-                    "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+                    "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
                 positionals: ["packageRoot"],
                 options: [
                     {flag: "--port", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "4444"},
@@ -160,6 +160,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     // `undefined`) are what reach the createServer seam when the flag is omitted.
                     {flag: "--api-host", required: false, kind: "unvalidated", defaultValue: "127.0.0.1", acceptedValue: "10.0.0.1"},
                     {flag: "--api-port", required: false, kind: "validated", defaultValue: "3000", acceptedValue: "3001"},
+                    {flag: "--no-open", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
         ],
@@ -885,7 +886,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+            "Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
     {
         command: "client",
@@ -894,7 +895,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--port", "-1"],
         expectedExitCode: 1,
         expectedError:
-            "--port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+            "--port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
     {
         command: "client",
@@ -903,7 +904,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["pkg", "--api-port", "-1"],
         expectedExitCode: 1,
         expectedError:
-            "--api-port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+            "--api-port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
     {
         command: "client",
@@ -918,6 +919,14 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<packageRoot> --port --host --api-host --api-port (accepted values)",
         args: ["pkg", "--port", "4444", "--host", "0.0.0.0", "--api-host", "10.0.0.1", "--api-port", "3001"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "client",
+        kind: "valid",
+        label: "<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)",
+        args: ["pkg", "--no-open"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2425,7 +2434,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--port given with no value",
         args: ["pkg", "--port"],
         expectedExitCode: 1,
-        expectedError: "--port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+        expectedError: "--port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
     {
         command: "client",
@@ -2433,7 +2442,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--host given with no value",
         args: ["pkg", "--host"],
         expectedExitCode: 1,
-        expectedError: "--host requires a value. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+        expectedError: "--host requires a value. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
     {
         command: "client",
@@ -2441,7 +2450,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--api-host given with no value",
         args: ["pkg", "--api-host"],
         expectedExitCode: 1,
-        expectedError: "--api-host requires a value. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+        expectedError: "--api-host requires a value. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
     {
         command: "client",
@@ -2449,7 +2458,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--api-port given with no value",
         args: ["pkg", "--api-port"],
         expectedExitCode: 1,
-        expectedError: "--api-port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>]",
+        expectedError: "--api-port must be a non-negative integer. Usage: pokie client <packageRoot> [--port <number>] [--host <string>] [--api-host <string>] [--api-port <number>] [--no-open]",
     },
 
     // --- create: missing-value cases ---
