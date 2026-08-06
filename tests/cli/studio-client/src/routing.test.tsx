@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
@@ -103,10 +103,10 @@ describe("Routable Home sections: browser back/forward", () => {
         await user.click(screen.getByRole("button", {name: "Projects"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page"));
 
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
 
-        router.navigate(1);
+        await act(() => router.navigate(1));
         await waitFor(() => expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page"));
         // Many sequential real userEvent interactions -- under Jest's parallel workers this can exceed
         // even the project's raised 60000ms testTimeout, same reasoning as happyPath.test.tsx's own
