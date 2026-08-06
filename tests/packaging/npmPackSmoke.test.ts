@@ -351,11 +351,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
     it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installs/builds it from the same packed tarball, then validates and simulates it", () => {
         const projectRoot = path.join(installDir!, "sample-slot");
-        // --no-install: the scaffolded package.json's own "pokie" dependency (a plain semver range) may
-        // not be resolvable from the real registry yet for an as-yet-unpublished dev version -- unlike
-        // installDir's own outer install above, which already has tarballPath to install from directly.
-        // Rewritten below to point at that exact tarball before installing for real.
-        const init = spawnSync(pokieBinPath, ["init", projectRoot, "--no-install"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        // --no-prepare: the scaffolded package.json's own "pokie" dependency (a plain semver range) may
+        // not be resolvable from the real registry yet for an as-yet-unpublished dev version, so this
+        // must never let "pokie init" run its own "npm install" -- unlike installDir's own outer install
+        // above, which already has tarballPath to install from directly. (Unlike --no-prepare, --no-install
+        // alone still runs "npm run build" afterwards -- see InitCommand.test.ts -- which would only make
+        // this worse: a build with no dependencies installed at all.) Rewritten below to point at that
+        // exact tarball before installing for real.
+        const init = spawnSync(pokieBinPath, ["init", projectRoot, "--no-prepare"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(init.status).toBe(0);
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
