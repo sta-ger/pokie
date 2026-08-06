@@ -10,11 +10,14 @@ import {resolveBetModeCodegenWiring} from "./resolveBetModeCodegenWiring.js";
 // only a type-only import and a type annotation differ between them -- see the "typeImport"/
 // "blueprintDeclaration" split below.
 //
-// Deliberately carries no blueprint-hash/provenance header: a built package tracks nothing about
-// where it came from (see GamePackageGenerator's own doc comment) — that information exists only as
-// an ephemeral value BuildCommand prints/Studio returns for the build that just ran, never embedded
-// in the output itself, so re-running "pokie build" on an unchanged blueprint always regenerates
-// byte-identical files.
+// Carries no static blueprint-hash/provenance header: a built package tracks nothing about where it
+// came from (see GamePackageGenerator's own doc comment) beyond the embedded blueprint data itself.
+// getConfigHash() (see PokieGame.getConfigHash's own doc comment) derives its result live from that
+// already-embedded "blueprint" const (the *materialized* one -- see GamePackageGenerator's own
+// materializeReelStrips call -- so a procedurally-generated blueprint's hash reflects its literal
+// resolved reel strips, same as everything else this module embeds) via computeGameBlueprintHash,
+// rather than a precomputed literal, so re-running "pokie build" on an unchanged blueprint still
+// regenerates byte-identical files.
 function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: string, format: "cjs" | "ts"): string {
     const {manifest} = blueprint;
     const header = `// Game: ${manifest.name} (id: "${manifest.id}", version ${manifest.version})
@@ -27,7 +30,14 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const hasBetModes = (blueprint.betModes?.length ?? 0) > 0;
     const betModeWiring = resolveBetModeCodegenWiring(blueprint);
 
-    const requireNames = ["CustomLinesDefinitions", "SymbolsSequence", "VideoSlotConfig", "VideoSlotSession", "VideoSlotSessionSerializer"];
+    const requireNames = [
+        "computeGameBlueprintHash",
+        "CustomLinesDefinitions",
+        "SymbolsSequence",
+        "VideoSlotConfig",
+        "VideoSlotSession",
+        "VideoSlotSessionSerializer",
+    ];
     if (winModel.type === "ways" || winModel.type === "clusters") {
         requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
         requireNames.push(winModel.type === "ways" ? "WaysWinCalculator" : "ClusterWinCalculator");
@@ -234,6 +244,9 @@ module.exports = {
 ${createSessionBody}    },
     getSessionSerializer() {
         return new VideoSlotSessionSerializer();
+    },
+    getConfigHash() {
+        return computeGameBlueprintHash(blueprint);
     },${betModesExport}${exactEnumerationSessionExport}
 };
 `;

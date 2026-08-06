@@ -1,7 +1,10 @@
 import {
     BuildableFromSessionState,
+    computeGameBlueprintHash,
     ConvertableToSessionState,
     FileSessionRepository,
+    GameBlueprint,
+    GamePackageGenerator,
     GameSessionHandling,
     GameSessionSerializing,
     InMemorySessionRepository,
@@ -816,6 +819,60 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
                 game: {id: "playable-game-with-config-hash", name: "Playable Game With Config Hash", version: "1.0.0"},
                 pokieVersion: "9.9.9",
                 configHash: "sha256:fixture-config-hash",
+            });
+        });
+    });
+
+    describe('"full" against a real "pokie build" Blueprint package — provenance.configHash carries the build\'s own authoritative hash, never an invented one', () => {
+        const blueprint: GameBlueprint = {
+            manifest: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
+            reels: 3,
+            rows: 3,
+            symbols: ["A", "B"],
+            paytable: {A: {3: 5}, B: {3: 2}},
+        };
+        let buildCwd: string;
+        let projectRoot: string;
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeAll(() => {
+            buildCwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-dev-server-built-blueprint-"));
+            projectRoot = new GamePackageGenerator("9.9.9").generate(blueprint, buildCwd).projectRoot;
+        });
+
+        afterAll(() => {
+            fs.rmSync(buildCwd, {recursive: true, force: true});
+        });
+
+        beforeEach(async () => {
+            const game = await loadPokieGame(projectRoot);
+            server = new PokieDevServer(game, {
+                host: "127.0.0.1",
+                port: 0,
+                sessionCapturePolicyMode: "full",
+                pokieVersion: "9.9.9",
+            });
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("carries the built package's own computeGameBlueprintHash(blueprint) result into the persisted RoundArtifact's provenance", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            expect(artifact.provenance).toEqual({
+                game: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
+                pokieVersion: "9.9.9",
+                configHash: computeGameBlueprintHash(blueprint),
             });
         });
     });
