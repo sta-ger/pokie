@@ -49,6 +49,7 @@ import {CertificationTab} from "./CertificationTab";
 import {ExportDeployTab} from "./ExportDeployTab";
 import {OutcomeSourceOverview} from "./OutcomeSourceOverview";
 import {OverviewTab} from "./OverviewTab";
+import {PlayTab} from "./PlayTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
 import {RuntimeTab} from "./RuntimeTab";
@@ -56,6 +57,7 @@ import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 
 export type ProjectTab =
     | "overview"
+    | "play"
     | "simulation"
     | "replay"
     | "runtime"
@@ -85,8 +87,16 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // separate click-to-check tab. Every entry but Overview carries `requiredCapabilities` -- what actually
 // decides whether it's offered (see isTabSupported below), never just "the dashboard loaded at all".
 // Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs
-// visually separates them from the primary Overview -> Simulation -> Analysis flow -- everything's
-// still one click away, just not presented as equal-weight to it.
+// visually separates them from the primary Overview -> Play -> Simulation -> Analysis flow --
+// everything's still one click away, just not presented as equal-weight to it.
+//
+// "play"/PlayTab is Studio's own normal game mode -- materializes/starts (or attaches to) the runtime,
+// creates/restores a session, and renders the canonical player right here. It's deliberately ungrouped
+// (not "Advanced") alongside Overview/Simulation: playing the game is the primary thing a project
+// workspace is for. Runtime stays "Advanced" -- it's the HTTP API testing/diagnostics harness (raw
+// session JSON, manual requestId/version overrides, retry/debug) this project's runtime offers, not a
+// second gameplay surface; see PlayTab's and RuntimeTab's own doc comments for how the two divide the
+// work without duplicating it.
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is now the sole Studio build surface --
 // "deployment"/"stakeEngineExport"/"outcomeLibraries" no longer mount their own old Stepper-driven
@@ -98,6 +108,7 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // workflow, Build/Export is both.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
+    {value: "play", label: "Play", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "outcomeLibraries", label: "Analysis", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
@@ -773,6 +784,16 @@ export function ProjectDashboardPage() {
                                     nextAction={nextAction}
                                     onNextAction={onNextAction}
                                     onReinspect={refreshInspect}
+                                />
+                            )}
+                            {activeTab === "play" && (
+                                <PlayTab
+                                    state={runtime.state}
+                                    running={runtime.running}
+                                    session={runtime.session}
+                                    sessionId={runtime.sessionId}
+                                    onStart={runtime.start}
+                                    onCreateSession={runtime.createSession}
                                 />
                             )}
                             {activeTab === "simulation" && (

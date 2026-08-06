@@ -128,6 +128,15 @@ async function fetchConfig(fetchImpl: FetchLike): Promise<{apiBaseUrl: string}> 
     return (await response.json()) as {apiBaseUrl: string};
 }
 
+// Studio's Play tab points this player at a specific session it already created/restored through its
+// own API by opening it with `?session=<id>` (see PlayTab.tsx's own doc comment) -- read once here and
+// threaded into ensureSession() below, so this player restores that exact session instead of creating a
+// second, unrelated one of its own. Absent for every other caller (`pokie dev`/`pokie client`/Runtime's
+// own "Open Player", all opened with no query string at all), which keeps behaving exactly as before.
+function readPreferredSessionId(): string | undefined {
+    return new URLSearchParams(window.location.search).get("session") ?? undefined;
+}
+
 // paytable/linesDefinitions/availableBets only ever appear on a VideoSlotInitialNetworkData payload
 // (POST /sessions, or GET /sessions/:id's merged restore) -- a spin's own response is only ever the
 // narrower VideoSlotRoundNetworkData (see src/net/videoslot/VideoSlotNetworkData.ts), which carries
@@ -249,7 +258,7 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
         renderStatus(elements.status, "Connecting…");
         const {apiBaseUrl} = await fetchConfig(fetchImpl);
 
-        let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl);
+        let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl, readPreferredSessionId());
         let stageIndex = 0;
         const staticView = deriveStaticVideoSlotView(current);
         let selectedBet = typeof current.bet === "number" ? current.bet : staticView.availableBets[0];
