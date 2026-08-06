@@ -7,6 +7,7 @@ import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.j
 import {captureRoundPokieSessionState, type RoundArtifactCaptureRequest} from "../session/captureRoundPokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import {isVersionedSessionRepository} from "../session/isVersionedSessionRepository.js";
+import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "../session/resolveGameSessionSerializer.js";
 import {restoreFeatureState} from "../session/restoreFeatureState.js";
@@ -266,8 +267,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return this.reconciliationService;
     }
 
-    public handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number): Promise<SpinCommandResult> {
-        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet));
+    public handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult> {
+        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode));
     }
 
     // Chains `work` onto whatever is already queued for `sessionId`, so it only starts once every
@@ -287,7 +288,13 @@ export class SpinCommandHandler implements SpinCommandHandling {
         return result;
     }
 
-    private async handleSerialized(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number): Promise<SpinCommandResult> {
+    private async handleSerialized(
+        sessionId: string,
+        requestId?: string,
+        expectedVersion?: number,
+        bet?: number,
+        mode?: string,
+    ): Promise<SpinCommandResult> {
         if (requestId !== undefined) {
             const cached = await this.idempotencyRepository.load(sessionId, requestId);
             if (cached !== undefined) {
@@ -329,6 +336,32 @@ export class SpinCommandHandler implements SpinCommandHandling {
         }
         if (bet !== undefined) {
             session.setBet(bet);
+        }
+
+        if (mode !== undefined) {
+            if (!supportsBetModeSelecting(session)) {
+                return {
+                    status: "blocked",
+                    sessionId,
+                    reason: `Session "${sessionId}" does not support bet mode selection.`,
+                };
+            }
+            if (!session.getAvailableBetModeIds().includes(mode)) {
+                return {
+                    status: "blocked",
+                    sessionId,
+                    reason: `Session "${sessionId}" does not support bet mode "${mode}" (available modes: ${session.getAvailableBetModeIds().join(", ")}).`,
+                };
+            }
+            try {
+                session.setBetMode(mode);
+            } catch (error) {
+                return {
+                    status: "blocked",
+                    sessionId,
+                    reason: error instanceof Error ? error.message : String(error),
+                };
+            }
         }
 
         const balanceBeforePlay = await this.wallet.getBalance(sessionId);

@@ -43,13 +43,17 @@ export async function spin(
     sessionId: string,
     requestId?: string,
     bet?: number,
+    mode?: string,
 ): Promise<SessionResponse> {
-    const payload: {requestId?: string; bet?: number} = {};
+    const payload: {requestId?: string; bet?: number; mode?: string} = {};
     if (requestId !== undefined) {
         payload.requestId = requestId;
     }
     if (bet !== undefined) {
         payload.bet = bet;
+    }
+    if (mode !== undefined) {
+        payload.mode = mode;
     }
     const body = Object.keys(payload).length === 0 ? undefined : JSON.stringify(payload);
     const response = await fetchImpl(`${apiBaseUrl}/sessions/${encodeURIComponent(sessionId)}/spin`, {

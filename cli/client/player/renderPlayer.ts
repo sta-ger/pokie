@@ -220,6 +220,45 @@ export function renderPaytable(headEl: HTMLElement, bodyEl: HTMLElement, paytabl
     });
 }
 
+// Shared by renderBetInfo/renderModeInfo below: a current-value label plus, only when there's
+// actually more than one option to choose from, a row of buttons -- one per option, the current one
+// disabled/marked selected, each click reporting its own raw value back to the caller. Neither
+// renderBetInfo nor renderModeInfo does anything beyond mapping its own values to/from strings
+// around this, so a bet mode's runtime-supported ids and a bet's runtime-supported amounts render
+// identically instead of two independently-maintained near-duplicates.
+function renderOptionsRow(
+    el: HTMLElement,
+    classPrefix: string,
+    currentLabel: string | undefined,
+    options: string[],
+    currentValue: string | undefined,
+    onSelect: (value: string) => void,
+): void {
+    clearChildren(el);
+    if (currentLabel !== undefined) {
+        const current = document.createElement("span");
+        current.className = `${classPrefix}-current`;
+        current.textContent = currentLabel;
+        el.appendChild(current);
+    }
+    if (options.length <= 1) {
+        return;
+    }
+
+    const optionsEl = document.createElement("span");
+    optionsEl.className = `${classPrefix}-options`;
+    options.forEach((value) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `${classPrefix}-option` + (value === currentValue ? ` ${classPrefix}-option-selected` : "");
+        button.textContent = value;
+        button.disabled = value === currentValue;
+        button.addEventListener("click", () => onSelect(value));
+        optionsEl.appendChild(button);
+    });
+    el.appendChild(optionsEl);
+}
+
 // Interactive whenever the runtime actually exposes more than one bet to choose from (see
 // deriveAvailableBets/GameSessionHandling.getAvailableBets() -- every video-slot session always
 // reports its own real availableBets, never an invented list) -- clicking a bet other than the
@@ -228,29 +267,30 @@ export function renderPaytable(headEl: HTMLElement, bodyEl: HTMLElement, paytabl
 // spin actually runs staked at that amount, not just displays it. A single available bet renders as
 // plain text -- nothing to choose between, so no button.
 export function renderBetInfo(el: HTMLElement, availableBets: number[], currentBet: number | undefined, onSelectBet: (bet: number) => void): void {
-    clearChildren(el);
-    if (currentBet !== undefined) {
-        const current = document.createElement("span");
-        current.className = "player-bet-current";
-        current.textContent = `Bet: ${currentBet}`;
-        el.appendChild(current);
-    }
-    if (availableBets.length <= 1) {
-        return;
-    }
+    renderOptionsRow(
+        el,
+        "player-bet",
+        currentBet === undefined ? undefined : `Bet: ${currentBet}`,
+        availableBets.map(String),
+        currentBet === undefined ? undefined : String(currentBet),
+        (value) => onSelectBet(Number(value)),
+    );
+}
 
-    const options = document.createElement("span");
-    options.className = "player-bet-options";
-    availableBets.forEach((bet) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "player-bet-option" + (bet === currentBet ? " player-bet-option-selected" : "");
-        button.textContent = String(bet);
-        button.disabled = bet === currentBet;
-        button.addEventListener("click", () => onSelectBet(bet));
-        options.appendChild(button);
-    });
-    el.appendChild(options);
+// Interactive whenever the runtime actually exposes more than one bet mode to choose from (see
+// deriveAvailableBetModeIds/BetModeSelecting.getAvailableBetModeIds() -- absent entirely for a
+// session that never opted into bet-mode selection at all, so this renders nothing rather than an
+// invented single "base" choice). Clicking a mode other than the round's own current one calls
+// onSelectMode(modeId), wired the same way onSelectBet is -- see renderBetInfo above.
+export function renderModeInfo(el: HTMLElement, availableModeIds: string[], currentModeId: string | undefined, onSelectMode: (modeId: string) => void): void {
+    renderOptionsRow(
+        el,
+        "player-mode",
+        currentModeId === undefined ? undefined : `Mode: ${currentModeId}`,
+        availableModeIds,
+        currentModeId,
+        onSelectMode,
+    );
 }
 
 // A short, readable message plus the raw technical detail (an Error's message/stack, or a response

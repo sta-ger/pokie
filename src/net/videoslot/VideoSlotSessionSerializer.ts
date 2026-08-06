@@ -1,5 +1,6 @@
 import {GameSessionSerializer} from "../GameSessionSerializer.js";
 import type {GameSessionSerializing} from "../GameSessionSerializing.js";
+import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
 import type {
     VideoSlotInitialNetworkData,
     VideoSlotRoundNetworkData,
@@ -37,7 +38,7 @@ implements VideoSlotSessionSerializing<T> {
             .forEach((lineId) => {
                 linesDefinitions[lineId] = session.getLinesDefinitions().getLineDefinition(lineId);
             });
-        return {
+        const r: VideoSlotInitialNetworkData<T> = {
             ...this.baseSerializer.getInitialData(session),
             ...this.getRoundData(session),
             availableSymbols,
@@ -46,6 +47,10 @@ implements VideoSlotSessionSerializing<T> {
             paytable,
             linesDefinitions,
         };
+        if (supportsBetModeSelecting(session)) {
+            r.availableBetModeIds = session.getAvailableBetModeIds();
+        }
+        return r;
     }
 
     public getRoundData(session: VideoSlotSessionHandling<T>): VideoSlotRoundNetworkData<T> {
@@ -145,6 +150,9 @@ implements VideoSlotSessionSerializing<T> {
                 }),
                 {} as Record<T, WinningWayNetworkData<T>>,
             );
+        }
+        if (supportsBetModeSelecting(session)) {
+            r.betModeId = session.getBetModeId();
         }
         return r;
     }

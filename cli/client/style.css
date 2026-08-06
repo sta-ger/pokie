@@ -132,6 +132,28 @@ pre {
     font-weight: bold;
 }
 
+.player-mode-info {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.player-mode-options {
+    display: inline-flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.player-mode-option {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.6rem;
+}
+
+.player-mode-option-selected {
+    font-weight: bold;
+}
+
 .player-highlight-item {
     display: inline-block;
     padding-right: 1rem;

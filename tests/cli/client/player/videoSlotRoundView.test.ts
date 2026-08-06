@@ -1,5 +1,7 @@
 import {
+    deriveAvailableBetModeIds,
     deriveAvailableBets,
+    deriveBetModeId,
     deriveFeatureCounters,
     deriveLineDefinitions,
     derivePaytableView,
@@ -176,5 +178,86 @@ describe("deriveAvailableBets", () => {
 
     it("filters out non-numeric entries", () => {
         expect(deriveAvailableBets([1, "2", 3])).toEqual([1, 3]);
+    });
+});
+
+describe("deriveAvailableBetModeIds", () => {
+    it("returns an empty list when availableBetModeIds is missing or not an array -- e.g. a session that never opted into bet-mode selection", () => {
+        expect(deriveAvailableBetModeIds(undefined)).toEqual([]);
+        expect(deriveAvailableBetModeIds("nope")).toEqual([]);
+    });
+
+    it("filters out non-string entries", () => {
+        expect(deriveAvailableBetModeIds(["base", 2, "ante"])).toEqual(["base", "ante"]);
+    });
+});
+
+describe("deriveBetModeId", () => {
+    it("returns the string betModeId when present", () => {
+        expect(deriveBetModeId("ante")).toBe("ante");
+    });
+
+    it("returns undefined when betModeId is missing or not a string", () => {
+        expect(deriveBetModeId(undefined)).toBeUndefined();
+        expect(deriveBetModeId(42)).toBeUndefined();
+    });
+});
+
+// A realistic fixture matching pokie-examples' own simple-slot game (5 reels x 4 rows, lines
+// counted right-to-left, a Scatter1/Scatter2 pair) -- field names/shapes verified against a real
+// `git clone --branch develop https://github.com/sta-ger/pokie-examples.git` checkout's
+// src/ui/utils.ts (drawWinningLinesList/drawOutcome, which destructure WinningLineNetworkData /
+// WinningScatterNetworkData imported directly from "pokie") and src/games/simple-slot/index.ts
+// (which builds its session via pokie's own VideoSlotSession + VideoSlotSessionSerializer, not a
+// hand-rolled equivalent). This is the strongest proof this worktree can produce that the shared
+// player's derive functions render exactly what a real pokie-examples game already emits, without
+// requiring push/write access to that separate repository (see this step's own commit message for
+// why an actual pokie-examples commit is out of scope here).
+describe("pokie-examples compatibility (simple-slot-shaped round response)", () => {
+    const simpleSlotRound = {
+        reelsSymbols: [
+            ["Ace", "King", "Queen", "Jack"],
+            ["Ace", "Ace", "Ace", "Ten"],
+            ["Ace", "King", "Queen", "Jack"],
+            ["King", "Queen", "Jack", "Nine"],
+            ["Queen", "Jack", "Ten", "Nine"],
+        ],
+        bet: 20,
+        credits: 980,
+        totalWin: 100,
+        availableBets: [10, 20, 30, 40, 50, 100, 200, 250, 500],
+        winningLines: {
+            "0": {
+                definition: [0, 1, 0, 0, 0],
+                pattern: [1, 1, 1, 0, 0],
+                symbolId: "Ace",
+                lineId: "0",
+                symbolsPositions: [0, 1],
+                wildSymbolsPositions: [],
+                winAmount: 40,
+            },
+        },
+        winningScatters: {
+            Scatter1: {symbolId: "Scatter1", symbolsPositions: [[0, 0], [2, 1], [4, 2]], winAmount: 60},
+        },
+    };
+
+    it("recognizes the round as a video-slot response", () => {
+        expect(isVideoSlotRoundResponse(simpleSlotRound)).toBe(true);
+    });
+
+    it("derives both the winning line and the scatter as highlights, lines first", () => {
+        const highlights = deriveWinHighlights(simpleSlotRound);
+        expect(highlights.map((h) => h.kind)).toEqual(["line", "scatter"]);
+        expect(highlights[0]).toMatchObject({label: "Line: 0, win: 40"});
+        expect(highlights[1]).toMatchObject({label: "Scatter: Scatter1, win: 60"});
+    });
+
+    it("derives the same availableBets simple-slot's own config declares", () => {
+        expect(deriveAvailableBets(simpleSlotRound.availableBets)).toEqual([10, 20, 30, 40, 50, 100, 200, 250, 500]);
+    });
+
+    it("derives the round's own totalWin unchanged", () => {
+        expect(deriveTotalWin(simpleSlotRound)).toBe(100);
     });
 });

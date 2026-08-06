@@ -73,6 +73,10 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         return this.currentBetModeId;
     }
 
+    public getAvailableBetModeIds(): string[] {
+        return this.betModesConfig.getBetModeIds();
+    }
+
     public setBetMode(modeId: string): void {
         const mode = this.betModesConfig.getBetMode(modeId);
         if (mode === undefined) {

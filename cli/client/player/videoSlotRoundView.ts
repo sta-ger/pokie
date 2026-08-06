@@ -21,6 +21,8 @@ export type VideoSlotRoundResponse = {
     linesDefinitions?: unknown;
     availableBets?: unknown;
     bet?: unknown;
+    availableBetModeIds?: unknown;
+    betModeId?: unknown;
     freeGamesNum?: unknown;
     freeGamesSum?: unknown;
     freeGamesBank?: unknown;
@@ -218,4 +220,16 @@ export function deriveLineDefinitions(linesDefinitions: unknown): LineDefinition
 
 export function deriveAvailableBets(availableBets: unknown): number[] {
     return asNumberArray(availableBets);
+}
+
+// Only present at all when the session's own runtime opted into bet-mode selection (see
+// VideoSlotWithBetModesSession/supportsBetModeSelecting server-side) -- absent on a response from a
+// session that never configured more than the single default mode, same as availableBets never
+// invents choices a session doesn't actually support.
+export function deriveAvailableBetModeIds(availableBetModeIds: unknown): string[] {
+    return Array.isArray(availableBetModeIds) ? availableBetModeIds.filter((entry) => typeof entry === "string") : [];
+}
+
+export function deriveBetModeId(betModeId: unknown): string | undefined {
+    return typeof betModeId === "string" ? betModeId : undefined;
 }

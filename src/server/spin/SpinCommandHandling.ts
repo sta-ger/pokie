@@ -26,5 +26,14 @@ export interface SpinCommandHandling {
     // — a caller offering a bet a session doesn't actually support should see that, not have it
     // silently substituted. Ignored on a cache-hit requestId replay, same as every other input: a
     // retried command reproduces its own original result, it never re-derives one from new inputs.
-    handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number): Promise<SpinCommandResult>;
+    //
+    // `mode` is optional and additive, same shape as `bet`: when given, it's applied via
+    // session.setBetMode() before canPlayNextGame()/play() run. Only meaningful for a session that
+    // opts into bet-mode selection at all (see supportsBetModeSelecting) — given for one that
+    // doesn't, or given an id outside that session's own getAvailableBetModeIds(), it's rejected as
+    // "blocked", the same as an unsupported bet, rather than silently ignored. A mode rejected by
+    // setBetMode() itself (e.g. ForcingBetModeSelectionRejectedError, selecting a one-shot buy while
+    // already mid a zero-stake feature round) is also surfaced as "blocked", not thrown. Ignored on a
+    // cache-hit requestId replay, same as `bet`.
+    handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult>;
 }

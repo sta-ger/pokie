@@ -8,13 +8,16 @@ import {
     renderConnectionError,
     renderFeatureCounters,
     renderLineDefinitionsList,
+    renderModeInfo,
     renderPaytable,
     renderReelsGrid,
     renderWinHighlightsList,
     renderWinsSection,
 } from "./player/renderPlayer.js";
 import {
+    deriveAvailableBetModeIds,
     deriveAvailableBets,
+    deriveBetModeId,
     deriveFeatureCounters,
     deriveLineDefinitions,
     derivePaytableView,
@@ -46,6 +49,7 @@ type Elements = {
     playerSection: HTMLElement;
     playerGridContainer: HTMLElement;
     playerBetInfo: HTMLElement;
+    playerModeInfo: HTMLElement;
     playerFeatures: HTMLElement;
     playerWinsSection: HTMLElement;
     playerWinsList: HTMLElement;
@@ -70,6 +74,7 @@ type StaticVideoSlotView = {
     paytable: PaytableView | undefined;
     lines: LineDefinitionView[];
     availableBets: number[];
+    availableBetModeIds: string[];
 };
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -99,6 +104,7 @@ function queryElements(): Elements {
         playerSection: requireElement("player-section"),
         playerGridContainer: requireElement("player-grid-container"),
         playerBetInfo: requireElement("player-bet-info"),
+        playerModeInfo: requireElement("player-mode-info"),
         playerFeatures: requireElement("player-features"),
         playerWinsSection: requireElement("player-wins-section"),
         playerWinsList: requireElement("player-wins-list"),
@@ -134,6 +140,7 @@ function deriveStaticVideoSlotView(response: SessionResponse): StaticVideoSlotVi
         paytable: derivePaytableView(view.paytable),
         lines: deriveLineDefinitions(view.linesDefinitions),
         availableBets: deriveAvailableBets(view.availableBets),
+        availableBetModeIds: deriveAvailableBetModeIds(view.availableBetModeIds),
     };
 }
 
@@ -143,6 +150,8 @@ function renderVideoSlotRound(
     staticView: StaticVideoSlotView,
     selectedBet: number | undefined,
     onSelectBet: (bet: number) => void,
+    selectedMode: string | undefined,
+    onSelectMode: (modeId: string) => void,
 ): void {
     renderReelsGrid(elements.playerGridContainer, response.reelsSymbols);
 
@@ -153,6 +162,7 @@ function renderVideoSlotRound(
 
     renderFeatureCounters(elements.playerFeatures, deriveFeatureCounters(response));
     renderBetInfo(elements.playerBetInfo, staticView.availableBets, selectedBet, onSelectBet);
+    renderModeInfo(elements.playerModeInfo, staticView.availableBetModeIds, selectedMode, onSelectMode);
     renderLineDefinitionsList(elements.playerLinesList, elements.playerGridContainer, staticView.lines);
     renderPaytable(elements.playerPaytableHead, elements.playerPaytableBody, staticView.paytable);
 }
@@ -165,6 +175,8 @@ function render(
     onStageChange: (index: number) => void,
     selectedBet: number | undefined,
     onSelectBet: (bet: number) => void,
+    selectedMode: string | undefined,
+    onSelectMode: (modeId: string) => void,
 ): void {
     elements.gameTitle.textContent = `${response.game.name} — POKIE client preview`;
     renderRoundView(elements, extractKnownRoundView(response));
@@ -173,7 +185,7 @@ function render(
     elements.playerSection.hidden = !isVideoSlot;
     elements.screen.hidden = isVideoSlot;
     if (isVideoSlot) {
-        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet);
+        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode);
     }
 
     renderRawJson(elements.rawJson, response);
@@ -241,6 +253,7 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
         let stageIndex = 0;
         const staticView = deriveStaticVideoSlotView(current);
         let selectedBet = typeof current.bet === "number" ? current.bet : staticView.availableBets[0];
+        let selectedMode = deriveBetModeId((current as VideoSlotRoundResponse).betModeId) ?? staticView.availableBetModeIds[0];
 
         const rerender = (): void => {
             render(
@@ -257,6 +270,11 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
                     selectedBet = bet;
                     rerender();
                 },
+                selectedMode,
+                (modeId) => {
+                    selectedMode = modeId;
+                    rerender();
+                },
             );
         };
 
@@ -266,11 +284,12 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
 
         const attemptSpin = (): void => {
             elements.spinButton.disabled = true;
-            spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet)
+            spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet, selectedMode)
                 .then((response) => {
                     current = response;
                     stageIndex = 0;
                     selectedBet = typeof current.bet === "number" ? current.bet : selectedBet;
+                    selectedMode = deriveBetModeId((current as VideoSlotRoundResponse).betModeId) ?? selectedMode;
                     elements.spinError.hidden = true;
                     rerender();
                 })
