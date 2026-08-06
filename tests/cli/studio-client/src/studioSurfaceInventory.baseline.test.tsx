@@ -104,7 +104,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 7 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
+    it("lists exactly the 8 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -112,13 +112,23 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
 
         const nav = screen.getByRole("navigation", {name: "Sections"});
         const tabButtons = within(nav).getAllByRole("button");
-        expect(tabButtons.map((button) => button.textContent)).toEqual(["Overview", "Simulation", "Replay", "Runtime", "Build/Export", "Certification", "Fairness"]);
+        expect(tabButtons.map((button) => button.textContent)).toEqual([
+            "Overview",
+            "Play",
+            "Simulation",
+            "Replay",
+            "Runtime",
+            "Build/Export",
+            "Certification",
+            "Fairness",
+        ]);
         // Exactly one "Advanced" section header for the whole nav (NavTabs only prints one when the
-        // section actually changes from the previous item's) -- Overview/Simulation stay ungrouped as the
-        // primary happy path; everything from Replay onward shares it. There's no "Validate" section any
-        // more (validation is now automatic diagnostics inside Overview -- see OverviewTab), and
-        // Deployment/Stake Engine Export/Analysis (Outcome Libraries) have no top-level entries at all any
-        // more -- their own routes still resolve (see the deep-link test below), but each one now redirects
+        // section actually changes from the previous item's) -- Overview/Play/Simulation stay ungrouped
+        // as the primary happy path (Play is Studio's own normal game mode, right alongside Overview and
+        // Simulation); everything from Replay onward shares it. There's no "Validate" section any more
+        // (validation is now automatic diagnostics inside Overview -- see OverviewTab), and Deployment/
+        // Stake Engine Export/Analysis (Outcome Libraries) have no top-level entries at all any more --
+        // their own routes still resolve (see the deep-link test below), but each one now redirects
         // straight into Build/Export instead of mounting its own old workflow -- Build/Export is the sole
         // Studio build surface (see ExportDeployTab).
         expect(within(nav).getAllByText("Advanced")).toHaveLength(1);

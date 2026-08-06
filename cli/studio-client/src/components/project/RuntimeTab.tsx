@@ -1,5 +1,6 @@
 import {Alert, Anchor, Badge, Button, Checkbox, List, NumberInput, Select, SegmentedControl, Table, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
+import {useClipboard} from "@mantine/hooks";
 import {IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
@@ -273,6 +274,7 @@ export function RuntimeTab({
 }) {
     const confirm = useConfirm();
     const navigate = useNavigate();
+    const clipboard = useClipboard();
     const startForm = useForm<StartFormValues>({
         mode: "uncontrolled",
         // "debug" defaults on -- Studio is a local dev/inspection tool, so a session started from here
@@ -493,9 +495,10 @@ export function RuntimeTab({
         <div>
             <Text size="sm" c="dimmed" mb="sm">
                 Starts a local `pokie serve`-equivalent HTTP server for this project, in-process -- never a subprocess --
-                so you can create sessions and spin against it the same way an external client would. Create or restore a
-                session, play rounds, inspect and retry/debug any of them, any number of times -- there&apos;s no fixed
-                order to work through.
+                so you can create sessions and spin against it the same way an external client would. This is Studio&apos;s
+                own HTTP API testing/diagnostics harness, not a place to just play the game -- use the Play tab for that,
+                which uses this same runtime. Create or restore a session, play rounds, inspect and retry/debug any of
+                them, any number of times -- there&apos;s no fixed order to work through.
             </Text>
 
             <PageSection legend="Server">
@@ -579,14 +582,19 @@ export function RuntimeTab({
                             <Button component="a" href={state.playerUrl} target="_blank" rel="noreferrer">
                                 Open Player
                             </Button>
+                            <Button component="a" variant="default" href={state.baseUrl} target="_blank" rel="noreferrer">
+                                Open API endpoint
+                            </Button>
+                            <Button variant="default" onClick={() => clipboard.copy(state.baseUrl)}>
+                                {clipboard.copied ? "Copied!" : "Copy server URL"}
+                            </Button>
                         </QuickActions>
                         <Text size="sm" c="dimmed" mt={4}>
-                            Opens the same canonical player <code>pokie dev</code>/<code>pokie client</code> serve, already pointed at this runtime
-                            instance — not a Studio-specific preview.
+                            &quot;Open Player&quot; opens the same canonical player <code>pokie dev</code>/<code>pokie client</code>/the Play tab
+                            serve, already pointed at this runtime instance — not a Studio-specific preview. &quot;Open API endpoint&quot; and
+                            &quot;Copy server URL&quot; are for talking to this runtime&apos;s raw HTTP API directly (curl, Postman, an external
+                            client under test).
                         </Text>
-                        <Anchor href={state.baseUrl} target="_blank" rel="noreferrer">
-                            Open runtime endpoint in a new tab
-                        </Anchor>
                     </div>
                 )}
             </PageSection>
