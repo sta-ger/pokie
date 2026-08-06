@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import {
     GameBlueprint,
@@ -63,6 +64,10 @@ export class ReelCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
         // An empty argv has no verb for Commander to dispatch on at all; rejected explicitly up front
         // (same reasoning as ParCommand's own args.length === 0 check) rather than relying on
@@ -71,55 +76,12 @@ export class ReelCommand implements CliCommandHandling {
             return Promise.reject(new Error(USAGE));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("reel");
-
-        parent
-            .command("generate")
-            .argument("<blueprint.json>")
-            .argument("[excess...]")
-            .option("--reel <index>", 'target a single reel index (default: every "generated" reel)', (value: string): number => {
-                const parsed = parseCanonicalNonNegativeInteger(value);
-                if (parsed === undefined) {
-                    throw new Error(`--reel must be a non-negative integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--seed <integer>", "override every targeted reel's own seed for this run", (value: string): number => {
-                if (!Number.isInteger(Number(value))) {
-                    throw new Error(`--seed requires an integer value. ${USAGE}`);
-                }
-                return Number(value);
-            })
-            .option("--apply", "pin the generated strip(s) into reelStripGeneration as literal (default: preview only)")
-            .option("--out <file>", "write the applied blueprint to a different path (default: overwrite <blueprint.json>)")
-            .option(
-                "--format <value>",
-                'only "json" is supported',
-                (value: string): ReelGenerateFormat => {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${USAGE}`);
-                    }
-                    return "json";
-                },
-                "summary" as ReelGenerateFormat,
-            )
-            .action(async (blueprintPath: string, excess: string[], options: {reel?: number; seed?: number; apply?: boolean; out?: string; format: ReelGenerateFormat}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                }
-                exitCode = await this.executeGenerate(blueprintPath, {
-                    reel: options.reel,
-                    seed: options.seed,
-                    apply: options.apply ?? false,
-                    out: options.out,
-                    format: options.format,
-                });
-            });
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
                 if (isCommanderHelpDisplay(error)) {
                     return 0;
@@ -138,6 +100,61 @@ export class ReelCommand implements CliCommandHandling {
                     noCommand: USAGE,
                 });
             });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by the "generate" verb's own action; run()
+    // supplies its own real box and reads it back once parsing resolves, while getCommanderCommand()
+    // never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("reel").description(this.getDescription());
+
+        parent
+            .command("generate")
+            .description('Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares.')
+            .argument("<blueprint.json>", "an existing Blueprint Project file with a reelStripGeneration entry")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--reel <index>", 'target a single reel index (default: every "generated" reel)', (value: string): number => {
+                const parsed = parseCanonicalNonNegativeInteger(value);
+                if (parsed === undefined) {
+                    throw new Error(`--reel must be a non-negative integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--seed <integer>", "override every targeted reel's own seed for this run", (value: string): number => {
+                if (!Number.isInteger(Number(value))) {
+                    throw new Error(`--seed requires an integer value. ${USAGE}`);
+                }
+                return Number(value);
+            })
+            .option("--apply", "pin the generated strip(s) into reelStripGeneration as literal (default: preview only)")
+            .option("--out <file>", "write the applied blueprint to a different path (default: overwrite <blueprint.json>)")
+            .option(
+                "--format <value>",
+                'only "json" is supported (default: a human-readable summary)',
+                (value: string): ReelGenerateFormat => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${USAGE}`);
+                    }
+                    return "json";
+                },
+                "summary" as ReelGenerateFormat,
+            )
+            .action(async (blueprintPath: string, excess: string[], options: {reel?: number; seed?: number; apply?: boolean; out?: string; format: ReelGenerateFormat}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                }
+                exitCodeRef.value = await this.executeGenerate(blueprintPath, {
+                    reel: options.reel,
+                    seed: options.seed,
+                    apply: options.apply ?? false,
+                    out: options.out,
+                    format: options.format,
+                });
+            });
+
+        return parent;
     }
 
     private async executeGenerate(blueprintPath: string, options: ReelGenerateOptions): Promise<number> {

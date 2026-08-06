@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import {
     computeFairnessCommitment,
@@ -117,6 +118,10 @@ export class FairnessCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     // One parent Commander instance with four real subcommands ("seed-commit"/"commit"/"reveal"/"verify"),
     // the same shape CertificationCommand.run() already uses for its own two verbs -- Commander itself both
     // dispatches by exact verb name and validates each verb's own positional/options, in place of the former
@@ -138,132 +143,8 @@ export class FairnessCommand implements CliCommandHandling {
             return Promise.reject(new Error(USAGE));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("fairness");
-
-        parent
-            .command("seed-commit")
-            .argument("<serverSeedPath>")
-            .argument("[excess...]")
-            .option("--out <file>")
-            .option("--overwrite")
-            .action((serverSeedPath: string, excess: string[], options: {out?: string; overwrite?: boolean}) => {
-                // An empty-string positional is a legal PRESENT argument as far as Commander's own required-
-                // argument check is concerned, but the pre-Commander behavior this preserves treated it the
-                // same as an entirely missing one (`!serverSeedPath`).
-                if (!serverSeedPath) {
-                    throw new Error(SEED_COMMIT_USAGE);
-                }
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${SEED_COMMIT_USAGE}`);
-                }
-                exitCode = this.runSeedCommit({serverSeedPath, out: options.out, overwrite: options.overwrite ?? false});
-            });
-
-        parent
-            .command("commit")
-            .argument("<serverSeedCommitmentPath>")
-            .argument("[excess...]")
-            .option("--client-seed <seed>")
-            .option("--nonce <n>", "", (value: string) => {
-                const parsed = parseCanonicalNonNegativeInteger(value);
-                if (parsed === undefined) {
-                    throw new Error(nonceUsageMessage(JSON.stringify(value)));
-                }
-                return parsed;
-            })
-            .option("--source <bundleDir>")
-            .option("--mode <modeName>")
-            .option("--out <file>")
-            .option("--overwrite")
-            .action(
-                async (
-                    serverSeedCommitmentPath: string,
-                    excess: string[],
-                    options: {clientSeed?: string; nonce?: number; source?: string; mode?: string; out?: string; overwrite?: boolean},
-                ) => {
-                    if (!serverSeedCommitmentPath) {
-                        throw new Error(COMMIT_USAGE);
-                    }
-                    if (excess.length > 0) {
-                        throw new Error(`Unknown option "${excess[0]}". ${COMMIT_USAGE}`);
-                    }
-                    if (options.clientSeed === undefined) {
-                        throw new Error(`--client-seed <seed> is required. ${COMMIT_USAGE}`);
-                    }
-                    if (options.nonce === undefined) {
-                        throw new Error(`--nonce <number> is required. ${COMMIT_USAGE}`);
-                    }
-                    if (options.source === undefined) {
-                        throw new Error(`--source <bundleDir> is required. ${COMMIT_USAGE}`);
-                    }
-                    if (options.mode === undefined) {
-                        throw new Error(`--mode <modeName> is required. ${COMMIT_USAGE}`);
-                    }
-                    exitCode = await this.runCommit({
-                        serverSeedCommitmentPath,
-                        clientSeed: options.clientSeed,
-                        nonce: options.nonce,
-                        sourceBundleDir: options.source,
-                        modeName: options.mode,
-                        out: options.out,
-                        overwrite: options.overwrite ?? false,
-                    });
-                },
-            );
-
-        parent
-            .command("reveal")
-            .argument("<commitmentPath>")
-            .argument("[excess...]")
-            .option("--server-seed <file>")
-            .option("--source <bundleDir>")
-            .option("--out <file>")
-            .option("--overwrite")
-            .action(async (commitmentPath: string, excess: string[], options: {serverSeed?: string; source?: string; out?: string; overwrite?: boolean}) => {
-                if (!commitmentPath) {
-                    throw new Error(REVEAL_USAGE);
-                }
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${REVEAL_USAGE}`);
-                }
-                if (options.serverSeed === undefined) {
-                    throw new Error(`--server-seed <file> is required. ${REVEAL_USAGE}`);
-                }
-                if (options.source === undefined) {
-                    throw new Error(`--source <bundleDir> is required. ${REVEAL_USAGE}`);
-                }
-                exitCode = await this.runReveal({
-                    commitmentPath,
-                    serverSeedPath: options.serverSeed,
-                    sourceBundleDir: options.source,
-                    out: options.out,
-                    overwrite: options.overwrite ?? false,
-                });
-            });
-
-        parent
-            .command("verify")
-            .argument("<proofPath>")
-            .argument("[excess...]")
-            .option("--commitment <file>")
-            .option("--source <bundleDir>")
-            .action(async (proofPath: string, excess: string[], options: {commitment?: string; source?: string}) => {
-                if (!proofPath) {
-                    throw new Error(VERIFY_USAGE);
-                }
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
-                }
-                if (options.commitment === undefined) {
-                    throw new Error(`--commitment <commitment.json> is required. ${VERIFY_USAGE}`);
-                }
-                if (options.source === undefined) {
-                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
-                }
-                exitCode = await this.runVerify({proofPath, commitmentPath: options.commitment, sourceBundleDir: options.source});
-            });
-
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
         const verb = args[0];
         let verbMessages: CommanderErrorMessages = {};
         if (verb === "seed-commit") {
@@ -311,7 +192,7 @@ export class FairnessCommand implements CliCommandHandling {
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
                 if (isCommanderHelpDisplay(error)) {
                     return 0;
@@ -322,6 +203,144 @@ export class FairnessCommand implements CliCommandHandling {
                     noCommand: USAGE,
                 });
             });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
+    // run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("fairness").description(this.getDescription());
+
+        parent
+            .command("seed-commit")
+            .description("Publish a server-seed commitment (the first step of the commit-reveal scheme).")
+            .argument("<serverSeedPath>", "a text file containing the secret server seed")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <file>", "write the commitment JSON to this path (default: print only)")
+            .option("--overwrite", "allow --out to replace an existing file")
+            .action((serverSeedPath: string, excess: string[], options: {out?: string; overwrite?: boolean}) => {
+                // An empty-string positional is a legal PRESENT argument as far as Commander's own required-
+                // argument check is concerned, but the pre-Commander behavior this preserves treated it the
+                // same as an entirely missing one (`!serverSeedPath`).
+                if (!serverSeedPath) {
+                    throw new Error(SEED_COMMIT_USAGE);
+                }
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${SEED_COMMIT_USAGE}`);
+                }
+                exitCodeRef.value = this.runSeedCommit({serverSeedPath, out: options.out, overwrite: options.overwrite ?? false});
+            });
+
+        parent
+            .command("commit")
+            .description("Publish a round commitment against a live outcome-library bundle.")
+            .argument("<serverSeedCommitmentPath>", "the JSON commitment published by \"pokie fairness seed-commit\"")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--client-seed <seed>", "the player-supplied seed for this round (required)")
+            .option("--nonce <n>", "a canonical non-negative decimal integer, unique per client seed (required)", (value: string) => {
+                const parsed = parseCanonicalNonNegativeInteger(value);
+                if (parsed === undefined) {
+                    throw new Error(nonceUsageMessage(JSON.stringify(value)));
+                }
+                return parsed;
+            })
+            .option("--source <bundleDir>", "the outcome-library bundle this round will be drawn from (required)")
+            .option("--mode <modeName>", "the bet mode this round will be drawn from (required)")
+            .option("--out <file>", "write the commitment JSON to this path (default: print only)")
+            .option("--overwrite", "allow --out to replace an existing file")
+            .action(
+                async (
+                    serverSeedCommitmentPath: string,
+                    excess: string[],
+                    options: {clientSeed?: string; nonce?: number; source?: string; mode?: string; out?: string; overwrite?: boolean},
+                ) => {
+                    if (!serverSeedCommitmentPath) {
+                        throw new Error(COMMIT_USAGE);
+                    }
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${COMMIT_USAGE}`);
+                    }
+                    if (options.clientSeed === undefined) {
+                        throw new Error(`--client-seed <seed> is required. ${COMMIT_USAGE}`);
+                    }
+                    if (options.nonce === undefined) {
+                        throw new Error(`--nonce <number> is required. ${COMMIT_USAGE}`);
+                    }
+                    if (options.source === undefined) {
+                        throw new Error(`--source <bundleDir> is required. ${COMMIT_USAGE}`);
+                    }
+                    if (options.mode === undefined) {
+                        throw new Error(`--mode <modeName> is required. ${COMMIT_USAGE}`);
+                    }
+                    exitCodeRef.value = await this.runCommit({
+                        serverSeedCommitmentPath,
+                        clientSeed: options.clientSeed,
+                        nonce: options.nonce,
+                        sourceBundleDir: options.source,
+                        modeName: options.mode,
+                        out: options.out,
+                        overwrite: options.overwrite ?? false,
+                    });
+                },
+            );
+
+        parent
+            .command("reveal")
+            .description("Reveal the round proof once a committed round has settled.")
+            .argument("<commitmentPath>", "the JSON round commitment published by \"pokie fairness commit\"")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--server-seed <file>", "a text file containing the secret server seed (required)")
+            .option("--source <bundleDir>", "the outcome-library bundle this round was drawn from (required)")
+            .option("--out <file>", "write the proof JSON to this path (default: print only)")
+            .option("--overwrite", "allow --out to replace an existing file")
+            .action(async (commitmentPath: string, excess: string[], options: {serverSeed?: string; source?: string; out?: string; overwrite?: boolean}) => {
+                if (!commitmentPath) {
+                    throw new Error(REVEAL_USAGE);
+                }
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${REVEAL_USAGE}`);
+                }
+                if (options.serverSeed === undefined) {
+                    throw new Error(`--server-seed <file> is required. ${REVEAL_USAGE}`);
+                }
+                if (options.source === undefined) {
+                    throw new Error(`--source <bundleDir> is required. ${REVEAL_USAGE}`);
+                }
+                exitCodeRef.value = await this.runReveal({
+                    commitmentPath,
+                    serverSeedPath: options.serverSeed,
+                    sourceBundleDir: options.source,
+                    out: options.out,
+                    overwrite: options.overwrite ?? false,
+                });
+            });
+
+        parent
+            .command("verify")
+            .description("Independently verify a round proof against its commitment and a live source bundle.")
+            .argument("<proofPath>", "the JSON round proof produced by \"pokie fairness reveal\"")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--commitment <file>", "the JSON round commitment this proof claims to reveal (required)")
+            .option("--source <bundleDir>", "the outcome-library bundle this round was drawn from (required)")
+            .action(async (proofPath: string, excess: string[], options: {commitment?: string; source?: string}) => {
+                if (!proofPath) {
+                    throw new Error(VERIFY_USAGE);
+                }
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${VERIFY_USAGE}`);
+                }
+                if (options.commitment === undefined) {
+                    throw new Error(`--commitment <commitment.json> is required. ${VERIFY_USAGE}`);
+                }
+                if (options.source === undefined) {
+                    throw new Error(`--source <bundleDir> is required. ${VERIFY_USAGE}`);
+                }
+                exitCodeRef.value = await this.runVerify({proofPath, commitmentPath: options.commitment, sourceBundleDir: options.source});
+            });
+
+        return parent;
     }
 
     private runSeedCommit(options: SeedCommitOptions): number {

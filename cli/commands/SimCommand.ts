@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     BetMode,
     loadPokieGame,
@@ -151,100 +152,12 @@ export class SimCommand implements CliCommandHandling {
         return "Run a simulation against a POKIE game package and report RTP/hit-frequency/max win.";
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public async run(args: string[]): Promise<void> {
-        const command = createCommanderCliCommand("sim")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--rounds <number>", "", (value: string): number => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed <= 0) {
-                    throw new Error(`--rounds must be a positive integer. ${USAGE}`);
-                }
-                return parsed;
-            }, SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS)
-            .option("--seed <string>")
-            .option(
-                "--workers <number>",
-                "",
-                (value: string): number => {
-                    const parsed = Number(value);
-                    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SIMULATION_WORKERS) {
-                        throw new Error(`--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. ${USAGE}`);
-                    }
-                    return parsed;
-                },
-                1,
-            )
-            .option("--out <file>")
-            .option(
-                "--format <format>",
-                "",
-                (value: string): SimFormat => {
-                    if (value !== "json") {
-                        throw new Error(`--format only supports "json". ${USAGE}`);
-                    }
-                    return "json";
-                },
-                "summary" as SimFormat,
-            )
-            .option("--mode <betModeId>")
-            .option("--min-rounds <number>", "", (value: string): number => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed < 0) {
-                    throw new Error(`--min-rounds must be a non-negative integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--rtp-tolerance <number>", "", (value: string): number => {
-                const parsed = Number(value);
-                if (!Number.isFinite(parsed) || parsed <= 0) {
-                    throw new Error(`--rtp-tolerance must be a positive number. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--check-interval <number>", "", (value: string): number => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed <= 0) {
-                    throw new Error(`--check-interval must be a positive integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--stable-checks <number>", "", (value: string): number => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed <= 0) {
-                    throw new Error(`--stable-checks must be a positive integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .action(async (packageRoot: string, excess: string[], rawOptions: SimCliOptions) => {
-                // An empty-string positional ("pokie sim ''") is present as far as Commander's own
-                // required-argument check is concerned, but the pre-Commander behavior this preserves
-                // treated it the same as an entirely missing one (`!packageRoot`).
-                if (!packageRoot) {
-                    throw new Error(USAGE);
-                }
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                }
-
-                const convergence = this.buildConvergenceOptions(
-                    rawOptions.minRounds,
-                    rawOptions.rtpTolerance,
-                    rawOptions.checkInterval,
-                    rawOptions.stableChecks,
-                );
-
-                await this.execute({
-                    packageRoot,
-                    rounds: rawOptions.rounds,
-                    seed: rawOptions.seed,
-                    out: rawOptions.out,
-                    format: rawOptions.format,
-                    workers: rawOptions.workers,
-                    mode: rawOptions.mode,
-                    convergence,
-                });
-            });
+        const command = this.buildCommand();
 
         try {
             await command.parseAsync(args, {from: "user"});
@@ -283,6 +196,106 @@ export class SimCommand implements CliCommandHandling {
                 },
             });
         }
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart.
+    private buildCommand(): Command {
+        return createCommanderCliCommand("sim")
+            .description(this.getDescription())
+            .argument("<packageRoot>", "an existing POKIE game package, or a native outcome-library bundle (with --mode)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--rounds <number>", `number of rounds to simulate (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--rounds must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            }, SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS)
+            .option("--seed <string>", "seed for a reproducible simulation (default: a random seed)")
+            .option(
+                "--workers <number>",
+                `number of parallel worker threads, 1-${MAX_SIMULATION_WORKERS} (default: 1)`,
+                (value: string): number => {
+                    const parsed = Number(value);
+                    if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_SIMULATION_WORKERS) {
+                        throw new Error(`--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. ${USAGE}`);
+                    }
+                    return parsed;
+                },
+                1,
+            )
+            .option("--out <file>", "write the simulation report JSON to this path")
+            .option(
+                "--format <format>",
+                "only \"json\" is supported (default: a human-readable summary)",
+                (value: string): SimFormat => {
+                    if (value !== "json") {
+                        throw new Error(`--format only supports "json". ${USAGE}`);
+                    }
+                    return "json";
+                },
+                "summary" as SimFormat,
+            )
+            .option("--mode <betModeId>", `bet mode to simulate (default: the game's own default bet mode; or "${ALL_MODES}" for every declared mode)`)
+            .option("--min-rounds <number>", "adaptive convergence: minimum rounds before checking for stability (requires --rtp-tolerance/--check-interval)", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 0) {
+                    throw new Error(`--min-rounds must be a non-negative integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--rtp-tolerance <number>", "adaptive convergence: acceptable RTP half-width (requires --min-rounds/--check-interval)", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                    throw new Error(`--rtp-tolerance must be a positive number. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--check-interval <number>", "adaptive convergence: how often (in rounds) to check for stability (requires --min-rounds/--rtp-tolerance)", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--check-interval must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--stable-checks <number>", "adaptive convergence: consecutive stable checks required (default: 1; requires the other three convergence flags)", (value: string): number => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                    throw new Error(`--stable-checks must be a positive integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .action(async (packageRoot: string, excess: string[], rawOptions: SimCliOptions) => {
+                // An empty-string positional ("pokie sim ''") is present as far as Commander's own
+                // required-argument check is concerned, but the pre-Commander behavior this preserves
+                // treated it the same as an entirely missing one (`!packageRoot`).
+                if (!packageRoot) {
+                    throw new Error(USAGE);
+                }
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                }
+
+                const convergence = this.buildConvergenceOptions(
+                    rawOptions.minRounds,
+                    rawOptions.rtpTolerance,
+                    rawOptions.checkInterval,
+                    rawOptions.stableChecks,
+                );
+
+                await this.execute({
+                    packageRoot,
+                    rounds: rawOptions.rounds,
+                    seed: rawOptions.seed,
+                    out: rawOptions.out,
+                    format: rawOptions.format,
+                    workers: rawOptions.workers,
+                    mode: rawOptions.mode,
+                    convergence,
+                });
+            });
     }
 
     // The original run()'s own business logic, unchanged -- only its entry point moved, from directly

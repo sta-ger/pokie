@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {buildUsageText} from "../../cli/usageText.js";
 
@@ -23,6 +24,10 @@ class FakeCommand implements CliCommandHandling {
 
     public run(): Promise<void | number> {
         throw new Error("FakeCommand.run is never called by buildUsageText.");
+    }
+
+    public getCommanderCommand(): Command {
+        throw new Error("FakeCommand.getCommanderCommand is never called by buildUsageText.");
     }
 }
 

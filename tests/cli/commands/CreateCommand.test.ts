@@ -348,28 +348,28 @@ describe("CreateCommand", () => {
             expect(writeFile).toHaveBeenCalledWith(spacedPath, expect.any(String));
         });
 
-        it("throws a descriptive error for an invalid name", () => {
+        it("throws a descriptive error for an invalid name", async () => {
             const {command} = createCommand(undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => true);
 
-            expect(() => command.run(["../escape"])).toThrow(/is not a valid project name/);
+            await expect(command.run(["../escape"])).rejects.toThrow(/is not a valid project name/);
         });
 
-        it("throws a descriptive error for an unknown option", () => {
+        it("throws a descriptive error for an unknown option", async () => {
             const {command} = createCommand(undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => true);
 
-            expect(() => command.run(["--bogus"])).toThrow(/Unknown option "--bogus"/);
+            await expect(command.run(["--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
 
-        it("throws a descriptive error for an unexpected extra positional argument", () => {
+        it("throws a descriptive error for an unexpected extra positional argument", async () => {
             const {command} = createCommand(undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => true);
 
-            expect(() => command.run(["name-one", "name-two"])).toThrow(/Unexpected extra argument "name-two"/);
+            await expect(command.run(["name-one", "name-two"])).rejects.toThrow(/Unexpected extra argument "name-two"/);
         });
 
-        it("throws a descriptive error when --out is given no value", () => {
+        it("throws a descriptive error when --out is given no value", async () => {
             const {command} = createCommand(undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => true);
 
-            expect(() => command.run(["--out"])).toThrow(/--out requires a file path/);
+            await expect(command.run(["--out"])).rejects.toThrow(/--out requires a file path/);
         });
     });
 
@@ -418,39 +418,37 @@ describe("CreateCommand", () => {
             expect(wizardCalled).toBe(false);
         });
 
-        // The blank path resolves synchronously (see CreateCommand.run()'s own doc comment) -- a
-        // parse/validation failure throws straight out of run() rather than rejecting the returned
-        // promise. --blank never pre-checks fileExists() itself -- it routes straight through the same
-        // atomic, create-only commit the interactive wizard's own final write uses (see
+        // --blank never pre-checks fileExists() itself -- it routes straight through the same atomic,
+        // create-only commit the interactive wizard's own final write uses (see
         // writeBlueprintFileAtomically.ts), so a "conflict" result from that commit is what surfaces here.
-        it("throws a clear error instead of silently overwriting an existing file", () => {
+        it("throws a clear error instead of silently overwriting an existing file", async () => {
             const {command} = createCommand(undefined, jest.fn().mockReturnValue(createConflictWriteResult()));
 
-            expect(() => command.run(["--blank"])).toThrow(/"\.\/blank-slot\.blueprint\.json" already exists/);
+            await expect(command.run(["--blank"])).rejects.toThrow(/"\.\/blank-slot\.blueprint\.json" already exists/);
         });
 
-        it("throws a descriptive error for an invalid name", () => {
+        it("throws a descriptive error for an invalid name", async () => {
             const {command} = createCommand();
 
-            expect(() => command.run(["../escape", "--blank"])).toThrow(/is not a valid project name/);
+            await expect(command.run(["../escape", "--blank"])).rejects.toThrow(/is not a valid project name/);
         });
 
-        it("throws a descriptive error for an unknown option", () => {
+        it("throws a descriptive error for an unknown option", async () => {
             const {command} = createCommand();
 
-            expect(() => command.run(["--blank", "--bogus"])).toThrow(/Unknown option "--bogus"/);
+            await expect(command.run(["--blank", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
 
-        it("throws a descriptive error for an unexpected extra positional argument", () => {
+        it("throws a descriptive error for an unexpected extra positional argument", async () => {
             const {command} = createCommand();
 
-            expect(() => command.run(["--blank", "name-one", "name-two"])).toThrow(/Unexpected extra argument "name-two"/);
+            await expect(command.run(["--blank", "name-one", "name-two"])).rejects.toThrow(/Unexpected extra argument "name-two"/);
         });
 
-        it("throws a descriptive error when --out is given no value", () => {
+        it("throws a descriptive error when --out is given no value", async () => {
             const {command} = createCommand();
 
-            expect(() => command.run(["--blank", "--out"])).toThrow(/--out requires a file path/);
+            await expect(command.run(["--blank", "--out"])).rejects.toThrow(/--out requires a file path/);
         });
     });
 

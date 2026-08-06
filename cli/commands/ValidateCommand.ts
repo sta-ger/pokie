@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -35,32 +36,13 @@ export class ValidateCommand implements CliCommandHandling {
         return "Validate a POKIE game package's contract (manifest, entry module) without playing it.";
     }
 
-    public async run(args: string[]): Promise<number> {
-        let packageRoot!: string;
-        let format!: ValidateFormat;
-        let out: string | undefined;
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
 
-        const command = createCommanderCliCommand("validate")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--format <value>", 'only "json" is supported', (value: string) => {
-                if (value !== "json") {
-                    throw new Error(`--format only supports "json". ${USAGE}`);
-                }
-                return "json" as ValidateFormat;
-            })
-            .option("--out <file>", "file path to write the report to")
-            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string}) => {
-                // An empty-string positional is "present" as far as Commander's own required-argument
-                // check is concerned, but the pre-Commander behavior this preserves treated it the same
-                // as an entirely missing one.
-                if (!root || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
-                }
-                packageRoot = root;
-                format = options.format ?? "summary";
-                out = options.out;
-            });
+    public async run(args: string[]): Promise<number> {
+        const resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
@@ -76,6 +58,9 @@ export class ValidateCommand implements CliCommandHandling {
             });
         }
 
+        const packageRoot = resultRef.packageRoot!;
+        const format = resultRef.format!;
+        const out = resultRef.out;
         const resolution = await this.resolveRuntimePackageRoot(packageRoot);
         let report: PokieGamePackageValidationReport;
         try {
@@ -98,6 +83,36 @@ export class ValidateCommand implements CliCommandHandling {
         }
 
         return report.valid ? 0 : 1;
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `resultRef` is written by the action; run() supplies its own real box
+    // and reads it back once parsing resolves, while getCommanderCommand() never parses this tree at
+    // all, so its own default box is never read.
+    private buildCommand(resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string} = {}): Command {
+        return createCommanderCliCommand("validate")
+            .description(this.getDescription())
+            .argument("<packageRoot>", "an existing POKIE game package")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--format <value>", 'only "json" is supported (default: a human-readable summary)', (value: string) => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${USAGE}`);
+                }
+                return "json" as ValidateFormat;
+            })
+            .option("--out <file>", "file path to write the report to")
+            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string}) => {
+                // An empty-string positional is "present" as far as Commander's own required-argument
+                // check is concerned, but the pre-Commander behavior this preserves treated it the same
+                // as an entirely missing one.
+                if (!root || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
+                }
+                resultRef.packageRoot = root;
+                resultRef.format = options.format ?? "summary";
+                resultRef.out = options.out;
+            });
     }
 
     private printSummary(report: PokieGamePackageValidationReport): void {

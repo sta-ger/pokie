@@ -20,6 +20,7 @@ import {
     SlotGameNameGenerator,
     StakeEngineStandaloneAnalyzer,
 } from "pokie";
+import {Command} from "commander";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {ClientCommand} from "../../cli/commands/ClientCommand.js";
@@ -31,7 +32,6 @@ import {InitCommand} from "../../cli/commands/InitCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {NameCommand} from "../../cli/commands/NameCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
-import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReelCommand} from "../../cli/commands/ReelCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
@@ -46,8 +46,9 @@ import path from "path";
 import {createStarterGameBlueprint} from "../../cli/build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {dispatch} from "../../cli/dispatch.js";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {buildUsageText} from "../../cli/usageText.js";
-import {CliContractCase, CliVerbDescriptor, CLI_COMMAND_DESCRIPTORS, CLI_CONTRACT_CASES, CLI_TOP_LEVEL_DISPATCH_CASES} from "./fixtures/cliCommandInventory.js";
+import {CliContractCase, CLI_COMMAND_DESCRIPTORS, CLI_CONTRACT_CASES, CLI_TOP_LEVEL_DISPATCH_CASES} from "./fixtures/cliCommandInventory.js";
 import {isCommanderHelpDisplay} from "../../cli/commands/internal/CommanderCliAdapter.js";
 
 const TEST_VERSION = "1.3.0";
@@ -1913,8 +1914,8 @@ describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)"
 });
 
 // Some commands' run() throws synchronously rather than returning a rejected promise (e.g.
-// CreateCommand's plain "missing <name>" branch isn't wrapped in a try/catch, since it never awaits
-// anything before that check) — a real, if inconsistent, part of today's contract. A plain
+// InitCommand's own parseArgs() failure is rethrown directly, never wrapped in Promise.reject) — a
+// real, if inconsistent, part of today's contract. A plain
 // `expect(command.run(args)).rejects...` would blow up evaluating that argument before `expect` ever
 // runs for those cases, so every case goes through this helper instead, which catches both a
 // synchronous throw and a rejected promise uniformly.
@@ -2305,35 +2306,62 @@ describe("CLI command test coverage (structural link to tests/cli/commands/*.tes
 });
 
 // Guarantees --help/-h works, exits 0, and touches no file/wizard/runtime/network side effect across
-// the ENTIRE registered command tree -- every command CLI_COMMAND_DESCRIPTORS lists (already proven, by
-// "CLI command registry"'s own "has exactly the names..." test above, to mirror cli/pokie.ts's real
-// `commands` array 1:1 -- so a command added there without a matching CLI_COMMAND_DESCRIPTORS entry
-// already fails that test) and every verb each one declares. Reuses registerCommands()'s own real,
-// fully-unstubbed command instances -- the same registry CLI_CONTRACT_CASES' "invalid" cases above
-// already trust as side-effect-free by construction (every dependency is real, but no argv this file
-// exercises against them ever reaches an I/O boundary) -- so a regression that let --help fall through
-// into a command's real action would either throw (failing the exit-code/stderr assertions below and
-// almost certainly touching this sandbox's real filesystem/network on the way) or, if it somehow
-// resolved anyway, would still be caught by the "no console.error, exactly the expected stdout shape"
-// assertions below. A verb literal alone (no positionals/required options) is always enough to trigger
-// help: Commander checks for --help/-h before validating required arguments/options (see
+// the ENTIRE registered command tree -- derived ENTIRELY from each command's own real, live
+// getCommanderCommand() (see CliCommandHandling.ts's own doc comment on that method): every node this
+// walk finds (a top-level command, or any nested subcommand) is a Command object Commander itself would
+// use to parse that exact argv, never a hand-maintained descriptor of one. There is deliberately no
+// separate per-command/per-verb inventory here (contrast CLI_COMMAND_DESCRIPTORS above, which exists
+// only for the unrelated per-option VALUE contract CLI_CONTRACT_CASES checks) and no per-command
+// exception: `commands` below is built by registerCliCommands() -- the exact same factory
+// cli/pokie.ts's own run() calls to build the real, live `pokie` command tree -- so "pokie
+// outcomesource" (which registerCommands()'s own separate, hand-maintained CLI_CONTRACT_CASES mirror
+// above doesn't track) is swept up by the exact same recursive walk as everything else, with no second,
+// hand-rolled registration list and no per-command exception. A command/subcommand registered without a
+// real Commander .description() (on itself, every argument, and every option) -- including one added
+// later with no matching update here -- fails the "declares complete help metadata" check below before
+// ever reaching the rendered-help assertions.
+//
+// registerCliCommands() itself needs no real filesystem paths or version string to build a
+// side-effect-free Commander tree (see that function's own doc comment) -- the fake strings below are
+// never read by anything this block exercises, since --help/-h always short-circuits before any
+// command's real action (the materializing runtime resolvers registerCliCommands() wires in are
+// likewise only ever invoked from inside that action). A regression that let --help fall through into a
+// command's real action would either throw (failing the exit-code/stderr assertions below and almost
+// certainly touching this sandbox's real filesystem/network on the way) or, if it somehow resolved
+// anyway, would still be caught by the "no console.error, exactly the expected stdout shape" assertions
+// below. A verb literal alone (no positionals/required options) is always enough to trigger help:
+// Commander checks for --help/-h before validating required arguments/options (see
 // CommanderCliAdapter.ts's own isCommanderHelpDisplay doc comment), so this never needs to fabricate a
-// valid <config.json>/<packageRoot>/... for any verb.
-describe("CLI help coverage (recursively walks every registered command/verb, side-effect-free)", () => {
-    const commands = registerCommands();
+// valid <config.json>/<packageRoot>/... for any node.
+const ANSI_ESCAPE = String.fromCharCode(27) + "[";
 
-    // The argv prefix Commander needs to reach a given verb -- for every kind of verb this registry
-    // declares (an ordinary subcommand word like "build"/"verify", a sentinel flag like "random"/
-    // "--blank"/"--random", or no verb at all for a single-verb command), the verb literal itself IS
-    // that prefix; see CLI_COMMAND_DESCRIPTORS' own CliVerbDescriptor.verb doc comment.
-    function verbArgsPrefix(verbDescriptor: CliVerbDescriptor): string[] {
-        return verbDescriptor.verb !== undefined ? [verbDescriptor.verb] : [];
+describe("CLI help coverage (recursively walks the real registered Commander tree, side-effect-free)", () => {
+    const commands: CliCommandHandling[] = registerCliCommands({
+        version: TEST_VERSION,
+        pokiePackageRoot: "/fake/pokie/root",
+        clientRoot: "/fake/pokie/root/dist/cli/client",
+        studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+    });
+
+    // One discovered node per real Commander Command in the tree -- the top-level command itself
+    // (`path: []`) plus every nested subcommand, found by walking `.commands` (exactly what Commander
+    // itself dispatches through, e.g. "certification build", "build random") -- never a hand-maintained
+    // verb list. `path` is the argv Commander needs, relative to the command's own args (dispatch.ts
+    // already consumes the top-level command name itself).
+    type CommanderNode = {path: string[]; command: Command};
+
+    function collectCommanderNodes(root: Command, path: string[] = []): CommanderNode[] {
+        const nodes: CommanderNode[] = [{path, command: root}];
+        for (const child of root.commands) {
+            nodes.push(...collectCommanderNodes(child, [...path, child.name()]));
+        }
+        return nodes;
     }
 
     async function runHelp(commandName: string, args: string[]): Promise<{exitCode: number; stdout: string}> {
         const command = commands.find((candidate) => candidate.getName() === commandName);
         if (!command) {
-            throw new Error(`No registered command named "${commandName}" -- update registerCommands().`);
+            throw new Error(`No registered command named "${commandName}".`);
         }
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
@@ -2347,97 +2375,57 @@ describe("CLI help coverage (recursively walks every registered command/verb, si
         }
     }
 
-    for (const descriptor of CLI_COMMAND_DESCRIPTORS) {
-        for (const verbDescriptor of descriptor.verbs) {
-            const verbLabel = verbDescriptor.verb ?? "(default)";
-            const prefix = verbArgsPrefix(verbDescriptor);
+    for (const command of commands) {
+        const nodes = collectCommanderNodes(command.getCommanderCommand());
 
-            it.each(["--help", "-h"])(`"pokie ${descriptor.name} ${verbLabel}" %s exits 0 with usage text and no side effect`, async (flag) => {
-                const {exitCode, stdout} = await runHelp(descriptor.name, [...prefix, flag]);
-                expect(exitCode).toBe(0);
-                expect(stdout).toContain("Usage:");
-                // NO_COLOR is trivially coherent here: Commander's own default help renderer never emits
-                // an ANSI escape at all (see CommanderCliAdapter.ts's own doc comment on
-                // COMMANDER_OUTPUT_CONFIG), so there is nothing for a NO_COLOR-respecting terminal to strip.
-                expect(stdout.includes("\u001b[")).toBe(false);
-            });
-        }
-    }
+        describe(`"pokie ${command.getName()}"`, () => {
+            for (const node of nodes) {
+                const nodeLabel = node.path.length > 0 ? node.path.join(" ") : "(root)";
+                const argvLabel = [command.getName(), ...node.path].join(" ");
 
-    // "parent-without-child": a multi-verb command's own bare "--help"/"-h" (no verb at all) must also
-    // succeed and list every one of its verbs -- proving Commander's own real, nested subcommand tree
-    // (not a hand-written fallback) is what answers it. Contrasted with a truly empty argv, which every
-    // one of these command classes' own run() rejects up front with exit 1 (see CLI_CONTRACT_CASES'
-    // "missing/unknown subcommand" cases above) -- --help/-h is checked by Commander before that
-    // rejection is ever reached, so it stays a coherent, distinct success path.
-    //
-    // Deliberately excludes "build"/"create": both have a bare (verb: undefined) default action
-    // alongside their own sentinel-flag pseudo-verb ("random"/"--blank"/"--random" -- see
-    // CliVerbDescriptor's own doc comment), selected by a hand-written argv check in each command's own
-    // run() *before* Commander ever sees the args (see BuildCommand.run()'s own doc comment on why
-    // Commander can't pick a flag-like verb out itself) -- so their own parent Command never registers
-    // real Commander subcommands at all, and a bare "--help" there answers only the default verb's own
-    // help, not a "Commands:" listing. Every command kept here (every verb a real, Commander-registered
-    // subcommand word, no bare default action) genuinely has that listing.
-    const multiVerbDescriptors = CLI_COMMAND_DESCRIPTORS.filter(
-        (descriptor) => descriptor.verbs.length > 1 && descriptor.verbs.every((verb) => verb.verb !== undefined),
-    );
-    for (const descriptor of multiVerbDescriptors) {
-        it.each(["--help", "-h"])(`"pokie ${descriptor.name}" %s (no verb) lists every child verb`, async (flag) => {
-            const {exitCode, stdout} = await runHelp(descriptor.name, [flag]);
-            expect(exitCode).toBe(0);
-            for (const verbDescriptor of descriptor.verbs) {
-                expect(stdout).toContain(verbDescriptor.verb);
+                // Complete help metadata, checked directly against the real Command object itself --
+                // catches a registered command/subcommand/argument/option with no description before
+                // ever getting to what its rendered --help text contains.
+                it(`"${nodeLabel}" declares a description, and a description for every argument/option`, () => {
+                    expect(node.command.description().length).toBeGreaterThan(0);
+                    for (const argument of node.command.registeredArguments) {
+                        expect(argument.description.length).toBeGreaterThan(0);
+                    }
+                    for (const option of node.command.options) {
+                        expect(option.description.length).toBeGreaterThan(0);
+                    }
+                });
+
+                it.each(["--help", "-h"])(`"pokie ${argvLabel}" %s exits 0 with complete rendered help and no side effect`, async (flag) => {
+                    const {exitCode, stdout} = await runHelp(command.getName(), [...node.path, flag]);
+                    expect(exitCode).toBe(0);
+                    expect(stdout).toContain("Usage:");
+                    // NO_COLOR is trivially coherent here: Commander's own default help renderer never
+                    // emits an ANSI escape at all (see CommanderCliAdapter.ts's own doc comment on
+                    // COMMANDER_OUTPUT_CONFIG), so there is nothing for a NO_COLOR-respecting terminal to
+                    // strip.
+                    expect(stdout.includes(ANSI_ESCAPE)).toBe(false);
+                    // Every argument/option this exact node declares -- and, for a parent with children
+                    // (e.g. bare "pokie certification"/"pokie build"), every child subcommand's own name
+                    // -- must actually appear in what Commander rendered, not just be declared.
+                    for (const argument of node.command.registeredArguments) {
+                        expect(stdout).toContain(argument.name());
+                    }
+                    for (const option of node.command.options) {
+                        expect(stdout).toContain(option.flags);
+                    }
+                    for (const child of node.command.commands) {
+                        expect(stdout).toContain(child.name());
+                    }
+                });
             }
         });
     }
-
-    // "pokie outcomesource" (inspect/sample/diff) is a real, registered cli/pokie.ts command -- see
-    // cli/pokie.ts's own `commands` array -- but, unlike every other command above, isn't tracked by
-    // CLI_COMMAND_DESCRIPTORS/registerCommands() at all (a pre-existing gap in this file's own registry,
-    // predating this describe block). Rather than let that gap silently exempt it from "the full command
-    // tree" this describe block otherwise guarantees, it gets its own small, direct instance here --
-    // still a real, fully-unstubbed OutcomeSourceCommand (every constructor dependency defaults exactly
-    // like registerCommands()'s own instances), never a second hand-rolled help implementation.
-    describe('"pokie outcomesource" (tracked directly -- see this block\'s own doc comment)', () => {
-        const outcomeSourceVerbs = ["inspect", "sample", "diff"];
-
-        async function runOutcomeSourceHelp(args: string[]): Promise<{exitCode: number; stdout: string}> {
-            const command = new OutcomeSourceCommand();
-            const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-            const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
-            try {
-                const exitCode = await dispatch([command], ["node", "pokie", "outcomesource", ...args]);
-                expect(errorSpy).not.toHaveBeenCalled();
-                return {exitCode, stdout: logSpy.mock.calls.map((call) => String(call[0])).join("\n")};
-            } finally {
-                logSpy.mockRestore();
-                errorSpy.mockRestore();
-            }
-        }
-
-        it.each(outcomeSourceVerbs.flatMap((verb) => [
-            [verb, "--help"],
-            [verb, "-h"],
-        ] as const))('"pokie outcomesource %s" %s exits 0 with usage text and no side effect', async (verb, flag) => {
-            const {exitCode, stdout} = await runOutcomeSourceHelp([verb, flag]);
-            expect(exitCode).toBe(0);
-            expect(stdout).toContain("Usage:");
-        });
-
-        it.each(["--help", "-h"])('"pokie outcomesource" %s (no verb) lists every child verb', async (flag) => {
-            const {exitCode, stdout} = await runOutcomeSourceHelp([flag]);
-            expect(exitCode).toBe(0);
-            for (const verb of outcomeSourceVerbs) {
-                expect(stdout).toContain(verb);
-            }
-        });
-    });
 
     // Unknown-command/option coherence: an unrelated bad flag alongside --help never prevents help from
     // winning (Commander checks for the help flag before validating/rejecting anything else it parsed —
     // see CommanderCliAdapter.ts's own isCommanderHelpDisplay doc comment) — same "help always short-
-    // circuits" guarantee the per-verb cases above already prove, just with a second, invalid token
+    // circuits" guarantee the per-node cases above already prove, just with a second, invalid token
     // riding alongside it.
     it('"pokie build --bogus --help" still exits 0 with usage text (help wins over an unrelated bad flag)', async () => {
         const {exitCode, stdout} = await runHelp("build", ["--bogus", "--help"]);

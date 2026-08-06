@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
@@ -98,6 +99,10 @@ export class InitCommand implements CliCommandHandling {
         );
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
         let parsed: ParsedInitArgs;
         try {
@@ -119,18 +124,23 @@ export class InitCommand implements CliCommandHandling {
         }
     }
 
-    private parseArgs(args: string[]): ParsedInitArgs {
-        let parsed: ParsedInitArgs | undefined;
-        const command = createCommanderCliCommand("init")
-            .argument("[directory]")
-            .argument("[excess...]")
-            .option("--package-name <name>")
-            .option("--game-id <id>")
-            .option("--game-name <name>")
-            .option("--version <version>")
-            .option("--yes")
-            .option("--no-install")
-            .option("--no-prepare")
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {value?: ParsedInitArgs} = {}): Command {
+        return createCommanderCliCommand("init")
+            .description(this.getDescription())
+            .argument("[directory]", "directory to initialize in place (default: the current directory)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--package-name <name>", "override the package.json \"name\" (default: derived from the directory)")
+            .option("--game-id <id>", "override the game manifest id (default: derived from the directory)")
+            .option("--game-name <name>", "override the game manifest name (default: derived from the directory)")
+            .option("--version <version>", "override the initial package/game version (default: \"0.1.0\")")
+            .option("--yes", "confirm merging into a non-empty directory that doesn't look like a POKIE package yet")
+            .option("--no-install", "skip \"npm install\" (still builds/verifies unless --no-prepare is also given)")
+            .option("--no-prepare", "scaffold files only -- skip installing dependencies, building, and verifying")
             .action(
                 (
                     directory: string | null,
@@ -148,7 +158,7 @@ export class InitCommand implements CliCommandHandling {
                     if (excess.length > 0) {
                         throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
                     }
-                    parsed = {
+                    resultRef.value = {
                         directory: directory ?? ".",
                         packageName: options.packageName,
                         gameId: options.gameId,
@@ -160,6 +170,12 @@ export class InitCommand implements CliCommandHandling {
                     };
                 },
             );
+    }
+
+
+    private parseArgs(args: string[]): ParsedInitArgs {
+        const resultRef: {value?: ParsedInitArgs} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
@@ -172,7 +188,7 @@ export class InitCommand implements CliCommandHandling {
                 optionMissingArgument: (flag) => `Unknown option "${flag}". ${USAGE}`,
             });
         }
-        return parsed!;
+        return resultRef.value!;
     }
 
     private async runInit(parsed: ParsedInitArgs): Promise<number> {

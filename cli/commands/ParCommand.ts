@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import path from "path";
 import {
@@ -62,6 +63,10 @@ export class ParCommand implements CliCommandHandling {
         return 'Import/export a GameBlueprint to/from a PAR sheet XLSX workbook ("pokie par import <input.xlsx>" / "pokie par export <config.json>").';
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     // Two ordinary-word verbs ("import"/"export") sharing one parent Commander instance — real nested
     // subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself both
     // dispatches by exact verb name and validates each verb's own args/options. The messages passed
@@ -78,41 +83,8 @@ export class ParCommand implements CliCommandHandling {
             return Promise.reject(new Error(USAGE));
         }
 
-        let exitCode = 0;
-        const parent = createCommanderCliCommand("par");
-
-        parent
-            .command("import")
-            .argument("<input.xlsx>")
-            .argument("[excess...]")
-            .option("--out <blueprint.json>")
-            .option("--format <value>", "only \"json\" is supported", (value: string): ImportFormat => {
-                if (value !== "json") {
-                    throw new Error(`--format only supports "json". ${IMPORT_USAGE}`);
-                }
-                return "json";
-            }, "summary" as ImportFormat)
-            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${IMPORT_USAGE}`);
-                }
-                const outPath = options.out ?? defaultBlueprintPath(inputPath);
-                exitCode = await this.executeImport(inputPath, outPath, options.format);
-            });
-
-        parent
-            .command("export")
-            .argument("<config.json>")
-            .argument("[excess...]")
-            .option("--out <output.xlsx>")
-            .action(async (blueprintPath: string, excess: string[], options: {out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${EXPORT_USAGE}`);
-                }
-                const outPath = options.out ?? defaultParSheetPath(blueprintPath);
-                exitCode = await this.executeExport(blueprintPath, outPath);
-            });
-
+        const exitCodeRef = {value: 0};
+        const parent = this.buildCommand(exitCodeRef);
         const verb = args[0];
         let verbMessages: CommanderErrorMessages = {};
         if (verb === "import") {
@@ -135,13 +107,58 @@ export class ParCommand implements CliCommandHandling {
 
         return parent
             .parseAsync(args, {from: "user"})
-            .then(() => exitCode)
+            .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
                 if (isCommanderHelpDisplay(error)) {
                     return 0;
                 }
                 throw translateCommanderError(error, {...verbMessages, unknownCommand: USAGE, noCommand: USAGE});
             });
+    }
+
+    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
+    // two can never drift apart. `exitCodeRef` is written by whichever verb's action actually runs;
+    // run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
+        const parent = createCommanderCliCommand("par").description(this.getDescription());
+
+        parent
+            .command("import")
+            .description("Import a PAR sheet XLSX workbook into a GameBlueprint JSON file.")
+            .argument("<input.xlsx>", "an existing PAR sheet workbook")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <blueprint.json>", "output path (default: <input.xlsx> with a .blueprint.json extension)")
+            .option("--format <value>", "only \"json\" is supported (default: a human-readable summary)", (value: string): ImportFormat => {
+                if (value !== "json") {
+                    throw new Error(`--format only supports "json". ${IMPORT_USAGE}`);
+                }
+                return "json";
+            }, "summary" as ImportFormat)
+            .action(async (inputPath: string, excess: string[], options: {out?: string; format: ImportFormat}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${IMPORT_USAGE}`);
+                }
+                const outPath = options.out ?? defaultBlueprintPath(inputPath);
+                exitCodeRef.value = await this.executeImport(inputPath, outPath, options.format);
+            });
+
+        parent
+            .command("export")
+            .description("Export a GameBlueprint JSON config to a PAR sheet XLSX workbook.")
+            .argument("<config.json>", "an existing GameBlueprint JSON config")
+            .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
+            .option("--out <output.xlsx>", "output path (default: <config.json> with a .par.xlsx extension)")
+            .action(async (blueprintPath: string, excess: string[], options: {out?: string}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${EXPORT_USAGE}`);
+                }
+                const outPath = options.out ?? defaultParSheetPath(blueprintPath);
+                exitCodeRef.value = await this.executeExport(blueprintPath, outPath);
+            });
+
+        return parent;
     }
 
     // Routes `inputPath` through the same ProjectTargetResolver every migrated CLI command already

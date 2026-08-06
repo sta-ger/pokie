@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import fs from "fs";
 import {
     GameBlueprint,
@@ -97,110 +98,110 @@ export class CreateCommand implements CliCommandHandling {
         );
     }
 
-    // "--random" (runRandom) and "--blank" (runBlank) are both plain synchronous file I/O -- neither
-    // ever prompts or builds/smoke-simulates a package -- and each still throws straight out of this
-    // call on a usage error (a synchronous failure), same as before. The bare/named path now always
-    // goes through the interactive wizard (or, without a real terminal to run it in, a quick guidance
-    // message) -- see runDefault()'s own doc comment -- so only its own argument PARSING stays
-    // synchronous; running it is necessarily asynchronous.
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public run(args: string[]): Promise<number> {
+        const resultRef: {value?: number} = {};
+        const command = this.buildCommand(resultRef);
+
+        // Which usage string a PARSE-time failure (an unrecognized option, a missing option value) gets
+        // reported against -- picked the same way the action itself resolves --random/--blank precedence,
+        // but from the raw argv rather than Commander's own parsed options, since a parse failure can
+        // happen before the action ever runs.
+        let usage = USAGE;
         if (args.includes("--random")) {
-            try {
-                return Promise.resolve(this.runRandom(args));
-            } catch (error) {
+            usage = RANDOM_USAGE;
+        } else if (args.includes("--blank")) {
+            usage = BLANK_USAGE;
+        }
+
+        return command
+            .parseAsync(args, {from: "user"})
+            .then(() => resultRef.value!)
+            .catch((error: unknown) => {
                 if (isCommanderHelpDisplay(error)) {
-                    return Promise.resolve(0);
+                    return 0;
                 }
-                return Promise.reject(error);
-            }
-        }
-        if (args.includes("--blank")) {
-            return Promise.resolve(this.runBlank(args));
-        }
-
-        let parsed: {name?: string; out?: string};
-        try {
-            parsed = this.parseDefaultArgs(args);
-        } catch (error) {
-            if (isCommanderHelpDisplay(error)) {
-                return Promise.resolve(0);
-            }
-            // Rethrown synchronously (never Promise.reject) -- parseDefaultArgs() itself always throws
-            // synchronously, same as before --help existed, and this path's own contract (see
-            // CreateCommand.test.ts) expects run() to throw synchronously here too, not return a
-            // rejected promise.
-            throw error;
-        }
-        return this.runDefault(parsed);
+                throw translateCommanderError(error, {
+                    unknownOption: (flag) => `Unknown option "${flag}". ${usage}`,
+                    optionMissingArgument: (flag) => {
+                        if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
+                        if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
+                        if (flag === "--out") return `--out requires a file path. ${usage}`;
+                        return `Unknown option "${flag}". ${usage}`;
+                    },
+                });
+            });
     }
 
-    private runBlank(args: string[]): number {
-        let exitCode = 0;
-        const command = createCommanderCliCommand("create")
-            .argument("[name]")
-            .argument("[excess...]")
-            .option("--blank")
-            .option("--out <file>")
-            .action((name: string | null, excess: string[], options: {out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unexpected extra argument "${excess[0]}". ${BLANK_USAGE}`);
+    // One real Commander command owns every option/argument this class recognizes at all -- --blank and
+    // --random are ordinary boolean options here (not subcommands: Commander subcommands are positional
+    // words, but these are genuinely flags that may appear anywhere alongside an optional [name], the
+    // same grammar every other option on this command already has), so "pokie create --help" (with
+    // neither given) renders the COMPLETE grammar -- --blank, --random, --seed, --preset, --out -- not
+    // just whichever subset the bare/named path happens to declare. `resultRef` is written by the
+    // action; run() supplies its own real box and reads it back once parsing resolves, while
+    // getCommanderCommand() never parses this tree at all, so its own default box is never read.
+    // --random takes precedence over --blank when both are given (matching this class's own historical
+    // precedence, from when each was parsed by a separate, hand-picked Command instance); --seed/
+    // --preset are only meaningful together with --random, but are declared unconditionally rather than
+    // behind a second parse, so Commander's own --help renders them in the one place a caller would
+    // look for them.
+    private buildCommand(resultRef: {value?: number} = {}): Command {
+        return createCommanderCliCommand("create")
+            .description(this.getDescription())
+            .argument("[name]", "optional preset name -- pre-fills the wizard, or names the --blank/--random output")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--blank", "write a bare-minimum blueprint straight from the starter template, no wizard")
+            .option("--random", "write an always-valid, randomly generated blueprint directly, no wizard")
+            .option("--seed <integer>", "reproduce a specific random blueprint (only meaningful with --random)", (value: string) => {
+                if (!Number.isInteger(Number(value))) {
+                    throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
                 }
-
-                const blueprint = applyBlueprintNameOverride(this.createBlankBlueprint(), name ?? undefined);
-                const filePath = options.out ?? this.defaultBlueprintPath(blueprint.manifest.id);
-
-                this.writeBlueprintFile(filePath, blueprint);
-                this.printCreated(blueprint, filePath);
-                exitCode = 0;
-            });
-
-        try {
-            command.parse(args, {from: "user"});
-        } catch (error) {
-            if (isCommanderHelpDisplay(error)) {
-                return 0;
-            }
-            throw translateCommanderError(error, {
-                unknownOption: (flag) => `Unknown option "${flag}". ${BLANK_USAGE}`,
-                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a file path. ${BLANK_USAGE}` : `Unknown option "${flag}". ${BLANK_USAGE}`),
-            });
-        }
-        return exitCode;
-    }
-
-    // Parses (and validates the shape of) the bare/named path's own argv -- synchronously, so a usage
-    // error ("--bogus", two positionals, an invalid "<name>") still throws straight out of run() the
-    // same way it always has, before runDefault() ever has a chance to decide whether a real terminal
-    // is even available to run the wizard in.
-    private parseDefaultArgs(args: string[]): {name?: string; out?: string} {
-        let result: {name?: string; out?: string} | undefined;
-        const command = createCommanderCliCommand("create")
-            .argument("[name]")
-            .argument("[excess...]")
-            .option("--out <file>")
-            .action((name: string | null, excess: string[], options: {out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
-                }
-                const normalizedName = name ?? undefined;
-                if (normalizedName !== undefined) {
-                    this.assertValidName(normalizedName);
-                }
-                result = {name: normalizedName, out: options.out};
-            });
-
-        try {
-            command.parse(args, {from: "user"});
-        } catch (error) {
-            if (isCommanderHelpDisplay(error)) {
-                throw error;
-            }
-            throw translateCommanderError(error, {
-                unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
-                optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a file path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`),
-            });
-        }
-        return result!;
+                return Number(value);
+            })
+            .option(
+                "--preset <preset>",
+                "which random generation strategy to use (only meaningful with --random)",
+                (value: string) => {
+                    if (!RANDOM_PRESETS.includes(value as RandomPreset)) {
+                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                    }
+                    return value as RandomPreset;
+                },
+                "default" as RandomPreset,
+            )
+            .option("--out <file>", "output path (default: derived from the written blueprint's own manifest id)")
+            .action(
+                async (
+                    name: string | null,
+                    excess: string[],
+                    options: {blank?: boolean; random?: boolean; seed?: number; preset: RandomPreset; out?: string},
+                ) => {
+                    const normalizedName = name ?? undefined;
+                    if (options.random) {
+                        if (excess.length > 0) {
+                            throw new Error(`Unexpected extra argument "${excess[0]}". ${RANDOM_USAGE}`);
+                        }
+                        resultRef.value = this.executeRandom(normalizedName, options.seed, options.preset, options.out);
+                    } else if (options.blank) {
+                        if (excess.length > 0) {
+                            throw new Error(`Unexpected extra argument "${excess[0]}". ${BLANK_USAGE}`);
+                        }
+                        resultRef.value = this.executeBlank(normalizedName, options.out);
+                    } else {
+                        if (excess.length > 0) {
+                            throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
+                        }
+                        if (normalizedName !== undefined) {
+                            this.assertValidName(normalizedName);
+                        }
+                        resultRef.value = await this.executeDefault(normalizedName, options.out);
+                    }
+                },
+            );
     }
 
     private assertValidName(name: string): void {
@@ -220,7 +221,7 @@ export class CreateCommand implements CliCommandHandling {
     // confirmation all leave no file behind, since commitBlueprintFile() is the only thing that ever
     // writes into the filesystem here, and it only runs after every one of those has already passed (and
     // is itself the atomic, create-only commit -- see writeBlueprintFileAtomically's own doc comment).
-    private async runDefault(parsed: {name?: string; out?: string}): Promise<number> {
+    private async executeDefault(name: string | undefined, out: string | undefined): Promise<number> {
         if (!this.isInteractiveTerminal()) {
             console.error(GUIDANCE_NOT_INTERACTIVE);
             return 1;
@@ -229,10 +230,10 @@ export class CreateCommand implements CliCommandHandling {
         const prompt = this.createPrompt();
         try {
             const result = await this.wizard.run(prompt, {
-                presetName: parsed.name,
+                presetName: name,
                 destination: {
                     label: "Blueprint file",
-                    defaultPathFor: (id) => parsed.out ?? this.defaultBlueprintPath(id),
+                    defaultPathFor: (id) => out ?? this.defaultBlueprintPath(id),
                 },
             });
             if (result === null) {
@@ -328,6 +329,16 @@ export class CreateCommand implements CliCommandHandling {
         console.log(`  pokie build ${filePath} --target <dir>`);
     }
 
+    // --blank: writes the filled-in starter template directly, no wizard.
+    private executeBlank(name: string | undefined, out: string | undefined): number {
+        const blueprint = applyBlueprintNameOverride(this.createBlankBlueprint(), name);
+        const filePath = out ?? this.defaultBlueprintPath(blueprint.manifest.id);
+
+        this.writeBlueprintFile(filePath, blueprint);
+        this.printCreated(blueprint, filePath);
+        return 0;
+    }
+
     // --random: a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly,
     // the same generator "pokie build random" uses -- but unlike that command, this one never builds or
     // smoke-simulates a package, it only writes the blueprint out. Its reel weighting is expressed as a
@@ -335,8 +346,7 @@ export class CreateCommand implements CliCommandHandling {
     // flat symbolWeights map, so the file already demonstrates "valid per-reel generation" -- every reel
     // has its own independent, reproducible generation config -- instead of leaving all of them to share
     // one implicit engine-wide weighting.
-    private runRandom(args: string[]): number {
-        const {name, seed, preset, out} = this.parseRandomArgs(args);
+    private executeRandom(name: string | undefined, seed: number | undefined, preset: RandomPreset, out: string | undefined): number {
         const generator = preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
         const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
 
@@ -390,10 +400,10 @@ export class CreateCommand implements CliCommandHandling {
         return `./${id}.blueprint.json`;
     }
 
-    // --blank/--random's own synchronous save: same atomic, create-only commit runDefault's confirmed
-    // wizard save uses (see commitBlueprintFile), just thrown as an Error instead of a console.error +
-    // exit code -- matching how a usage error on either of these two paths has always surfaced (see
-    // run()'s own doc comment on why they stay synchronous).
+    // --blank/--random's own synchronous save: same atomic, create-only commit executeDefault's
+    // confirmed wizard save uses (see commitBlueprintFile), just thrown as an Error instead of a
+    // console.error + exit code -- matching how a usage error on either of these two paths has always
+    // surfaced.
     private writeBlueprintFile(filePath: string, blueprint: GameBlueprint): void {
         if (this.commitBlueprintFile(filePath, blueprint).status === "conflict") {
             throw new Error(this.alreadyExistsMessage(filePath));
@@ -406,61 +416,5 @@ export class CreateCommand implements CliCommandHandling {
 
     private alreadyExistsMessage(filePath: string): string {
         return `"${filePath}" already exists. Choose a different path, or remove/edit the existing file first.`;
-    }
-
-    private parseRandomArgs(args: string[]): {name?: string; seed?: number; preset: RandomPreset; out?: string} {
-        let result: {name?: string; seed?: number; preset: RandomPreset; out?: string} | undefined;
-        const command = createCommanderCliCommand("create --random")
-            .option("--random")
-            .argument("[name]")
-            .argument("[excess...]")
-            .option("--seed <integer>", "", (value: string) => {
-                if (!Number.isInteger(Number(value))) {
-                    throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
-                }
-                return Number(value);
-            })
-            .option(
-                "--preset <preset>",
-                "",
-                (value: string) => {
-                    if (!RANDOM_PRESETS.includes(value as RandomPreset)) {
-                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
-                    }
-                    return value as RandomPreset;
-                },
-                "default" as RandomPreset,
-            )
-            .option("--out <file>")
-            .action((name: string | null, excess: string[], options: {seed?: number; preset: RandomPreset; out?: string}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unexpected extra argument "${excess[0]}". ${RANDOM_USAGE}`);
-                }
-                result = {name: name ?? undefined, seed: options.seed, preset: options.preset, out: options.out};
-            });
-
-        try {
-            command.parse(args, {from: "user"});
-        } catch (error) {
-            if (isCommanderHelpDisplay(error)) {
-                throw error;
-            }
-            throw translateCommanderError(error, {
-                unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
-                optionMissingArgument: (flag) => {
-                    if (flag === "--seed") {
-                        return `--seed requires an integer value. ${RANDOM_USAGE}`;
-                    }
-                    if (flag === "--preset") {
-                        return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
-                    }
-                    if (flag === "--out") {
-                        return `--out requires a file path. ${RANDOM_USAGE}`;
-                    }
-                    return `Unknown option "${flag}". ${RANDOM_USAGE}`;
-                },
-            });
-        }
-        return result!;
     }
 }

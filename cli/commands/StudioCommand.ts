@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {STUDIO_OPERATION} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
@@ -90,6 +91,10 @@ export class StudioCommand implements CliCommandHandling {
         return "Launch POKIE Studio, a local web app for creating/opening/inspecting game packages.";
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public async run(args: string[]): Promise<void> {
         let options: StudioOptions;
         try {
@@ -123,6 +128,38 @@ export class StudioCommand implements CliCommandHandling {
         this.registerShutdown(server);
     }
 
+    // Commander's own "[projectRoot]" optional positional already handles an omitted leading
+    // positional correctly (including when the first token is a "-"-prefixed flag, which leaves it
+    // `null`) -- no manual `args[0].startsWith("--")` sniffing needed, unlike the original. A trailing
+    // "[excess...]" catches any further stray bare positional (matching the original loop's default
+    // case, which treated any unmatched token -- flag-shaped or not -- as an "Unknown option").
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {value?: StudioOptions} = {}): Command {
+        return createCommanderCliCommand("studio")
+            .description(this.getDescription())
+            .argument("[projectRoot]", "a game package/blueprint to open on launch (default: the Studio home screen)")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--port <number>", "port to listen on (default: an available port)", (value: string) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed < 0) {
+                    throw new Error(`--port must be a non-negative integer. ${USAGE}`);
+                }
+                return parsed;
+            })
+            .option("--host <string>", "host to listen on (default: loopback only)")
+            .option("--no-open", "do not open a browser pointed at Studio")
+            .action((projectRoot: string | null, excess: string[], options: {port?: number; host?: string; open?: boolean}) => {
+                if (excess.length > 0) {
+                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                }
+                resultRef.value = {projectRoot: projectRoot ?? undefined, host: options.host, port: options.port, noOpen: !options.open};
+            });
+    }
+
     private registerShutdown(server: StudioServerHandling): void {
         const shutdown = (): void => {
             server.stop().then(
@@ -134,31 +171,10 @@ export class StudioCommand implements CliCommandHandling {
         this.process.once("SIGTERM", shutdown);
     }
 
-    // Commander's own "[projectRoot]" optional positional already handles an omitted leading
-    // positional correctly (including when the first token is a "-"-prefixed flag, which leaves it
-    // `null`) -- no manual `args[0].startsWith("--")` sniffing needed, unlike the original. A trailing
-    // "[excess...]" catches any further stray bare positional (matching the original loop's default
-    // case, which treated any unmatched token -- flag-shaped or not -- as an "Unknown option").
+
     private parseArgs(args: string[]): StudioOptions {
-        let result: StudioOptions | undefined;
-        const command = createCommanderCliCommand("studio")
-            .argument("[projectRoot]")
-            .argument("[excess...]")
-            .option("--port <number>", "", (value: string) => {
-                const parsed = Number(value);
-                if (!Number.isInteger(parsed) || parsed < 0) {
-                    throw new Error(`--port must be a non-negative integer. ${USAGE}`);
-                }
-                return parsed;
-            })
-            .option("--host <string>")
-            .option("--no-open")
-            .action((projectRoot: string | null, excess: string[], options: {port?: number; host?: string; open?: boolean}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                }
-                result = {projectRoot: projectRoot ?? undefined, host: options.host, port: options.port, noOpen: !options.open};
-            });
+        const resultRef: {value?: StudioOptions} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
@@ -179,6 +195,6 @@ export class StudioCommand implements CliCommandHandling {
                 },
             });
         }
-        return result!;
+        return resultRef.value!;
     }
 }

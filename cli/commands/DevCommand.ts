@@ -1,3 +1,4 @@
+import {Command} from "commander";
 import {
     loadPokieGame,
     PokieClientServer,
@@ -89,6 +90,10 @@ export class DevCommand implements CliCommandHandling {
         return 'Experimental: run "pokie serve" and "pokie client" together, opening a browser preview.';
     }
 
+    public getCommanderCommand(): Command {
+        return this.buildCommand();
+    }
+
     public async run(args: string[]): Promise<void> {
         let options: DevOptions;
         try {
@@ -142,6 +147,51 @@ export class DevCommand implements CliCommandHandling {
         }
     }
 
+    // Commander declares/validates <packageRoot>, --port/--client-port (each via its own custom
+    // parser, so an invalid *provided* value fails with the exact legacy message), --host/--client-host
+    // (unvalidated strings), and the native "--no-open" negatable boolean (defaults options.open to
+    // true; --no-open sets it false) -- see cli/commands/internal/CommanderCliAdapter.ts. A trailing
+    // "[excess...]" catches any stray bare positional the same way the original loop's default case
+    // did (treated as an "Unknown option"), and a structurally *missing* --port/--client-port value
+    // (the flag given with nothing after it) is mapped back to the exact same message text as an
+    // invalid provided value via optionMissingArgument, matching the original parsePort's single
+    // "value === undefined || ..." check.
+    // Builds the exact Commander tree parseArgs() itself parses argv with -- the same object graph both
+    // getCommanderCommand() (for help-coverage introspection) and parseArgs() (for real parsing) use, so
+    // the two can never drift apart. `resultRef` is written by the action; parseArgs() supplies its own
+    // real box and reads it back once parsing resolves, while getCommanderCommand() never parses this
+    // tree at all, so its own default box is never read.
+    private buildCommand(resultRef: {value?: DevOptions} = {}): Command {
+        return createCommanderCliCommand("dev")
+            .description(this.getDescription())
+            .argument("<packageRoot>", "an existing POKIE game package")
+            .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--port <number>", "port for the API server (default: an available port)", (value: string) => this.parsePortValue(value, "--port"))
+            .option("--host <string>", "host for the API server (default: loopback only)")
+            .option("--client-port <number>", "port for the client preview server (default: an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
+            .option("--client-host <string>", "host for the client preview server (default: loopback only)")
+            .option("--no-open", "do not open a browser pointed at the client preview")
+            .action(
+                (
+                    packageRoot: string,
+                    excess: string[],
+                    options: {port?: number; host?: string; clientPort?: number; clientHost?: string; open?: boolean},
+                ) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                    }
+                    resultRef.value = {
+                        packageRoot,
+                        host: options.host,
+                        port: options.port,
+                        clientHost: options.clientHost,
+                        clientPort: options.clientPort,
+                        noOpen: !options.open,
+                    };
+                },
+            );
+    }
+
     // Best-effort: stops every already-started server in reverse start order, swallowing any
     // individual stop() failure so one server's shutdown error can't prevent the others from being
     // stopped, and so the *original* startup error (the reason stopAll was called at all) is always
@@ -167,44 +217,9 @@ export class DevCommand implements CliCommandHandling {
         this.process.once("SIGTERM", shutdown);
     }
 
-    // Commander declares/validates <packageRoot>, --port/--client-port (each via its own custom
-    // parser, so an invalid *provided* value fails with the exact legacy message), --host/--client-host
-    // (unvalidated strings), and the native "--no-open" negatable boolean (defaults options.open to
-    // true; --no-open sets it false) -- see cli/commands/internal/CommanderCliAdapter.ts. A trailing
-    // "[excess...]" catches any stray bare positional the same way the original loop's default case
-    // did (treated as an "Unknown option"), and a structurally *missing* --port/--client-port value
-    // (the flag given with nothing after it) is mapped back to the exact same message text as an
-    // invalid provided value via optionMissingArgument, matching the original parsePort's single
-    // "value === undefined || ..." check.
     private parseArgs(args: string[]): DevOptions {
-        let result: DevOptions | undefined;
-        const command = createCommanderCliCommand("dev")
-            .argument("<packageRoot>")
-            .argument("[excess...]")
-            .option("--port <number>", "", (value: string) => this.parsePortValue(value, "--port"))
-            .option("--host <string>")
-            .option("--client-port <number>", "", (value: string) => this.parsePortValue(value, "--client-port"))
-            .option("--client-host <string>")
-            .option("--no-open")
-            .action(
-                (
-                    packageRoot: string,
-                    excess: string[],
-                    options: {port?: number; host?: string; clientPort?: number; clientHost?: string; open?: boolean},
-                ) => {
-                    if (excess.length > 0) {
-                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                    }
-                    result = {
-                        packageRoot,
-                        host: options.host,
-                        port: options.port,
-                        clientHost: options.clientHost,
-                        clientPort: options.clientPort,
-                        noOpen: !options.open,
-                    };
-                },
-            );
+        const resultRef: {value?: DevOptions} = {};
+        const command = this.buildCommand(resultRef);
 
         try {
             command.parse(args, {from: "user"});
@@ -226,7 +241,7 @@ export class DevCommand implements CliCommandHandling {
                 },
             });
         }
-        return result!;
+        return resultRef.value!;
     }
 
     private parsePortValue(value: string, flag: string): number {
