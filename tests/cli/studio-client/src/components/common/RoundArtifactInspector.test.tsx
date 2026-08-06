@@ -1,7 +1,8 @@
 import {MantineProvider} from "@mantine/core";
 import {render, within} from "@testing-library/react";
-import type {RoundArtifact, RoundArtifactJson} from "../../../../../../cli/studio-client/src/api/types";
+import type {RoundArtifact, RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
+import {RoundSummary} from "../../../../../../cli/studio-client/src/components/common/RoundSummary";
 import {describeRoundArtifact} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
@@ -318,5 +319,73 @@ describe("RoundArtifactInspector imported-artifact and incomplete-debug presenta
 
         expect(getByText("Debug data")).toBeTruthy();
         expect(getByText("game-provided, may include RNG/reel-stop data")).toBeTruthy();
+    });
+});
+
+// P4-POLISH-12: every named "round we can inspect" surface (Replay's recorded/recreated/simulation-sampled
+// rounds, Session Spin, an Outcome Source draw) must present the exact same round the exact same way --
+// same screen orientation, same win/position table, same collapsed-by-default Advanced details -- rather
+// than each surface growing its own bespoke rendering of the same underlying RoundArtifact shape. Replay
+// already renders directly through RoundArtifactInspector (see ReplayTab.tsx); these guard the other
+// consumers actually delegate to it too, instead of drifting back to a page-local clone.
+describe("Cross-surface round presentation parity", () => {
+    function sessionWithArtifact(artifact: RoundArtifactJson, overrides: Partial<StudioRuntimeSessionView> = {}): StudioRuntimeSessionView {
+        return {
+            sessionId: "sess-1",
+            game: GAME,
+            credits: 1005,
+            bet: 5,
+            win: 12.5,
+            debug: {artifact, stateBefore: {phase: "base"}, stateAfter: {phase: "base"}},
+            ...overrides,
+        };
+    }
+
+    function winningArtifact(): RoundArtifactJson {
+        return artifactFor({
+            stake: 5,
+            totalWin: 12.5,
+            payoutMultiplier: 2.5,
+            steps: [
+                {
+                    index: 0,
+                    screen: [["R0P0", "R0P1", "R0P2"]],
+                    totalWin: 12.5,
+                    wins: [
+                        {type: "line", id: "w1", symbolId: "cherry", winAmount: 12.5, winningPositions: [[0, 0], [1, 0]], multiplierBreakdown: [], metadata: {}},
+                    ],
+                },
+            ],
+            wins: [{type: "line", id: "w1", symbolId: "cherry", winAmount: 12.5, winningPositions: [[0, 0], [1, 0]], multiplierBreakdown: [], metadata: {}}],
+        });
+    }
+
+    it("RoundSummary (Session Spin) renders a captured round through RoundArtifactInspector, showing the same screen/win/position detail a direct RoundArtifactInspector render of the identical artifact shows", () => {
+        const artifact = winningArtifact();
+
+        const direct = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} credits={1005} />);
+        const viaSummary = renderWithMantine(<RoundSummary session={sessionWithArtifact(artifact)} />);
+
+        // Each render mounts into the shared document.body, so scope every query to its own container --
+        // otherwise a text query bound to either render's own result would ambiguously match both trees
+        // at once instead of proving each renders it independently.
+        for (const container of [direct.container, viaSummary.container]) {
+            expect(within(container).getByText("R0P0")).toBeTruthy();
+            expect(within(container).getByText("cherry")).toBeTruthy();
+            expect(within(container).getByText("12.50 (2.50x stake)")).toBeTruthy();
+            expect(within(container).getByText("2")).toBeTruthy();
+        }
+    });
+
+    it("RoundSummary falls back to the flat balance/bet/win summary -- never a crash -- when this round's session captured no artifact (debug mode off, or a non-video-slot session)", () => {
+        const {getByText, queryByText} = renderWithMantine(
+            <RoundSummary session={{sessionId: "sess-1", game: GAME, credits: 1005, bet: 5, win: 15, screen: [["cherry", "lemon"]]}} />,
+        );
+
+        expect(getByText(/You won 15\.00/)).toBeTruthy();
+        // None of RoundArtifactInspector's own artifact-only markup (a wins table, a step navigator) is
+        // reachable without an artifact -- confirms this genuinely took the flat fallback branch, not a
+        // RoundArtifactInspector render of some default/empty artifact.
+        expect(queryByText("Positions")).toBeNull();
     });
 });

@@ -5,8 +5,10 @@ import {sampleOutcomeSource} from "../../api/apiClient";
 import type {OutcomeSourceSampleView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
+import {describeRoundArtifact} from "../../domain/interpret/Replay";
 import type {ProjectHeaderView} from "../../domain/interpret/ProjectDashboard";
 import {ErrorState} from "../common/ErrorState";
+import {RoundArtifactInspector} from "../common/RoundArtifactInspector";
 
 type OutcomeSourceHeader = Extract<ProjectHeaderView, {status: "outcome-source"}>;
 
@@ -107,9 +109,15 @@ export function OutcomeSourceOverview({header}: {header: OutcomeSourceHeader}) {
 
             {result && result.supported && (
                 <Alert color="teal" mt="sm" title={`Drew outcome "${result.selection.outcome.id}"`}>
-                    <Text size="sm">
-                        {`library "${result.selection.libraryId}" · payout multiplier ${result.selection.outcome.artifact.payoutMultiplier} · total win ${result.selection.outcome.artifact.totalWin}`}
+                    <Text size="sm" mb="sm">
+                        {`library "${result.selection.libraryId}" · weight ${result.selection.outcome.weight} of ${result.selection.totalWeight}`}
                     </Text>
+                    {/* The drawn outcome's own round -- rendered through the same RoundArtifactInspector every
+                        other "round we can inspect" surface (Replay, Session Spin) already uses, instead of a
+                        page-local flat multiplier/total-win summary. A drawn outcome carries no content hash of
+                        its own (see RoundArtifactDisplayView's own doc comment) and no session state to show
+                        before/after it. */}
+                    <RoundArtifactInspector artifact={describeRoundArtifact(result.selection.outcome.artifact)} />
                 </Alert>
             )}
 

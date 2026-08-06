@@ -1,10 +1,12 @@
 import {Alert, Table, Text} from "@mantine/core";
 import {IconCircleCheck} from "@tabler/icons-react";
 import type {StudioRuntimeSessionView} from "../../api/types";
+import {describeRoundArtifact} from "../../domain/interpret/Replay";
 import {describeRuntimeScreen, extractAdditionalRoundFields} from "../../domain/interpret/Runtime";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
 import {CodeBlock} from "./CodeBlock";
 import {PageSection} from "./PageSection";
+import {RoundArtifactInspector} from "./RoundArtifactInspector";
 import {ScreenTable} from "./ScreenTable";
 
 function formatFieldValue(value: unknown): string {
@@ -22,12 +24,27 @@ function formatFieldValue(value: unknown): string {
 
 // The shared "readable round" view for any surface that has a live StudioRuntimeSessionView to show --
 // currently Runtime's own Inspect panel, but common (not page-local) so any other surface that gains one
-// renders the same balance/bet/win/screen breakdown, the same generic "Additional round data" table for
-// whatever extra public fields the game's own serializer returned (see extractAdditionalRoundFields's own
-// doc comment for why that's the entire "feature progress" story for a live session), and the same raw
-// public/internal JSON tucked behind Advanced details -- the same convention RoundArtifactInspector uses
-// for a RoundArtifact, the other "round" shape this client renders.
+// renders the same balance/bet/win/screen breakdown. Whenever this exact round's session captured a full
+// RoundArtifact (`debug.artifact` -- only present once debug mode is on and the session supports
+// building one, see StudioRuntimeSessionView's own doc comment), this delegates entirely to
+// RoundArtifactInspector -- the same screen/wins/positions/feature-event/state-snapshot presentation
+// Replay's own recorded/recreated/simulation-sampled rounds already render through, rather than a
+// bespoke, less detailed view of the same round. Falls back to a flat balance/bet/win/screen table (with
+// a generic "Additional round data" table for whatever extra public fields the game's own serializer
+// returned -- see extractAdditionalRoundFields's own doc comment) only when no artifact was captured
+// (debug mode off, or a non-video-slot session that never builds one).
 export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
+    if (session.debug?.artifact) {
+        return (
+            <RoundArtifactInspector
+                artifact={describeRoundArtifact(session.debug.artifact)}
+                credits={session.credits}
+                stateBefore={session.debug.stateBefore}
+                stateAfter={session.debug.stateAfter}
+            />
+        );
+    }
+
     // studioRequestId/studioRound/studioRecordedAt/studioSource are all Studio's own bookkeeping (see
     // StudioRuntimeSessionView's own doc comment), never part of the game's actual public response --
     // excluded here alongside `debug` so "Public response" stays an honest dump of what the game server
