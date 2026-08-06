@@ -1,4 +1,17 @@
+import {existsSync} from "fs";
+import {fileURLToPath} from "url";
+import path from "path";
 import jestConfigIgnore from "./jest.config.ignore.mjs";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+// The "pokie-examples" project below discovers tests in a sibling checkout that isn't part of
+// this repo's own git history (see its own comment). That sibling is present in some sandboxes
+// but not guaranteed in every environment that runs this config (eg. a fresh clone of just this
+// repo) -- and Jest's `roots` validation hard-fails config parsing (killing the *entire*
+// multi-project run, every other project included) if a listed root doesn't exist on disk. Detect
+// availability up front so absence degrades to "this one project matches zero tests" instead of
+// crashing every project's test run.
+const pokieExamplesAvailable = existsSync(path.join(configDir, "..", "pokie-examples"));
 
 // Integration/workflow/server/worker/filesystem-heavy test files that get their own slower
 // "pokie-integration" project instead of running in the default fast "pokie" lane. Kept as one
@@ -195,7 +208,13 @@ export default {
             // tree the same CJS-friendly way the "pokie" project's (node-environment) tests already do.
             testEnvironmentOptions: {customExportConditions: ["node", "node-addons"]},
             moduleFileExtensions: ["ts", "js"],
-            roots: ["<rootDir>/../pokie-examples"],
+            // Fall back to this repo's own (always-present) rootDir with a testMatch that can
+            // never match anything real, rather than pointing `roots` at a directory that doesn't
+            // exist -- see pokieExamplesAvailable above.
+            roots: pokieExamplesAvailable ? ["<rootDir>/../pokie-examples"] : ["<rootDir>"],
+            ...(pokieExamplesAvailable
+                ? {}
+                : {testMatch: ["<rootDir>/__pokie_examples_unavailable__/*.test.ts"]}),
             testPathIgnorePatterns: ["/node_modules/"],
             transform: pokieExamplesTransform,
             moduleNameMapper: pokieExamplesModuleNameMapper,
