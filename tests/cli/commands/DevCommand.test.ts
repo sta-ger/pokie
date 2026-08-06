@@ -130,7 +130,12 @@ describe("DevCommand", () => {
 
         await command.run(["./sample-slot", "--port", "3000", "--client-port", "3100"]);
 
-        expect(receivedApiOptions).toEqual({host: undefined, port: 3000});
+        expect(receivedApiOptions).toEqual({
+            host: undefined,
+            port: 3000,
+            sessionCapturePolicyMode: "full",
+            pokieVersion: "unknown",
+        });
         expect(receivedClientRoot).toBe("/fake/client/root");
         expect(receivedClientOptions).toEqual({
             host: undefined,
@@ -141,6 +146,37 @@ describe("DevCommand", () => {
         expect(clientServer.startCalls).toBe(1);
         expect(healthUrlChecked).toBe("http://127.0.0.1:3000/health");
         expect(openedUrl).toBe("http://127.0.0.1:3100");
+
+        logSpy.mockRestore();
+    });
+
+    it("requests full session capture and stamps the configured POKIE version, defaulting to \"unknown\" when none is given", async () => {
+        const game = createFakeGame(manifest);
+        const apiServer = createStubServer<PokieDevServerHandling>({host: "127.0.0.1", port: 3000});
+        const clientServer = createStubServer<PokieClientServerHandling>({host: "127.0.0.1", port: 3100});
+        let receivedApiOptions: PokieDevServerOptions | undefined;
+
+        const command = new DevCommand(
+            () => Promise.resolve(game),
+            (_game, options) => {
+                receivedApiOptions = options;
+                return apiServer;
+            },
+            {
+                createClientServer: () => clientServer,
+                waitForHealth: () => Promise.resolve(),
+                openBrowser: () => undefined,
+                clientRoot: "/fake/client/root",
+                pokieVersion: "3.4.5",
+                process: new FakeProcess() as unknown as NodeJS.Process,
+            },
+        );
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./sample-slot", "--no-open"]);
+
+        expect(receivedApiOptions?.sessionCapturePolicyMode).toBe("full");
+        expect(receivedApiOptions?.pokieVersion).toBe("3.4.5");
 
         logSpy.mockRestore();
     });
@@ -350,6 +386,52 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
         const createdBody = (await created.json()) as {sessionId: string};
         const spun = await fetch(`http://127.0.0.1:${apiPort}/sessions/${createdBody.sessionId}/spin`, {method: "POST"});
         expect(spun.status).toBe(200);
+
+        await apiServer!.stop();
+        await clientServer!.stop();
+        logSpy.mockRestore();
+    });
+
+    it("persists a full RoundArtifact for a spin through the real dev runtime path, stamped with the configured POKIE version", async () => {
+        let apiServer: PokieDevServerHandling | undefined;
+        let clientServer: PokieClientServerHandling | undefined;
+        const command = new DevCommand(
+            loadPokieGame,
+            (game, options) => {
+                apiServer = new PokieDevServer(game, options);
+                return apiServer;
+            },
+            {
+                createClientServer: (root, options) => {
+                    clientServer = new PokieClientServer(root, options);
+                    return clientServer;
+                },
+                clientRoot,
+                openBrowser: () => undefined,
+                pokieVersion: "7.8.9",
+                process: new FakeProcess() as unknown as NodeJS.Process,
+            },
+        );
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([fixtureRoot, "--port", "0", "--client-port", "0", "--no-open"]);
+
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        const apiMatch = printed.match(/POKIE dev server.*http:\/\/127\.0\.0\.1:(\d+)/);
+        const apiPort = Number(apiMatch![1]);
+
+        const created = await fetch(`http://127.0.0.1:${apiPort}/sessions`, {method: "POST"});
+        const createdBody = (await created.json()) as {sessionId: string};
+        const spun = await fetch(`http://127.0.0.1:${apiPort}/sessions/${createdBody.sessionId}/spin?debug=1`, {method: "POST"});
+        expect(spun.status).toBe(200);
+        const spunBody = (await spun.json()) as {internal: {stateAfter: Record<string, unknown>}};
+
+        const stateAfter = spunBody.internal.stateAfter;
+        expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "full", captureDebugPayloads: true});
+        const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+        expect(artifact).toBeDefined();
+        const provenance = artifact.provenance as Record<string, unknown>;
+        expect(provenance.pokieVersion).toBe("7.8.9");
 
         await apiServer!.stop();
         await clientServer!.stop();
