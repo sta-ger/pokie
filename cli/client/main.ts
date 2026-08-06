@@ -1,7 +1,31 @@
 import {FetchLike, spin} from "./apiClient.js";
-import {renderRawJson, renderRoundView, renderScreen, renderStages, renderStatus, wireSpinButton} from "./dom.js";
+import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButton} from "./dom.js";
 import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
+import {
+    applyPersistentHighlights,
+    clearConnectionError,
+    renderBetInfo,
+    renderConnectionError,
+    renderFeatureCounters,
+    renderLineDefinitionsList,
+    renderPaytable,
+    renderReelsGrid,
+    renderWinHighlightsList,
+    renderWinsSection,
+} from "./player/renderPlayer.js";
+import {
+    deriveAvailableBets,
+    deriveFeatureCounters,
+    deriveLineDefinitions,
+    derivePaytableView,
+    deriveWinHighlights,
+    isVideoSlotRoundResponse,
+    LineDefinitionView,
+    PaytableView,
+    VideoSlotRoundResponse,
+} from "./player/videoSlotRoundView.js";
 import {ensureSession} from "./sessionFlow.js";
+import {clearSessionId} from "./sessionStorage.js";
 import type {SessionResponse} from "./types.js";
 
 type Elements = {
@@ -19,6 +43,33 @@ type Elements = {
     nextStageButton: HTMLButtonElement;
     stageScreen: HTMLElement;
     stageRawJson: HTMLElement;
+    playerSection: HTMLElement;
+    playerGridContainer: HTMLElement;
+    playerBetInfo: HTMLElement;
+    playerFeatures: HTMLElement;
+    playerWinsSection: HTMLElement;
+    playerWinsList: HTMLElement;
+    playerLinesList: HTMLElement;
+    playerPaytableHead: HTMLElement;
+    playerPaytableBody: HTMLElement;
+    connectionError: HTMLElement;
+    connectionErrorMessage: HTMLElement;
+    connectionErrorDetail: HTMLElement;
+    connectionRetryButton: HTMLButtonElement;
+    spinError: HTMLElement;
+    spinErrorMessage: HTMLElement;
+    spinErrorDetail: HTMLElement;
+    spinRetryButton: HTMLButtonElement;
+    spinReconnectButton: HTMLButtonElement;
+};
+
+// The paytable/lines-definitions/availableBets snapshot taken right after connecting -- see
+// deriveStaticVideoSlotView's own doc comment for why this is captured once rather than re-derived
+// from every round response.
+type StaticVideoSlotView = {
+    paytable: PaytableView | undefined;
+    lines: LineDefinitionView[];
+    availableBets: number[];
 };
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -45,6 +96,24 @@ function queryElements(): Elements {
         nextStageButton: requireElement("next-stage"),
         stageScreen: requireElement("stage-screen"),
         stageRawJson: requireElement("stage-raw-json"),
+        playerSection: requireElement("player-section"),
+        playerGridContainer: requireElement("player-grid-container"),
+        playerBetInfo: requireElement("player-bet-info"),
+        playerFeatures: requireElement("player-features"),
+        playerWinsSection: requireElement("player-wins-section"),
+        playerWinsList: requireElement("player-wins-list"),
+        playerLinesList: requireElement("player-lines-list"),
+        playerPaytableHead: requireElement("player-paytable-head"),
+        playerPaytableBody: requireElement("player-paytable-body"),
+        connectionError: requireElement("connection-error"),
+        connectionErrorMessage: requireElement("connection-error-message"),
+        connectionErrorDetail: requireElement("connection-error-detail"),
+        connectionRetryButton: requireElement("connection-retry-button"),
+        spinError: requireElement("spin-error"),
+        spinErrorMessage: requireElement("spin-error-message"),
+        spinErrorDetail: requireElement("spin-error-detail"),
+        spinRetryButton: requireElement("spin-retry-button"),
+        spinReconnectButton: requireElement("spin-reconnect-button"),
     };
 }
 
@@ -53,9 +122,52 @@ async function fetchConfig(fetchImpl: FetchLike): Promise<{apiBaseUrl: string}> 
     return (await response.json()) as {apiBaseUrl: string};
 }
 
-function render(elements: Elements, response: SessionResponse, stageIndex: number, onStageChange: (index: number) => void): void {
+// paytable/linesDefinitions/availableBets only ever appear on a VideoSlotInitialNetworkData payload
+// (POST /sessions, or GET /sessions/:id's merged restore) -- a spin's own response is only ever the
+// narrower VideoSlotRoundNetworkData (see src/net/videoslot/VideoSlotNetworkData.ts), which carries
+// none of them. Capturing this once, right after connecting, means the paytable/lines/bet-options view
+// stays populated across every subsequent spin instead of disappearing the moment a round response
+// doesn't happen to repeat game-static data that was never going to change round to round anyway.
+function deriveStaticVideoSlotView(response: SessionResponse): StaticVideoSlotView {
+    const view = response as VideoSlotRoundResponse;
+    return {
+        paytable: derivePaytableView(view.paytable),
+        lines: deriveLineDefinitions(view.linesDefinitions),
+        availableBets: deriveAvailableBets(view.availableBets),
+    };
+}
+
+function renderVideoSlotRound(elements: Elements, response: VideoSlotRoundResponse & {reelsSymbols: string[][]}, staticView: StaticVideoSlotView): void {
+    renderReelsGrid(elements.playerGridContainer, response.reelsSymbols);
+
+    const highlights = deriveWinHighlights(response);
+    applyPersistentHighlights(elements.playerGridContainer, highlights);
+    renderWinsSection(elements.playerWinsSection, highlights.length > 0);
+    renderWinHighlightsList(elements.playerWinsList, elements.playerGridContainer, highlights);
+
+    renderFeatureCounters(elements.playerFeatures, deriveFeatureCounters(response));
+    renderBetInfo(elements.playerBetInfo, staticView.availableBets, typeof response.bet === "number" ? response.bet : undefined);
+    renderLineDefinitionsList(elements.playerLinesList, elements.playerGridContainer, staticView.lines);
+    renderPaytable(elements.playerPaytableHead, elements.playerPaytableBody, staticView.paytable);
+}
+
+function render(
+    elements: Elements,
+    response: SessionResponse,
+    staticView: StaticVideoSlotView,
+    stageIndex: number,
+    onStageChange: (index: number) => void,
+): void {
     elements.gameTitle.textContent = `${response.game.name} — POKIE client preview`;
     renderRoundView(elements, extractKnownRoundView(response));
+
+    const isVideoSlot = isVideoSlotRoundResponse(response);
+    elements.playerSection.hidden = !isVideoSlot;
+    elements.screen.hidden = isVideoSlot;
+    if (isVideoSlot) {
+        renderVideoSlotRound(elements, response, staticView);
+    }
+
     renderRawJson(elements.rawJson, response);
     renderStages(
         {
@@ -72,9 +184,46 @@ function render(elements: Elements, response: SessionResponse, stageIndex: numbe
     );
 }
 
-async function main(): Promise<void> {
-    const elements = queryElements();
-    const fetchImpl = window.fetch.bind(window) as FetchLike;
+function describeError(error: unknown): {readable: string; detail: string} {
+    const message = error instanceof Error ? error.message : String(error);
+    const detail = error instanceof Error && error.stack ? error.stack : message;
+    return {readable: message, detail};
+}
+
+function showConnectionError(elements: Elements, error: unknown, onRetry: () => void): void {
+    const {readable, detail} = describeError(error);
+    renderConnectionError(
+        {
+            container: elements.connectionError,
+            message: elements.connectionErrorMessage,
+            detail: elements.connectionErrorDetail,
+            retryButton: elements.connectionRetryButton,
+        },
+        `Couldn't connect: ${readable}`,
+        detail,
+        onRetry,
+    );
+}
+
+function showSpinError(elements: Elements, error: unknown, onRetry: () => void, onReconnect: () => void): void {
+    const {readable, detail} = describeError(error);
+    renderConnectionError(
+        {
+            container: elements.spinError,
+            message: elements.spinErrorMessage,
+            detail: elements.spinErrorDetail,
+            retryButton: elements.spinRetryButton,
+        },
+        `Spin failed: ${readable}`,
+        detail,
+        onRetry,
+    );
+    elements.spinReconnectButton.onclick = onReconnect;
+}
+
+async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
+    clearConnectionError(elements.connectionError);
+    elements.spinError.hidden = true;
 
     try {
         renderStatus(elements.status, "Connecting…");
@@ -82,9 +231,10 @@ async function main(): Promise<void> {
 
         let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl);
         let stageIndex = 0;
+        const staticView = deriveStaticVideoSlotView(current);
 
         const rerender = (): void => {
-            render(elements, current, stageIndex, (nextIndex) => {
+            render(elements, current, staticView, stageIndex, (nextIndex) => {
                 stageIndex = nextIndex;
                 rerender();
             });
@@ -94,25 +244,45 @@ async function main(): Promise<void> {
         rerender();
         elements.spinButton.disabled = false;
 
-        wireSpinButton(elements.spinButton, () => {
+        const attemptSpin = (): void => {
             elements.spinButton.disabled = true;
             spin(fetchImpl, apiBaseUrl, current.sessionId)
                 .then((response) => {
                     current = response;
                     stageIndex = 0;
+                    elements.spinError.hidden = true;
                     rerender();
                 })
                 .catch((error: unknown) => {
-                    renderStatus(elements.status, error instanceof Error ? error.message : String(error));
+                    showSpinError(elements, error, attemptSpin, () => reconnect(elements, fetchImpl));
                 })
                 .finally(() => {
                     elements.spinButton.disabled = false;
                 });
-        });
+        };
+
+        wireSpinButton(elements.spinButton, attemptSpin);
     } catch (error) {
-        renderStatus(elements.status, error instanceof Error ? error.message : String(error));
-        renderScreen(elements.screen, undefined);
+        renderStatus(elements.status, "Unable to connect.");
+        showConnectionError(elements, error, () => {
+            boot(elements, fetchImpl).catch((retryError: unknown) => console.error(retryError));
+        });
     }
+}
+
+// Discards the locally stored sessionId and reconnects from scratch (a fresh session, not a restore) --
+// used when a spin fails in a way that suggests the session itself is stale (e.g. the server was
+// restarted and no longer knows this sessionId), rather than a transient network error a plain retry
+// would already recover from.
+function reconnect(elements: Elements, fetchImpl: FetchLike): void {
+    clearSessionId(window.localStorage);
+    boot(elements, fetchImpl).catch((error: unknown) => console.error(error));
+}
+
+async function main(): Promise<void> {
+    const elements = queryElements();
+    const fetchImpl = window.fetch.bind(window) as FetchLike;
+    await boot(elements, fetchImpl);
 }
 
 main().catch((error: unknown) => {
