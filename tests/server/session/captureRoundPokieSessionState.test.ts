@@ -101,4 +101,21 @@ describe("captureRoundPokieSessionState", () => {
 
         expect(state.initialDebugPayload).toBe(initialDebugPayload);
     });
+
+    it("omits roundDebugPayload, and stops carrying initialDebugPayload forward, when captureDebugData is false", () => {
+        const initialDebugPayload = {rngSeed: "seed-initial"};
+        const previousState: PokieSessionState = {bet: 5, win: 0, initialDebugPayload};
+        const serializer: GameSessionSerializing = {
+            getInitialData: () => {
+                throw new Error("not used in this test");
+            },
+            getRoundData: () => ({credits: 1000, bet: 5, win: 10}),
+            getRoundDebugData: () => ({rngSeed: "seed-round", reelStops: [1, 2, 3]}),
+        };
+
+        const state = captureRoundPokieSessionState(undefined, createFakeSession(), previousState, serializer, false);
+
+        expect("roundDebugPayload" in state).toBe(false);
+        expect("initialDebugPayload" in state).toBe(false);
+    });
 });

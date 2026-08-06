@@ -1043,6 +1043,61 @@ describe("PokieDevServer (public/internal response split)", () => {
             expect("requestId" in (withoutRequestId.body.internal as Record<string, unknown>)).toBe(false);
         });
     });
+
+    // `captureDebugSessionData: false` — the capture-policy knob, distinct from `?debug=1` (see
+    // PokieDevServerOptions's own doc comment): a production deployment can use this to stop debug-only
+    // content from ever being captured into the persisted PokieSessionState at all, not merely withhold
+    // it from a given response.
+    describe("captureDebugSessionData: false stops debug-only content from ever being captured", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = createFakeGameWithDebugSerializer(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, captureDebugSessionData: false});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("omits `internal.debugData` even under `?debug=1`, since the serializer's debug hooks are never even captured", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            expect((created.body.internal as Record<string, unknown>).debugData).toBeUndefined();
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            expect((spun.body.internal as Record<string, unknown>).debugData).toBeUndefined();
+
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}?debug=1`);
+            expect((restored.body.internal as Record<string, unknown>).debugData).toBeUndefined();
+        });
+
+        it("still surfaces `internal.stateAfter`/`stateBefore` and public fields normally -- only the debug-only payload is affected", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            expect((created.body.internal as Record<string, unknown>).stateAfter).toBeDefined();
+            expect(created.body.publicField).toBe("initial");
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            const spunInternal = spun.body.internal as Record<string, unknown>;
+            expect(spunInternal.stateAfter).toBeDefined();
+            expect(spunInternal.stateBefore).toBeDefined();
+            expect(spun.body.publicField).toBe("round");
+        });
+
+        it("never leaks debug-only fields into the persisted state itself, not just the response", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            expect("initialDebugPayload" in stateAfter).toBe(false);
+            expect("roundDebugPayload" in stateAfter).toBe(false);
+        });
+    });
 });
 
 describe("PokieDevServer (integration, FileSessionRepository across a simulated restart)", () => {

@@ -4,6 +4,8 @@ import {
     computeWeightedOutcomeLibraryHash,
     GameSessionHandling,
     PokieDevServer,
+    PokieDevServerHandling,
+    PokieDevServerOptions,
     PokieGame,
     PokieGameManifest,
     WeightedOutcomeLibrary,
@@ -102,6 +104,26 @@ describe("StudioRuntimeManager", () => {
         expect(manager.getState()).toEqual(result.view);
 
         await manager.stop();
+    });
+
+    it("ties the underlying server's own capture policy (captureDebugSessionData) to this runtime's own debug toggle", async () => {
+        const capturedOptions: PokieDevServerOptions[] = [];
+        const createServer = (game: PokieGame, options: PokieDevServerOptions): PokieDevServerHandling => {
+            capturedOptions.push(options);
+            return new PokieDevServer(game, options);
+        };
+
+        const debugOffManager = new StudioRuntimeManager(fakeLoadGame(), createServer);
+        await debugOffManager.start("/fake/project", startOptions({debug: false}));
+        await debugOffManager.stop();
+
+        const debugOnManager = new StudioRuntimeManager(fakeLoadGame(), createServer);
+        await debugOnManager.start("/fake/project", startOptions({debug: true}));
+        await debugOnManager.stop();
+
+        expect(capturedOptions).toHaveLength(2);
+        expect(capturedOptions[0].captureDebugSessionData).toBe(false);
+        expect(capturedOptions[1].captureDebugSessionData).toBe(true);
     });
 
     it("rejects a second start while already running (conflict), without disturbing the running one", async () => {

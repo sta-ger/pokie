@@ -545,7 +545,10 @@ describe("Advanced tab inferable-empty-input baseline", () => {
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/runtime/start")).toBe(true));
         const startCall = calls.find((call) => call.url === "/api/project/runtime/start");
-        expect(JSON.parse(startCall?.init?.body ?? "{}")).toEqual({debug: false, repositoryMode: "memory"});
+        // "debug: true" is the Start form's own default -- Studio is a local dev/inspection tool, so a
+        // session started from here captures full round detail unless the user opts out (see
+        // RuntimeTab's own initialValues and validateStartRuntimeRequest's matching default).
+        expect(JSON.parse(startCall?.init?.body ?? "{}")).toEqual({debug: true, repositoryMode: "memory"});
     });
 });
 

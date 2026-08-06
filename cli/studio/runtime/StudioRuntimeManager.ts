@@ -383,7 +383,19 @@ export class StudioRuntimeManager {
         const sessionRepository =
             options.repositoryMode === "file" ? new FileSessionRepository(this.resolveFileSessionDirectory()) : new InMemorySessionRepository();
 
-        const server = this.createServer(game, {host: options.host, port: options.port ?? 0, sessionRepository, preGeneratedOutcomeLibrary});
+        // Ties the underlying server's own persistence-level capture policy (see
+        // PokieDevServerOptions.captureDebugSessionData's own doc comment) to this same runtime's debug
+        // toggle: full inspection by default (options.debug defaults to true -- see
+        // validateStartRuntimeRequest), but a user who explicitly starts this runtime with debug mode off
+        // also gets a server that never captures debug-only content into session state in the first
+        // place, not just one that withholds it from responses.
+        const server = this.createServer(game, {
+            host: options.host,
+            port: options.port ?? 0,
+            sessionRepository,
+            preGeneratedOutcomeLibrary,
+            captureDebugSessionData: options.debug,
+        });
 
         let address;
         try {

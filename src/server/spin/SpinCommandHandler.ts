@@ -140,6 +140,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private readonly operationLog: SpinOperationLog;
     private readonly reconciliationService: SpinReconciliationServicing;
     private readonly sessionSerializer: GameSessionSerializing | undefined;
+    private readonly captureDebugSessionData: boolean;
     private readonly liveSessions = new Map<string, GameSessionHandling>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
@@ -149,7 +150,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // when this is certifiably the *sole* SpinCommandHandler instance — in this process or any other —
     // ever operating against sessionRepository/wallet/idempotencyRepository/operationLog. An explicit
     // reconciliationService, when supplied, always wins regardless of singleInstanceDeployment's value —
-    // that flag only ever shapes what this handler builds *by default*.
+    // that flag only ever shapes what this handler builds *by default*. `captureDebugSessionData` — see
+    // PokieDevServerOptions's own doc comment for what it controls — defaults to true, so omitting it
+    // preserves every prior release's own persisted-state shape exactly.
     constructor(
         game: PokieGame,
         sessionRepository: SessionRepository,
@@ -158,6 +161,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         operationLog?: SpinOperationLog,
         singleInstanceDeployment?: boolean,
         reconciliationService?: SpinReconciliationServicing,
+        captureDebugSessionData?: boolean,
     );
     // Overload 2 (legacy — kept only for backward compatibility, see the implementation below): the
     // signature from before singleInstanceDeployment existed, where a caller's own already-constructed
@@ -184,6 +188,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         // signature just has to be able to accept either.
         singleInstanceDeploymentOrLegacyReconciliationService: boolean | SpinReconciliationServicing = false,
         reconciliationService: SpinReconciliationServicing | undefined = undefined,
+        captureDebugSessionData = true,
     ) {
         const legacyReconciliationService =
             typeof singleInstanceDeploymentOrLegacyReconciliationService === "boolean" ? undefined : singleInstanceDeploymentOrLegacyReconciliationService;
@@ -202,6 +207,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             reconciliationService ??
             new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment);
         this.sessionSerializer = resolveGameSessionSerializer(game);
+        this.captureDebugSessionData = captureDebugSessionData;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling): void {
@@ -432,7 +438,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
                     : await this.wallet.debit(sessionId, creditTransactionId, -creditAmount);
             appliedTransactionIds.push(creditTransactionId);
 
-            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer);
+            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.captureDebugSessionData);
             await checkpoint({
                 checkpoint: "settled",
                 updatedAt: new Date().toISOString(),

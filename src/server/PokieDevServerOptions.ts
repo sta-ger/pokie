@@ -27,6 +27,21 @@ export type PokieDevServerOptions = {
     // this false whenever more than one PokieDevServer process might share the same durable stores (e.g.
     // several instances pointed at the same FileSessionRepository directory for horizontal scaling).
     singleInstanceDeployment?: boolean;
+    // Additive, opt-in-only, defaults to true (preserving every prior release's own behavior): whether a
+    // session's serializer-provided debug payload (getInitialDebugData()/getRoundDebugData() — RNG
+    // seeds, reel stops, evaluator traces, whatever a game author chose to expose for local debugging)
+    // is captured into the *persisted* PokieSessionState at all, via captureInitialPokieSessionState/
+    // captureRoundPokieSessionState. This is deliberately a separate knob from the `?debug=1` request
+    // parameter (see the class doc comment's "Public/internal response split"): that parameter only ever
+    // gates what one response transmits, but sessionRepository persists whatever was captured regardless
+    // of whether any request ever asks for it — a durable SessionRepository (FileSessionRepository, or a
+    // caller-provided one) would otherwise always accumulate debug-only content on disk with no way to
+    // opt out. Set this to false for a production deployment that wants `?debug=1` fully unavailable
+    // (never captured, so never anything to return) rather than merely untransmitted by default. Studio's
+    // own local runtime (see StudioRuntimeManager) leaves this tied to its own debug toggle, which
+    // defaults to true — a dev tool should default to full inspection, not the conservative production
+    // posture this option otherwise preserves.
+    captureDebugSessionData?: boolean;
     // Additive, opt-in-only pre-generated round support (see PokieDevServer's own doc comment,
     // "Pre-generated rounds"): when given, `POST /pregenerated-sessions` and
     // `POST /pregenerated-sessions/:id/spin` become active, drawing rounds from this fixed,
