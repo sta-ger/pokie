@@ -80,13 +80,14 @@ export function captureRoundPokieSessionState(
     }
 
     if (capturePolicy.mode === "full") {
-        captureFullRoundArtifact(state, previousState, session, capturePolicy, roundArtifactRequest);
+        captureFullRoundArtifact(context, state, previousState, session, capturePolicy, roundArtifactRequest);
     }
 
     return state;
 }
 
 function captureFullRoundArtifact(
+    context: PokieGameContext | undefined,
     state: PokieSessionState,
     previousState: PokieSessionState,
     session: GameSessionHandling,
@@ -111,7 +112,7 @@ function captureFullRoundArtifact(
             provenance: roundArtifactRequest.provenance,
             betMode: roundArtifactRequest.betMode,
             stake: roundArtifactRequest.stake,
-            debug: buildRoundArtifactDebugSummary(state, previousState, roundArtifactRequest, capturePolicy),
+            debug: buildRoundArtifactDebugSummary(context, state, previousState, roundArtifactRequest, capturePolicy),
         });
     } catch (error) {
         state.roundArtifactUnavailableReason =
@@ -122,12 +123,14 @@ function captureFullRoundArtifact(
 }
 
 // Everything a "full" capture owes the round beyond what RoundArtifact already has dedicated top-level
-// fields for (screen/wins/steps/betMode/stake/provenance) — command, credits, and a before/after state
-// summary — has no field of its own on RoundArtifact, so it's carried in `debug` instead (a plain,
-// caller-defined JsonObject — see RoundArtifact's own doc comment). The serializer's own debug-only
-// payload (initialDebugPayload/roundDebugPayload) is merged in under `debugPayloads`, but only when this
-// policy still wants debug payloads captured at all.
+// fields for (screen/wins/steps/betMode/stake/provenance) — command, credits, the session context's own
+// seed (when the session was actually given one — see PokieGameContext.seed — never fabricated when it
+// wasn't), and a before/after state summary — has no field of its own on RoundArtifact, so it's carried
+// in `debug` instead (a plain, caller-defined JsonObject — see RoundArtifact's own doc comment). The
+// serializer's own debug-only payload (initialDebugPayload/roundDebugPayload) is merged in under
+// `debugPayloads`, but only when this policy still wants debug payloads captured at all.
 function buildRoundArtifactDebugSummary(
+    context: PokieGameContext | undefined,
     state: PokieSessionState,
     previousState: PokieSessionState,
     roundArtifactRequest: RoundArtifactCaptureRequest,
@@ -141,6 +144,7 @@ function buildRoundArtifactDebugSummary(
     return {
         command: roundArtifactRequest.command ?? "spin",
         ...(roundArtifactRequest.credits !== undefined ? {credits: roundArtifactRequest.credits} : {}),
+        ...(context?.seed !== undefined ? {seed: context.seed} : {}),
         stateBefore: summarizeStateForDebug(previousState),
         stateAfter: summarizeStateForDebug(state),
         ...(debugPayloads !== undefined ? {debugPayloads} : {}),

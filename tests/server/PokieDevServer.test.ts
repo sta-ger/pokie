@@ -738,6 +738,30 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             expect(debug.stateAfter).toEqual({bet: spun.body.bet, win: spun.body.win, screen: spun.body.screen});
         });
 
+        it("retains the session's own seed in the artifact's debug bag when the session was created with one", async () => {
+            const created = await postJson(`${baseUrl}/sessions`, {seed: "full-artifact-seed"});
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const debug = artifact.debug as Record<string, unknown>;
+            expect(debug.seed).toBe("full-artifact-seed");
+        });
+
+        it("never fabricates a seed in the artifact's debug bag when the session was created without one", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const debug = artifact.debug as Record<string, unknown>;
+            expect("seed" in debug).toBe(false);
+        });
+
         it("gives every round its own distinct roundArtifact, matching that round's own outcome", async () => {
             const created = await postJson(`${baseUrl}/sessions`);
             const sessionId = created.body.sessionId as string;
