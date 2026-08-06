@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -99,5 +99,70 @@ describe("ProjectDashboardPage - Play", () => {
             await screen.findByText("This session couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
         ).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Try again"})).toBeInTheDocument();
+    }, 60000);
+
+    // Cross-surface round presentation parity: Play and Runtime read the exact same shared session
+    // state (see PlayTab's own doc comment), so a round played from Runtime's Spin button must show up
+    // in Play's own "Last round" panel through the identical RoundSummary/GameScreenView chain Runtime's
+    // own "Inspect round" already renders it through -- not a Play-local re-presentation of the same
+    // screen/win data. This is the demonstration P4-POLISH-12 asked for: Play consuming the same shared
+    // presentation contracts as Replay and Runtime, for a round actually produced by the runtime.
+    it("Last round shows a round played from Runtime through the same shared RoundSummary/GameScreenView Runtime's own Inspect round uses, preserving reel-column screen orientation and runtime-provided win amounts unchanged", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, win: 0})}}),
+            "/api/project/runtime/sessions/sess-1/spins": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1015, bet: 5, win: 15, sessionVersion: 2, screen: [["cherry", "lemon"], ["bar", "seven"]]})},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/runtime"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(await screen.findByRole("button", {name: "Start"}));
+        await waitFor(() => expect(screen.getAllByText(/running at/).length).toBeGreaterThan(0));
+        await user.click(screen.getByRole("button", {name: "Create Session"}));
+        await screen.findByRole("button", {name: "Spin"});
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+        // Runtime's own Inspect round settles onto the played round -- the same signal
+        // ProjectDashboardPage.runtimeWorkflow.test.tsx waits on before asserting round detail.
+        await screen.findByText(/Show advanced details/);
+
+        await user.click(screen.getByRole("button", {name: "Play"}));
+
+        const lastRound = screen.getByText("Last round (from this Studio session)", {selector: "legend"}).closest("fieldset") as HTMLElement;
+        expect(lastRound).not.toBeNull();
+        // The screen's own reel-major cells, rendered by the shared GameScreenView -- unchanged from what
+        // the runtime returned (never recomputed/reformatted into some Play-local shape).
+        expect(within(lastRound).getByText("cherry")).toBeInTheDocument();
+        expect(within(lastRound).getByText("seven")).toBeInTheDocument();
+        expect(within(lastRound).getByText(/You won 15\.00/)).toBeInTheDocument();
+        // The same horizontal-scroll containment every other screen-rendering surface relies on (see
+        // responsive.test.tsx's own "no horizontal page overflow" coverage) -- proves this is the shared
+        // ScreenTable-based rendering, not a bespoke narrow-unfriendly table.
+        expect(within(lastRound).getByText("cherry").closest(".mantine-ScrollArea-root")).not.toBeNull();
+    }, 60000);
+
+    it("Last round shows an honest empty state, never a misleading 'Round complete', before any round has been played through Studio this session", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
+            "/api/project/runtime/start": () => ({ok: true, status: 200, body: RUNNING_STATE}),
+            "/api/project/runtime/sessions": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "Start playing"}));
+        await screen.findByTitle("POKIE player");
+
+        const lastRound = screen.getByText("Last round (from this Studio session)", {selector: "legend"}).closest("fieldset") as HTMLElement;
+        expect(within(lastRound).getByText(/No round played through Studio yet this session/)).toBeInTheDocument();
+        expect(within(lastRound).queryByText(/Round complete/)).not.toBeInTheDocument();
     }, 60000);
 });

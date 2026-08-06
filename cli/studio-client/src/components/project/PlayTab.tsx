@@ -7,7 +7,9 @@ import type {RuntimeSessionResultView, RuntimeSpinResultView, RuntimeStateView} 
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
+import {RoundSummary} from "../common/RoundSummary";
 
 type Session = RuntimeSessionResultView | RuntimeSpinResultView;
 
@@ -30,7 +32,11 @@ const DEFAULT_PLAY_START_OPTIONS: StartRuntimeOptions = {debug: true, repository
 // instead of quietly creating a second, unrelated one of its own. Every actual round played from here on
 // goes straight from the embedded player to the runtime's real HTTP API, same as "Open Player" always
 // has -- Studio itself is never in that request path, so this never reimplements the player's own
-// gameplay UI (reels, paytable, bet selection, win highlights).
+// gameplay UI (reels, paytable, bet selection, win highlights) as a Play-local clone. Whenever this same
+// shared `session` slot does carry a played round (e.g. one played from Runtime's own Spin, since Play and
+// Runtime read the same session state -- see the effect below), "Last round" renders it through the exact
+// RoundSummary/RoundArtifactInspector/GameScreenView chain Runtime's own "Inspect round" and Replay
+// already use, so Play never grows its own bespoke screen/win/payline/paytable/feature presentation.
 export function PlayTab({
     state,
     running,
@@ -102,6 +108,14 @@ export function PlayTab({
 
     const playerUrl = `${state.playerUrl}?session=${encodeURIComponent(sessionId)}`;
 
+    // Whether `session` actually reflects a played round -- as opposed to the just-created session it
+    // starts out as -- the same distinction Runtime's own "Inspect round" draws (there, via a never-
+    // auto-selected `selectedRound`; here, via the one session slot Play and Runtime already share, see
+    // this component's own doc comment). `screen` is only ever present on a round's own response, never
+    // on a plain create/get-session one (see StudioRuntimeSessionView's own doc comment) -- checking it
+    // is what keeps this from showing a stale/misleading "Round complete" the moment a session is created.
+    const playedRound = session.status === "ok" && session.session.screen !== undefined ? session.session : undefined;
+
     return (
         <div>
             <QuickActions>
@@ -121,6 +135,21 @@ export function PlayTab({
                 title="POKIE player"
                 style={{width: "100%", height: "80vh", border: "1px solid var(--mantine-color-default-border)"}}
             />
+
+            {/* Every round actually played goes straight from the embedded player to the runtime's own
+                HTTP API (see this component's own doc comment) -- Studio never sees it, so this can only
+                ever reflect a round played through this same shared `session` slot from elsewhere in
+                Studio (Runtime's own Spin, or a round restored by id). It renders through the identical
+                RoundSummary/RoundArtifactInspector/GameScreenView chain Runtime's "Inspect round" and
+                Replay already use, rather than a Play-local re-presentation of the same screen/win/
+                payline/paytable/feature data -- whenever this session does have one to show. */}
+            <PageSection legend="Last round (from this Studio session)">
+                {playedRound === undefined ? (
+                    <EmptyState message="No round played through Studio yet this session -- spin using the player above (its rounds aren't visible to Studio), or from Runtime, and a round played from Runtime will appear here." />
+                ) : (
+                    <RoundSummary session={playedRound} />
+                )}
+            </PageSection>
         </div>
     );
 }
