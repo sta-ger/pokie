@@ -1,46 +1,85 @@
-import {
-    GameBlueprint,
-    GameBlueprintValidating,
-    GameBlueprintValidator,
-    GamePackageGenerating,
-    GamePackageGenerator,
-    PokieGamePackageValidating,
-    PokieGamePackageValidator,
-} from "pokie";
-import {applyBlueprintNameOverride} from "../build/applyBlueprintNameOverride.js";
-import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
+import fs from "fs";
+import path from "path";
+import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
-import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
-import {PromptAdapting} from "../wizard/PromptAdapting.js";
-import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
+import {GamePackagePreparationError, GamePackagePreparationPhase} from "../prepare/GamePackagePreparationError.js";
+import {PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
+import {GamePackageMergeOverrides, GamePackageMerging} from "../scaffold/GamePackageMerging.js";
+import {GamePackageMerger} from "../scaffold/GamePackageMerger.js";
+import {ScaffoldResult} from "../scaffold/ScaffoldResult.js";
 import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-const USAGE = "Usage: pokie init [name]";
+const USAGE =
+    "Usage: pokie init [directory] [--package-name <name>] [--game-id <id>] [--game-name <name>] " +
+    "[--version <version>] [--yes] [--no-install] [--no-prepare]";
+
+type ParsedInitArgs = {
+    directory: string;
+    packageName?: string;
+    gameId?: string;
+    gameName?: string;
+    version?: string;
+    yes: boolean;
+    install: boolean;
+    prepare: boolean;
+};
+
+// True for a directory this command should refuse to touch without an explicit --yes: it already
+// exists, already has *something* in it, and that something isn't recognizable as this tool's own
+// earlier work (a package.json this command itself has already patched -- see isCompatiblePokiePackage).
+// An empty or not-yet-existing directory, and a directory this command already merged into (a retry
+// after a failed install/build, or simply running "pokie init" again), both return false -- neither
+// ever needs --yes.
+export function defaultDirectoryNeedsConfirmation(resolvedDir: string): boolean {
+    if (!fs.existsSync(resolvedDir)) {
+        return false;
+    }
+    if (fs.readdirSync(resolvedDir).length === 0) {
+        return false;
+    }
+
+    const packageJsonPath = path.join(resolvedDir, "package.json");
+    if (!fs.existsSync(packageJsonPath)) {
+        return true;
+    }
+    try {
+        const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as PackageJsonLike;
+        return !isCompatiblePokiePackage(pkg);
+    } catch {
+        return true;
+    }
+}
+
+// Merely depending on "pokie" doesn't prove a package.json is this tool's own earlier work -- any npm
+// project that uses pokie as a library would match that. "pokie.entry" is different: GamePackageMerger
+// (buildPackageJsonPatch) always writes it, atomically alongside main/exports/scripts.build, to the
+// exact same fixed path every time it patches package.json, and no other tool has a reason to write
+// that specific field. So a package.json whose own "pokie.entry" already matches what a fresh merge
+// would write there is unambiguously a package this command already merged into (or one authored to be
+// resumable by it) -- safe to retry without --yes -- while one that merely lists "pokie" as a dependency
+// is not.
+function isCompatiblePokiePackage(pkg: PackageJsonLike): boolean {
+    const requiredEntry = buildPackageJsonPatch({}, "0.0.0").pokie?.entry;
+    return pkg.pokie?.entry !== undefined && pkg.pokie.entry === requiredEntry;
+}
 
 export class InitCommand implements CliCommandHandling {
-    private readonly createStarterBlueprint: () => GameBlueprint;
-    private readonly validator: GameBlueprintValidating;
-    private readonly generator: GamePackageGenerating;
-    private readonly packageValidator: PokieGamePackageValidating;
-    private readonly wizard: GameBlueprintWizarding;
-    private readonly createPrompt: () => PromptAdapting;
+    private readonly merger: GamePackageMerging;
+    private readonly runCommand: PackageCommandRunning;
+    private readonly validator: PokieGamePackageValidating;
+    private readonly directoryNeedsConfirmation: (resolvedDir: string) => boolean;
 
     constructor(
         pokieVersion: string,
-        createStarterBlueprint: () => GameBlueprint = createStarterGameBlueprint,
-        validator: GameBlueprintValidating = new GameBlueprintValidator(),
-        generator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
-        packageValidator: PokieGamePackageValidating = new PokieGamePackageValidator(),
-        wizard: GameBlueprintWizarding = new GameBlueprintWizard(),
-        createPrompt: () => PromptAdapting = () => new ReadlinePromptAdapter(),
+        merger: GamePackageMerging = new GamePackageMerger(pokieVersion),
+        runCommand: PackageCommandRunning = runPackageCommand,
+        validator: PokieGamePackageValidating = new PokieGamePackageValidator(),
+        directoryNeedsConfirmation: (resolvedDir: string) => boolean = defaultDirectoryNeedsConfirmation,
     ) {
-        this.createStarterBlueprint = createStarterBlueprint;
+        this.merger = merger;
+        this.runCommand = runCommand;
         this.validator = validator;
-        this.generator = generator;
-        this.packageValidator = packageValidator;
-        this.wizard = wizard;
-        this.createPrompt = createPrompt;
+        this.directoryNeedsConfirmation = directoryNeedsConfirmation;
     }
 
     public getName(): string {
@@ -49,41 +88,66 @@ export class InitCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            'Create a prepared, immediately valid POKIE game package from "<name>": a real, editable ' +
-            'src/index.ts a developer owns, generated and verified on the spot, no separate npm install/build ' +
-            'step required -- the "programmer-first" package workflow. Run with no name for the same ' +
-            'interactive wizard "pokie create" offers. For an editable GameBlueprint JSON file instead, use ' +
-            '"pokie create".'
+            "Turn the current or given [directory] into a prepared, immediately valid POKIE game package in " +
+            "place, with no game-id subdirectory: merges/patches package.json, and writes tsconfig.json, " +
+            "README.md and a real, hand-editable src/index.ts wherever they're missing, then (unless " +
+            "--no-prepare) installs dependencies and builds and verifies dist/index.js -- entirely " +
+            "non-interactively, with --package-name/--game-id/--game-name/--version to override its " +
+            "directory-derived defaults. Never asks reel/paytable/mechanics questions; for those, design a " +
+            'Blueprint Project with "pokie create" and build it with "pokie build" instead.'
         );
     }
 
-    // A usage failure (parseArgs) throws straight out of this call, synchronously -- but runNamed's own
-    // failures (an invalid "<name>", surfaced only once parsing has already succeeded) are caught here
-    // and turned into a rejected promise instead, since runNamed itself is now plain synchronous code
-    // (no `await` left to do that for free the way an async method would).
     public run(args: string[]): Promise<number> {
-        const name = this.parseArgs(args);
-        if (name === undefined) {
-            return this.runWizard();
-        }
+        const parsed = this.parseArgs(args);
         try {
-            return this.runNamed(name);
+            return this.runInit(parsed);
         } catch (error) {
             return Promise.reject(error);
         }
     }
 
-    private parseArgs(args: string[]): string | undefined {
-        let name: string | undefined;
+    private parseArgs(args: string[]): ParsedInitArgs {
+        let parsed: ParsedInitArgs | undefined;
         const command = createCommanderCliCommand("init")
-            .argument("[name]")
+            .argument("[directory]")
             .argument("[excess...]")
-            .action((parsedName: string | null, excess: string[]) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
-                }
-                name = parsedName ?? undefined;
-            });
+            .option("--package-name <name>")
+            .option("--game-id <id>")
+            .option("--game-name <name>")
+            .option("--version <version>")
+            .option("--yes")
+            .option("--no-install")
+            .option("--no-prepare")
+            .action(
+                (
+                    directory: string | null,
+                    excess: string[],
+                    options: {
+                        packageName?: string;
+                        gameId?: string;
+                        gameName?: string;
+                        version?: string;
+                        yes?: boolean;
+                        install: boolean;
+                        prepare: boolean;
+                    },
+                ) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
+                    }
+                    parsed = {
+                        directory: directory ?? ".",
+                        packageName: options.packageName,
+                        gameId: options.gameId,
+                        gameName: options.gameName,
+                        version: options.version,
+                        yes: options.yes ?? false,
+                        install: options.install,
+                        prepare: options.prepare,
+                    };
+                },
+            );
 
         try {
             command.parse(args, {from: "user"});
@@ -93,75 +157,92 @@ export class InitCommand implements CliCommandHandling {
                 optionMissingArgument: (flag) => `Unknown option "${flag}". ${USAGE}`,
             });
         }
-        return name;
+        return parsed!;
     }
 
-    // No name given: launch the interactive wizard (moved here from "pokie build", which no longer
-    // offers it -- see BuildCommand's own doc comment) to gather a GameBlueprint's fields one at a
-    // time, then run it through the exact same prepare/verify pipeline runNamed's own starter-template
-    // path uses below.
-    private async runWizard(): Promise<number> {
-        const prompt = this.createPrompt();
-        try {
-            const result = await this.wizard.run(prompt);
-            if (result === null) {
-                console.log("\nInit cancelled.");
-                return 1;
-            }
-            return await this.buildAndVerify(result.blueprint, result.outDir);
-        } finally {
-            prompt.close();
-        }
-    }
+    private async runInit(parsed: ParsedInitArgs): Promise<number> {
+        const projectRoot = path.resolve(parsed.directory);
 
-    private runNamed(name: string): Promise<number> {
-        const blueprint = applyBlueprintNameOverride(this.createStarterBlueprint(), name);
-        return this.buildAndVerify(blueprint, name);
-    }
-
-    // Validates, generates (the same canonical package contract "pokie build" produces -- package.json,
-    // tsconfig.json, README.md, src/index.ts, dist/index.js, immediately loadable with no npm
-    // install/build step of its own -- see GamePackageGenerator's own doc comment), then verifies the
-    // freshly generated package actually loads (PokieGamePackageValidating, the same check
-    // "pokie validate" runs) before ever calling it "prepared" -- satisfying "init produces a prepared,
-    // immediately valid package" by construction, not by assertion.
-    private async buildAndVerify(blueprint: GameBlueprint, outDir: string | undefined): Promise<number> {
-        const issues = this.validator.validate(blueprint);
-        const errors = issues.filter((issue) => issue.severity === "error");
-        for (const issue of issues.filter((issue) => issue.severity !== "error")) {
-            console.log(`  warning  ${issue.code}: ${issue.message}`);
-        }
-        if (errors.length > 0) {
-            console.error(`Blueprint has ${errors.length} error(s):`);
-            for (const issue of errors) {
-                console.error(`  - ${issue.code}: ${issue.message}`);
-            }
+        if (this.directoryNeedsConfirmation(projectRoot) && !parsed.yes) {
+            console.error(
+                `"${projectRoot}" already has files in it and doesn't look like a POKIE package yet.\n` +
+                    `Re-run with --yes to merge POKIE's package files into it -- existing files are only ever ` +
+                    "added to, never overwritten.",
+            );
             return 1;
         }
 
-        const result = this.generator.generate(blueprint, process.cwd(), outDir);
-        for (const file of result.createdFiles) {
+        const overrides: GamePackageMergeOverrides = {
+            packageName: parsed.packageName,
+            id: parsed.gameId,
+            name: parsed.gameName,
+            version: parsed.version,
+        };
+        const scaffold = this.merger.merge(projectRoot, overrides);
+
+        for (const file of scaffold.createdFiles) {
             console.log(`  created  ${file}`);
         }
-
-        const report = await this.packageValidator.validate(result.projectRoot);
-        if (!report.valid) {
-            console.error(`Prepared package "${result.projectRoot}" is not a valid POKIE game:`);
-            for (const issue of report.errors) {
-                console.error(`  - ${issue.code}: ${issue.message}`);
-            }
-            return 1;
+        for (const file of scaffold.updatedFiles) {
+            console.log(`  updated  ${file}`);
+        }
+        for (const file of scaffold.skippedFiles) {
+            console.log(`  skipped  ${file} (already exists)`);
         }
 
-        console.log(
-            `\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") prepared and verified in "${result.projectRoot}".`,
-        );
-        console.log(`Load it anywhere with: loadPokieGame("${result.projectRoot}") from "pokie".`);
-        console.log(`\nNext:`);
-        console.log(`  pokie inspect ${result.projectRoot}`);
-        console.log(`  pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
-        console.log(`  pokie dev ${result.projectRoot}`);
+        if (!parsed.prepare) {
+            console.log(`\nGame package "${scaffold.manifest.name}" (id: "${scaffold.manifest.id}") scaffolded in "${projectRoot}".`);
+            console.log(`Next: run "npm install" then "npm run build" in "${projectRoot}" to finish preparing it.`);
+            return 0;
+        }
 
+        if (parsed.install) {
+            await this.runManagedCommand("dependencies", ["install"], projectRoot);
+        }
+        await this.runManagedCommand("build", ["run", "build"], projectRoot);
+        await this.runVerifyPhase(projectRoot);
+
+        this.printPrepared(scaffold, projectRoot);
         return 0;
+    }
+
+    private async runManagedCommand(phase: GamePackagePreparationPhase, npmArgs: string[], projectRoot: string): Promise<void> {
+        const npmCommand = `npm ${npmArgs.join(" ")}`;
+        try {
+            await this.runCommand("npm", npmArgs, projectRoot);
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new GamePackagePreparationError(
+                phase,
+                `"${npmCommand}" failed in "${projectRoot}": ${detail}\n` +
+                    `Run "${npmCommand}" manually in "${projectRoot}" to see the full output, fix the underlying ` +
+                    `issue, then re-run "pokie init ${projectRoot}" to retry.`,
+            );
+        }
+    }
+
+    private async runVerifyPhase(projectRoot: string): Promise<void> {
+        const report = await this.validator.validate(projectRoot);
+        if (report.valid) {
+            return;
+        }
+
+        const details = report.errors.map((issue) => `  - ${issue.code}: ${issue.message}`).join("\n");
+        throw new GamePackagePreparationError(
+            "verify",
+            `Prepared package "${projectRoot}" is not a valid POKIE game:\n${details}\n` +
+                `If this is a missing/stale build, run "npm run build" in "${projectRoot}" so "dist/index.js" ` +
+                `matches the current source, then re-run "pokie init ${projectRoot}".`,
+        );
+    }
+
+    private printPrepared(scaffold: ScaffoldResult, projectRoot: string): void {
+        console.log(`\nGame package "${scaffold.manifest.name}" (id: "${scaffold.manifest.id}") prepared and verified in "${projectRoot}".`);
+        console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "pokie".`);
+        console.log(`\nNext:`);
+        console.log(`  pokie validate ${projectRoot}`);
+        console.log(`  pokie sim ${projectRoot} --rounds 10000 --seed demo --out sim.json`);
+        console.log(`  pokie dev ${projectRoot}`);
+        console.log(`  npm start`);
     }
 }

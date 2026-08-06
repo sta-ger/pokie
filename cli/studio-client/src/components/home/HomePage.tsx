@@ -33,7 +33,7 @@ function isHomeTab(value: string | undefined): value is HomeTab {
 // "Advanced Tools" (hand-coded scaffold, init-in-place, build-from-an-existing-blueprint-file) has been
 // removed entirely -- those flows scaffolded/built via GamePackageCreator/GamePackageScaffolder/
 // GamePackageGenerator directly from Home, duplicating what the CLI itself already does better: run
-// `pokie init [name]` for a prepared, immediately valid package, or `pokie create [name]` for an
+// `pokie init [directory]` for a prepared, immediately valid package, or `pokie create [name]` for an
 // editable Blueprint Project. There used to be a second, independent, always-mounted
 // `<BlueprintEditorPage />` instance here too (the "raw"/non-guided Blueprint Editor) -- since HomePage
 // keeps every tab body permanently mounted (see below), that meant two entirely separate

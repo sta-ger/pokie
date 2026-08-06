@@ -1,7 +1,7 @@
 import type {GameBlueprint} from "pokie";
 
-// The canonical starter game this CLI offers by default: what "pokie init <name>" writes directly, and
-// every default the interactive "pokie create"/"pokie init" wizard offers (see GameBlueprintWizard,
+// The canonical starter game this CLI offers by default: every default the interactive "pokie create"
+// wizard offers (see GameBlueprintWizard,
 // which reads its symbols/paytable/weights/bets straight off this rather than restating them — so
 // pressing Enter through the whole wizard yields this same known-good game). Small enough to read and
 // edit by hand in one sitting, but a complete example of every field a first "pokie build <file>" needs —

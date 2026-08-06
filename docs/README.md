@@ -81,8 +81,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     and builds it, no config file at all, seeded/reproducible and smoke-simulated before it's reported done; `pokie
     create [name]`, which designs an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
     than a package, interactively via a wizard when run in a terminal (`<name>` pre-fills it, `--blank`/`--random`
-    write one non-interactively instead), and `pokie init [name]`, which produces a prepared, immediately valid
-    game package instead (interactively via that same wizard when run with no name); `pokie create [name]
+    write one non-interactively instead), and `pokie init [directory]`, which produces a prepared, immediately
+    valid game package in place instead — entirely non-interactively, no wizard, with
+    `--package-name`/`--game-id`/`--game-name`/`--version`/`--yes`/`--no-install`/`--no-prepare` for a scripted or
+    CI-driven run; `pokie create [name]
     --random`, the same random-generation pipeline as `pokie build random`, named after `<name>` or a generated id,
     written to a Blueprint Project file rather than built; `pokie name`, which prints one or more
     deterministic, offline-generated slot game name(s) (via `SlotGameNameGenerator`) without building anything;
@@ -214,7 +216,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Deterministic, offline slot game name generation | `pokie name`, `SlotGameNameGenerator` |
 | Importing/exporting a GameBlueprint as a PAR sheet XLSX workbook | `pokie par import <input.xlsx>` / `pokie par export <config.json>` |
 | Writing an editable Blueprint Project (GameBlueprint JSON file) | `pokie create [name]` CLI |
-| Scaffolding a new, prepared game package | `pokie init [name]` CLI |
+| Scaffolding/merging a prepared game package in place, non-interactively | `pokie init [directory]` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
 | Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |
 | Comparing two sim reports (e.g. before/after a config change) | `pokie diff <leftReportJson> <rightReportJson>` |

@@ -510,9 +510,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         // The bare/named path (no --blank/--random) always runs the interactive wizard -- see
         // CreateCommand's own doc comment -- so these three cases stub isInteractiveTerminal true, the
-        // wizard itself (echoing back whatever GameBlueprintWizardOptions CreateCommand passed it, the
-        // same way "init::(no args — launches the interactive wizard...)" below stubs InitCommand's own
-        // wizard), and an auto-confirming prompt for the post-wizard "Save this blueprint?" question.
+        // wizard itself (echoing back whatever GameBlueprintWizardOptions CreateCommand passed it), and
+        // an auto-confirming prompt for the post-wizard "Save this blueprint?" question. Unlike
+        // CreateCommand, InitCommand never runs a wizard at all -- see its own "init::" cases below.
         "create::(no name, no options, interactive terminal — runs the wizard, default destination)": (key) =>
             new CreateCommand(
                 TEST_VERSION,
@@ -1059,66 +1059,84 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
             );
         },
 
-        "init::(no args — launches the interactive wizard via the injected wizard/prompt)": () =>
+        "init::(no args — default directory, merges/installs/builds/verifies non-interactively)": () =>
             new InitCommand(
                 TEST_VERSION,
-                undefined,
-                undefined,
                 {
-                    generate: () => ({
-                        projectRoot: "/fake/wiz-game",
-                        manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
-                        createdFiles: [],
+                    merge: () => ({
+                        projectRoot: "/fake/cwd-game",
+                        manifest: {id: "cwd-game", name: "Cwd Game", version: "0.1.0"},
+                        createdFiles: ["package.json"],
+                        updatedFiles: [],
+                        skippedFiles: [],
                     }),
                 },
+                () => Promise.resolve({stdout: "", stderr: ""}),
                 {
                     validate: () =>
                         Promise.resolve({
-                            packageRoot: "/fake/wiz-game",
+                            packageRoot: "/fake/cwd-game",
                             valid: true,
-                            game: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
+                            game: {id: "cwd-game", name: "Cwd Game", version: "0.1.0"},
                             errors: [],
                             warnings: [],
                             suggestions: [],
                         }),
                 },
-                {
-                    run: () =>
-                        Promise.resolve({
-                            blueprint: {
-                                manifest: {id: "wiz-game", name: "Wiz Game", version: "0.1.0"},
-                                reels: 3,
-                                rows: 3,
-                                symbols: ["A", "B"],
-                                paytable: {A: {3: 5}},
-                            },
-                        }),
-                },
-                () => ({ask: () => Promise.resolve(null), close: () => undefined}),
+                () => false,
             ),
-        "init::<name> (non-interactive path, no wizard involved)": () =>
+        "init::<directory> --package-name --game-id --game-name --version --yes (accepted overrides, non-interactive)": () =>
             new InitCommand(
                 TEST_VERSION,
-                undefined,
-                undefined,
                 {
-                    generate: () => ({
+                    merge: (_projectRoot: string, overrides?: {id?: string; name?: string; version?: string}) => ({
                         projectRoot: "/fake/sample-slot",
-                        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                        createdFiles: [],
+                        manifest: {
+                            id: overrides?.id ?? "sample-slot",
+                            name: overrides?.name ?? "Sample Slot",
+                            version: overrides?.version ?? "0.1.0",
+                        },
+                        createdFiles: ["package.json"],
+                        updatedFiles: [],
+                        skippedFiles: [],
                     }),
                 },
+                () => Promise.resolve({stdout: "", stderr: ""}),
                 {
                     validate: () =>
                         Promise.resolve({
                             packageRoot: "/fake/sample-slot",
                             valid: true,
-                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            game: {id: "sample-slot", name: "Sample Slot", version: "2.0.0"},
                             errors: [],
                             warnings: [],
                             suggestions: [],
                         }),
                 },
+                // Directory "needs confirmation" — proves this case's own --yes is what lets it proceed.
+                () => true,
+            ),
+        "init::<directory> --no-prepare (scaffolds in place, never installs/builds/verifies)": () =>
+            new InitCommand(
+                TEST_VERSION,
+                {
+                    merge: () => ({
+                        projectRoot: "/fake/sample-slot",
+                        manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                        createdFiles: ["package.json"],
+                        updatedFiles: [],
+                        skippedFiles: [],
+                    }),
+                },
+                () => {
+                    throw new Error("runCommand must not be called when --no-prepare is given");
+                },
+                {
+                    validate: () => {
+                        throw new Error("validator must not be called when --no-prepare is given");
+                    },
+                },
+                () => false,
             ),
 
         "inspect::<packageRoot>": () =>

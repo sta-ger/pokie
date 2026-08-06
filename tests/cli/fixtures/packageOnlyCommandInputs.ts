@@ -56,10 +56,10 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "fairness", verb: "reveal", requiresLoadablePackage: false, primaryInput: "commitment.json + --server-seed + --source bundleDir"},
     {command: "fairness", verb: "verify", requiresLoadablePackage: false, primaryInput: "proof.json + --commitment + --source bundleDir"},
 
-    // init: writes a brand-new, prepared package -- a "name" positional (non-interactive) or, when
-    // omitted, the interactive wizard's own answers. Never reads an existing package; the "package" it
-    // produces is init's own output, not its input.
-    {command: "init", verb: undefined, requiresLoadablePackage: false, primaryInput: "name (optional; omitted launches the interactive wizard instead)"},
+    // init: merges/prepares a package in place -- an optional "directory" positional (defaults to "."),
+    // never an existing package (a pre-existing package.json in that directory is patched, not read as
+    // this command's own input the way e.g. "build"'s config.json is).
+    {command: "init", verb: undefined, requiresLoadablePackage: false, primaryInput: "directory (optional; defaults to the current directory)"},
 
     {command: "inspect", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 

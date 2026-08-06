@@ -94,9 +94,9 @@ describe("BuildCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    // The interactive wizard used to live here (run with no args at all) -- it's moved to "pokie init"
-    // (see InitCommand and tests/cli/WizardInitWorkflow.integration.test.ts), so "pokie build" with no
-    // args is now simply a missing <config.json> the same way any other missing required argument is.
+    // The interactive wizard used to live here (run with no args at all) -- it now lives on "pokie
+    // create" instead (see CreateCommand), so "pokie build" with no args is simply a missing
+    // <config.json> the same way any other missing required argument is.
     it("reports the usage error, same as any other missing <config.json>, when run with no args at all", async () => {
         const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), createStubGenerator(generatedResult));
 
