@@ -358,6 +358,7 @@ export * from "./server/pregenerated/isVersionedPreGeneratedSessionRepository.js
 export * from "./server/session/FileSessionRepository.js";
 export * from "./server/session/InMemorySessionRepository.js";
 export * from "./server/session/PokieSessionState.js";
+export * from "./server/session/SessionCapturePolicy.js";
 export * from "./server/session/SessionRepository.js";
 export * from "./server/session/SessionVersionConflictError.js";
 export * from "./server/session/VersionedSessionRepository.js";

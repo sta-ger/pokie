@@ -208,7 +208,7 @@ export class StudioServer implements StudioServerHandling {
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
         this.runtimeManager =
-            options.runtimeManager ?? new StudioRuntimeManager(this.loadGame, undefined, undefined, this.resolveRuntimePackageRoot);
+            options.runtimeManager ?? new StudioRuntimeManager(this.loadGame, undefined, undefined, this.resolveRuntimePackageRoot, this.pokieVersion);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);

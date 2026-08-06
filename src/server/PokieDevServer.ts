@@ -24,6 +24,7 @@ import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js"
 import {isVersionedSessionRepository} from "./session/isVersionedSessionRepository.js";
 import type {PokieSessionState} from "./session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "./session/resolveGameSessionSerializer.js";
+import type {SessionCaptureMode} from "./session/SessionCapturePolicy.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
 import {SpinCommandHandler} from "./spin/SpinCommandHandler.js";
 import type {SpinCommandHandling} from "./spin/SpinCommandHandling.js";
@@ -72,7 +73,12 @@ const DEFAULT_PORT = 3000;
 // is still not an RGS: this is a dev-friendly window into otherwise-hidden state, not an audit trail
 // guarantee — see PokieInternalSessionData. When the configured sessionRepository additionally
 // implements VersionedSessionRepository, `internal.sessionVersion` also carries that repository's
-// own optimistic-locking revision for the session.
+// own optimistic-locking revision for the session. `?debug=1` only ever governs what one response
+// *transmits* — the debug-only payload itself is captured into every session's *persisted*
+// PokieSessionState regardless of whether any given request asks for it, so a durable
+// sessionRepository (e.g. FileSessionRepository) always accumulates it on disk unless the server was
+// constructed with `captureDebugSessionData: false` (see PokieDevServerOptions's own doc comment) —
+// that option, not this query parameter, is a production deployment's actual capture policy.
 //
 // A spin can also come back `409` instead of `200`/`400`/`404`: SpinCommandHandler's "conflict"
 // status, meaning either a versioned sessionRepository rejected this attempt because the session's
@@ -103,6 +109,14 @@ export class PokieDevServer implements PokieDevServerHandling {
     // stays the sole source of a new session's starting balance, see handleCreateSession.
     private readonly usesDefaultWallet: boolean;
     private readonly sessionSerializer: GameSessionSerializing | undefined;
+    // See PokieDevServerOptions.captureDebugSessionData's own doc comment. Defaults to true, so a plain
+    // `new PokieDevServer(game)` persists exactly what every prior release already did.
+    private readonly captureDebugSessionData: boolean;
+    // See PokieDevServerOptions.sessionCapturePolicyMode/pokieVersion's own doc comments. Defaults to
+    // "partial"/"unknown", so a plain `new PokieDevServer(game)` persists exactly what every prior
+    // release already did.
+    private readonly sessionCapturePolicyMode: SessionCaptureMode;
+    private readonly pokieVersion: string;
     private readonly spinCommandHandler: SpinCommandHandling;
     private readonly preGeneratedOutcomeLibrary: WeightedOutcomeLibrary | undefined;
     private readonly preGeneratedLibraryHash: string | undefined;
@@ -119,6 +133,9 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.usesDefaultWallet = options.wallet === undefined;
         this.wallet = options.wallet ?? new InMemoryWallet();
         this.sessionSerializer = resolveGameSessionSerializer(game);
+        this.captureDebugSessionData = options.captureDebugSessionData ?? true;
+        this.sessionCapturePolicyMode = options.sessionCapturePolicyMode ?? "partial";
+        this.pokieVersion = options.pokieVersion ?? "unknown";
         // SpinCommandHandler always settles a spin through a TransactionalWalletPort. this.wallet
         // itself stays a plain WalletPort (the type PokieDevServerOptions has always exposed, so a
         // caller's existing custom implementation keeps compiling and working unchanged) — if it
@@ -134,6 +151,10 @@ export class PokieDevServer implements PokieDevServerHandling {
             options.idempotencyRepository ?? new InMemoryIdempotencyRepository(),
             options.spinOperationLog,
             options.singleInstanceDeployment ?? false,
+            undefined,
+            this.captureDebugSessionData,
+            this.sessionCapturePolicyMode,
+            this.pokieVersion,
         );
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {
@@ -303,7 +324,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             session.setCreditsAmount(await this.wallet.getBalance(sessionId));
         }
 
-        const state = captureInitialPokieSessionState(context, session, this.sessionSerializer);
+        const state = captureInitialPokieSessionState(context, session, this.sessionSerializer, this.captureDebugSessionData);
         await this.sessionRepository.save(sessionId, state);
 
         const credits = await this.wallet.getBalance(sessionId);

@@ -78,6 +78,12 @@ export class StudioRuntimeManager {
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
     // StudioServer wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    // Stamped into every server this manager starts as PokieDevServerOptions.pokieVersion, so a "full"
+    // capture policy's own RoundArtifact provenance is genuinely this pokie release, not the "unknown"
+    // fallback that option otherwise defaults to. Defaults to "unknown" itself here too -- the same
+    // fallback StudioReplayExecutionService already uses when it isn't given a real one either -- so
+    // every existing caller/test that doesn't pass one keeps compiling and behaving predictably.
+    private readonly pokieVersion: string;
 
     private state: StudioRuntimeStateView = {status: "stopped"};
     private server: PokieDevServerHandling | undefined;
@@ -118,11 +124,13 @@ export class StudioRuntimeManager {
         resolveOutcomeLibrary: (projectRoot: string, selector: OutcomeLibrarySelector) => Promise<ResolvedOutcomeLibrary> = (projectRoot, selector) =>
             new StudioOutcomeLibraryService().resolveLibrary(projectRoot, selector),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+        pokieVersion = "unknown",
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
         this.resolveOutcomeLibrary = resolveOutcomeLibrary;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
+        this.pokieVersion = pokieVersion;
     }
 
     public getState(): StudioRuntimeStateView {
@@ -383,7 +391,27 @@ export class StudioRuntimeManager {
         const sessionRepository =
             options.repositoryMode === "file" ? new FileSessionRepository(this.resolveFileSessionDirectory()) : new InMemorySessionRepository();
 
-        const server = this.createServer(game, {host: options.host, port: options.port ?? 0, sessionRepository, preGeneratedOutcomeLibrary});
+        // Ties the underlying server's own persistence-level capture policy (see
+        // PokieDevServerOptions.captureDebugSessionData's own doc comment) to this same runtime's debug
+        // toggle: full inspection by default (options.debug defaults to true -- see
+        // validateStartRuntimeRequest), but a user who explicitly starts this runtime with debug mode off
+        // also gets a server that never captures debug-only content into session state in the first
+        // place, not just one that withholds it from responses.
+        //
+        // `sessionCapturePolicyMode` is always "full", independent of `options.debug` above -- unlike
+        // debug-only serializer payloads (a legitimate opt-out even for local dev), a Studio/dev session's
+        // whole point is a fully inspectable recorded round (see PokieDevServerOptions.
+        // sessionCapturePolicyMode's own doc comment); a user turning off `?debug=1`-only content should
+        // never also lose the RoundArtifact itself.
+        const server = this.createServer(game, {
+            host: options.host,
+            port: options.port ?? 0,
+            sessionRepository,
+            preGeneratedOutcomeLibrary,
+            captureDebugSessionData: options.debug,
+            sessionCapturePolicyMode: "full",
+            pokieVersion: this.pokieVersion,
+        });
 
         let address;
         try {

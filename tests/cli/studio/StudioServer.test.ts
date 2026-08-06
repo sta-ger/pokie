@@ -3772,7 +3772,7 @@ describe("StudioServer", () => {
             runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
             const address = await runtimeServer.start();
             const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: false});
 
             const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
             const createdBody = created.body as {status: string; session: {sessionVersion?: number; debug?: unknown}};
@@ -3785,7 +3785,7 @@ describe("StudioServer", () => {
             runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
             const address = await runtimeServer.start();
             const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
+            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: false});
 
             const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
             const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;

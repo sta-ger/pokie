@@ -20,6 +20,16 @@ export interface PokieGame {
     // exactly the response shape it always has.
     getSessionSerializer?(): GameSessionSerializing;
 
+    // Optional, feature-detected (same pattern as getSessionSerializer/getBetModes): a game built from a
+    // GameBlueprint MAY expose the authoritative hash of the exact config it was built from (see
+    // computeGameBlueprintHash/computeBlueprintHash) — every "pokie build" output (renderBuiltGameModule)
+    // implements this itself, deriving it from its own embedded blueprint rather than carrying a
+    // precomputed header; a handwritten package simply has no such hash to expose. When present,
+    // SpinCommandHandler stamps this into a "full" capture's RoundArtifactProvenance.configHash for every
+    // live round it settles, so a recorded artifact can be traced back to the exact config that produced
+    // it. A game that doesn't implement this simply has no configHash captured — never a fabricated one.
+    getConfigHash?(): string;
+
     // Optional, feature-detected (same pattern as getSessionSerializer): a game MAY declare its
     // selectable bet modes (see BetMode.ts) so calling code can build a real bet-mode/buy-feature UI
     // against real declared data instead of guessing. A game that doesn't implement this simply has

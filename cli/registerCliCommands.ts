@@ -51,7 +51,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new DevCommand(
             undefined,
             undefined,
-            {clientRoot},
+            {clientRoot, pokieVersion: version},
             createMaterializingRuntimePackageResolver(version, DEV_OPERATION, pokiePackageRoot),
         ),
         new DiffCommand(),

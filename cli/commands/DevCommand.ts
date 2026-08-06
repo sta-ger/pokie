@@ -34,6 +34,11 @@ export type DevCommandDependencies = {
     openBrowser?: typeof openBrowser;
     clientRoot?: string;
     process?: NodeJS.Process;
+    // Stamped into the started PokieDevServer's own PokieDevServerOptions.pokieVersion, so a "full"
+    // RoundArtifact's provenance carries the running POKIE version instead of PokieDevServer's own
+    // "unknown" fallback. cli/registerCliCommands.ts wires the real, running version in; every existing
+    // caller/test that omits this keeps that same "unknown" fallback.
+    pokieVersion?: string;
 };
 
 // Runs `pokie serve` and `pokie client` together (as two HTTP listeners in this one process, not
@@ -55,6 +60,7 @@ export class DevCommand implements CliCommandHandling {
     private readonly openBrowserImpl: typeof openBrowser;
     private readonly clientRoot: string;
     private readonly process: NodeJS.Process;
+    private readonly pokieVersion: string;
     // Crosses from "the packageRoot the caller gave us" to "a real, loadable runtime" before this.loadGame
     // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
@@ -79,6 +85,7 @@ export class DevCommand implements CliCommandHandling {
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.clientRoot = dependencies.clientRoot ?? "";
         this.process = dependencies.process ?? process;
+        this.pokieVersion = dependencies.pokieVersion ?? "unknown";
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
@@ -118,7 +125,18 @@ export class DevCommand implements CliCommandHandling {
         // its port for the next attempt to collide with.
         const startedServers: Array<{stop(): Promise<void>}> = [];
         try {
-            const apiServer = this.createApiServer(game, {host: options.host, port: options.port});
+            // "pokie dev" is a local inspection tool, not a production deployment -- it always requests
+            // "full" capture (a complete, inspectable RoundArtifact persisted every round), the same
+            // posture StudioRuntimeManager's own local runtime always requests, independent of any
+            // production/server default (see PokieDevServerOptions.sessionCapturePolicyMode's own doc
+            // comment). Plain PokieDevServer/ServeCommand construction elsewhere is unaffected -- this
+            // option is opt-in-only there, defaulting to "partial".
+            const apiServer = this.createApiServer(game, {
+                host: options.host,
+                port: options.port,
+                sessionCapturePolicyMode: "full",
+                pokieVersion: this.pokieVersion,
+            });
             const apiAddress = await apiServer.start();
             startedServers.push(apiServer);
 

@@ -64,4 +64,18 @@ describe("captureInitialPokieSessionState", () => {
 
         expect(state.initialDebugPayload).toEqual(debugPayload);
     });
+
+    it("omits initialDebugPayload when captureDebugData is false, even though the serializer implements getInitialDebugData", () => {
+        const serializer: GameSessionSerializing = {
+            getInitialData: () => ({credits: 1000, bet: 5, availableBets: [5]}),
+            getRoundData: () => {
+                throw new Error("not used in this test");
+            },
+            getInitialDebugData: () => ({rngSeed: "seed-1"}),
+        };
+
+        const state = captureInitialPokieSessionState(undefined, createFakeSession(), serializer, false);
+
+        expect("initialDebugPayload" in state).toBe(false);
+    });
 });

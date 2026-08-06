@@ -1,7 +1,10 @@
 import {
     BuildableFromSessionState,
+    computeGameBlueprintHash,
     ConvertableToSessionState,
     FileSessionRepository,
+    GameBlueprint,
+    GamePackageGenerator,
     GameSessionHandling,
     GameSessionSerializing,
     InMemorySessionRepository,
@@ -643,6 +646,300 @@ describe("PokieDevServer (integration, real loadPokieGame + fixture game package
     });
 });
 
+// sessionCapturePolicyMode (see PokieDevServerOptions/SessionCapturePolicy's own doc comments): the
+// versioned contract distinguishing Studio/dev's "full" round capture (a complete, inspectable
+// RoundArtifact persisted every round) from production's own "partial" default (the legacy
+// bet/win/screen/featureState-only capture this package has always persisted). All three describe
+// blocks below drive a *real* VideoSlotSession (the playable-game fixture) through a real HTTP spin —
+// proving the whole pipeline end-to-end, not just captureRoundPokieSessionState in isolation.
+describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial round-capture contract)", () => {
+    const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game");
+
+    describe('default ("partial") — production\'s own posture, never builds a RoundArtifact', () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = await loadPokieGame(fixtureRoot);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("stamps stateAfter.capturePolicy as partial and never persists a roundArtifact", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "partial", captureDebugPayloads: true});
+            expect("roundArtifact" in stateAfter).toBe(false);
+            expect("roundArtifactUnavailableReason" in stateAfter).toBe(false);
+        });
+    });
+
+    describe('"full" — Studio/dev posture, persists a complete RoundArtifact off the real runtime-produced spin', () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = await loadPokieGame(fixtureRoot);
+            server = new PokieDevServer(game, {
+                host: "127.0.0.1",
+                port: 0,
+                sessionCapturePolicyMode: "full",
+                pokieVersion: "9.9.9",
+            });
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("persists a RoundArtifact with the round's real screen/wins/steps/provenance/betMode/stake", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            expect(stateAfter.capturePolicy).toEqual({version: 1, mode: "full", captureDebugPayloads: true});
+            expect(stateAfter.roundArtifactUnavailableReason).toBeUndefined();
+
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            expect(artifact).toBeDefined();
+            expect(typeof artifact.roundId).toBe("string");
+            expect((artifact.roundId as string).length).toBeGreaterThan(0);
+            expect(artifact.provenance).toEqual({game: {id: "playable-game", name: "Playable Game", version: "1.0.0"}, pokieVersion: "9.9.9"});
+            expect(artifact.betMode).toBe("base");
+            expect(artifact.stake).toBe(spun.body.bet);
+            expect(artifact.screen).toEqual(spun.body.screen);
+            expect(Array.isArray(artifact.steps)).toBe(true);
+            expect((artifact.steps as unknown[]).length).toBe(1);
+            expect(Array.isArray(artifact.wins)).toBe(true);
+        });
+
+        it("carries command/credits/before-after state summaries in the artifact's own debug bag", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const debug = artifact.debug as Record<string, unknown>;
+            expect(debug.command).toBe("spin");
+            expect(debug.credits).toBe(spun.body.credits);
+            expect(debug.stateBefore).toEqual({bet: created.body.bet, win: 0, screen: created.body.screen});
+            expect(debug.stateAfter).toEqual({bet: spun.body.bet, win: spun.body.win, screen: spun.body.screen});
+        });
+
+        it("retains the session's own seed in the artifact's debug bag when the session was created with one", async () => {
+            const created = await postJson(`${baseUrl}/sessions`, {seed: "full-artifact-seed"});
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const debug = artifact.debug as Record<string, unknown>;
+            expect(debug.seed).toBe("full-artifact-seed");
+        });
+
+        it("never fabricates a seed in the artifact's debug bag when the session was created without one", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            const debug = artifact.debug as Record<string, unknown>;
+            expect("seed" in debug).toBe(false);
+        });
+
+        it("gives every round its own distinct roundArtifact, matching that round's own outcome", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const firstSpin = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            const secondSpin = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const firstArtifact = ((firstSpin.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>).roundArtifact as Record<
+                string,
+                unknown
+            >;
+            const secondArtifact = ((secondSpin.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>).roundArtifact as Record<
+                string,
+                unknown
+            >;
+
+            expect(firstArtifact.roundId).not.toBe(secondArtifact.roundId);
+            expect(secondArtifact.screen).toEqual(secondSpin.body.screen);
+        });
+    });
+
+    describe('"full" against a game that exposes PokieGame.getConfigHash() — provenance.configHash is captured, never fabricated', () => {
+        const hashFixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-config-hash");
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = await loadPokieGame(hashFixtureRoot);
+            server = new PokieDevServer(game, {
+                host: "127.0.0.1",
+                port: 0,
+                sessionCapturePolicyMode: "full",
+                pokieVersion: "9.9.9",
+            });
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("carries the game's own authoritative configHash into the persisted RoundArtifact's provenance", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            expect(artifact.provenance).toEqual({
+                game: {id: "playable-game-with-config-hash", name: "Playable Game With Config Hash", version: "1.0.0"},
+                pokieVersion: "9.9.9",
+                configHash: "sha256:fixture-config-hash",
+            });
+        });
+    });
+
+    describe('"full" against a real "pokie build" Blueprint package — provenance.configHash carries the build\'s own authoritative hash, never an invented one', () => {
+        const blueprint: GameBlueprint = {
+            manifest: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
+            reels: 3,
+            rows: 3,
+            symbols: ["A", "B"],
+            paytable: {A: {3: 5}, B: {3: 2}},
+        };
+        let buildCwd: string;
+        let projectRoot: string;
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeAll(() => {
+            buildCwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-dev-server-built-blueprint-"));
+            projectRoot = new GamePackageGenerator("9.9.9").generate(blueprint, buildCwd).projectRoot;
+        });
+
+        afterAll(() => {
+            fs.rmSync(buildCwd, {recursive: true, force: true});
+        });
+
+        beforeEach(async () => {
+            const game = await loadPokieGame(projectRoot);
+            server = new PokieDevServer(game, {
+                host: "127.0.0.1",
+                port: 0,
+                sessionCapturePolicyMode: "full",
+                pokieVersion: "9.9.9",
+            });
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("carries the built package's own computeGameBlueprintHash(blueprint) result into the persisted RoundArtifact's provenance", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            const artifact = stateAfter.roundArtifact as Record<string, unknown>;
+            expect(artifact.provenance).toEqual({
+                game: {id: "built-blueprint-game", name: "Built Blueprint Game", version: "1.0.0"},
+                pokieVersion: "9.9.9",
+                configHash: computeGameBlueprintHash(blueprint),
+            });
+        });
+    });
+
+    describe('"full" against a session that isn\'t video-slot shaped — an honest availability diagnostic, never a fabricated artifact', () => {
+        const manifest: PokieGameManifest = {id: "non-video-slot", name: "Non Video Slot", version: "1.0.0"};
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = createFakeGame(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionCapturePolicyMode: "full"});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("sets roundArtifactUnavailableReason instead of roundArtifact", async () => {
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            expect(stateAfter.roundArtifact).toBeUndefined();
+            expect(stateAfter.roundArtifactUnavailableReason).toEqual(expect.stringContaining("VideoSlotSessionHandling"));
+        });
+    });
+
+    describe("reading a legacy partial session record — never fabricates capturePolicy/roundArtifact on the way back out", () => {
+        const manifest: PokieGameManifest = {id: "legacy-game", name: "Legacy Game", version: "1.0.0"};
+        let server: PokieDevServer;
+        let baseUrl: string;
+        let sessionRepository: InMemorySessionRepository;
+        const legacySessionId = "legacy-session";
+        // Exactly the shape a session captured before SessionCapturePolicy/roundArtifact ever existed
+        // would have had — no `capturePolicy`, no `roundArtifact`, nothing this feature ever backfills.
+        const legacyState: PokieSessionState = {bet: 5, win: 10, screen: [["legacy"]]};
+
+        beforeEach(async () => {
+            sessionRepository = new InMemorySessionRepository();
+            await sessionRepository.save(legacySessionId, legacyState);
+            const game = createFakeGame(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository, sessionCapturePolicyMode: "full"});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("returns the legacy record's own state verbatim under internal.stateAfter, with no capturePolicy/roundArtifact fields invented", async () => {
+            const {body} = await getJson(`${baseUrl}/sessions/${legacySessionId}?debug=1`);
+
+            const stateAfter = (body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            expect(stateAfter).toEqual(legacyState);
+            expect("capturePolicy" in stateAfter).toBe(false);
+            expect("roundArtifact" in stateAfter).toBe(false);
+            expect("roundArtifactUnavailableReason" in stateAfter).toBe(false);
+        });
+    });
+});
+
 describe("PokieDevServer (integration, real loadPokieGame + fixture game package with a serializer)", () => {
     const fixtureRoot = path.join(__dirname, "..", "cli", "fixtures", "playable-game-with-serializer");
     let server: PokieDevServer;
@@ -1041,6 +1338,61 @@ describe("PokieDevServer (public/internal response split)", () => {
 
             const withoutRequestId = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
             expect("requestId" in (withoutRequestId.body.internal as Record<string, unknown>)).toBe(false);
+        });
+    });
+
+    // `captureDebugSessionData: false` — the capture-policy knob, distinct from `?debug=1` (see
+    // PokieDevServerOptions's own doc comment): a production deployment can use this to stop debug-only
+    // content from ever being captured into the persisted PokieSessionState at all, not merely withhold
+    // it from a given response.
+    describe("captureDebugSessionData: false stops debug-only content from ever being captured", () => {
+        let server: PokieDevServer;
+        let baseUrl: string;
+
+        beforeEach(async () => {
+            const game = createFakeGameWithDebugSerializer(manifest);
+            server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, captureDebugSessionData: false});
+            const address = await server.start();
+            baseUrl = `http://${address.host}:${address.port}`;
+        });
+
+        afterEach(async () => {
+            await server.stop();
+        });
+
+        it("omits `internal.debugData` even under `?debug=1`, since the serializer's debug hooks are never even captured", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            expect((created.body.internal as Record<string, unknown>).debugData).toBeUndefined();
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            expect((spun.body.internal as Record<string, unknown>).debugData).toBeUndefined();
+
+            const restored = await getJson(`${baseUrl}/sessions/${sessionId}?debug=1`);
+            expect((restored.body.internal as Record<string, unknown>).debugData).toBeUndefined();
+        });
+
+        it("still surfaces `internal.stateAfter`/`stateBefore` and public fields normally -- only the debug-only payload is affected", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            expect((created.body.internal as Record<string, unknown>).stateAfter).toBeDefined();
+            expect(created.body.publicField).toBe("initial");
+
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+            const spunInternal = spun.body.internal as Record<string, unknown>;
+            expect(spunInternal.stateAfter).toBeDefined();
+            expect(spunInternal.stateBefore).toBeDefined();
+            expect(spun.body.publicField).toBe("round");
+        });
+
+        it("never leaks debug-only fields into the persisted state itself, not just the response", async () => {
+            const created = await postJson(`${baseUrl}/sessions?debug=1`);
+            const sessionId = created.body.sessionId as string;
+            const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin?debug=1`);
+
+            const stateAfter = (spun.body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
+            expect("initialDebugPayload" in stateAfter).toBe(false);
+            expect("roundDebugPayload" in stateAfter).toBe(false);
         });
     });
 });

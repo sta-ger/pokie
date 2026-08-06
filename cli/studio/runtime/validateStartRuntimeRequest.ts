@@ -33,8 +33,18 @@ export type ValidatedStartRuntimeRequest = {
 // The one place a POST /api/project/runtime/start (or .../restart) body is turned into a trusted
 // request — throws a plain, client-safe Error (StudioServer catches this and maps it to 400) for
 // anything malformed. Every field is optional: an empty body is a valid "start with defaults" request
-// (host/port left to PokieDevServer's own defaults, debug off, memory-mode sessions, no seed, no
-// pre-generated library).
+// (host/port left to PokieDevServer's own defaults, memory-mode sessions, no seed, no pre-generated
+// library).
+//
+// "debug" defaults to *on* here — the opposite of PokieDevServer's own conservative `?debug=1` opt-in
+// (see that class's own doc comment). This is Studio's own capture policy, not PokieDevServer's: Studio
+// is exclusively a local dev/inspection tool, so a session started through it should surface full
+// round/session detail (screen, wins, before/after state, debug/RNG data — see
+// StudioRuntimeManager.buildSessionView()) without the user first having to discover and check a box.
+// A caller that genuinely wants the leaner public-only view can still pass `debug: false` explicitly.
+// This is deliberately *not* PokieDevServer's own default (see docs/cli.md "pokie serve"/"pokie dev"),
+// which stays off unless a request opts in — a production deployment must not accidentally persist or
+// transmit audit/debug-only data it never asked for.
 export function validateStartRuntimeRequest(input: StartRuntimeRequestInput): ValidatedStartRuntimeRequest {
     const {host, port, debug, seed, repositoryMode, preGeneratedLibrarySelector, preGeneratedLibraryExpectedHash} = input;
 
@@ -60,7 +70,7 @@ export function validateStartRuntimeRequest(input: StartRuntimeRequestInput): Va
     return {
         host: host as string | undefined,
         port: port as number | undefined,
-        debug: debug === true,
+        debug: debug !== false,
         seed: seed as string | number | undefined,
         repositoryMode: (repositoryMode as "memory" | "file" | undefined) ?? "memory",
         preGeneratedLibrarySelector:

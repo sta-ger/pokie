@@ -275,7 +275,11 @@ export function RuntimeTab({
     const navigate = useNavigate();
     const startForm = useForm<StartFormValues>({
         mode: "uncontrolled",
-        initialValues: {host: "", port: "", debug: false, repositoryMode: "memory", seed: ""},
+        // "debug" defaults on -- Studio is a local dev/inspection tool, so a session started from here
+        // should surface full round detail by default (see validateStartRuntimeRequest's own doc
+        // comment on why this differs from PokieDevServer's own conservative opt-in default). The
+        // checkbox still lets a user opt out for the leaner public-only view.
+        initialValues: {host: "", port: "", debug: true, repositoryMode: "memory", seed: ""},
     });
 
     // Runtime is a workspace, not a wizard: every panel below is reachable at any time (no forced

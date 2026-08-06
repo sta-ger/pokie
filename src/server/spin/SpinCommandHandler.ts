@@ -4,12 +4,13 @@ import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {InMemoryIdempotencyRepository} from "../idempotency/InMemoryIdempotencyRepository.js";
 import type {IdempotencyRepository} from "../idempotency/IdempotencyRepository.js";
-import {captureRoundPokieSessionState} from "../session/captureRoundPokieSessionState.js";
+import {captureRoundPokieSessionState, type RoundArtifactCaptureRequest} from "../session/captureRoundPokieSessionState.js";
 import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import {isVersionedSessionRepository} from "../session/isVersionedSessionRepository.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "../session/resolveGameSessionSerializer.js";
 import {restoreFeatureState} from "../session/restoreFeatureState.js";
+import {buildSessionCapturePolicy, type SessionCaptureMode, type SessionCapturePolicy} from "../session/SessionCapturePolicy.js";
 import {SessionVersionConflictError} from "../session/SessionVersionConflictError.js";
 import type {SessionRepository} from "../session/SessionRepository.js";
 import type {TransactionalWalletPort} from "../wallet/TransactionalWalletPort.js";
@@ -140,6 +141,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private readonly operationLog: SpinOperationLog;
     private readonly reconciliationService: SpinReconciliationServicing;
     private readonly sessionSerializer: GameSessionSerializing | undefined;
+    private readonly capturePolicy: SessionCapturePolicy;
+    private readonly pokieVersion: string;
     private readonly liveSessions = new Map<string, GameSessionHandling>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
@@ -149,7 +152,13 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // when this is certifiably the *sole* SpinCommandHandler instance — in this process or any other —
     // ever operating against sessionRepository/wallet/idempotencyRepository/operationLog. An explicit
     // reconciliationService, when supplied, always wins regardless of singleInstanceDeployment's value —
-    // that flag only ever shapes what this handler builds *by default*.
+    // that flag only ever shapes what this handler builds *by default*. `captureDebugSessionData` — see
+    // PokieDevServerOptions's own doc comment for what it controls — defaults to true, so omitting it
+    // preserves every prior release's own persisted-state shape exactly. `sessionCapturePolicyMode` (see
+    // PokieDevServerOptions.sessionCapturePolicyMode's own doc comment) defaults to "partial", the same
+    // legacy persisted-state shape every prior release always produced; `pokieVersion` is only ever read
+    // when it's "full" (to stamp a built RoundArtifact's own provenance.pokieVersion), and defaults to
+    // "unknown" — the same fallback StudioReplayExecutionService already uses for the same reason.
     constructor(
         game: PokieGame,
         sessionRepository: SessionRepository,
@@ -158,6 +167,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
         operationLog?: SpinOperationLog,
         singleInstanceDeployment?: boolean,
         reconciliationService?: SpinReconciliationServicing,
+        captureDebugSessionData?: boolean,
+        sessionCapturePolicyMode?: SessionCaptureMode,
+        pokieVersion?: string,
     );
     // Overload 2 (legacy — kept only for backward compatibility, see the implementation below): the
     // signature from before singleInstanceDeployment existed, where a caller's own already-constructed
@@ -184,6 +196,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
         // signature just has to be able to accept either.
         singleInstanceDeploymentOrLegacyReconciliationService: boolean | SpinReconciliationServicing = false,
         reconciliationService: SpinReconciliationServicing | undefined = undefined,
+        captureDebugSessionData = true,
+        sessionCapturePolicyMode: SessionCaptureMode = "partial",
+        pokieVersion = "unknown",
     ) {
         const legacyReconciliationService =
             typeof singleInstanceDeploymentOrLegacyReconciliationService === "boolean" ? undefined : singleInstanceDeploymentOrLegacyReconciliationService;
@@ -202,6 +217,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
             reconciliationService ??
             new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment);
         this.sessionSerializer = resolveGameSessionSerializer(game);
+        this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
+        this.pokieVersion = pokieVersion;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling): void {
@@ -432,7 +449,24 @@ export class SpinCommandHandler implements SpinCommandHandling {
                     : await this.wallet.debit(sessionId, creditTransactionId, -creditAmount);
             appliedTransactionIds.push(creditTransactionId);
 
-            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer);
+            const roundArtifactRequest: RoundArtifactCaptureRequest | undefined =
+                this.capturePolicy.mode === "full"
+                    ? {
+                        roundId,
+                        provenance: {
+                            game: this.game.getManifest(),
+                            pokieVersion: this.pokieVersion,
+                            // Only ever set when the loaded game actually exposes its own authoritative
+                            // config hash (see PokieGame.getConfigHash's own doc comment) — never invented
+                            // when it doesn't.
+                            ...(this.game.getConfigHash ? {configHash: this.game.getConfigHash()} : {}),
+                        },
+                        stake: stakeAmount,
+                        command: "spin",
+                        credits: newBalance,
+                    }
+                    : undefined;
+            const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             await checkpoint({
                 checkpoint: "settled",
                 updatedAt: new Date().toISOString(),

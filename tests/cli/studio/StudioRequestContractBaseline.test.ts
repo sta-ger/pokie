@@ -67,18 +67,18 @@ describe("Contract baseline: Runtime retry/debug", () => {
         expect(() => validateRuntimeSpinRequest({expectedSessionVersion: 1.5})).toThrow('"expectedSessionVersion" must be a positive integer when given.');
     });
 
-    it("starting a runtime defaults debug to off and repositoryMode to 'memory', both explicit opt-ins", () => {
+    it("starting a runtime defaults debug to on (Studio's own full-inspection capture policy) and repositoryMode to 'memory'", () => {
         expect(validateStartRuntimeRequest({})).toEqual({
             host: undefined,
             port: undefined,
-            debug: false,
+            debug: true,
             seed: undefined,
             repositoryMode: "memory",
             preGeneratedLibrarySelector: undefined,
             preGeneratedLibraryExpectedHash: undefined,
         });
-        expect(validateStartRuntimeRequest({debug: true, repositoryMode: "file"})).toEqual(
-            expect.objectContaining({debug: true, repositoryMode: "file"}),
+        expect(validateStartRuntimeRequest({debug: false, repositoryMode: "file"})).toEqual(
+            expect.objectContaining({debug: false, repositoryMode: "file"}),
         );
         expect(() => validateStartRuntimeRequest({debug: "yes"})).toThrow('"debug" must be a boolean when given.');
         expect(() => validateStartRuntimeRequest({repositoryMode: "disk"})).toThrow('"repositoryMode" must be "memory" or "file" when given.');
