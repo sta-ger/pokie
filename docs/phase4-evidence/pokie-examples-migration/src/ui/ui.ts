@@ -245,7 +245,7 @@ export const initializeUi = async (div: HTMLDivElement, customScenarios?: [strin
                 <a href="index.html" class="text-decoration-none">&larr; All examples</a>
             </div>
 
-            <div class="paragraph" id="roundError" style="display: none">
+            <div class="paragraph" id="roundError" hidden>
                 <p id="roundErrorMessage"></p>
                 <details>
                     <summary>Technical details</summary>

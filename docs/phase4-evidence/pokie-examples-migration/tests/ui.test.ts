@@ -126,6 +126,22 @@ class FakeSerializer {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+// jsdom never lays anything out, so offsetParent/offsetHeight are always 0 regardless of CSS --
+// the only way to tell "visible" from "hidden" here is to walk the element's own ancestor chain
+// (mirroring what a real browser -- and libraries like @testing-library/jest-dom's toBeVisible(),
+// unavailable in this project) checks: no ancestor computed to display:none or visibility:hidden.
+function isRenderedVisible(el: HTMLElement): boolean {
+    let node: HTMLElement | null = el;
+    while (node) {
+        const style = node.ownerDocument.defaultView!.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden") {
+            return false;
+        }
+        node = node.parentElement;
+    }
+    return true;
+}
+
 async function renderExample(initial: RoundFixture, queue: RoundFixture[]) {
     const session = new FakeSession(initial, queue);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,14 +223,32 @@ describe("pokie-examples' ui.ts adoption of pokie/client/player", () => {
         await flush();
 
         const errorSection = div.querySelector("#roundError") as HTMLElement;
+        const errorMessage = div.querySelector("#roundErrorMessage") as HTMLElement;
+        const retryButton = div.querySelector("#roundRetryButton") as HTMLButtonElement;
+        const reconnectButton = div.querySelector("#roundReconnectButton") as HTMLButtonElement;
+
+        // hidden=false alone doesn't prove a user can see it -- the panel also carried an inline
+        // style="display: none" that survived toggling `hidden`, so assert the actual rendered
+        // (ancestor-chain) visibility, not just the property renderConnectionError() sets.
         expect(errorSection.hidden).toBe(false);
-        expect(div.querySelector("#roundErrorMessage")?.textContent).toContain("Simulated round failure");
+        expect(isRenderedVisible(errorSection)).toBe(true);
+        expect(isRenderedVisible(errorMessage)).toBe(true);
+        expect(errorMessage.textContent).toContain("Simulated round failure");
+
+        // The technical <details> stay visibly present (collapsed by default), and retry/reconnect
+        // stay visible and clickable alongside the readable message -- not just non-null in the DOM.
+        expect(isRenderedVisible(div.querySelector("details") as HTMLElement)).toBe(true);
+        expect((div.querySelector("details") as HTMLDetailsElement).open).toBe(false);
+        expect(isRenderedVisible(retryButton)).toBe(true);
+        expect(isRenderedVisible(reconnectButton)).toBe(true);
+        expect(retryButton.disabled).toBe(false);
 
         session.shouldFail = false;
-        (div.querySelector("#roundRetryButton") as HTMLButtonElement).click();
+        retryButton.click();
         await flush();
 
         expect(errorSection.hidden).toBe(true);
+        expect(isRenderedVisible(errorSection)).toBe(false);
         expect(div.querySelector("#win")?.textContent).toBe("Win: 40");
     });
 
@@ -224,10 +258,15 @@ describe("pokie-examples' ui.ts adoption of pokie/client/player", () => {
         (div.querySelector("#playButton") as HTMLButtonElement).click();
         await flush();
 
+        const errorSection = div.querySelector("#roundError") as HTMLElement;
+        expect(isRenderedVisible(errorSection)).toBe(true);
+        expect(isRenderedVisible(div.querySelector("#roundReconnectButton") as HTMLElement)).toBe(true);
+
         (div.querySelector("#roundReconnectButton") as HTMLButtonElement).click();
         await flush();
 
-        expect((div.querySelector("#roundError") as HTMLElement).hidden).toBe(true);
+        expect(errorSection.hidden).toBe(true);
+        expect(isRenderedVisible(errorSection)).toBe(false);
         expect(div.querySelector("#win")?.textContent).toBe("Win: 0");
     });
 });
