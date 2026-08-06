@@ -14,7 +14,7 @@ import {
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]";
 
@@ -66,7 +66,15 @@ export class ServeCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let options: ServeOptions;
+        try {
+            options = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
 
         // A resolved "outcomeLibrary"/"stakeAdapter" project is routed through the outcome-source-backed
         // server below instead -- neither ever reaches resolveRuntimePackageRoot/loadGame/PokieDevServer
@@ -145,6 +153,9 @@ export class ServeCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

@@ -2,7 +2,7 @@ import {PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGameP
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ValidateFormat = "summary" | "json";
 
@@ -65,6 +65,9 @@ export class ValidateCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return 0;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

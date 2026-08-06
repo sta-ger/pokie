@@ -7,7 +7,7 @@ import {PackageCommandRunning, runPackageCommand} from "../prepare/PackageComman
 import {GamePackageMergeOverrides, GamePackageMerging} from "../scaffold/GamePackageMerging.js";
 import {GamePackageMerger} from "../scaffold/GamePackageMerger.js";
 import {ScaffoldResult} from "../scaffold/ScaffoldResult.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie init [directory] [--package-name <name>] [--game-id <id>] [--game-name <name>] " +
@@ -99,7 +99,19 @@ export class InitCommand implements CliCommandHandling {
     }
 
     public run(args: string[]): Promise<number> {
-        const parsed = this.parseArgs(args);
+        let parsed: ParsedInitArgs;
+        try {
+            parsed = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve(0);
+            }
+            // Rethrown synchronously (never Promise.reject) -- parseArgs() itself always throws
+            // synchronously, same as before --help existed, and this command's own contract (see
+            // InitCommand.test.ts) expects run() to throw synchronously here too, not return a
+            // rejected promise.
+            throw error;
+        }
         try {
             return this.runInit(parsed);
         } catch (error) {
@@ -152,6 +164,9 @@ export class InitCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) => `Unknown option "${flag}". ${USAGE}`,

@@ -18,7 +18,7 @@ import {
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
@@ -173,6 +173,9 @@ export class OutcomeSourceCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {...verbMessages, unknownCommand: USAGE, noCommand: USAGE});
             });
     }

@@ -1,6 +1,6 @@
 import {GamePackageInspecting, GamePackageInspectionReport, GamePackageInspector} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie inspect <packageRoot>";
 
@@ -39,6 +39,9 @@ export class InspectCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve(0);
+            }
             return Promise.reject(
                 translateCommanderError(error, {
                     missingArgument: USAGE,

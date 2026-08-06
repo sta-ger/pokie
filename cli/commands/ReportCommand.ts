@@ -12,7 +12,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
 type ReportFormat = "markdown" | "html";
@@ -65,7 +65,16 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const {reportPath, format, out} = this.parseArgs(args);
+        let parsedArgs: {reportPath: string; format: ReportFormat; out?: string};
+        try {
+            parsedArgs = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
+        const {reportPath, format, out} = parsedArgs;
 
         let parsed: SimulationReport | SimulationReportSet;
         try {
@@ -133,6 +142,9 @@ export class ReportCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

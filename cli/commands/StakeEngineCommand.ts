@@ -25,7 +25,7 @@ import {
     WeightedOutcomeLibrary,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie stakeengine export <config.json> [--out <dir>]\n" +
@@ -275,6 +275,9 @@ export class StakeEngineCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     ...verbMessages,
                     unknownCommand: `${USAGE}\n${CONFIG_HINT}`,

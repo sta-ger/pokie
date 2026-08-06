@@ -21,7 +21,7 @@ import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQuali
 import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type RandomPreset = "default" | "variant";
 
@@ -145,6 +145,9 @@ export class BuildCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     missingArgument: `${USAGE}\n${BLUEPRINT_HINT}`,
                     unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
@@ -196,6 +199,9 @@ export class BuildCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
                     optionMissingArgument: (flag) => {

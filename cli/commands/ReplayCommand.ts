@@ -13,7 +13,7 @@ import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ReplayOptions = {
     packageRoot: string;
@@ -76,7 +76,15 @@ export class ReplayCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let options: ReplayOptions;
+        try {
+            options = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
 
         // A resolved "outcomeLibrary"/"stakeAdapter" project is routed through the outcome-source selector
         // path below instead -- neither ever reaches resolveRuntimePackageRoot/loadGame (see
@@ -182,6 +190,9 @@ export class ReplayCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

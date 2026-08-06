@@ -25,7 +25,7 @@ import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type SimFormat = "summary" | "json";
 
@@ -249,6 +249,9 @@ export class SimCommand implements CliCommandHandling {
         try {
             await command.parseAsync(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

@@ -16,7 +16,7 @@ import {
     ValidationIssue,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {normalizeServerSeedFileContents} from "./internal/normalizeServerSeedFileContents.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 
@@ -313,6 +313,9 @@ export class FairnessCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     ...verbMessages,
                     unknownCommand: USAGE,

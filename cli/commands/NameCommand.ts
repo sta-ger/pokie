@@ -7,7 +7,7 @@ import {
     SlotGameNameTheme,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]";
 
@@ -49,6 +49,9 @@ export class NameCommand implements CliCommandHandling {
 
             return Promise.resolve(0);
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve(0);
+            }
             return Promise.reject(error);
         }
     }
@@ -118,6 +121,9 @@ export class NameCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) => {

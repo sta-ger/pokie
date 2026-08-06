@@ -1,6 +1,6 @@
 import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const DEFAULT_API_HOST = "127.0.0.1";
 const DEFAULT_API_PORT = 3000;
@@ -86,6 +86,9 @@ export class ClientCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

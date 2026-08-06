@@ -15,7 +15,7 @@ import {
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
-import {CommanderErrorMessages, createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE =
     "Usage: pokie par import <input.xlsx> [--out <blueprint.json>] [--format json]\n" +
@@ -137,6 +137,9 @@ export class ParCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {...verbMessages, unknownCommand: USAGE, noCommand: USAGE});
             });
     }

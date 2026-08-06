@@ -10,7 +10,7 @@ import {StudioContextResolving} from "../studio/StudioContextResolving.js";
 import {StudioServer} from "../studio/StudioServer.js";
 import {StudioServerHandling} from "../studio/StudioServerHandling.js";
 import {StudioServerOptions} from "../studio/StudioServerOptions.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type StudioOptions = {
     projectRoot?: string;
@@ -91,7 +91,15 @@ export class StudioCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let options: StudioOptions;
+        try {
+            options = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
         const context = this.contextResolver.resolve(options.projectRoot);
 
         const server = this.createServer({
@@ -155,6 +163,9 @@ export class StudioCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) => {

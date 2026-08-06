@@ -9,7 +9,7 @@ import {
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 const USAGE = "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]";
 
@@ -121,6 +121,9 @@ export class ReelCommand implements CliCommandHandling {
             .parseAsync(args, {from: "user"})
             .then(() => exitCode)
             .catch((error: unknown) => {
+                if (isCommanderHelpDisplay(error)) {
+                    return 0;
+                }
                 throw translateCommanderError(error, {
                     missingArgument: USAGE,
                     unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

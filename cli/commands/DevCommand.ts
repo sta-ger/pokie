@@ -12,7 +12,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type DevOptions = {
     packageRoot: string;
@@ -90,7 +90,15 @@ export class DevCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<void> {
-        const options = this.parseArgs(args);
+        let options: DevOptions;
+        try {
+            options = this.parseArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return;
+            }
+            throw error;
+        }
         const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
         let game: PokieGame;
         try {
@@ -201,6 +209,9 @@ export class DevCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,

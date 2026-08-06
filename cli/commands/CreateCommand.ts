@@ -17,7 +17,7 @@ import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
 import {ReadlinePromptAdapter} from "../wizard/ReadlinePromptAdapter.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {BlueprintFileWriteResult, writeBlueprintFileAtomically as writeBlueprintFileAtomicallyDefault} from "./internal/writeBlueprintFileAtomically.js";
 
 type RandomPreset = "default" | "variant";
@@ -108,6 +108,9 @@ export class CreateCommand implements CliCommandHandling {
             try {
                 return Promise.resolve(this.runRandom(args));
             } catch (error) {
+                if (isCommanderHelpDisplay(error)) {
+                    return Promise.resolve(0);
+                }
                 return Promise.reject(error);
             }
         }
@@ -115,7 +118,19 @@ export class CreateCommand implements CliCommandHandling {
             return Promise.resolve(this.runBlank(args));
         }
 
-        const parsed = this.parseDefaultArgs(args);
+        let parsed: {name?: string; out?: string};
+        try {
+            parsed = this.parseDefaultArgs(args);
+        } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve(0);
+            }
+            // Rethrown synchronously (never Promise.reject) -- parseDefaultArgs() itself always throws
+            // synchronously, same as before --help existed, and this path's own contract (see
+            // CreateCommand.test.ts) expects run() to throw synchronously here too, not return a
+            // rejected promise.
+            throw error;
+        }
         return this.runDefault(parsed);
     }
 
@@ -142,6 +157,9 @@ export class CreateCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return 0;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${BLANK_USAGE}`,
                 optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a file path. ${BLANK_USAGE}` : `Unknown option "${flag}". ${BLANK_USAGE}`),
@@ -174,6 +192,9 @@ export class CreateCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) => (flag === "--out" ? `--out requires a file path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`),
@@ -421,6 +442,9 @@ export class CreateCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
                 optionMissingArgument: (flag) => {

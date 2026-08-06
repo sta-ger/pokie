@@ -1,20 +1,45 @@
 import {Command, CommanderError} from "commander";
 
-// Every silent-output config a per-command Commander instance uses: Commander's own default output
-// writes error/help text straight to process.stderr/stdout, but each CliCommandHandling.run() is the
-// one that owns turning a parse failure into a *thrown* Error (for dispatch.ts's own
-// console.error(error.message) to print) or a success into a returned exit code — never both a
-// Commander-written line AND a command-written line for the same failure.
-const SILENT_COMMANDER_OUTPUT = {writeErr: () => undefined, writeOut: () => undefined};
+// Every per-command Commander instance's own output configuration: an ERROR (a parse failure) is
+// always silenced here (writeErr does nothing) -- each CliCommandHandling.run() is the one that owns
+// turning that failure into a *thrown* Error (for dispatch.ts's own console.error(error.message) to
+// print), never both a Commander-written line AND a command-written line for the same failure. HELP
+// text is the opposite: Commander's own outputHelp() is the single, canonical renderer for a command's
+// usage/description/arguments/options/children (see createCommanderCliCommand's own doc comment on why
+// this file never re-derives or duplicates that schema), so writeOut is real here and simply prints it.
+// outputHelp() always calls write() on whichever exact Command instance (parent or nested subcommand)
+// matched "--help"/"-h" -- see Command.prototype.outputHelp in commander's own source -- so this alone
+// is what makes a nested verb's help (e.g. "pokie certification build --help") print that verb's own
+// help, never the parent's, with no bookkeeping needed on any caller's part.
+const COMMANDER_OUTPUT_CONFIG = {writeErr: () => undefined, writeOut: (text: string) => console.log(text)};
 
 // Builds the one per-invocation Commander instance a CliCommandHandling.run() parses its own args
-// with — exitOverride() so a parse failure throws a CommanderError instead of calling
-// process.exit(), helpOption(false) so Commander never intercepts this command's own "--help"/"-h"
-// (see cli/dispatch.ts's isTopLevelHelpRequest for why only the CLI's own --help/-h is special-cased,
-// before any of this ever runs), and silent output so Commander itself never writes anything -- the
-// caller decides what reaches the user from the thrown CommanderError (see translateCommanderError).
+// with — exitOverride() so a parse failure (or a completed help display) throws a CommanderError
+// instead of calling process.exit(), a real "-h, --help" option so every command/verb answers its own
+// --help/-h (see cli/dispatch.ts's isTopLevelHelpRequest for the separate, earlier-checked top-level
+// "pokie --help"/"pokie -h"), and COMMANDER_OUTPUT_CONFIG so a parse failure never doubly prints while
+// a help request prints exactly once, via Commander's own renderer. `.command(...)` subcommands
+// inherit all three of these settings from their parent (see Command.prototype.copyInheritedSettings
+// in commander's own source), so a multi-verb command only ever calls this once, on its own parent.
 export function createCommanderCliCommand(name: string): Command {
-    return new Command(name).exitOverride().helpOption(false).configureOutput(SILENT_COMMANDER_OUTPUT);
+    return new Command(name).exitOverride().helpOption("-h, --help", "Display help for this command.").configureOutput(COMMANDER_OUTPUT_CONFIG);
+}
+
+// True exactly when `error` is a CommanderError produced by a genuine "--help"/"-h" request that
+// Commander already fully handled -- it already ran outputHelp() (so the help text is already on
+// stdout via COMMANDER_OUTPUT_CONFIG's own writeOut above) and thrown only because exitOverride()
+// turns its own internal `process.exit(0)` into a throw instead. A caller that sees this true should
+// treat the invocation as a plain success (exit 0) and run no further action/side effect -- never
+// re-translate it through translateCommanderError, whose fallback (a plain Error wrapping Commander's
+// own generic "(outputHelp)" placeholder message) would misrepresent a successful help request as a
+// failure. Deliberately narrower than "any code starting with commander.help": "commander.help" (from
+// Command.prototype.help()) is also how Commander's own auto-triggered "no subcommand given"/"unknown
+// subcommand" fallback reports itself -- but always with exitCode 1 (see Command.prototype._exit's own
+// `{error: true}` callers), and every per-command run() below already reserves that exact combination
+// for its own frozen "missing/unknown subcommand" usage+exit-1 error text via translateCommanderError's
+// unknownCommand/noCommand messages -- this check must never intercept that case.
+export function isCommanderHelpDisplay(error: unknown): error is CommanderError {
+    return error instanceof CommanderError && error.code === "commander.helpDisplayed";
 }
 
 // The small, per-command set of human-readable messages a translated CommanderError falls back to.

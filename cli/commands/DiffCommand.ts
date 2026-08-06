@@ -11,7 +11,7 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {createCommanderCliCommand, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type DiffFormat = "summary" | "json";
 
@@ -78,6 +78,9 @@ export class DiffCommand implements CliCommandHandling {
 
             return Promise.resolve();
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                return Promise.resolve();
+            }
             return Promise.reject(error);
         }
     }
@@ -135,6 +138,9 @@ export class DiffCommand implements CliCommandHandling {
         try {
             command.parse(args, {from: "user"});
         } catch (error) {
+            if (isCommanderHelpDisplay(error)) {
+                throw error;
+            }
             throw translateCommanderError(error, {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
