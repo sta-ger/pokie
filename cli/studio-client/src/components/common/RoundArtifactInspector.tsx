@@ -7,6 +7,7 @@ import {CodeBlock} from "./CodeBlock";
 import {FeatureStateView} from "./FeatureStateView";
 import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
+import {type PaytableData, PaytableView} from "./PaytableView";
 import {QuickActions} from "./QuickActions";
 import {RoundDetailsTable} from "./RoundDetailsTable";
 import {RoundWinsTable} from "./RoundWinsTable";
@@ -71,6 +72,7 @@ export function RoundArtifactInspector({
     stateBefore,
     stateAfter,
     credits,
+    paytable,
 }: {
     artifact: RoundArtifactDisplayView;
     comparison?: ReplayComparisonView;
@@ -81,6 +83,13 @@ export function RoundArtifactInspector({
     // is only ever supplied by a caller that actually has a live session to read it from (Session Spin).
     // Undefined elsewhere, in which case the row is simply omitted rather than shown as "0" or "unknown".
     credits?: number;
+    // The game's own payout table -- same story as `credits`: not part of RoundArtifact itself (see
+    // PaytableView's own doc comment), only ever suppliable by a caller that has one independently. No
+    // current caller does (Runtime/Replay/Outcome Source never fetch a blueprint alongside a round), so
+    // this is always undefined today and PaytableView renders its own explicit "unavailable" state --
+    // this prop exists so a future caller that does have one doesn't need RoundArtifactInspector itself
+    // to change.
+    paytable?: PaytableData;
 }) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -159,6 +168,10 @@ export function RoundArtifactInspector({
                 <RoundWinsTable wins={step.wins} stake={artifact.stake} />
 
                 <FeatureStateView events={step.featureEvents ?? []} />
+            </PageSection>
+
+            <PageSection legend="Paytable">
+                <PaytableView paytable={paytable} />
             </PageSection>
 
             <PageSection legend="State before / after">

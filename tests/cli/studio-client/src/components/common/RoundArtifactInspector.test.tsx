@@ -402,6 +402,233 @@ describe("Cross-surface round presentation parity", () => {
     });
 });
 
+// P4-POLISH-12: WinOverlay (composing WinningPositionsOverlay and PaylineOverlay onto GameScreenView's own
+// shared grid) and PaytableView are the shared common presentation contracts every round-inspection
+// surface renders a step's payline path and payout table through -- these prove both overlays trace the
+// right (and only the right) cells straight off a line win's own runtime-provided data, and that
+// PaytableView's own honest "unavailable" state (never a table re-derived from the round's own wins) shows
+// up identically wherever RoundArtifactInspector is the underlying renderer -- RoundArtifactInspector
+// directly (Replay, Outcome Source) and RoundSummary (Session Spin) alike.
+describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArtifactInspector)", () => {
+    function cell(container: HTMLElement, text: string): HTMLElement {
+        const found = within(container).getByText(text);
+        const td = found.closest("td");
+        if (!td) {
+            throw new Error(`Expected "${text}" to render inside a <td>.`);
+        }
+        return td;
+    }
+
+    it("traces a line win's own full payline definition (every reel, straight from its metadata) distinctly from the narrower subset of cells that actually won", () => {
+        // A 3-reel line win whose configured payline runs [row 0, row 0, row 0] across all three reels,
+        // but only the first two reels actually matched (winningPositions stops short) -- e.g. a
+        // wild-assisted run broken by the third reel. The payline overlay must still trace all three
+        // reels (this win's own full configured path); the winning-position overlay must only mark the
+        // two that actually won.
+        const artifact = describeRoundArtifact(
+            artifactFor({
+                stake: 1,
+                totalWin: 5,
+                screen: [
+                    ["cherry", "R0P1", "R0P2"],
+                    ["cherry", "R1P1", "R1P2"],
+                    ["lemon", "R2P1", "R2P2"],
+                ],
+                steps: [
+                    {
+                        index: 0,
+                        screen: [
+                            ["cherry", "R0P1", "R0P2"],
+                            ["cherry", "R1P1", "R1P2"],
+                            ["lemon", "R2P1", "R2P2"],
+                        ],
+                        totalWin: 5,
+                        wins: [
+                            {
+                                type: "line",
+                                id: "w1",
+                                symbolId: "cherry",
+                                winAmount: 5,
+                                winningPositions: [[0, 0], [1, 0]],
+                                multiplierBreakdown: [],
+                                metadata: {definition: [0, 0, 0]},
+                            },
+                        ],
+                    },
+                ],
+                wins: [
+                    {
+                        type: "line",
+                        id: "w1",
+                        symbolId: "cherry",
+                        winAmount: 5,
+                        winningPositions: [[0, 0], [1, 0]],
+                        multiplierBreakdown: [],
+                        metadata: {definition: [0, 0, 0]},
+                    },
+                ],
+            }),
+        );
+        const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const screenTable = within(container).getByText("R0P2").closest("table");
+        if (!screenTable) {
+            throw new Error("Expected the round-level screen table to render an ancestor <table>.");
+        }
+
+        // Both matched cells (reel 0 and reel 1, both "cherry") are on the payline's own path too --
+        // winning implies on-payline here.
+        const cherryCells = within(screenTable).getAllByText("cherry").map((textNode) => textNode.closest("td"));
+        expect(cherryCells).toHaveLength(2);
+        for (const cherryCell of cherryCells) {
+            expect(cherryCell).toHaveAttribute("data-winning", "true");
+            expect(cherryCell).toHaveAttribute("data-payline", "true");
+        }
+        // The third reel's own row-0 cell is part of the full definition but never won -- traced, not
+        // highlighted.
+        expect(cell(screenTable, "lemon")).toHaveAttribute("data-payline", "true");
+        expect(cell(screenTable, "lemon")).not.toHaveAttribute("data-winning");
+        // A cell that isn't on the payline's own row at all (reel 0's own row 1) is neither.
+        expect(cell(screenTable, "R0P1")).not.toHaveAttribute("data-payline");
+        expect(cell(screenTable, "R0P1")).not.toHaveAttribute("data-winning");
+    });
+
+    it("traces no payline path for a win type that never carries a line definition (ways/cluster/scatter), rather than fabricating one", () => {
+        const artifact = describeRoundArtifact(
+            stepWithWaysWin(),
+        );
+        const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const screenTable = within(container).getByText("R0P2").closest("table");
+        if (!screenTable) {
+            throw new Error("Expected the round-level screen table to render an ancestor <table>.");
+        }
+        for (const text of ["R0P0", "R0P1", "R0P2", "R1P0", "R1P1", "R1P2", "R2P0", "R2P1", "R2P2"]) {
+            expect(cell(screenTable, text)).not.toHaveAttribute("data-payline");
+        }
+    });
+
+    function stepWithWaysWin() {
+        return artifactFor({
+            stake: 1,
+            totalWin: 3,
+            steps: [
+                {
+                    index: 0,
+                    screen: [
+                        ["R0P0", "R0P1", "R0P2"],
+                        ["R1P0", "R1P1", "R1P2"],
+                        ["R2P0", "R2P1", "R2P2"],
+                    ],
+                    totalWin: 3,
+                    wins: [{type: "ways", id: "w1", symbolId: "cherry", winAmount: 3, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}}],
+                },
+            ],
+            wins: [{type: "ways", id: "w1", symbolId: "cherry", winAmount: 3, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {}}],
+        });
+    }
+
+    it("PaytableView renders its own explicit 'unavailable' state by default -- no current caller has a blueprint's paytable to pass alongside a round artifact", () => {
+        const artifact = describeRoundArtifact(artifactFor());
+        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+
+        expect(getByText(/Paytable unavailable/)).toBeTruthy();
+    });
+
+    it("PaytableView renders a real symbol/match-count/payout table when a caller actually supplies one, proving it's a genuine reusable contract and not permanently unavailable", () => {
+        const artifact = describeRoundArtifact(artifactFor());
+        const {getByText, queryByText} = renderWithMantine(
+            <RoundArtifactInspector artifact={artifact} paytable={{cherry: {"3": 5, "4": 10}, lemon: {"3": 2}}} />,
+        );
+
+        expect(queryByText(/Paytable unavailable/)).toBeNull();
+        const paytable = getByText("cherry").closest("table");
+        if (!paytable) {
+            throw new Error("Expected the Paytable section to render an ancestor <table>.");
+        }
+        expect(within(paytable).getByText("5")).toBeTruthy();
+        expect(within(paytable).getByText("10")).toBeTruthy();
+        expect(within(paytable).getByText("2")).toBeTruthy();
+        // lemon has no "4" match count -- rendered as an explicit placeholder, not a blank cell.
+        const lemonRow = within(paytable).getByText("lemon").closest("tr");
+        if (!lemonRow) {
+            throw new Error("Expected lemon's own row.");
+        }
+        expect(within(lemonRow).getByText("—")).toBeTruthy();
+    });
+
+    it("RoundSummary (Session Spin) shows the same payline overlay and paytable-unavailable state a direct RoundArtifactInspector render of the identical artifact shows", () => {
+        const artifact = winningArtifactWithDefinition();
+
+        const direct = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} />);
+        const viaSummary = renderWithMantine(
+            <RoundSummary
+                session={{
+                    sessionId: "sess-1",
+                    game: GAME,
+                    credits: 1005,
+                    bet: 5,
+                    win: 12.5,
+                    debug: {artifact, stateBefore: {phase: "base"}, stateAfter: {phase: "base"}},
+                }}
+            />,
+        );
+
+        for (const container of [direct.container, viaSummary.container]) {
+            const screenTable = within(container).getByText("R0P2").closest("table") as HTMLElement;
+            // "cherry" wins at both reel 0 and reel 1 -- both on the payline's own traced path.
+            for (const cherryCell of within(screenTable).getAllByText("cherry")) {
+                expect(cherryCell.closest("td")).toHaveAttribute("data-payline", "true");
+            }
+            expect(within(container).getByText(/Paytable unavailable/)).toBeTruthy();
+        }
+    });
+
+    function winningArtifactWithDefinition(): RoundArtifactJson {
+        return artifactFor({
+            stake: 5,
+            totalWin: 12.5,
+            payoutMultiplier: 2.5,
+            screen: [
+                ["cherry", "R0P1", "R0P2"],
+                ["cherry", "R1P1", "R1P2"],
+                ["lemon", "R2P1", "R2P2"],
+            ],
+            steps: [
+                {
+                    index: 0,
+                    screen: [
+                        ["cherry", "R0P1", "R0P2"],
+                        ["cherry", "R1P1", "R1P2"],
+                        ["lemon", "R2P1", "R2P2"],
+                    ],
+                    totalWin: 12.5,
+                    wins: [
+                        {
+                            type: "line",
+                            id: "w1",
+                            symbolId: "cherry",
+                            winAmount: 12.5,
+                            winningPositions: [[0, 0], [1, 0]],
+                            multiplierBreakdown: [],
+                            metadata: {definition: [0, 0, 0]},
+                        },
+                    ],
+                },
+            ],
+            wins: [
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 12.5,
+                    winningPositions: [[0, 0], [1, 0]],
+                    multiplierBreakdown: [],
+                    metadata: {definition: [0, 0, 0]},
+                },
+            ],
+        });
+    }
+});
+
 // P4-POLISH-12: GameScreenView is the shared "screen, with whatever won on it highlighted" contract
 // RoundArtifactInspector renders both the round-level and (when there's more than one step) each step's
 // own screen through -- resolved straight from that screen's own wins' winningPositions, covering every
