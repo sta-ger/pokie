@@ -3,6 +3,9 @@ import {
     FileSessionRepository,
     InMemorySessionRepository,
     loadPokieGame,
+    PokieClientServer,
+    PokieClientServerHandling,
+    PokieClientServerOptions,
     PokieDevServer,
     PokieDevServerHandling,
     PokieDevServerOptions,
@@ -62,6 +65,12 @@ type PinnedPreGeneratedLibraryResolution = Exclude<PreGeneratedLibraryResolution
 // serializers/idempotency/optimistic-locking directly and in-process — never spawns `pokie serve`/
 // `pokie dev` as a subprocess, never reimplements any of their logic.
 //
+// It also owns a second, paired PokieClientServerHandling instance -- the Runtime tab's "Open Player"
+// server (see startInternal()/stopServerIfAny()), started against and stopped alongside the PokieDevServer
+// above exactly the way `pokie dev` pairs the two. This is what makes "Open Player" open the exact same
+// canonical player (cli/client's compiled assets, the same connection/error/retry adapter) `pokie dev`/
+// `pokie client` already serve, rather than Studio reimplementing a second player surface of its own.
+//
 // Session Tools (createSession/getSession/spin) never touch a live GameSessionHandling, a
 // SessionRepository, or a WalletPort directly — they go through RuntimeSessionClient, a small typed
 // HTTP adapter that talks to this manager's own running server exactly like an external client would
@@ -74,6 +83,12 @@ export class StudioRuntimeManager {
 
     private readonly loadGame: typeof loadPokieGame;
     private readonly createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling;
+    // Where the compiled cli/client assets live (dist/cli/client at runtime) -- the exact same
+    // clientRoot ClientCommand/DevCommand are given, so the player this manager serves is byte-for-byte
+    // the same canonical player, not a second copy. See those commands' own doc comments for why this
+    // has no default that resolves it here (needs import.meta.url); StudioServer wires the real one in.
+    private readonly clientRoot: string;
+    private readonly createClientServer: (clientRoot: string, options: PokieClientServerOptions) => PokieClientServerHandling;
     private readonly resolveOutcomeLibrary: (projectRoot: string, selector: OutcomeLibrarySelector) => Promise<ResolvedOutcomeLibrary>;
     // Crosses from "the projectRoot Studio has open" to "a real, loadable runtime" before this.loadGame
     // ever touches it -- see materializeRuntimePackage.ts's own doc comment. Defaults to a no-op
@@ -89,6 +104,12 @@ export class StudioRuntimeManager {
 
     private state: StudioRuntimeStateView = {status: "stopped"};
     private server: PokieDevServerHandling | undefined;
+    // The Runtime tab's "Open Player" server -- a real PokieClientServer pointed at `server`'s own
+    // address, started/stopped alongside it (see startInternal()/stopServerIfAny()). Never a route on
+    // this Studio server itself: keeping it a genuinely separate, independently-listening server is what
+    // makes "Open Player" byte-for-byte the same player surface `pokie dev` opens, not a Studio-specific
+    // reimplementation of it.
+    private clientServer: PokieClientServerHandling | undefined;
     private sessionClient: RuntimeSessionClient | undefined;
     private debugEnabled = false;
     private defaultSeed: string | number | undefined;
@@ -127,12 +148,17 @@ export class StudioRuntimeManager {
             new StudioOutcomeLibraryService().resolveLibrary(projectRoot, selector),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         pokieVersion = "unknown",
+        clientRoot = "",
+        createClientServer: (clientRoot: string, options: PokieClientServerOptions) => PokieClientServerHandling = (clientRoot, options) =>
+            new PokieClientServer(clientRoot, options),
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
         this.resolveOutcomeLibrary = resolveOutcomeLibrary;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.pokieVersion = pokieVersion;
+        this.clientRoot = clientRoot;
+        this.createClientServer = createClientServer;
     }
 
     public getState(): StudioRuntimeStateView {
@@ -422,7 +448,23 @@ export class StudioRuntimeManager {
             return this.fail(error);
         }
 
+        // Started right alongside the API server, pointed at its own just-resolved address -- the exact
+        // same pairing DevCommand.run() sets up for `pokie dev` (see that class's own doc comment). A
+        // failure here must not leave the API server it was meant to accompany listening on a port
+        // nobody will ever stop -- `server` is stopped directly (this.server is never assigned until
+        // both servers are confirmed up), rather than through stopServerIfAny(), which would also try to
+        // stop a clientServer that never started.
+        const clientServer = this.createClientServer(this.clientRoot, {host: undefined, port: 0, apiAddress: address});
+        let playerAddress;
+        try {
+            playerAddress = await clientServer.start();
+        } catch (error) {
+            await server.stop();
+            return this.fail(error);
+        }
+
         this.server = server;
+        this.clientServer = clientServer;
         const baseUrl = `http://${address.host}:${address.port}`;
         this.sessionClient = new RuntimeSessionClient(baseUrl);
         this.debugEnabled = options.debug;
@@ -435,6 +477,7 @@ export class StudioRuntimeManager {
             host: address.host,
             port: address.port,
             baseUrl,
+            playerUrl: `http://${playerAddress.host}:${playerAddress.port}`,
             debug: options.debug,
             repositoryMode: options.repositoryMode,
             startedAt: new Date().toISOString(),
@@ -452,10 +495,14 @@ export class StudioRuntimeManager {
 
     private async stopServerIfAny(): Promise<void> {
         this.state = {status: "stopping"};
+        if (this.clientServer) {
+            await this.clientServer.stop();
+        }
         if (this.server) {
             await this.server.stop();
         }
         this.server = undefined;
+        this.clientServer = undefined;
         this.sessionClient = undefined;
         this.preGeneratedLibrary = undefined;
         this.state = {status: "stopped"};

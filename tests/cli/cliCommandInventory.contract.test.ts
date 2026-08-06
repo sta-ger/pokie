@@ -494,14 +494,22 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
             }),
 
+        // Also this group's "default --no-open" evidence (the first "client" valid case that omits
+        // --no-open): the real openBrowserImpl is called with no other gate, so it directly observes
+        // "false" -- the default (open) branch's own recorded value, same shape as dev's/studio's
+        // "accepted values, default --no-open" cases.
         "client::<packageRoot> (default host/port)": (key) =>
-            new ClientCommand((clientRoot, options) => {
-                observe(key, "--port", options.port);
-                observe(key, "--host", options.host);
-                observe(key, "--api-host", options.apiAddress?.host);
-                observe(key, "--api-port", options.apiAddress?.port);
-                return stubAddressServer(options.port ?? 4000);
-            }),
+            new ClientCommand(
+                (clientRoot, options) => {
+                    observe(key, "--port", options.port);
+                    observe(key, "--host", options.host);
+                    observe(key, "--api-host", options.apiAddress?.host);
+                    observe(key, "--api-port", options.apiAddress?.port);
+                    return stubAddressServer(options.port ?? 4000);
+                },
+                "",
+                () => observe(key, "--no-open", "false"),
+            ),
         "client::<packageRoot> --port --host --api-host --api-port (accepted values)": (key) =>
             new ClientCommand((clientRoot, options) => {
                 observe(key, "--port", options.port);
@@ -510,6 +518,23 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 observe(key, "--api-port", options.apiAddress?.port);
                 return stubAddressServer(options.port ?? 4444);
             }),
+        // --no-open's accepted "true" has no dependency seam of its own (openBrowser, called only when
+        // !noOpen, is simply never invoked) -- same shape as dev's own analogous case.
+        // deferValueUnlessCalled() reads the real openBrowserCalled boolean once dispatch resolves, so a
+        // regression that fires openBrowser despite --no-open surfaces as "false" instead of being
+        // silently missed.
+        "client::<packageRoot> --no-open (skips the accepted-but-unexercised browser-open step)": (key) => {
+            let openBrowserCalled = false;
+            deferValueUnlessCalled(key, "--no-open", () => openBrowserCalled, "true");
+            return new ClientCommand(
+                (clientRoot, options) => stubAddressServer(options.port ?? 4000),
+                "",
+                () => {
+                    openBrowserCalled = true;
+                    observe(key, "--no-open", "false");
+                },
+            );
+        },
 
         // The bare/named path (no --blank/--random) always runs the interactive wizard -- see
         // CreateCommand's own doc comment -- so these three cases stub isInteractiveTerminal true, the

@@ -10,6 +10,12 @@ export type StudioRuntimeStateView =
           host: string;
           port: number;
           baseUrl: string;
+          // Where the exact same canonical player `pokie dev`/`pokie client` open (see
+          // StudioRuntimeManager's own doc comment) is reachable for this runtime instance -- backs the
+          // Runtime tab's "Open Player" action. A real, independently-listening PokieClientServer, not a
+          // route on this Studio server itself, so opening it is byte-for-byte the same player surface
+          // (and the same connection/error/retry adapter) as `pokie dev`/`pokie client` already serve.
+          playerUrl: string;
           debug: boolean;
           repositoryMode: "memory" | "file";
           startedAt: string;
