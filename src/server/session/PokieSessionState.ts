@@ -1,4 +1,6 @@
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
+import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
+import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {
     context?: PokieGameContext;
@@ -30,4 +32,20 @@ export type PokieSessionState = {
     // every spin, same lifecycle as roundPayload above. Never part of a public response — see
     // PokieDevServer's public/internal split.
     roundDebugPayload?: Record<string, unknown>;
+    // The SessionCapturePolicy (see SessionCapturePolicy.ts) that produced this particular round
+    // capture — present only from the first captureRoundPokieSessionState call a session goes through
+    // onward (session-creation's own captureInitialPokieSessionState never sets it: there's no "round"
+    // yet to have a capture mode for). Absent entirely on a legacy record captured before this policy
+    // existed — never backfilled or guessed at, so a reader can reliably tell "this state predates
+    // capture policies" apart from "this state was captured under an explicit partial policy".
+    capturePolicy?: SessionCapturePolicy;
+    // Present only when capturePolicy.mode === "full" AND the played session's shape supported building
+    // one (see captureRoundPokieSessionState.ts) — a complete, hashable RoundArtifact for this exact
+    // round, built straight off the same already-computed win-evaluation result the round itself used
+    // (see buildRoundArtifactFromSession), never a second calculation path.
+    roundArtifact?: RoundArtifact;
+    // Present only when capturePolicy.mode === "full" but roundArtifact above could not be built —
+    // e.g. the session doesn't implement the VideoSlotSessionHandling shape buildRoundArtifactFromSession
+    // requires. An honest diagnostic of *why* no artifact exists, never a fabricated/placeholder one.
+    roundArtifactUnavailableReason?: string;
 };

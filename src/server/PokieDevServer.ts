@@ -24,6 +24,7 @@ import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js"
 import {isVersionedSessionRepository} from "./session/isVersionedSessionRepository.js";
 import type {PokieSessionState} from "./session/PokieSessionState.js";
 import {resolveGameSessionSerializer} from "./session/resolveGameSessionSerializer.js";
+import type {SessionCaptureMode} from "./session/SessionCapturePolicy.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
 import {SpinCommandHandler} from "./spin/SpinCommandHandler.js";
 import type {SpinCommandHandling} from "./spin/SpinCommandHandling.js";
@@ -111,6 +112,11 @@ export class PokieDevServer implements PokieDevServerHandling {
     // See PokieDevServerOptions.captureDebugSessionData's own doc comment. Defaults to true, so a plain
     // `new PokieDevServer(game)` persists exactly what every prior release already did.
     private readonly captureDebugSessionData: boolean;
+    // See PokieDevServerOptions.sessionCapturePolicyMode/pokieVersion's own doc comments. Defaults to
+    // "partial"/"unknown", so a plain `new PokieDevServer(game)` persists exactly what every prior
+    // release already did.
+    private readonly sessionCapturePolicyMode: SessionCaptureMode;
+    private readonly pokieVersion: string;
     private readonly spinCommandHandler: SpinCommandHandling;
     private readonly preGeneratedOutcomeLibrary: WeightedOutcomeLibrary | undefined;
     private readonly preGeneratedLibraryHash: string | undefined;
@@ -128,6 +134,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.wallet = options.wallet ?? new InMemoryWallet();
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.captureDebugSessionData = options.captureDebugSessionData ?? true;
+        this.sessionCapturePolicyMode = options.sessionCapturePolicyMode ?? "partial";
+        this.pokieVersion = options.pokieVersion ?? "unknown";
         // SpinCommandHandler always settles a spin through a TransactionalWalletPort. this.wallet
         // itself stays a plain WalletPort (the type PokieDevServerOptions has always exposed, so a
         // caller's existing custom implementation keeps compiling and working unchanged) — if it
@@ -145,6 +153,8 @@ export class PokieDevServer implements PokieDevServerHandling {
             options.singleInstanceDeployment ?? false,
             undefined,
             this.captureDebugSessionData,
+            this.sessionCapturePolicyMode,
+            this.pokieVersion,
         );
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {

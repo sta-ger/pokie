@@ -2,6 +2,7 @@ import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLib
 import type {IdempotencyRepository} from "./idempotency/IdempotencyRepository.js";
 import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSessionRepository.js";
 import type {PreGeneratedSpinCommandResult} from "./pregenerated/PreGeneratedSpinCommandResult.js";
+import type {SessionCaptureMode} from "./session/SessionCapturePolicy.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
 import type {SpinCommandResult} from "./spin/SpinCommandResult.js";
 import type {SpinOperationLog} from "./spin/SpinOperationLog.js";
@@ -42,6 +43,24 @@ export type PokieDevServerOptions = {
     // defaults to true — a dev tool should default to full inspection, not the conservative production
     // posture this option otherwise preserves.
     captureDebugSessionData?: boolean;
+    // Additive, opt-in-only, defaults to "partial" (preserving every prior release's own persisted-state
+    // shape exactly): the versioned SessionCapturePolicy (see SessionCapturePolicy.ts) every played
+    // round is captured under, via captureRoundPokieSessionState. "full" additionally builds and
+    // persists a complete RoundArtifact off the runtime-produced session/win-evaluation state (see
+    // buildRoundArtifactFromSession) as `roundArtifact` on the persisted PokieSessionState — screen,
+    // wins/positions, steps/feature events, provenance, and a debug summary (command, credits,
+    // before/after state, plus the serializer's own debug payload when captureDebugSessionData is also
+    // true). Studio's own local runtime (see StudioRuntimeManager) always requests "full", independent of
+    // its own debug toggle — a dev tool should default to a fully inspectable recorded round, not the
+    // conservative "partial" posture this option otherwise preserves for production. A session whose
+    // played type doesn't have the shape buildRoundArtifactFromSession requires still captures
+    // everything else normally; it just gets `roundArtifactUnavailableReason` instead of a fabricated
+    // `roundArtifact` — see PokieSessionState's own doc comment.
+    sessionCapturePolicyMode?: SessionCaptureMode;
+    // Only ever read when sessionCapturePolicyMode is "full", to stamp a built RoundArtifact's own
+    // provenance.pokieVersion (see RoundArtifactProvenance). Defaults to "unknown" — the same fallback
+    // StudioReplayExecutionService already uses when it isn't given a real one either.
+    pokieVersion?: string;
     // Additive, opt-in-only pre-generated round support (see PokieDevServer's own doc comment,
     // "Pre-generated rounds"): when given, `POST /pregenerated-sessions` and
     // `POST /pregenerated-sessions/:id/spin` become active, drawing rounds from this fixed,

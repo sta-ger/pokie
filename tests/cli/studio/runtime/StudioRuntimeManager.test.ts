@@ -8,6 +8,10 @@ import {
     PokieDevServerOptions,
     PokieGame,
     PokieGameManifest,
+    SymbolsCombination,
+    VideoSlotConfig,
+    VideoSlotSessionHandling,
+    VideoSlotWinCalculator,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
 } from "pokie";
@@ -47,6 +51,56 @@ function createFakeGame(): PokieGame {
 
 function fakeLoadGame(): () => Promise<PokieGame> {
     return () => Promise.resolve(createFakeGame());
+}
+
+function winEvaluationResultWithWin(): WinEvaluationResult<string> {
+    const config = new VideoSlotConfig();
+    const winCalculator = new VideoSlotWinCalculator(config);
+    const symbols = new SymbolsCombination<string>().fromMatrix([
+        ["A", "A", "A"],
+        ["A", "K", "Q"],
+        ["A", "K", "Q"],
+        ["K", "Q", "J"],
+        ["Q", "J", "10"],
+    ]);
+    winCalculator.calculateWin(config.getAvailableBets()[0], symbols);
+    return winCalculator.getWinEvaluationResult();
+}
+
+// A real GameSessionHandling + VideoSlotSessionHandling-shaped fake (getSymbolsCombination/
+// getWinEvaluationResult) -- unlike createFakeSession() above, which only has the plain
+// GameSessionHandling shape PokieDevServer needs for wallet/idempotency, this is what the
+// "sessionCapturePolicyMode: full" tests below need to actually exercise buildRoundArtifactFromSession
+// end-to-end through a real running server, not just a plain fake.
+function createFakeVideoSlotSession(): GameSessionHandling & VideoSlotSessionHandling<string> {
+    let credits = 1000;
+    const bet = 5;
+    const screen = [["A", "A", "A"]];
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        canPlayNextGame: () => credits >= bet,
+        play: () => {
+            credits -= bet;
+        },
+        getWinAmount: () => winEvaluationResultWithWin().getTotalWin(),
+        getSymbolsCombination: () => ({toMatrix: () => screen}),
+        getWinEvaluationResult: () => winEvaluationResultWithWin(),
+    } as unknown as GameSessionHandling & VideoSlotSessionHandling<string>;
+}
+
+function createFakeVideoSlotGame(): PokieGame {
+    return {getManifest: () => manifest, createSession: () => createFakeVideoSlotSession()};
+}
+
+function fakeLoadVideoSlotGame(): () => Promise<PokieGame> {
+    return () => Promise.resolve(createFakeVideoSlotGame());
 }
 
 function startOptions(overrides: Partial<ValidatedStartRuntimeRequest> = {}): ValidatedStartRuntimeRequest {
@@ -124,6 +178,44 @@ describe("StudioRuntimeManager", () => {
         expect(capturedOptions).toHaveLength(2);
         expect(capturedOptions[0].captureDebugSessionData).toBe(false);
         expect(capturedOptions[1].captureDebugSessionData).toBe(true);
+    });
+
+    it('always requests the underlying server\'s "full" sessionCapturePolicyMode, independent of this runtime\'s own debug toggle', async () => {
+        const capturedOptions: PokieDevServerOptions[] = [];
+        const createServer = (game: PokieGame, options: PokieDevServerOptions): PokieDevServerHandling => {
+            capturedOptions.push(options);
+            return new PokieDevServer(game, options);
+        };
+
+        const debugOffManager = new StudioRuntimeManager(fakeLoadGame(), createServer);
+        await debugOffManager.start("/fake/project", startOptions({debug: false}));
+        await debugOffManager.stop();
+
+        const debugOnManager = new StudioRuntimeManager(fakeLoadGame(), createServer);
+        await debugOnManager.start("/fake/project", startOptions({debug: true}));
+        await debugOnManager.stop();
+
+        // Unlike captureDebugSessionData above (tied 1:1 to the debug toggle), sessionCapturePolicyMode
+        // is always "full" -- a Studio/dev session's whole point is a fully inspectable recorded round,
+        // and turning off `?debug=1`-only serializer content should never also drop the RoundArtifact.
+        expect(capturedOptions).toHaveLength(2);
+        expect(capturedOptions[0].sessionCapturePolicyMode).toBe("full");
+        expect(capturedOptions[1].sessionCapturePolicyMode).toBe("full");
+    });
+
+    it("stamps the server's own pokieVersion option from this manager's own constructor-injected pokieVersion", async () => {
+        const capturedOptions: PokieDevServerOptions[] = [];
+        const createServer = (game: PokieGame, options: PokieDevServerOptions): PokieDevServerHandling => {
+            capturedOptions.push(options);
+            return new PokieDevServer(game, options);
+        };
+
+        const manager = new StudioRuntimeManager(fakeLoadGame(), createServer, undefined, undefined, "7.7.7");
+        await manager.start("/fake/project", startOptions());
+        await manager.stop();
+
+        expect(capturedOptions).toHaveLength(1);
+        expect(capturedOptions[0].pokieVersion).toBe("7.7.7");
     });
 
     it("rejects a second start while already running (conflict), without disturbing the running one", async () => {
@@ -322,6 +414,38 @@ describe("StudioRuntimeManager", () => {
                 expect(createdOn.session.debug?.stateAfter).toBeDefined();
             }
             await debugOn.stop();
+        });
+
+        it("a real spin persists a complete RoundArtifact (screen/wins/steps/provenance/betMode/stake) — the underlying server's own \"full\" sessionCapturePolicyMode, inspectable through debug mode", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadVideoSlotGame(), undefined, undefined, undefined, "5.5.5");
+            await manager.start("/fake/project", startOptions({debug: true}));
+
+            const created = await manager.createSession();
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+
+            const spun = await manager.spin(created.session.sessionId);
+            expect(spun.status).toBe("ok");
+            if (spun.status !== "ok") {
+                return;
+            }
+
+            const stateAfter = spun.session.debug?.stateAfter as Record<string, unknown> | undefined;
+            expect(stateAfter).toBeDefined();
+            expect(stateAfter?.capturePolicy).toEqual({version: 1, mode: "full", captureDebugPayloads: true});
+            expect(stateAfter?.roundArtifactUnavailableReason).toBeUndefined();
+
+            const artifact = stateAfter?.roundArtifact as Record<string, unknown>;
+            expect(artifact).toBeDefined();
+            expect(artifact.provenance).toEqual({game: manifest, pokieVersion: "5.5.5"});
+            expect(artifact.screen).toEqual([["A", "A", "A"]]);
+            expect(Array.isArray(artifact.wins)).toBe(true);
+            expect(Array.isArray(artifact.steps)).toBe(true);
+            expect((artifact.debug as Record<string, unknown>).command).toBe("spin");
+
+            await manager.stop();
         });
 
         it("records studioRequestId on a spin's own result and in recentSpins with debug mode off, unlike debug.requestId", async () => {
