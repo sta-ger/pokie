@@ -38,4 +38,6 @@ proof that lives partly outside this repo's own `git diff`:
 
 | Artifact | Step | What it proves |
 | --- | --- | --- |
-| `p4-polish-09-pokie-examples-migration.txt` | `P4-POLISH-09` | The companion `pokie-examples` repository's own committed shared-player migration (`ui.ts`/`data.ts`/`vite.config.js`/`tsconfig*.json`, `utils.ts` deleted, `tests/ui.test.ts` added) — a separate git repository whose changes can never appear in this repo's own `base_sha..head_sha` diff — plus both targeted tests' real passing output. |
+| `p4-polish-09-pokie-examples-migration.txt` | `P4-POLISH-09` | Narrative index for the companion `pokie-examples` repository's committed shared-player migration, plus both targeted tests' real passing output. |
+| `p4-polish-09-pokie-examples-migration.patch` | `P4-POLISH-09` | The full `git diff af43220..9e242fa` from the companion repo (wide context), `git apply`-able — the actual migration diff, not a summary of it. |
+| `pokie-examples-migration/` | `P4-POLISH-09` | Byte-for-byte post-migration snapshots of `src/data.ts`, `src/ui/ui.ts`, `tests/ui.test.ts`, `vite.config.js`, `tsconfig.json`, `tsconfig.test.json` from the companion checkout at commit `9e242fa` — the migrated source itself, physically present in this repo's own `base_sha..head_sha` diff (`src/ui/utils.ts` is deliberately absent: the migration deletes it). |

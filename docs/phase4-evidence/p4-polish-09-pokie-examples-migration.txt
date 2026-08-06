@@ -3,11 +3,33 @@ Captured: 2026-08-06, from this task's own worktree plus its read-write companio
 /pokie-examples (container_path per this task's own companion_workspace wiring; host-relative paths
 deliberately not used anywhere below).
 
-Why this file exists: pokie-examples is a separate git repository from this one. A
-`git diff base_sha..head_sha` computed only over this repo (pokie) can never show pokie-examples'
-own source/config/test changes -- they live in a different repository's own history. This file is
-the auditable record of that companion repository's own real, committed state, reproducible by
-anyone with access to the same /pokie-examples checkout this container provides.
+CORRECTION (2026-08-06, second pass): the prior version of this file only asserted the companion
+commit's existence via `git log`/`git diff --stat` transcripts. A reviewer correctly rejected that as
+unauditable from this repo's own `base_sha..head_sha` diff -- a transcript is a claim, not the
+migration itself. This repo's own submission now also carries the actual migration content, committed
+alongside this file:
+  - `p4-polish-09-pokie-examples-migration.patch` -- the full `git diff af43220..9e242fa` from the
+    companion repo, generated with wide context (-U20) so it reads as complete before/after source,
+    not just changed hunks. Directly `git apply`-able against a `pokie-examples` checkout at af43220.
+  - `pokie-examples-migration/src/data.ts`, `pokie-examples-migration/src/ui/ui.ts`,
+    `pokie-examples-migration/tests/ui.test.ts`, `pokie-examples-migration/vite.config.js`,
+    `pokie-examples-migration/tsconfig.json`, `pokie-examples-migration/tsconfig.test.json` -- full
+    post-migration snapshots of every changed/added file, copied byte-for-byte from the companion
+    checkout's own working tree at commit 9e242fa. `pokie-examples-migration/src/ui/utils.ts` is
+    deliberately absent -- the migration deletes it entirely (see "utils.ts removed" below and the
+    patch's own `deleted file mode` hunk for `src/ui/utils.ts`).
+These are real files in this repo's own `base_sha..head_sha` diff -- the examples source/config/test
+migration is now included, not just referenced.
+
+Why this file (and the patch/snapshots above) exist at all, rather than the pokie-examples commit
+being merged directly into this repo's history: pokie-examples is a separate git repository with its
+own independent commit graph -- `9e242fa` cannot become an ancestor of this repo's own HEAD without
+rewriting one repo's history into the other's, which this task's cross_workspace_report_contract
+forbids (the report commit_sha must remain this repo's own HEAD; the companion SHA is recorded as
+evidence, not folded in). Embedding the full diff and full file snapshots is the closest equivalent
+available inside that constraint: the actual migrated source is physically present and byte-diffable
+in this submission, reproducible by anyone with access to the same /pokie-examples checkout this
+container provides.
 
 == Companion commit ==
 $ cd /pokie-examples && git log -1 9e242fa0ccfc27e1ecd6dcb7d6343577ea179c41
