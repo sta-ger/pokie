@@ -7,7 +7,9 @@ import {
     PokieDevServerHandling,
     PokieDevServerOptions,
     PokieGame,
+    PokieJsonRoundArtifactProjector,
     WeightedOutcomeLibrary,
+    type RoundArtifactJson,
 } from "pokie";
 import crypto from "crypto";
 import fs from "fs";
@@ -540,16 +542,49 @@ export class StudioRuntimeManager {
                 view.sessionVersion = internalRecord.sessionVersion;
             }
             if (this.debugEnabled) {
+                const stateAfterRecord =
+                    typeof internalRecord.stateAfter === "object" && internalRecord.stateAfter !== null
+                        ? (internalRecord.stateAfter as {roundArtifact?: unknown; roundArtifactUnavailableReason?: string})
+                        : undefined;
                 view.debug = {
                     stateAfter: internalRecord.stateAfter,
                     stateBefore: internalRecord.stateBefore,
                     debugData: internalRecord.debugData as Record<string, unknown> | undefined,
                     requestId: internalRecord.requestId as string | undefined,
+                    ...this.projectRoundArtifact(stateAfterRecord?.roundArtifact, stateAfterRecord?.roundArtifactUnavailableReason),
                 };
             }
         }
 
         return view;
+    }
+
+    // Shared by both buildSessionView (live spins, reading PokieSessionState.roundArtifact) and
+    // buildPreGeneratedSessionView (pre-generated spins, reading PreGeneratedRoundInternalView.artifact)
+    // -- one raw RoundArtifact in, the same JSON-projected/hashed shape RoundArtifactInspector already
+    // expects out. Defensive: both producers already build the raw artifact via the same
+    // buildRoundArtifactFromSession helper StudioReplayExecutionService itself uses, so projection should
+    // never actually fail here -- but this reads across a wire boundary, so a malformed artifact reports
+    // an honest reason rather than throwing and losing the whole spin response.
+    //
+    // `raw` here is already the result of RuntimeSessionClient's own `response.json()` -- genuinely plain
+    // JSON content, but parsed by the platform's `fetch` implementation, which isn't guaranteed to
+    // construct its result objects against this module's own realm's `Object.prototype` (observable, for
+    // example, under Jest's per-test-file VM sandboxing). toCanonicalJson's plain-object check is a
+    // strict prototype identity check by design (see its own doc comment), so it would otherwise reject
+    // genuinely-plain cross-realm objects as if they were something exotic. Round-tripping through this
+    // realm's own JSON.parse/JSON.stringify first re-materializes the same content as plain objects
+    // native to this realm before it ever reaches toCanonicalJson.
+    private projectRoundArtifact(raw: unknown, unavailableReason: string | undefined): {artifact?: RoundArtifactJson; artifactUnavailableReason?: string} {
+        if (raw === undefined) {
+            return unavailableReason !== undefined ? {artifactUnavailableReason: unavailableReason} : {};
+        }
+        try {
+            const local = JSON.parse(JSON.stringify(raw)) as Parameters<PokieJsonRoundArtifactProjector["project"]>[0];
+            return {artifact: new PokieJsonRoundArtifactProjector().project(local)};
+        } catch (error) {
+            return {artifactUnavailableReason: `Round artifact could not be projected: ${error instanceof Error ? error.message : String(error)}`};
+        }
     }
 
     // The pre-generated counterpart to buildSessionView() -- PreGeneratedSessionResponse's own `internal`
@@ -566,8 +601,16 @@ export class StudioRuntimeManager {
         const {internal, ...publicFields} = record;
         const view = {...publicFields} as StudioRuntimeSessionView;
 
-        if (this.debugEnabled && internal !== undefined) {
-            view.debug = internal as StudioRuntimeSessionView["debug"];
+        if (this.debugEnabled && typeof internal === "object" && internal !== null) {
+            // PreGeneratedRoundInternalView's own `artifact` is the raw RoundArtifact this round was
+            // selected with -- always present on that shape, but still raw (unhashed, uncanonicalized),
+            // unlike the projected form projectRoundArtifact below produces. `selection`/`runtime` pass
+            // through unchanged: the Runtime tab's Advanced JSON dump still shows them as-is.
+            const {artifact: rawArtifact, ...restInternal} = internal as Record<string, unknown>;
+            view.debug = {
+                ...restInternal,
+                ...this.projectRoundArtifact(rawArtifact, undefined),
+            } as StudioRuntimeSessionView["debug"];
         }
 
         return view;

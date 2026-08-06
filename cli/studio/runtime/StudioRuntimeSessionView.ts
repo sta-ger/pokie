@@ -1,3 +1,5 @@
+import type {RoundArtifactJson} from "pokie";
+
 // Studio's own session response DTO for the Runtime tab's Session Tools — built from
 // RuntimeSessionClient's raw PokieDevServer response by StudioRuntimeManager (see its own doc
 // comment): every public field PokieDevServer returned is spread through as-is (including any rich
@@ -36,9 +38,20 @@ export type StudioRuntimeSessionView = {
     studioRecordedAt?: string;
     studioSource?: "live" | "pre-generated";
     debug?: {
-        stateAfter: unknown;
+        stateAfter?: unknown;
         stateBefore?: unknown;
         debugData?: Record<string, unknown>;
         requestId?: string;
-    };
+        // The same complete, JSON-projected, hashed RoundArtifact StudioReplayExecutionService already
+        // builds for a reproduced round -- present whenever this exact round's session supported building
+        // one (see PokieSessionState.roundArtifact / PreGeneratedRoundInternalView.artifact), so a Session
+        // Spin can be inspected through the identical RoundArtifactInspector component the Replay tab's
+        // other sources already use, rather than a bespoke raw-JSON dump of this field's raw inputs.
+        artifact?: RoundArtifactJson;
+        // Present instead of `artifact` whenever "full" capture was requested but this exact session
+        // couldn't produce one (e.g. a non-video-slot game), or the raw artifact failed to project -- an
+        // honest diagnostic, never silently omitted in favor of a bare absence that could read as "nothing
+        // was ever captured here".
+        artifactUnavailableReason?: string;
+    } & Record<string, unknown>;
 } & Record<string, unknown>;

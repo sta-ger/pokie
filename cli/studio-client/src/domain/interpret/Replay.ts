@@ -708,7 +708,11 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     }
     const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
     let completeness: string;
-    if (hasDebugBundle) {
+    if (spin.debug?.artifact !== undefined) {
+        completeness = "Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.";
+    } else if (spin.debug?.artifactUnavailableReason !== undefined) {
+        completeness = `Partial -- debug data was captured, but no round artifact could be built for this game: ${spin.debug.artifactUnavailableReason}`;
+    } else if (hasDebugBundle) {
         completeness = "Full -- recorded with its debug bundle (state and RNG/debug data).";
     } else if (spin.screen) {
         completeness = "Partial -- screen recorded, no debug data (debug mode was off when this spin was made).";
