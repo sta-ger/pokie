@@ -108,11 +108,17 @@ export function RoundArtifactInspector({
     comparison,
     stateBefore,
     stateAfter,
+    credits,
 }: {
     artifact: RoundArtifactDisplayView;
     comparison?: ReplayComparisonView;
     stateBefore?: unknown;
     stateAfter?: unknown;
+    // Wallet credits immediately after this round -- a session-level concept, not part of RoundArtifact
+    // itself (an artifact records one round's own outcome, never the wallet balance around it), so this
+    // is only ever supplied by a caller that actually has a live session to read it from (Session Spin).
+    // Undefined elsewhere, in which case the row is simply omitted rather than shown as "0" or "unknown".
+    credits?: number;
 }) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -197,6 +203,12 @@ export function RoundArtifactInspector({
                             {artifact.totalWin.toFixed(2)} ({artifact.payoutMultiplier.toFixed(2)}x)
                         </Table.Td>
                     </Table.Tr>
+                    {credits !== undefined && (
+                        <Table.Tr>
+                            <Table.Th>Credits</Table.Th>
+                            <Table.Td>{credits}</Table.Td>
+                        </Table.Tr>
+                    )}
                 </Table.Tbody>
             </Table>
 

@@ -8,6 +8,7 @@ import {
     describeLoadedReplay,
     describeReplayEntryStatus,
     describeReplayReproducibility,
+    describeRoundArtifact,
     isReplayListEntryReproducible,
     type LoadedReplayCardView,
     type ReplayCapabilitiesView,
@@ -666,108 +667,100 @@ export function ReplayTab({
 
                     {findMethod === "spin" && selectedSpin && (
                         <div>
-                            {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce. */}
-                            <Table withRowBorders={false} mb="sm">
-                                <Table.Tbody>
-                                    <Table.Tr>
-                                        <Table.Th>Game</Table.Th>
-                                        <Table.Td style={{overflowWrap: "anywhere"}}>
-                                            {selectedSpin.game.name} (id: &quot;{selectedSpin.game.id}&quot;, v{selectedSpin.game.version})
-                                        </Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Session</Table.Th>
-                                        <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.sessionId}</Table.Td>
-                                    </Table.Tr>
-                                    {selectedSpin.studioRound !== undefined && (
-                                        <Table.Tr>
-                                            <Table.Th>Round</Table.Th>
-                                            <Table.Td>
-                                                Round {selectedSpin.studioRound} in session {selectedSpin.sessionId} — this session&apos;s own round
-                                                count, not a global one.
-                                            </Table.Td>
-                                        </Table.Tr>
-                                    )}
-                                    {selectedSpin.studioRequestId && (
-                                        <Table.Tr>
-                                            <Table.Th>Request id</Table.Th>
-                                            <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.studioRequestId}</Table.Td>
-                                        </Table.Tr>
-                                    )}
-                                    {selectedSpin.studioRecordedAt && (
-                                        <Table.Tr>
-                                            <Table.Th>Recorded</Table.Th>
-                                            <Table.Td>{new Date(selectedSpin.studioRecordedAt).toLocaleString()}</Table.Td>
-                                        </Table.Tr>
-                                    )}
-                                    {selectedSpin.studioSource && (
-                                        <Table.Tr>
-                                            <Table.Th>Source</Table.Th>
-                                            <Table.Td>{selectedSpin.studioSource === "pre-generated" ? "Pre-generated outcome library" : "Live spin"}</Table.Td>
-                                        </Table.Tr>
-                                    )}
-                                    <Table.Tr>
-                                        <Table.Th>Credits</Table.Th>
-                                        <Table.Td>{selectedSpin.credits}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Bet</Table.Th>
-                                        <Table.Td>{selectedSpin.bet ?? "—"}</Table.Td>
-                                    </Table.Tr>
-                                    <Table.Tr>
-                                        <Table.Th>Win</Table.Th>
-                                        <Table.Td>{selectedSpin.win ?? 0}</Table.Td>
-                                    </Table.Tr>
-                                </Table.Tbody>
-                            </Table>
-
-                            {selectedSpin.screen ? (
-                                <ScreenTable screen={describeRuntimeScreen(selectedSpin.screen) ?? []} />
+                            {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
+                                its Identities/Timestamp rows already name the session/round/request/recorded-at/source. */}
+                            {selectedSpin.debug?.artifact ? (
+                                // A complete RoundArtifact was captured for this exact spin (see
+                                // StudioRuntimeManager.buildSessionView/buildPreGeneratedSessionView) -- the same
+                                // inspector Replay Artifact/Recreate from seed/Recent Simulation results already use,
+                                // so a recorded spin is inspected the identical way rather than through a bespoke
+                                // raw-JSON view. `credits` is passed through separately since it's a wallet/session
+                                // concept RoundArtifact itself never carries.
+                                <RoundArtifactInspector
+                                    artifact={describeRoundArtifact(selectedSpin.debug.artifact)}
+                                    stateBefore={selectedSpin.debug.stateBefore}
+                                    stateAfter={selectedSpin.debug.stateAfter}
+                                    credits={selectedSpin.credits}
+                                />
                             ) : (
-                                <Text size="sm" c="dimmed">
-                                    No screen available.
-                                </Text>
-                            )}
+                                <div>
+                                    {selectedSpin.debug?.artifactUnavailableReason && (
+                                        <Alert color="yellow" variant="light" title="Round artifact unavailable" mb="sm">
+                                            <Text size="sm">{selectedSpin.debug.artifactUnavailableReason}</Text>
+                                        </Alert>
+                                    )}
+                                    <Table withRowBorders={false} mb="sm">
+                                        <Table.Tbody>
+                                            <Table.Tr>
+                                                <Table.Th>Game</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>
+                                                    {selectedSpin.game.name} (id: &quot;{selectedSpin.game.id}&quot;, v{selectedSpin.game.version})
+                                                </Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Credits</Table.Th>
+                                                <Table.Td>{selectedSpin.credits}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Bet</Table.Th>
+                                                <Table.Td>{selectedSpin.bet ?? "—"}</Table.Td>
+                                            </Table.Tr>
+                                            <Table.Tr>
+                                                <Table.Th>Win</Table.Th>
+                                                <Table.Td>{selectedSpin.win ?? 0}</Table.Td>
+                                            </Table.Tr>
+                                        </Table.Tbody>
+                                    </Table>
 
-                            <AdvancedDisclosure detail="raw JSON, debug data, raw state">
-                                {selectedSpin.debug?.debugData && (
-                                    <div>
-                                        <Group gap="xs" mb={4}>
-                                            <Text size="sm" fw={600}>
-                                                Debug data
-                                            </Text>
-                                            <Badge size="xs" variant="light">
-                                                game-provided, may include RNG/reel-stop data
-                                            </Badge>
-                                        </Group>
-                                        <CodeBlock>{JSON.stringify(selectedSpin.debug.debugData, null, 2)}</CodeBlock>
-                                    </div>
-                                )}
-                                {(selectedSpin.debug?.stateBefore !== undefined || selectedSpin.debug?.stateAfter !== undefined) && (
-                                    <div>
-                                        {selectedSpin.debug?.stateBefore !== undefined && (
+                                    {selectedSpin.screen ? (
+                                        <ScreenTable screen={describeRuntimeScreen(selectedSpin.screen) ?? []} />
+                                    ) : (
+                                        <Text size="sm" c="dimmed">
+                                            No screen available.
+                                        </Text>
+                                    )}
+
+                                    <AdvancedDisclosure detail="raw JSON, debug data, raw state">
+                                        {selectedSpin.debug?.debugData && (
                                             <div>
-                                                <Text size="sm" fw={600} mt="sm" mb={4}>
-                                                    Raw state before
-                                                </Text>
-                                                <CodeBlock>{JSON.stringify(selectedSpin.debug.stateBefore, null, 2)}</CodeBlock>
+                                                <Group gap="xs" mb={4}>
+                                                    <Text size="sm" fw={600}>
+                                                        Debug data
+                                                    </Text>
+                                                    <Badge size="xs" variant="light">
+                                                        game-provided, may include RNG/reel-stop data
+                                                    </Badge>
+                                                </Group>
+                                                <CodeBlock>{JSON.stringify(selectedSpin.debug.debugData, null, 2)}</CodeBlock>
                                             </div>
                                         )}
-                                        {selectedSpin.debug?.stateAfter !== undefined && (
+                                        {(selectedSpin.debug?.stateBefore !== undefined || selectedSpin.debug?.stateAfter !== undefined) && (
                                             <div>
-                                                <Text size="sm" fw={600} mt="sm" mb={4}>
-                                                    Raw state after
-                                                </Text>
-                                                <CodeBlock>{JSON.stringify(selectedSpin.debug.stateAfter, null, 2)}</CodeBlock>
+                                                {selectedSpin.debug?.stateBefore !== undefined && (
+                                                    <div>
+                                                        <Text size="sm" fw={600} mt="sm" mb={4}>
+                                                            Raw state before
+                                                        </Text>
+                                                        <CodeBlock>{JSON.stringify(selectedSpin.debug.stateBefore, null, 2)}</CodeBlock>
+                                                    </div>
+                                                )}
+                                                {selectedSpin.debug?.stateAfter !== undefined && (
+                                                    <div>
+                                                        <Text size="sm" fw={600} mt="sm" mb={4}>
+                                                            Raw state after
+                                                        </Text>
+                                                        <CodeBlock>{JSON.stringify(selectedSpin.debug.stateAfter, null, 2)}</CodeBlock>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
-                                    </div>
-                                )}
-                                <Text size="sm" fw={600} mt="sm" mb={4}>
-                                    Full session view
-                                </Text>
-                                <CodeBlock>{JSON.stringify(selectedSpin, null, 2)}</CodeBlock>
-                            </AdvancedDisclosure>
+                                        <Text size="sm" fw={600} mt="sm" mb={4}>
+                                            Full session view
+                                        </Text>
+                                        <CodeBlock>{JSON.stringify(selectedSpin, null, 2)}</CodeBlock>
+                                    </AdvancedDisclosure>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -799,6 +792,20 @@ export function ReplayTab({
                                                 {artifactReproducibility.remediation}
                                             </Text>
                                         </Alert>
+                                    )}
+                                    {/* The recorded round itself, inspected through the same RoundArtifactInspector
+                                        every other source uses -- available the moment this record is loaded, never
+                                        gated behind clicking Reproduce below. `comparison` is intentionally omitted
+                                        here: there is nothing to compare against yet, only once Reproduce actually
+                                        produces a recreated result (see the reproduced-result inspector further
+                                        down, which does carry `comparison`). A malformed artifact (artifactWarnings
+                                        non-empty) is never rendered here -- the warnings above already explain why. */}
+                                    {expected.artifact && expected.artifactWarnings.length === 0 && (
+                                        <RoundArtifactInspector
+                                            artifact={describeRoundArtifact(expected.artifact)}
+                                            stateBefore={expected.stateBefore}
+                                            stateAfter={expected.stateAfter}
+                                        />
                                     )}
                                 </div>
                             )}
@@ -837,7 +844,12 @@ export function ReplayTab({
                                             setJobLoaded(true);
                                         }}
                                     >
-                                        Reproduce
+                                        {/* Only "Replay Artifact" ever names one specific recorded round this run
+                                            claims to reproduce -- Recreate from seed/Recent Simulation are always a
+                                            fresh parameterized run with no recorded round behind it (see
+                                            runReproducibilityLabel's own doc comment), so "Reproduce" would overstate
+                                            what's actually happening for them. */}
+                                        {findMethod === "artifact" ? "Reproduce" : "Run again"}
                                     </Button>
                                 )}
                                 {active && (
@@ -855,7 +867,14 @@ export function ReplayTab({
                             {jobLoaded && progress !== undefined && (
                                 <div>
                                     {progress.status === "failed" && error === undefined && (
-                                        <Alert color="red" variant="light" role="alert" title="Reproduce failed" mb="sm" style={{overflowWrap: "anywhere"}}>
+                                        <Alert
+                                            color="red"
+                                            variant="light"
+                                            role="alert"
+                                            title={findMethod === "artifact" ? "Reproduce failed" : "Run failed"}
+                                            mb="sm"
+                                            style={{overflowWrap: "anywhere"}}
+                                        >
                                             <Text size="sm" mb="xs">
                                                 The replay session hit an error partway through -- most likely a bug in the game&apos;s own logic
                                                 triggered by this seed/round, not something wrong with Replay itself. &quot;Run again with the same

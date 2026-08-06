@@ -686,11 +686,18 @@ export type StudioRuntimeSessionView = {
     studioRecordedAt?: string;
     studioSource?: "live" | "pre-generated";
     debug?: {
-        stateAfter: unknown;
+        stateAfter?: unknown;
         stateBefore?: unknown;
         debugData?: Record<string, unknown>;
         requestId?: string;
-    };
+        // The same complete, JSON-projected, hashed RoundArtifact the Replay tab's other sources already
+        // render through RoundArtifactInspector -- present whenever this exact round's session supported
+        // building one, so Session Spin can use the identical inspector instead of a bespoke raw-JSON view.
+        artifact?: RoundArtifactJson;
+        // Present instead of `artifact` whenever this session couldn't produce one (e.g. a non-video-slot
+        // game) -- an honest diagnostic, never a silent absence.
+        artifactUnavailableReason?: string;
+    } & Record<string, unknown>;
 } & Record<string, unknown>;
 
 // GET /api/project/deployment/targets' own DTO — see

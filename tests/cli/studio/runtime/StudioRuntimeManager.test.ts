@@ -458,6 +458,16 @@ describe("StudioRuntimeManager", () => {
             expect(Array.isArray(artifact.steps)).toBe(true);
             expect((artifact.debug as Record<string, unknown>).command).toBe("spin");
 
+            // The same raw artifact, but projected into the JSON-safe, hashed shape
+            // RoundArtifactInspector expects -- lets the Replay tab's Session Spin picker route straight
+            // through that shared inspector instead of a bespoke raw-JSON dump (see
+            // StudioRuntimeManager.projectRoundArtifact / StudioRuntimeSessionView.debug.artifact).
+            expect(spun.session.debug?.artifact).toBeDefined();
+            expect(spun.session.debug?.artifactUnavailableReason).toBeUndefined();
+            expect(spun.session.debug?.artifact?.screen).toEqual([["A", "A", "A"]]);
+            expect(typeof spun.session.debug?.artifact?.hash).toBe("string");
+            expect((spun.session.debug?.artifact?.hash as string).length).toBeGreaterThan(0);
+
             await manager.stop();
         });
 
@@ -737,6 +747,32 @@ describe("StudioRuntimeManager", () => {
                 // buildPreGeneratedSessionView's own doc comment) -- unlike the live path, this is
                 // never hoisted because PokieDevServer's own pre-generated route never sends one.
                 expect(spun.session.sessionVersion).toBeUndefined();
+            }
+
+            await manager.stop();
+        });
+
+        it("projects a pre-generated round's own library artifact into debug.artifact, the same shape a live spin's debug bundle carries", async () => {
+            const library = fakeOutcomeLibrary("lib-handoff");
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, stubResolver({status: "ok", library, source: "json"}));
+            await manager.start("/fake/project", startOptions({debug: true, preGeneratedLibrarySelector: {kind: "json", path: "./libs/base.json"}}));
+
+            const created = await manager.createSession(undefined, 1000);
+            expect(created.status).toBe("ok");
+            if (created.status !== "ok") {
+                return;
+            }
+
+            const spun = await manager.spin(created.session.sessionId);
+            expect(spun.status).toBe("ok");
+            if (spun.status === "ok") {
+                expect(spun.session.debug?.artifact).toBeDefined();
+                expect(spun.session.debug?.artifactUnavailableReason).toBeUndefined();
+                expect(spun.session.debug?.artifact?.provenance).toEqual({game: manifest, pokieVersion: "1.0.0"});
+                expect(typeof spun.session.debug?.artifact?.hash).toBe("string");
+                // The rest of PreGeneratedRoundInternalView (selection/runtime) is still passed through
+                // for the Runtime tab's own raw-JSON Advanced view, unaffected by the artifact projection.
+                expect(spun.session.debug?.selection).toBeDefined();
             }
 
             await manager.stop();
