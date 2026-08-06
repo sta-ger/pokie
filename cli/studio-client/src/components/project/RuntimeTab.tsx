@@ -575,6 +575,15 @@ export function RuntimeTab({
                                 </Table.Tr>
                             </Table.Tbody>
                         </Table>
+                        <QuickActions>
+                            <Button component="a" href={state.playerUrl} target="_blank" rel="noreferrer">
+                                Open Player
+                            </Button>
+                        </QuickActions>
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Opens the same canonical player <code>pokie dev</code>/<code>pokie client</code> serve, already pointed at this runtime
+                            instance — not a Studio-specific preview.
+                        </Text>
                         <Anchor href={state.baseUrl} target="_blank" rel="noreferrer">
                             Open runtime endpoint in a new tab
                         </Anchor>

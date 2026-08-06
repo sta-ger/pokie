@@ -3,6 +3,9 @@ import {
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
     GameSessionHandling,
+    PokieClientServer,
+    PokieClientServerHandling,
+    PokieClientServerOptions,
     PokieDevServer,
     PokieDevServerHandling,
     PokieDevServerOptions,
@@ -168,9 +171,92 @@ describe("StudioRuntimeManager", () => {
         expect(result.view.port).toBeGreaterThan(0);
         expect(result.view.host).toBe("127.0.0.1");
         expect(result.view.baseUrl).toBe(`http://${result.view.host}:${result.view.port}`);
+        // A real, separately-listening "Open Player" server is started alongside the API server -- see
+        // the "Open Player" describe block below for it actually serving the canonical player and being
+        // torn down on stop().
+        expect(result.view.playerUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+        expect(result.view.playerUrl).not.toBe(result.view.baseUrl);
         expect(manager.getState()).toEqual(result.view);
 
         await manager.stop();
+    });
+
+    describe('"Open Player" -- the same canonical player pokie dev/pokie client serve, paired with this runtime', () => {
+        it("starts the client (player) server pointed at the API server's own just-started address, using this manager's own clientRoot", async () => {
+            const capturedCalls: Array<{clientRoot: string; options: PokieClientServerOptions}> = [];
+            const createClientServer = (clientRoot: string, options: PokieClientServerOptions): PokieClientServerHandling => {
+                capturedCalls.push({clientRoot, options});
+                return new PokieClientServer(clientRoot, options);
+            };
+            const manager = new StudioRuntimeManager(
+                fakeLoadGame(),
+                undefined,
+                undefined,
+                undefined,
+                "unknown",
+                "/fake/client-root",
+                createClientServer,
+            );
+
+            const result = await manager.start("/fake/project", startOptions());
+
+            expect(result.status).toBe("started");
+            if (result.status !== "started" || result.view.status !== "running") {
+                return;
+            }
+            expect(capturedCalls).toHaveLength(1);
+            expect(capturedCalls[0].clientRoot).toBe("/fake/client-root");
+            expect(capturedCalls[0].options.apiAddress).toEqual({host: result.view.host, port: result.view.port});
+
+            await manager.stop();
+        });
+
+        it("actually serves the canonical player's /config against this runtime's own API address -- not a Studio-specific reimplementation", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+            const result = await manager.start("/fake/project", startOptions());
+            expect(result.status).toBe("started");
+            if (result.status !== "started" || result.view.status !== "running") {
+                return;
+            }
+
+            const response = await fetch(`${result.view.playerUrl}/config`);
+            expect(response.status).toBe(200);
+            expect(await response.json()).toEqual({apiBaseUrl: result.view.baseUrl});
+
+            await manager.stop();
+        });
+
+        it("stops the client (player) server on stop(), alongside the API server", async () => {
+            const manager = new StudioRuntimeManager(fakeLoadGame());
+            const result = await manager.start("/fake/project", startOptions());
+            expect(result.status).toBe("started");
+            if (result.status !== "started" || result.view.status !== "running") {
+                return;
+            }
+            const {playerUrl} = result.view;
+
+            await manager.stop();
+
+            await expect(fetch(`${playerUrl}/config`)).rejects.toBeDefined();
+        });
+
+        it("fails the whole start cleanly, stopping the API server it already started, when the player server fails to start", async () => {
+            const failingCreateClientServer = (): PokieClientServerHandling => ({
+                start: () => Promise.reject(new Error("player server port already in use")),
+                stop: () => Promise.resolve(),
+            });
+            const manager = new StudioRuntimeManager(fakeLoadGame(), undefined, undefined, undefined, "unknown", "", failingCreateClientServer);
+
+            const result = await manager.start("/fake/project", startOptions());
+
+            expect(result.status).toBe("failed");
+            if (result.status === "failed") {
+                expect(result.error).toBe("player server port already in use");
+            }
+            expect(manager.getState()).toEqual({status: "failed", error: "player server port already in use"});
+            // Never left "running" against an orphaned API server -- Session Tools report not-running.
+            expect(await manager.createSession()).toEqual({status: "not-running"});
+        });
     });
 
     it("ties the underlying server's own capture policy (captureDebugSessionData) to this runtime's own debug toggle", async () => {

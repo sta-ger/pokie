@@ -651,6 +651,10 @@ export type StudioRuntimeStateView =
           host: string;
           port: number;
           baseUrl: string;
+          // The same canonical player `pokie dev`/`pokie client` open, reachable for this runtime
+          // instance -- see cli/studio/runtime/StudioRuntimeStateView.ts's own doc comment. Backs the
+          // Runtime tab's "Open Player" link.
+          playerUrl: string;
           debug: boolean;
           repositoryMode: "memory" | "file";
           startedAt: string;

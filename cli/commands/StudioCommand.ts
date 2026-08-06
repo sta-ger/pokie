@@ -35,6 +35,11 @@ export type StudioCommandDependencies = {
     // import.meta.url, which only works in cli/pokie.ts's real ESM build. cli/pokie.ts computes it
     // once (ownStudioRoot()) and passes it in.
     studioRoot?: string;
+    // Where the compiled cli/client assets live (dist/cli/client at runtime) -- forwarded to
+    // StudioServerOptions.clientRoot, so the Runtime tab's "Open Player" opens the exact same canonical
+    // player ClientCommand/DevCommand serve. Same "no default here, cli/pokie.ts computes it once and
+    // passes it in" reasoning as studioRoot above.
+    clientRoot?: string;
     process?: NodeJS.Process;
 };
 
@@ -50,6 +55,7 @@ export class StudioCommand implements CliCommandHandling {
     private readonly homeService: StudioHomeService;
     private readonly blueprintService: StudioBlueprintService;
     private readonly studioRoot: string;
+    private readonly clientRoot: string;
     private readonly process: NodeJS.Process;
     private readonly pokieVersion: string;
     // The one materializing resolver this command builds -- shared, by identity, between homeService's
@@ -78,6 +84,7 @@ export class StudioCommand implements CliCommandHandling {
                 (location) => projectRegistrationService.describeLocation(location),
             );
         this.studioRoot = dependencies.studioRoot ?? "";
+        this.clientRoot = dependencies.clientRoot ?? "";
         this.blueprintService =
             dependencies.blueprintService ?? new StudioBlueprintService(pokieVersion, this.studioRoot, this.homeService);
         this.process = dependencies.process ?? process;
@@ -112,6 +119,7 @@ export class StudioCommand implements CliCommandHandling {
             port: options.port,
             pokieVersion: this.pokieVersion,
             studioRoot: this.studioRoot,
+            clientRoot: this.clientRoot,
             initialContext: context,
             homeService: this.homeService,
             blueprintService: this.blueprintService,

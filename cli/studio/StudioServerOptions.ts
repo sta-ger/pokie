@@ -29,6 +29,12 @@ export type StudioServerOptions = {
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — same
     // "computed once by cli/pokie.ts, passed in" pattern as PokieClientServer's clientRoot.
     studioRoot: string;
+    // Where the compiled cli/client assets live (dist/cli/client at runtime) -- passed straight through
+    // to runtimeManager's default StudioRuntimeManager, so the Runtime tab's "Open Player" server is the
+    // exact same clientRoot ClientCommand/DevCommand are given (see StudioRuntimeManager's own doc
+    // comment). Defaults to "" (never resolved here -- see those commands' own comments on why); a
+    // caller supplying their own `runtimeManager` never needs this at all.
+    clientRoot?: string;
     initialContext?: StudioContext;
     // Drives every Home nav flow (POST/GET /api/home/*: recent projects, create, init, build
     // preview/build, open) — see StudioHomeService. Required rather than defaulted: a default
