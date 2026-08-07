@@ -14,6 +14,8 @@ import {
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
+import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
+import {validateArtifactBuildRequest, ArtifactBuildRequestInput} from "./artifacts/validateArtifactBuildRequest.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
@@ -178,6 +180,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
+    private readonly artifactBuildService: StudioArtifactBuildService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
     private readonly projectRegistrationService: StudioProjectRegistrationService;
@@ -216,6 +219,7 @@ export class StudioServer implements StudioServerHandling {
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
         this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
+        this.artifactBuildService = options.artifactBuildService ?? new StudioArtifactBuildService(this.pokieVersion);
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
@@ -681,6 +685,21 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/stakeengine/export") {
             await this.handleExportStakeEngine(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/artifacts/targets") {
+            await this.handleListArtifactTargets(res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/artifacts/preview") {
+            await this.handlePreviewArtifact(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/artifacts/build") {
+            await this.handleBuildArtifact(req, res);
             return;
         }
 
@@ -1492,6 +1511,75 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private statusForStakeEngineExport(status: "ok" | "conflict" | "invalid" | "load-error"): number {
+        if (status === "ok") {
+            return 201;
+        }
+        return status === "conflict" ? 409 : 200;
+    }
+
+    // GET /api/project/artifacts/targets -- see StudioArtifactBuildService.listTargets's own doc comment.
+    private async handleListArtifactTargets(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.artifactBuildService.listTargets(this.currentContext.projectRoot));
+    }
+
+    // POST /api/project/artifacts/preview -- the pre-build counterpart to POST /api/project/artifacts/build
+    // (see StudioArtifactBuildService.preview's own doc comment): same request shape, same 400/409 status
+    // conventions as the build route below, but never writes anything -- a "conflict" here is the exact same
+    // ArtifactBuildConflictError a subsequent build would hit, reported before the user ever clicks Build.
+    private async handlePreviewArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateArtifactBuildRequest((body ?? {}) as ArtifactBuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.artifactBuildService.preview(this.currentContext.projectRoot, validated.target, validated.outDir);
+        this.sendJson(res, this.statusForArtifactPreview(result.status), result);
+    }
+
+    // Unlike statusForArtifactBuild below, "ok" here is always 200 -- a preview never creates anything, so
+    // there is no "201 Created" to report; a "conflict" is still 409, the same real conflict a subsequent
+    // build would hit.
+    private statusForArtifactPreview(status: "ok" | "unsupported" | "conflict" | "error"): number {
+        return status === "conflict" ? 409 : 200;
+    }
+
+    // POST /api/project/artifacts/build -- statusForArtifactBuild below mirrors statusForParSheetExport's
+    // own convention (a new artifact is 201, a conflict is 409, everything else -- unsupported/error -- is
+    // a normal 200 parsed result, not a thrown error).
+    private async handleBuildArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateArtifactBuildRequest((body ?? {}) as ArtifactBuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.artifactBuildService.build(this.currentContext.projectRoot, validated.target, validated.outDir);
+        this.sendJson(res, this.statusForArtifactBuild(result.status), result);
+    }
+
+    private statusForArtifactBuild(status: "ok" | "unsupported" | "conflict" | "error"): number {
         if (status === "ok") {
             return 201;
         }

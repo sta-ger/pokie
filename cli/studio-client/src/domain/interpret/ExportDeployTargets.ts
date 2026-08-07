@@ -1,28 +1,32 @@
-import type {StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
+import type {StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary, StudioProjectCapability} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 import {BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_READ_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY} from "./ProjectDashboard";
 
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
-// project's outputs are built/published from. It classifies, but never merges, the three backend
-// pipelines this Studio actually has (Stake Engine Export's own static exporter, the outcome-library
-// generator/registry, and the External Adapter SDK's own registered-target pipeline). Stake Engine
-// Export still runs through StudioStakeEngineExportService unchanged, outcome-library generation still
-// runs through StudioOutcomeLibraryGenerateService unchanged, and every registered
-// ExternalDeploymentTarget still runs through useDeploymentManager unchanged -- ExportDeployTab now runs
-// each of those pipelines directly (see its own doc comment), but this module's own job is unchanged: it
-// only ever *describes* those pipelines' existing targets side by side, it never routes one through
-// another's registry. See docs/external-adapter-sdk.md's own "Why Stake Engine Export isn't an
-// ExternalDeploymentTarget" -- that split is confirmed structural, not an oversight this shell should
-// paper over.
+// project's outputs are built/published from. It classifies, but never merges, the four backend pipelines
+// this Studio actually has (Stake Engine Export's own static exporter, the outcome-library
+// generator/registry, ArtifactBuilderRegistry's own "pokie build <project> --target <target>" conversions,
+// and the External Adapter SDK's own registered-target pipeline). Stake Engine Export still runs through
+// StudioStakeEngineExportService unchanged, outcome-library generation still runs through
+// StudioOutcomeLibraryGenerateService unchanged, every "buildArtifact" card runs through
+// StudioArtifactBuildService/ArtifactBuilderRegistry directly (see describeArtifactBuildTargetCards below
+// and StudioArtifactBuildService's own doc comment for why that's a genuinely separate operation from the
+// first two, not a duplicate of either), and every registered ExternalDeploymentTarget still runs through
+// useDeploymentManager unchanged -- ExportDeployTab runs each of those pipelines directly (see its own
+// doc comment), but this module's own job is unchanged: it only ever *describes* those pipelines' existing
+// targets side by side, it never routes one through another's registry. See docs/external-adapter-sdk.md's
+// own "Why Stake Engine Export isn't an ExternalDeploymentTarget" -- that split is confirmed structural,
+// not an oversight this shell should paper over.
 //
-// Every card here is only ever offered once this project's own resolved capabilities actually grant what
-// it needs -- see canGenerateOutcomeLibrary/canReachCanonicalOutcomeLibrary below -- rather than one
-// blanket "this Studio can build/run something" bit gating the whole page regardless of which pipeline a
-// capability actually corresponds to. The External Adapter SDK's own bundled local-json-example demo
-// target is never described as a card at all, on any project (see LOCAL_JSON_EXAMPLE_TARGET_ID's own doc
-// comment) -- it exists to exercise the SDK end to end, not as a real deployment pipeline this page
-// should ever present alongside genuine registered targets.
-export type ExportDeployTargetKind = "staticExport" | "outcomeLibrary" | "remoteDeployment";
+// Every card here is only ever offered once this project's own resolved capabilities/ProjectType actually
+// grant what it needs -- see canGenerateOutcomeLibrary/canReachCanonicalOutcomeLibrary and
+// describeArtifactBuildTargetCards's own `supported` filter below -- rather than one blanket "this Studio
+// can build/run something" bit gating the whole page regardless of which pipeline a capability actually
+// corresponds to. The External Adapter SDK's own bundled local-json-example demo target is never described
+// as a card at all, on any project (see LOCAL_JSON_EXAMPLE_TARGET_ID's own doc comment) -- it exists to
+// exercise the SDK end to end, not as a real deployment pipeline this page should ever present alongside
+// genuine registered targets.
+export type ExportDeployTargetKind = "staticExport" | "outcomeLibrary" | "buildArtifact" | "remoteDeployment";
 
 export type ExportDeployTargetCard = {
     readonly kind: ExportDeployTargetKind;
@@ -42,7 +46,75 @@ export type ExportDeployTargetCard = {
     // cards backed by a real registered target (never the placeholder), so ExportDeployTab can run
     // deployment.run(publish, card.deploymentTarget) directly against it.
     readonly deploymentTarget?: StudioDeploymentTargetSummary;
+    // The ArtifactBuilderRegistry target this card describes -- present only for "buildArtifact" cards, so
+    // ExportDeployTab can run buildArtifact(fetchImpl, card.artifactTarget) directly against it.
+    readonly artifactTarget?: StudioArtifactTargetType;
 };
+
+// Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
+// tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm vocabulary and semantics
+// ArtifactBuilderRegistry.describe() itself already reports (see ArtifactBuilderRegistry.ts's own
+// UNSUPPORTED_NOTES), restated here only as a label/one-line purpose for this card -- never a second,
+// independently-decided description of what building a target does or doesn't do. "wasm" is never actually
+// reachable as a card (ArtifactBuilderRegistry reports it as supported by no ProjectType today -- see
+// ArtifactBuilderRegistry's own "wasm" doc comment), but is listed here for the same exhaustiveness reason
+// GROUP_LABELS below covers every ExportDeployTargetKind.
+const ARTIFACT_TARGET_CARD_INFO: Readonly<Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string}>> = {
+    tsPackage: {
+        label: "TypeScript Game Package",
+        purpose: "Builds a runnable tsPackage from this project's own GameBlueprint source -- the same conversion \"pokie build --target tsPackage\" runs.",
+        destination: "A new package directory (default: a \"tsPackage\" sibling of this project).",
+    },
+    outcomeLibrary: {
+        label: "Outcome library (republish)",
+        purpose: "Republishes this project's own already-computed outcome library bundle to a new location -- never re-derives it from a game (see the Outcome libraries group above for that).",
+        destination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
+    },
+    stakeAdapter: {
+        label: "Stake Engine export (republish)",
+        purpose: "Republishes this project's own already-exported Stake Engine bundle to a new location -- never re-derives it from an outcome library (see the Static export group above for that).",
+        destination: "A new export directory (default: a \"stakeAdapter\" sibling of this project).",
+    },
+    parWorkbook: {
+        label: "PAR sheet (.xlsx)",
+        purpose: "Republishes this project's own already-loaded PAR sheet to a new .xlsx workbook file -- never derives one from a package/blueprint.",
+        destination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
+    },
+    wasm: {
+        label: "WASM",
+        purpose: "No builder is registered for this target today -- no ProjectType grants the capability it requires.",
+        destination: "Not available.",
+    },
+};
+
+// Builds one card per ArtifactBuilderRegistry target the active project's own resolved ProjectType
+// actually supports (`supported`, computed server-side by StudioArtifactBuildService.listTargets -- the
+// same registry.supportsConversionFrom() check "pokie build" itself runs) -- an unsupported target is
+// filtered out entirely rather than rendered disabled, same convention as every other group on this page.
+export function describeArtifactBuildTargetCards(targets: readonly StudioArtifactTargetView[]): ExportDeployTargetCard[] {
+    return targets
+        .filter((entry) => entry.supported)
+        .map((entry) => {
+            const info = ARTIFACT_TARGET_CARD_INFO[entry.target];
+            return {
+                kind: "buildArtifact",
+                id: `artifact-${entry.target}`,
+                label: info.label,
+                adapter: 'ArtifactBuilderRegistry ("pokie build")',
+                version: "--",
+                purpose: info.purpose,
+                destination: info.destination,
+                writePublishBehavior:
+                    "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.",
+                capabilities: [],
+                limits: entry.unsupportedNotes,
+                prerequisites: [],
+                locality: "local",
+                compatibility: `The exact same ArtifactBuilderRegistry conversion "pokie build <project> --target ${entry.target}" runs -- CLI and Studio always agree on what's buildable and what it writes.`,
+                artifactTarget: entry.target,
+            };
+        });
+}
 
 // Mirrors STAKE_ENGINE_MANIFEST_SCHEMA_VERSION (src/stakeengine/StakeEngineManifest.ts) as a plain literal
 // -- studio-client never imports the pokie package directly (unlike the Studio server), and Stake Engine
