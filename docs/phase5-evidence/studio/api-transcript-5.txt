@@ -1,0 +1,316 @@
+=== deployment-run-with-modes: POST /api/project/deployment/runs -> 400 (application/json) ===
+{
+  "error": "modes[0].modeName must be a non-empty string."
+}
+
+=== blueprint-random: POST /api/home/blueprints/random -> 200 (application/json) ===
+{
+  "status": "ok",
+  "blueprint": {
+    "manifest": {
+      "id": "peppy-frisky-talisman",
+      "name": "Peppy Frisky Talisman",
+      "version": "0.1.0",
+      "description": "Randomly generated video slot (seed 99)."
+    },
+    "reels": 4,
+    "rows": 4,
+    "symbols": [
+      "J",
+      "Q",
+      "K",
+      "7",
+      "8",
+      "10",
+      "A"
+    ],
+    "paytable": {
+      "7": {
+        "3": 4,
+        "4": 8
+      },
+      "8": {
+        "3": 3,
+        "4": 6
+      },
+      "10": {
+        "3": 2,
+        "4": 4
+      },
+      "J": {
+        "3": 7,
+        "4": 14
+      },
+      "Q": {
+        "3": 6,
+        "4": 12
+      },
+      "K": {
+        "3": 5,
+        "4": 10
+      },
+      "A": {
+        "3": 1,
+        "4": 2
+      }
+    },
+    "reelStripGeneration": [
+      {
+        "type": "generated",
+        "length": 28,
+        "symbolWeights": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "J": 1,
+          "Q": 2,
+          "K": 3,
+          "A": 7
+        },
+        "seed": 786391225
+      },
+      {
+        "type": "generated",
+        "length": 28,
+        "symbolWeights": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "J": 1,
+          "Q": 2,
+          "K": 3,
+          "A": 7
+        },
+        "seed": 138271700
+      },
+      {
+        "type": "generated",
+        "length": 28,
+        "symbolWeights": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "J": 1,
+          "Q": 2,
+          "K": 3,
+ 
+
+=== blueprint-random-2: POST /api/home/blueprints/random -> 200 (application/json) ===
+{
+  "status": "ok",
+  "blueprint": {
+    "manifest": {
+      "id": "peppy-frisky-talisman",
+      "name": "Peppy Frisky Talisman",
+      "version": "0.1.0",
+      "description": "Randomly generated video slot (seed 99)."
+    },
+    "reels": 4,
+    "rows": 4,
+    "symbols": [
+      "J",
+      "Q",
+      "K",
+      "7",
+      "8",
+      "10",
+      "A"
+    ],
+    "paytable": {
+      "7": {
+        "3": 4,
+        "4": 8
+      },
+      "8": {
+        "3": 3,
+        "4": 6
+      },
+      "10": {
+        "3": 2,
+        "4": 4
+      },
+      "J": {
+        "3": 7,
+        "4": 14
+      },
+      "Q": {
+        "3": 6,
+        "4": 12
+      },
+      "K": {
+        "3": 5,
+        "4": 10
+      },
+      "A": {
+        "3": 1,
+        "4": 2
+      }
+    },
+    "reelStripGeneration": [
+      {
+        "type": "generated",
+        "length": 28,
+        "symbolWeights": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "J": 1,
+          "Q": 2,
+          "K": 3,
+          "A": 7
+        },
+        "seed": 786391225
+      },
+      {
+        "type": "generated",
+        "length": 28,
+        "symbolWeights": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "J": 1,
+          "Q": 2,
+          "K": 3,
+          "A": 7
+        },
+        "seed": 138271700
+      },
+      {
+        "type": "generated",
+        "length": 28,
+        "symbolWeights": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "J": 1,
+          "Q": 2,
+          "K": 3,
+ 
+
+=== blueprint-validate: POST /api/home/blueprints/validate -> 200 (application/json) ===
+{
+  "status": "ok",
+  "warnings": []
+}
+
+=== blueprint-build-preview: POST /api/home/blueprints/build-preview -> 200 (application/json) ===
+{
+  "status": "ok",
+  "warnings": [],
+  "manifest": {
+    "id": "peppy-frisky-talisman",
+    "name": "Peppy Frisky Talisman",
+    "version": "0.1.0",
+    "description": "Randomly generated video slot (seed 99)."
+  },
+  "reels": 4,
+  "rows": 4,
+  "symbolsCount": 7,
+  "blueprintHash": "sha256:2c99a7d299a6ad99dc972666405705ca176ab00cf0ad789193d6413bb70e11f3",
+  "expectedFiles": [
+    "README.md",
+    "dist/index.js",
+    "package-lock.json",
+    "package.json",
+    "src/index.ts",
+    "tsconfig.json"
+  ],
+  "projectRoot": "/workspace/peppy-frisky-talisman",
+  "destinationHasContent": false,
+  "createFiles": [
+    "README.md",
+    "dist/index.js",
+    "package-lock.json",
+    "package.json",
+    "src/index.ts",
+    "tsconfig.json"
+  ],
+  "updateFiles": [],
+  "deleteFiles": []
+}
+
+=== blueprint-reel-preview: POST /api/home/blueprints/reel-strip-generation-preview -> 200 (application/json) ===
+{
+  "status": "ok",
+  "errors": [],
+  "warnings": [],
+  "reels": [
+    {
+      "reelIndex": 0,
+      "type": "generated",
+      "seed": 786391225,
+      "success": true,
+      "attemptsUsed": 1,
+      "diagnostics": [
+        {
+          "attempt": 1,
+          "accepted": true,
+          "violations": []
+        }
+      ],
+      "strip": [
+        "8",
+        "10",
+        "A",
+        "10",
+        "A",
+        "7",
+        "10",
+        "K",
+        "Q",
+        "K",
+        "7",
+        "A",
+        "Q",
+        "8",
+        "7",
+        "K",
+        "10",
+        "A",
+        "8",
+        "J",
+        "8",
+        "A",
+        "10",
+        "10",
+        "8",
+        "A",
+        "A",
+        "7"
+      ],
+      "analysis": {
+        "length": 28,
+        "symbolCounts": {
+          "7": 4,
+          "8": 5,
+          "10": 6,
+          "A": 7,
+          "K": 3,
+          "Q": 2,
+          "J": 1
+        },
+        "symbolFrequencies": {
+          "7": 0.14285714285714285,
+          "8": 0.17857142857142858,
+          "10": 0.21428571428571427,
+          "A": 0.25,
+          "K": 0.10714285714285714,
+          "Q": 0.07142857142857142,
+          "J": 0.03571428571428571
+        },
+        "minimumCircularDistances": {
+          "7": 4,
+          "8": 2,
+          "10": 1,
+          "A": 1,
+          "K": 2,
+          "Q": 4
+        },
+        "maximumCircularDistances": {
+          "7": 13,
+          "8": 13,
+          "10": 10,
+          "A": 7,
+          "K": 20,
+     
+

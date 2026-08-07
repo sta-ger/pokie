@@ -1,0 +1,24 @@
+=== pokie build random-blueprint.json --target real-pkg ===
+Build summary:
+  created          package.json
+  created          package-lock.json
+  created          tsconfig.json
+  created          README.md
+  created          src/index.ts
+  created          dist/index.js
+  package root     /tmp/p5 evidence.529/real-pkg
+  game             Silver Royal Voyage (id: "silver-royal-voyage", v0.1.0)
+  blueprint hash   sha256:f39b526f308c9ce7f3f333a62e450f1ede3142b741acfb6501a1976f60547cb1
+  source           /tmp/p5 evidence.529/random-blueprint.json
+
+Game package "Silver Royal Voyage" (id: "silver-royal-voyage") built in "/tmp/p5 evidence.529/real-pkg".
+
+Next:
+  cd /tmp/p5 evidence.529/real-pkg && npm install
+  pokie inspect /tmp/p5 evidence.529/real-pkg
+  pokie validate /tmp/p5 evidence.529/real-pkg
+  pokie sim /tmp/p5 evidence.529/real-pkg --rounds 10000 --seed demo --out sim.json
+  pokie report sim.json
+  pokie replay /tmp/p5 evidence.529/real-pkg --seed demo --round 1
+  pokie dev /tmp/p5 evidence.529/real-pkg
+EXIT:0

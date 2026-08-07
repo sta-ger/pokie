@@ -1,5 +1,5 @@
 import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
-import {useCallback, useEffect, useState, type ReactNode} from "react";
+import {useEffect, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {listProjectRegistry, previewProjectImport, ProjectOpenError, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
@@ -90,16 +90,28 @@ export function ProjectsPanel() {
         });
     };
 
-    const refresh = useCallback(() => {
+    // `cancelled` guards against setting state from a registry fetch that resolves after this effect's
+    // own cleanup (unmount, or a `fetchImpl` change re-running it) -- without it, a fetch left in flight
+    // when a test unmounts this panel (e.g. navigating straight past Home) resolves later and trips
+    // React's "update on an unmounted component" act() warning.
+    useEffect(() => {
+        let cancelled = false;
         setListView({status: "loading"});
         listProjectRegistry(fetchImpl)
-            .then((entries) => setListView(entries.length === 0 ? {status: "empty"} : {status: "loaded", entries}))
-            .catch((error: unknown) => setListView({status: "error", message: errorMessage(error)}));
+            .then((entries) => {
+                if (!cancelled) {
+                    setListView(entries.length === 0 ? {status: "empty"} : {status: "loaded", entries});
+                }
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) {
+                    setListView({status: "error", message: errorMessage(error)});
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
     }, [fetchImpl]);
-
-    useEffect(() => {
-        refresh();
-    }, [refresh]);
 
     const handleOpen = (entry: StudioProjectRegistryView): void => {
         if (!openGuard.begin()) {

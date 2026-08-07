@@ -1,0 +1,111 @@
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import {screen, waitFor} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
+import {renderRoutedApp} from "../testUtils/renderRoutedApp";
+
+// P5-POLISH-01 browser evidence capture -- THROWAWAY, not part of the permanent suite (deleted after its
+// output is copied into docs/phase5-evidence/browser/). Renders the real Studio client React components
+// (same renderRoutedApp harness tests/cli/studio-client/src/*.test.tsx already use) inside jsdom, but wires
+// StudioApiProvider's fetchImpl to the real, already-running `pokie studio` HTTP server on 127.0.0.1:4590
+// instead of a fake/stubbed fetch -- so what gets exercised is real application code (real routing, real
+// hooks, real components) against a real backend, and what gets captured is the real resulting DOM, not
+// hand-written markup.
+//
+// Uses node:http directly rather than the global fetch jestPolyfills.ts installs: that fetch is undici
+// running *inside* this test's jsdom window, and undici's real response-timing path
+// (finalizeAndReportTiming) calls window.performance.markResourceTiming / window.clearImmediate, neither of
+// which jest-environment-jsdom provides -- a real, reproduced crash, not a hypothetical. node:http has no
+// such dependency on the jsdom window, so it's a real network call to the real server without that gap.
+const BASE_HOST = "127.0.0.1";
+const BASE_PORT = 4590;
+const OUT_DIR = path.join(__dirname, "../../../../../docs/phase5-evidence/browser");
+
+const realFetch: FetchLike = (url, init) =>
+    new Promise((resolve, reject) => {
+        const req = http.request(
+            {host: BASE_HOST, port: BASE_PORT, path: url, method: init?.method ?? "GET", headers: init?.headers},
+            (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk) => chunks.push(chunk));
+                res.on("end", () => {
+                    const status = res.statusCode ?? 0;
+                    const text = Buffer.concat(chunks).toString("utf-8");
+                    resolve({ok: status >= 200 && status < 300, status, json: () => Promise.resolve(text.length > 0 ? JSON.parse(text) : undefined)});
+                });
+            },
+        );
+        req.on("error", reject);
+        if (init?.body !== undefined) {
+            req.write(init.body);
+        }
+        req.end();
+    });
+
+function save(name: string, html: string) {
+    fs.mkdirSync(OUT_DIR, {recursive: true});
+    fs.writeFileSync(path.join(OUT_DIR, name), html, "utf-8");
+}
+
+async function waitForQuiet() {
+    // LoadingState (common/LoadingState.tsx) is the only role="status" region that also renders a Mantine
+    // Loader spinner -- other role="status" uses (SuccessResult/WarningState/EmptyState/NextStepCallout)
+    // are legitimate persistent content, not in-flight loading, so this only waits out the spinner.
+    await waitFor(() => expect(document.querySelector(".mantine-Loader-root")).toBeNull(), {timeout: 20000});
+}
+
+async function waitForProjectHeader() {
+    // useProjectContext's header state starts at {status: "empty"} for the render that happens before its
+    // first effect fires, which renders a real ("No active project.") message, not a spinner -- so
+    // waitForQuiet alone can resolve on that transient first paint, before the real
+    // GET /api/project/context round trip to the live server ever completes. Wait that out explicitly.
+    await waitFor(() => expect(screen.queryByText(/No active project/i)).toBeNull(), {timeout: 20000});
+    await waitForQuiet();
+}
+
+describe("P5-POLISH-01 real-backend browser/DOM evidence capture", () => {
+    it("home/design -- Blueprint Design Game", async () => {
+        renderRoutedApp({fetchImpl: realFetch, initialEntries: ["/home/design"]});
+        await screen.findByText(/Design Game/i, {}, {timeout: 20000});
+        await waitForQuiet();
+        save("home-design.html", document.documentElement.outerHTML);
+    }, 30000);
+
+    it("project/overview -- dashboard", async () => {
+        renderRoutedApp({fetchImpl: realFetch, initialEntries: ["/project/overview"]});
+        await waitForProjectHeader();
+        save("project-overview.html", document.documentElement.outerHTML);
+    }, 30000);
+
+    it("project/play", async () => {
+        renderRoutedApp({fetchImpl: realFetch, initialEntries: ["/project/play"]});
+        await waitForProjectHeader();
+        save("project-play-idle.html", document.documentElement.outerHTML);
+        // Real interaction, not just the idle landing state: click "Start playing", which drives a real
+        // runtime start + session create against the live server, then embeds the real canonical player
+        // (the same one `pokie dev`/`pokie client` serve) in an <iframe src="...">.
+        await userEvent.click(screen.getByRole("button", {name: "Start playing"}));
+        await screen.findByRole("button", {name: "New game"}, {timeout: 20000});
+        save("project-play-running.html", document.documentElement.outerHTML);
+    }, 30000);
+
+    it("project/runtime", async () => {
+        renderRoutedApp({fetchImpl: realFetch, initialEntries: ["/project/runtime"]});
+        await waitForProjectHeader();
+        save("project-runtime.html", document.documentElement.outerHTML);
+    }, 30000);
+
+    it("project/replay", async () => {
+        renderRoutedApp({fetchImpl: realFetch, initialEntries: ["/project/replay"]});
+        await waitForProjectHeader();
+        save("project-replay.html", document.documentElement.outerHTML);
+    }, 30000);
+
+    it("project/exportDeploy -- build/export", async () => {
+        renderRoutedApp({fetchImpl: realFetch, initialEntries: ["/project/exportDeploy"]});
+        await waitForProjectHeader();
+        save("project-export-deploy.html", document.documentElement.outerHTML);
+    }, 30000);
+});

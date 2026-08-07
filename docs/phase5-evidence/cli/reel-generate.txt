@@ -1,0 +1,3 @@
+=== pokie reel generate (blank blueprint - likely no reelStripGeneration) ===
+"/tmp/p5 evidence.529/demo-slot.blueprint.json" has no "reelStripGeneration" entries to generate from -- author generated reels via POKIE Studio's Blueprint editor or by hand (see docs/reel-strip-generation.md), then re-run "pokie reel generate".
+EXIT:1

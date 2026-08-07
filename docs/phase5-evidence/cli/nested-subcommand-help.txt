@@ -1,0 +1,412 @@
+=== pokie build random --help ===
+Usage: build random [options] [excess...]
+
+Generate a first-class random game instead of loading a config file.
+
+Arguments:
+  excess             rejected if present -- this verb takes no positionals
+
+Options:
+  --seed <integer>   reproduce a specific random game
+  --target <dir>     output directory (default: the generator's own default
+                     output directory)
+  --dry-run          validate and preview without writing anything
+  --preset <preset>  which generation strategy to use (default: "default")
+  -h, --help         Display help for this command.
+
+
+=== pokie par import --help ===
+Usage: par import [options] <input.xlsx> [excess...]
+
+Import a PAR sheet XLSX workbook into a GameBlueprint JSON file.
+
+Arguments:
+  input.xlsx              an existing PAR sheet workbook
+  excess                  rejected if present -- this verb takes no further
+                          positionals
+
+Options:
+  --out <blueprint.json>  output path (default: <input.xlsx> with a
+                          .blueprint.json extension)
+  --format <value>        only "json" is supported (default: a human-readable
+                          summary) (default: "summary")
+  -h, --help              Display help for this command.
+
+
+=== pokie par export --help ===
+Usage: par export [options] <config.json> [excess...]
+
+Export a GameBlueprint JSON config to a PAR sheet XLSX workbook.
+
+Arguments:
+  config.json          an existing GameBlueprint JSON config
+  excess               rejected if present -- this verb takes no further
+                       positionals
+
+Options:
+  --out <output.xlsx>  output path (default: <config.json> with a .par.xlsx
+                       extension)
+  -h, --help           Display help for this command.
+
+
+=== pokie reel generate --help ===
+Usage: reel generate [options] <blueprint.json> [excess...]
+
+Generate one or every "generated" reel a Blueprint Project's reelStripGeneration
+declares.
+
+Arguments:
+  blueprint.json    an existing Blueprint Project file with a
+                    reelStripGeneration entry
+  excess            rejected if present -- this verb takes no further
+                    positionals
+
+Options:
+  --reel <index>    target a single reel index (default: every "generated" reel)
+  --seed <integer>  override every targeted reel's own seed for this run
+  --apply           pin the generated strip(s) into reelStripGeneration as
+                    literal (default: preview only)
+  --out <file>      write the applied blueprint to a different path (default:
+                    overwrite <blueprint.json>)
+  --format <value>  only "json" is supported (default: a human-readable summary)
+                    (default: "summary")
+  -h, --help        Display help for this command.
+
+
+=== pokie stakeengine export --help ===
+Usage: stakeengine export [options] <config.json> [excess...]
+
+Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static
+file format.
+
+Arguments:
+  config.json  <config.json> lists one WeightedOutcomeLibrary source per Stake
+               mode, either a plain JSON file — {"modes": [{"modeName": "base",
+               "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a
+               canonical outcome-library bundle (see
+               docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1,
+               "bundleDir": "./bundle", "bundleModeName": "base"}
+               ("bundleModeName" defaults to "modeName" when omitted); exactly
+               one of "libraryPath"/"bundleDir" is required per mode — see
+               docs/stake-engine-export.md for the format.
+  excess       rejected if present -- this verb takes no further positionals
+
+Options:
+  --out <dir>  output directory (default: a "stakeengine" sibling of
+               <config.json>)
+  -h, --help   Display help for this command.
+
+
+=== pokie stakeengine import --help ===
+Usage: stakeengine import [options] <stakeDir> [excess...]
+
+Import a Stake Engine export directory back into WeightedOutcomeLibrary JSON
+files.
+
+Arguments:
+  stakeDir     <stakeDir> is a directory previously produced by "pokie
+               stakeengine export" (index.json, per-mode lookup CSV/books, and
+               its own pokie-manifest.json) — see docs/stake-engine-import.md
+               for details.
+  excess       rejected if present -- this verb takes no further positionals
+
+Options:
+  --out <dir>  output directory (default: <stakeDir> suffixed with "-imported")
+  -h, --help   Display help for this command.
+
+
+=== pokie stakeengine analyze --help ===
+Usage: stakeengine analyze [options] <stakeDir> [excess...]
+
+Standalone-analyze an arbitrary Stake Engine outcome directory with no
+pokie-manifest.json required.
+
+Arguments:
+  stakeDir           <stakeDir> is any Stake Engine outcome directory
+                     (index.json, per-mode lookup CSV, per-mode zstd-compressed
+                     JSONL books) — POKIE's own export or a third party's, with
+                     or without a pokie-manifest.json — see
+                     docs/stake-engine-standalone.md for details.
+  excess             rejected if present -- this verb takes no further
+                     positionals
+
+Options:
+  --format <format>  output format ("summary" or "json", default "summary")
+                     (default: "summary")
+  --out <file>       write the analysis report JSON to this path
+  -h, --help         Display help for this command.
+
+
+=== pokie stakeengine diff --help ===
+Usage: stakeengine diff [options] <leftStakeDir> <rightStakeDir> [excess...]
+
+Diff two Stake Engine outcome directories/analyses.
+
+Arguments:
+  leftStakeDir       <leftStakeDir> and <rightStakeDir> are each any Stake
+                     Engine outcome directory (index.json, per-mode lookup CSV,
+                     per-mode zstd-compressed JSONL books) — POKIE's own export
+                     or a third party's, with or without a pokie-manifest.json —
+                     see docs/stake-engine-standalone.md for details.
+  rightStakeDir      <leftStakeDir> and <rightStakeDir> are each any Stake
+                     Engine outcome directory (index.json, per-mode lookup CSV,
+                     per-mode zstd-compressed JSONL books) — POKIE's own export
+                     or a third party's, with or without a pokie-manifest.json —
+                     see docs/stake-engine-standalone.md for details.
+  excess             rejected if present -- this verb takes no further
+                     positionals
+
+Options:
+  --format <format>  output format ("summary" or "json", default "summary")
+                     (default: "summary")
+  --out <file>       write the diff report JSON to this path
+  -h, --help         Display help for this command.
+
+
+=== pokie outcomelibrary generate --help ===
+Usage: outcomelibrary generate [options] <packageRoot> [excess...]
+
+Generate a WeightedOutcomeLibrary from a built package's own runtime via exact
+reel-stop enumeration.
+
+Arguments:
+  packageRoot                   <packageRoot> is a package built by "pokie
+                                build" (or any package loadPokieGame() can
+                                require) whose game opts into exact enumeration
+                                via PokieGame.createExactEnumerationSession --
+                                see docs/weighted-outcome-library.md#generation.
+                                Drives the same session/win-calculation runtime
+                                a live round uses; a stateful/unbounded mechanic
+                                (e.g. free games) has no exact strategy and
+                                fails closed instead of guessing.
+  excess                        rejected if present -- this verb takes no
+                                further positionals
+
+Options:
+  --mode <betModeId>            bet mode to generate for (default: the game's
+                                own default bet mode)
+  --stake <number>              stake to generate for (default: the game's own
+                                default stake)
+  --config-hash <hash>          recorded verbatim into the generated library's
+                                own diagnostics
+  --library-id <id>             id for the generated library (default: derived
+                                from the game manifest/mode)
+  --max-outcome-space-size <n>  above this raw outcome count, generation
+                                requires --bounded instead of an exact sweep
+  --bounded                     sample a bounded coverage of the outcome space
+                                instead of an exact sweep (requires
+                                --sample-size/--seed)
+  --sample-size <n>             number of raw draws to sample (requires
+                                --bounded)
+  --seed <string>               seed for the bounded sample (requires --bounded)
+  --estimate                    print the outcome space size/strategy without
+                                enumerating or sampling anything
+  --dry-run                     alias for --estimate
+  --out <file>                  write the generated library JSON to this path
+  --resume <file>               resume from a checkpoint written by an earlier
+                                cancelled run
+  --progress                    print periodic progress to stderr while
+                                generating
+  --format <format>             only "json" is supported (default: a
+                                human-readable summary) (default: "summary")
+  -h, --help                    Display help for this command.
+
+
+=== pokie outcomelibrary build --help ===
+Usage: outcomelibrary build [options] <config.json> [excess...]
+
+Build a canonical outcome-library persistence bundle from WeightedOutcomeLibrary
+JSON/JSONL files.
+
+Arguments:
+  config.json  lists one outcome source per mode -- see
+               docs/outcome-library-bundle.md
+  excess       rejected if present -- this verb takes no further positionals
+
+Options:
+  --out <dir>  output directory (default: an "outcomelibrary" sibling of
+               <config.json>)
+  -h, --help   Display help for this command.
+
+
+=== pokie outcomelibrary validate --help ===
+Usage: outcomelibrary validate [options] <bundleDir> [excess...]
+
+Validate an outcome-library persistence bundle.
+
+Arguments:
+  bundleDir   an existing outcome-library bundle directory built by "pokie
+              outcomelibrary build"
+  excess      rejected if present -- this verb takes no further positionals
+
+Options:
+  --deep      also validate every outcome's own weight/artifact shape, not just
+              the bundle's index
+  -h, --help  Display help for this command.
+
+
+=== pokie outcomesource inspect --help ===
+Usage: outcomesource inspect [options] <path> [excess...]
+
+Inspect a resolved outcome-library/Stake Engine outcome source through its own
+canonical reader.
+
+Arguments:
+  path        an outcome-library bundle or Stake Engine export directory
+  excess      rejected if present -- this verb takes no further positionals
+
+Options:
+  -h, --help  Display help for this command.
+
+
+=== pokie outcomesource sample --help ===
+Usage: outcomesource sample [options] <path> [excess...]
+
+Draw one outcome from a native outcome library through the same selector path
+live/pre-generated play uses.
+
+Arguments:
+  path               an outcome-library bundle directory
+  excess             rejected if present -- this verb takes no further
+                     positionals
+
+Options:
+  --mode <modeName>  bet mode to draw from (required)
+  --seed <value>     seed for a reproducible draw (default: a securely random
+                     draw)
+  -h, --help         Display help for this command.
+
+
+=== pokie outcomesource diff --help ===
+Usage: outcomesource diff [options] <leftPath> <rightPath> [excess...]
+
+Diff two resolved outcome sources' own exact analyses.
+
+Arguments:
+  leftPath           an outcome-library bundle or Stake Engine export directory
+  rightPath          an outcome-library bundle or Stake Engine export directory
+  excess             rejected if present -- this verb takes no further
+                     positionals
+
+Options:
+  --format <format>  only "json" is supported (default: a human-readable
+                     summary)
+  --out <file>       write the diff report JSON to this path
+  -h, --help         Display help for this command.
+
+
+=== pokie certification build --help ===
+Usage: certification build [options] <bundleDir> <config.json> [excess...]
+
+Build a canonical certification/evidence bundle on top of an outcome-library
+bundle.
+
+Arguments:
+  bundleDir    an existing outcome-library bundle directory (see "pokie
+               outcomelibrary build")
+  config.json  lists one sample source per mode -- see
+               docs/certification-evidence-bundle.md
+  excess       rejected if present -- this verb takes no further positionals
+
+Options:
+  --out <dir>  output directory (default: a "certification" sibling of
+               <config.json>)
+  -h, --help   Display help for this command.
+
+
+=== pokie certification verify --help ===
+Usage: certification verify [options] <certDir> [excess...]
+
+Verify a certification/evidence bundle against its outcome-library source.
+
+Arguments:
+  certDir               an existing certification/evidence bundle directory
+                        built by "pokie certification build"
+  excess                rejected if present -- this verb takes no further
+                        positionals
+
+Options:
+  --source <bundleDir>  the outcome-library bundle the certification bundle was
+                        built from (required)
+  -h, --help            Display help for this command.
+
+
+=== pokie fairness seed-commit --help ===
+Usage: fairness seed-commit [options] <serverSeedPath> [excess...]
+
+Publish a server-seed commitment (the first step of the commit-reveal scheme).
+
+Arguments:
+  serverSeedPath  a text file containing the secret server seed
+  excess          rejected if present -- this verb takes no further positionals
+
+Options:
+  --out <file>    write the commitment JSON to this path (default: print only)
+  --overwrite     allow --out to replace an existing file
+  -h, --help      Display help for this command.
+
+
+=== pokie fairness commit --help ===
+Usage: fairness commit [options] <serverSeedCommitmentPath> [excess...]
+
+Publish a round commitment against a live outcome-library bundle.
+
+Arguments:
+  serverSeedCommitmentPath  the JSON commitment published by "pokie fairness
+                            seed-commit"
+  excess                    rejected if present -- this verb takes no further
+                            positionals
+
+Options:
+  --client-seed <seed>      the player-supplied seed for this round (required)
+  --nonce <n>               a canonical non-negative decimal integer, unique per
+                            client seed (required)
+  --source <bundleDir>      the outcome-library bundle this round will be drawn
+                            from (required)
+  --mode <modeName>         the bet mode this round will be drawn from
+                            (required)
+  --out <file>              write the commitment JSON to this path (default:
+                            print only)
+  --overwrite               allow --out to replace an existing file
+  -h, --help                Display help for this command.
+
+
+=== pokie fairness reveal --help ===
+Usage: fairness reveal [options] <commitmentPath> [excess...]
+
+Reveal the round proof once a committed round has settled.
+
+Arguments:
+  commitmentPath        the JSON round commitment published by "pokie fairness
+                        commit"
+  excess                rejected if present -- this verb takes no further
+                        positionals
+
+Options:
+  --server-seed <file>  a text file containing the secret server seed (required)
+  --source <bundleDir>  the outcome-library bundle this round was drawn from
+                        (required)
+  --out <file>          write the proof JSON to this path (default: print only)
+  --overwrite           allow --out to replace an existing file
+  -h, --help            Display help for this command.
+
+
+=== pokie fairness verify --help ===
+Usage: fairness verify [options] <proofPath> [excess...]
+
+Independently verify a round proof against its commitment and a live source
+bundle.
+
+Arguments:
+  proofPath             the JSON round proof produced by "pokie fairness reveal"
+  excess                rejected if present -- this verb takes no further
+                        positionals
+
+Options:
+  --commitment <file>   the JSON round commitment this proof claims to reveal
+                        (required)
+  --source <bundleDir>  the outcome-library bundle this round was drawn from
+                        (required)
+  -h, --help            Display help for this command.
+
+

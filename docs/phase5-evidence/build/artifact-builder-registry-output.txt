@@ -1,0 +1,48 @@
+{
+  "target": "tsPackage",
+  "requiredSourceCapability": "blueprint.build",
+  "supportedSources": [
+    "blueprint"
+  ],
+  "unsupportedNotes": [
+    "Builds a runnable package from its own GameBlueprint source only -- never compiles or targets WASM, and a built package cannot itself be converted into any other target type."
+  ]
+}
+{
+  "target": "outcomeLibrary",
+  "requiredSourceCapability": "outcomeLibrary.read",
+  "supportedSources": [
+    "outcomeLibrary"
+  ],
+  "unsupportedNotes": [
+    "Packages already-computed weighted outcomes into a bundle -- never re-derives or recovers the game model/blueprint that produced those outcomes; that recovery is not supported by any builder."
+  ]
+}
+{
+  "target": "stakeAdapter",
+  "requiredSourceCapability": "stakeAdapter.exchange",
+  "supportedSources": [
+    "stakeAdapter"
+  ],
+  "unsupportedNotes": [
+    "Exports already-computed weighted outcomes into Stake Engine's own book-line format -- never re-derives or recovers the game model/blueprint that produced those outcomes; that recovery is not supported by any builder."
+  ]
+}
+{
+  "target": "parWorkbook",
+  "requiredSourceCapability": "parWorkbook.exchange",
+  "supportedSources": [
+    "parWorkbook"
+  ],
+  "unsupportedNotes": [
+    "Exports an already-loaded PAR sheet model to its own .xlsx workbook format only -- does not derive a PAR sheet from a package/blueprint on its own."
+  ]
+}
+{
+  "target": "wasm",
+  "requiredSourceCapability": "wasm.export",
+  "supportedSources": [],
+  "unsupportedNotes": [
+    "No ProjectType grants the capability this target requires and no builder is registered for it -- POKIE has no arbitrary package-to-WASM compiler today (see ProjectType.ts's own \"wasm\" doc comment)."
+  ]
+}

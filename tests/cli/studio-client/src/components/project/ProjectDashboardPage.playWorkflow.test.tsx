@@ -131,13 +131,14 @@ describe("ProjectDashboardPage - Play", () => {
         // Runtime's own Inspect round settles onto the played round -- the same signal
         // ProjectDashboardPage.runtimeWorkflow.test.tsx waits on before asserting round detail. This is
         // the fifth sequential findBy/waitFor in this test, each carrying setupTests.ts's own 15000ms
-        // asyncUtilTimeout -- under check:release's coverage-instrumented, 5-project, --maxWorkers=2 lane
-        // (the heaviest real load this suite runs under), the first four can plausibly consume enough
-        // wall-clock time that this one needs more than its share of the default budget to avoid a
-        // starved-assertion failure that isn't an actual regression. An explicit override here (and the
-        // correspondingly raised test budget below -- see this file's own sibling tests for the same
-        // 15000ms-per-wait accounting) restores the same headroom that budget already gives every other
-        // wait here by default.
+        // asyncUtilTimeout. This file now runs in the dedicated studio-client-workflows lane (see
+        // jest.config.mjs) precisely because it can't be assumed to have the fast studio-client-components
+        // lane's headroom to itself -- so the first four waits can plausibly consume enough wall-clock
+        // time that this one needs more than its share of the default budget to avoid a starved-assertion
+        // failure that isn't an actual regression. An explicit override here (and the correspondingly
+        // raised test budget below -- see this file's own sibling tests for the same 15000ms-per-wait
+        // accounting) restores the same headroom that budget already gives every other wait here by
+        // default.
         await screen.findByText(/Show advanced details/, undefined, {timeout: 30000});
 
         await user.click(screen.getByRole("button", {name: "Play"}));

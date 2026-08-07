@@ -4,7 +4,7 @@ import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 describe("Routable Home/Project sections: refresh and direct-link", () => {
-    it("a direct link to a non-default Home tab renders that tab, not the default", () => {
+    it("a direct link to a non-default Home tab renders that tab, not the default", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
@@ -14,6 +14,11 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         expect(screen.getByRole("heading", {name: "Projects"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
         expect(screen.queryByRole("heading", {name: "Design Your Game"})).not.toBeInTheDocument();
+        // ProjectsPanel's own mount-time registry fetch (see its own doc comment) is still in flight at
+        // this point -- awaiting its settling keeps this test from returning while that promise is still
+        // pending, which would otherwise resolve after cleanup/the next test starts and call setState
+        // outside any act() this test controls.
+        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
     });
 
     it("a direct link to a non-default Project tab renders that tab, not Overview", async () => {
@@ -75,7 +80,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         expect(screen.queryByRole("button", {name: "Simulation"})).not.toBeInTheDocument();
     });
 
-    it("an unrecognized :tab falls back to the default section instead of erroring", () => {
+    it("an unrecognized :tab falls back to the default section instead of erroring", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
@@ -83,6 +88,10 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
 
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
+        // Same reasoning as the direct-link test above: the still-mounted (CSS-hidden) Projects tab
+        // body's own ProjectsPanel kicked off its mount-time registry fetch too -- await it settling
+        // before this test ends.
+        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
     });
 });
 
