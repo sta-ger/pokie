@@ -1,0 +1,85 @@
+=== pokie reel generate (random blueprint, all reels preview) ===
+Reel strip generation for "/tmp/p5 evidence.529/random-blueprint.json"
+  reel 0  seed 553654701  attempts 1  length 36
+    9 K A K 9 J A 8 9 J 7 9 10 J 7 J Q 7 J J 7 Q 9 9 Q Q J 9 K 9 Q 7 10 Q A A
+  reel 1  seed 334896561  attempts 1  length 36
+    Q J A 9 J K 10 J Q A 9 Q 9 7 9 A 7 J 9 10 J A Q J K 9 7 Q Q 8 7 7 9 K J 9
+  reel 2  seed 1640870536  attempts 1  length 36
+    J 10 8 Q J 9 Q J 7 A A A 7 J 7 K Q Q J 7 10 Q 9 Q K 9 9 9 9 7 K J 9 9 J A
+
+Dry run -- no files written. Re-run with --apply to pin these strips into reelStripGeneration.
+EXIT:0
+=== pokie reel generate --reel 0 --format json ===
+{
+    "blueprintPath": "/tmp/p5 evidence.529/random-blueprint.json",
+    "applied": false,
+    "reels": [
+        {
+            "reelIndex": 0,
+            "config": {
+                "type": "generated",
+                "length": 36,
+                "symbolWeights": {
+                    "7": 5,
+                    "8": 1,
+                    "9": 8,
+                    "10": 2,
+                    "K": 3,
+                    "A": 4,
+                    "Q": 6,
+                    "J": 7
+                },
+                "seed": 553654701
+            },
+            "seed": 553654701,
+            "success": true,
+            "attemptsUsed": 1,
+            "diagnostics": [
+                {
+                    "attempt": 1,
+                    "accepted": true,
+                    "violations": []
+                }
+            ],
+            "strip": [
+                "9",
+                "K",
+                "A",
+                "K",
+                "9",
+                "J",
+                "A",
+                "8",
+                "9",
+                "J",
+                "7",
+                "9",
+                "10",
+                "J",
+                "7",
+                "J",
+                "Q",
+                "7",
+                "J",
+                "J",
+                "7",
+                "Q",
+                "9",
+                "9",
+                "Q",
+                "Q",
+                "J",
+                "9",
+                "K",
+                "9",
+                "Q",
+                "7",
+                "10",
+                "Q",
+                "A",
+                "A"
+            ]
+        }
+    ]
+}
+EXIT:0

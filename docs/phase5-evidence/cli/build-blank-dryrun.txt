@@ -1,0 +1,12 @@
+=== pokie build (blank blueprint) --dry-run ===
+Dry run — blueprint is valid, no files written.
+
+Blueprint summary:
+  game             Demo Slot (id: "demo-slot", v0.1.0)
+  reels x rows     3 x 3
+  symbols          3
+  paylines         default (one horizontal line per row)
+  bets             default
+  blueprint hash   sha256:2823e745fd6b9cd92cc4d44c9400b6ec4ad2089111bb4688069eff5f5d265455
+  would generate   README.md, dist/index.js, package-lock.json, package.json, src/index.ts, tsconfig.json
+EXIT:0

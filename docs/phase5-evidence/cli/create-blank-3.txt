@@ -1,0 +1,11 @@
+=== pokie create --blank --out (space-containing path) ===
+  created  /tmp/p5 evidence.529/blueprints dir/My Blueprint.blueprint.json
+
+Game blueprint "Blank Slot" (id: "blank-slot") created at "/tmp/p5 evidence.529/blueprints dir/My Blueprint.blueprint.json".
+
+Build it:
+  pokie build /tmp/p5 evidence.529/blueprints dir/My Blueprint.blueprint.json --dry-run
+  pokie build /tmp/p5 evidence.529/blueprints dir/My Blueprint.blueprint.json --target <dir>
+EXIT:0
+/tmp/p5 evidence.529/blueprints dir
+/tmp/p5 evidence.529/blueprints dir/My Blueprint.blueprint.json

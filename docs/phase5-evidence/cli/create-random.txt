@@ -1,0 +1,12 @@
+=== pokie create --random --seed 7 --out ===
+Generated random game "Silver Royal Voyage" (id: "silver-royal-voyage") from seed 7.
+Reproduce this exact game with: pokie create --random --seed 7 --preset default
+Provenance: generator 1.1.0, strategy "default-line-pay".
+  created  /tmp/p5 evidence.529/random-blueprint.json
+
+Game blueprint "Silver Royal Voyage" (id: "silver-royal-voyage") created at "/tmp/p5 evidence.529/random-blueprint.json".
+
+Build it:
+  pokie build /tmp/p5 evidence.529/random-blueprint.json --dry-run
+  pokie build /tmp/p5 evidence.529/random-blueprint.json --target <dir>
+EXIT:0

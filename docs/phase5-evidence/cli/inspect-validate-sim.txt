@@ -1,0 +1,14 @@
+=== pokie inspect ===
+Inspecting package at "/tmp/p5 evidence.529/real-pkg"
+
+  package.json     name: "silver-royal-voyage", version: "0.1.0"
+EXIT:0
+=== pokie validate (no node_modules/pokie link) ===
+Validating package at "/tmp/p5 evidence.529/real-pkg"
+  valid           no
+
+Errors (1):
+  - pokie-package-load-failed: Entry module "/tmp/p5 evidence.529/real-pkg/dist/index.js" (from "pokie.entry": "./dist/index.js" in "/tmp/p5 evidence.529/real-pkg/package.json") could not be loaded -- it looks stale or incomplete: "Cannot find module 'pokie'
+Require stack:
+- /tmp/p5 evidence.529/real-pkg/dist/index.js". Run "npm install && npm run build" in "/tmp/p5 evidence.529/real-pkg" to rebuild it against its current dependencies, then retry.
+EXIT:1

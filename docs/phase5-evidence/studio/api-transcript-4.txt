@@ -1,0 +1,72 @@
+=== sim-run: POST /api/project/simulations -> 202 (application/json) ===
+{
+  "id": "a1c38472-1166-45da-b595-3f24f2c83bb5",
+  "status": "queued",
+  "rounds": 1000,
+  "seed": "evidence-sim",
+  "workers": 1,
+  "startedAt": "2026-08-07T10:51:52.083Z",
+  "roundsCompleted": 0,
+  "durationMs": 0
+}
+
+=== reports-after: GET /api/project/reports -> 200 (application/json) ===
+[
+  {
+    "id": "a1c38472-1166-45da-b595-3f24f2c83bb5",
+    "status": "completed",
+    "game": {
+      "id": "silver-royal-voyage",
+      "version": "0.1.0"
+    },
+    "requestedRounds": 1000,
+    "actualRounds": 1000,
+    "seed": "evidence-sim",
+    "workers": 1,
+    "rtp": 0.19199999999999992,
+    "hitFrequency": 0.085,
+    "maxWin": 6,
+    "startedAt": "2026-08-07T10:51:52.083Z",
+    "completedAt": "2026-08-07T10:51:52.152Z",
+    "durationMs": 69,
+    "hasWarnings": true
+  }
+]
+
+=== replay-create: POST /api/project/replays -> 202 (application/json) ===
+{
+  "id": "0e711f6c-35e7-4e66-a94d-b1792e2b17a5",
+  "status": "queued",
+  "round": 1,
+  "seed": "evidence-seed",
+  "startedAt": "2026-08-07T10:51:52.161Z",
+  "completedRounds": 0,
+  "durationMs": 0
+}
+
+=== replay-list: GET /api/project/replays -> 200 (application/json) ===
+[
+  {
+    "id": "0e711f6c-35e7-4e66-a94d-b1792e2b17a5",
+    "status": "completed",
+    "game": {
+      "id": "silver-royal-voyage",
+      "name": "Silver Royal Voyage",
+      "version": "0.1.0"
+    },
+    "round": 1,
+    "seed": "evidence-seed",
+    "completedRounds": 1,
+    "totalBet": 1,
+    "totalWin": 0,
+    "startedAt": "2026-08-07T10:51:52.161Z",
+    "completedAt": "2026-08-07T10:51:52.167Z",
+    "durationMs": 6
+  }
+]
+
+=== deployment-run: POST /api/project/deployment/runs -> 400 (application/json) ===
+{
+  "error": "\"modes\" must be a non-empty array."
+}
+

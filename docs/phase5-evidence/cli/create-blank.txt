@@ -1,0 +1,8 @@
+=== pokie create --blank (non-interactive, space path) ===
+"/tmp/p5 evidence.529/My Blueprint" is not a valid project name. Use a plain name, e.g. "sample-slot".
+EXIT:1
+total 0
+drwxr-xr-x 4 node node  80 Aug  7 10:49 .
+drwxrwxrwt 6 root root 120 Aug  7 10:49 ..
+drwxr-xr-x 4 node node 160 Aug  7 10:49 random-game
+drwxr-xr-x 4 node node 160 Aug  7 10:49 random-game-repro

@@ -1,0 +1,20 @@
+=== pokie build random --seed 42 --target (reproducibility rerun) ===
+Generated random game "Feral Rampaging Pantheon" (id: "feral-rampaging-pantheon") from seed 42.
+Reproduce this exact game with: pokie build random --seed 42 --preset default
+Provenance: generator 1.1.0, strategy "default-line-pay".
+Build summary:
+  created          package.json
+  created          package-lock.json
+  created          tsconfig.json
+  created          README.md
+  created          src/index.ts
+  created          dist/index.js
+  package root     /tmp/p5 evidence.529/random-game-repro
+  game             Feral Rampaging Pantheon (id: "feral-rampaging-pantheon", v0.1.0)
+  blueprint hash   sha256:b2cd56823ac7014673f8414e92a4d3fd5b2c2c9554b1293bbbf9d5936b06d631
+
+Running a short smoke simulation...
+Smoke simulation failed: Entry module "/tmp/p5 evidence.529/random-game-repro/dist/index.js" (from "pokie.entry": "./dist/index.js" in "/tmp/p5 evidence.529/random-game-repro/package.json") could not be loaded -- it looks stale or incomplete: "Cannot find module 'pokie'
+Require stack:
+- /tmp/p5 evidence.529/random-game-repro/dist/index.js". Run "npm install && npm run build" in "/tmp/p5 evidence.529/random-game-repro" to rebuild it against its current dependencies, then retry.
+DIFF-EXIT:0

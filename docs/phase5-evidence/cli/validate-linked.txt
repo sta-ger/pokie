@@ -1,0 +1,56 @@
+=== pokie validate (with node_modules/pokie manually linked to this build's own dist) ===
+Validating "Silver Royal Voyage" (id: "silver-royal-voyage", v0.1.0) at "/tmp/p5 evidence.529/real-pkg"
+  valid           yes
+
+No issues found.
+EXIT:0
+=== pokie sim ===
+Simulated "Silver Royal Voyage" (id: "silver-royal-voyage", v0.1.0)
+  rounds          2000
+  seed            demo
+  workers         1
+  total bet       2000.00
+  total win       359.00
+  rtp             17.95%
+  hit frequency   7.70%
+  average payout  0.18
+  max win         6.00
+  volatility      0.75
+  max win freq.   7.7000%
+  duration        103ms (19417 spins/s)
+
+Report written to "/tmp/p5 evidence.529/sim.json".
+EXIT:0
+=== pokie replay ===
+{
+    "sessionId": "ca491a78-043c-4ab9-98e5-d78e16ff2fb3",
+    "game": {
+        "id": "silver-royal-voyage",
+        "name": "Silver Royal Voyage",
+        "version": "0.1.0"
+    },
+    "seed": "demo",
+    "round": 1,
+    "totalBet": 1,
+    "totalWin": 0,
+    "screen": [
+        [
+            "J",
+            "Q",
+            "7"
+        ],
+        [
+            "7",
+            "9",
+            "A"
+        ],
+        [
+            "10",
+            "Q",
+            "9"
+        ]
+    ],
+    "timestamp": 1786099841809,
+    "durationMs": 3
+}
+EXIT:0

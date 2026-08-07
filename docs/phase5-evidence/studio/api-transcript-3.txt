@@ -1,0 +1,577 @@
+=== session-create: POST /api/project/runtime/sessions -> 201 (application/json) ===
+{
+  "status": "ok",
+  "session": {
+    "credits": 1000,
+    "bet": 1,
+    "availableBets": [
+      1,
+      2,
+      5,
+      10
+    ],
+    "reelsSymbols": [
+      [
+        "8",
+        "9",
+        "J"
+      ],
+      [
+        "K",
+        "9",
+        "7"
+      ],
+      [
+        "Q",
+        "K",
+        "9"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {}
+    },
+    "availableSymbols": [
+      "8",
+      "10",
+      "K",
+      "A",
+      "7",
+      "Q",
+      "J",
+      "9"
+    ],
+    "reelsNumber": 3,
+    "reelsSymbolsNumber": 3,
+    "paytable": {
+      "1": {
+        "7": {
+          "3": 4
+        },
+        "8": {
+          "3": 8
+        },
+        "9": {
+          "3": 1
+        },
+        "10": {
+          "3": 7
+        },
+        "K": {
+          "3": 6
+        },
+        "A": {
+          "3": 5
+        },
+        "Q": {
+          "3": 3
+        },
+        "J": {
+          "3": 2
+        }
+      },
+      "2": {
+        "7": {
+          "3": 8
+        },
+        "8": {
+          "3": 16
+        },
+        "9": {
+          "3": 2
+        },
+        "10": {
+          "3": 14
+        },
+        "K": {
+          "3": 12
+        },
+        "A": {
+          "3": 10
+        },
+        "Q": {
+          "3": 6
+        },
+        "J": {
+          "3": 4
+        }
+      },
+      "5": {
+        "7": {
+          "3": 20
+        },
+        "8": {
+          "3": 40
+        },
+        "9": {
+          "3": 5
+        },
+        "10": {
+          "3": 35
+        },
+        "K": {
+          "3": 30
+        },
+        "A": {
+          "3": 25
+       
+
+sessionId bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0
+=== spin-1: POST /api/project/runtime/sessions/bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0/spins -> 200 (application/json) ===
+{
+  "status": "ok",
+  "session": {
+    "credits": 999,
+    "bet": 1,
+    "reelsSymbols": [
+      [
+        "A",
+        "9",
+        "K"
+      ],
+      [
+        "J",
+        "Q",
+        "A"
+      ],
+      [
+        "J",
+        "7",
+        "K"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {
+        "aggregationPolicy": "error-if-incompatible",
+        "evaluators": [
+          "line",
+          "scatter"
+        ]
+      }
+    },
+    "sessionId": "bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0",
+    "game": {
+      "id": "silver-royal-voyage",
+      "name": "Silver Royal Voyage",
+      "version": "0.1.0"
+    },
+    "sessionVersion": 2,
+    "debug": {
+      "stateAfter": {
+        "context": {
+          "seed": "evidence-seed"
+        },
+        "bet": 1,
+        "win": 0,
+        "screen": [
+          [
+            "A",
+            "9",
+            "K"
+          ],
+          [
+            "J",
+            "Q",
+            "A"
+          ],
+          [
+            "J",
+            "7",
+            "K"
+          ]
+        ],
+        "capturePolicy": {
+          "version": 1,
+          "mode": "full",
+          "captureDebugPayloads": true
+        },
+        "initialPayload": {
+          "credits": 1000,
+          "bet": 1,
+          "availableBets": [
+            1,
+            2,
+            5,
+            10
+          ],
+          "reelsSymbols": [
+            [
+              "8",
+              "9",
+              "J"
+            ],
+            [
+              "K",
+              "9",
+              "7"
+            ],
+            [
+              "Q",
+    
+
+=== spin-2: POST /api/project/runtime/sessions/bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0/spins -> 200 (application/json) ===
+{
+  "status": "ok",
+  "session": {
+    "credits": 998,
+    "bet": 1,
+    "reelsSymbols": [
+      [
+        "9",
+        "Q",
+        "Q"
+      ],
+      [
+        "7",
+        "7",
+        "9"
+      ],
+      [
+        "7",
+        "K",
+        "Q"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {
+        "aggregationPolicy": "error-if-incompatible",
+        "evaluators": [
+          "line",
+          "scatter"
+        ]
+      }
+    },
+    "sessionId": "bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0",
+    "game": {
+      "id": "silver-royal-voyage",
+      "name": "Silver Royal Voyage",
+      "version": "0.1.0"
+    },
+    "sessionVersion": 3,
+    "debug": {
+      "stateAfter": {
+        "context": {
+          "seed": "evidence-seed"
+        },
+        "bet": 1,
+        "win": 0,
+        "screen": [
+          [
+            "9",
+            "Q",
+            "Q"
+          ],
+          [
+            "7",
+            "7",
+            "9"
+          ],
+          [
+            "7",
+            "K",
+            "Q"
+          ]
+        ],
+        "capturePolicy": {
+          "version": 1,
+          "mode": "full",
+          "captureDebugPayloads": true
+        },
+        "initialPayload": {
+          "credits": 1000,
+          "bet": 1,
+          "availableBets": [
+            1,
+            2,
+            5,
+            10
+          ],
+          "reelsSymbols": [
+            [
+              "8",
+              "9",
+              "J"
+            ],
+            [
+              "K",
+              "9",
+              "7"
+            ],
+            [
+              "Q",
+    
+
+=== get-session: GET /api/project/runtime/sessions/bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0 -> 200 (application/json) ===
+{
+  "status": "ok",
+  "session": {
+    "credits": 998,
+    "bet": 1,
+    "availableBets": [
+      1,
+      2,
+      5,
+      10
+    ],
+    "reelsSymbols": [
+      [
+        "9",
+        "Q",
+        "Q"
+      ],
+      [
+        "7",
+        "7",
+        "9"
+      ],
+      [
+        "7",
+        "K",
+        "Q"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {
+        "aggregationPolicy": "error-if-incompatible",
+        "evaluators": [
+          "line",
+          "scatter"
+        ]
+      }
+    },
+    "availableSymbols": [
+      "8",
+      "10",
+      "K",
+      "A",
+      "7",
+      "Q",
+      "J",
+      "9"
+    ],
+    "reelsNumber": 3,
+    "reelsSymbolsNumber": 3,
+    "paytable": {
+      "1": {
+        "7": {
+          "3": 4
+        },
+        "8": {
+          "3": 8
+        },
+        "9": {
+          "3": 1
+        },
+        "10": {
+          "3": 7
+        },
+        "K": {
+          "3": 6
+        },
+        "A": {
+          "3": 5
+        },
+        "Q": {
+          "3": 3
+        },
+        "J": {
+          "3": 2
+        }
+      },
+      "2": {
+        "7": {
+          "3": 8
+        },
+        "8": {
+          "3": 16
+        },
+        "9": {
+          "3": 2
+        },
+        "10": {
+          "3": 14
+        },
+        "K": {
+          "3": 12
+        },
+        "A": {
+          "3": 10
+        },
+        "Q": {
+          "3": 6
+        },
+        "J": {
+          "3": 4
+        }
+      },
+      "5": {
+        "7": {
+          "3": 20
+        },
+        "8": {
+          "3": 40
+        },
+        "9": {
+          "3": 5
+        
+
+=== recent-spins: GET /api/project/runtime/spins -> 200 (application/json) ===
+[
+  {
+    "credits": 998,
+    "bet": 1,
+    "reelsSymbols": [
+      [
+        "9",
+        "Q",
+        "Q"
+      ],
+      [
+        "7",
+        "7",
+        "9"
+      ],
+      [
+        "7",
+        "K",
+        "Q"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {
+        "aggregationPolicy": "error-if-incompatible",
+        "evaluators": [
+          "line",
+          "scatter"
+        ]
+      }
+    },
+    "sessionId": "bcad3b3b-f1ea-42d9-a7ef-6791bb1bdac0",
+    "game": {
+      "id": "silver-royal-voyage",
+      "name": "Silver Royal Voyage",
+      "version": "0.1.0"
+    },
+    "sessionVersion": 3,
+    "debug": {
+      "stateAfter": {
+        "context": {
+          "seed": "evidence-seed"
+        },
+        "bet": 1,
+        "win": 0,
+        "screen": [
+          [
+            "9",
+            "Q",
+            "Q"
+          ],
+          [
+            "7",
+            "7",
+            "9"
+          ],
+          [
+            "7",
+            "K",
+            "Q"
+          ]
+        ],
+        "capturePolicy": {
+          "version": 1,
+          "mode": "full",
+          "captureDebugPayloads": true
+        },
+        "initialPayload": {
+          "credits": 1000,
+          "bet": 1,
+          "availableBets": [
+            1,
+            2,
+            5,
+            10
+          ],
+          "reelsSymbols": [
+            [
+              "8",
+              "9",
+              "J"
+            ],
+            [
+              "K",
+              "9",
+              "7"
+            ],
+            [
+              "Q",
+              "K",
+              
+
+=== reports: GET /api/project/reports -> 200 (application/json) ===
+[]
+
+=== deployment-targets: GET /api/project/deployment/targets -> 200 (application/json) ===
+[
+  {
+    "id": "local-json-example",
+    "version": "1.0.0",
+    "requirements": {
+      "requiresHomogeneousProvenance": true
+    },
+    "capabilities": [
+      "roundArtifact.featureEvents",
+      "roundArtifact.debugMetadata",
+      "multiMode"
+    ]
+  }
+]
+
+=== deployment-build-modes: GET /api/project/deployment/build-modes -> 200 (application/json) ===
+{
+  "status": "unavailable"
+}
+

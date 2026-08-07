@@ -1,0 +1,456 @@
+=== pokie build --help ===
+Usage: build [options] [command] <configPath> [excess...]
+
+Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols,
+paylines, paytable) (for a ready-to-run package instead, see "pokie init").
+"random"/--random generates a first-class random game instead (--seed to
+reproduce it, --preset default|variant to pick the generation strategy).
+--dry-run validates and previews without writing anything.
+
+Arguments:
+  configPath                    a GameBlueprint JSON config (see
+                                docs/cli.md#pokie-build-configjson)
+  excess                        rejected if present -- this command takes no
+                                further positionals
+
+Options:
+  --target <dir>                output directory (default: the generator's own
+                                default output directory)
+  --dry-run                     validate and preview without writing anything
+  -h, --help                    Display help for this command.
+
+Commands:
+  random [options] [excess...]  Generate a first-class random game instead of
+                                loading a config file.
+
+
+=== pokie create --help ===
+Usage: create [options] [name] [excess...]
+
+Design a Blueprint Project -- a standalone GameBlueprint JSON file (reels,
+symbols, paytable, reel weighting) that feeds into "pokie build" -- through an
+interactive wizard when run in a terminal with no --blank/--random ("pokie
+create <name>" pre-fills the name), or write one straight from the filled-in
+starter template non-interactively via --blank for a bare-minimum one, or
+--random for an always-valid randomly generated one, with its reel weighting
+already expressed as valid per-reel generation (--seed to reproduce it, --preset
+default|variant to pick the generation strategy). For a prepared, immediately
+valid package instead, use "pokie init".
+
+Arguments:
+  name               optional preset name -- pre-fills the wizard, or names the
+                     --blank/--random output
+  excess             rejected if present -- this command takes no further
+                     positionals
+
+Options:
+  --blank            write a bare-minimum blueprint straight from the starter
+                     template, no wizard
+  --random           write an always-valid, randomly generated blueprint
+                     directly, no wizard
+  --seed <integer>   reproduce a specific random blueprint (only meaningful with
+                     --random)
+  --preset <preset>  which random generation strategy to use (only meaningful
+                     with --random) (default: "default")
+  --out <file>       output path (default: derived from the written blueprint's
+                     own manifest id)
+  -h, --help         Display help for this command.
+
+
+=== pokie init --help ===
+Usage: init [options] [directory] [excess...]
+
+Turn the current or given [directory] into a prepared, immediately valid POKIE
+game package in place, with no game-id subdirectory: merges/patches
+package.json, and writes tsconfig.json, README.md and a real, hand-editable
+src/index.ts wherever they're missing, then (unless --no-prepare) installs
+dependencies and builds and verifies dist/index.js -- entirely
+non-interactively, with --package-name/--game-id/--game-name/--version to
+override its directory-derived defaults. Never asks reel/paytable/mechanics
+questions; for those, design a Blueprint Project with "pokie create" and build
+it with "pokie build" instead.
+
+Arguments:
+  directory              directory to initialize in place (default: the current
+                         directory)
+  excess                 rejected if present -- this command takes no further
+                         positionals
+
+Options:
+  --package-name <name>  override the package.json "name" (default: derived from
+                         the directory)
+  --game-id <id>         override the game manifest id (default: derived from
+                         the directory)
+  --game-name <name>     override the game manifest name (default: derived from
+                         the directory)
+  --version <version>    override the initial package/game version (default:
+                         "0.1.0")
+  --yes                  confirm merging into a non-empty directory that doesn't
+                         look like a POKIE package yet
+  --no-install           skip "npm install" (still builds/verifies unless
+                         --no-prepare is also given)
+  --no-prepare           scaffold files only -- skip installing dependencies,
+                         building, and verifying
+  -h, --help             Display help for this command.
+
+
+=== pokie reel --help ===
+Usage: reel [options] [command]
+
+Generate one or every "generated" reel a Blueprint Project's reelStripGeneration
+declares, via the same ReelStripGenerator/constraints/presets "pokie build"
+already runs -- a deterministic preview/diff by default, only pinning the result
+back in as a literal strip with --apply ("pokie reel generate <blueprint.json>
+[--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]").
+
+Options:
+  -h, --help                                       Display help for this command.
+
+Commands:
+  generate [options] <blueprint.json> [excess...]  Generate one or every "generated" reel a Blueprint Project's reelStripGeneration declares.
+  help [command]                                   display help for command
+
+
+=== pokie studio --help ===
+Usage: studio [options] [projectRoot] [excess...]
+
+Launch POKIE Studio, a local web app for creating/opening/inspecting game
+packages.
+
+Arguments:
+  projectRoot      a game package/blueprint to open on launch (default: the
+                   Studio home screen)
+  excess           rejected if present -- this command takes no further
+                   positionals
+
+Options:
+  --port <number>  port to listen on (default: an available port)
+  --host <string>  host to listen on (default: loopback only)
+  --no-open        do not open a browser pointed at Studio
+  -h, --help       Display help for this command.
+
+
+=== pokie serve --help ===
+Usage: serve [options] <packageRoot> [excess...]
+
+Experimental: serve a POKIE game package over local HTTP (dev/reference server,
+not a casino backend/RGS).
+
+Arguments:
+  packageRoot        an existing POKIE game package, or a native outcome-library
+                     bundle (with --mode)
+  excess             rejected if present -- this command takes no further
+                     positionals
+
+Options:
+  --port <number>    port to listen on (default: an available port)
+  --host <string>    host to listen on (default: loopback only)
+  --mode <modeName>  outcome-library mode to serve (required when <packageRoot>
+                     is a native outcome-library bundle)
+  -h, --help         Display help for this command.
+
+
+=== pokie dev --help ===
+Usage: dev [options] <packageRoot> [excess...]
+
+Experimental: run "pokie serve" and "pokie client" together, opening a browser
+preview.
+
+Arguments:
+  packageRoot             an existing POKIE game package
+  excess                  rejected if present -- this command takes no further
+                          positionals
+
+Options:
+  --port <number>         port for the API server (default: an available port)
+  --host <string>         host for the API server (default: loopback only)
+  --client-port <number>  port for the client preview server (default: an
+                          available port)
+  --client-host <string>  host for the client preview server (default: loopback
+                          only)
+  --no-open               do not open a browser pointed at the client preview
+  -h, --help              Display help for this command.
+
+
+=== pokie client --help ===
+Usage: client [options] <packageRoot> [excess...]
+
+Experimental: serve the universal browser preview UI for a running "pokie serve"
+API.
+
+Arguments:
+  packageRoot          an existing POKIE game package (unused -- see this
+                       class's own doc comment)
+  excess               rejected if present -- this command takes no further
+                       positionals
+
+Options:
+  --port <number>      port to listen on (default: an available port)
+  --host <string>      host to listen on (default: loopback only)
+  --api-port <number>  port of the pokie serve API to talk to (default: 3000)
+  --api-host <string>  host of the pokie serve API to talk to (default:
+                       127.0.0.1)
+  --no-open            do not open a browser pointed at the client preview
+  -h, --help           Display help for this command.
+
+
+=== pokie sim --help ===
+Usage: sim [options] <packageRoot> [excess...]
+
+Run a simulation against a POKIE game package and report RTP/hit-frequency/max
+win.
+
+Arguments:
+  packageRoot                an existing POKIE game package, or a native
+                             outcome-library bundle (with --mode)
+  excess                     rejected if present -- this command takes no
+                             further positionals
+
+Options:
+  --rounds <number>          number of rounds to simulate (default: 1000)
+                             (default: 1000)
+  --seed <string>            seed for a reproducible simulation (default: a
+                             random seed)
+  --workers <number>         number of parallel worker threads, 1-32 (default:
+                             1) (default: 1)
+  --out <file>               write the simulation report JSON to this path
+  --format <format>          only "json" is supported (default: a human-readable
+                             summary) (default: "summary")
+  --mode <betModeId>         bet mode to simulate (default: the game's own
+                             default bet mode; or "all" for every declared mode)
+  --min-rounds <number>      adaptive convergence: minimum rounds before
+                             checking for stability (requires
+                             --rtp-tolerance/--check-interval)
+  --rtp-tolerance <number>   adaptive convergence: acceptable RTP half-width
+                             (requires --min-rounds/--check-interval)
+  --check-interval <number>  adaptive convergence: how often (in rounds) to
+                             check for stability (requires
+                             --min-rounds/--rtp-tolerance)
+  --stable-checks <number>   adaptive convergence: consecutive stable checks
+                             required (default: 1; requires the other three
+                             convergence flags)
+  -h, --help                 Display help for this command.
+
+
+=== pokie replay --help ===
+Usage: replay [options] <packageRoot> [excess...]
+
+Best-effort replay of a single round (by seed + round index) from a POKIE game
+package.
+
+Arguments:
+  packageRoot        an existing POKIE game package, or a native outcome-library
+                     bundle (with --mode)
+  excess             rejected if present -- this command takes no further
+                     positionals
+
+Options:
+  --seed <string>    seed to replay against (required for a native
+                     outcome-library bundle)
+  --round <number>   round index to replay (required)
+  --out <file>       write the replay descriptor JSON to this path
+  --format <format>  only "json" is supported (validated, but the output is
+                     always JSON)
+  --mode <modeName>  outcome-library mode to replay (required when <packageRoot>
+                     is a native outcome-library bundle)
+  -h, --help         Display help for this command.
+
+
+=== pokie validate --help ===
+Usage: validate [options] <packageRoot> [excess...]
+
+Validate a POKIE game package's contract (manifest, entry module) without
+playing it.
+
+Arguments:
+  packageRoot       an existing POKIE game package
+  excess            rejected if present -- this command takes no further
+                    positionals
+
+Options:
+  --format <value>  only "json" is supported (default: a human-readable summary)
+  --out <file>      file path to write the report to
+  -h, --help        Display help for this command.
+
+
+=== pokie inspect --help ===
+Usage: inspect [options] <packageRoot> [excess...]
+
+Print a package's package.json (name, version, description) without running it.
+
+Arguments:
+  packageRoot  an existing POKIE game package
+  excess       rejected if present -- this command takes no further positionals
+
+Options:
+  -h, --help   Display help for this command.
+
+
+=== pokie certification --help ===
+Usage: certification [options] [command]
+
+Build a canonical POKIE certification/evidence bundle on top of an
+outcome-library bundle, or verify one ("pokie certification build <bundleDir>
+<config.json>" / "pokie certification verify <certDir>").
+
+Options:
+  -h, --help                                             Display help for this command.
+
+Commands:
+  build [options] <bundleDir> <config.json> [excess...]  Build a canonical certification/evidence bundle on top of an outcome-library bundle.
+  verify [options] <certDir> [excess...]                 Verify a certification/evidence bundle against its outcome-library source.
+  help [command]                                         display help for command
+
+
+=== pokie fairness --help ===
+Usage: fairness [options] [command]
+
+Provably Fair commit-reveal workflow: publish a server-seed commitment, publish
+a round commitment against a live outcome-library bundle, reveal the round
+proof, and verify a proof against its commitment/bundle ("pokie fairness
+seed-commit|commit|reveal|verify").
+
+Options:
+  -h, --help                                               Display help for this command.
+
+Commands:
+  seed-commit [options] <serverSeedPath> [excess...]       Publish a server-seed commitment (the first step of the commit-reveal scheme).
+  commit [options] <serverSeedCommitmentPath> [excess...]  Publish a round commitment against a live outcome-library bundle.
+  reveal [options] <commitmentPath> [excess...]            Reveal the round proof once a committed round has settled.
+  verify [options] <proofPath> [excess...]                 Independently verify a round proof against its commitment and a live source bundle.
+  help [command]                                           display help for command
+
+
+=== pokie outcomelibrary --help ===
+Usage: outcomelibrary [options] [command]
+
+Generate a WeightedOutcomeLibrary from a built package's own runtime (exact
+reel-stop enumeration), or build a canonical outcome-library persistence bundle
+from WeightedOutcomeLibrary JSON files, or validate one ("pokie outcomelibrary
+generate <packageRoot>" / "pokie outcomelibrary build <config.json>" / "pokie
+outcomelibrary validate <bundleDir>").
+
+Options:
+  -h, --help                                    Display help for this command.
+
+Commands:
+  build [options] <config.json> [excess...]     Build a canonical outcome-library persistence bundle from WeightedOutcomeLibrary JSON/JSONL files.
+  validate [options] <bundleDir> [excess...]    Validate an outcome-library persistence bundle.
+  generate [options] <packageRoot> [excess...]  Generate a WeightedOutcomeLibrary from a built package's own runtime via exact reel-stop enumeration.
+  help [command]                                display help for command
+
+
+=== pokie outcomesource --help ===
+Usage: outcomesource [options] [command]
+
+Inspect a resolved outcome-library/Stake Engine outcome source through its own
+canonical reader, draw one outcome from a native outcome library through the
+same selector path live/pre-generated play uses, or diff two resolved outcome
+sources' own exact analyses ("pokie outcomesource inspect <path>" / "pokie
+outcomesource sample <path> --mode <modeName>" / "pokie outcomesource diff
+<leftPath> <rightPath>").
+
+Options:
+  -h, --help                                         Display help for this command.
+
+Commands:
+  inspect <path> [excess...]                         Inspect a resolved outcome-library/Stake Engine outcome source through its own canonical reader.
+  sample [options] <path> [excess...]                Draw one outcome from a native outcome library through the same selector path live/pre-generated play uses.
+  diff [options] <leftPath> <rightPath> [excess...]  Diff two resolved outcome sources' own exact analyses.
+  help [command]                                     display help for command
+
+
+=== pokie par --help ===
+Usage: par [options] [command]
+
+Import/export a GameBlueprint to/from a PAR sheet XLSX workbook ("pokie par
+import <input.xlsx>" / "pokie par export <config.json>").
+
+Options:
+  -h, --help                                  Display help for this command.
+
+Commands:
+  import [options] <input.xlsx> [excess...]   Import a PAR sheet XLSX workbook into a GameBlueprint JSON file.
+  export [options] <config.json> [excess...]  Export a GameBlueprint JSON config to a PAR sheet XLSX workbook.
+  help [command]                              display help for command
+
+
+=== pokie stakeengine --help ===
+Usage: stakeengine [options] [command]
+
+Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static
+file format, import one back, standalone-analyze an arbitrary Stake Engine
+outcome directory with no pokie-manifest.json required, or diff two such
+directories/analyses ("pokie stakeengine export <config.json>" / "pokie
+stakeengine import <stakeDir>" / "pokie stakeengine analyze <stakeDir>" / "pokie
+stakeengine diff <leftStakeDir> <rightStakeDir>").
+
+Options:
+  -h, --help                                                 Display help for this command.
+
+Commands:
+  export [options] <config.json> [excess...]                 Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format.
+  import [options] <stakeDir> [excess...]                    Import a Stake Engine export directory back into WeightedOutcomeLibrary JSON files.
+  analyze [options] <stakeDir> [excess...]                   Standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required.
+  diff [options] <leftStakeDir> <rightStakeDir> [excess...]  Diff two Stake Engine outcome directories/analyses.
+  help [command]                                             display help for command
+
+
+=== pokie name --help ===
+Usage: name [options] [excess...]
+
+Generate deterministic, offline slot game name(s) from SlotGameNameGenerator
+("pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <n>]
+[--json]").
+
+Arguments:
+  excess            rejected if present -- this command takes no positionals
+
+Options:
+  --count <count>   how many unique names to generate (default: 1) (default: 1)
+  --theme <theme>   restrict generation to one theme (one of: adventure, mystic,
+                    fortune, mythic, cosmic, wild)
+  --words <words>   number of words per name, 2 or 3 (default: the generator's
+                    own choice)
+  --seed <integer>  seed for reproducible generation (default: a random seed)
+  --json            print the raw SlotGameNameResult[] JSON instead of a
+                    human-readable list
+  -h, --help        Display help for this command.
+
+
+=== pokie diff --help ===
+Usage: diff [options] <leftReportJson> <rightReportJson> [excess...]
+
+Compare two pokie sim JSON reports (see pokie sim --out) and highlight what
+changed.
+
+Arguments:
+  leftReportJson     a pokie sim JSON report (see "pokie sim --out")
+  rightReportJson    a pokie sim JSON report (see "pokie sim --out")
+  excess             rejected if present -- this command takes no further
+                     positionals
+
+Options:
+  --format <format>  only "json" is supported (default: a human-readable
+                     summary)
+  --out <file>       write the diff JSON to this path
+  -h, --help         Display help for this command.
+
+
+=== pokie report --help ===
+Usage: report [options] <simulationReportJson> [excess...]
+
+Render a pokie sim JSON report (see pokie sim --out) as a human-readable
+Markdown or HTML document.
+
+Arguments:
+  simulationReportJson  a pokie sim JSON report (see "pokie sim --out")
+  excess                rejected if present -- this command takes no further
+                        positionals
+
+Options:
+  --format <value>      "markdown" or "html" (default: "markdown")
+  --out <file>          file path to write the rendered report to
+  -h, --help            Display help for this command.
+
+

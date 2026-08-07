@@ -1,0 +1,180 @@
+=== runtime-sessions-create: POST /api/project/runtime/sessions -> 201 (application/json) ===
+{
+  "status": "ok",
+  "session": {
+    "credits": 1000,
+    "bet": 1,
+    "availableBets": [
+      1,
+      2,
+      5,
+      10
+    ],
+    "reelsSymbols": [
+      [
+        "7",
+        "J",
+        "J"
+      ],
+      [
+        "7",
+        "J",
+        "9"
+      ],
+      [
+        "9",
+        "J",
+        "A"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {}
+    },
+    "availableSymbols": [
+      "8",
+      "10",
+      "K",
+      "A",
+      "7",
+      "Q",
+      "J",
+      "9"
+    ],
+    "reelsNumber": 3,
+    "reelsSymbolsNumber": 3,
+    "paytable": {
+      "1": {
+        "7": {
+          "3": 4
+        },
+        "8": {
+          "3": 8
+        },
+        "9": {
+          "3": 1
+        },
+        "10": {
+          "3": 7
+        },
+        "K": {
+          "3": 6
+        },
+        "A": {
+          "3": 5
+        },
+        "Q": {
+          "3": 3
+        },
+        "J": {
+          "3": 2
+        }
+      },
+      "2": {
+        "7": {
+          "3": 8
+        },
+        "8": {
+          "3": 16
+        },
+        "9": {
+          "3": 2
+        },
+        "10": {
+          "3": 14
+        },
+        "K": {
+          "3": 12
+        },
+        "A": {
+          "3": 10
+        },
+        "Q": {
+          "3": 6
+        },
+        "J": {
+          "3": 4
+        }
+      },
+      "5": {
+        "7": {
+          "3": 20
+        },
+        "8": {
+          "3": 40
+        },
+        "9": {
+          "3": 5
+        },
+        "10": {
+          "3": 35
+        },
+        "K": {
+          "3": 30
+        },
+        "A": {
+          "3": 25
+        },
+        "Q": {
+          "3": 15
+        },
+        "J": {
+          "3": 10
+        }
+      },
+      "10": {
+        "7": {
+          "3": 40
+        },
+        "8": {
+          "3": 80
+        }
+
+session keys [ 'status', 'session' ]
+sessionId: undefined
+=== runtime-view: GET /api/project/runtime -> 200 (application/json) ===
+{
+  "status": "running",
+  "host": "127.0.0.1",
+  "port": 40809,
+  "baseUrl": "http://127.0.0.1:40809",
+  "playerUrl": "http://127.0.0.1:34907",
+  "debug": true,
+  "repositoryMode": "memory",
+  "startedAt": "2026-08-07T10:51:02.616Z"
+}
+
+=== player root ->  200 text/html; charset=utf-8
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>POKIE client preview</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<div id="app">
+    <header>
+        <h1 id="game-title">POKIE client preview</h1>
+        <p id="status">Connecting…</p>
+    </header>
+    <main>
+        <section id="connection-error" hidden>
+            <p id="connection-error-message"></p>
+            <details>
+                <summary>Technical details</summary>
+                <pre id="connection-error-detail"></pre>
+            </details>
+            <button id="connection-retry-button" type="button">Retry</button>
+        </section>
+        <section id="round-view">
+            <div id="player-section" hi

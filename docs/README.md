@@ -253,4 +253,7 @@ for that migration sequence's own closing acceptance check, and
 [`pokie-phase4-inventory.md`](pokie-phase4-inventory.md) for the CLI-robustness (paths with spaces, non-TTY
 invocation), materialization, Replay, player/browser-acceptance, and `pokie-examples` reusable-vs-example-specific
 baseline frozen ahead of Phase 4 work, including an explicit account of exactly which Phase 3 decisions are
-retained rather than reopened.
+retained rather than reopened, and [`pokie-phase5-inventory.md`](pokie-phase5-inventory.md) for the synced-SHA,
+fresh-build, real-CLI/Studio-HTTP baseline frozen ahead of Phase 5 work — including a stale public-API barrel, a
+`pokie build random` smoke-simulation regression, and a Blueprint Design build-destination default, all found by
+actually running the current tree rather than trusting its own tests/comments.

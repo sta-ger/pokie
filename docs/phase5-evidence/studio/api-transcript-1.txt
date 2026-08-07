@@ -1,0 +1,68 @@
+=== health: GET /api/health -> 200 ===
+{
+  "status": "ok"
+}
+
+=== project-context: GET /api/project/context -> 200 ===
+{
+  "status": "loaded",
+  "projectRoot": "/tmp/p5 evidence.529/real-pkg",
+  "game": {
+    "id": "silver-royal-voyage",
+    "name": "Silver Royal Voyage",
+    "version": "0.1.0",
+    "description": "Randomly generated video slot (seed 7)."
+  },
+  "type": "tsPackage",
+  "capabilities": [
+    "runtime.execute"
+  ]
+}
+
+=== project-inspect: GET /api/project/inspect -> 200 ===
+{
+  "packageRoot": "/tmp/p5 evidence.529/real-pkg",
+  "valid": true,
+  "packageJson": {
+    "name": "silver-royal-voyage",
+    "version": "0.1.0",
+    "description": "Randomly generated video slot (seed 7)."
+  }
+}
+
+=== project-validate: GET /api/project/validate -> 200 ===
+{
+  "packageRoot": "/tmp/p5 evidence.529/real-pkg",
+  "valid": true,
+  "game": {
+    "id": "silver-royal-voyage",
+    "name": "Silver Royal Voyage",
+    "version": "0.1.0"
+  },
+  "errors": [],
+  "warnings": [],
+  "suggestions": []
+}
+
+=== runtime-start: POST /api/project/runtime/start -> 201 ===
+{
+  "status": "running",
+  "host": "127.0.0.1",
+  "port": 40809,
+  "baseUrl": "http://127.0.0.1:40809",
+  "playerUrl": "http://127.0.0.1:34907",
+  "debug": true,
+  "repositoryMode": "memory",
+  "startedAt": "2026-08-07T10:51:02.616Z"
+}
+
+runtimeStart keys: [
+  'status',
+  'host',
+  'port',
+  'baseUrl',
+  'playerUrl',
+  'debug',
+  'repositoryMode',
+  'startedAt'
+]

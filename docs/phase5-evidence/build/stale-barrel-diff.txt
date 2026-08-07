@@ -1,0 +1,13 @@
+diff --git a/src/index.ts b/src/index.ts
+index 0266b1b..ac056a2 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -467,6 +467,7 @@ export * from "./session/videoslot/betmode/NoOpForcedFeatureEntryHandler.js";
+ export * from "./session/videoslot/betmode/PerModeForcedFeatureEntryHandler.js";
+ export * from "./session/videoslot/betmode/UnknownBetModeError.js";
+ export * from "./session/videoslot/betmode/VideoSlotWithBetModesSession.js";
++export * from "./session/videoslot/betmode/supportsBetModeSelecting.js";
+ export * from "./session/videoslot/cascade/CascadeRefillResult.js";
+ export * from "./session/videoslot/cascade/CascadeResolverOptions.js";
+ export * from "./session/videoslot/cascade/CascadeResult.js";
+6b99671b5debc63af10182817e711e64c09847dd 2026-08-06 10:57:27 +0000 [P4-POLISH-09] wire runtime bet-mode selection end to end and expose it in the player
