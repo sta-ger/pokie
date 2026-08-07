@@ -29,7 +29,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
     });
 
     it("builds the package with every reel materialized as a plain literal array — the runtime module never touches the generation API", async () => {
-        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
         expect(exitCode).toBe(0);
 
         const indexJs = fs.readFileSync(path.join(outDir, "dist", "index.js"), "utf-8");
@@ -73,7 +73,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
     });
 
     it("honors each generated reel's own lockedPositions when materializing it into the built module -- a built package carries no separate reelStripGeneration provenance of its own", async () => {
-        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
         expect(exitCode).toBe(0);
 
         const indexJs = fs.readFileSync(path.join(outDir, "dist", "index.js"), "utf-8");
@@ -85,7 +85,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
     });
 
     it("stores exact, ready-to-use strips: every generated reel has its own declared length and exact symbol counts", async () => {
-        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
         expect(exitCode).toBe(0);
 
         const indexJs = fs.readFileSync(path.join(outDir, "dist", "index.js"), "utf-8");
@@ -107,9 +107,9 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         const outDirA = path.join(workDir, "built-game-a");
         const outDirB = path.join(workDir, "built-game-b");
 
-        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDirA]);
+        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDirA]);
         expect(first).toBe(0);
-        const second = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDirB]);
+        const second = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDirB]);
         expect(second).toBe(0);
 
         const indexJsA = fs.readFileSync(path.join(outDirA, "dist", "index.js"), "utf-8");
@@ -117,11 +117,13 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         expect(indexJsB).toBe(indexJsA);
     });
 
-    it("refuses to rebuild into the same --target once it's already populated -- there is no rebuild/merge recognition", async () => {
-        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
+    it("refuses to rebuild into the same --out once it's already populated -- there is no rebuild/merge recognition", async () => {
+        const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
         expect(first).toBe(0);
 
-        await expect(new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir])).rejects.toThrow(/already exists and is not empty/);
+        await expect(new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir])).rejects.toThrow(
+            /already exists and is not empty/,
+        );
     });
 
     it("reports a clear per-reel build-time error, via pokie build, when one reel's constraints are unsatisfiable", async () => {
@@ -150,7 +152,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         const badBlueprintPath = path.join(workDir, "unsatisfiable.blueprint.json");
         fs.writeFileSync(badBlueprintPath, JSON.stringify(blueprint));
 
-        const exitCode = await new BuildCommand("1.3.0").run([badBlueprintPath, "--target", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run([badBlueprintPath, "--target", "tsPackage", "--out", outDir]);
 
         expect(exitCode).toBe(1);
         expect(fs.existsSync(outDir)).toBe(false);

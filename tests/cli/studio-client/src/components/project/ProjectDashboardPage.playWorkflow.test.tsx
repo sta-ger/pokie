@@ -135,11 +135,13 @@ describe("ProjectDashboardPage - Play", () => {
         // jest.config.mjs) precisely because it can't be assumed to have the fast studio-client-components
         // lane's headroom to itself -- so the first four waits can plausibly consume enough wall-clock
         // time that this one needs more than its share of the default budget to avoid a starved-assertion
-        // failure that isn't an actual regression. An explicit override here (and the correspondingly
-        // raised test budget below -- see this file's own sibling tests for the same 15000ms-per-wait
-        // accounting) restores the same headroom that budget already gives every other wait here by
-        // default.
-        await screen.findByText(/Show advanced details/, undefined, {timeout: 30000});
+        // failure that isn't an actual regression. Even the dedicated lane isn't isolated from
+        // check:release's own coverage-instrumented 5-project run contending for the same CPU, though
+        // (this wait timed out at the previous 30000ms budget under that load without any actual
+        // regression), so the explicit override here is doubled to 60000ms -- and the test budget below
+        // raised to match (4 * 15000ms default waits + this 60000ms override) -- for headroom that
+        // survives that contention instead of chasing it a third time.
+        await screen.findByText(/Show advanced details/, undefined, {timeout: 60000});
 
         await user.click(screen.getByRole("button", {name: "Play"}));
 
@@ -154,7 +156,7 @@ describe("ProjectDashboardPage - Play", () => {
         // responsive.test.tsx's own "no horizontal page overflow" coverage) -- proves this is the shared
         // ScreenTable-based rendering, not a bespoke narrow-unfriendly table.
         expect(within(lastRound).getByText("cherry").closest(".mantine-ScrollArea-root")).not.toBeNull();
-    }, 90000);
+    }, 120000);
 
     // The embedded canonical player never talks to Studio -- it spins straight against the runtime's
     // real HTTP API (see PlayTab's own doc comment) -- so this proves Last round catches up on that

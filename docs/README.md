@@ -74,19 +74,20 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     hit frequency, and volatility.
 17. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
-18. **[CLI](cli.md)** — `pokie build <config.json>`, which generates a working game package straight from a JSON
-    `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated
-    via `reelStripGeneration` and `ReelStripGenerator`), no compile step required; `pokie build random`/`pokie
-    build --random`, which generates a structurally-valid random `GameBlueprint` (via `RandomGameBlueprintGenerator`)
-    and builds it, no config file at all, seeded/reproducible and smoke-simulated before it's reported done; `pokie
+18. **[CLI](cli.md)** — `pokie build <project> --target <artifact> --out <path>`, POKIE's universal build pipeline:
+    `--target tsPackage` generates a working game package straight from a JSON `GameBlueprint` source (reels,
+    symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated via `reelStripGeneration`
+    and `ReelStripGenerator`), no compile step required; every other `--target` (`outcomeLibrary`/`stakeAdapter`/
+    `parWorkbook`) atomically republishes an already-built artifact of its own type to a new destination; `pokie
     create [name]`, which designs an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
     than a package, interactively via a wizard when run in a terminal (`<name>` pre-fills it, `--blank`/`--random`
     write one non-interactively instead), and `pokie init [directory]`, which produces a prepared, immediately
     valid game package in place instead — entirely non-interactively, no wizard, with
     `--package-name`/`--game-id`/`--game-name`/`--version`/`--yes`/`--no-install`/`--no-prepare` for a scripted or
     CI-driven run; `pokie create [name]
-    --random`, the same random-generation pipeline as `pokie build random`, named after `<name>` or a generated id,
-    written to a Blueprint Project file rather than built; `pokie name`, which prints one or more
+    --random`, POKIE's one entry point for first-class random game generation (via `RandomGameBlueprintGenerator`,
+    seeded/reproducible), named after `<name>` or a generated id, written to a Blueprint Project file — feed the
+    result into `pokie build <file> --target tsPackage --out <dir>` for a real, playable package; `pokie name`, which prints one or more
     deterministic, offline-generated slot game name(s) (via `SlotGameNameGenerator`) without building anything;
     `pokie sim <packageRoot>`, which runs a simulation against one and reports
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
@@ -210,9 +211,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Sending round results to a client | `net/` serializers, wired into `pokie serve` via `PokieGame.getSessionSerializer()` |
 | A sequence of stages within one round (cascades, multi-pick bonuses, ...) | `MultiStageRoundSessionSerializer`, `CascadeSessionSerializer` |
 | Loading an external game package by convention | `PokieGame`, `loadPokieGame` |
-| Generating a game package straight from a JSON blueprint (no compile step) | `pokie build <config.json>` CLI |
-| Generating a structurally-valid random game package with no config file, seeded/reproducible | `pokie build random`, `RandomGameBlueprintGenerator` |
-| Writing a structurally-valid random Blueprint Project file, seeded/reproducible | `pokie create [name] --random` |
+| Generating a game package straight from a JSON blueprint (no compile step) | `pokie build <project> --target tsPackage --out <dir>` CLI |
+| Writing a structurally-valid random Blueprint Project file, seeded/reproducible | `pokie create [name] --random`, `RandomGameBlueprintGenerator` |
+| Republishing an already-built outcomeLibrary/stakeAdapter/parWorkbook artifact to a new destination | `pokie build <project> --target <artifact> --out <path>` CLI |
 | Deterministic, offline slot game name generation | `pokie name`, `SlotGameNameGenerator` |
 | Importing/exporting a GameBlueprint as a PAR sheet XLSX workbook | `pokie par import <input.xlsx>` / `pokie par export <config.json>` |
 | Writing an editable Blueprint Project (GameBlueprint JSON file) | `pokie create [name]` CLI |

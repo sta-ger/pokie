@@ -81,13 +81,13 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         };
     }
 
-    // Builds a real package via the real "pokie build <config.json> --out <dir>" CLI, exactly as a user
-    // would run it -- the "package" step of "package -> generate -> validate -> analyze -> bundle".
+    // Builds a real package via the real "pokie build <config.json> --target tsPackage --out <dir>" CLI, exactly
+    // as a user would run it -- the "package" step of "package -> generate -> validate -> analyze -> bundle".
     async function buildPackage(blueprint: GameBlueprint, dirName: string): Promise<string> {
         const blueprintPath = path.join(workDir, `${dirName}.blueprint.json`);
         fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
         const outDir = path.join(workDir, dirName);
-        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", outDir]);
+        const exitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
         expect(exitCode).toBe(0);
         return outDir;
     }

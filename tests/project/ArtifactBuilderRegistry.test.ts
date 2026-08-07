@@ -1,4 +1,6 @@
+import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
+import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
@@ -6,6 +8,7 @@ import {
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
+import type {PokieProject} from "../../src/project/PokieProject.js";
 
 describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
@@ -75,6 +78,55 @@ describe("ArtifactBuilderRegistry", () => {
             expect(registry.supportsConversionFrom("tsPackage", "tsPackage")).toBe(false);
             expect(registry.supportsConversionFrom("wasm", "tsPackage")).toBe(false);
             expect(registry.supportsConversionFrom("wasm", "blueprint")).toBe(false);
+        });
+    });
+
+    describe("build", () => {
+        function projectOf(type: "blueprint" | "tsPackage"): PokieProject {
+            return {type, rootPath: `/projects/${type}`, capabilities: PROJECT_TYPE_CAPABILITIES[type], provenance: "test fixture"} as PokieProject;
+        }
+
+        function fakeBuilder(target: "tsPackage"): ArtifactBuilder & {calls: number} {
+            const builder = {
+                target,
+                calls: 0,
+                build(source: PokieProject, destinationPath: string) {
+                    builder.calls++;
+                    return Promise.resolve({outputPath: destinationPath});
+                },
+            };
+            return builder;
+        }
+
+        it("delegates to the registered builder for a supported conversion", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+
+            const result = await withBuilder.build("tsPackage", projectOf("blueprint"), "/out/my-game");
+
+            expect(result).toEqual({outputPath: "/out/my-game"});
+            expect(builder.calls).toBe(1);
+        });
+
+        it("rejects with the same capability diagnostic describe()/supportsConversionFrom() already report, without invoking any builder", async () => {
+            const builder = fakeBuilder("tsPackage");
+            const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
+
+            await expect(withBuilder.build("tsPackage", projectOf("tsPackage"), "/out/my-game")).rejects.toThrow(
+                /"build" is not supported for a "tsPackage" project \(missing the "blueprint\.build" capability\)/,
+            );
+            expect(builder.calls).toBe(0);
+        });
+
+        it("rejects with a clear message for a target that has no registered builder ('wasm')", async () => {
+            const withoutBuilders = new ArtifactBuilderRegistry("1.3.0", new Map());
+
+            // "wasm" has no supported source at all, so this always fails the capability check first --
+            // exercised instead through a target this registry's own descriptor concedes has no source
+            // support, proving build() never crashes on a target simply because no builder is registered.
+            await expect(withoutBuilders.build("tsPackage", projectOf("blueprint"), "/out/my-game")).rejects.toThrow(
+                /"tsPackage" has no builder implemented yet/,
+            );
         });
     });
 });

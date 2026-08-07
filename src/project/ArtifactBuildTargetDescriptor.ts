@@ -1,4 +1,5 @@
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
+import type {PokieOperation} from "./PokieOperation.js";
 import type {ProjectCapability} from "./ProjectCapability.js";
 import type {ProjectType} from "./ProjectType.js";
 
@@ -11,6 +12,11 @@ import type {ProjectType} from "./ProjectType.js";
 // already reads, not a placeholder left to fill in later.
 export type ArtifactBuildTargetDescriptor = {
     readonly target: ArtifactTargetType;
+    // The PokieOperation ArtifactBuilderRegistry.build() checks `describeUnsupportedProjectOperation` against
+    // before ever invoking a builder -- exposed here so a caller (ArtifactBuilderRegistry itself, a future
+    // Studio build-preview panel) can produce the exact same capability diagnostic this registry's own build()
+    // does, without re-deriving a target-to-operation mapping independently.
+    readonly operation: PokieOperation;
     // The single ProjectCapability a source PokieProject must carry to build this target -- the same
     // capability OPERATION_REQUIRED_CAPABILITY already names for this target's own PokieOperation, not a
     // second, independently-decided requirement (see ArtifactBuilderRegistry's own TARGET_OPERATION map).

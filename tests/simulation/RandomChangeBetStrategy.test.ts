@@ -24,7 +24,12 @@ describe("RandomChangeBetStrategyTest", () => {
             canPlayNextGame: () => true,
         };
         const c = new SimulationConfig();
-        c.setNumberOfRounds(1000);
+        // With 99 available bets picked uniformly at random each round, the coupon-collector
+        // expectation for seeing every bet at least once is ~99*ln(99) =~ 455 rounds. 1000 rounds
+        // left a real (~0.4%) chance of missing one, which made this test flaky. 20000 rounds
+        // pushes the probability of missing any single bet below 1e-9, without changing what's
+        // under test: a genuinely random strategy that, given enough rounds, uses every bet.
+        c.setNumberOfRounds(20000);
         c.setChangeBetStrategy(new RandomChangeBetStrategy());
         const simulation = new Simulation(sessionMock, c);
 

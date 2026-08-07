@@ -325,8 +325,8 @@ export class CreateCommand implements CliCommandHandling {
         console.log(`  created  ${filePath}`);
         console.log(`\nGame blueprint "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") created at "${filePath}".`);
         console.log(`\nBuild it:`);
-        console.log(`  pokie build ${filePath} --dry-run`);
-        console.log(`  pokie build ${filePath} --target <dir>`);
+        console.log(`  pokie build ${filePath} --target tsPackage --out <dir> --dry-run`);
+        console.log(`  pokie build ${filePath} --target tsPackage --out <dir>`);
     }
 
     // --blank: writes the filled-in starter template directly, no wizard.
@@ -339,9 +339,10 @@ export class CreateCommand implements CliCommandHandling {
         return 0;
     }
 
-    // --random: a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly,
-    // the same generator "pokie build random" uses -- but unlike that command, this one never builds or
-    // smoke-simulates a package, it only writes the blueprint out. Its reel weighting is expressed as a
+    // --random: a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly and
+    // written straight to disk -- never builds or smoke-simulates a package itself; "pokie build
+    // <file> --target tsPackage" is the one place any written blueprint (random or hand-authored)
+    // becomes a real package. Its reel weighting is expressed as a
     // per-reel reelStripGeneration array (see buildRandomReelStripGeneration.ts) rather than a single
     // flat symbolWeights map, so the file already demonstrates "valid per-reel generation" -- every reel
     // has its own independent, reproducible generation config -- instead of leaving all of them to share

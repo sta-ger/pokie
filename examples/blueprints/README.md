@@ -1,6 +1,6 @@
 # Example `GameBlueprint` files
 
-Hand-authored `pokie build` inputs — see [`pokie build <config.json>`](../../docs/cli.md#pokie-build-configjson)
+Hand-authored `pokie build` inputs — see [`pokie build <project>`](../../docs/cli.md#pokie-build-project)
 for the full format and the minimal `build -> inspect -> validate -> sim -> report -> replay -> serve/dev` workflow.
 Starting a new one from scratch? [`pokie create [name]`](../../docs/cli.md#pokie-create-name) writes an editable
 Blueprint Project file through an interactive wizard, instead of hand-authoring the whole shape shown below.
@@ -25,7 +25,7 @@ Blueprint Project file through an interactive wizard, instead of hand-authoring 
 Try it from the repository root:
 
 ```
-npx pokie build examples/blueprints/sample-slot.blueprint.json --target /tmp/sample-slot
+npx pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out /tmp/sample-slot
 cd /tmp/sample-slot && npm install
 npx pokie inspect .
 npx pokie validate .
@@ -35,10 +35,10 @@ Or the `reelStripGeneration` example — each *generated* reel's resolved strip 
 package's `reelStrips`, with no separate record of the generation config (seed, constraints, etc.) that produced it:
 
 ```
-npx pokie build examples/blueprints/generated-reels.blueprint.json --target /tmp/generated-reels
+npx pokie build examples/blueprints/generated-reels.blueprint.json --target tsPackage --out /tmp/generated-reels
 npx pokie inspect /tmp/generated-reels
 ```
 
 The generated package includes its own `README.md` (what each file is, and the rest of the
 `build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow) — see
-[`pokie build <config.json>`](../../docs/cli.md#pokie-build-configjson) for what's in each.
+[`pokie build <project>`](../../docs/cli.md#pokie-build-project) for what's in each.
