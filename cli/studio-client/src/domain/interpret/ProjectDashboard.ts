@@ -1,14 +1,11 @@
 import type {
-    GamePackageInspectionReport,
     OutcomeSourceProjectReportView,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     StudioProjectCapability,
     StudioProjectOrigin,
     StudioProjectType,
-    StudioSimulationJobView,
 } from "../../api/types";
-import {isSimulationActive} from "./Simulation";
 
 // Pure view-model transforms for the Project Dashboard — mirrors cli/client/interpretResponse.ts's
 // role: main.ts/dom.ts consume these instead of branching on the raw discriminated-union DTOs
@@ -124,31 +121,6 @@ export function describeCapability(capability: StudioProjectCapability): string 
     return CAPABILITY_LABEL[capability] ?? capability;
 }
 
-// The full Inspect result block: package name/version/root. "loading"/"error" are about the
-// /api/project/inspect call itself (in flight, or failing outright, e.g. a network failure or a 409 when
-// there's no active project) -- their message is a raw exception, run through describeProjectActionError
-// like every other action failure. "invalid" is different: a *successful* call whose own report says the
-// package itself couldn't be read (`report.valid === false`, e.g. a missing/corrupt package.json) --
-// `message` there is the report's own safe, already-curated error text, shown verbatim rather than
-// folded into generic remediation copy.
-export type InspectionResultView =
-    | {status: "loading"}
-    | {status: "error"; message: string}
-    | {status: "invalid"; message: string}
-    | {status: "loaded"; packageRoot: string; packageName?: string; packageVersion?: string};
-
-export function describeInspection(report: GamePackageInspectionReport): InspectionResultView {
-    if (!report.valid) {
-        return {status: "invalid", message: report.error ?? "Inspection failed."};
-    }
-    return {
-        status: "loaded",
-        packageRoot: report.packageRoot,
-        packageName: report.packageJson?.name,
-        packageVersion: report.packageJson?.version,
-    };
-}
-
 export type ValidationIssueView = {code: string; message: string};
 
 export type ValidationSummaryView = {
@@ -188,76 +160,3 @@ export type ProjectValidationView =
     | {status: "loading"}
     | {status: "error"; message: string}
     | {status: "success"; summary: ValidationSummaryView};
-
-export type NextActionView = {
-    kind: "validate" | "validating" | "validation-failed" | "fix-validation" | "simulate" | "simulation-running" | "view-report";
-    title: string;
-    description: string;
-    // Absent while there's nothing useful to click yet (e.g. a validation already in flight).
-    actionLabel?: string;
-};
-
-// Pure UI-sequencing over state Project Overview already has (validation state, current simulation job)
-// -- not game/simulation logic, just "which screen should the user go to next." Deliberately a single
-// ordered if-chain (not a lookup table) since each branch's copy depends on the *reason*, not just a
-// status enum. Warnings-only validation results are deliberately NOT treated as blocking here -- only
-// `summary.blocking` (errors, or an outright invalid report) gates progress past Validate.
-export function describeNextAction(validation: ProjectValidationView, simulationJob: StudioSimulationJobView | undefined): NextActionView {
-    if (validation.status === "idle") {
-        return {
-            kind: "validate",
-            title: "Validate your project",
-            description: "Run a validation check to confirm your game package is ready to simulate.",
-            actionLabel: "Validate project",
-        };
-    }
-    if (validation.status === "loading") {
-        return {kind: "validating", title: "Validating…", description: "Checking your project for issues."};
-    }
-    if (validation.status === "error") {
-        return {kind: "validation-failed", title: "Validation failed", description: validation.message, actionLabel: "Try again"};
-    }
-
-    const {summary} = validation;
-    if (summary.blocking) {
-        const issueCount = summary.errors.length + summary.warnings.length;
-        return {
-            kind: "fix-validation",
-            title: "Fix validation issues",
-            description: `${issueCount} issue${issueCount === 1 ? "" : "s"} found — review and resolve them before building or simulating.`,
-            actionLabel: "Review validation",
-        };
-    }
-    if (simulationJob === undefined) {
-        return {
-            kind: "simulate",
-            title: "Run a simulation",
-            description: summary.hasIssues
-                ? `Your project is valid, with ${summary.warnings.length} warning(s). Run a simulation to see how it performs.`
-                : "Your project is valid. Run a simulation to see how it performs.",
-            actionLabel: "Run a simulation",
-        };
-    }
-    if (isSimulationActive(simulationJob)) {
-        return {
-            kind: "simulation-running",
-            title: "Simulation in progress",
-            description: "Your simulation is still running.",
-            actionLabel: "View progress",
-        };
-    }
-    if (simulationJob.status === "completed") {
-        return {
-            kind: "view-report",
-            title: "View your report",
-            description: "Your simulation finished — open the report to see the results.",
-            actionLabel: "View report",
-        };
-    }
-    return {
-        kind: "simulate",
-        title: "Run a new simulation",
-        description: "The last simulation didn't complete. Run a new one when you're ready.",
-        actionLabel: "Run a simulation",
-    };
-}

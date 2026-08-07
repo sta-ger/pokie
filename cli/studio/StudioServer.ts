@@ -1,10 +1,14 @@
 import {
     GamePackageInspecting,
+    GamePackageInspectionReport,
     GamePackageInspector,
     loadPokieGame,
     PokieDevServerAddress,
     PokieGamePackageValidating,
+    PokieGamePackageValidationReport,
     PokieGamePackageValidator,
+    ProjectTargetResolver,
+    ProjectType,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
@@ -484,7 +488,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/project/inspect") {
-            this.handleInspectProject(res);
+            await this.handleInspectProject(res);
             return;
         }
 
@@ -1154,12 +1158,49 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }
 
-    private handleInspectProject(res: ServerResponse): void {
+    // Resolves `projectRoot`'s own ProjectType (see ProjectTargetResolver) so Inspect/Validate below
+    // never assume `projectRoot` is a package directory the way they always used to -- a "blueprint"
+    // `projectRoot` is a single JSON file, and probing `<blueprint.json>/package.json` against it
+    // throws ENOTDIR rather than reporting a normal "invalid" result. `undefined` on any resolution
+    // failure (unrecognized, ambiguous, or a genuine I/O error) so both callers can safely fall back to
+    // their existing tsPackage-oriented behavior -- exactly as before this awareness existed -- instead
+    // of turning a resolution failure into an Inspect/Validate failure of its own.
+    //
+    // Also treats a `projectRoot` that's a plain file (not a directory) as "blueprint" even when the
+    // resolver itself came back empty -- e.g. a corrupt/malformed blueprint JSON fails
+    // looksLikeGameBlueprintFile's own lightweight recognition (see ProjectTargetResolver's blueprint
+    // adapter) and so resolves to `undefined`, not "blueprint". Falling through to the tsPackage-oriented
+    // path in that case is exactly the bug this method exists to prevent: package.json-shaped Inspect/
+    // Validate assume a directory, and a file `projectRoot` still hits the same ENOTDIR reading
+    // `<projectRoot>/package.json`. A file can never legitimately be a package directory regardless of
+    // what the resolver made of its contents, so this is a strict widening of "blueprint", not a new type.
+    private async resolveOpenedProjectType(projectRoot: string): Promise<ProjectType | undefined> {
+        const resolvedType = (await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined))?.type;
+        if (resolvedType !== undefined) {
+            return resolvedType;
+        }
+        return this.isFile(projectRoot) ? "blueprint" : undefined;
+    }
+
+    private isFile(targetPath: string): boolean {
+        try {
+            return fs.statSync(targetPath).isFile();
+        } catch {
+            return false;
+        }
+    }
+
+    private async handleInspectProject(res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, this.gamePackageInspector.inspect(this.currentContext.projectRoot));
+        const projectRoot = this.currentContext.projectRoot;
+        if ((await this.resolveOpenedProjectType(projectRoot)) === "blueprint") {
+            this.sendJson(res, 200, this.inspectBlueprintProject(projectRoot));
+            return;
+        }
+        this.sendJson(res, 200, this.gamePackageInspector.inspect(projectRoot));
     }
 
     private async handleValidateProject(res: ServerResponse): Promise<void> {
@@ -1167,7 +1208,58 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, await this.gamePackageValidator.validate(this.currentContext.projectRoot));
+        const projectRoot = this.currentContext.projectRoot;
+        if ((await this.resolveOpenedProjectType(projectRoot)) === "blueprint") {
+            this.sendJson(res, 200, this.validateBlueprintProject(projectRoot));
+            return;
+        }
+        this.sendJson(res, 200, await this.gamePackageValidator.validate(projectRoot));
+    }
+
+    // Inspect's own blueprint counterpart -- reuses StudioBlueprintService.load() (the same read/parse
+    // the Blueprint Editor's own Load action runs) rather than a second, separate blueprint-file reader,
+    // and reports the blueprint's own manifest fields in place of package.json's, since a blueprint
+    // `projectRoot` has no package.json of its own to read.
+    private inspectBlueprintProject(projectRoot: string): GamePackageInspectionReport {
+        const loaded = this.blueprintService.load(projectRoot);
+        if (loaded.status === "load-error") {
+            return {packageRoot: projectRoot, valid: false, error: loaded.error};
+        }
+        return {packageRoot: projectRoot, valid: true, packageJson: readBlueprintManifest(loaded.blueprint)};
+    }
+
+    // Validate's own blueprint counterpart -- runs GameBlueprintValidator (via StudioBlueprintService.
+    // validate(), the exact same call the Blueprint Editor's own Validate action makes) against the
+    // parsed blueprint instead of PokieGamePackageValidator, which requires a loadable entry module a
+    // blueprint `projectRoot` doesn't have. Shaped as a PokieGamePackageValidationReport so Overview's
+    // existing validation diagnostics render it exactly as they already do for a tsPackage project.
+    private validateBlueprintProject(projectRoot: string): PokieGamePackageValidationReport {
+        const loaded = this.blueprintService.load(projectRoot);
+        if (loaded.status === "load-error") {
+            return {
+                packageRoot: projectRoot,
+                valid: false,
+                game: null,
+                errors: [{code: "blueprint-load-failed", severity: "error", message: loaded.error}],
+                warnings: [],
+                suggestions: [],
+            };
+        }
+
+        const validated = this.blueprintService.validate(loaded.blueprint);
+        const errors = validated.status === "invalid" ? validated.errors : [];
+        const warnings = validated.warnings;
+        const suggestions = [
+            ...new Set([...errors, ...warnings].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion))),
+        ];
+        return {
+            packageRoot: projectRoot,
+            valid: errors.length === 0,
+            game: readBlueprintGameIdentity(loaded.blueprint),
+            errors,
+            warnings,
+            suggestions,
+        };
     }
 
     private handleListDeploymentTargets(res: ServerResponse): void {
@@ -1967,4 +2059,34 @@ export class StudioServer implements StudioServerHandling {
         res.writeHead(statusCode, {"Content-Type": "application/json"});
         res.end(JSON.stringify(body));
     }
+}
+
+// A parsed blueprint's own "manifest" object, or undefined when the blueprint isn't at least shaped
+// enough to have one -- shared by inspectBlueprintProject/validateBlueprintProject above so neither
+// re-derives the same "is this a plain object with a plain-object manifest" check for itself.
+function readBlueprintManifestFields(blueprint: unknown): Record<string, unknown> | undefined {
+    if (typeof blueprint !== "object" || blueprint === null) {
+        return undefined;
+    }
+    const manifest = (blueprint as Record<string, unknown>).manifest;
+    return typeof manifest === "object" && manifest !== null ? (manifest as Record<string, unknown>) : undefined;
+}
+
+function readBlueprintManifest(blueprint: unknown): {name?: string; version?: string; description?: string} {
+    const manifest = readBlueprintManifestFields(blueprint);
+    return {
+        name: typeof manifest?.name === "string" ? manifest.name : undefined,
+        version: typeof manifest?.version === "string" ? manifest.version : undefined,
+        description: typeof manifest?.description === "string" ? manifest.description : undefined,
+    };
+}
+
+// null (rather than a partially-filled object) unless every one of id/name/version is a real string --
+// mirrors PokieGamePackageValidator's own extractGame(), whose "game" field is likewise all-or-nothing.
+function readBlueprintGameIdentity(blueprint: unknown): {id: string; name: string; version: string} | null {
+    const manifest = readBlueprintManifestFields(blueprint);
+    if (typeof manifest?.id !== "string" || typeof manifest?.name !== "string" || typeof manifest?.version !== "string") {
+        return null;
+    }
+    return {id: manifest.id, name: manifest.name, version: manifest.version};
 }

@@ -4,8 +4,6 @@ import {
     BLUEPRINT_BUILD_CAPABILITY,
     describeCapability,
     PROJECT_TYPE_LABEL,
-    type InspectionResultView,
-    type NextActionView,
     type ProjectHeaderView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
@@ -13,7 +11,6 @@ import {describeProjectActionError} from "../../domain/projectActionError";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
-import {NextStepCallout} from "../common/NextStepCallout";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 
@@ -26,16 +23,6 @@ function describeOrigin(origin: StudioProjectOrigin | undefined): string {
     }
     return "Unknown";
 }
-
-const NEXT_ACTION_TONE: Record<NextActionView["kind"], "info" | "success" | "warning"> = {
-    validate: "info",
-    validating: "info",
-    "validation-failed": "warning",
-    "fix-validation": "warning",
-    simulate: "info",
-    "simulation-running": "info",
-    "view-report": "success",
-};
 
 // Validation's own diagnostics, folded into Overview instead of a separate "Validate" section --
 // ProjectDashboardPage runs this automatically once a project finishes loading (and again on demand
@@ -67,39 +54,26 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
     );
 }
 
-// The Project Dashboard's landing section -- a calm summary of what this project *is* (type, origin,
-// location, editable-or-read-only, its capabilities) and what state it's currently in (automatic
-// validation diagnostics, the next recommended action), plus its package.json identity from Inspect.
+// The Project Dashboard's landing section -- a calm summary of what this project *is* (id/name/version,
+// type, origin, location, editable-or-read-only, its capabilities) and what state it's currently in
+// (automatic validation diagnostics). Deliberately never a wizard: no "next step" call-to-action, and no
+// package.json-shaped metadata -- a resolved Project can be a "blueprint" (a single JSON file, no
+// package.json of its own) just as easily as a "tsPackage", so Overview only ever shows fields every
+// resolved ProjectType actually has (see ProjectHeaderView/PokieProject's own doc comments).
 export function OverviewTab({
     header,
-    inspection,
     validation,
     onRevalidate,
-    nextAction,
-    onNextAction,
-    onReinspect,
 }: {
     header: Extract<ProjectHeaderView, {status: "loaded"}>;
-    inspection: InspectionResultView;
     validation: ProjectValidationView;
     onRevalidate: () => void;
-    nextAction: NextActionView;
-    onNextAction: () => void;
-    onReinspect: () => void;
 }) {
     const editable = header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY);
 
     return (
         <div>
-            <NextStepCallout
-                title={nextAction.title}
-                description={nextAction.description}
-                actionLabel={nextAction.actionLabel}
-                onAction={onNextAction}
-                tone={NEXT_ACTION_TONE[nextAction.kind]}
-            />
-
-            <Table withRowBorders={false} mb="md" mt="md">
+            <Table withRowBorders={false} mb="md">
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>ID</Table.Th>
@@ -146,33 +120,6 @@ export function OverviewTab({
 
             <PageSection legend="Validation">
                 <ValidationDiagnostics view={validation} onRevalidate={onRevalidate} />
-            </PageSection>
-
-            <PageSection legend="Metadata">
-                {inspection.status === "loading" && <LoadingState label="Inspecting…" />}
-                {inspection.status === "error" && (
-                    <ErrorState message={describeProjectActionError("The project inspection", inspection.message)} />
-                )}
-                {inspection.status === "invalid" && <ErrorState message={inspection.message} />}
-                {inspection.status === "loaded" && (
-                    <Table withRowBorders={false} mb="sm">
-                        <Table.Tbody>
-                            <Table.Tr>
-                                <Table.Th>Package name</Table.Th>
-                                <Table.Td>{inspection.packageName ?? "—"}</Table.Td>
-                            </Table.Tr>
-                            <Table.Tr>
-                                <Table.Th>Package version</Table.Th>
-                                <Table.Td>{inspection.packageVersion ?? "—"}</Table.Td>
-                            </Table.Tr>
-                        </Table.Tbody>
-                    </Table>
-                )}
-                <QuickActions>
-                    <Button variant="default" size="xs" onClick={onReinspect} loading={inspection.status === "loading"}>
-                        Re-run Inspect
-                    </Button>
-                </QuickActions>
             </PageSection>
         </div>
     );

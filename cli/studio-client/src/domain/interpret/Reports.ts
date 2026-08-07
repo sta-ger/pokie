@@ -5,7 +5,7 @@ import type {StudioSimulationReportListEntry} from "../../api/types";
 // seed, RTP, hit frequency, max win, started/completed time, duration, hasWarnings, status) is
 // already present verbatim on StudioSimulationReportListEntry, so this only ever needs to distinguish
 // "no completed simulations yet" from "here's the list" — "loading"/"error" are constructed directly
-// by main.ts around the fetch call itself, same convention as ProjectHeaderView/InspectionResultView.
+// by main.ts around the fetch call itself, same convention as ProjectHeaderView's own doc comment.
 export type ReportListView = {status: "empty"} | {status: "loaded"; entries: StudioSimulationReportListEntry[]};
 
 export function describeReportsList(entries: StudioSimulationReportListEntry[]): ReportListView {

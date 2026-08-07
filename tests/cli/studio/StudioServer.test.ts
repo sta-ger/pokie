@@ -2323,6 +2323,133 @@ describe("StudioServer", () => {
         });
     });
 
+    // Regression coverage for resolved-project-type awareness: opening a "blueprint" `projectRoot`
+    // (a single JSON file, not a directory) must never probe `<blueprint.json>/package.json` --
+    // that throws ENOTDIR, not a normal "invalid" report -- and must run GameBlueprintValidator/the
+    // blueprint's own manifest instead of PokieGamePackageValidator/package.json (see
+    // resolveOpenedProjectType/inspectBlueprintProject/validateBlueprintProject's own doc comments).
+    describe("GET /api/project/inspect and /api/project/validate for a resolved 'blueprint' project (real fixtures on disk)", () => {
+        let blueprintStudioRoot: string;
+        let blueprintWorkDir: string;
+        let blueprintServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            blueprintStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-blueprint-inspect-studio-test-"));
+            writeStudioAssets(blueprintStudioRoot);
+            blueprintWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-blueprint-inspect-work-test-"));
+        });
+
+        afterEach(async () => {
+            await blueprintServer?.stop();
+            fs.rmSync(blueprintStudioRoot, {recursive: true, force: true});
+            fs.rmSync(blueprintWorkDir, {recursive: true, force: true});
+        });
+
+        function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+            return {
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+                ...overrides,
+            };
+        }
+
+        function writeBlueprintFile(blueprint: unknown): string {
+            const filePath = path.join(blueprintWorkDir, "blueprint.json");
+            fs.writeFileSync(filePath, JSON.stringify(blueprint));
+            return filePath;
+        }
+
+        async function startServerForBlueprintProject(projectRoot: string): Promise<string> {
+            const homeService = new StudioHomeService("1.0.0");
+            blueprintServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: blueprintStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", blueprintStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot},
+            });
+            const address = await blueprintServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("inspects a valid blueprint's own manifest fields, never probing <blueprint.json>/package.json", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint());
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({
+                packageRoot: blueprintPath,
+                valid: true,
+                packageJson: {name: "Sample Slot", version: "0.1.0", description: undefined},
+            });
+        });
+
+        it("reports a safe load-error (never an ENOTDIR) when inspecting a corrupt blueprint file", async () => {
+            const blueprintPath = path.join(blueprintWorkDir, "blueprint.json");
+            fs.writeFileSync(blueprintPath, "{ this is not json");
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({packageRoot: blueprintPath, valid: false});
+            expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+
+        it("validates a clean blueprint via GameBlueprintValidator with no errors/warnings", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint());
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
+
+            expect(status).toBe(200);
+            expect(body).toEqual({
+                packageRoot: blueprintPath,
+                valid: true,
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                errors: [],
+                warnings: [],
+                suggestions: [],
+            });
+        });
+
+        it("reports GameBlueprintValidator's own structural errors for a broken blueprint, never PokieGamePackageValidator's package.json-oriented errors", async () => {
+            const blueprintPath = writeBlueprintFile(buildBlueprint({reels: 0}));
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
+
+            expect(status).toBe(200);
+            const view = body as PokieGamePackageValidationReport;
+            expect(view.valid).toBe(false);
+            expect(view.errors.map((error) => error.code)).toContain("blueprint-reels-invalid");
+            expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+        });
+
+        it("reports a safe load-error (never an ENOTDIR) when validating a corrupt blueprint file", async () => {
+            const blueprintPath = path.join(blueprintWorkDir, "blueprint.json");
+            fs.writeFileSync(blueprintPath, "{ this is not json");
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
+
+            expect(status).toBe(200);
+            const view = body as PokieGamePackageValidationReport;
+            expect(view.valid).toBe(false);
+            expect(view.game).toBeNull();
+            expect(view.errors[0]?.code).toBe("blueprint-load-failed");
+            expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+        });
+    });
+
     describe("Project Dashboard: Simulation (POST/GET/DELETE /api/project/simulations)", () => {
         it("returns 409 for POST when there is no active project", async () => {
             const {status, body} = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
