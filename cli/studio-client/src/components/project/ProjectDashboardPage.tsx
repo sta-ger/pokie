@@ -7,7 +7,6 @@ import {
     closeProject,
     getReplay,
     getReport,
-    inspectProject,
     inspectReplayArtifact,
     listRecentSpins,
     listReplays,
@@ -20,11 +19,8 @@ import {errorMessage} from "../../domain/errorMessage";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     describeCapability,
-    describeInspection,
-    describeNextAction,
     describeValidationSummary,
     RUNTIME_EXECUTE_CAPABILITY,
-    type InspectionResultView,
     type ProjectHeaderView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
@@ -169,20 +165,6 @@ export function ProjectDashboardPage() {
 
     const header = useProjectContext();
     const projectKey = header.status === "loaded" || header.status === "error" ? header.projectRoot : undefined;
-
-    const [inspection, setInspection] = useState<InspectionResultView>({status: "loading"});
-    const inspectGuard = useDoubleSubmitGuard();
-    const refreshInspect = useCallback(() => {
-        if (!inspectGuard.begin()) {
-            return;
-        }
-        setInspection({status: "loading"});
-        inspectProject(fetchImpl)
-            .then((report) => setInspection(describeInspection(report)))
-            .catch((error: unknown) => setInspection({status: "error", message: errorMessage(error)}))
-            .finally(() => inspectGuard.end());
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fetchImpl]);
 
     // Replacing the whole state on every attempt (not just a summary + a separate loading bool) is what
     // makes a failed re-validation correctly clear a stale successful result instead of silently leaving
@@ -596,7 +578,6 @@ export function ProjectDashboardPage() {
         // genuinely different project needs to stop showing the previous one's simulation/replay job.
         simulation.resetForProjectSwitch();
         replay.resetForProjectSwitch();
-        refreshInspect();
         // Overview's own validation diagnostics run automatically as soon as a project is open --
         // there's no more separate "Validate" section a user has to remember to click into (see
         // OverviewTab's own ValidationDiagnostics). runValidate() itself sets `validation` to "loading"
@@ -639,26 +620,6 @@ export function ProjectDashboardPage() {
     useEffect(() => {
         panelRef.current?.focus();
     }, [activeTab, header.status]);
-
-    const nextAction = describeNextAction(validation, simulation.job);
-    const onNextAction = (): void => {
-        // "validate"/"validation-failed"/"fix-validation" all resolve to Overview now -- there's no
-        // separate "Validate" section to navigate to any more, validation diagnostics live right there
-        // (see OverviewTab). A retry ("validate"/"validation-failed") re-runs it; "fix-validation" just
-        // scrolls the user back to the diagnostics already shown, nothing to re-run yet.
-        if (nextAction.kind === "validate" || nextAction.kind === "validation-failed") {
-            setActiveTab("overview");
-            runValidate();
-        } else if (nextAction.kind === "fix-validation") {
-            setActiveTab("overview");
-        } else if (nextAction.kind === "simulate") {
-            setActiveTab("simulation");
-        } else if (nextAction.kind === "simulation-running") {
-            setActiveTab("simulation");
-        } else if (simulation.currentJobId) {
-            selectReport(simulation.currentJobId);
-        }
-    };
 
     const [closeError, setCloseError] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
@@ -740,15 +701,7 @@ export function ProjectDashboardPage() {
                     {activeTabSupported && (
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
-                                <OverviewTab
-                                    header={header}
-                                    inspection={inspection}
-                                    validation={validation}
-                                    onRevalidate={runValidate}
-                                    nextAction={nextAction}
-                                    onNextAction={onNextAction}
-                                    onReinspect={refreshInspect}
-                                />
+                                <OverviewTab header={header} validation={validation} onRevalidate={runValidate} />
                             )}
                             {activeTab === "play" && (
                                 <PlayTab

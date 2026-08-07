@@ -1,18 +1,11 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {OverviewTab} from "../../../../../../cli/studio-client/src/components/project/OverviewTab";
-import type {NextActionView, ProjectHeaderView, ProjectValidationView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
+import type {ProjectHeaderView, ProjectValidationView} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
 
 function renderWithMantine(ui: React.ReactElement) {
     return render(<MantineProvider>{ui}</MantineProvider>);
 }
-
-const NEXT_ACTION: NextActionView = {
-    kind: "validate",
-    title: "Validate your project",
-    description: "Run a validation check to confirm your game package is ready to simulate.",
-    actionLabel: "Validate project",
-};
 
 const VALIDATION_IDLE: ProjectValidationView = {status: "idle"};
 
@@ -29,22 +22,28 @@ function header(overrides: Partial<Extract<ProjectHeaderView, {status: "loaded"}
 }
 
 describe("OverviewTab", () => {
-    it("announces the next-step recommendation as a polite status update, not a silent one", () => {
-        renderWithMantine(
-            <OverviewTab
-                header={header()}
-                inspection={{status: "loading"}}
-                validation={VALIDATION_IDLE}
-                onRevalidate={() => undefined}
-                nextAction={NEXT_ACTION}
-                onNextAction={() => undefined}
-                onReinspect={() => undefined}
-            />,
-        );
+    it("shows calm project information -- id, version, type, origin, location, editability, capabilities -- with no next-step call-to-action", () => {
+        renderWithMantine(<OverviewTab header={header({type: "blueprint", origin: "managed", capabilities: ["blueprint.build"]})} validation={VALIDATION_IDLE} onRevalidate={() => undefined} />);
 
-        // Scoped via closest(), not a bare getByRole("status") -- the Inspect section's own
-        // LoadingState is also role="status" while inspection is loading.
-        const status = screen.getByText("Validate your project").closest('[role="status"]');
-        expect(status).not.toBeNull();
+        expect(screen.getByText("sample-slot")).toBeInTheDocument();
+        expect(screen.getByText("1.0.0")).toBeInTheDocument();
+        expect(screen.getByText("Blueprint")).toBeInTheDocument();
+        expect(screen.getByText("Managed")).toBeInTheDocument();
+        expect(screen.getByText("/games/sample-slot")).toBeInTheDocument();
+        expect(screen.getByText(/Editable — this project's Blueprint source file/)).toBeInTheDocument();
+
+        // No wizard-like "next step" recommendation, and no separate package.json-shaped Metadata
+        // section -- a "blueprint" project has no package.json of its own to report (see this
+        // component's own doc comment).
+        expect(screen.queryByRole("button", {name: /Run a simulation|Validate project|Review validation|Try again|View report/})).not.toBeInTheDocument();
+        expect(screen.queryByText("Package name")).not.toBeInTheDocument();
+        expect(screen.queryByText("Package version")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Re-run Inspect"})).not.toBeInTheDocument();
+    });
+
+    it("announces the automatic validation check as a polite status update while it's in flight", () => {
+        renderWithMantine(<OverviewTab header={header()} validation={{status: "loading"}} onRevalidate={() => undefined} />);
+
+        expect(screen.getByText("Checking project…").closest('[role="status"]')).not.toBeNull();
     });
 });

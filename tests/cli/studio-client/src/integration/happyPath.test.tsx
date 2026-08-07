@@ -5,9 +5,9 @@ import {renderRoutedApp} from "../testUtils/renderRoutedApp";
 
 // Exercises the full human-centered happy path end to end, across a real cross-page navigation: land on
 // Home's default "Design Game" tab -> edit the game model -> validate -> build -> auto-navigate into
-// the Project Dashboard -> run a simulation -> open the resulting report via Overview's recommended
-// next-action. Every screen/hook/API call used here is the app's real, already-tested production code --
-// this test only wires a fake fetch across the whole scenario, it doesn't re-implement any of it.
+// the Project Dashboard -> run a simulation -> its own Review step auto-opens the resulting report.
+// Every screen/hook/API call used here is the app's real, already-tested production code -- this test
+// only wires a fake fetch across the whole scenario, it doesn't re-implement any of it.
 describe("Studio happy path: create/open -> configure -> validate -> build -> simulate -> report", () => {
     // This is the longest test in the suite (many sequential steps plus two real-timer simulation-poll
     // waits) -- even the project's raised 60000ms global testTimeout leaves too little headroom under
@@ -256,22 +256,19 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
         expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
 
         // 6. Overview validates automatically as soon as the project loads (no separate "Validate"
-        // section/click any more -- see OverviewTab's own automatic diagnostics), then recommends
-        // running a simulation once it's known-valid.
+        // section/click any more -- see OverviewTab's own automatic diagnostics).
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
-        await waitFor(() => expect(screen.getByRole("button", {name: "Run a simulation"})).toBeInTheDocument());
-        await user.click(screen.getByRole("button", {name: "Run a simulation"}));
 
-        // 8. Run the simulation and let it complete.
+        // 7. Head to Simulation and run it.
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+
+        // 8. Let it complete -- Simulation's own Review step auto-advances the instant the run goes
+        // terminal (see SimulationTab's own doc comment on its activeStep effect), no separate
+        // "open the report" step needed.
         await waitFor(() => expect(simulationPollCount).toBeGreaterThanOrEqual(2), {timeout: 5000});
 
-        // 9. Overview now recommends viewing the report -- follow it.
-        await user.click(screen.getByRole("button", {name: "Overview"}));
-        await waitFor(() => expect(screen.getByRole("button", {name: "View report"})).toBeInTheDocument());
-        await user.click(screen.getByRole("button", {name: "View report"}));
-
-        // 10. The report renders on the Reports tab.
+        // 9. The report renders right there on Simulation's own Review step.
         await waitFor(() => expect(screen.getByText("RTP")).toBeInTheDocument());
         expect(screen.getByText("95.00%")).toBeInTheDocument();
     }, 90000);

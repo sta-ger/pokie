@@ -154,7 +154,7 @@ describe("ProjectDashboardPage", () => {
         // documents: the per-assertion cap always expires first, so the diagnostic names the real culprit.
     }, 60000);
 
-    it("does not block the happy path on warnings-only validation -- Overview still recommends simulating", async () => {
+    it("does not block the happy path on warnings-only validation -- Simulation stays reachable and Overview keeps showing the warnings", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...baseFetchRoutes(),
@@ -177,11 +177,8 @@ describe("ProjectDashboardPage", () => {
 
         // No click needed -- validation runs automatically as soon as the project loads.
         await waitFor(() => expect(screen.getByText(/Valid, with warnings/)).toBeInTheDocument());
-        await waitFor(() => expect(screen.getByRole("button", {name: "Run a simulation"})).toBeInTheDocument());
-        expect(screen.queryByRole("button", {name: "Review validation"})).not.toBeInTheDocument();
 
-        // The Simulate tab itself stays fully usable -- warnings never gate the actual action, only the
-        // Overview recommendation's copy.
+        // The Simulate tab itself stays fully usable -- warnings never gate the actual action.
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
 
@@ -232,7 +229,6 @@ describe("ProjectDashboardPage", () => {
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("This validation check couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
         expect(alert).not.toHaveTextContent("Internal error");
-        expect(screen.getByText("Validation failed")).toBeInTheDocument();
         expect(screen.queryByText("Valid — no issues found.")).not.toBeInTheDocument();
     });
 

@@ -1,5 +1,5 @@
-import {describeInspection, describeProjectHeader, describeValidationSummary} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
-import type {GamePackageInspectionReport, PokieGamePackageValidationReport} from "../../../../../../cli/studio-client/src/api/types";
+import {describeProjectHeader, describeValidationSummary} from "../../../../../../cli/studio-client/src/domain/interpret/ProjectDashboard";
+import type {PokieGamePackageValidationReport} from "../../../../../../cli/studio-client/src/api/types";
 
 describe("describeProjectHeader", () => {
     it("passes through the empty state", () => {
@@ -90,39 +90,6 @@ describe("describeProjectHeader", () => {
             capabilities: ["blueprint.build"],
             origin: "managed",
         });
-    });
-});
-
-describe("describeInspection", () => {
-    it("wraps a valid report with its package name/version/root", () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: true,
-            packageJson: {name: "a", version: "1.0.0"},
-        };
-
-        expect(describeInspection(report)).toEqual({
-            status: "loaded",
-            packageRoot: "/a",
-            packageName: "a",
-            packageVersion: "1.0.0",
-        });
-    });
-
-    it("reports invalid (not loaded) for an invalid/unreadable package (missing or corrupt package.json)", () => {
-        const report: GamePackageInspectionReport = {
-            packageRoot: "/a",
-            valid: false,
-            error: '"/a/package.json" does not exist.',
-        };
-
-        expect(describeInspection(report)).toEqual({status: "invalid", message: '"/a/package.json" does not exist.'});
-    });
-
-    it("falls back to a generic message when an invalid report has no error text", () => {
-        const report: GamePackageInspectionReport = {packageRoot: "/a", valid: false};
-
-        expect(describeInspection(report)).toEqual({status: "invalid", message: "Inspection failed."});
     });
 });
 
