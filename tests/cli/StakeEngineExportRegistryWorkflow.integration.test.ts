@@ -13,7 +13,7 @@ const POKIE_VERSION = "1.3.0";
 // generation service the Project Dashboard's own Generate step drives (StudioOutcomeLibraryGenerateService,
 // itself built on generateExactWeightedOutcomeLibrary -- never a hand-built WeightedOutcomeLibrary fixture)
 // -> discover it as "compatible" from the registry (the same StudioOutcomeLibraryGenerateService.registry()
-// StakeEngineExportTab's own Configure step calls) -> feed that discovered bundle selector straight into
+// Build/Export's own Stake Engine Export card calls) -> feed that discovered bundle selector straight into
 // StudioStakeEngineExportService.export() -- never a hand-typed flat libraryPath -- and confirm a real
 // manifest/files come out the other end.
 //
@@ -84,7 +84,7 @@ describe("Stake Engine Export: package -> generate library -> registry discovery
         expect(generateResult.mode.outcomeCount).toBe(4);
 
         // registry: proves the bundle just generated is discoverable and classified "compatible" against
-        // this same build -- exactly what StakeEngineExportTab's own Configure step badges as "Found".
+        // this same build -- exactly what Build/Export's own Stake Engine Export card badges as "Found".
         const registryView = await generateService.registry(packageRoot);
         if (registryView.status !== "ok" || registryView.buildStatus === "missing") {
             throw new Error(`expected a compatible registry entry, got ${JSON.stringify(registryView)}`);

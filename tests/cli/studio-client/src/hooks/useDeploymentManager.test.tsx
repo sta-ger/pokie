@@ -421,10 +421,10 @@ describe("useDeploymentManager - project switch immediately followed by refresh,
     });
 });
 
-// DeploymentTab's Stepper doesn't gate navigation on runLoading -- without clearing runResult the
-// instant a new run starts, a user could jump to Check compatibility/Preview artifacts/Review result
-// mid-run and see the *previous* run's outcome banner with nothing indicating a newer, possibly
-// different-outcome run is currently executing.
+// ExportDeployTab doesn't gate its own buttons on runLoading -- without clearing runResult the instant a
+// new run starts, a user could trigger a new Check compatibility/Publish mid-run and see the *previous*
+// run's outcome banner with nothing indicating a newer, possibly different-outcome run is currently
+// executing.
 describe("useDeploymentManager - run() clears the previous result immediately", () => {
     it("clears runResult the instant a new run starts, not only once the new response lands", async () => {
         let resolveFirstRun: ((response: unknown) => void) | undefined;

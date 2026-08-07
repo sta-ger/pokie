@@ -10,7 +10,6 @@ import {StudioFsBrowseService} from "./home/StudioFsBrowseService.js";
 import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
-import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
@@ -100,12 +99,7 @@ export type StudioServerOptions = {
     // Adapter SDK (ExternalDeploymentService); no `loadGame`/`pokieVersion` needed, unlike
     // simulationService/replayService/homeService, since it never touches a game package itself.
     deploymentService?: StudioDeploymentService;
-    // Drives the Project Dashboard's Outcome Libraries tab (POST /api/project/outcome-libraries/select,
-    // /compare, /validate-deep) — built directly on top of pokie's own WeightedOutcomeLibrary/
-    // OutcomeLibraryBundle/StakeEngine services; no `loadGame`/`pokieVersion` needed, same reasoning as
-    // deploymentService.
-    outcomeLibraryService?: StudioOutcomeLibraryService;
-    // Drives the Project Dashboard's Outcome Libraries tab's own Generate step/Registry panel (POST
+    // Drives the Project Dashboard's Build/Export tab's own Outcome libraries card (POST
     // /api/project/outcome-libraries/generate/estimate, /generate, GET /registry) -- built on the exact
     // same generateExactWeightedOutcomeLibrary/estimateExactOutcomeSpaceSize "pokie outcomelibrary
     // generate" itself drives, plus the same OutcomeLibraryBundleWriter/Reader "build"/deep validation use.
@@ -121,7 +115,7 @@ export type StudioServerOptions = {
     // Drives the Project Dashboard's Provably Fair tab (POST /api/project/fairness/configure, /generate,
     // /verify) — built directly on top of pokie's own commit-reveal services (FairnessRoundProofBuilder/
     // FairnessRoundProofVerifier/computeFairnessCommitment); no `loadGame`/`pokieVersion` needed, same
-    // reasoning as outcomeLibraryService.
+    // reasoning as deploymentService.
     fairnessService?: StudioFairnessService;
     // Drives the Project Dashboard's Stake Engine Export tab (POST /api/project/stakeengine/validate,
     // /export) — built directly on top of pokie's own StakeEngineExporter/StakeEngineExportValidator; no

@@ -161,9 +161,8 @@ export function canAddDeploymentMode(
 // The Configure step's own domain-language remediation for "the project's build modes aren't available
 // yet" -- an unknown `buildModeIds` (see remainingDeploymentModeChoices's own doc comment) means there is
 // no real bet mode to pick from, so this replaces the old free-text fallback: every mode-name control
-// stays disabled and both "Add mode" and the deployment preflight ("Run deployment preflight") stay blocked (see
-// canAddDeploymentMode and DeploymentTab's own configureBlockers) until the build's own modes resolve.
-// `undefined` once they have -- nothing to block on this account.
+// stays disabled and "Add mode" stays blocked (see canAddDeploymentMode) until the build's own modes
+// resolve. `undefined` once they have -- nothing to block on this account.
 export function describeBuildModesUnavailable(buildModeIds: readonly string[] | undefined): string | undefined {
     if (buildModeIds !== undefined) {
         return undefined;

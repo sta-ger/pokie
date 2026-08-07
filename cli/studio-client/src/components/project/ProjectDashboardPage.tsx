@@ -42,7 +42,6 @@ import {useRuntimeManager} from "../../hooks/useRuntimeManager";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
-import {NextStepCallout} from "../common/NextStepCallout";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
@@ -62,11 +61,8 @@ export type ProjectTab =
     | "replay"
     | "runtime"
     | "exportDeploy"
-    | "deployment"
-    | "outcomeLibraries"
     | "certification"
-    | "provablyFair"
-    | "stakeEngineExport";
+    | "provablyFair";
 
 // Every runtime operation (Simulation/Replay/Runtime/Certification/Fairness/Build-Export/Analysis) needs
 // the loaded project to actually be runnable in-process. A "tsPackage" project carries
@@ -87,7 +83,7 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // separate click-to-check tab. Every entry but Overview carries `requiredCapabilities` -- what actually
 // decides whether it's offered (see isTabSupported below), never just "the dashboard loaded at all".
 // Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs
-// visually separates them from the primary Overview -> Play -> Simulation -> Analysis flow --
+// visually separates them from the primary Overview -> Play -> Simulation flow --
 // everything's still one click away, just not presented as equal-weight to it.
 //
 // "play"/PlayTab is Studio's own normal game mode -- materializes/starts (or attaches to) the runtime,
@@ -98,26 +94,23 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // second gameplay surface; see PlayTab's and RuntimeTab's own doc comments for how the two divide the
 // work without duplicating it.
 //
-// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is now the sole Studio build surface --
-// "deployment"/"stakeEngineExport"/"outcomeLibraries" no longer mount their own old Stepper-driven
-// workflow at all (see LEGACY_TAB_MIGRATION_COPY and the render tree below): each one instead redirects
-// straight into Build/Export, with a NextStepCallout explaining what moved. All three routes are
-// deliberately kept in ALL_PROJECT_TABS, unchanged, so an existing deep link to /project/deployment,
-// /project/stakeEngineExport, or /project/outcomeLibraries keeps resolving to a real, supported tab --
-// they're simply no longer their own top-level nav entries (see visibleProjectTabs) or their own mounted
-// workflow, Build/Export is both.
+// "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface -- the old
+// standalone Deployment/Stake Engine Export/Outcome Libraries workspaces (each its own Stepper-driven
+// workflow) have been removed outright, not redirected: every builder they used to own is one of
+// Build/Export's own cards (see ExportDeployTargets.ts) except Outcome Libraries' own select-an-existing-
+// library/inspect/compare tools, which have no Build/Export equivalent yet -- only generating a fresh
+// library does. A deep link to one of the old routes now simply falls back to Overview (see
+// isProjectTab/activeTab below) like any other unrecognized tab value, rather than being kept alive
+// merely for pre-release compatibility.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
     {value: "play", label: "Play", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "outcomeLibraries", label: "Analysis", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "runtime", label: "Runtime", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "exportDeploy", label: "Build/Export", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "deployment", label: "Deployment", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "certification", label: "Certification", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "provablyFair", label: "Fairness", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "stakeEngineExport", label: "Stake Engine Export", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
@@ -135,39 +128,11 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): b
     return header.status === "loaded" && tab.requiredCapabilities.some((capability) => header.capabilities.includes(capability));
 }
 
-// The nav items NavTabs actually renders -- each filtered solely by isTabSupported above (a project
-// against a project that isn't actually runnable has nothing for a runtime-dependent section to show).
-// "deployment"/"stakeEngineExport"/"outcomeLibraries" are deliberately never in this list (see
-// ALL_PROJECT_TABS' own doc comment) -- all three now redirect straight into Build/Export (see
-// LEGACY_TAB_MIGRATION_COPY below), so they have nothing of their own left to offer as a nav destination.
+// The nav items NavTabs actually renders -- filtered solely by isTabSupported above (a project that
+// isn't actually runnable has nothing for a runtime-dependent section to show).
 function visibleProjectTabs(header: ProjectHeaderView): NavTabItem<ProjectTab>[] {
-    return ALL_PROJECT_TABS.filter((tab) => tab.value !== "deployment" && tab.value !== "stakeEngineExport" && tab.value !== "outcomeLibraries" && isTabSupported(tab, header));
+    return ALL_PROJECT_TABS.filter((tab) => isTabSupported(tab, header));
 }
-
-// The migration guidance shown instead of ever mounting Deployment/Stake Engine Export/Outcome Libraries'
-// own old Stepper-driven workflow again (see the render tree below) -- keyed by ProjectTab so a deep link
-// to any of the three legacy routes still resolves to a real, honest explanation of where its builders
-// went, rather than a blank/removed section. Every builder these three used to own is now one of
-// Build/Export's own cards (see ExportDeployTargets.ts) except Outcome Libraries' own select-an-existing-
-// library/inspect/compare tools, which have no Build/Export equivalent yet -- only generating a fresh
-// library does.
-const LEGACY_TAB_MIGRATION_COPY: Partial<Record<ProjectTab, {sourceLabel: string; description: string}>> = {
-    deployment: {
-        sourceLabel: "Deployment",
-        description:
-            "Deployment is no longer its own workspace -- every registered External Adapter SDK target it offered is now one of Build/Export's own cards, checked for compatibility and published right there.",
-    },
-    stakeEngineExport: {
-        sourceLabel: "Stake Engine Export",
-        description:
-            "Stake Engine Export is no longer its own workspace -- its static-export builder is now one of Build/Export's own cards, run right there against this project's own current build.",
-    },
-    outcomeLibraries: {
-        sourceLabel: "Outcome Libraries",
-        description:
-            "Outcome Libraries is no longer its own workspace -- generating a fresh canonical library is now Build/Export's own \"Outcome libraries\" card. Selecting an already-generated library, inspecting its distribution, or comparing two libraries has no Build/Export equivalent yet.",
-    },
-};
 
 // The explicit diagnostic a deep link to an unsupported operation shows instead of ever mounting that
 // tab's own workflow component (see the render tree below) -- mirrors
@@ -658,7 +623,6 @@ export function ProjectDashboardPage() {
 
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
-    const legacyTabMigration = LEGACY_TAB_MIGRATION_COPY[activeTab];
     // Whether the active tab's own workflow component should actually mount -- a deep link to an
     // unsupported operation (e.g. /project/simulation for a project that can't run in-process) shows
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
@@ -889,17 +853,6 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "exportDeploy" && (
                                 <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
-                            )}
-                            {legacyTabMigration && (
-                                <>
-                                    <NextStepCallout
-                                        title={`${legacyTabMigration.sourceLabel} has moved into Build/Export`}
-                                        description={legacyTabMigration.description}
-                                        actionLabel="Go to Build/Export"
-                                        onAction={() => setActiveTab("exportDeploy")}
-                                    />
-                                    <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
-                                </>
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as RuntimeTab's own key above -- CertificationTab owns

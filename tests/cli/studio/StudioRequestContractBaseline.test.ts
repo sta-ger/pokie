@@ -7,7 +7,6 @@ import {validateStakeEngineExportValidateRequest} from "../../../cli/studio/stak
 import {validateRuntimeSpinRequest} from "../../../cli/studio/runtime/validateRuntimeSpinRequest.js";
 import {validateStartRuntimeRequest} from "../../../cli/studio/runtime/validateStartRuntimeRequest.js";
 import {validateOutcomeLibrarySelector} from "../../../cli/studio/outcomeLibrary/validateOutcomeLibrarySelector.js";
-import {validateOutcomeLibrarySelectRequest} from "../../../cli/studio/outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
 import {validateCertificationSourceValidateRequest} from "../../../cli/studio/certification/validateCertificationSourceValidateRequest.js";
 import {validateCertificationBuildRequest} from "../../../cli/studio/certification/validateCertificationBuildRequest.js";
 import {validateFairnessConfigureRequest} from "../../../cli/studio/fairness/validateFairnessConfigureRequest.js";
@@ -151,10 +150,6 @@ describe("Contract baseline: Outcome Libraries selector, and the missing package
         expect(() => validateOutcomeLibrarySelector({kind: "csv"} as never, "selector")).toThrow(
             '"selector.kind" must be one of "json", "bundle", "stakeengine".',
         );
-    });
-
-    it("Select defaults an absent selector to {} rather than throwing a distinct 'missing selector' error", () => {
-        expect(() => validateOutcomeLibrarySelectRequest({})).toThrow('"selector.kind" must be one of "json", "bundle", "stakeengine".');
     });
 
     // "missing package-to-library" contract: neither a Deployment nor a Stake Engine Export mode's

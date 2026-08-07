@@ -47,13 +47,6 @@ import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {validateNativeBrowseRequest, NativeBrowseRequestInput} from "./home/validateNativeBrowseRequest.js";
 import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
-import {StudioOutcomeLibraryService} from "./outcomeLibrary/StudioOutcomeLibraryService.js";
-import {validateOutcomeLibrarySelectRequest, OutcomeLibrarySelectRequestInput} from "./outcomeLibrary/validateOutcomeLibrarySelectRequest.js";
-import {validateOutcomeLibraryCompareRequest, OutcomeLibraryCompareRequestInput} from "./outcomeLibrary/validateOutcomeLibraryCompareRequest.js";
-import {
-    validateOutcomeLibraryDeepValidateRequest,
-    OutcomeLibraryDeepValidateRequestInput,
-} from "./outcomeLibrary/validateOutcomeLibraryDeepValidateRequest.js";
 import {
     validateOutcomeLibraryGenerateEstimateRequest,
     OutcomeLibraryGenerateEstimateRequestInput,
@@ -175,7 +168,6 @@ export class StudioServer implements StudioServerHandling {
     private readonly replayService: StudioReplayExecutionService;
     private readonly runtimeManager: StudioRuntimeManager;
     private readonly deploymentService: StudioDeploymentService;
-    private readonly outcomeLibraryService: StudioOutcomeLibraryService;
     private readonly outcomeLibraryGenerateService: StudioOutcomeLibraryGenerateService;
     private readonly certificationService: StudioCertificationService;
     private readonly fairnessService: StudioFairnessService;
@@ -214,7 +206,6 @@ export class StudioServer implements StudioServerHandling {
             options.runtimeManager ??
             new StudioRuntimeManager(this.loadGame, undefined, undefined, this.resolveRuntimePackageRoot, this.pokieVersion, options.clientRoot ?? "");
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
-        this.outcomeLibraryService = options.outcomeLibraryService ?? new StudioOutcomeLibraryService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
@@ -615,21 +606,6 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/project/deployment/runs") {
             await this.handleRunDeployment(req, res);
-            return;
-        }
-
-        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/select") {
-            await this.handleSelectOutcomeLibrary(req, res);
-            return;
-        }
-
-        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/compare") {
-            await this.handleCompareOutcomeLibraries(req, res);
-            return;
-        }
-
-        if (method === "POST" && url.pathname === "/api/project/outcome-libraries/validate-deep") {
-            await this.handleValidateOutcomeLibraryDeep(req, res);
             return;
         }
 
@@ -1239,64 +1215,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, result.view);
-    }
-
-    private async handleSelectOutcomeLibrary(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
-            return;
-        }
-
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateOutcomeLibrarySelectRequest((body ?? {}) as OutcomeLibrarySelectRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        this.sendJson(res, 200, await this.outcomeLibraryService.select(this.currentContext.projectRoot, validated.selector));
-    }
-
-    private async handleCompareOutcomeLibraries(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
-            return;
-        }
-
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateOutcomeLibraryCompareRequest((body ?? {}) as OutcomeLibraryCompareRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        this.sendJson(
-            res,
-            200,
-            await this.outcomeLibraryService.compare(this.currentContext.projectRoot, validated.left, validated.right, validated.expectedLeftHash),
-        );
-    }
-
-    private async handleValidateOutcomeLibraryDeep(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        if (this.currentContext.mode !== "project") {
-            this.sendJson(res, 409, {error: "No active project."});
-            return;
-        }
-
-        const body = await this.readJsonBody(req);
-        let validated;
-        try {
-            validated = validateOutcomeLibraryDeepValidateRequest((body ?? {}) as OutcomeLibraryDeepValidateRequestInput);
-        } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-
-        this.sendJson(res, 200, await this.outcomeLibraryService.validateBundleDeep(this.currentContext.projectRoot, validated.bundleDir, validated.modeName));
     }
 
     private async handleEstimateOutcomeLibraryGeneration(req: IncomingMessage, res: ServerResponse): Promise<void> {

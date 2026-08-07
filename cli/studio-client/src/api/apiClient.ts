@@ -35,12 +35,9 @@ import type {
     StudioNativePickerFileFilter,
     StudioNativePickerResultView,
     StudioOpenFolderView,
-    StudioOutcomeLibraryCompareView,
-    StudioOutcomeLibraryDeepValidateView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryRegistryView,
-    StudioOutcomeLibrarySelectView,
     StudioParSheetExportView,
     StudioParSheetImportView,
     StudioProjectImportPreviewResult,
@@ -666,14 +663,14 @@ export type StartRuntimeOptions = {
     debug?: boolean;
     seed?: string | number;
     repositoryMode?: "memory" | "file";
-    // The Outcome Libraries tab's own "Use in runtime" handoff -- the exact selector select()/compare()
-    // already accept (see OutcomeLibrarySelector). Resolving it into an actual library is the server's
+    // The generated outcome library's own "Use in runtime" handoff -- the same OutcomeLibrarySelector
+    // shape Build/Export's generate step returns. Resolving it into an actual library is the server's
     // job (StudioOutcomeLibraryService.resolveLibrary(), via StudioRuntimeManager); this is never
     // resolved or interpreted client-side.
     preGeneratedLibrarySelector?: OutcomeLibrarySelector;
-    // The hash already shown to the user for that library at Select/Inspect time -- same
-    // snapshot-consistency contract compareOutcomeLibraries' own expectedLeftHash uses, so a library
-    // that changed on disk since the handoff was offered is never silently started as-is.
+    // The hash already shown to the user for that library at generation time -- a snapshot-consistency
+    // check so a library that changed on disk since the handoff was offered is never silently started
+    // as-is.
     preGeneratedLibraryExpectedHash?: string;
 };
 
@@ -866,57 +863,6 @@ export async function runDeployment(
         throw new Error(await extractErrorMessage(response, "Failed to run deployment"));
     }
     return (await response.json()) as StudioDeploymentRunView;
-}
-
-// Select/import -> Validate & analyze -> Inspect distribution/features all land in this one call — see
-// StudioOutcomeLibraryService.select()'s own doc comment. Never throws for a domain-level failure (an
-// unreadable path, an invalid library) — that's carried in the returned view's own "load-error"/"invalid"
-// status, same convention as every other selector-driven apiClient function here.
-export async function selectOutcomeLibrary(fetchImpl: FetchLike, selector: OutcomeLibrarySelector): Promise<StudioOutcomeLibrarySelectView> {
-    const response = await fetchImpl("/api/project/outcome-libraries/select", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({selector}),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to select outcome library"));
-    }
-    return (await response.json()) as StudioOutcomeLibrarySelectView;
-}
-
-// "expectedLeftHash" should be the hash already shown to the user for the left library (from an earlier
-// selectOutcomeLibrary() call's own provenance.hash) -- passing it lets the server detect a library that
-// changed on disk since then and refuse to silently diff the new content against the old summary the UI
-// is still showing (see StudioOutcomeLibraryCompareView.leftSnapshotStale).
-export async function compareOutcomeLibraries(
-    fetchImpl: FetchLike,
-    left: OutcomeLibrarySelector,
-    right: OutcomeLibrarySelector,
-    expectedLeftHash?: string,
-): Promise<StudioOutcomeLibraryCompareView> {
-    const response = await fetchImpl("/api/project/outcome-libraries/compare", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({left, right, expectedLeftHash}),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to compare outcome libraries"));
-    }
-    return (await response.json()) as StudioOutcomeLibraryCompareView;
-}
-
-// Bundle-only deep audit (see StudioOutcomeLibraryDeepValidateView's own doc comment) — deliberately a
-// separate, explicitly-triggered call, never folded into selectOutcomeLibrary.
-export async function validateOutcomeLibraryDeep(fetchImpl: FetchLike, bundleDir: string, modeName: string): Promise<StudioOutcomeLibraryDeepValidateView> {
-    const response = await fetchImpl("/api/project/outcome-libraries/validate-deep", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({bundleDir, modeName}),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to deep-validate the outcome library bundle"));
-    }
-    return (await response.json()) as StudioOutcomeLibraryDeepValidateView;
 }
 
 // The Generate step's own "how big is this?" preflight -- see StudioOutcomeLibraryGenerateEstimateView's
