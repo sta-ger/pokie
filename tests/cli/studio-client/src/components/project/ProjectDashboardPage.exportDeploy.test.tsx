@@ -20,6 +20,20 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         status: 200,
         body: [{id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]}],
     }),
+    // No target is supported for this fixture's own "blueprint" project other than tsPackage -- most tests
+    // here aren't about the Build/Export tab's own "Build artifact" group, so this stays empty/unsupported
+    // by default; see the dedicated describe block below for real coverage of that group.
+    "/api/project/artifacts/targets": () => ({
+        ok: true,
+        status: 200,
+        body: [
+            {target: "tsPackage", supported: true, unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+            {target: "stakeAdapter", supported: false, unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, unsupportedNotes: []},
+            {target: "wasm", supported: false, unsupportedNotes: []},
+        ],
+    }),
 };
 
 function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number; body: unknown}>): FetchLike {
@@ -478,5 +492,93 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("The deployment targets list couldn't reach the Studio server. Check your connection and try again.");
         expect(alert).not.toHaveTextContent("ECONNREFUSED");
+    });
+
+    describe("Build/Export: Build artifact (ArtifactBuilderRegistry, shared with the CLI)", () => {
+        it("lists only the capability-supported target (tsPackage), runs it through the shared registry, and offers Open as Project/Projects visibility/folder reveal", async () => {
+            const user = userEvent.setup();
+            let capturedBuildTarget: string | undefined;
+            let capturedOpenProjectRoot: string | undefined;
+            let capturedRegisterLocation: string | undefined;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [path] = url.split("?");
+                if (path === "/api/project/artifacts/build") {
+                    capturedBuildTarget = (JSON.parse(String(init?.body)) as {target: string}).target;
+                    return Promise.resolve({
+                        ok: true,
+                        status: 201,
+                        json: () => Promise.resolve({status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", sourceType: "blueprint"}),
+                    });
+                }
+                if (path === "/api/home/projects/open") {
+                    capturedOpenProjectRoot = (JSON.parse(String(init?.body)) as {projectRoot: string}).projectRoot;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", context: {mode: "project", projectRoot: "/games/tsPackage"}})});
+                }
+                if (path === "/api/home/projects/registry/register") {
+                    capturedRegisterLocation = (JSON.parse(String(init?.body)) as {location: string}).location;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+                }
+                if (path === "/api/home/fs/open-folder") {
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            expect(within(buildArtifactSection).getByText("TypeScript Game Package")).toBeInTheDocument();
+            // Only the one target this blueprint project's own type actually supports is ever offered --
+            // "PAR sheet (.xlsx)"/"Stake Engine export (republish)"/"Outcome library (republish)" are
+            // filtered out entirely (never rendered disabled), same convention as every other group here.
+            expect(within(buildArtifactSection).queryByText("PAR sheet (.xlsx)")).not.toBeInTheDocument();
+            expect(within(buildArtifactSection).queryByText("Stake Engine export (republish)")).not.toBeInTheDocument();
+
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
+
+            expect(capturedBuildTarget).toBe("tsPackage");
+            expect(await within(buildArtifactSection).findByText(/Built to \/games\/tsPackage/)).toBeInTheDocument();
+
+            // "Add to Projects" first -- "Open as Project" (below) navigates Studio away from this tab
+            // entirely (the same explicit Home -> Project transition every "Open in Studio" action makes),
+            // so it's exercised last, once nothing further needs to be asserted against this tab's own DOM.
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"}));
+            expect(await within(buildArtifactSection).findByRole("button", {name: "Added to Projects"})).toBeDisabled();
+            expect(capturedRegisterLocation).toBe("/games/tsPackage");
+
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Open as Project"}));
+            await waitFor(() => expect(capturedOpenProjectRoot).toBe("/games/tsPackage"));
+        });
+
+        it("reports a conflict from the shared registry inline, never as a silent no-op", async () => {
+            const user = userEvent.setup();
+            const fetchImpl: FetchLike = (url, init) => {
+                const [path] = url.split("?");
+                if (path === "/api/project/artifacts/build") {
+                    return Promise.resolve({
+                        ok: false,
+                        status: 409,
+                        json: () =>
+                            Promise.resolve({
+                                status: "conflict",
+                                target: "tsPackage",
+                                message: '"/games/tsPackage" already exists and is not empty. Choose a different --out path or remove it first.',
+                            }),
+                    });
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
+
+            expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
+        });
     });
 });

@@ -1,6 +1,7 @@
 import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
 import type {IncomingMessage} from "http";
 import type {RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "./certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "./deployment/StudioDeploymentService.js";
@@ -127,6 +128,12 @@ export type StudioServerOptions = {
     // `loadGame` needed (same reasoning as deploymentService), but does need `pokieVersion` (embedded in
     // the exported manifest's own `pokieVersion` field), same reasoning as certificationService.
     stakeEngineExportService?: StudioStakeEngineExportService;
+    // Drives the Project Dashboard's Build/Export tab's own "Build artifact" group (GET
+    // /api/project/artifacts/targets, POST /api/project/artifacts/build) -- built directly on top of
+    // ArtifactBuilderRegistry, the exact same registry "pokie build <project> --target <target>" itself
+    // runs. Needs `pokieVersion` (embedded in a built tsPackage's own manifest), same reasoning as
+    // blueprintService.
+    artifactBuildService?: StudioArtifactBuildService;
     // Owns the persistent Studio project registry (every managed and registered external project Studio
     // knows about, not just Home's own short recent-projects list) -- see
     // StudioProjectRegistrationService/FileStudioProjectRegistry. Defaults to

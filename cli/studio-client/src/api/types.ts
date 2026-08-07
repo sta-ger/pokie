@@ -1108,3 +1108,28 @@ export type StudioStakeEngineExportView =
     | {status: "conflict"; outDir: string; overwritable: boolean; error: string}
     | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
     | {status: "load-error"; error: string};
+
+// Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
+// (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
+// package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
+// mirror, same convention as StudioProjectType above.
+export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook" | "wasm";
+
+// GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's
+// own doc comment. `supported` is already resolved against the active project's own ProjectType server-side
+// (the exact same ArtifactBuilderRegistry.supportsConversionFrom() check "pokie build" itself runs) — the
+// Build/Export tab never re-derives that rule itself.
+export type StudioArtifactTargetView = {
+    target: StudioArtifactTargetType;
+    supported: boolean;
+    unsupportedNotes: string[];
+};
+
+// POST /api/project/artifacts/build's own DTO — see cli/studio/artifacts/StudioArtifactBuildView.ts's own
+// doc comment. Mirrors ArtifactBuilderRegistry.build()'s own outcomes exactly: a successful build's
+// outputPath/sourceType, an unsupported conversion, a destination conflict, or any other build failure.
+export type StudioArtifactBuildView =
+    | {status: "ok"; target: StudioArtifactTargetType; outputPath: string; sourceType: StudioProjectType}
+    | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
+    | {status: "conflict"; target: StudioArtifactTargetType; message: string}
+    | {status: "error"; message: string};

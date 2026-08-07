@@ -6,6 +6,9 @@ import type {
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
+    StudioArtifactBuildView,
+    StudioArtifactTargetType,
+    StudioArtifactTargetView,
     StudioBlueprintCheckView,
     StudioBlueprintLoadView,
     StudioBlueprintRandomView,
@@ -1100,4 +1103,30 @@ export async function exportStakeEngine(
         throw new Error(await extractErrorMessage(response, "Failed to export to Stake Engine"));
     }
     return (await response.json()) as StudioStakeEngineExportView;
+}
+
+// The Build/Export tab's own "Build artifact" group -- every ArtifactBuilderRegistry target, each already
+// marked `supported` against the active project's own resolved ProjectType (see
+// StudioArtifactBuildService.listTargets's own doc comment).
+export async function listArtifactTargets(fetchImpl: FetchLike): Promise<StudioArtifactTargetView[]> {
+    const response = await fetchImpl("/api/project/artifacts/targets");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load the build artifact target list"));
+    }
+    return (await response.json()) as StudioArtifactTargetView[];
+}
+
+// Runs the active project through ArtifactBuilderRegistry directly, the exact same
+// "pokie build <project> --target <target>" pipeline. "unsupported" and "conflict" are both normal parsed
+// results (never thrown) -- same convention as exportStakeEngine above.
+export async function buildArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string): Promise<StudioArtifactBuildView> {
+    const response = await fetchImpl("/api/project/artifacts/build", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({target, outDir}),
+    });
+    if (!response.ok && response.status !== 409) {
+        throw new Error(await extractErrorMessage(response, "Failed to build the artifact"));
+    }
+    return (await response.json()) as StudioArtifactBuildView;
 }

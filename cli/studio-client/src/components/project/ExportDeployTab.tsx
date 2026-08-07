@@ -1,8 +1,11 @@
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
-import {exportStakeEngine, generateOutcomeLibrary, openOutputFolder} from "../../api/apiClient";
+import {buildArtifact, exportStakeEngine, generateOutcomeLibrary, listArtifactTargets, openOutputFolder, registerProjectImport} from "../../api/apiClient";
 import type {
     OutcomeLibrarySelector,
+    StudioArtifactBuildView,
+    StudioArtifactTargetType,
+    StudioArtifactTargetView,
     StudioDeploymentModeInput,
     StudioOutcomeLibraryGenerateResultView,
     StudioProjectCapability,
@@ -10,6 +13,7 @@ import type {
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {
+    describeArtifactBuildTargetCards,
     describeExportDeployTargetCards,
     type ExportDeployTargetCard,
     type ExportDeployTargetKind,
@@ -19,6 +23,7 @@ import {describePathActionError} from "../../domain/pathActionError";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import type {DeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {useOpenProject} from "../../hooks/useOpenProject";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {IssueList} from "../common/IssueList";
@@ -36,13 +41,18 @@ const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: strin
         legend: "Static export",
         blurb: "Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.",
     },
+    buildArtifact: {
+        legend: "Build artifact",
+        blurb:
+            'Runs this project through pokie\'s own ArtifactBuilderRegistry -- the exact "pokie build <project> --target <target>" conversions the CLI itself offers, only ever listing a target this project\'s own resolved type actually supports.',
+    },
     remoteDeployment: {
         legend: "Remote deployment",
         blurb: "A registered External Adapter SDK target, checked for compatibility before Publish is ever offered -- the SDK's own local-json-example demo target is deliberately never listed here (see ExportDeployTargets.ts's own doc comment); register a real target to replace this group's placeholder.",
     },
 };
 
-const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "remoteDeployment"];
+const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "staticExport", "buildArtifact", "remoteDeployment"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
 // own first current build mode when known, "base" (the same fallback generateOutcomeLibrary's own
@@ -94,6 +104,19 @@ function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportVie
     return firstError?.message ?? "The Stake Engine export failed validation.";
 }
 
+// One entry per "buildArtifact" card, keyed by its own artifactTarget -- each target runs (and reports)
+// independently of every other, same "own status per card" convention outcomeLibraryRun/staticExportRun
+// already use for their own single card.
+type ArtifactBuildRunView =
+    | {status: "idle"}
+    | {status: "running"}
+    | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>}
+    | {status: "error"; message: string};
+
+function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
+    return view.message;
+}
+
 function TargetCard({
     card,
     defaultModeName,
@@ -106,6 +129,11 @@ function TargetCard({
     onOverwriteStaticExport,
     deployment,
     onOpenFolder,
+    artifactBuildRun,
+    onBuildArtifact,
+    onOpenAsProject,
+    onAddToProjects,
+    addedToProjects,
 }: {
     card: ExportDeployTargetCard;
     defaultModeName: string;
@@ -118,6 +146,11 @@ function TargetCard({
     onOverwriteStaticExport: () => void;
     deployment: DeploymentManager;
     onOpenFolder: (path: string) => void;
+    artifactBuildRun: ArtifactBuildRunView;
+    onBuildArtifact: (target: StudioArtifactTargetType) => void;
+    onOpenAsProject: (projectRoot: string) => void;
+    onAddToProjects: (projectRoot: string) => void;
+    addedToProjects: boolean;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const staticExportSource = resolveOutcomeLibrarySource();
@@ -251,6 +284,33 @@ function TargetCard({
                 </>
             )}
 
+            {card.kind === "buildArtifact" && card.artifactTarget && (
+                <>
+                    <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"}>
+                        Build
+                    </Button>
+                    {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
+                    {artifactBuildRun.status === "ok" && (
+                        <>
+                            <Text size="sm" mt={4}>
+                                Built to {artifactBuildRun.result.outputPath}.
+                            </Text>
+                            <QuickActions>
+                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
+                                    Open as Project
+                                </Button>
+                                <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
+                                    {addedToProjects ? "Added to Projects" : "Add to Projects"}
+                                </Button>
+                                <Button size="xs" variant="default" onClick={() => onOpenFolder(artifactBuildRun.result.outputPath)}>
+                                    Open output folder
+                                </Button>
+                            </QuickActions>
+                        </>
+                    )}
+                </>
+            )}
+
             {card.kind === "remoteDeployment" && card.deploymentTarget && (
                 <>
                     <Button
@@ -308,8 +368,8 @@ function TargetCard({
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
 export function ExportDeployTab({capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
     const fetchImpl = useStudioApi();
+    const openAndNavigate = useOpenProject();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
-    const cards = describeExportDeployTargetCards(deploymentTargets, capabilities);
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
@@ -317,6 +377,40 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
 
     const [staticExportRun, setStaticExportRun] = useState<StaticExportRunView>({status: "idle"});
     const staticExportGuard = useDoubleSubmitGuard();
+
+    // The "Build artifact" group's own target list -- see StudioArtifactBuildService.listTargets's own
+    // doc comment. Fetched once on mount: it depends only on the active project's own resolved ProjectType,
+    // which is fixed for the lifetime of this tab (switching projects remounts the whole Project Dashboard).
+    const [artifactTargets, setArtifactTargets] = useState<readonly StudioArtifactTargetView[]>([]);
+    const [artifactTargetsError, setArtifactTargetsError] = useState<string>();
+    useEffect(() => {
+        let cancelled = false;
+        listArtifactTargets(fetchImpl)
+            .then((targets) => {
+                if (!cancelled) {
+                    setArtifactTargets(targets);
+                }
+            })
+            .catch((error: unknown) => {
+                if (!cancelled) {
+                    setArtifactTargetsError(describeProjectActionError("The build artifact target list", errorMessage(error)));
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
+    const artifactCards = describeArtifactBuildTargetCards(artifactTargets);
+    const cards = [...describeExportDeployTargetCards(deploymentTargets, capabilities), ...artifactCards];
+
+    // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
+    // see ArtifactBuildRunView's own doc comment.
+    const [artifactBuildRuns, setArtifactBuildRuns] = useState<Record<string, ArtifactBuildRunView>>({});
+    // Every outputPath a successful build's own "Add to Projects" has already registered this session --
+    // keyed by outputPath (not target), since a rebuild against a different outDir is a different
+    // registration candidate even for the same target.
+    const [addedToProjectPaths, setAddedToProjectPaths] = useState<ReadonlySet<string>>(new Set());
+    const [artifactActionError, setArtifactActionError] = useState<string>();
 
     const [openFolderError, setOpenFolderError] = useState<string>();
 
@@ -425,6 +519,52 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         runStaticExport(staticExportRun.source, true);
     }
 
+    // Runs a single "Build artifact" card's own target through ArtifactBuilderRegistry (via
+    // /api/project/artifacts/build) -- see StudioArtifactBuildService.build's own doc comment for exactly
+    // what this does and doesn't promise. Guarded by this target's own current run status (rather than a
+    // shared useDoubleSubmitGuard) since every target's own build runs fully independently of every other.
+    function handleBuildArtifact(target: StudioArtifactTargetType): void {
+        if (artifactBuildRuns[target]?.status === "running") {
+            return;
+        }
+        setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running"}}));
+        buildArtifact(fetchImpl, target)
+            .then((view) => {
+                if (view.status === "ok") {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result: view}}));
+                } else {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeArtifactBuildResultError(view)}}));
+                }
+            })
+            .catch((error: unknown) => {
+                setArtifactBuildRuns((runs) => ({
+                    ...runs,
+                    [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
+                }));
+            });
+    }
+
+    // A successful build's own output is itself a resolvable PokieProject (of the built target's own
+    // type) -- "Open as Project" navigates Studio straight into it, the same one explicit Home -> Project
+    // transition every other "Open in Studio"/"Open as Project" action in Studio already uses (see
+    // useOpenProject's own doc comment). This is this card's own "run/inspect follow-up": once open, the
+    // new project's own Play/Runtime/Replay/Validate tabs are immediately reachable.
+    function handleOpenArtifactAsProject(projectRoot: string): void {
+        setArtifactActionError(undefined);
+        openAndNavigate(projectRoot).catch((error: unknown) => setArtifactActionError(errorMessage(error)));
+    }
+
+    // Registers the build's own output in Studio's persistent Projects registry, so it shows up in Home's
+    // Projects panel even after this session ends -- the "Projects visibility" half of this card's own
+    // follow-up, alongside "Open as Project" above and "Open output folder" (handleOpenFolder) shared with
+    // every other card on this page.
+    function handleAddArtifactToProjects(projectRoot: string): void {
+        setArtifactActionError(undefined);
+        registerProjectImport(fetchImpl, projectRoot)
+            .then(() => setAddedToProjectPaths((prev) => new Set(prev).add(projectRoot)))
+            .catch((error: unknown) => setArtifactActionError(errorMessage(error)));
+    }
+
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
@@ -444,6 +584,8 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             {deployment.targetsView.status === "loading" && <LoadingState label="Loading registered deployment targets…" />}
             {deployment.targetsError && <ErrorState message={describeProjectActionError("The deployment targets list", deployment.targetsError)} />}
             {openFolderError && <ErrorState message={openFolderError} />}
+            {artifactTargetsError && <ErrorState message={artifactTargetsError} />}
+            {artifactActionError && <ErrorState message={artifactActionError} />}
 
             {cards.length === 0 ? (
                 <EmptyState message="This project can't be built or exported from Studio -- see the current project's own capabilities." />
@@ -458,22 +600,32 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                             {groupCards.length === 0 ? (
                                 <EmptyState message="Nothing in this group yet." />
                             ) : (
-                                groupCards.map((card) => (
-                                    <TargetCard
-                                        key={card.id}
-                                        card={card}
-                                        defaultModeName={defaultModeName}
-                                        outcomeLibraryRun={outcomeLibraryRun}
-                                        onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
-                                        resolveOutcomeLibrarySource={resolveOutcomeLibrarySource}
-                                        resolveDeploymentModes={resolveDeploymentModes}
-                                        staticExportRun={staticExportRun}
-                                        onRunStaticExport={handleRunStaticExport}
-                                        onOverwriteStaticExport={handleOverwriteStaticExport}
-                                        deployment={deployment}
-                                        onOpenFolder={handleOpenFolder}
-                                    />
-                                ))
+                                groupCards.map((card) => {
+                                    const artifactBuildRun: ArtifactBuildRunView =
+                                        (card.artifactTarget !== undefined ? artifactBuildRuns[card.artifactTarget] : undefined) ?? {status: "idle"};
+                                    const addedToProjects = artifactBuildRun.status === "ok" && addedToProjectPaths.has(artifactBuildRun.result.outputPath);
+                                    return (
+                                        <TargetCard
+                                            key={card.id}
+                                            card={card}
+                                            defaultModeName={defaultModeName}
+                                            outcomeLibraryRun={outcomeLibraryRun}
+                                            onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
+                                            resolveOutcomeLibrarySource={resolveOutcomeLibrarySource}
+                                            resolveDeploymentModes={resolveDeploymentModes}
+                                            staticExportRun={staticExportRun}
+                                            onRunStaticExport={handleRunStaticExport}
+                                            onOverwriteStaticExport={handleOverwriteStaticExport}
+                                            deployment={deployment}
+                                            onOpenFolder={handleOpenFolder}
+                                            artifactBuildRun={artifactBuildRun}
+                                            onBuildArtifact={handleBuildArtifact}
+                                            onOpenAsProject={handleOpenArtifactAsProject}
+                                            onAddToProjects={handleAddArtifactToProjects}
+                                            addedToProjects={addedToProjects}
+                                        />
+                                    );
+                                })
                             )}
                         </PageSection>
                     );

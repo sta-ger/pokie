@@ -4669,4 +4669,140 @@ describe("StudioServer", () => {
             expect(view.error).toContain("outside the project root");
         });
     });
+
+    describe("Project Dashboard: Build/Export artifacts (GET /api/project/artifacts/targets, POST /api/project/artifacts/build)", () => {
+        let artifactStudioRoot: string;
+        let artifactWorkDir: string;
+        let artifactServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            artifactStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-artifacts-studio-test-"));
+            writeStudioAssets(artifactStudioRoot);
+            artifactWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-artifacts-work-test-"));
+        });
+
+        afterEach(async () => {
+            await artifactServer?.stop();
+            fs.rmSync(artifactStudioRoot, {recursive: true, force: true});
+            fs.rmSync(artifactWorkDir, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+            const homeService = new StudioHomeService("1.3.0");
+            artifactServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: artifactStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
+                initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+            });
+            const address = await artifactServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        function writeBlueprintFile(overrides: Record<string, unknown> = {}): string {
+            const filePath = path.join(artifactWorkDir, "blueprint.json");
+            fs.writeFileSync(
+                filePath,
+                JSON.stringify({
+                    manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                    reels: 3,
+                    rows: 3,
+                    symbols: ["A", "B"],
+                    paytable: {A: {3: 5}, B: {3: 2}},
+                    ...overrides,
+                }),
+            );
+            return filePath;
+        }
+
+        it("returns 409 for both routes when there is no active project", async () => {
+            const homeBaseUrl = await startServerForProject(undefined);
+
+            const targetsResponse = await get(`${homeBaseUrl}/api/project/artifacts/targets`);
+            expect(targetsResponse.status).toBe(409);
+
+            const buildResponse = await post(`${homeBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+            expect(buildResponse.status).toBe(409);
+        });
+
+        it("rejects a malformed build request with 400", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const missingTarget = await post(`${projectBaseUrl}/api/project/artifacts/build`, {});
+            expect(missingTarget.status).toBe(400);
+            expect((missingTarget.body as {error: string}).error).toMatch(/target/);
+
+            const unknownTarget = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "bogus"});
+            expect(unknownTarget.status).toBe(400);
+        });
+
+        it("lists every ArtifactBuilderRegistry target, marking only tsPackage supported for a blueprint project", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/artifacts/targets`);
+
+            expect(status).toBe(200);
+            const targets = body as {target: string; supported: boolean}[];
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
+            const byTarget = new Map(targets.map((entry) => [entry.target, entry.supported]));
+            expect(byTarget.get("tsPackage")).toBe(true);
+            expect(byTarget.get("outcomeLibrary")).toBe(false);
+        });
+
+        it("builds a tsPackage from a blueprint project to the default sibling destination, agreeing with BuildCommand's own default", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+
+            expect(status).toBe(201);
+            const view = body as {status: string; outputPath?: string; sourceType?: string};
+            expect(view.status).toBe("ok");
+            expect(view.outputPath).toBe(path.join(artifactWorkDir, "tsPackage"));
+            expect(view.sourceType).toBe("blueprint");
+            expect(fs.existsSync(path.join(artifactWorkDir, "tsPackage", "package.json"))).toBe(true);
+        });
+
+        it("reports 'unsupported' (never a 500) for a target this project's own type doesn't grant", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+
+            expect(status).toBe(200);
+            const view = body as {status: string; message?: string};
+            expect(view.status).toBe("unsupported");
+            expect(view.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+        });
+
+        it("returns a conflict (409) for a pre-existing non-empty destination and never writes to it", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const destination = path.join(artifactWorkDir, "tsPackage");
+            fs.mkdirSync(destination);
+            fs.writeFileSync(path.join(destination, "unrelated.txt"), "pre-existing");
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+
+            expect(status).toBe(409);
+            expect((body as {status: string}).status).toBe("conflict");
+            expect(fs.readdirSync(destination)).toEqual(["unrelated.txt"]);
+        });
+
+        it("builds to an explicit outDir when given", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+            const explicitOut = path.join(artifactWorkDir, "my-custom-out");
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage", outDir: explicitOut});
+
+            expect(status).toBe(201);
+            expect((body as {outputPath?: string}).outputPath).toBe(explicitOut);
+        });
+    });
 });
