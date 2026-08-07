@@ -1,4 +1,4 @@
-import {screen} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -112,5 +112,221 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         await goToGameModelTab(user);
 
         expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the game model");
+    });
+});
+
+// Edit Mode: covers GameModelTab's own Edit/Save/Cancel for an editable Blueprint Project (a
+// "blueprint" project always carries exactly BLUEPRINT_BUILD_CAPABILITY -- see
+// PROJECT_TYPE_CAPABILITIES in src/project/ProjectCapabilities.ts -- which BASE_ROUTES' own
+// "/api/project/context" fixture above already grants). Editing reuses the exact same
+// /api/home/blueprints/load|validate|save endpoints the guided Design Game editor uses.
+const RAW_BLUEPRINT = {
+    manifest: {id: "a", name: "A", version: "1.0.0"},
+    reels: 1,
+    rows: 1,
+    symbols: ["A"],
+    wilds: ["A"],
+    scatters: [],
+    paylines: [],
+    paytable: [],
+    availableBets: [1],
+    reelStrips: [["A"]],
+};
+
+// A section's own Edit/Save/Cancel controls sit inside that section's own `<fieldset>` (the legend
+// includes the action once GameModelTab passes `edit`, wrapped in its own `<span>` -- see
+// PageSection.tsx) -- scoping every query to it is what lets these tests tell "Symbols" own Edit button
+// apart from "Layout"'s, "Paytable"'s, etc., all sharing the same accessible name.
+function sectionFieldset(legend: string): HTMLElement {
+    const fieldset = screen.getByText(legend, {selector: "span"}).closest("fieldset");
+    if (!fieldset) {
+        throw new Error(`No fieldset found for section "${legend}"`);
+    }
+    return fieldset as HTMLElement;
+}
+
+describe("ProjectDashboardPage - Game Model tab editing", () => {
+    it("offers Edit only on the sections with a canonical field editor, never on Mechanics/Limits", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        expect(await screen.findAllByRole("button", {name: "Edit"})).toHaveLength(6);
+        expect(screen.queryByText("Mechanics", {selector: "span"})).not.toBeInTheDocument();
+        expect(screen.queryByText("Limits", {selector: "span"})).not.toBeInTheDocument();
+        // Still there, just as plain (non-editable) legend text.
+        expect(screen.getByText("Mechanics")).toBeInTheDocument();
+        expect(screen.getByText("Limits")).toBeInTheDocument();
+    });
+
+    it("Edit -> mutate -> Save loads the real tracked source, validates, atomically writes it, and View Mode then shows the saved truth", async () => {
+        const user = userEvent.setup();
+        let gameModelCalls = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => {
+                gameModelCalls += 1;
+                const projection = fullProjection();
+                if (gameModelCalls > 1) {
+                    projection.symbols = {status: "available", data: [{id: "A", isWild: true, isScatter: false}, {id: "B", isWild: false, isScatter: false}]};
+                }
+                return {ok: true, status: 200, body: projection};
+            },
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+
+        await within(symbols).findByLabelText("New symbol id");
+        await user.type(within(symbols).getByLabelText("New symbol id"), "B");
+        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
+
+        await user.click(within(symbols).getByRole("button", {name: "Save"}));
+
+        expect(await within(symbols).findByRole("button", {name: "Edit"})).toBeInTheDocument();
+        expect(within(symbols).getByText("B")).toBeInTheDocument();
+
+        const saveCall = calls.find((call) => call.url === "/api/home/blueprints/save");
+        expect(saveCall).toBeDefined();
+        expect(JSON.parse(saveCall!.init!.body!)).toMatchObject({path: "/games/a", overwrite: true});
+        expect(gameModelCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    it("Save runs validateBlueprint first -- an invalid draft is never written, and the errors show inline", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "invalid", errors: [{code: "blueprint-symbols-empty", severity: "error", message: "Symbols must not be empty."}], warnings: []},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+        await within(symbols).findByLabelText("New symbol id");
+
+        await user.click(within(symbols).getByRole("button", {name: "Save"}));
+
+        expect(await within(symbols).findByText(/Symbols must not be empty\./)).toBeInTheDocument();
+        // Still editing -- Save/Cancel are showing, not a lone Edit button.
+        expect(within(symbols).getByRole("button", {name: "Save"})).toBeInTheDocument();
+        expect(within(symbols).getByRole("button", {name: "Cancel"})).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+    });
+
+    it("Cancel with unsaved edits confirms before discarding them, reverting to the last-loaded truth", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+        await within(symbols).findByLabelText("New symbol id");
+        await user.type(within(symbols).getByLabelText("New symbol id"), "B");
+        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
+        expect(within(symbols).getByDisplayValue("B")).toBeInTheDocument();
+
+        await user.click(within(symbols).getByRole("button", {name: "Cancel"}));
+
+        expect(await screen.findByText("Discard your unsaved changes to this section?")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+
+        expect(await within(symbols).findByRole("button", {name: "Edit"})).toBeInTheDocument();
+        expect(within(symbols).queryByText("B")).not.toBeInTheDocument();
+        expect(within(symbols).getByText("A · wild")).toBeInTheDocument();
+    });
+
+    it("blocks navigating away from the Game Model tab while a section edit is dirty, same as any other unsaved-changes guard", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+        await within(symbols).findByLabelText("New symbol id");
+        await user.type(within(symbols).getByLabelText("New symbol id"), "B");
+        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
+
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+
+        expect(await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Stay"}));
+
+        await waitFor(() => expect(screen.queryByText("You have unsaved changes to this game model section. Leave and lose them?")).not.toBeInTheDocument());
+        expect(within(symbols).getByDisplayValue("B")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?");
+        await user.click(screen.getByRole("button", {name: "Leave"}));
+
+        expect(await screen.findByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+    });
+
+    it("stops an already-running runtime after a successful section save -- its materialization is invalidated, not silently left stale", async () => {
+        const user = userEvent.setup();
+        let runtimeStatus: "running" | "stopped" = "running";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/runtime": () =>
+                runtimeStatus === "running"
+                    ? {
+                        ok: true,
+                        status: 200,
+                        body: {status: "running", host: "127.0.0.1", port: 4000, baseUrl: "http://127.0.0.1:4000", playerUrl: "http://127.0.0.1:4000/player", debug: false, repositoryMode: "memory", startedAt: "2026-01-01T00:00:00.000Z"},
+                    }
+                    : {ok: true, status: 200, body: {status: "stopped"}},
+            "/api/project/runtime/stop": () => {
+                runtimeStatus = "stopped";
+                return {ok: true, status: 200, body: {status: "stopped"}};
+            },
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+        await within(symbols).findByLabelText("New symbol id");
+        await user.type(within(symbols).getByLabelText("New symbol id"), "B");
+        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
+
+        await user.click(within(symbols).getByRole("button", {name: "Save"}));
+        await within(symbols).findByRole("button", {name: "Edit"});
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/project/runtime/stop" && call.init?.method === "POST")).toBe(true));
     });
 });

@@ -1,4 +1,4 @@
-import {Badge, Group, Table, Tabs, Text} from "@mantine/core";
+import {Badge, Button, Group, Table, Tabs, Text} from "@mantine/core";
 import type {
     GameModelBetsAndModes,
     GameModelGameWindow,
@@ -13,9 +13,104 @@ import type {
     GameModelSharedWeightsSample,
     GameModelSymbol,
 } from "../../api/types";
+import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
+import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
+import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import {BetsList} from "../blueprintEditor/BetsList";
+import {LayoutFieldset} from "../blueprintEditor/LayoutFieldset";
+import {MetadataFieldset} from "../blueprintEditor/MetadataFieldset";
+import {PaylinesEditor} from "../blueprintEditor/PaylinesEditor";
+import {PaytableEditor} from "../blueprintEditor/PaytableEditor";
+import {ReelGenerationModeSelector} from "../blueprintEditor/ReelGenerationModeSelector";
 import {AnalysisTable, DiagnosticsList} from "../blueprintEditor/ReelStripGenerationEditor";
+import {SymbolsTable} from "../blueprintEditor/SymbolsTable";
 import {EmptyState} from "../common/EmptyState";
+import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
+
+// GameModelSections offers Edit on exactly "basics"/"layout"/"symbols"/"reels"/"paytable"/"bets" below --
+// the BlueprintSectionId values with an existing, canonical field editor to reuse from the guided Design
+// Game editor (see SectionedFormEditor.tsx, whose own 6 tabs these mirror one-for-one). "Mechanics"/
+// "Limits" have no dedicated field editor anywhere in Studio today (their old one, MechanicsEditorTab's
+// BetModesEditor/FreeGamesFieldset, was deleted outright in P4-POLISH-03, not merely hidden) --
+// reintroducing one here would be exactly the second, competing implementation this step's own "without
+// duplicating mechanics or domain semantics" contract forbids, so those two stay read-only.
+//
+// Everything GameModelSections needs to render Edit/Save/Cancel per section and swap an editable
+// section's read-only body for the exact same field-editor component the guided Design Game editor uses
+// (see useBlueprintEditor.ts) -- `blueprint`/`mutate`/`drafts`/`revision` are that hook's own state,
+// `validationView` is GameModelTab's own last validateBlueprint() result for the in-progress edit.
+// Undefined (the default) everywhere GameModelSections renders a projection that isn't a saved, in-place-
+// editable Blueprint Project -- GameModelPreviewPanel's own live Design Game preview never passes this,
+// so it renders exactly as it always has, purely read-only.
+export type GameModelEditController = {
+    // Set the instant Edit is clicked (before the fresh source has even loaded) through to Save/Cancel --
+    // every *other* section's own Edit disables the moment this is set, not just once `ready` below
+    // flips, so a second Edit click can never race the first section's own still-in-flight load.
+    activeSection: BlueprintSectionId | undefined;
+    // False while `activeSection`'s own fresh source is still loading (see GameModelTab's own "loading"
+    // EditState) -- the field editor only ever renders bound to real, already-loaded content, never a
+    // stale or empty draft, so the read-only body stays up until this flips true.
+    ready: boolean;
+    onEdit: (section: BlueprintSectionId) => void;
+    onSave: () => void;
+    onCancel: () => void;
+    saving: boolean;
+    validationView: BlueprintValidationView;
+    blueprint: Record<string, unknown>;
+    mutate: BlueprintMutate;
+    drafts: ReelStripGenerationDraftsRef;
+    revision: number;
+};
+
+// The Edit/Save/Cancel control group a section's own PageSection legend shows -- every Edit disables the
+// instant *any* section is active (loading, editing, or saving -- see GameModelTab's own "one section at
+// a time" contract, which keeps every save a single, atomic whole-blueprint write against a baseline
+// nothing else in this tab is concurrently mutating), and shows its own loading spinner while its own
+// section is the one still fetching a fresh source.
+function SectionEditAction({id, edit}: {id: BlueprintSectionId; edit: GameModelEditController}) {
+    if (edit.activeSection === id) {
+        if (!edit.ready) {
+            return (
+                <Button size="xs" variant="default" loading disabled>
+                    Edit
+                </Button>
+            );
+        }
+        return (
+            <Group gap="xs" wrap="nowrap">
+                <Button size="xs" onClick={edit.onSave} loading={edit.saving}>
+                    Save
+                </Button>
+                <Button size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>
+                    Cancel
+                </Button>
+            </Group>
+        );
+    }
+    return (
+        <Button size="xs" variant="default" onClick={() => edit.onEdit(id)} disabled={edit.activeSection !== undefined}>
+            Edit
+        </Button>
+    );
+}
+
+// The section-scoped slice of GameModelTab's own last validateBlueprint() result -- same
+// classifyIssuesBySection/crossFieldOnly categorization SectionedFormEditor.tsx already uses for the
+// guided editor's own per-tab issue lists, reused verbatim rather than a second display categorization.
+function SectionValidationIssues({id, edit}: {id: BlueprintSectionId; edit: GameModelEditController}) {
+    const view = edit.validationView;
+    const errors = view.status === "invalid" ? view.errors : [];
+    const warnings = view.status === "invalid" || view.status === "ok" ? view.warnings : [];
+    const {bySection: errorsBySection} = classifyIssuesBySection(errors);
+    const {bySection: warningsBySection} = classifyIssuesBySection(warnings);
+    return (
+        <>
+            <IssueList title="Errors" issues={crossFieldOnly(errorsBySection[id])} />
+            <IssueList title="Warnings" issues={crossFieldOnly(warningsBySection[id])} />
+        </>
+    );
+}
 
 function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
     if (mode === "reelStrips") {
@@ -412,6 +507,59 @@ function MechanicsSection({section}: {section: GameModelSection<GameModelMechani
     );
 }
 
+// Read-only "Game basics" -- pulled out of GameModelSections' own render tree (alongside
+// SymbolsSection/ReelsSection/PaytableSection/BetsAndModesSection below) purely so swapping in the edit
+// form doesn't need a 3-way nested ternary in the JSX itself.
+function BasicsSection({section}: {section: GameModelProjection["basics"]}) {
+    if (section.status === "unavailable") {
+        return <UnavailableSection reason={section.reason} />;
+    }
+    return (
+        <>
+            <Text size="sm">Id: {section.data.id ?? "(none)"}</Text>
+            <Text size="sm">Name: {section.data.name ?? "(none)"}</Text>
+            <Text size="sm">Version: {section.data.version ?? "(none)"}</Text>
+            <Text size="sm">Description: {section.data.description ?? "(none)"}</Text>
+            <Text size="sm">Author: {section.data.author ?? "(none)"}</Text>
+        </>
+    );
+}
+
+// Read-only "Layout" -- same reasoning as BasicsSection above.
+function LayoutSection({section}: {section: GameModelProjection["layout"]}) {
+    if (section.status === "unavailable") {
+        return <UnavailableSection reason={section.reason} />;
+    }
+    return (
+        <>
+            <Text size="sm">Reels: {section.data.reels ?? "(none)"}</Text>
+            <Text size="sm">Rows: {section.data.rows ?? "(none)"}</Text>
+            <Text size="sm">
+                Win model: {section.data.winModel.type}
+                {section.data.winModel.type === "clusters" && section.data.winModel.minimumClusterSize !== undefined
+                    ? ` (minimum cluster size ${section.data.winModel.minimumClusterSize})`
+                    : ""}
+            </Text>
+            <Text size="sm">Paylines: {section.data.winModel.type === "lines" ? (section.data.paylineCount ?? 0) : "n/a for this win model"}</Text>
+        </>
+    );
+}
+
+// Read-only "Bets & Modes" -- same reasoning as BasicsSection above.
+function BetsAndModesSection({section}: {section: GameModelProjection["betsAndModes"]}) {
+    if (section.status === "unavailable") {
+        return <UnavailableSection reason={section.reason} />;
+    }
+    return (
+        <>
+            <Text size="sm" mb="xs">
+                Available bets: {section.data.availableBets.length > 0 ? section.data.availableBets.join(", ") : "(none)"}
+            </Text>
+            <BetModesTable betModes={section.data.betModes} />
+        </>
+    );
+}
+
 function LimitsSection({section}: {section: GameModelSection<GameModelLimits>}) {
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
@@ -440,65 +588,84 @@ function LimitsSection({section}: {section: GameModelSection<GameModelLimits>}) 
 // project's tracked source) and the guided Design Game editor's own live preview (BlueprintEditorPage's
 // GameModelPreviewPanel) -- every surface that shows a game model renders the exact same projection type
 // through this exact same component, never a second, independently-drifting rendering.
-export function GameModelSections({projection}: {projection: GameModelProjection}) {
+export function GameModelSections({projection, edit}: {projection: GameModelProjection; edit?: GameModelEditController}) {
+    const editingBasics = edit?.ready === true && edit.activeSection === "basics";
+    const editingLayout = edit?.ready === true && edit.activeSection === "layout";
+    const editingSymbols = edit?.ready === true && edit.activeSection === "symbols";
+    const editingReels = edit?.ready === true && edit.activeSection === "reels";
+    const editingPaytable = edit?.ready === true && edit.activeSection === "paytable";
+    const editingBets = edit?.ready === true && edit.activeSection === "bets";
+
     return (
         <div>
-            <PageSection legend="Game basics">
-                {projection.basics.status === "unavailable" ? (
-                    <UnavailableSection reason={projection.basics.reason} />
-                ) : (
+            <PageSection legend="Game basics" action={edit && <SectionEditAction id="basics" edit={edit} />}>
+                {editingBasics && edit ? (
                     <>
-                        <Text size="sm">Id: {projection.basics.data.id ?? "(none)"}</Text>
-                        <Text size="sm">Name: {projection.basics.data.name ?? "(none)"}</Text>
-                        <Text size="sm">Version: {projection.basics.data.version ?? "(none)"}</Text>
-                        <Text size="sm">Description: {projection.basics.data.description ?? "(none)"}</Text>
-                        <Text size="sm">Author: {projection.basics.data.author ?? "(none)"}</Text>
+                        <SectionValidationIssues id="basics" edit={edit} />
+                        <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" />
                     </>
+                ) : (
+                    <BasicsSection section={projection.basics} />
                 )}
             </PageSection>
 
-            <PageSection legend="Layout">
-                {projection.layout.status === "unavailable" ? (
-                    <UnavailableSection reason={projection.layout.reason} />
-                ) : (
+            <PageSection legend="Layout" action={edit && <SectionEditAction id="layout" edit={edit} />}>
+                {editingLayout && edit ? (
                     <>
-                        <Text size="sm">Reels: {projection.layout.data.reels ?? "(none)"}</Text>
-                        <Text size="sm">Rows: {projection.layout.data.rows ?? "(none)"}</Text>
-                        <Text size="sm">
-                            Win model: {projection.layout.data.winModel.type}
-                            {projection.layout.data.winModel.type === "clusters" && projection.layout.data.winModel.minimumClusterSize !== undefined
-                                ? ` (minimum cluster size ${projection.layout.data.winModel.minimumClusterSize})`
-                                : ""}
-                        </Text>
-                        <Text size="sm">
-                            Paylines: {projection.layout.data.winModel.type === "lines" ? (projection.layout.data.paylineCount ?? 0) : "n/a for this win model"}
-                        </Text>
+                        <SectionValidationIssues id="layout" edit={edit} />
+                        <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <PaylinesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
                     </>
+                ) : (
+                    <LayoutSection section={projection.layout} />
                 )}
             </PageSection>
 
-            <PageSection legend="Symbols">
-                <SymbolsSection section={projection.symbols} />
-            </PageSection>
-
-            <PageSection legend="Reels">
-                <ReelsSection section={projection.reels} />
-            </PageSection>
-
-            <PageSection legend="Paytable">
-                <PaytableSection section={projection.paytable} />
-            </PageSection>
-
-            <PageSection legend="Bets & Modes">
-                {projection.betsAndModes.status === "unavailable" ? (
-                    <UnavailableSection reason={projection.betsAndModes.reason} />
-                ) : (
+            <PageSection legend="Symbols" action={edit && <SectionEditAction id="symbols" edit={edit} />}>
+                {editingSymbols && edit ? (
                     <>
-                        <Text size="sm" mb="xs">
-                            Available bets: {projection.betsAndModes.data.availableBets.length > 0 ? projection.betsAndModes.data.availableBets.join(", ") : "(none)"}
-                        </Text>
-                        <BetModesTable betModes={projection.betsAndModes.data.betModes} />
+                        <SectionValidationIssues id="symbols" edit={edit} />
+                        <SymbolsTable blueprint={edit.blueprint} mutate={edit.mutate} />
                     </>
+                ) : (
+                    <SymbolsSection section={projection.symbols} />
+                )}
+            </PageSection>
+
+            <PageSection legend="Reels" action={edit && <SectionEditAction id="reels" edit={edit} />}>
+                {editingReels && edit ? (
+                    <>
+                        <SectionValidationIssues id="reels" edit={edit} />
+                        <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} revision={edit.revision} />
+                    </>
+                ) : (
+                    <ReelsSection section={projection.reels} />
+                )}
+            </PageSection>
+
+            <PageSection legend="Paytable" action={edit && <SectionEditAction id="paytable" edit={edit} />}>
+                {editingPaytable && edit ? (
+                    <>
+                        <SectionValidationIssues id="paytable" edit={edit} />
+                        <PaytableEditor blueprint={edit.blueprint} mutate={edit.mutate} />
+                    </>
+                ) : (
+                    <PaytableSection section={projection.paytable} />
+                )}
+            </PageSection>
+
+            <PageSection legend="Bets & Modes" action={edit && <SectionEditAction id="bets" edit={edit} />}>
+                {editingBets && edit ? (
+                    <>
+                        <SectionValidationIssues id="bets" edit={edit} />
+                        <Text size="sm" c="dimmed" mb="xs">
+                            Bet modes (id/label/multiplier/target RTP) aren&apos;t editable in Studio yet -- edit
+                            available bet amounts below.
+                        </Text>
+                        <BetsList blueprint={edit.blueprint} mutate={edit.mutate} />
+                    </>
+                ) : (
+                    <BetsAndModesSection section={projection.betsAndModes} />
                 )}
             </PageSection>
 
