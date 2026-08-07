@@ -155,8 +155,8 @@ function modeFieldWarnings(mode: ModeFields): {modeName?: string; seed?: string;
 // Guided Select/configure -> Validate -> Build bundle -> Inspect -> Export workflow, built entirely on
 // pokie's own CertificationEvidenceBundleBuilder/CertificationEvidenceBundleValidator (see
 // StudioCertificationService) -- every hash/metric shown here is computed server-side, never re-derived
-// in this UI. Mirrors OutcomeLibrariesTab's own lifecycle discipline: a monotonic requestId ref per
-// async action, a double-submit guard, and an invalidate*() helper that resets state and cascades to
+// in this UI. Same lifecycle discipline as every other Studio Stepper here: a monotonic requestId ref
+// per async action, a double-submit guard, and an invalidate*() helper that resets state and cascades to
 // downstream steps whenever an upstream input changes.
 export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
@@ -183,9 +183,9 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const validateRequestIdRef = useRef(0);
     const validateGuard = useDoubleSubmitGuard();
     // True once a *completed* Validate response has been silently invalidated by a later Select/configure
-    // edit -- same distinction DeploymentTab's own preflightOutdated draws between "outdated" and "never
-    // run": tells a user who already validated once that what they saw is stale, rather than leaving the
-    // reset to idle unexplained. Cleared the instant a fresh Validate run starts.
+    // edit -- same distinction useDeploymentManager's own preflightOutdated draws between "outdated" and
+    // "never run": tells a user who already validated once that what they saw is stale, rather than
+    // leaving the reset to idle unexplained. Cleared the instant a fresh Validate run starts.
     const [validateOutdated, setValidateOutdated] = useState(false);
 
     // ---- Build bundle ----

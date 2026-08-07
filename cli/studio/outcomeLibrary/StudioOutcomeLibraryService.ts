@@ -1,27 +1,16 @@
 import {
-    computeWeightedOutcomeLibraryFeatureBreakdown,
-    computeWeightedOutcomeLibraryHash,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
-    OutcomeLibraryBundleValidating,
-    OutcomeLibraryBundleValidator,
     StakeEngineImporter,
     StakeEngineImporting,
     ValidationIssue,
     ValidationRule,
     WeightedOutcomeLibrary,
-    WeightedOutcomeLibraryAnalysisDiffer,
-    WeightedOutcomeLibraryAnalysisDiffing,
-    WeightedOutcomeLibraryAnalyzer,
     WeightedOutcomeLibraryValidator,
 } from "pokie";
 import fs from "fs";
 import {loadOutcomeLibraryFromSelector, type LoadedOutcomeLibrary} from "./loadOutcomeLibraryFromSelector.js";
-import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
-import type {StudioOutcomeLibraryCompareView} from "./StudioOutcomeLibraryCompareView.js";
-import type {StudioOutcomeLibraryDeepValidateView} from "./StudioOutcomeLibraryDeepValidateView.js";
-import type {StudioOutcomeLibrarySelectView} from "./StudioOutcomeLibrarySelectView.js";
 
 type LoadedLibrary = LoadedOutcomeLibrary;
 
@@ -33,51 +22,37 @@ export type ResolvedOutcomeLibrary =
     | {readonly status: "invalid"; readonly errors: readonly ValidationIssue[]; readonly warnings: readonly ValidationIssue[]}
     | {readonly status: "load-error"; readonly error: string};
 
-// The Project Dashboard's Outcome Libraries tab, built directly on top of pokie's own
-// WeightedOutcomeLibrary/OutcomeLibraryBundle/StakeEngine services -- this class never computes RTP, hit
-// rate, volatility, a payout distribution, or a feature/event breakdown itself; every one of those is
-// delegated straight to WeightedOutcomeLibraryAnalyzer / computeWeightedOutcomeLibraryFeatureBreakdown /
-// WeightedOutcomeLibraryAnalysisDiffer. What this class actually owns is Studio-specific plumbing only:
-// resolving a selector (a plain JSON file / a bundle mode / a Stake Engine export mode) against the active
-// project's root, and shaping the result into a "select"/"compare"/deep-validate view.
+// The Runtime tab's pre-generated handoff, built directly on top of pokie's own
+// WeightedOutcomeLibrary/OutcomeLibraryBundle/StakeEngine services -- resolves a selector (a plain JSON
+// file / a bundle mode / a Stake Engine export mode) against the active project's root into a validated
+// WeightedOutcomeLibrary. This class never computes RTP, hit rate, volatility, a payout distribution, or
+// a feature/event breakdown itself; that analysis lives in Build/Export's own "Outcome libraries" card
+// (see StudioOutcomeLibraryGenerateService) instead.
 export class StudioOutcomeLibraryService {
-    private static readonly SAMPLE_SIZE = 20;
-
     private readonly bundleReader: OutcomeLibraryBundleReading<string>;
-    private readonly bundleValidator: OutcomeLibraryBundleValidating;
     private readonly stakeEngineImporter: StakeEngineImporting<string>;
     private readonly libraryValidator: ValidationRule<WeightedOutcomeLibrary<string>>;
-    private readonly analyzer: WeightedOutcomeLibraryAnalyzer<string>;
-    private readonly differ: WeightedOutcomeLibraryAnalysisDiffing;
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
 
     constructor(
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
-        bundleValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator<string>(),
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
         libraryValidator: ValidationRule<WeightedOutcomeLibrary<string>> = new WeightedOutcomeLibraryValidator<string>(),
-        analyzer: WeightedOutcomeLibraryAnalyzer<string> = new WeightedOutcomeLibraryAnalyzer<string>(),
-        differ: WeightedOutcomeLibraryAnalysisDiffing = new WeightedOutcomeLibraryAnalysisDiffer(),
         readFile: (resolvedPath: string) => string = (resolvedPath) => fs.readFileSync(resolvedPath, "utf-8"),
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
     ) {
         this.bundleReader = bundleReader;
-        this.bundleValidator = bundleValidator;
         this.stakeEngineImporter = stakeEngineImporter;
         this.libraryValidator = libraryValidator;
-        this.analyzer = analyzer;
-        this.differ = differ;
         this.readFile = readFile;
         this.realpath = realpath;
     }
 
-    // The "load + validate" half of select() -- resolves a selector all the way to a genuine, validated
-    // WeightedOutcomeLibrary object, or a clear invalid/load-error result. Exposed publicly (unlike the
-    // rest of this class's plumbing) so a caller that needs the actual library -- not select()'s own
-    // summary/analysis/sample view -- reuses this exact resolution path rather than a second one. This
-    // is what the Runtime tab's pre-generated handoff calls: it never re-implements path resolution,
-    // bundle/Stake Engine reading, or validation itself.
+    // The "load + validate" half of the old Select step -- resolves a selector all the way to a genuine,
+    // validated WeightedOutcomeLibrary object, or a clear invalid/load-error result. This is what the
+    // Runtime tab's pre-generated handoff calls: it never re-implements path resolution, bundle/Stake
+    // Engine reading, or validation itself.
     public async resolveLibrary(projectRoot: string, selector: OutcomeLibrarySelector): Promise<ResolvedOutcomeLibrary> {
         const loaded = await this.loadLibrary(projectRoot, selector);
         if (loaded.status === "load-error") {
@@ -97,104 +72,6 @@ export class StudioOutcomeLibraryService {
             return {status: "ok", library: loaded.library, source: loaded.source};
         } catch (error) {
             return {status: "load-error", error: `Could not validate the selected library: ${error instanceof Error ? error.message : String(error)}`};
-        }
-    }
-
-    // Select/import -> Validate & analyze -> Inspect distribution/features all land in one call: once a
-    // library is loaded, diagnostics/analysis/feature breakdown are fast and deterministic, unlike deep
-    // bundle validation (see validateBundleDeep), which is genuinely expensive and stays opt-in.
-    public async select(projectRoot: string, selector: OutcomeLibrarySelector): Promise<StudioOutcomeLibrarySelectView> {
-        const loaded = await this.loadLibrary(projectRoot, selector);
-        if (loaded.status === "load-error") {
-            return {status: "load-error", error: loaded.error};
-        }
-
-        try {
-            const libraryIssues = this.libraryValidator.validate(loaded.library);
-            const allIssues = [...loaded.importIssues, ...libraryIssues];
-            const errors = allIssues.filter((issue) => issue.severity === "error");
-            const warnings = allIssues.filter((issue) => issue.severity !== "error");
-
-            if (errors.length > 0) {
-                return {status: "invalid", errors, warnings};
-            }
-
-            const analysis = this.analyzer.analyze(loaded.library);
-            const featureBreakdown = computeWeightedOutcomeLibraryFeatureBreakdown(loaded.library);
-            const hash = computeWeightedOutcomeLibraryHash(loaded.library);
-            const sampleOutcomes = loaded.library.outcomes.slice(0, StudioOutcomeLibraryService.SAMPLE_SIZE).map((outcome) => ({
-                id: outcome.id,
-                weight: outcome.weight,
-                totalWin: outcome.artifact.totalWin,
-                payoutMultiplier: outcome.artifact.payoutMultiplier,
-            }));
-
-            return {
-                status: "ok",
-                provenance: {
-                    source: loaded.source,
-                    libraryId: loaded.library.libraryId,
-                    outcomeCount: loaded.library.outcomes.length,
-                    hash,
-                    ...(loaded.envelope !== undefined
-                        ? {game: loaded.envelope.game, configHash: loaded.envelope.configHash, pokieVersion: loaded.envelope.pokieVersion}
-                        : {}),
-                },
-                errors,
-                warnings,
-                analysis,
-                featureBreakdown,
-                sampleOutcomes,
-                sampleTruncated: loaded.library.outcomes.length > StudioOutcomeLibraryService.SAMPLE_SIZE,
-            };
-        } catch (error) {
-            return {status: "load-error", error: `Could not analyze the selected library: ${error instanceof Error ? error.message : String(error)}`};
-        }
-    }
-
-    // "expectedLeftHash" is the hash the caller already showed the user for the left library (captured
-    // at Select/Inspect time, see StudioOutcomeLibrarySelectView.provenance.hash) -- both sides are
-    // always re-resolved fresh here (a comparison should reflect what's actually on disk *now*, not a
-    // cached copy), but when the freshly-resolved left library's hash no longer matches what the user
-    // was shown, this is flagged as `leftSnapshotStale` and no diff is produced: silently diffing a
-    // library that changed underneath the user against whatever they typed for "right" would compare
-    // the *new* left content against a UI that still displays the *old* left summary, without ever
-    // telling them the ground shifted. Omit `expectedLeftHash` to skip this check entirely (e.g. a
-    // caller that never showed the user a prior snapshot to begin with).
-    public async compare(
-        projectRoot: string,
-        left: OutcomeLibrarySelector,
-        right: OutcomeLibrarySelector,
-        expectedLeftHash?: string,
-    ): Promise<StudioOutcomeLibraryCompareView> {
-        const [leftView, rightView] = await Promise.all([this.select(projectRoot, left), this.select(projectRoot, right)]);
-        const leftSnapshotStale = expectedLeftHash !== undefined && leftView.status === "ok" && leftView.provenance.hash !== expectedLeftHash;
-
-        if (leftView.status !== "ok" || rightView.status !== "ok" || leftSnapshotStale) {
-            return {left: leftView, right: rightView, leftSnapshotStale};
-        }
-        return {left: leftView, right: rightView, leftSnapshotStale: false, diff: this.differ.diff(leftView.analysis, rightView.analysis)};
-    }
-
-    public async validateBundleDeep(projectRoot: string, bundleDir: string, modeName: string): Promise<StudioOutcomeLibraryDeepValidateView> {
-        const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
-        if (resolved.status === "error") {
-            return {status: "load-error", error: resolved.message};
-        }
-
-        try {
-            const manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
-            if (!manifest.modes.some((mode) => mode.modeName === modeName)) {
-                return {status: "load-error", error: `Mode "${modeName}" was not found in bundle "${bundleDir}".`};
-            }
-            const issues = await this.bundleValidator.validate(resolved.resolvedPath, {deep: true});
-            return {
-                status: "ok",
-                errors: issues.filter((issue) => issue.severity === "error"),
-                warnings: issues.filter((issue) => issue.severity !== "error"),
-            };
-        } catch (error) {
-            return {status: "load-error", error: `Could not deep-validate bundle "${bundleDir}": ${error instanceof Error ? error.message : String(error)}`};
         }
     }
 

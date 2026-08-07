@@ -140,11 +140,8 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
             "blueprintEditor/ParSheetImportExportPanel.tsx",
             "blueprintEditor/ReelStripGenerationEditor.tsx",
             "project/SimulationTab.tsx",
-            "project/OutcomeLibrariesTab.tsx",
-            "project/DeploymentTab.tsx",
             "project/CertificationTab.tsx",
             "project/ProvablyFairTab.tsx",
-            "project/StakeEngineExportTab.tsx",
         ];
         for (const relativePath of filesWithSteppers) {
             const source = readFileSync(join(componentsRoot, relativePath), "utf8");
@@ -186,7 +183,6 @@ describe("Wide tables stay wrapped in Table.ScrollContainer (source guard)", () 
         "blueprintEditor/PaytableEditor.tsx",
         "blueprintEditor/SymbolsTable.tsx",
         "blueprintEditor/ReelStripGenerationEditor.tsx",
-        "project/OutcomeLibrariesTab.tsx",
     ];
 
     it.each(filesRequiringScrollContainer)("%s wraps every <Table> in <Table.ScrollContainer>", (relativePath) => {

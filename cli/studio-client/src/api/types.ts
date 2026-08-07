@@ -764,7 +764,7 @@ export type StudioDeploymentRunView = {
     delivery?: {delivered: boolean; details?: Record<string, unknown>; issues?: ValidationIssue[]};
 };
 
-// POST /api/project/outcome-libraries/{select,compare}'s shared selector shape — see
+// POST /api/project/outcome-libraries/generate's own selector shape — see
 // cli/studio/outcomeLibrary/OutcomeLibrarySelector.ts's own doc comment for what each source means.
 export type OutcomeLibrarySelector =
     | {kind: "json"; path: string}
@@ -773,8 +773,8 @@ export type OutcomeLibrarySelector =
 
 export type WeightedOutcomePayoutBucket = {payoutMultiplier: number; probability: number};
 
-// WeightedOutcomeLibraryAnalyzer's own output, embedded verbatim in StudioOutcomeLibrarySelectView --
-// never recomputed here.
+// WeightedOutcomeLibraryAnalyzer's own output, embedded verbatim in CertificationEvidenceBundleModeEntry
+// -- never recomputed here.
 export type WeightedOutcomeLibraryAnalysis = {
     totalWeight: number;
     rtp: number;
@@ -786,77 +786,6 @@ export type WeightedOutcomeLibraryAnalysis = {
     maxWinProbability: number;
     payoutDistribution: WeightedOutcomePayoutBucket[];
 };
-
-export type WeightedOutcomeLibraryFeatureBreakdownEntry = {key: string; weightedFrequency: number; outcomeCount: number};
-
-// computeWeightedOutcomeLibraryFeatureBreakdown's own output -- see that function's own doc comment.
-export type WeightedOutcomeLibraryFeatureBreakdown = {
-    betModes: WeightedOutcomeLibraryFeatureBreakdownEntry[];
-    featureEvents: WeightedOutcomeLibraryFeatureBreakdownEntry[];
-};
-
-export type WeightedOutcomeLibraryAnalysisMetricDiff = {left: number; right: number; delta: number; percentDelta: number | null};
-export type WeightedOutcomeLibraryAnalysisPayoutBucketDiff = {payoutMultiplier: number; left: number | null; right: number | null};
-
-// WeightedOutcomeLibraryAnalysisDiffer's own output -- see that class's own doc comment.
-export type WeightedOutcomeLibraryAnalysisDiff = {
-    rtp: WeightedOutcomeLibraryAnalysisMetricDiff;
-    hitFrequency: WeightedOutcomeLibraryAnalysisMetricDiff;
-    variance: WeightedOutcomeLibraryAnalysisMetricDiff;
-    standardDeviation: WeightedOutcomeLibraryAnalysisMetricDiff;
-    maxWin: WeightedOutcomeLibraryAnalysisMetricDiff;
-    payoutDistribution: WeightedOutcomeLibraryAnalysisPayoutBucketDiff[];
-    warnings: string[];
-};
-
-// Only known for a bundle/Stake Engine source (both carry a manifest) -- a plain JSON file has no such
-// envelope, so those fields are simply absent rather than guessed.
-export type StudioOutcomeLibraryProvenance = {
-    source: "json" | "bundle" | "stakeengine";
-    libraryId: string;
-    outcomeCount: number;
-    hash: string;
-    game?: {id: string; name: string; version: string};
-    configHash?: string;
-    pokieVersion?: string;
-};
-
-export type StudioOutcomeLibrarySampleOutcome = {id: string; weight: number; totalWin: number; payoutMultiplier: number};
-
-// POST /api/project/outcome-libraries/select's own DTO — see
-// cli/studio/outcomeLibrary/StudioOutcomeLibrarySelectView.ts's own doc comment. "sampleOutcomes" is a
-// bounded prefix, never the full outcomes array — a real library can hold millions of entries.
-export type StudioOutcomeLibrarySelectView =
-    | {
-          status: "ok";
-          provenance: StudioOutcomeLibraryProvenance;
-          errors: ValidationIssue[];
-          warnings: ValidationIssue[];
-          analysis: WeightedOutcomeLibraryAnalysis;
-          featureBreakdown: WeightedOutcomeLibraryFeatureBreakdown;
-          sampleOutcomes: StudioOutcomeLibrarySampleOutcome[];
-          sampleTruncated: boolean;
-      }
-    | {status: "invalid"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
-
-// POST /api/project/outcome-libraries/compare's own DTO — see
-// cli/studio/outcomeLibrary/StudioOutcomeLibraryCompareView.ts's own doc comment. `diff` is only present
-// when both sides reached "ok" and `leftSnapshotStale` is false -- a true `leftSnapshotStale` means the
-// left library changed on disk since the caller's own earlier Select/Inspect (see the `expectedLeftHash`
-// param on compareOutcomeLibraries), and must never be silently diffed against the right side.
-export type StudioOutcomeLibraryCompareView = {
-    left: StudioOutcomeLibrarySelectView;
-    right: StudioOutcomeLibrarySelectView;
-    leftSnapshotStale: boolean;
-    diff?: WeightedOutcomeLibraryAnalysisDiff;
-};
-
-// POST /api/project/outcome-libraries/validate-deep's own DTO — bundle-only, see
-// cli/studio/outcomeLibrary/StudioOutcomeLibraryDeepValidateView.ts's own doc comment.
-export type StudioOutcomeLibraryDeepValidateView =
-    | {status: "ok"; errors: ValidationIssue[]; warnings: ValidationIssue[]}
-    | {status: "load-error"; error: string};
 
 export type OutcomeLibraryGenerationStrategy = "exact" | "bounded-coverage";
 
@@ -895,7 +824,7 @@ export type OutcomeLibraryGeneratorDiagnostics = {
 
 // POST /api/project/outcome-libraries/generate's own DTO — see
 // cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.ts's own doc comment. `selector` chains
-// straight into selectOutcomeLibrary/compareOutcomeLibraries/the Runtime tab's pre-generated handoff.
+// straight into the Runtime tab's pre-generated handoff.
 export type StudioOutcomeLibraryGenerateResultView =
     | {
           status: "ok";

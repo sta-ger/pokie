@@ -465,23 +465,29 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
     });
 
-    it("redirects the legacy /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes into Build/Export with migration guidance, never mounting their own old workflows", async () => {
-        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
-        await screen.findByRole("heading", {name: "A"});
-        expect(screen.getByText("Deployment has moved into Build/Export")).toBeInTheDocument();
-        expect(await screen.findByText("Outcome library generator")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Deployment"})).not.toBeInTheDocument();
+    it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {
+        const deploymentRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
+        await deploymentRender.findByRole("heading", {name: "A"});
+        expect(deploymentRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(deploymentRender.queryByText("Deployment has moved into Build/Export")).not.toBeInTheDocument();
+        expect(deploymentRender.queryByRole("button", {name: "Run deployment preflight"})).not.toBeInTheDocument();
+        expect(deploymentRender.queryByRole("button", {name: "Deployment"})).not.toBeInTheDocument();
+        deploymentRender.unmount();
 
-        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
-        await screen.findByText("Stake Engine Export has moved into Build/Export");
-        expect(screen.queryByText("Output directory")).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Stake Engine Export"})).not.toBeInTheDocument();
+        const stakeEngineExportRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/stakeEngineExport"]});
+        await stakeEngineExportRender.findByRole("heading", {name: "A"});
+        expect(stakeEngineExportRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(stakeEngineExportRender.queryByText("Stake Engine Export has moved into Build/Export")).not.toBeInTheDocument();
+        expect(stakeEngineExportRender.queryByText("Output directory")).not.toBeInTheDocument();
+        expect(stakeEngineExportRender.queryByRole("button", {name: "Stake Engine Export"})).not.toBeInTheDocument();
+        stakeEngineExportRender.unmount();
 
-        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/outcomeLibraries"]});
-        await screen.findByText("Outcome Libraries has moved into Build/Export");
-        expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Analysis"})).not.toBeInTheDocument();
+        const outcomeLibrariesRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/outcomeLibraries"]});
+        await outcomeLibrariesRender.findByRole("heading", {name: "A"});
+        expect(outcomeLibrariesRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(outcomeLibrariesRender.queryByText("Outcome Libraries has moved into Build/Export")).not.toBeInTheDocument();
+        expect(outcomeLibrariesRender.queryByLabelText("Mode")).not.toBeInTheDocument();
+        expect(outcomeLibrariesRender.queryByRole("button", {name: "Analysis"})).not.toBeInTheDocument();
     });
 
     it("shows a subject-specific recovery message, never the raw backend text, when the deployment targets list fails to load", async () => {

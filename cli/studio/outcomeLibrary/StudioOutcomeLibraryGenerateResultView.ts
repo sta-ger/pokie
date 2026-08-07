@@ -6,8 +6,8 @@ import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 // goes one step further and writes straight into the project's own canonical outcome-library bundle (see
 // StudioOutcomeLibraryGenerateService.generate) -- so this view carries everything the CLI's own "generate"
 // (diagnostics/seed) AND "build" (path/files/validation/hash) verbs report separately, in one place, plus a
-// ready-to-use `selector` a caller can hand straight to select()/compare()/the Runtime tab without the user
-// re-typing anything.
+// ready-to-use `selector` a caller can hand straight to the Runtime tab's pre-generated handoff without
+// the user re-typing anything.
 export type StudioOutcomeLibraryGenerateResultView =
     | {
           readonly status: "ok";
@@ -29,10 +29,9 @@ export type StudioOutcomeLibraryGenerateResultView =
           // strategy (every reachable reel-stop tuple was swept), less than 1 for "bounded-coverage".
           // Derived purely for display; the authoritative numbers are still generator's own fields.
           readonly coverage: number;
-          // Chains straight into the existing Select/import -> Validate & analyze -> Inspect -> Compare or
-          // use workflow (see OutcomeLibrariesTab) -- Inspect, Validate/analyze, and "serve pre-generated
-          // outcomes" (Use in runtime) are all already built on a bundle OutcomeLibrarySelector, so this
-          // step never needs its own parallel versions of them.
+          // Chains straight into the Runtime tab's "serve pre-generated outcomes" (Use in runtime) handoff
+          // -- already built on a bundle OutcomeLibrarySelector, so this step never needs its own parallel
+          // version of it.
           readonly selector: OutcomeLibrarySelector;
       }
     | {readonly status: "unsupported"; readonly error: string}

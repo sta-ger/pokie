@@ -85,7 +85,7 @@ export function useDeploymentManager() {
     // edit, or the selected target's own descriptor changing underneath it, see markConfigChanged below)
     // happens *after* a run already landed. Deliberately distinct from "nothing has been run yet" (plain
     // `runResult === undefined` with this staying false) -- the Configure step's own banner (see
-    // DeploymentTab) reads this to tell a user who already checked once "what you saw is stale, re-check"
+    // ExportDeployTab) reads this to tell a user who already checked once "what you saw is stale, re-check"
     // apart from "you haven't checked at all yet". Cleared the instant a fresh run starts (see run() below)
     // and by resetForProjectSwitch(), which starts an entirely new context with nothing to call outdated.
     const [preflightOutdated, setPreflightOutdated] = useState(false);
@@ -175,7 +175,7 @@ export function useDeploymentManager() {
     // The Configure step's own two discovery inputs -- the project's own current build modes (see
     // getDeploymentBuildModes's own doc comment, backed by the same authoritative resolver
     // StudioDeploymentService.run() itself checks a request against) and the outcome library registry
-    // (see OutcomeLibrariesTab's own Registry panel). Neither ever blocks the rest of the tab: a
+    // (see ExportDeployTab's own Registry panel). Neither ever blocks the rest of the tab: a
     // failed/unavailable build-modes lookup blocks mode-name entry entirely (see
     // describeBuildModesUnavailable), while a failed/unavailable registry lookup alone just leaves every
     // row "missing" until a library is chosen by hand.
@@ -326,9 +326,8 @@ export function useDeploymentManager() {
         // `targetOverride` lets a caller that owns its own target list (Build/Export's ExportDeployTab,
         // choosing straight from an ExportDeployTargetCard) select-and-run in one action, without a
         // separate selectTarget() call first landing in a stale closure of `selectedTarget` -- see
-        // ExportDeployTab's own doc comment. Every existing caller (DeploymentTab's own Preview/Deploy
-        // buttons) omits it entirely and keeps running against whatever selectTarget() already put in
-        // state, unchanged.
+        // ExportDeployTab's own doc comment. Every other caller omits it entirely and keeps running
+        // against whatever selectTarget() already put in state, unchanged.
         // `modesOverride` gives that same caller a way to run against a mode/library pairing it resolved
         // itself (an existing registry bundle or one just generated this session) without first funnelling
         // it through setModeName/setModeLibrarySelector and waiting a render for `modes` state to catch up
@@ -357,11 +356,10 @@ export function useDeploymentManager() {
             // loading indicator, and a stale-but-not-yet-cleared error could outlive a run that actually
             // succeeds (see the success branch below, which clears it again for the same reason).
             setRunError(undefined);
-            // Same reasoning for the previous run's *result*: DeploymentTab's Stepper doesn't gate
-            // navigation on runLoading, so leaving the old runResult in place while a new Check/Deploy is
-            // in flight would let the user jump straight to Check compatibility/Preview artifacts/Review
-            // result and see the previous run's outcome banner with nothing indicating a newer run (which
-            // may land a different outcome entirely) is currently executing.
+            // Same reasoning for the previous run's *result*: ExportDeployTab doesn't gate its own
+            // buttons on runLoading, so leaving the old runResult in place while a new Check/Publish is
+            // in flight would let the user see the previous run's outcome banner with nothing indicating
+            // a newer run (which may land a different outcome entirely) is currently executing.
             setRunResult(undefined);
             setRunLoading(true);
 
@@ -415,7 +413,6 @@ export function useDeploymentManager() {
 }
 
 // ExportDeployTab's own prop type -- it renders straight off this hook's return shape (owned by
-// ProjectDashboardPage, same instance DeploymentTab itself renders off) instead of threading each field
-// through as its own prop, since Build/Export now drives the same run()/registry/build-modes state
-// DeploymentTab does, not a parallel copy of it.
+// ProjectDashboardPage, the same instance it renders off) instead of threading each field through as
+// its own prop.
 export type DeploymentManager = ReturnType<typeof useDeploymentManager>;

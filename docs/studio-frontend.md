@@ -92,12 +92,14 @@ tabs never loses in-progress work):
   model), initializing an existing directory (`pokie init`), building from an existing blueprint file
   directly (skips the guided editor), and the raw (non-`guided`) Blueprint Editor.
 
-**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Validate, Simulation & Reports**
-(the primary flow, in that order), then a visually separated **Advanced** group — Replay, Runtime, Deployment,
-Outcome Libraries, Certification, Provably Fair, Stake Engine Export (`NavTabItem`'s optional
-`section` field drives the grouping in `NavTabs`; see `PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact,
-current tab list). "Validation" was renamed to "Validate" for consistent task-verb naming; Simulation and
-Reports were later merged into one "Simulation & Reports" tab.
+**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Play, Simulation**
+(the primary flow, in that order), then a visually separated **Advanced** group — Replay, Runtime,
+Build/Export, Certification, Fairness (`NavTabItem`'s optional `section` field drives the grouping in
+`NavTabs`; see `ALL_PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact, current tab list). There is
+no standalone "Validate" tab any more (validation is now automatic diagnostics folded into Overview), and
+the old standalone Deployment/Outcome Libraries/Stake Engine Export tabs have been removed outright --
+Build/Export is the sole Studio build surface now (see `ExportDeployTab.tsx`), and every builder they used
+to own is one of its own cards.
 
 - **Validate** runs `POST /api/project/validate` through an explicit `idle|loading|error|success` state
   (`ProjectValidationView`) rather than a bare result + a separate loading flag — a failed re-validation
@@ -165,8 +167,9 @@ cli/studio-client/
                            # architecture above), Metadata/Layout/Symbols/Bets/Paylines/Paytable editors,
                            # the Reel Strip Modeler (ReelStripGenerationEditor.tsx), Load/Save/Validate/
                            # Build panels
-      project/            # ProjectDashboardPage (Overview/Validate/Simulate/Reports primary,
-                           # Replay/Runtime/Deployment grouped as "Advanced") + the 7 tab components
+      project/            # ProjectDashboardPage (Overview/Play/Simulation primary,
+                           # Replay/Runtime/Build-Export/Certification/Fairness grouped as "Advanced")
+                           # + the tab components
 ```
 
 `tests/cli/studio-client/src/` mirrors this tree 1:1 (repo convention — `tests/` always mirrors `src`/`cli`
@@ -281,7 +284,7 @@ npx jest --selectProjects studio-client-components  # just the React component t
   up"); nav tabs render as real `<button>`s (not an `href`-less `<a>`, which isn't keyboard-focusable).
 - `AppShell`'s navbar collapses behind a `Burger` below Mantine's `sm` breakpoint; wide tables (Paytable,
   simulation breakdown) scroll within their own container rather than the page.
-- Every `Stepper.Step` across Studio (all 10 interactive Steppers, see the audit below) carries an explicit
+- Every `Stepper.Step` across Studio (all 5 remaining interactive Steppers, see the audit below) carries an explicit
   `aria-current={activeStep === N ? "step" : undefined}` -- Mantine's own `Stepper` has no built-in
   current-step ARIA semantics (only a `data-progress` styling hook), so without this a screen reader had no
   way to tell which step is active beyond visual styling.
@@ -300,16 +303,20 @@ left off, revisit an earlier stage on demand, can't skip ahead of what's ready y
 for a flow with no order dependency at all (that belongs in tabs) or for a flow with no navigation at all
 (that belongs in a plain progress/status display, not a control that looks clickable but isn't).
 
+The standalone Deployment (`project/DeploymentTab.tsx`), Stake Engine Export (`project/StakeEngineExportTab.tsx`),
+and Outcome Libraries (`project/OutcomeLibrariesTab.tsx`) Steppers this audit originally covered have since been
+removed outright, not just replaced -- every builder they owned is now one of Build/Export's own cards (see
+`ExportDeployTargets.ts`), and their old `/project/deployment`/`/project/stakeEngineExport`/`/project/outcomeLibraries`
+routes no longer resolve to anything special. They're kept out of the table below rather than left in with a
+stale "Kept as Stepper" disposition.
+
 | Workflow | File | Classification | Disposition |
 |---|---|---|---|
 | Replay | `project/ReplayTab.tsx` | Nonlinear | **Changed.** The prior `Stepper` forced every source (fresh seed/round, pasted artifact, live spin, simulation round) through the same Find → Load → Reproduce → Inspect → Export sequence, even though the sources don't share one order at all (Session Spin has nothing to reproduce; Replay Artifact adds a validate-then-optionally-reproduce gate the others don't have). Replaced with a source choice (`SegmentedControl`) plus, once loaded, an inline loaded card/action bar/result view -- no page to click "continue" to. Switching source resets every per-source selection and any loaded/reproduced state (see `ReplayTab.tsx`'s own doc comment and `ProjectDashboardPage.replayWorkflow.test.tsx`'s source-switch coverage). |
-| Deployment | `project/DeploymentTab.tsx` | Partially linear | Kept as `Stepper`. Most heavily guarded of the group: `pendingAdvanceStepRef` only actually advances once a non-stale async result lands, and losing `selectedTarget`/an invalidated `runResult` snaps the stepper back a stage -- backward-correcting guards, not backward-*blocking* ones. |
 | Certification | `project/CertificationTab.tsx` | Partially linear | Kept as `Stepper`. Forward-gated (`validateReachable`/`buildReachable`/`inspectReachable`) with no backward lock. |
 | Runtime | `project/RuntimeTab.tsx` | Nonlinear | **Changed.** The prior `Stepper` forced Create/restore → Play → Inspect → Continue → Debug into one order, even though a real session is used cyclically (spin, inspect, spin again, pick an older round from history, retry or debug it, spin some more) with no inherent sequence. Replaced with always-mounted panels (Server, Current session, Inspect round, Round history for this session, Retry & Debug) that each degrade to an explanatory `EmptyState`/`RecoveryNotice` instead of being gated away; a selected round (auto-set from the round just played, or picked from round history) drives Inspect/Retry/Debug alike, and every create/load/spin/refresh/restart path clears it so it can never point at stale data (see `RuntimeTab.tsx`'s own doc comment and `ProjectDashboardPage.runtimeWorkflow.test.tsx`). |
 | Provably Fair | `project/ProvablyFairTab.tsx` | Partially linear | Kept as `Stepper`. "Verify" is always reachable regardless of prior state -- gating only applies to the two steps that need a prior result to show. |
 | Simulation | `project/SimulationTab.tsx` | Partially linear | Kept as `Stepper`. Auto-advances when a running job goes terminal; the pattern Replay's own auto-advance explicitly mirrors. |
-| Stake Engine Export | `project/StakeEngineExportTab.tsx` | Partially linear | Kept as `Stepper`. Straightforward forward-gated chain, no backward lock. |
-| Outcome Libraries | `project/OutcomeLibrariesTab.tsx` | Partially linear | Kept as `Stepper`. Gated on a selection result existing; no backward lock. |
 | PAR Sheet Import/Export | `blueprintEditor/ParSheetImportExportPanel.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; final step never disabled. |
 | Reel Strip Generation | `blueprintEditor/ReelStripGenerationEditor.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; a reel-selection change resets the stepper back to an earlier step. |
 | Guided Design & Build | `blueprintEditor/BlueprintEditorPage.tsx` (`guided`) | Linear, non-interactive | **Changed.** `active` was a pure function of validation status with no `onStepClick` at all -- Mantine's `Stepper` still rendered every step as a real, focusable `<button>` that silently did nothing when clicked (a false affordance for keyboard/screen-reader users, and the reason nearby tests had to disambiguate "Validate" button matches). Replaced with `common/StepProgressList.tsx`, a read-only `<ol>`/`<li>` list (no buttons, `role="list"`) supporting the full `completed \| current \| available \| blocked \| skipped \| failed` state vocabulary, with `aria-current="step"` on the active stage and each stage's status mirrored as real (non-color-only) text via `VisuallyHidden`, the same icon+text split `StatusBadge.tsx` already uses. |

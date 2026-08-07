@@ -127,25 +127,27 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         // as the primary happy path (Play is Studio's own normal game mode, right alongside Overview and
         // Simulation); everything from Replay onward shares it. There's no "Validate" section any more
         // (validation is now automatic diagnostics inside Overview -- see OverviewTab), and Deployment/
-        // Stake Engine Export/Analysis (Outcome Libraries) have no top-level entries at all any more --
-        // their own routes still resolve (see the deep-link test below), but each one now redirects
-        // straight into Build/Export instead of mounting its own old workflow -- Build/Export is the sole
-        // Studio build surface (see ExportDeployTab).
+        // Stake Engine Export/Analysis (Outcome Libraries) have been removed outright, not just hidden --
+        // Build/Export is the sole Studio build surface (see ExportDeployTab), and their old routes are
+        // gone too (see the deep-link fallback test below).
         expect(within(nav).getAllByText("Advanced")).toHaveLength(1);
     });
 
-    it("still deep-links to Deployment, Stake Engine Export, and Outcome Libraries even though none of them has its own nav entry -- each now redirects into Build/Export with migration guidance instead of mounting its own old workflow", async () => {
+    it("falls back to Overview for the old Deployment, Stake Engine Export, and Outcome Libraries deep links, same as any other unrecognized tab -- they're not kept alive merely for pre-release compatibility", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-        expect(screen.getByText("Deployment has moved into Build/Export")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: stepperStep("Select target", "Where to publish")})).not.toBeInTheDocument();
+        const deploymentRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
+        await deploymentRender.findByRole("heading", {name: "My Slot"});
+        expect(deploymentRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(deploymentRender.queryByText("Deployment has moved into Build/Export")).not.toBeInTheDocument();
+        expect(deploymentRender.queryByRole("button", {name: stepperStep("Select target", "Where to publish")})).not.toBeInTheDocument();
+        deploymentRender.unmount();
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-        expect(screen.getByText("Outcome Libraries has moved into Build/Export")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
+        const outcomeLibrariesRender = renderRoutedApp({fetchImpl, initialEntries: ["/project/outcomeLibraries"]});
+        await outcomeLibrariesRender.findByRole("heading", {name: "My Slot"});
+        expect(outcomeLibrariesRender.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(outcomeLibrariesRender.queryByText("Outcome Libraries has moved into Build/Export")).not.toBeInTheDocument();
+        expect(outcomeLibrariesRender.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
     });
 
     it("lists only Overview for a read-only/package-exchange project (e.g. an outcome library), hiding every runtime-dependent section", async () => {
@@ -380,12 +382,12 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
 // see docs/studio-phase2-workflow-audit-matrix.md) -- this now pins the corrected behavior instead, same
 // role reversed.
 describe("Advanced tab subject-specific recovery copy baseline", () => {
-    it("Deployment: a failed targets fetch shows a subject-specific recovery message, never the raw server text", async () => {
+    it("Build/Export: a failed targets fetch shows a subject-specific recovery message, never the raw server text", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/deployment/targets": () => ({ok: false, status: 500, body: {error: "deployment targets registry unavailable"}}),
         });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/deployment"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/exportDeploy"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
         const alerts = await screen.findAllByRole("alert");
@@ -465,8 +467,8 @@ describe("Scoped path-action error remediation baseline", () => {
 
     // Deployment's own "Run deployment preflight", Outcome Libraries' own "Load library", and Stake
     // Engine Export's own "Run diagnostics" path-action-error baselines used to live here -- all three
-    // routes now redirect into Build/Export before any of those actions ever mount (see the deep-link
-    // test above), so there is nothing left of them to pin.
+    // workspaces have been removed outright (see the deep-link fallback test above), so there is nothing
+    // left of them to pin.
 
     it("Provably Fair: a failed Compute commitments call is turned into bundle-directory-specific inline remediation, never the raw server error text", async () => {
         const user = userEvent.setup();
