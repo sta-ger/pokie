@@ -188,6 +188,21 @@ export default {
     // findBy*/waitFor assertions to each get setupTests.ts's 15000ms asyncUtilTimeout without the whole
     // test running out of budget first; the three single heaviest tests (happyPath, HomePage's
     // confirm-before-leaving, routing's back/forward) still carry their own longer per-test overrides.
+    //
+    // Even with the memory ceiling fixed, playWorkflow's "Show advanced details" wait still starved out
+    // at its full 60000ms budget under check:release specifically (never under check:full's standalone
+    // test:workflows, and never once locally with this file run alone) -- raising that same wait's
+    // timeout a third time (it already went 15000 -> 30000 -> 60000 across two prior fixes) would just
+    // be chasing the same symptom again. The other half of the same host-vs-cgroup blind spot the memory
+    // fix above already found accounts for it: os.cpus() (and cpuset.cpus.effective) report 4 CPUs, but
+    // cpu.max caps the container to the equivalent of 2 -- and only check:release's test:coverage runs
+    // all five projects, this lane's heaviest one included, as one Jest invocation with --maxWorkers=2,
+    // i.e. one main process plus two CPU-bound jsdom/coverage workers contending for a 2-CPU budget.
+    // check:full's test:workflows runs this lane alone (no other project's files competing for the same
+    // two workers) and never reproduced the starvation, which matches: it's the *combined* five-project
+    // invocation oversubscribing the cgroup, not this lane by itself. package.json's test:coverage now
+    // passes --maxWorkers=1, so that invocation is one main process plus one worker -- back within the
+    // 2-CPU budget the container actually has, not the 4 the runtime thinks it sees.
     testTimeout: 60000,
     projects: [
         {
