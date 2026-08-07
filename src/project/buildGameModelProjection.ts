@@ -1,6 +1,14 @@
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {buildGameModelReels} from "./buildGameModelReels.js";
-import type {GameModelBasics, GameModelPaytableRow, GameModelProjection, GameModelSection, GameModelSymbol, GameModelWinModel} from "./GameModelProjection.js";
+import type {
+    GameModelBasics,
+    GameModelLimits,
+    GameModelPaytableRow,
+    GameModelProjection,
+    GameModelSection,
+    GameModelSymbol,
+    GameModelWinModel,
+} from "./GameModelProjection.js";
 
 function available<T>(data: T): GameModelSection<T> {
     return {status: "available", data};
@@ -21,6 +29,15 @@ function flattenPaytable(paytable: GameBlueprint["paytable"]): GameModelPaytable
         }
     }
     return rows.sort((a, b) => (a.symbolId === b.symbolId ? a.matchCount - b.matchCount : a.symbolId.localeCompare(b.symbolId)));
+}
+
+// Pure min/max of `availableBets` -- see GameModelLimits' own doc comment for why this never invents a
+// number beyond what the blueprint itself already declares.
+function deriveLimits(availableBets: number[]): GameModelLimits {
+    if (availableBets.length === 0) {
+        return {};
+    }
+    return {minBet: Math.min(...availableBets), maxBet: Math.max(...availableBets)};
 }
 
 export type GameModelProjectionFallback = {
@@ -51,6 +68,7 @@ export function buildGameModelProjection(blueprint: GameBlueprint | undefined, f
             paytable: unavailable(reason),
             betsAndModes: unavailable(reason),
             mechanics: unavailable(reason),
+            limits: unavailable(reason),
         };
     }
 
@@ -60,6 +78,7 @@ export function buildGameModelProjection(blueprint: GameBlueprint | undefined, f
         isWild: (blueprint.wilds ?? []).includes(id),
         isScatter: (blueprint.scatters ?? []).includes(id),
     }));
+    const availableBets = blueprint.availableBets ?? [];
 
     return {
         basics: available({...blueprint.manifest}),
@@ -73,9 +92,10 @@ export function buildGameModelProjection(blueprint: GameBlueprint | undefined, f
         reels: available(buildGameModelReels(blueprint)),
         paytable: available(flattenPaytable(blueprint.paytable)),
         betsAndModes: available({
-            availableBets: blueprint.availableBets ?? [],
+            availableBets,
             betModes: (blueprint.betModes ?? []).map((mode) => ({id: mode.id, label: mode.label, costMultiplier: mode.costMultiplier, targetRtp: mode.targetRtp})),
         }),
         mechanics: available({freeGames: blueprint.mechanics?.freeGames}),
+        limits: available(deriveLimits(availableBets)),
     };
 }

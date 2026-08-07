@@ -136,6 +136,85 @@ export type PokieGamePackageValidationReport = {
     suggestions: string[];
 };
 
+// GET /api/project/gameModel's own DTO -- mirrors the "pokie" package's own GameModelProjection (see
+// src/project/GameModelProjection.ts's own doc comment), kept as a separate client-side copy, same
+// convention as every other type in this file. Every section is either "available" (with its own,
+// already-computed `data`) or "unavailable" (with a plain-language `reason`) -- GameModelTab.tsx renders
+// exactly this, never flattening a paytable or inferring a reel generation mode itself.
+export type GameModelSection<T> = {status: "available"; data: T} | {status: "unavailable"; reason: string};
+
+export type GameModelBasics = {id?: string; name?: string; version?: string; description?: string; author?: string};
+
+export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClusterSize?: number};
+
+export type GameModelLayout = {reels?: number; rows?: number; winModel: GameModelWinModel; paylineCount?: number};
+
+export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
+
+export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
+
+export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
+
+export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]};
+
+export type GameModelReelStripPosition = {
+    index: number;
+    symbolId: string;
+    isWild: boolean;
+    isScatter: boolean;
+    locked: boolean;
+    stackSize: number;
+};
+
+export type GameModelResolvedReel = {
+    reelIndex: number;
+    source: "literal" | "generated" | "sample";
+    positions: GameModelReelStripPosition[];
+    analysis: ReelStripAnalysis;
+    generationDiagnostics?: ReelStripGenerationDiagnostic[];
+};
+
+export type GameModelUnresolvedReel = {reelIndex: number; source: "generated"; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
+
+export type GameModelReel = GameModelResolvedReel | GameModelUnresolvedReel;
+
+export type GameModelSharedWeightsSample = {
+    weights: Record<string, number>;
+    seed: number;
+    sampleLength: number;
+    conversion: ReelStripSymbolWeightsConversionDiagnostic;
+};
+
+export type GameModelReels = {
+    generationMode: GameModelReelGenerationMode;
+    gameWindow: GameModelGameWindow;
+    reels: GameModelReel[];
+    sharedWeightsSample?: GameModelSharedWeightsSample;
+};
+
+export type GameModelPaytableRow = {symbolId: string; matchCount: number; payout: number};
+
+export type GameModelBetMode = {id: string; label?: string; costMultiplier?: number; targetRtp?: number};
+
+export type GameModelBetsAndModes = {availableBets: number[]; betModes: GameModelBetMode[]};
+
+export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<string, number>};
+
+export type GameModelMechanics = {freeGames?: GameModelFreeGames};
+
+export type GameModelLimits = {minBet?: number; maxBet?: number};
+
+export type GameModelProjection = {
+    basics: GameModelSection<GameModelBasics>;
+    layout: GameModelSection<GameModelLayout>;
+    symbols: GameModelSection<GameModelSymbol[]>;
+    reels: GameModelSection<GameModelReels>;
+    paytable: GameModelSection<GameModelPaytableRow[]>;
+    betsAndModes: GameModelSection<GameModelBetsAndModes>;
+    mechanics: GameModelSection<GameModelMechanics>;
+    limits: GameModelSection<GameModelLimits>;
+};
+
 // Mirrors the "pokie" package's own ProjectType -- the kinds of on-disk input Studio's Projects registry
 // resolves "a project" to (see src/project/ProjectType.ts's own doc comment for what each one means).
 export type StudioProjectType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "wasm" | "parWorkbook";

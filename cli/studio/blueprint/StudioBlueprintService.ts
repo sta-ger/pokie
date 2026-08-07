@@ -1,9 +1,11 @@
 import {
     buildGameBuildInfo,
+    buildGameModelProjection,
     computeGameBlueprintHash,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
+    GameModelProjection,
     GamePackageGenerating,
     GamePackageGenerator,
     loadGameBlueprint,
@@ -469,6 +471,25 @@ export class StudioBlueprintService {
         });
 
         return {status: "ok", errors, warnings, reels};
+    }
+
+    // The guided Design Game editor's own live "Game Model" preview -- runs the exact same
+    // buildGameModelProjection() the opened-Blueprint-project branch of GET /api/project/gameModel calls
+    // (see buildProjectGameModel.ts), directly against whatever blueprint value the editor currently
+    // holds, so Design Game/saved Blueprint/the Project Workspace's own Game Model tab all ever compute a
+    // game model exactly one way. Never writes anything, and — unlike validate()/previewBuild() — never
+    // blocks on GameBlueprintValidator's own errors first: an in-progress draft is exactly when a live
+    // preview is most useful, so this tolerates a structurally incomplete draft (a required field
+    // temporarily missing mid-edit) by falling back to an explicit "unavailable" projection instead of
+    // ever throwing back to the caller.
+    public previewGameModel(blueprint: unknown): GameModelProjection {
+        try {
+            return buildGameModelProjection(blueprint as GameBlueprint);
+        } catch (error) {
+            return buildGameModelProjection(undefined, {
+                reason: `This draft can't be projected into a game model yet: ${error instanceof Error ? error.message : String(error)}`,
+            });
+        }
     }
 
     public async build(blueprint: unknown, outDir?: string, sourcePath?: string): Promise<StudioBuildResult> {

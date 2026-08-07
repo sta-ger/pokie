@@ -40,6 +40,7 @@ describe("buildGameModelProjection", () => {
         });
         expect(projection.betsAndModes).toEqual({status: "available", data: {availableBets: [1, 2], betModes: []}});
         expect(projection.mechanics).toEqual({status: "available", data: {freeGames: undefined}});
+        expect(projection.limits).toEqual({status: "available", data: {minBet: 1, maxBet: 2}});
     });
 
     it("reports the reel generation mode from whichever of reelStrips/reelStripGeneration/symbolWeights is actually set", () => {
@@ -80,6 +81,14 @@ describe("buildGameModelProjection", () => {
         });
     });
 
+    it("derives minBet/maxBet as the plain min/max of availableBets, and omits both when there are none", () => {
+        const withBets = buildGameModelProjection({...BASE_BLUEPRINT, availableBets: [5, 1, 20, 2]});
+        expect(withBets.limits).toEqual({status: "available", data: {minBet: 1, maxBet: 20}});
+
+        const withoutBets = buildGameModelProjection({...BASE_BLUEPRINT, availableBets: []});
+        expect(withoutBets.limits).toEqual({status: "available", data: {minBet: undefined, maxBet: undefined}});
+    });
+
     it("marks every section \"unavailable\" with the given reason, and basics too, when no blueprint and no fallback manifest is given", () => {
         const projection = buildGameModelProjection(undefined, {reason: "no tracked source recorded"});
 
@@ -90,6 +99,7 @@ describe("buildGameModelProjection", () => {
         expect(projection.paytable).toEqual({status: "unavailable", reason: "no tracked source recorded"});
         expect(projection.betsAndModes).toEqual({status: "unavailable", reason: "no tracked source recorded"});
         expect(projection.mechanics).toEqual({status: "unavailable", reason: "no tracked source recorded"});
+        expect(projection.limits).toEqual({status: "unavailable", reason: "no tracked source recorded"});
     });
 
     it("still reports basics \"available\" from a fallback manifest even when the full blueprint isn't available", () => {

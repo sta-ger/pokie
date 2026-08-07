@@ -30,6 +30,7 @@ import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
 import {BlueprintJsonPanel} from "./BlueprintJsonPanel";
 import {BlueprintLoadSaveControls} from "./BlueprintLoadSaveControls";
 import {BlueprintValidationPanel} from "./BlueprintValidationPanel";
+import {GameModelPreviewPanel} from "./GameModelPreviewPanel";
 import {LayoutFieldset} from "./LayoutFieldset";
 import {MetadataFieldset} from "./MetadataFieldset";
 import {NewBlueprintDialog} from "./NewBlueprintDialog";
@@ -1002,6 +1003,7 @@ export function BlueprintEditorPage({
             )}
 
             <BlueprintValidationPanel view={validationView} onValidate={handleValidate} />
+            <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} />
             <BlueprintBuildPanel
                 // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current
                 // build-attempt status are this panel's own local, transient state and would otherwise
