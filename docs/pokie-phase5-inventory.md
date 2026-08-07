@@ -10,6 +10,14 @@ declare Phase 4 "accepted" — it freezes what the tree actually does today, the
 [`pokie-phase4-inventory.md`](pokie-phase4-inventory.md) served ahead of Phase 4 and
 [`pokie-phase3-inventory.md`](pokie-phase3-inventory.md) served ahead of Phase 3.
 
+**Correction round (same day):** the round frozen at `edfc2457b893ac6b8bd72d3569a0fbf7a2325598` recorded no
+browser/DOM-rendering evidence (§5 named the gap rather than closing it) and, since it received no roadmap step
+numbers of its own, did not map its findings to any later step. Both are addressed below without touching
+product source: §5 now documents real browser/DOM evidence gathered via this project's own `jest-environment-
+jsdom` harness (see [`phase5-evidence/browser/README.md`](phase5-evidence/browser/README.md)), and "Owner steps"
+now maps every finding to the later Phase 5 step that owns it, using the step IDs this correction's own
+instruction supplied.
+
 **Scope, per this step's own instruction:** synchronize both `develop` branches (this repo and the companion
 `pokie-examples` repo), lock exact SHAs, and record an executable, browser-backed inventory before any Phase 5
 product change — exercising `BuildCommand`, `ArtifactBuilderRegistry`, the project dashboard/overview/play/
@@ -186,16 +194,38 @@ straight into that checkout root unless a user explicitly overrides the destinat
 exploitable beyond the preview response (the real `build` endpoint's own destination-resolution logic was not
 read or executed further), but real enough, from a real response, to name rather than omit.
 
-## 5. Browser (visual/DOM-rendering) evidence — explicit gap, not silently substituted
+## 5. Browser/DOM-rendering evidence
 
-This sandbox has no Chrome/Chromium binary anywhere searched (`find` across `/usr /opt /root /home`, empty), no
-Puppeteer/Playwright package in `node_modules`, and no root access to install one (`apt-get install` →
-`Unable to acquire the dpkg frontend lock ... are you root?`, confirmed `uid=1000`). Every "surface exercised"
-claim in §3/§4 above is therefore real process/HTTP evidence, not a screenshot or DOM assertion — the same
-constraint `pokie-phase4-inventory.md`'s own original P4-POLISH-01 round hit, closed only by a later
-browser-capable-host correction round (that document's §4, `phase4-evidence/browser/`). This document does not
-claim that later round's kind of evidence exists for Phase 5; it names the gap here instead. A future round on
-a browser-capable host is the same fix pattern already established, not a new one.
+This sandbox still has no Chrome/Chromium binary anywhere searched (`find` across `/usr /opt /root /home`,
+empty), no Puppeteer/Playwright package in `node_modules`, and no root access to install one (`apt-get install`
+→ `Unable to acquire the dpkg frontend lock ... are you root?`, confirmed `uid=1000`) — the same constraint
+`pokie-phase4-inventory.md`'s own original P4-POLISH-01 round hit, closed only by a later browser-capable-host
+correction round (that document's §4, `phase4-evidence/browser/`). A true pixel/visual screenshot of this
+project's Studio UI therefore still does not exist for Phase 5; see "Owner steps" (`P5-POLISH-19`) for where
+that specific gap is now routed.
+
+What this round *did* add: real browser/DOM-rendering evidence, without a Chromium binary, using a mechanism
+this repository already relies on for its own correctness — `jest-environment-jsdom`, the same real-DOM harness
+every one of this project's own Studio-client component tests (`tests/cli/studio-client/src/**/*.test.tsx`)
+already executes against. This round mounted the real production React components (`HomePage`,
+`ProjectDashboardPage`, and everything they render) via `renderRoutedApp` — the project's own existing test
+utility, unmodified — but wired `StudioApiProvider`'s `fetchImpl` to a real, already-running `pokie studio <pkg>
+--port 4590 --no-open` server via a real `node:http` client, instead of the fake `fetchImpl` every existing test
+in this repo uses. The result is real application code, actually executed, actually talking to a real backend
+over real loopback HTTP, producing a real resulting DOM (`document.documentElement.outerHTML`) — not mocked
+data, not hand-authored markup, and not a re-statement of the §4 HTTP transcripts (those prove the API
+responses; this proves the UI that consumes them actually renders that data correctly).
+
+Captured for real: the Blueprint Design Game (`#/home/design`), Project Overview (`#/project/overview`, real
+project name/id/version/capabilities/validation state loaded from a live request), Play both idle
+(`project-play-idle.html`) and, after a real `userEvent.click(screen.getByRole("button", {name: "Start
+playing"}))`, running (`project-play-running.html` — a real runtime start + session create against the live
+server, embedding a real `<iframe src="http://127.0.0.1:<ephemeral-port>?session=<real-uuid>">` for the actual
+canonical player), Runtime (`#/project/runtime`, showing the real runtime the Play interaction above started),
+Replay (`#/project/replay`), and Build/Export (`#/project/exportDeploy`). Full artifact table, the exact
+reproducible capture script, and the precise "what this is/isn't" boundary (no CSS layout or paint, so no pixel
+image — a real executed-DOM snapshot instead) are in
+[`phase5-evidence/browser/README.md`](phase5-evidence/browser/README.md).
 
 ## 6. `pokie-examples` and docs
 
@@ -214,33 +244,40 @@ top-level command documented there exists in the real CLI and vice versa; no dri
 
 ## Owner steps
 
-**No numbered Phase 5 roadmap was supplied to this step's own instruction** (unlike `pokie-phase4-inventory.md`'s
-own "Owner steps" section, whose instruction named the Phase 4 roadmap's remaining step numbers explicitly) — so,
-unlike that document, this section does **not** assign gaps to fabricated `P5-POLISH-NN` step numbers. Instead,
-every gap this pass found is named here, against the actual surface/journey it belongs to, for the orchestrator
-or reviewer to route to whichever later Phase 5 step actually owns that surface:
+Unlike the round frozen at `edfc2457b893ac6b8bd72d3569a0fbf7a2325598`, this correction's own instruction
+supplied concrete later-Phase-5 step IDs to route findings to. Every gap this pass found is mapped below —
+directly, where the instruction named the mapping explicitly, or by explicit inference (flagged as such) where
+it didn't:
 
-- **Stale `src/index.ts` barrel** (§2) — `supportsBetModeSelecting` missing from the public `pokie` API surface
-  since `6b99671`. Fix is mechanical (run `generate-barrels.js`, commit the result) but is a product-source
-  change, out of scope for this evidence-only step. Owned by whichever later step next touches bet-mode
-  selection's public surface or does a barrel-hygiene pass — flagged here so it isn't rediscovered from scratch.
-- **`pokie build random`/`--random` cannot succeed on a fresh invocation** (§3) — the smoke-simulation step needs
-  either an `npm install` before it runs, a `--skip-smoke`-style opt-out, or to not treat a missing dependency
-  as a hard failure the way a real broken build would be. Owned by whichever later step owns the `build`
-  command's random-generation path (this document does not know that step's number — see above).
-- **No executable fixture exercises the real `runSmokeSimulation` implementation** (§3) — every existing test
-  injects a fake `runSmoke`; the gap above went undetected because of this. Whichever step fixes the smoke-sim
-  gap itself should also add a fixture using the real implementation, not just re-stub it more thoroughly.
-- **Blueprint Design's build-preview `projectRoot` defaults to the Studio process's own `cwd`** (§4) — owned by
-  whichever later step owns the Blueprint Design Game / Studio Home build-destination flow; this document only
-  confirms the preview response, not whether the real `build` endpoint's own resolution differs or is already
-  guarded elsewhere.
-- **Browser/visual (DOM-rendering) evidence for the surfaces in §3/§4** (§5) — this sandbox cannot produce it;
-  the fix is the same "later browser-capable-host round" pattern `pokie-phase4-inventory.md`'s own §4 already
-  used, not a new mechanism to invent.
+- **`pokie build random`/`--random` cannot succeed on a fresh invocation** (§3) → **`P5-POLISH-02`** (explicit,
+  per this correction's own instruction). The smoke-simulation step needs either an `npm install` before it
+  runs, a `--skip-smoke`-style opt-out, or to not treat a missing dependency as a hard failure the way a real
+  broken build would be.
+- **No executable fixture exercises the real `runSmokeSimulation` implementation** (§3) → **`P5-POLISH-02`**
+  (inferred: same root cause and same `build random` code path as the finding above, not a separately-supplied
+  ID). Every existing test injects a fake `runSmoke`; the gap above went undetected because of this. Whichever
+  change fixes the smoke-sim gap itself should also add a fixture using the real implementation, not just
+  re-stub it more thoroughly.
+- **Stale `src/index.ts` barrel** (§2) → **`P5-POLISH-02`** (inferred: `generate-barrels.js` is the literal
+  first step of the same `build-esm`/`build-cjs`/`prepack` pipeline `P5-POLISH-02` already owns, not a
+  separately-supplied ID — if `P5-POLISH-02`'s actual scope turns out narrower than "the build pipeline", this
+  is the one mapping in this list most likely to need re-routing). `supportsBetModeSelecting` has been missing
+  from the public `pokie` API surface since `6b99671`; the fix is mechanical (run `generate-barrels.js`, commit
+  the result) but is a product-source change, out of scope for this evidence-only step.
+- **Blueprint Design's build-preview `projectRoot` defaults to the Studio process's own `cwd`** (§4) →
+  **`P5-POLISH-03`** (explicit, per this correction's own instruction — "Studio build destination"). This
+  document only confirms the preview response, not whether the real `build` endpoint's own resolution differs
+  or is already guarded elsewhere.
+- **True pixel/visual (Chromium-rendered) screenshot evidence** (§5) → **`P5-POLISH-19`** (explicit, per this
+  correction's own instruction — "browser evidence"). This correction round closed the *DOM-rendering* half of
+  the original gap without a Chromium binary (see §5, `phase5-evidence/browser/`); the pixel/visual half — this
+  sandbox still has no Chrome/Chromium binary and no root access to install one — is what remains open and
+  routed here, the same "later browser-capable-host round" pattern `pokie-phase4-inventory.md`'s own §4 already
+  used.
 - **This sandbox's own `npm` wrapper remains broken independent of anything in this repository**
-  (`phase5-evidence/build/build-transcript.txt`) — not a product gap, flagged only so a future round isn't
-  stuck re-diagnosing the same root cause `pokie-phase4-inventory.md`'s own npm-wrapper note already named.
+  (`phase5-evidence/build/build-transcript.txt`) — not a product gap, so it needs no roadmap step; flagged only
+  so a future round isn't stuck re-diagnosing the same root cause `pokie-phase4-inventory.md`'s own npm-wrapper
+  note already named.
 
 This document does not declare Phase 4 accepted, closed, or superseded — it is a fresh, independently-verified
 snapshot of the current tree ahead of Phase 5 product work, and every fact in it is either a freshly executed

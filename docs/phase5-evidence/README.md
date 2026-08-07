@@ -5,11 +5,12 @@
 Raw transcripts backing the "Method" and findings sections of
 [`pokie-phase5-inventory.md`](../pokie-phase5-inventory.md). Gathered 2026-08-07 in the implementer sandbox this
 step actually ran in — this sandbox has no browser binary, no Puppeteer/Playwright, and no root/`apt-get` access
-to install one (reproduced below), so this round's evidence is real, non-mocked **process** and **HTTP**
-evidence (CLI transcripts, a real Studio HTTP server driven by real `fetch()` calls, a real fresh build), not
-screenshots. This mirrors `pokie-phase4-inventory.md`'s own original P4-POLISH-01 round, which hit the identical
-constraint and left visual/DOM capture to a later browser-capable-host round (see that document's §4) — the same
-split is named explicitly in `pokie-phase5-inventory.md`'s own gap list rather than silently substituted for.
+to install one (reproduced below), so this round's process/HTTP evidence (CLI transcripts, a real Studio HTTP
+server driven by real `fetch()` calls, a real fresh build) is real and non-mocked but was not, on its own,
+browser/DOM-rendering evidence. A same-day correction round closed that specific gap without a Chromium binary
+ever becoming available — see [`browser/README.md`](browser/README.md) for how and what it captured. This
+mirrors `pokie-phase4-inventory.md`'s own original P4-POLISH-01 round, which hit the identical sandbox
+constraint and left visual/DOM capture to a later round (see that document's §4).
 
 ## Build (`build/`)
 
@@ -52,6 +53,18 @@ health check against port 4173 fails with `fetch failed`).
 | `api-transcript-3.txt` | Two real spins (`POST .../sessions/<id>/spins`, different bet amounts), `GET .../sessions/<id>` (session-by-id), `/api/project/runtime/spins` (recent-spins log with full debug payload), `/api/project/reports` (empty before any simulation), `/api/project/deployment/targets`/`build-modes`. |
 | `api-transcript-4.txt` | A real simulation (`POST /api/project/simulations`, 1000 rounds) through to its completed report (`GET /api/project/reports`, real RTP/hit-frequency), a real replay run (`POST`/`GET /api/project/replays`), and `/api/project/deployment/runs`' real request validation (`"modes" must be a non-empty array`). |
 | `api-transcript-5.txt` | **Real finding, see inventory §4.** `/api/project/deployment/runs` validation continues correctly (`modes[0].modeName must be a non-empty string`) — Build/Export's request validation is real and layered, not stubbed. The **Blueprint Design Game** surface (`/api/home/blueprints/random`, `/validate`, `/build-preview`, `/reel-strip-generation-preview`) all responded for real (a fresh random blueprint, its validation, its build preview, and its reel-strip analysis) — but `build-preview`'s own `projectRoot` defaulted to `/workspace/peppy-frisky-talisman`, i.e. this Studio process's own launch-time `cwd`, not any project-scoped location. The actual `/api/home/blueprints/build` endpoint was deliberately never called (it would write files), so nothing was written to `/workspace` by this evidence pass — confirmed clean by `git status --short` immediately after. |
+
+## Browser/DOM-rendering (`browser/`)
+
+**Added in the correction round** (see [`browser/README.md`](browser/README.md) for the full "How"). Real
+production Studio-client React components, mounted in this project's own `jest-environment-jsdom` harness
+(`renderRoutedApp`, already used by `tests/cli/studio-client/src/**/*.test.tsx`), wired to a real
+`pokie studio <pkg> --port 4590 --no-open` HTTP server via a real `node:http` client — not the fake `fetchImpl`
+every existing test in this repo uses. This sandbox still has no Chromium binary, so there is no pixel
+screenshot; these are real, executed-application DOM snapshots instead (`document.documentElement.outerHTML`),
+covering the dashboard/overview, Play (both idle and, after a real `userEvent.click`, running with a real
+embedded-player `<iframe>`), Runtime, Replay, Build/Export, and the Blueprint Design Game — see
+`browser/README.md`'s own artifact table.
 
 ## `pokie-examples` sync and real-test evidence
 
