@@ -15,6 +15,7 @@ import {
     PokieGameManifest,
     PokieGamePackageValidationReport,
     PokieProject,
+    POKIE_WASM_CONTRACT_VERSION,
     ProjectMaterializing,
     ProjectResolving,
     PROJECT_TYPE_CAPABILITIES,
@@ -2575,6 +2576,242 @@ describe("StudioServer", () => {
                 expect(body).toEqual({packageRoot: stakeDir, valid: true, game: null, errors: [], warnings: [], suggestions: []});
                 expect(libraryValidate).not.toHaveBeenCalled();
             });
+        });
+    });
+
+    // Regression coverage for P5-POLISH-06: GET /api/project/gameModel's own resolved-project-type
+    // dispatch (see buildProjectGameModel's own doc comment) -- a "blueprint" project's full tracked
+    // source, a tsPackage's package.json-only identity, a wasm project's manifest-only identity, and an
+    // outcomeLibrary/stakeAdapter project's honest "no game model" -- never an invented one.
+    describe("Project Dashboard: GET /api/project/gameModel", () => {
+        it("returns 409 when there is no active project", async () => {
+            const {status, body} = await get(`${baseUrl}/api/project/gameModel`);
+
+            expect(status).toBe(409);
+            expect(body).toEqual({error: "No active project."});
+        });
+    });
+
+    describe("GET /api/project/gameModel for a resolved 'blueprint' project (real fixtures on disk)", () => {
+        let gameModelStudioRoot: string;
+        let gameModelWorkDir: string;
+        let gameModelServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            gameModelStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-blueprint-studio-test-"));
+            writeStudioAssets(gameModelStudioRoot);
+            gameModelWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-blueprint-work-test-"));
+        });
+
+        afterEach(async () => {
+            await gameModelServer?.stop();
+            fs.rmSync(gameModelStudioRoot, {recursive: true, force: true});
+            fs.rmSync(gameModelWorkDir, {recursive: true, force: true});
+        });
+
+        function writeBlueprintFile(blueprint: unknown): string {
+            const filePath = path.join(gameModelWorkDir, "blueprint.json");
+            fs.writeFileSync(filePath, JSON.stringify(blueprint));
+            return filePath;
+        }
+
+        async function startServerForBlueprintProject(projectRoot: string): Promise<string> {
+            const homeService = new StudioHomeService("1.0.0");
+            gameModelServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: gameModelStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", gameModelStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot},
+            });
+            const address = await gameModelServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        it("projects the tracked Blueprint source's full game model, never probing <blueprint.json>/package.json", async () => {
+            const blueprintPath = writeBlueprintFile({
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                reels: 3,
+                rows: 3,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+                availableBets: [1, 2, 5],
+            });
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/gameModel`);
+
+            expect(status).toBe(200);
+            expect(body).toMatchObject({
+                basics: {status: "available", data: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}},
+                layout: {status: "available", data: {reels: 3, rows: 3}},
+                limits: {status: "available", data: {minBet: 1, maxBet: 5}},
+            });
+        });
+
+        it("reports a safe unavailable reason (never an ENOTDIR) for a corrupt blueprint file", async () => {
+            const blueprintPath = path.join(gameModelWorkDir, "blueprint.json");
+            fs.writeFileSync(blueprintPath, "{ this is not json");
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/gameModel`);
+
+            expect(status).toBe(200);
+            const view = body as {basics: {status: string; reason: string}};
+            expect(view.basics.status).toBe("unavailable");
+            expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+            expect(JSON.stringify(body)).not.toContain("\\n    at ");
+        });
+    });
+
+    describe("GET /api/project/gameModel for a resolved 'tsPackage' project (real fixtures on disk)", () => {
+        let packageStudioRoot: string;
+        let packageServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            packageStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-package-studio-test-"));
+            writeStudioAssets(packageStudioRoot);
+        });
+
+        afterEach(async () => {
+            await packageServer?.stop();
+            fs.rmSync(packageStudioRoot, {recursive: true, force: true});
+        });
+
+        it("exposes only package.json's own name/version/description, never inventing symbols/reels/paytable", async () => {
+            const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-package-work-test-"));
+            try {
+                fs.writeFileSync(
+                    path.join(projectRoot, "package.json"),
+                    JSON.stringify({name: "a-package", version: "1.0.0", description: "A game"}),
+                );
+                const homeService = new StudioHomeService("1.0.0");
+                packageServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: packageStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", packageStudioRoot, homeService),
+                    gamePackageInspector: new GamePackageInspector(),
+                    initialContext: {mode: "project", projectRoot},
+                });
+                const address = await packageServer.start();
+                const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/gameModel`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({
+                    basics: {status: "available", data: {name: "a-package", version: "1.0.0", description: "A game"}},
+                    symbols: {status: "unavailable"},
+                    reels: {status: "unavailable"},
+                    paytable: {status: "unavailable"},
+                });
+            } finally {
+                fs.rmSync(projectRoot, {recursive: true, force: true});
+            }
+        });
+    });
+
+    describe("GET /api/project/gameModel for a resolved 'wasm' project (real fixtures on disk)", () => {
+        let wasmStudioRoot: string;
+        let wasmServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            wasmStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-wasm-studio-test-"));
+            writeStudioAssets(wasmStudioRoot);
+        });
+
+        afterEach(async () => {
+            await wasmServer?.stop();
+            fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
+        });
+
+        it("exposes only the WASM component's own manifest identity, never inventing symbols/reels/paytable", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-wasm-work-test-"));
+            try {
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(wasmFile, "not real wasm bytes, extension only");
+                fs.writeFileSync(
+                    `${wasmFile}.pokie-wasm.json`,
+                    JSON.stringify({
+                        schemaVersion: POKIE_WASM_CONTRACT_VERSION,
+                        component: {id: "sample-component", version: "0.1.0"},
+                        serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
+                        host: {rng: "pokie.rng.v1", services: []},
+                        capabilities: [],
+                    }),
+                );
+                const homeService = new StudioHomeService("1.0.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.0.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                });
+                const address = await wasmServer.start();
+                const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/gameModel`);
+
+                expect(status).toBe(200);
+                expect(body).toMatchObject({
+                    basics: {status: "available", data: {id: "sample-component", version: "0.1.0"}},
+                    symbols: {status: "unavailable"},
+                    reels: {status: "unavailable"},
+                    paytable: {status: "unavailable"},
+                });
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+    });
+
+    describe("GET /api/project/gameModel for resolved 'outcomeLibrary'/'stakeAdapter' projects (real fixtures on disk)", () => {
+        let outcomeStudioRoot: string;
+        let outcomeWorkDir: string;
+        let outcomeServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            outcomeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-outcome-studio-test-"));
+            writeStudioAssets(outcomeStudioRoot);
+            outcomeWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-outcome-work-test-"));
+        });
+
+        afterEach(async () => {
+            await outcomeServer?.stop();
+            fs.rmSync(outcomeStudioRoot, {recursive: true, force: true});
+            fs.rmSync(outcomeWorkDir, {recursive: true, force: true});
+        });
+
+        it("never invents a game model for a resolved native outcome-library bundle", async () => {
+            const bundleDir = path.join(outcomeWorkDir, "library");
+            await new OutcomeLibraryBundleWriter("1.0.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+            const homeService = new StudioHomeService("1.0.0");
+            outcomeServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: outcomeStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", outcomeStudioRoot, homeService),
+                initialContext: {mode: "project", projectRoot: bundleDir},
+            });
+            const address = await outcomeServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const {status, body} = await get(`${projectBaseUrl}/api/project/gameModel`);
+
+            expect(status).toBe(200);
+            const view = body as {basics: {status: string; reason: string}};
+            expect(view.basics.status).toBe("unavailable");
+            expect(view.basics.reason).toContain("pre-generated outcome source");
         });
     });
 

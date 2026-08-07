@@ -42,6 +42,7 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
 import {ExportDeployTab} from "./ExportDeployTab";
+import {GameModelTab} from "./GameModelTab";
 import {OutcomeSourceOverview} from "./OutcomeSourceOverview";
 import {OverviewTab} from "./OverviewTab";
 import {PlayTab} from "./PlayTab";
@@ -52,6 +53,7 @@ import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 
 export type ProjectTab =
     | "overview"
+    | "gameModel"
     | "play"
     | "simulation"
     | "replay"
@@ -76,11 +78,17 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // The full vocabulary of Project Dashboard sections, in the order the capability-driven nav below
 // picks from -- there is no standalone "Validate" section any more: validation is now automatic
 // diagnostics folded into Overview itself (see OverviewTab), run on load and re-run on demand, not a
-// separate click-to-check tab. Every entry but Overview carries `requiredCapabilities` -- what actually
-// decides whether it's offered (see isTabSupported below), never just "the dashboard loaded at all".
-// Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"` so NavTabs
-// visually separates them from the primary Overview -> Play -> Simulation flow --
+// separate click-to-check tab. Every entry but Overview/Game Model carries `requiredCapabilities` --
+// what actually decides whether it's offered (see isTabSupported below), never just "the dashboard
+// loaded at all". Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"`
+// so NavTabs visually separates them from the primary Overview -> Play -> Simulation flow --
 // everything's still one click away, just not presented as equal-weight to it.
+//
+// "gameModel"/GameModelTab has no `requiredCapabilities`, same as Overview -- it's a View Mode reading
+// of GET /api/project/gameModel's own resolved-project-type-aware projection (see buildProjectGameModel's
+// own doc comment), which is meaningful (if only to truthfully report "not available") for every loaded
+// project type, not gated behind BLUEPRINT_BUILD_CAPABILITY/RUNTIME_EXECUTE_CAPABILITY the way the
+// runtime-operation tabs below are.
 //
 // "play"/PlayTab is Studio's own normal game mode -- materializes/starts (or attaches to) the runtime,
 // creates/restores a session, and renders the canonical player right here. It's deliberately ungrouped
@@ -100,6 +108,7 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // merely for pre-release compatibility.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
+    {value: "gameModel", label: "Game Model"},
     {value: "play", label: "Play", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
@@ -702,6 +711,13 @@ export function ProjectDashboardPage() {
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
                                 <OverviewTab header={header} validation={validation} onRevalidate={runValidate} />
+                            )}
+                            {activeTab === "gameModel" && (
+                            // Same reasoning as RuntimeTab's own key below -- GameModelTab owns all of
+                            // its own fetch state locally (no page-level hook), so a genuine project
+                            // switch needs a full remount, not just a re-render of a still-mounted
+                            // instance holding the previous project's own projection.
+                                <GameModelTab key={projectKey ?? "no-project"} />
                             )}
                             {activeTab === "play" && (
                                 <PlayTab

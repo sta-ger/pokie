@@ -1,5 +1,6 @@
 import type {
     FairnessCommitment,
+    GameModelProjection,
     GamePackageInspectionReport,
     OutcomeLibrarySelector,
     OutcomeSourceSampleView,
@@ -468,6 +469,33 @@ export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePa
         throw new Error(await extractErrorMessage(response, "Failed to validate the project"));
     }
     return (await response.json()) as PokieGamePackageValidationReport;
+}
+
+// Backs the Project Workspace's own Game Model tab -- see buildProjectGameModel's own doc comment for
+// the resolved-project-type dispatch this reads (blueprint / outcomeLibrary+stakeAdapter / wasm /
+// tsPackage-default). Always resolves to a full GameModelProjection, never throws for a domain-level
+// "unavailable" section -- only a genuinely failed request throws.
+export async function getGameModel(fetchImpl: FetchLike): Promise<GameModelProjection> {
+    const response = await fetchImpl("/api/project/gameModel");
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to load the game model"));
+    }
+    return (await response.json()) as GameModelProjection;
+}
+
+// The guided Design Game editor's own live Game Model preview -- see StudioBlueprintService.
+// previewGameModel()'s own doc comment. Never writes/reads anything on disk, and never throws for a
+// structurally incomplete draft -- that comes back as an ordinary "unavailable" projection instead.
+export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown): Promise<GameModelProjection> {
+    const response = await fetchImpl("/api/home/blueprints/game-model-preview", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({blueprint}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to preview the game model"));
+    }
+    return (await response.json()) as GameModelProjection;
 }
 
 export type StartSimulationResult =

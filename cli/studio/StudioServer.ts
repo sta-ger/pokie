@@ -11,6 +11,7 @@ import {
     PokieGamePackageValidator,
     PokieProject,
     ProjectTargetResolver,
+    readWasmComponentManifest,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
@@ -22,6 +23,7 @@ import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
 import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
 import {validateArtifactBuildRequest, ArtifactBuildRequestInput} from "./artifacts/validateArtifactBuildRequest.js";
+import {buildProjectGameModel} from "./blueprint/buildProjectGameModel.js";
 import {StudioBlueprintService} from "./blueprint/StudioBlueprintService.js";
 import {validateBlueprintBuildRequest, BlueprintBuildRequestInput} from "./blueprint/validateBlueprintBuildRequest.js";
 import {validateBlueprintValidationRequest, BlueprintValidationRequestInput} from "./blueprint/validateBlueprintValidationRequest.js";
@@ -461,6 +463,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/blueprints/game-model-preview") {
+            await this.handleBlueprintGameModelPreview(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/par-import") {
             await this.handleBlueprintParImport(req, res);
             return;
@@ -502,6 +509,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/validate") {
             await this.handleValidateProject(res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/gameModel") {
+            await this.handleGameModel(res);
             return;
         }
 
@@ -1118,6 +1130,22 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, this.blueprintService.previewReelStripGeneration(validated.blueprint));
     }
 
+    // Same request shape as /validate (just "blueprint") -- reuses validateBlueprintValidationRequest
+    // rather than a near-duplicate validator. Backs the guided Design Game editor's own live Game Model
+    // preview (see StudioBlueprintService.previewGameModel's own doc comment).
+    private async handleBlueprintGameModelPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateBlueprintValidationRequest((body ?? {}) as BlueprintValidationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, this.blueprintService.previewGameModel(validated.blueprint));
+    }
+
     private async handleBlueprintParImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -1232,6 +1260,27 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, await this.gamePackageValidator.validate(projectRoot));
+    }
+
+    // Inspect/Validate's own Game Model counterpart -- see buildProjectGameModel's own doc comment for
+    // the exact resolved-project-type dispatch (blueprint / outcomeLibrary+stakeAdapter / wasm /
+    // tsPackage-default) this delegates to. Always 200: a project whose game model isn't available (a
+    // tsPackage/wasm/outcomeLibrary project, or a Blueprint that fails to load) reports that truthfully
+    // in the projection's own per-section `reason`, never as an HTTP error -- same "well-formed request,
+    // domain-level unavailability" reasoning as GET /api/project/validate.
+    private async handleGameModel(res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const projectRoot = this.currentContext.projectRoot;
+        const resolved = await this.resolveOpenedProject(projectRoot);
+        const projection = await buildProjectGameModel(projectRoot, resolved, this.isOpenedBlueprintProject(projectRoot, resolved), {
+            loadBlueprint: (root) => this.blueprintService.load(root),
+            inspectPackage: (root) => this.gamePackageInspector.inspect(root),
+            readWasmManifest: readWasmComponentManifest,
+        });
+        this.sendJson(res, 200, projection);
     }
 
     // Inspect's own blueprint counterpart -- reuses StudioBlueprintService.load() (the same read/parse

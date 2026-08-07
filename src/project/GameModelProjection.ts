@@ -101,6 +101,12 @@ export type GameModelFreeGames = {scatterSymbol: string; awardsByCount: Record<s
 
 export type GameModelMechanics = {freeGames?: GameModelFreeGames};
 
+// The bet range this project's own blueprint actually declares -- both fields are the plain min/max of
+// `betsAndModes.data.availableBets`, never a separately-authored/invented limit; omitted (not 0) when
+// availableBets itself is empty, the same "never report a possibly-misleading number" convention
+// GameModelLayout.paylineCount already follows.
+export type GameModelLimits = {minBet?: number; maxBet?: number};
+
 export type GameModelProjection = {
     basics: GameModelSection<GameModelBasics>;
     layout: GameModelSection<GameModelLayout>;
@@ -109,4 +115,5 @@ export type GameModelProjection = {
     paytable: GameModelSection<GameModelPaytableRow[]>;
     betsAndModes: GameModelSection<GameModelBetsAndModes>;
     mechanics: GameModelSection<GameModelMechanics>;
+    limits: GameModelSection<GameModelLimits>;
 };
