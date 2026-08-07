@@ -14,6 +14,7 @@ import type {PokieProject} from "./PokieProject.js";
 // ArtifactBuilderRegistry's own "parWorkbook" unsupportedNotes).
 export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
     public readonly target = "parWorkbook";
+    public readonly destinationKind = "file";
 
     private readonly importer: ParSheetImporting;
     private readonly exporter: ParSheetExporting;
@@ -28,7 +29,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
     }
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
-        assertArtifactDestinationAvailable(destinationPath, "file");
+        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
 
         const imported = await this.importer.importFromFile(source.rootPath);
         const importErrors = imported.issues.filter((issue) => issue.severity === "error");

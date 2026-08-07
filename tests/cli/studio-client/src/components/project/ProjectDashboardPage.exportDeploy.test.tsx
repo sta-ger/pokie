@@ -34,6 +34,13 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
             {target: "wasm", supported: false, unsupportedNotes: []},
         ],
     }),
+    // The default, clean registry-backed preview for the one supported target above -- see the dedicated
+    // describe block below for real coverage of both this ("ok") and a destination-conflict preview.
+    "/api/project/artifacts/preview": () => ({
+        ok: true,
+        status: 200,
+        body: {status: "ok", target: "tsPackage", destination: "/games/tsPackage", sourceType: "blueprint"},
+    }),
 };
 
 function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number; body: unknown}>): FetchLike {
@@ -579,6 +586,69 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
             expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
+        });
+
+        it("shows the shared registry's own resolved destination before Build is ever clicked, using the same preview endpoint a build would resolve against", async () => {
+            const user = userEvent.setup();
+            let capturedPreviewTarget: string | undefined;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [path] = url.split("?");
+                if (path === "/api/project/artifacts/preview") {
+                    capturedPreviewTarget = (JSON.parse(String(init?.body)) as {target: string}).target;
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({status: "ok", target: "tsPackage", destination: "/games/tsPackage", sourceType: "blueprint"}),
+                    });
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+
+            // The resolved destination is already on screen -- fetched automatically, never behind its own
+            // click -- before the "Build" button is ever pressed.
+            expect(await within(buildArtifactSection).findByText(/Resolved destination:/)).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText(/\/games\/tsPackage/)).toBeInTheDocument();
+            expect(capturedPreviewTarget).toBe("tsPackage");
+        });
+
+        it("surfaces a destination conflict from the shared registry's own preview before Build is ever clicked, never only discovered after attempting a build", async () => {
+            const user = userEvent.setup();
+            let buildWasAttempted = false;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [path] = url.split("?");
+                if (path === "/api/project/artifacts/preview") {
+                    return Promise.resolve({
+                        ok: false,
+                        status: 409,
+                        json: () =>
+                            Promise.resolve({
+                                status: "conflict",
+                                target: "tsPackage",
+                                destination: "/games/tsPackage",
+                                message: '"/games/tsPackage" already exists and is not empty. Choose a different --out path or remove it first.',
+                            }),
+                    });
+                }
+                if (path === "/api/project/artifacts/build") {
+                    buildWasAttempted = true;
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+
+            expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
+            expect(buildWasAttempted).toBe(false);
         });
     });
 });

@@ -15,6 +15,7 @@ import type {PokieProject} from "./PokieProject.js";
 // "stakeAdapter" unsupportedNotes).
 export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
     public readonly target = "stakeAdapter";
+    public readonly destinationKind = "directory";
 
     private readonly importer: StakeEngineImporting;
     private readonly exporter: StakeEngineExporting;
@@ -29,7 +30,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
     }
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
-        assertArtifactDestinationAvailable(destinationPath, "directory");
+        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
 
         const imported = await this.importer.importFromDirectory(source.rootPath);
         const importErrors = imported.issues.filter((issue) => issue.severity === "error");

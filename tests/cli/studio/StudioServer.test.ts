@@ -4670,7 +4670,7 @@ describe("StudioServer", () => {
         });
     });
 
-    describe("Project Dashboard: Build/Export artifacts (GET /api/project/artifacts/targets, POST /api/project/artifacts/build)", () => {
+    describe("Project Dashboard: Build/Export artifacts (GET /api/project/artifacts/targets, POST /api/project/artifacts/preview, POST /api/project/artifacts/build)", () => {
         let artifactStudioRoot: string;
         let artifactWorkDir: string;
         let artifactServer: StudioServer | undefined;
@@ -4718,19 +4718,29 @@ describe("StudioServer", () => {
             return filePath;
         }
 
-        it("returns 409 for both routes when there is no active project", async () => {
+        it("returns 409 for every route when there is no active project", async () => {
             const homeBaseUrl = await startServerForProject(undefined);
 
             const targetsResponse = await get(`${homeBaseUrl}/api/project/artifacts/targets`);
             expect(targetsResponse.status).toBe(409);
 
+            const previewResponse = await post(`${homeBaseUrl}/api/project/artifacts/preview`, {target: "tsPackage"});
+            expect(previewResponse.status).toBe(409);
+
             const buildResponse = await post(`${homeBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
             expect(buildResponse.status).toBe(409);
         });
 
-        it("rejects a malformed build request with 400", async () => {
+        it("rejects a malformed preview or build request with 400", async () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const missingPreviewTarget = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {});
+            expect(missingPreviewTarget.status).toBe(400);
+            expect((missingPreviewTarget.body as {error: string}).error).toMatch(/target/);
+
+            const unknownPreviewTarget = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "bogus"});
+            expect(unknownPreviewTarget.status).toBe(400);
 
             const missingTarget = await post(`${projectBaseUrl}/api/project/artifacts/build`, {});
             expect(missingTarget.status).toBe(400);
@@ -4803,6 +4813,63 @@ describe("StudioServer", () => {
 
             expect(status).toBe(201);
             expect((body as {outputPath?: string}).outputPath).toBe(explicitOut);
+        });
+
+        it("previews a tsPackage build against the same default sibling destination build() itself would use, without writing anything", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+            const expectedDestination = path.join(artifactWorkDir, "tsPackage");
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "tsPackage"});
+
+            expect(status).toBe(200);
+            const view = body as {status: string; target?: string; destination?: string; sourceType?: string};
+            expect(view.status).toBe("ok");
+            expect(view.target).toBe("tsPackage");
+            expect(view.destination).toBe(expectedDestination);
+            expect(view.sourceType).toBe("blueprint");
+            expect(fs.existsSync(expectedDestination)).toBe(false);
+        });
+
+        it("previews an explicit outDir when given", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+            const explicitOut = path.join(artifactWorkDir, "my-custom-out");
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "tsPackage", outDir: explicitOut});
+
+            expect(status).toBe(200);
+            expect((body as {destination?: string}).destination).toBe(explicitOut);
+        });
+
+        it("reports 'unsupported' (never a 500) for a preview target this project's own type doesn't grant", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "stakeAdapter"});
+
+            expect(status).toBe(200);
+            const view = body as {status: string; message?: string};
+            expect(view.status).toBe("unsupported");
+            expect(view.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+        });
+
+        it("previews a conflict (409) for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const destination = path.join(artifactWorkDir, "tsPackage");
+            fs.mkdirSync(destination);
+            fs.writeFileSync(path.join(destination, "unrelated.txt"), "pre-existing");
+            const projectBaseUrl = await startServerForProject(blueprintPath);
+
+            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "tsPackage"});
+
+            expect(status).toBe(409);
+            const view = body as {status: string; target?: string; destination?: string; message?: string};
+            expect(view.status).toBe("conflict");
+            expect(view.target).toBe("tsPackage");
+            expect(view.destination).toBe(destination);
+            expect(view.message).toMatch(/already exists and is not empty/);
+            expect(fs.readdirSync(destination)).toEqual(["unrelated.txt"]);
         });
     });
 });

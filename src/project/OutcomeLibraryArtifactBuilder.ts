@@ -18,6 +18,7 @@ import type {PokieProject} from "./PokieProject.js";
 // unsupportedNotes).
 export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
     public readonly target = "outcomeLibrary";
+    public readonly destinationKind = "directory";
 
     private readonly reader: OutcomeLibraryBundleReading;
     private readonly writer: OutcomeLibraryBundleWriting;
@@ -32,7 +33,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
     }
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
-        assertArtifactDestinationAvailable(destinationPath, "directory");
+        assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
 
         const manifest = await this.reader.readManifest(source.rootPath);
         const modes: OutcomeLibraryBundleModeInput[] = await Promise.all(

@@ -7,6 +7,7 @@ import type {
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
     StudioArtifactBuildView,
+    StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
     StudioBlueprintCheckView,
@@ -1114,6 +1115,22 @@ export async function listArtifactTargets(fetchImpl: FetchLike): Promise<StudioA
         throw new Error(await extractErrorMessage(response, "Failed to load the build artifact target list"));
     }
     return (await response.json()) as StudioArtifactTargetView[];
+}
+
+// Reports what building `target` against the active project would do -- the same registry-resolved
+// destination/capability/conflict diagnostics buildArtifact() below would report, without ever writing
+// anything. "unsupported" and "conflict" are both normal parsed results (never thrown), same convention as
+// buildArtifact below.
+export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string): Promise<StudioArtifactPreviewView> {
+    const response = await fetchImpl("/api/project/artifacts/preview", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({target, outDir}),
+    });
+    if (!response.ok && response.status !== 409) {
+        throw new Error(await extractErrorMessage(response, "Failed to preview the artifact build"));
+    }
+    return (await response.json()) as StudioArtifactPreviewView;
 }
 
 // Runs the active project through ArtifactBuilderRegistry directly, the exact same

@@ -105,7 +105,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 purpose: info.purpose,
                 destination: info.destination,
                 writePublishBehavior:
-                    "Build writes the artifact to disk in one step -- there is no separate preview/publish split, and a destination that already exists and isn't empty is refused untouched.",
+                    "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.",
                 capabilities: [],
                 limits: entry.unsupportedNotes,
                 prerequisites: [],

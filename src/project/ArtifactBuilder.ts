@@ -18,5 +18,12 @@ import type {PokieProject} from "./PokieProject.js";
 // destinationPath already holds content this builder doesn't itself own/manage.
 export interface ArtifactBuilder {
     readonly target: ArtifactTargetType;
+    // Whether this target's own destinationPath must be a missing/empty directory or a not-yet-existing
+    // file -- the exact "file" vs "directory" kind this builder's own build() already passes to
+    // assertArtifactDestinationAvailable before ever writing. Exposed here (read by
+    // ArtifactBuilderRegistry.checkDestination()) so a caller can ask "would this destination be accepted"
+    // without invoking build() at all, off the same single fact build() itself enforces -- never a second,
+    // independently-maintained copy of it.
+    readonly destinationKind: "file" | "directory";
     build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult>;
 }

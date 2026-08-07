@@ -55,6 +55,75 @@ describe("StudioArtifactBuildService", () => {
         });
     });
 
+    describe("preview", () => {
+        it("resolves the same default sibling destination build() itself would use, without writing anything", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const expectedDestination = path.join(workDir, "tsPackage");
+
+            const result = await service.preview(blueprintPath, "tsPackage");
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.destination).toBe(expectedDestination);
+            expect(result.sourceType).toBe("blueprint");
+            expect(fs.existsSync(expectedDestination)).toBe(false);
+        });
+
+        it("resolves an explicit outDir when given", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const explicitOut = path.join(workDir, "my-custom-out");
+
+            const result = await service.preview(blueprintPath, "tsPackage", explicitOut);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.destination).toBe(explicitOut);
+        });
+
+        it("reports an unsupported conversion, with the same message build() itself reports, instead of ever checking a destination", async () => {
+            const blueprintPath = writeBlueprintFile();
+
+            const result = await service.preview(blueprintPath, "stakeAdapter");
+
+            expect(result.status).toBe("unsupported");
+            if (result.status !== "unsupported") {
+                throw new Error("expected unsupported");
+            }
+            expect(result.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+        });
+
+        it("reports a conflict for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const destination = path.join(workDir, "tsPackage");
+            fs.mkdirSync(destination);
+            fs.writeFileSync(path.join(destination, "unrelated.txt"), "pre-existing");
+
+            const result = await service.preview(blueprintPath, "tsPackage");
+
+            expect(result.status).toBe("conflict");
+            if (result.status !== "conflict") {
+                throw new Error("expected conflict");
+            }
+            expect(result.destination).toBe(destination);
+            expect(result.message).toMatch(/already exists and is not empty/);
+            expect(fs.readdirSync(destination)).toEqual(["unrelated.txt"]);
+        });
+
+        it("reports an error for a project path that doesn't resolve", async () => {
+            const result = await service.preview(path.join(workDir, "does-not-exist"), "tsPackage");
+
+            expect(result.status).toBe("error");
+            if (result.status !== "error") {
+                throw new Error("expected error");
+            }
+            expect(result.message).toContain("was not recognized as a POKIE project");
+        });
+    });
+
     describe("build", () => {
         it("builds a tsPackage from a blueprint source to the default sibling destination, matching BuildCommand's own default", async () => {
             const blueprintPath = writeBlueprintFile();

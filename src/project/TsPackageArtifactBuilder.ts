@@ -18,6 +18,7 @@ import type {PokieProject} from "./PokieProject.js";
 // ArtifactBuildConflictError specifically, rather than the bare Error GamePackageGenerator throws itself.
 export class TsPackageArtifactBuilder implements ArtifactBuilder {
     public readonly target = "tsPackage";
+    public readonly destinationKind = "directory";
 
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly validator: GameBlueprintValidating;
@@ -39,7 +40,7 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
     // own doc comment), so every failure path returns a rejected Promise explicitly instead.
     public build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         try {
-            assertArtifactDestinationAvailable(destinationPath, "directory");
+            assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
 
             const blueprint = this.loadBlueprint(source.rootPath);
             const errors = this.validator.validate(blueprint).filter((issue) => issue.severity === "error");

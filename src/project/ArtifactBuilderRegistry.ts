@@ -1,8 +1,11 @@
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
+import {ArtifactBuildConflictError} from "./ArtifactBuildConflictError.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
+import type {ArtifactDestinationCheck} from "./ArtifactDestinationCheck.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
 import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
+import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -158,5 +161,31 @@ export class ArtifactBuilderRegistry {
         }
 
         return builder.build(source, destinationPath);
+    }
+
+    // Reports whether `destinationPath` would be accepted by `target`'s own build() -- the exact same
+    // assertArtifactDestinationAvailable() precondition build() enforces before ever invoking a builder, off
+    // the same builder-owned destinationKind, but without invoking the builder (and so without ever reading
+    // `source` or touching the filesystem beyond the same existence/emptiness check build() itself performs).
+    // Lets a caller (a Studio build-preview panel) report the identical conflict a real build would hit
+    // before ever attempting one, rather than re-deriving "file" vs "directory" per target itself. Throws
+    // (same as build()) when `target` has no registered builder today -- there is no destinationKind to check
+    // against.
+    public checkDestination(target: ArtifactTargetType, destinationPath: string): ArtifactDestinationCheck {
+        const builder = this.builders.get(target);
+        if (builder === undefined) {
+            const descriptor = this.describe(target);
+            throw new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`);
+        }
+
+        try {
+            assertArtifactDestinationAvailable(destinationPath, builder.destinationKind);
+            return {available: true};
+        } catch (error) {
+            if (error instanceof ArtifactBuildConflictError) {
+                return {available: false, message: error.message};
+            }
+            throw error;
+        }
     }
 }

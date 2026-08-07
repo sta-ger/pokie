@@ -693,6 +693,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/project/artifacts/preview") {
+            await this.handlePreviewArtifact(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/project/artifacts/build") {
             await this.handleBuildArtifact(req, res);
             return;
@@ -1520,6 +1525,36 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.sendJson(res, 200, await this.artifactBuildService.listTargets(this.currentContext.projectRoot));
+    }
+
+    // POST /api/project/artifacts/preview -- the pre-build counterpart to POST /api/project/artifacts/build
+    // (see StudioArtifactBuildService.preview's own doc comment): same request shape, same 400/409 status
+    // conventions as the build route below, but never writes anything -- a "conflict" here is the exact same
+    // ArtifactBuildConflictError a subsequent build would hit, reported before the user ever clicks Build.
+    private async handlePreviewArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateArtifactBuildRequest((body ?? {}) as ArtifactBuildRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.artifactBuildService.preview(this.currentContext.projectRoot, validated.target, validated.outDir);
+        this.sendJson(res, this.statusForArtifactPreview(result.status), result);
+    }
+
+    // Unlike statusForArtifactBuild below, "ok" here is always 200 -- a preview never creates anything, so
+    // there is no "201 Created" to report; a "conflict" is still 409, the same real conflict a subsequent
+    // build would hit.
+    private statusForArtifactPreview(status: "ok" | "unsupported" | "conflict" | "error"): number {
+        return status === "conflict" ? 409 : 200;
     }
 
     // POST /api/project/artifacts/build -- statusForArtifactBuild below mirrors statusForParSheetExport's

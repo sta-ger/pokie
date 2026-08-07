@@ -21,6 +21,7 @@ function projectOf(type: ProjectType): PokieProject {
 // partially written.
 class FakeArtifactBuilder implements ArtifactBuilder {
     public readonly target = "tsPackage";
+    public readonly destinationKind = "directory";
     public readonly publishedPaths: string[] = [];
     private readonly occupied: Set<string>;
 

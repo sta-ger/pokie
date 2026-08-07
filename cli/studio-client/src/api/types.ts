@@ -1133,3 +1133,13 @@ export type StudioArtifactBuildView =
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string}
     | {status: "error"; message: string};
+
+// POST /api/project/artifacts/preview's own DTO — see cli/studio/artifacts/StudioArtifactPreviewView.ts's
+// own doc comment. The pre-build counterpart to StudioArtifactBuildView above: the same registry-resolved
+// target/destination/sourceType and the same capability/conflict diagnostics a subsequent build would
+// report, computed without ever writing anything.
+export type StudioArtifactPreviewView =
+    | {status: "ok"; target: StudioArtifactTargetType; destination: string; sourceType: StudioProjectType}
+    | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
+    | {status: "conflict"; target: StudioArtifactTargetType; destination: string; message: string}
+    | {status: "error"; message: string};

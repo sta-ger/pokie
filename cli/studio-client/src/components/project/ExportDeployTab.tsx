@@ -1,9 +1,18 @@
 import {useEffect, useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
-import {buildArtifact, exportStakeEngine, generateOutcomeLibrary, listArtifactTargets, openOutputFolder, registerProjectImport} from "../../api/apiClient";
+import {
+    buildArtifact,
+    exportStakeEngine,
+    generateOutcomeLibrary,
+    listArtifactTargets,
+    openOutputFolder,
+    previewArtifact,
+    registerProjectImport,
+} from "../../api/apiClient";
 import type {
     OutcomeLibrarySelector,
     StudioArtifactBuildView,
+    StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
     StudioDeploymentModeInput,
@@ -117,6 +126,27 @@ function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView,
     return view.message;
 }
 
+// One entry per "buildArtifact" card's own registry-backed preview -- fetched automatically once its own
+// target is known to be supported (see the artifactPreviews effect below), never behind an explicit click,
+// so a real destination and any conflict/diagnostic is already on screen before Build is ever pressed. Keyed
+// by artifactTarget, same convention as ArtifactBuildRunView above.
+type ArtifactPreviewRunView =
+    | {status: "loading"}
+    | {status: "ok"; result: Extract<StudioArtifactPreviewView, {status: "ok"}>}
+    | {status: "unsupported"; message: string}
+    | {status: "conflict"; result: Extract<StudioArtifactPreviewView, {status: "conflict"}>}
+    | {status: "error"; message: string};
+
+function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPreviewRunView {
+    if (view.status === "ok") {
+        return {status: "ok", result: view};
+    }
+    if (view.status === "conflict") {
+        return {status: "conflict", result: view};
+    }
+    return {status: view.status === "unsupported" ? "unsupported" : "error", message: view.message};
+}
+
 function TargetCard({
     card,
     defaultModeName,
@@ -129,6 +159,7 @@ function TargetCard({
     onOverwriteStaticExport,
     deployment,
     onOpenFolder,
+    artifactPreview,
     artifactBuildRun,
     onBuildArtifact,
     onOpenAsProject,
@@ -146,6 +177,7 @@ function TargetCard({
     onOverwriteStaticExport: () => void;
     deployment: DeploymentManager;
     onOpenFolder: (path: string) => void;
+    artifactPreview: ArtifactPreviewRunView;
     artifactBuildRun: ArtifactBuildRunView;
     onBuildArtifact: (target: StudioArtifactTargetType) => void;
     onOpenAsProject: (projectRoot: string) => void;
@@ -286,6 +318,25 @@ function TargetCard({
 
             {card.kind === "buildArtifact" && card.artifactTarget && (
                 <>
+                    {artifactPreview.status === "loading" && (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Checking destination…
+                        </Text>
+                    )}
+                    {artifactPreview.status === "ok" && (
+                        <Text size="sm" mt={4}>
+                            <Text span fw={600}>
+                                Resolved destination:
+                            </Text>{" "}
+                            {artifactPreview.result.destination}
+                        </Text>
+                    )}
+                    {artifactPreview.status === "conflict" && (
+                        <ErrorState message={`${artifactPreview.result.destination}: ${artifactPreview.result.message}`} />
+                    )}
+                    {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
+                        <ErrorState message={artifactPreview.message} />
+                    )}
                     <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"}>
                         Build
                     </Button>
@@ -402,6 +453,37 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     }, [fetchImpl]);
     const artifactCards = describeArtifactBuildTargetCards(artifactTargets);
     const cards = [...describeExportDeployTargetCards(deploymentTargets, capabilities), ...artifactCards];
+
+    // One registry-backed preview per supported artifactTarget (keyed by StudioArtifactTargetType), fetched
+    // automatically as soon as artifactTargets reports it supported -- see ArtifactPreviewRunView's own doc
+    // comment for why this runs unprompted rather than behind its own button: the resolved
+    // destination/conflict this reports must already be on screen before Build is ever clicked, not only
+    // once a build attempt itself hits it.
+    const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewRunView>>({});
+    useEffect(() => {
+        let cancelled = false;
+        const supportedTargets = artifactTargets.filter((entry) => entry.supported).map((entry) => entry.target);
+        supportedTargets.forEach((target) => {
+            setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
+            previewArtifact(fetchImpl, target)
+                .then((view) => {
+                    if (!cancelled) {
+                        setArtifactPreviews((previews) => ({...previews, [target]: toArtifactPreviewRunView(view)}));
+                    }
+                })
+                .catch((error: unknown) => {
+                    if (!cancelled) {
+                        setArtifactPreviews((previews) => ({
+                            ...previews,
+                            [target]: {status: "error", message: describeProjectActionError("The build destination preview", errorMessage(error))},
+                        }));
+                    }
+                });
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [artifactTargets, fetchImpl]);
 
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
@@ -603,6 +685,8 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                 groupCards.map((card) => {
                                     const artifactBuildRun: ArtifactBuildRunView =
                                         (card.artifactTarget !== undefined ? artifactBuildRuns[card.artifactTarget] : undefined) ?? {status: "idle"};
+                                    const artifactPreview: ArtifactPreviewRunView =
+                                        (card.artifactTarget !== undefined ? artifactPreviews[card.artifactTarget] : undefined) ?? {status: "loading"};
                                     const addedToProjects = artifactBuildRun.status === "ok" && addedToProjectPaths.has(artifactBuildRun.result.outputPath);
                                     return (
                                         <TargetCard
@@ -618,6 +702,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                             onOverwriteStaticExport={handleOverwriteStaticExport}
                                             deployment={deployment}
                                             onOpenFolder={handleOpenFolder}
+                                            artifactPreview={artifactPreview}
                                             artifactBuildRun={artifactBuildRun}
                                             onBuildArtifact={handleBuildArtifact}
                                             onOpenAsProject={handleOpenArtifactAsProject}

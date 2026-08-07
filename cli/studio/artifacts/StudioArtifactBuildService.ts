@@ -1,6 +1,7 @@
-import {ArtifactBuildConflictError, ArtifactBuilderRegistry, ArtifactTargetType, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {ArtifactBuildConflictError, ArtifactBuilderRegistry, ArtifactTargetType, PokieProject, ProjectResolving, ProjectTargetResolver} from "pokie";
 import path from "path";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
+import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 
 // "parWorkbook" is the one target whose artifact is a single file rather than a directory -- its default
@@ -59,31 +60,48 @@ export class StudioArtifactBuildService {
         });
     }
 
+    // Reports what a build against the active project would do, without ever invoking a builder -- the same
+    // registry-resolved target/destination/capability diagnostic build() itself uses (see
+    // ArtifactBuilderRegistry.checkDestination's own doc comment for why this never needs to run the builder
+    // to know whether its destination would be accepted), so Build/Export can show a real destination and
+    // conflict/diagnostic before the user ever clicks Build. Never writes anything.
+    public async preview(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactPreviewView> {
+        const resolved = await this.resolveForTarget(projectRoot, target, outDir);
+        if (resolved === undefined) {
+            return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
+        }
+        const {project, destination} = resolved;
+
+        if (!this.registry.supportsConversionFrom(target, project.type)) {
+            return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
+        }
+
+        const destinationCheck = this.registry.checkDestination(target, destination);
+        if (!destinationCheck.available) {
+            return {status: "conflict", target, destination, message: destinationCheck.message};
+        }
+
+        return {status: "ok", target, destination, sourceType: project.type};
+    }
+
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
-    // exactly like BuildCommand does, re-checks the same capability listTargets() already reported (so a
-    // stale client-side target list can never trigger a build the registry itself would reject), then
-    // hands off to ArtifactBuilderRegistry.build() with `outDir` defaulted the same way a bare
+    // exactly like BuildCommand does, re-checks the same capability listTargets()/preview() already reported
+    // (so a stale client-side target list or preview can never trigger a build the registry itself would
+    // reject), then hands off to ArtifactBuilderRegistry.build() with `outDir` defaulted the same way a bare
     // `pokie build <project> --target <target>` (no --out) is. A destination conflict surfaces as its own
     // "conflict" status (never a bare 500) since ArtifactBuildConflictError is the one error every concrete
     // ArtifactBuilder throws for "destination already occupied" -- see assertArtifactDestinationAvailable's
     // own doc comment.
     public async build(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactBuildView> {
-        const project = await this.resolveProject.resolve(projectRoot);
-        if (project === undefined) {
+        const resolved = await this.resolveForTarget(projectRoot, target, outDir);
+        if (resolved === undefined) {
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
         }
+        const {project, destination} = resolved;
 
         if (!this.registry.supportsConversionFrom(target, project.type)) {
-            const descriptor = this.registry.describe(target);
-            const supported = descriptor.supportedSources.length > 0 ? descriptor.supportedSources.join(", ") : "none today";
-            return {
-                status: "unsupported",
-                target,
-                message: `"${target}" cannot be built from a "${project.type}" project. Supported sources: ${supported}. ${descriptor.unsupportedNotes.join(" ")}`,
-            };
+            return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
         }
-
-        const destination = outDir ?? resolveDefaultDestination(project.rootPath, target);
 
         try {
             const result = await this.registry.build(target, project, destination);
@@ -94,5 +112,32 @@ export class StudioArtifactBuildService {
             }
             return {status: "error", message: error instanceof Error ? error.message : String(error)};
         }
+    }
+
+    // Resolves `projectRoot` into a PokieProject and `target`'s own default destination -- the exact same
+    // resolve/default-destination steps both preview() and build() need before they diverge into "just check"
+    // vs. "actually write". Returns `undefined` for an unrecognized project (both callers report their own
+    // "error" status for that).
+    private async resolveForTarget(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        outDir: string | undefined,
+    ): Promise<{project: PokieProject; destination: string} | undefined> {
+        const project = await this.resolveProject.resolve(projectRoot);
+        if (project === undefined) {
+            return undefined;
+        }
+        return {project, destination: outDir ?? resolveDefaultDestination(project.rootPath, target)};
+    }
+
+    // The exact prose build() and preview() both report for a target this project's own resolved type
+    // doesn't support -- the same registry.supportsConversionFrom() capability diagnostic, worded identically
+    // in both places so a preview's "unsupported" and a subsequent build's own "unsupported" (should a stale
+    // client ever call build() without previewing first) are never two differently-worded statements of the
+    // same fact.
+    private describeUnsupportedMessage(target: ArtifactTargetType, project: PokieProject): string {
+        const descriptor = this.registry.describe(target);
+        const supported = descriptor.supportedSources.length > 0 ? descriptor.supportedSources.join(", ") : "none today";
+        return `"${target}" cannot be built from a "${project.type}" project. Supported sources: ${supported}. ${descriptor.unsupportedNotes.join(" ")}`;
     }
 }

@@ -1,3 +1,6 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
@@ -89,6 +92,7 @@ describe("ArtifactBuilderRegistry", () => {
         function fakeBuilder(target: "tsPackage"): ArtifactBuilder & {calls: number} {
             const builder = {
                 target,
+                destinationKind: "directory" as const,
                 calls: 0,
                 build(source: PokieProject, destinationPath: string) {
                     builder.calls++;
@@ -127,6 +131,55 @@ describe("ArtifactBuilderRegistry", () => {
             await expect(withoutBuilders.build("tsPackage", projectOf("blueprint"), "/out/my-game")).rejects.toThrow(
                 /"tsPackage" has no builder implemented yet/,
             );
+        });
+    });
+
+    describe("checkDestination", () => {
+        let dir: string;
+
+        beforeEach(() => {
+            dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-artifact-registry-checkdestination-test-"));
+        });
+
+        afterEach(() => {
+            fs.rmSync(dir, {recursive: true, force: true});
+        });
+
+        it("reports a missing destination as available, without ever invoking the builder", () => {
+            const destination = path.join(dir, "not-yet-there");
+
+            expect(registry.checkDestination("tsPackage", destination)).toEqual({available: true});
+            expect(fs.existsSync(destination)).toBe(false);
+        });
+
+        it("reports an existing, non-empty directory destination as unavailable, using the same conflict message build() itself would throw", () => {
+            const destination = path.join(dir, "occupied");
+            fs.mkdirSync(destination);
+            fs.writeFileSync(path.join(destination, "unrelated.txt"), "pre-existing");
+
+            const result = registry.checkDestination("tsPackage", destination);
+
+            expect(result).toEqual({available: false, message: expect.stringMatching(/already exists and is not empty/)});
+        });
+
+        it("reports an empty existing directory as available (the same bar build() itself allows)", () => {
+            const destination = path.join(dir, "empty-dir");
+            fs.mkdirSync(destination);
+
+            expect(registry.checkDestination("tsPackage", destination)).toEqual({available: true});
+        });
+
+        it("checks a 'file' target's destination as a file, not a directory -- an existing file is unavailable even though it's empty", () => {
+            const destination = path.join(dir, "workbook.xlsx");
+            fs.writeFileSync(destination, "");
+
+            const result = registry.checkDestination("parWorkbook", destination);
+
+            expect(result).toEqual({available: false, message: expect.stringMatching(/already exists/)});
+        });
+
+        it("throws for a target that has no registered builder ('wasm'), the same as build() does", () => {
+            expect(() => registry.checkDestination("wasm", path.join(dir, "anything"))).toThrow(/"wasm" has no builder implemented yet/);
         });
     });
 });
