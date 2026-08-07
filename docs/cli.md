@@ -287,10 +287,11 @@ neither re-implements naming, slugging, or theming on its own.
 ## `pokie build <project>`
 
 POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
-it, writing the result to `--out <path>`.
+it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
+`tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
 
 ```
-pokie build <project> --target <artifact> --out <path> [--dry-run]
+pokie build <project> --target <artifact> [--out <path>] [--dry-run]
 ```
 
 ```
@@ -310,8 +311,10 @@ Options:
   `outcomeLibrary`/`stakeAdapter`/`parWorkbook` from a `blueprint` source, for instance, throws naming which source
   types that target actually supports (`ArtifactBuilderRegistry.describe(target)`, also available
   programmatically, reports the same thing without resolving a project first).
-- `--out <path>` — **required**; where the built artifact is written. Must not already exist, or must be an empty
-  directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
+- `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
+  `<project>` (a `.xlsx` file for `parWorkbook`, a bare directory for every other target). An explicit `--out`
+  always overrides the default and never changes what `--target` means. Must not already exist, or must be an
+  empty directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
@@ -376,8 +379,9 @@ handling](#conflict-handling-an-existing---out-destination) below.
 After generation, `pokie build` prints a build summary to stdout: the files it wrote, package root,
 game id/name/version, blueprint hash, and source path (when known) — all computed purely for this printout, never
 persisted into the package itself. `--dry-run` prints the equivalent preview (game id/name/version, reels x rows,
-symbol count, payline count, bets, blueprint hash, and the files a real build would generate) without creating or
-touching `--out` at all. Exit code follows the same rule either way: non-zero if the blueprint has errors, `0` if
+symbol count, payline count, bets, blueprint hash, the files a real build would generate, and the resolved
+`--out` destination — explicit or defaulted, exactly as a real build would use it) without creating or touching
+that destination at all. Exit code follows the same rule either way: non-zero if the blueprint has errors, `0` if
 it's valid (warnings included).
 
 ### Republishing an already-built `outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact
@@ -609,13 +613,12 @@ generating anything.
 Failure modes:
 
 - `<project>` missing, or not recognized as a POKIE project at all (`pokie build` with no arguments, or an unknown
-  option) throws a `Usage: pokie build <project> --target <artifact> --out <path>` error naming the project types
+  option) throws a `Usage: pokie build <project> --target <artifact> [--out <path>]` error naming the project types
   pokie understands.
 - `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`,
   throws before `<project>` is even resolved, listing the full accepted vocabulary.
 - `--target` given a value `<project>`'s own resolved type can't build (e.g. `outcomeLibrary` from a `blueprint`
   source) throws naming which source types that target actually supports.
-- `--out` omitted throws — there is no default destination.
 - A blueprint (`tsPackage` target) with any error-level issue prints every error and exits `1` without generating
   anything.
 - `--out` already existing as a *file* where a directory target expects one (or vice versa for `parWorkbook`)

@@ -98,7 +98,7 @@ describe("BuildCommand", () => {
     it("reports the usage error for a missing/empty <project> positional", async () => {
         const command = new BuildCommand("1.3.0");
 
-        await expect(command.run([""])).rejects.toThrow(/Usage: pokie build <project> --target <artifact> --out <path> \[--dry-run\]/);
+        await expect(command.run([""])).rejects.toThrow(/Usage: pokie build <project> --target <artifact> \[--out <path>\] \[--dry-run\]/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {
@@ -133,12 +133,14 @@ describe("BuildCommand", () => {
         expect(resolveProject.calls).toEqual([]);
     });
 
-    it("requires --out before ever resolving the project", async () => {
+    it("resolves the project even when --out is omitted -- --out is optional, unlike --target", async () => {
         const resolveProject = stubProjectResolver(undefined);
         const command = new BuildCommand("1.3.0", undefined, undefined, resolveProject);
 
-        await expect(command.run(["/does/not/exist.json", "--target", "tsPackage"])).rejects.toThrow(/--out is required/);
-        expect(resolveProject.calls).toEqual([]);
+        await expect(command.run(["/does/not/exist.json", "--target", "tsPackage"])).rejects.toThrow(
+            /"\/does\/not\/exist\.json" was not recognized as a POKIE project/,
+        );
+        expect(resolveProject.calls).toEqual(["/does/not/exist.json"]);
     });
 
     it("throws a clear error when the project path isn't recognized as any POKIE project", async () => {
@@ -244,6 +246,23 @@ describe("BuildCommand", () => {
             expect(printed).toContain('built in "/fake/sample-slot"');
         });
 
+        it("resolves a <target>-named sibling of <project> as the default destination when --out is omitted", async () => {
+            const builder = stubBuilder("tsPackage", {outputPath: "/fake/sample-slot"});
+            const project = blueprintProject("blueprints/config.json");
+            const command = new BuildCommand(
+                "1.3.0",
+                () => rawBlueprint,
+                createStubValidator([]),
+                stubProjectResolver(project),
+                registryWithBuilders(builder),
+            );
+
+            const exitCode = await command.run(["blueprints/config.json", "--target", "tsPackage"]);
+
+            expect(exitCode).toBe(0);
+            expect(builder.calledWith).toEqual({source: project, destinationPath: "blueprints/tsPackage"});
+        });
+
         it("prints the full build -> inspect -> validate -> sim -> report -> replay -> dev workflow as next steps", async () => {
             const builder = stubBuilder("tsPackage", {outputPath: "/fake/sample-slot"});
             const command = new BuildCommand(
@@ -304,6 +323,23 @@ describe("BuildCommand", () => {
             expect(printed).toContain("bets             1, 2, 5");
             expect(printed).toContain("blueprint hash   sha256:");
             expect(printed).toContain("would generate   README.md, dist/index.js, package-lock.json, package.json, src/index.ts, tsconfig.json");
+            expect(printed).toContain("destination      out-dir");
+        });
+
+        it("--dry-run previews the resolved default destination when --out is omitted -- the same one a real build would use", async () => {
+            const command = new BuildCommand(
+                "1.3.0",
+                () => fullBlueprint,
+                createStubValidator([]),
+                stubProjectResolver(blueprintProject("blueprints/config.json")),
+                registryWithBuilders(stubBuilder("tsPackage", {outputPath: "/fake/out"})),
+            );
+
+            const exitCode = await command.run(["blueprints/config.json", "--target", "tsPackage", "--dry-run"]);
+
+            expect(exitCode).toBe(0);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("destination      blueprints/tsPackage");
         });
 
         it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {
@@ -493,6 +529,47 @@ describe("BuildCommand", () => {
             expect(printed).toContain("Dry run");
             expect(printed).toContain('"outcomeLibrary"');
             expect(printed).toContain("No files written");
+        });
+
+        it("resolves a <target>-named sibling directory of <project> as the default destination when --out is omitted", async () => {
+            const builder = stubBuilder("outcomeLibrary", {outputPath: "/fake/republished-bundle"});
+            const project = outcomeLibraryProject("bundles/bundleDir");
+            const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+            const exitCode = await command.run(["bundles/bundleDir", "--target", "outcomeLibrary"]);
+
+            expect(exitCode).toBe(0);
+            expect(builder.calledWith).toEqual({source: project, destinationPath: "bundles/outcomeLibrary"});
+        });
+
+        it("previews the resolved default destination during --dry-run when --out is omitted", async () => {
+            const builder = stubBuilder("outcomeLibrary", () => {
+                throw new Error("must not be called during --dry-run");
+            });
+            const project = outcomeLibraryProject("bundles/bundleDir");
+            const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+            const exitCode = await command.run(["bundles/bundleDir", "--target", "outcomeLibrary", "--dry-run"]);
+
+            expect(exitCode).toBe(0);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain('to "bundles/outcomeLibrary"');
+        });
+
+        it("defaults a parWorkbook destination to a sibling file with a .xlsx extension, not a bare directory name", async () => {
+            const builder = stubBuilder("parWorkbook", {outputPath: "/fake/republished.par.xlsx"});
+            const project: PokieProject = {
+                type: "parWorkbook",
+                rootPath: "sheets/starter.par.xlsx",
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test fixture",
+            } as PokieProject;
+            const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+            const exitCode = await command.run(["sheets/starter.par.xlsx", "--target", "parWorkbook"]);
+
+            expect(exitCode).toBe(0);
+            expect(builder.calledWith).toEqual({source: project, destinationPath: "sheets/parWorkbook.xlsx"});
         });
     });
 });

@@ -313,6 +313,36 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     ]),
                 ),
             ),
+        "build::<config.json> --target tsPackage (default --out, writes via the injected builder)": (key) =>
+            new BuildCommand(
+                TEST_VERSION,
+                () => createStarterGameBlueprint(),
+                undefined,
+                stub<ProjectResolving>({
+                    resolve: () =>
+                        Promise.resolve({
+                            type: "blueprint",
+                            rootPath: "config.json",
+                            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                            provenance: "test fixture",
+                        }),
+                }),
+                new ArtifactBuilderRegistry(
+                    TEST_VERSION,
+                    new Map([
+                        [
+                            "tsPackage",
+                            stub<ArtifactBuilder>({
+                                target: "tsPackage",
+                                build: (source, destinationPath) => {
+                                    observe(key, "--out", destinationPath);
+                                    return Promise.resolve({outputPath: destinationPath});
+                                },
+                            }),
+                        ],
+                    ]),
+                ),
+            ),
         "build::<config.json> --target tsPackage --out <path> --dry-run (accepted --dry-run value, validates and previews without writing anything)": () =>
             // --dry-run's accepted "true" is derived from the real captured stdout (see
             // STDOUT_BOOLEAN_MARKER_FLAGS above) -- a real dry-run never reaches ArtifactBuilderRegistry.build()

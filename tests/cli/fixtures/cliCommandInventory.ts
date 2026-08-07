@@ -99,11 +99,15 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
+                usage: "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
                 positionals: ["project"],
                 options: [
                     {flag: "--target", required: true, kind: "validated", acceptedValue: "tsPackage"},
-                    {flag: "--out", required: true, kind: "unvalidated", acceptedValue: "customOutDir"},
+                    // defaultValue "tsPackage": BuildCommand.resolveDestination()'s own default -- a
+                    // <target>-named sibling of <project>'s resolved rootPath; with rootPath "config.json" (this
+                    // verb's own fixture project) that resolves to "tsPackage", observed at the injected
+                    // ArtifactBuilder's own destinationPath argument.
+                    {flag: "--out", required: false, kind: "unvalidated", defaultValue: "tsPackage", acceptedValue: "customOutDir"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
@@ -700,13 +704,13 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [""],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]\n" +
+            "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]\n" +
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
             "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
             "other target republishes an already-built artifact of its own type to a new location.",
     },
     {
-        // --target/--out are both checked (and throw) before "config.json" is ever resolved -- see
+        // --target is checked (and throws) before "config.json" is ever resolved -- see
         // BuildCommand.execute()'s own comment on why -- so this case never touches the filesystem, same as
         // every other "invalid" case here.
         command: "build",
@@ -716,7 +720,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.\n\n" +
-            "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
+            "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
     },
     {
         command: "build",
@@ -727,14 +731,6 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.',
     },
     {
-        command: "build",
-        kind: "invalid",
-        label: "--out is required",
-        args: ["config.json", "--target", "tsPackage"],
-        expectedExitCode: 1,
-        expectedError: "--out is required. Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
-    },
-    {
         // Placed before every other valid case so it wins the accepted-value lookup for --target ("tsPackage")
         // and --out ("customOutDir") at once: a genuine non-dry-run tsPackage build, whose injected
         // ArtifactBuilderRegistry (via a fake "tsPackage" ArtifactBuilder) therefore actually runs.
@@ -742,6 +738,17 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<config.json> --target tsPackage --out <path> (accepted --target/--out values, default --dry-run, writes via the injected builder)",
         args: ["config.json", "--target", "tsPackage", "--out", "customOutDir"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        // Wins the default-(omitted)-value lookup for --out: no "--out" token at all, so BuildCommand resolves
+        // it itself (a "tsPackage"-named sibling of "config.json"'s own dirname, "." -- see
+        // BuildCommand.resolveDestination()), observed at the same injected ArtifactBuilder's destinationPath.
+        command: "build",
+        kind: "valid",
+        label: "<config.json> --target tsPackage (default --out, writes via the injected builder)",
+        args: ["config.json", "--target", "tsPackage"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2344,7 +2351,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["config.json", "--target", "tsPackage", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a path. Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
+        expectedError: "--out requires a path. Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
     },
 
     // --- certification: missing-value cases ---

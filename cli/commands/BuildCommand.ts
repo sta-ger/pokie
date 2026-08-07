@@ -13,6 +13,7 @@ import {
     resolveReelStripGeneration,
 } from "pokie";
 import {Command} from "commander";
+import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
@@ -21,12 +22,16 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 // (before a project is even resolved) rather than surfacing as a later, less specific registry error.
 const TARGET_TYPES: readonly ArtifactTargetType[] = ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"];
 
-const USAGE = "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]";
+const USAGE = "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
     "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
     "other target republishes an already-built artifact of its own type to a new location.";
+// parWorkbook is the one target whose artifact is a single file rather than a directory (see
+// assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
+// file extension, every other target's default is just a bare directory name.
+const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 
 type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean};
 
@@ -110,7 +115,7 @@ export class BuildCommand implements CliCommandHandling {
                     return value as ArtifactTargetType;
                 },
             )
-            .option("--out <path>", "where to write the built artifact")
+            .option("--out <path>", "where to write the built artifact (default: a <target>-named sibling of <project>)")
             .option("--dry-run", "validate and preview without writing anything")
             .action(async (projectPath: string, excess: string[], options: BuildOptions) => {
                 // An empty-string positional ("pokie build ''") is present as far as Commander's own
@@ -124,15 +129,13 @@ export class BuildCommand implements CliCommandHandling {
     }
 
     private async execute(projectPath: string, options: BuildOptions): Promise<number> {
-        // --target/--out are checked before ever resolving `projectPath` -- both are pure argv-shape problems
-        // (like a missing positional or an unknown option), so reporting them never needs the filesystem I/O
-        // resolving a project requires, the same "invalid argv is always side-effect-free" contract every other
-        // CLI_CONTRACT_CASES "invalid" case already relies on.
+        // --target is checked before ever resolving `projectPath` -- a pure argv-shape problem (like a
+        // missing positional or an unknown option), so reporting it never needs the filesystem I/O resolving
+        // a project requires, the same "invalid argv is always side-effect-free" contract every other
+        // CLI_CONTRACT_CASES "invalid" case already relies on. --out has no such shortcut: omitting it is
+        // valid argv (see resolveDestination below), so it's never checked here at all.
         if (options.target === undefined) {
             throw new Error(`--target is required. ${TARGET_HINT}\n\n${USAGE}`);
-        }
-        if (options.out === undefined) {
-            throw new Error(`--out is required. ${USAGE}`);
         }
 
         const project = await this.resolveProject.resolve(projectPath);
@@ -149,11 +152,26 @@ export class BuildCommand implements CliCommandHandling {
             );
         }
 
+        const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
+
         if (options.target === "tsPackage" && project.type === "blueprint") {
-            return this.buildTsPackageFromBlueprint(project, options.out, options.dryRun ?? false);
+            return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false);
         }
 
-        return this.buildArtifact(options.target, project, options.out, options.dryRun ?? false);
+        return this.buildArtifact(options.target, project, out, options.dryRun ?? false);
+    }
+
+    // The default --out when it's omitted: a `target`-named sibling of the resolved project's own rootPath --
+    // e.g. building "tsPackage" from "./blueprints/sample-slot.blueprint.json" defaults to
+    // "./blueprints/tsPackage". Deterministic (same project + target always resolves to the same path) and
+    // target-appropriate (the name itself says what got built there) without needing to load/inspect the
+    // project's own contents (a blueprint's manifest.id, an outcome-library bundle's manifest, ...) just to
+    // name a directory. Never collides with `rootPath` itself: a sibling name always differs from the resolved
+    // project's own basename, so the existing conflict protections (assertArtifactDestinationAvailable) are
+    // the only thing standing between this default and an existing, unrelated file/directory of the same name.
+    private resolveDestination(rootPath: string, target: ArtifactTargetType): string {
+        const siblingName = target === "parWorkbook" ? `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}` : target;
+        return path.join(path.dirname(rootPath), siblingName);
     }
 
     // The rich, well-known "pokie build" path: a GameBlueprint source built into a runnable tsPackage. Kept as
@@ -197,7 +215,7 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         if (dryRun) {
-            this.printDryRunSummary(blueprint as GameBlueprint, project.rootPath);
+            this.printDryRunSummary(blueprint as GameBlueprint, project.rootPath, out);
             return 0;
         }
 
@@ -248,8 +266,10 @@ export class BuildCommand implements CliCommandHandling {
 
     // Previews what "pokie build" would generate without touching the filesystem: same validation, same
     // blueprintHash computation (buildGameBuildInfo is a pure function -- no file I/O), just no
-    // ArtifactBuilderRegistry.build() call, so there's no destination directory to reason about at all.
-    private printDryRunSummary(blueprint: GameBlueprint, sourcePath: string): void {
+    // ArtifactBuilderRegistry.build() call. `destination` is still the exact --out (explicit or resolved
+    // default) a real build would use -- printed here so a dry run previews the same resolved destination a
+    // real build would write to, even though nothing is created at it.
+    private printDryRunSummary(blueprint: GameBlueprint, sourcePath: string, destination: string): void {
         const buildInfo = buildGameBuildInfo(blueprint, this.pokieVersion, sourcePath);
         const paylines = blueprint.paylines ? String(blueprint.paylines.length) : "default (one horizontal line per row)";
         const bets = blueprint.availableBets ? blueprint.availableBets.join(", ") : "default";
@@ -263,5 +283,6 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  bets             ${bets}`);
         console.log(`  blueprint hash   ${buildInfo.blueprintHash}`);
         console.log(`  would generate   ${buildInfo.files!.join(", ")}`);
+        console.log(`  destination      ${destination}`);
     }
 }
