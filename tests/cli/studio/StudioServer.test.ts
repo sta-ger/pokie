@@ -10,6 +10,7 @@ import {
     GamePackageInspectionReport,
     GameSessionHandling,
     loadPokieGame,
+    OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -21,6 +22,8 @@ import {
     RoundArtifactProvenance,
     SimulationReport,
     SimulationReportBuilding,
+    StakeEngineExporter,
+    StakeEngineExportModeInput,
     STUDIO_OPERATION,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
@@ -51,6 +54,7 @@ import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 
@@ -2447,6 +2451,130 @@ describe("StudioServer", () => {
             expect(view.game).toBeNull();
             expect(view.errors[0]?.code).toBe("blueprint-load-failed");
             expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+        });
+    });
+
+    // Regression coverage for P5-POLISH-05: opening a resolved "outcomeLibrary"/"stakeAdapter"
+    // `projectRoot` must never reach GamePackageInspector/PokieGamePackageValidator, which assume a
+    // package.json-bearing directory neither type has -- Inspect/Validate route through
+    // OutcomeSourceProjectAnalyzer's own canonical readers instead (see
+    // inspectOutcomeSourceProject/validateOutcomeSourceProject's own doc comments).
+    describe("GET /api/project/inspect and /api/project/validate for resolved 'outcomeLibrary'/'stakeAdapter' projects (real fixtures on disk)", () => {
+        let libraryStudioRoot: string;
+        let libraryWorkDir: string;
+        let libraryServer: StudioServer | undefined;
+        let libraryInspect: jest.Mock;
+        let libraryValidate: jest.Mock;
+
+        beforeEach(() => {
+            libraryStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-library-inspect-studio-test-"));
+            writeStudioAssets(libraryStudioRoot);
+            libraryWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-library-inspect-work-test-"));
+            libraryInspect = jest.fn();
+            libraryValidate = jest.fn();
+        });
+
+        afterEach(async () => {
+            await libraryServer?.stop();
+            fs.rmSync(libraryStudioRoot, {recursive: true, force: true});
+            fs.rmSync(libraryWorkDir, {recursive: true, force: true});
+        });
+
+        async function startServerForProject(projectRoot: string): Promise<string> {
+            const homeService = new StudioHomeService("1.0.0");
+            libraryServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: libraryStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", libraryStudioRoot, homeService),
+                gamePackageInspector: {inspect: libraryInspect},
+                gamePackageValidator: {validate: libraryValidate},
+                initialContext: {mode: "project", projectRoot},
+            });
+            const address = await libraryServer.start();
+            return `http://${address.host}:${address.port}`;
+        }
+
+        async function buildNativeLibraryDir(): Promise<string> {
+            const bundleDir = path.join(libraryWorkDir, "library");
+            await new OutcomeLibraryBundleWriter("1.0.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+            return bundleDir;
+        }
+
+        async function buildStakeExportDir(): Promise<string> {
+            const stakeDir = path.join(libraryWorkDir, "stake-export");
+            const modes: StakeEngineExportModeInput[] = [
+                {modeName: "base", cost: 1, library: buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1})},
+            ];
+            await new StakeEngineExporter("1.0.0").exportToDirectory(modes, stakeDir);
+            return stakeDir;
+        }
+
+        describe("a resolved native outcome-library bundle", () => {
+            it("inspects it as valid through OutcomeSourceProjectAnalyzer, never probing package.json", async () => {
+                const bundleDir = await buildNativeLibraryDir();
+                const projectBaseUrl = await startServerForProject(bundleDir);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+                expect(status).toBe(200);
+                expect(body).toEqual({packageRoot: bundleDir, valid: true});
+                expect(libraryInspect).not.toHaveBeenCalled();
+            });
+
+            it("validates it with no errors/warnings through OutcomeSourceProjectAnalyzer, never PokieGamePackageValidator", async () => {
+                const bundleDir = await buildNativeLibraryDir();
+                const projectBaseUrl = await startServerForProject(bundleDir);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
+
+                expect(status).toBe(200);
+                expect(body).toEqual({packageRoot: bundleDir, valid: true, game: null, errors: [], warnings: [], suggestions: []});
+                expect(libraryValidate).not.toHaveBeenCalled();
+            });
+
+            it("reports the bundle validator's own structural error (never an ENOTDIR/package.json error) for a bundle missing a mode's own index file", async () => {
+                const bundleDir = await buildNativeLibraryDir();
+                const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, "manifest.json"), "utf-8")) as {modes: Array<{indexFile: string}>};
+                fs.rmSync(path.join(bundleDir, manifest.modes[0].indexFile));
+                const projectBaseUrl = await startServerForProject(bundleDir);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
+
+                expect(status).toBe(200);
+                const view = body as PokieGamePackageValidationReport;
+                expect(view.valid).toBe(false);
+                expect(view.game).toBeNull();
+                expect(view.errors.length).toBeGreaterThan(0);
+                expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+                expect(libraryValidate).not.toHaveBeenCalled();
+            });
+        });
+
+        describe("a resolved Stake Engine export directory", () => {
+            it("inspects it as valid through OutcomeSourceProjectAnalyzer, never probing package.json", async () => {
+                const stakeDir = await buildStakeExportDir();
+                const projectBaseUrl = await startServerForProject(stakeDir);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/inspect`);
+
+                expect(status).toBe(200);
+                expect(body).toEqual({packageRoot: stakeDir, valid: true});
+                expect(libraryInspect).not.toHaveBeenCalled();
+            });
+
+            it("validates it with no errors/warnings through OutcomeSourceProjectAnalyzer, never PokieGamePackageValidator", async () => {
+                const stakeDir = await buildStakeExportDir();
+                const projectBaseUrl = await startServerForProject(stakeDir);
+
+                const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
+
+                expect(status).toBe(200);
+                expect(body).toEqual({packageRoot: stakeDir, valid: true, game: null, errors: [], warnings: [], suggestions: []});
+                expect(libraryValidate).not.toHaveBeenCalled();
+            });
         });
     });
 

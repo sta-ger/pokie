@@ -1,4 +1,4 @@
-import {GamePackageInspecting, loadPokieGame, PokieGamePackageValidating} from "pokie";
+import {GamePackageInspecting, loadPokieGame, OutcomeSourceProjectAnalyzing, PokieGamePackageValidating} from "pokie";
 import type {IncomingMessage} from "http";
 import type {RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";
@@ -82,6 +82,13 @@ export type StudioServerOptions = {
     // Studio never re-implements either.
     gamePackageInspector?: GamePackageInspecting;
     gamePackageValidator?: PokieGamePackageValidating;
+    // Provenance/validation for a resolved "outcomeLibrary"/"stakeAdapter" project (the same two GET
+    // /api/project/inspect|validate endpoints above) -- StudioServer dispatches to this instead of
+    // gamePackageInspector/gamePackageValidator once ProjectTargetResolver resolves `projectRoot` to
+    // either of those types, since neither has a package.json or loadable entry module for those to
+    // read. Defaults to a real OutcomeSourceProjectAnalyzer, same "optional, defaulted around a value
+    // already required above" shape as gamePackageInspector/gamePackageValidator.
+    outcomeSourceProjectAnalyzer?: OutcomeSourceProjectAnalyzing;
     // Runs simulations for the Project Dashboard's Simulation tab (POST/GET/DELETE
     // /api/project/simulations*) — defaults to a StudioSimulationService built around this same
     // `loadGame`, so tests only ever need to configure one loader, not two.

@@ -3,12 +3,14 @@ import {
     GamePackageInspectionReport,
     GamePackageInspector,
     loadPokieGame,
+    OutcomeSourceProjectAnalyzer,
+    OutcomeSourceProjectAnalyzing,
     PokieDevServerAddress,
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
+    PokieProject,
     ProjectTargetResolver,
-    ProjectType,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
@@ -168,6 +170,11 @@ export class StudioServer implements StudioServerHandling {
     private readonly describeProjectLocation: ProjectLocationDescribing;
     private readonly gamePackageInspector: GamePackageInspecting;
     private readonly gamePackageValidator: PokieGamePackageValidating;
+    // Backs inspectOutcomeSourceProject/validateOutcomeSourceProject -- the exact same canonical-reader
+    // dispatch loadProjectDashboardContext's own default already uses for the Project Dashboard's
+    // "outcome-source" state, so Inspect/Validate never re-implement "how to read an outcomeLibrary/
+    // stakeAdapter project" a second time.
+    private readonly outcomeSourceProjectAnalyzer: OutcomeSourceProjectAnalyzing;
     private readonly simulationService: StudioSimulationService;
     private readonly replayService: StudioReplayExecutionService;
     private readonly runtimeManager: StudioRuntimeManager;
@@ -204,6 +211,7 @@ export class StudioServer implements StudioServerHandling {
         this.resolveRuntimePackageRoot = options.resolveRuntimePackageRoot ?? createMaterializingRuntimePackageResolver(this.pokieVersion, STUDIO_OPERATION);
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
+        this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
         this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
         this.runtimeManager =
@@ -1158,28 +1166,28 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }
 
-    // Resolves `projectRoot`'s own ProjectType (see ProjectTargetResolver) so Inspect/Validate below
+    // Resolves `projectRoot`'s own PokieProject (see ProjectTargetResolver) so Inspect/Validate below
     // never assume `projectRoot` is a package directory the way they always used to -- a "blueprint"
     // `projectRoot` is a single JSON file, and probing `<blueprint.json>/package.json` against it
-    // throws ENOTDIR rather than reporting a normal "invalid" result. `undefined` on any resolution
+    // throws ENOTDIR rather than reporting a normal "invalid" result; an "outcomeLibrary"/"stakeAdapter"
+    // `projectRoot` has no package.json or loadable entry module at all. `undefined` on any resolution
     // failure (unrecognized, ambiguous, or a genuine I/O error) so both callers can safely fall back to
     // their existing tsPackage-oriented behavior -- exactly as before this awareness existed -- instead
     // of turning a resolution failure into an Inspect/Validate failure of its own.
-    //
-    // Also treats a `projectRoot` that's a plain file (not a directory) as "blueprint" even when the
-    // resolver itself came back empty -- e.g. a corrupt/malformed blueprint JSON fails
+    private resolveOpenedProject(projectRoot: string): Promise<PokieProject | undefined> {
+        return new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
+    }
+
+    // A `projectRoot` that's a plain file (not a directory) is always treated as "blueprint", even when
+    // resolveOpenedProject() itself came back empty -- e.g. a corrupt/malformed blueprint JSON fails
     // looksLikeGameBlueprintFile's own lightweight recognition (see ProjectTargetResolver's blueprint
     // adapter) and so resolves to `undefined`, not "blueprint". Falling through to the tsPackage-oriented
     // path in that case is exactly the bug this method exists to prevent: package.json-shaped Inspect/
     // Validate assume a directory, and a file `projectRoot` still hits the same ENOTDIR reading
     // `<projectRoot>/package.json`. A file can never legitimately be a package directory regardless of
     // what the resolver made of its contents, so this is a strict widening of "blueprint", not a new type.
-    private async resolveOpenedProjectType(projectRoot: string): Promise<ProjectType | undefined> {
-        const resolvedType = (await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined))?.type;
-        if (resolvedType !== undefined) {
-            return resolvedType;
-        }
-        return this.isFile(projectRoot) ? "blueprint" : undefined;
+    private isOpenedBlueprintProject(projectRoot: string, resolved: PokieProject | undefined): boolean {
+        return resolved !== undefined ? resolved.type === "blueprint" : this.isFile(projectRoot);
     }
 
     private isFile(targetPath: string): boolean {
@@ -1196,8 +1204,13 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         const projectRoot = this.currentContext.projectRoot;
-        if ((await this.resolveOpenedProjectType(projectRoot)) === "blueprint") {
+        const resolved = await this.resolveOpenedProject(projectRoot);
+        if (this.isOpenedBlueprintProject(projectRoot, resolved)) {
             this.sendJson(res, 200, this.inspectBlueprintProject(projectRoot));
+            return;
+        }
+        if (resolved !== undefined && (resolved.type === "outcomeLibrary" || resolved.type === "stakeAdapter")) {
+            this.sendJson(res, 200, await this.inspectOutcomeSourceProject(resolved));
             return;
         }
         this.sendJson(res, 200, this.gamePackageInspector.inspect(projectRoot));
@@ -1209,8 +1222,13 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         const projectRoot = this.currentContext.projectRoot;
-        if ((await this.resolveOpenedProjectType(projectRoot)) === "blueprint") {
+        const resolved = await this.resolveOpenedProject(projectRoot);
+        if (this.isOpenedBlueprintProject(projectRoot, resolved)) {
             this.sendJson(res, 200, this.validateBlueprintProject(projectRoot));
+            return;
+        }
+        if (resolved !== undefined && (resolved.type === "outcomeLibrary" || resolved.type === "stakeAdapter")) {
+            this.sendJson(res, 200, await this.validateOutcomeSourceProject(resolved));
             return;
         }
         this.sendJson(res, 200, await this.gamePackageValidator.validate(projectRoot));
@@ -1256,6 +1274,43 @@ export class StudioServer implements StudioServerHandling {
             packageRoot: projectRoot,
             valid: errors.length === 0,
             game: readBlueprintGameIdentity(loaded.blueprint),
+            errors,
+            warnings,
+            suggestions,
+        };
+    }
+
+    // Inspect's own "outcomeLibrary"/"stakeAdapter" counterpart -- dispatches through
+    // OutcomeSourceProjectAnalyzer to each type's own canonical reader (OutcomeLibraryBundleReading/
+    // StakeEngineOutcomeSourceReading, see that class's own doc comment) instead of GamePackageInspector,
+    // which assumes a package.json-bearing directory neither type has.
+    private async inspectOutcomeSourceProject(project: PokieProject): Promise<GamePackageInspectionReport> {
+        const report = await this.outcomeSourceProjectAnalyzer.analyze(project);
+        const errorIssue = report.issues.find((issue) => issue.severity === "error");
+        if (errorIssue !== undefined) {
+            return {packageRoot: report.rootPath, valid: false, error: errorIssue.message};
+        }
+        return {packageRoot: report.rootPath, valid: true};
+    }
+
+    // Validate's own "outcomeLibrary"/"stakeAdapter" counterpart -- runs the exact same
+    // OutcomeSourceProjectAnalyzer.analyze() call as inspectOutcomeSourceProject above instead of
+    // PokieGamePackageValidator, which requires a loadable entry module neither an outcome-library bundle
+    // nor a Stake Engine export directory has. Shaped as a PokieGamePackageValidationReport so Overview's
+    // existing validation diagnostics render it exactly as they already do for a tsPackage/blueprint
+    // project. "game" is always null: neither canonical reader resolves a game identity of its own (see
+    // OutcomeSourceProjectReport's own doc comment).
+    private async validateOutcomeSourceProject(project: PokieProject): Promise<PokieGamePackageValidationReport> {
+        const report = await this.outcomeSourceProjectAnalyzer.analyze(project);
+        const errors = report.issues.filter((issue) => issue.severity === "error");
+        const warnings = report.issues.filter((issue) => issue.severity !== "error");
+        const suggestions = [
+            ...new Set([...errors, ...warnings].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion))),
+        ];
+        return {
+            packageRoot: report.rootPath,
+            valid: errors.length === 0,
+            game: null,
             errors,
             warnings,
             suggestions,
