@@ -1,9 +1,10 @@
 import {
+    ArtifactBuilder,
+    ArtifactBuilderRegistry,
     computeFairnessCommitment,
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
     GameBlueprint,
-    GamePackageGenerating,
     GenerateExactWeightedOutcomeLibraryOptions,
     GenerateExactWeightedOutcomeLibraryResult,
     HtmlSimulationReportRenderer,
@@ -12,6 +13,8 @@ import {
     OutcomeSpaceEstimate,
     ParallelSimulationRunner,
     PokieGame,
+    PROJECT_TYPE_CAPABILITIES,
+    ProjectResolving,
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
     ReplayDescriptor,
@@ -276,190 +279,106 @@ function reelGenerationObserver(key: string): typeof resolveReelStripGeneration 
 // else (argv parsing, control flow, console output, exit code) is the real, unstubbed command class.
 function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
     const builders: Record<string, (key: string) => CliCommandHandling> = {
-        "build::<config.json> (no --target, no --dry-run — writes via the injected generator using its own default output directory)": (key) =>
+        "build::<config.json> --target tsPackage --out <path> (accepted --target/--out values, default --dry-run, writes via the injected builder)": (
+            key,
+        ) =>
             new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
                 undefined,
-                // Non-dry-run build with no --target: the generator actually runs with outDir === undefined
-                // (String(undefined) === "undefined"), and its being called at all is --dry-run's "false" evidence.
-                stub<GamePackageGenerating>({
-                    generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--target", outDir);
-                        observe(key, "--dry-run", "false");
-                        return {
-                            createdFiles: ["package.json"],
-                            projectRoot: "/fake/build-default-out",
-                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                            buildInfo: {blueprintHash: "hash-default", source: undefined},
-                            unchanged: false,
-                        };
-                    },
+                stub<ProjectResolving>({
+                    resolve: () =>
+                        Promise.resolve({
+                            type: "blueprint",
+                            rootPath: "config.json",
+                            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                            provenance: "test fixture",
+                        }),
                 }),
+                new ArtifactBuilderRegistry(
+                    TEST_VERSION,
+                    new Map([
+                        [
+                            "tsPackage",
+                            stub<ArtifactBuilder>({
+                                target: "tsPackage",
+                                build: (source, destinationPath) => {
+                                    observe(key, "--target", "tsPackage");
+                                    observe(key, "--out", destinationPath);
+                                    observe(key, "--dry-run", "false");
+                                    return Promise.resolve({outputPath: destinationPath});
+                                },
+                            }),
+                        ],
+                    ]),
+                ),
             ),
-        "build::<config.json> --dry-run validates and previews without writing anything (default, no --target)": () =>
+        "build::<config.json> --target tsPackage --out <path> --dry-run (accepted --dry-run value, validates and previews without writing anything)": () =>
             // --dry-run's accepted "true" is derived from the real captured stdout (see
-            // STDOUT_BOOLEAN_MARKER_FLAGS above) -- a real dry-run never reaches generate() at all
-            // (buildFromBlueprint returns before calling it), so the stub below still fails dispatch()
-            // outright if it's ever wrongly invoked, rather than silently recording the wrong value.
+            // STDOUT_BOOLEAN_MARKER_FLAGS above) -- a real dry-run never reaches ArtifactBuilderRegistry.build()
+            // at all (buildTsPackageFromBlueprint returns before calling it), so the throw-stub below still
+            // fails dispatch() outright if it's ever wrongly invoked, rather than silently recording the wrong
+            // value.
             new BuildCommand(
                 TEST_VERSION,
                 () => createStarterGameBlueprint(),
                 undefined,
-                stub<GamePackageGenerating>({
-                    generate: () => {
-                        throw new Error("GamePackageGenerating.generate() must not run during --dry-run.");
-                    },
+                stub<ProjectResolving>({
+                    resolve: () =>
+                        Promise.resolve({
+                            type: "blueprint",
+                            rootPath: "config.json",
+                            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                            provenance: "test fixture",
+                        }),
                 }),
+                new ArtifactBuilderRegistry(
+                    TEST_VERSION,
+                    new Map([
+                        [
+                            "tsPackage",
+                            stub<ArtifactBuilder>({
+                                target: "tsPackage",
+                                build: () => {
+                                    throw new Error("ArtifactBuilder.build() must not run during --dry-run.");
+                                },
+                            }),
+                        ],
+                    ]),
+                ),
             ),
-        "build::<config.json> --target <dir> (accepted --target value, default --dry-run, writes via the injected generator)": (key) =>
-            new BuildCommand(
-                TEST_VERSION,
-                () => createStarterGameBlueprint(),
-                undefined,
-                stub<GamePackageGenerating>({
-                    generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--target", outDir);
-                        observe(key, "--dry-run", "false");
-                        return {
-                            createdFiles: ["package.json"],
-                            projectRoot: "/fake/build-out-dir",
-                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                            buildInfo: {blueprintHash: "hash-out", source: undefined},
-                            unchanged: false,
-                        };
-                    },
-                }),
-            ),
-        "build::random (no flags at all -- default --seed/--target/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)": (key) => {
-            // The one non-dry-run "random" case that also omits --seed/--preset: --target/--dry-run/--seed/--preset
-            // all reach a real seam here (GamePackageGenerating.generate() actually runs, unlike every --dry-run
-            // case above, so --target's default is genuinely observable; the random generator's own generate() always
-            // runs regardless of --dry-run, so --seed/--preset are observable too).
-            const defaultGenerator = new RandomGameBlueprintGenerator();
-            return new BuildCommand(
-                TEST_VERSION,
-                undefined,
-                undefined,
-                stub<GamePackageGenerating>({
-                    generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--target", outDir);
-                        observe(key, "--dry-run", "false");
-                        return {
-                            createdFiles: ["package.json"],
-                            projectRoot: "/fake/random-default-out",
-                            manifest: {id: "random-slot-000", name: "Random Slot 000", version: "0.1.0"},
-                            buildInfo: {blueprintHash: "hash-000", source: undefined},
-                            unchanged: false,
-                        };
-                    },
-                }),
-                {
-                    generate: (input) => {
-                        observe(key, "--seed", input?.seed);
-                        observe(key, "--preset", "default");
-                        return defaultGenerator.generate(input);
-                    },
-                },
-                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
-            );
-        },
-        "build::random --seed <integer> --preset variant --dry-run (accepted --preset value)": (key) => {
-            // --preset variant routes runRandom() to the variantRandomBlueprintGenerator (7th ctor param); wrapping
-            // a real one keeps its output byte-identical while observing --seed/--preset at its own generate() seam.
-            // --dry-run's accepted "true" is derived from the real captured stdout (see
-            // STDOUT_BOOLEAN_MARKER_FLAGS above); this dry-run build never reaches the GamePackageGenerating.generate()
-            // seam at all, so --target's own default evidence comes from a different, non-dry-run "random" case instead
-            // (see the bare "random (...)" case below) -- the throw-stub here still fails dispatch() outright if
-            // generate() is ever wrongly invoked during a dry run.
-            const variantGenerator = new RandomGameBlueprintGenerator(new SlotGameNameGenerator(), new RandomGameBlueprintVariantStrategy());
-            return new BuildCommand(
-                TEST_VERSION,
-                undefined,
-                undefined,
-                stub<GamePackageGenerating>({
-                    generate: () => {
-                        throw new Error("GamePackageGenerating.generate() must not run during a --dry-run random build.");
-                    },
-                }),
-                undefined,
-                undefined,
-                {
-                    generate: (input) => {
-                        observe(key, "--seed", input?.seed);
-                        observe(key, "--preset", "variant");
-                        return variantGenerator.generate(input);
-                    },
-                },
-            );
-        },
-        "build::random --seed <integer> --target <dir> (accepted --target value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)": (key) => {
-            // Non-dry-run random build (preset defaults, so runRandom() uses the randomBlueprintGenerator, 5th ctor
-            // param): observes --target at GamePackageGenerating.generate()'s outDir, --dry-run "false" (generate ran),
-            // and --preset "default" at the random generator's own seam; a real random build with a seed also runs
-            // the post-build smoke simulation, hence the runSmoke stub.
-            const defaultGenerator = new RandomGameBlueprintGenerator();
-            return new BuildCommand(
-                TEST_VERSION,
-                undefined,
-                undefined,
-                stub<GamePackageGenerating>({
-                    generate: (blueprint, cwd, outDir) => {
-                        observe(key, "--target", outDir);
-                        observe(key, "--dry-run", "false");
-                        return {
-                            createdFiles: ["package.json"],
-                            projectRoot: "/fake/random-accepted-out",
-                            manifest: {id: "random-slot-999", name: "Random Slot 999", version: "0.1.0"},
-                            buildInfo: {blueprintHash: "hash-999", source: undefined},
-                            unchanged: false,
-                        };
-                    },
-                }),
-                {
-                    generate: (input) => {
-                        observe(key, "--seed", input?.seed);
-                        observe(key, "--preset", "default");
-                        return defaultGenerator.generate(input);
-                    },
-                },
-                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
-            );
-        },
-        "build::random --target <dir> --dry-run (accepted --target value, default --seed/--preset)": (key) => {
-            // The --seed default (omitted) evidence for random: a dry-run build whose randomBlueprintGenerator (5th
-            // ctor param) runs with seed undefined; dry-run means the GamePackageGenerating seam is never reached.
-            const defaultGenerator = new RandomGameBlueprintGenerator();
-            return new BuildCommand(
-                TEST_VERSION,
-                undefined,
-                undefined,
-                undefined,
-                {
-                    generate: (input) => {
-                        observe(key, "--seed", input?.seed);
-                        observe(key, "--preset", "default");
-                        return defaultGenerator.generate(input);
-                    },
-                },
-            );
-        },
-        "build::random --seed <integer> (default --dry-run/--target/--preset, writes via the injected generator, runs the smoke simulation)": () =>
+        "build::<bundleDir> --target outcomeLibrary --out <path> (republishes an already-built outcomeLibrary bundle via the injected builder)": (
+            key,
+        ) =>
             new BuildCommand(
                 TEST_VERSION,
                 undefined,
                 undefined,
-                stub<GamePackageGenerating>({
-                    generate: () => ({
-                        createdFiles: ["package.json"],
-                        projectRoot: "/fake/random-out",
-                        manifest: {id: "random-slot-777", name: "Random Slot 777", version: "0.1.0"},
-                        buildInfo: {blueprintHash: "hash-777", source: undefined},
-                        unchanged: false,
-                    }),
+                stub<ProjectResolving>({
+                    resolve: () =>
+                        Promise.resolve({
+                            type: "outcomeLibrary",
+                            rootPath: "bundleDir",
+                            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                            provenance: "test fixture",
+                        }),
                 }),
-                undefined,
-                () => Promise.resolve({ok: true, rounds: 200, roundsRequested: 200, rtp: 0.95, hitFrequency: 0.3, maxWin: 10, averageBet: 1}),
+                new ArtifactBuilderRegistry(
+                    TEST_VERSION,
+                    new Map([
+                        [
+                            "outcomeLibrary",
+                            stub<ArtifactBuilder>({
+                                target: "outcomeLibrary",
+                                build: (source, destinationPath) => {
+                                    observe(key, "--target", "outcomeLibrary");
+                                    observe(key, "--out", destinationPath);
+                                    return Promise.resolve({outputPath: destinationPath});
+                                },
+                            }),
+                        ],
+                    ]),
+                ),
             ),
 
         "certification::build <bundleDir> <config.json> (default --out)": (key) =>
@@ -2146,21 +2065,14 @@ describe("CLI defaults (side-effect-free success path)", () => {
         }
     });
 
-    // "random --dry-run" is the one other command-line shape in the whole registry that succeeds
-    // (exit 0) without any filesystem/network/subprocess I/O: the blueprint is generated in memory,
-    // validated, and previewed — see buildFromBlueprint's own "if (dryRun)" branch in
-    // cli/commands/BuildCommand.ts, which returns before GamePackageGenerator.generate() (the command's
-    // one I/O point) is ever called.
-    it('"pokie build random --seed <n> --preset variant --dry-run" succeeds without writing anything', async () => {
+    // "build" with --target omitted is the one other command-line shape in the whole registry that
+    // rejects without any filesystem/network/subprocess I/O even against a project path that doesn't
+    // exist on disk at all: --target/--out are both checked before ArtifactBuilderRegistry ever resolves
+    // the given project (see BuildCommand.execute()'s own comment on why), so this real, unstubbed
+    // command instance never reaches ProjectResolving.resolve() here.
+    it('"pokie build <project>" (no --target) rejects before ever resolving the project', async () => {
         const command = new BuildCommand(TEST_VERSION);
-        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
-        try {
-            const exitCode = await command.run(["random", "--seed", "4242", "--preset", "variant", "--dry-run"]);
-            expect(exitCode).toBe(0);
-            expect(logSpy.mock.calls.some((call) => String(call[0]).includes("Generated random game"))).toBe(true);
-        } finally {
-            logSpy.mockRestore();
-        }
+        await expect(command.run(["/definitely/does/not/exist.json"])).rejects.toThrow(/--target is required/);
     });
 });
 

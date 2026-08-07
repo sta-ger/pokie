@@ -31,9 +31,9 @@ export type PackageOnlyCommandInput = {
 // coverage of that full set is asserted by tests/cli/packageOnlyCommandInputs.contract.test.ts, so this
 // list can't silently drift out of sync with a future command/verb addition, rename, or removal.
 export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
-    // --- build: writes a package from a blueprint/config; never reads an existing package. ---
-    {command: "build", verb: undefined, requiresLoadablePackage: false, primaryInput: "config.json (a GameBlueprint)"},
-    {command: "build", verb: "random", requiresLoadablePackage: false, primaryInput: "none (generates its own random blueprint)"},
+    // --- build: builds/republishes an artifact from a resolved POKIE project; never reads an existing package
+    // as its own input (a "tsPackage" target only ever writes one, never reads one back). ---
+    {command: "build", verb: undefined, requiresLoadablePackage: false, primaryInput: "project (a GameBlueprint source, or an already-built tsPackage/outcomeLibrary/stakeAdapter/parWorkbook artifact)"},
 
     // --- certification: reads a previously-built outcome-library bundle / evidence bundle, never a package. ---
     {command: "certification", verb: "build", requiresLoadablePackage: false, primaryInput: "bundleDir (an Outcome Library Bundle) + config.json"},

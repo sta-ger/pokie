@@ -1,5 +1,11 @@
+import type {ArtifactBuilder} from "./ArtifactBuilder.js";
+import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
+import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
+import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
+import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
+import type {PokieProject} from "./PokieProject.js";
 import {
     BUILD_OPERATION,
     OPERATION_REQUIRED_CAPABILITY,
@@ -11,6 +17,8 @@ import {
 } from "./PokieOperation.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import type {ProjectType} from "./ProjectType.js";
+import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
+import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -66,30 +74,48 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
 
     return {
         target,
+        operation,
         requiredSourceCapability,
         supportedSources,
         unsupportedNotes: UNSUPPORTED_NOTES[target],
     };
 }
 
+// Every target with a real, atomic builder today -- "wasm" is deliberately absent (see UNSUPPORTED_NOTES.wasm
+// above and ArtifactBuilderRegistry.test.ts's own "truthfully reports wasm as buildable from no source type
+// today"): no ProjectType grants WASM_EXPORT_CAPABILITY, so there is nothing a "wasm" builder could ever be
+// invoked against, and none is registered.
+function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetType, ArtifactBuilder> {
+    return new Map<ArtifactTargetType, ArtifactBuilder>([
+        ["tsPackage", new TsPackageArtifactBuilder(pokieVersion)],
+        ["outcomeLibrary", new OutcomeLibraryArtifactBuilder(pokieVersion)],
+        ["stakeAdapter", new StakeAdapterArtifactBuilder(pokieVersion)],
+        ["parWorkbook", new ParWorkbookArtifactBuilder(pokieVersion)],
+    ]);
+}
+
 // The single place a caller asks "what does building <target> require, and from which source types is that
-// supported today" -- one descriptor per ArtifactTargetType (see ArtifactBuildTargetDescriptor), computed once
-// from the same OPERATION_REQUIRED_CAPABILITY/PROJECT_TYPE_CAPABILITIES contracts
-// describeUnsupportedProjectOperation already reads, never a second, independently-authored requirement.
-// Deliberately description-only today, same as ProjectMaterializing was contract-only in P3-POLISH-02: this
-// registry answers "can I build this, and from what" without invoking any builder or touching a filesystem --
-// wiring a concrete ArtifactBuilder per target to POKIE's own already-atomic writers (GamePackageGenerator,
-// OutcomeLibraryBundleWriter, StakeEngineExporter/StakeEngineBundleStreamingExporter, ParSheetExporter) is
-// exactly the "replacing build semantics" work this registry exists BEFORE.
+// supported today" (describe/listTargets/supportsConversionFrom -- computed once from the same
+// OPERATION_REQUIRED_CAPABILITY/PROJECT_TYPE_CAPABILITIES contracts describeUnsupportedProjectOperation already
+// reads, never a second, independently-authored requirement), AND the single place that actually executes a
+// build: build() re-checks the same capability describe() reports, then hands off to the concrete
+// ArtifactBuilder already wired to POKIE's own already-atomic per-target writers (GamePackageGenerator,
+// OutcomeLibraryBundleWriter, StakeEngineImporter/StakeEngineExporter, ParSheetImporter/ParSheetExporter) --
+// see each builder's own doc comment for exactly what it reads/writes. Every builder here is deliberately a
+// same-type republish (blueprint->tsPackage is the one true "build from a different source" conversion; every
+// other target only republishes an already-built artifact of its own type, per this registry's own tested
+// supportedSources) -- see UNSUPPORTED_NOTES for what each target's build explicitly does NOT promise.
 export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
+    private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
 
-    constructor() {
+    constructor(pokieVersion = "0.0.0", builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder> = buildDefaultBuilders(pokieVersion)) {
         const descriptors = new Map<ArtifactTargetType, ArtifactBuildTargetDescriptor>();
         for (const target of Object.keys(TARGET_OPERATION) as ArtifactTargetType[]) {
             descriptors.set(target, buildDescriptor(target));
         }
         this.descriptors = descriptors;
+        this.builders = builders;
     }
 
     public listTargets(): readonly ArtifactTargetType[] {
@@ -109,5 +135,28 @@ export class ArtifactBuilderRegistry {
     // building toward a specific artifact doesn't need to know which PokieOperation id backs it.
     public supportsConversionFrom(target: ArtifactTargetType, source: ProjectType): boolean {
         return this.describe(target).supportedSources.includes(source);
+    }
+
+    // Executes a real build: re-validates `source` against `target`'s own required capability (the exact
+    // capability diagnostic describe()/supportsConversionFrom() already report, checked again here so build()
+    // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
+    // registered ArtifactBuilder. Throws (never silently no-ops) when `target` has no registered builder today
+    // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
+    // is never a second, differently-worded "not supported" statement.
+    public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+        const descriptor = this.describe(target);
+        const diagnostic = describeUnsupportedProjectOperation(source, descriptor.operation);
+        if (diagnostic !== undefined) {
+            return Promise.reject(new Error(diagnostic.message));
+        }
+
+        const builder = this.builders.get(target);
+        if (builder === undefined) {
+            return Promise.reject(
+                new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`),
+            );
+        }
+
+        return builder.build(source, destinationPath);
     }
 }

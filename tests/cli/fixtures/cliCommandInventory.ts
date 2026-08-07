@@ -92,29 +92,19 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "build",
         description:
-            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable) " +
-            '(for a ready-to-run package instead, see "pokie init"). "random"/--random generates a first-class ' +
-            "random game instead (--seed to reproduce it, --preset default|variant to pick the generation " +
-            "strategy). --dry-run validates and previews without writing anything.",
+            'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- a ' +
+            "tsPackage from a GameBlueprint source, or atomically republish an already-built outcomeLibrary/" +
+            'stakeAdapter/parWorkbook artifact to a new location (for a first random game instead, see "pokie ' +
+            'create --random"). --dry-run validates and previews without writing anything.',
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie build <config.json> [--target <dir>] [--dry-run]",
-                positionals: ["config.json"],
+                usage: "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
+                positionals: ["project"],
                 options: [
-                    {flag: "--target", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "customOutDir"},
+                    {flag: "--target", required: true, kind: "validated", acceptedValue: "tsPackage"},
+                    {flag: "--out", required: true, kind: "unvalidated", acceptedValue: "customOutDir"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
-                ],
-            },
-            {
-                verb: "random",
-                usage: "Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
-                positionals: [],
-                options: [
-                    {flag: "--seed", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "4242"},
-                    {flag: "--target", required: false, kind: "unvalidated", defaultValue: "undefined", acceptedValue: "random-accepted-out-dir"},
-                    {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
-                    {flag: "--preset", required: false, kind: "validated", defaultValue: "default", acceptedValue: "variant"},
                 ],
             },
         ],
@@ -706,107 +696,71 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "build",
         kind: "invalid",
-        label: "missing <config.json> (an empty-string positional, since a truly empty argv launches the wizard instead)",
+        label: "missing <project> (an empty-string positional)",
         args: [""],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie build <config.json> [--target <dir>] [--dry-run]\n" +
-            "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.",
+            "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]\n" +
+            "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
+            "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
+            "other target republishes an already-built artifact of its own type to a new location.",
     },
     {
-        // Placed before the --dry-run case so it is the case groupCasesByVerb().valid.find() picks as the
-        // default (omitted) evidence for both --target and --dry-run: a non-dry-run build with no --target, whose
-        // injected generator therefore actually runs with outDir === undefined (String(undefined) === "undefined")
-        // and whose being-called-at-all is --dry-run's own "false" evidence.
+        // --target/--out are both checked (and throw) before "config.json" is ever resolved -- see
+        // BuildCommand.execute()'s own comment on why -- so this case never touches the filesystem, same as
+        // every other "invalid" case here.
         command: "build",
-        kind: "valid",
-        label: "<config.json> (no --target, no --dry-run — writes via the injected generator using its own default output directory)",
+        kind: "invalid",
+        label: "--target is required",
         args: ["config.json"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-    {
-        command: "build",
-        kind: "valid",
-        label: "<config.json> --dry-run validates and previews without writing anything (default, no --target)",
-        args: ["config.json", "--dry-run"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-    {
-        command: "build",
-        kind: "valid",
-        label: "<config.json> --target <dir> (accepted --target value, default --dry-run, writes via the injected generator)",
-        args: ["config.json", "--target", "customOutDir"],
-        expectedExitCode: 0,
-        expectStdout: "text",
+        expectedExitCode: 1,
+        expectedError:
+            "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.\n\n" +
+            "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
     },
     {
         command: "build",
         kind: "invalid",
-        label: "random --seed must be an integer",
-        args: ["random", "--seed", "notanumber"],
+        label: "--target rejects an unknown value",
+        args: ["config.json", "--target", "bogus"],
         expectedExitCode: 1,
-        expectedError:
-            "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
+        expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.',
     },
     {
         command: "build",
         kind: "invalid",
-        label: "random --preset must be default|variant",
-        args: ["random", "--seed", "1", "--preset", "bogus"],
+        label: "--out is required",
+        args: ["config.json", "--target", "tsPackage"],
         expectedExitCode: 1,
-        expectedError:
-            "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
+        expectedError: "--out is required. Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
     },
     {
-        // Placed before every other "random" case so it wins the default (omitted) evidence for --target,
-        // --seed, and --preset all at once: it's a genuine non-dry-run random build (--dry-run's own default
-        // evidence is read from stdout, see STDOUT_BOOLEAN_MARKER_FLAGS, so it doesn't need this case's help),
-        // so GamePackageGenerating.generate() actually runs with outDir undefined, unlike every other case here
-        // that omits --target but is also a --dry-run build (where generate() never runs at all, so --target's value
-        // can't be observed).
+        // Placed before every other valid case so it wins the accepted-value lookup for --target ("tsPackage")
+        // and --out ("customOutDir") at once: a genuine non-dry-run tsPackage build, whose injected
+        // ArtifactBuilderRegistry (via a fake "tsPackage" ArtifactBuilder) therefore actually runs.
         command: "build",
         kind: "valid",
-        label: "random (no flags at all -- default --seed/--target/--dry-run/--preset, writes via the injected generator, runs the smoke simulation)",
-        args: ["random"],
+        label: "<config.json> --target tsPackage --out <path> (accepted --target/--out values, default --dry-run, writes via the injected builder)",
+        args: ["config.json", "--target", "tsPackage", "--out", "customOutDir"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
     {
         command: "build",
         kind: "valid",
-        label: "random --seed <integer> --preset variant --dry-run (accepted --preset value)",
-        args: ["random", "--seed", "4242", "--preset", "variant", "--dry-run"],
+        label: "<config.json> --target tsPackage --out <path> --dry-run (accepted --dry-run value, validates and previews without writing anything)",
+        args: ["config.json", "--target", "tsPackage", "--out", "customOutDir", "--dry-run"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
     {
-        // Placed before the "random --target <dir> --dry-run" case so it wins the accepted-value lookup for random's
-        // --target (that dry-run case never calls GamePackageGenerating.generate, so --target's value cannot be observed
-        // there) and is also the default (omitted) evidence for random's --dry-run (a non-dry-run random build
-        // whose generator actually runs; it also runs the post-build smoke simulation, which every random build
-        // does when a seed is present).
+        // Exercises the other, generic "republish an already-built artifact" path (every target besides
+        // tsPackage), not just tsPackage -- a resolved "outcomeLibrary" project built to a fresh "outcomeLibrary"
+        // destination via the injected ArtifactBuilderRegistry's own "outcomeLibrary" fake builder.
         command: "build",
         kind: "valid",
-        label: "random --seed <integer> --target <dir> (accepted --target value while --dry-run defaults to false, writes via the injected generator, runs the smoke simulation)",
-        args: ["random", "--seed", "999", "--target", "random-accepted-out-dir"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-    {
-        command: "build",
-        kind: "valid",
-        label: "random --target <dir> --dry-run (accepted --target value, default --seed/--preset)",
-        args: ["random", "--target", "random-out-dir", "--dry-run"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-    {
-        command: "build",
-        kind: "valid",
-        label: "random --seed <integer> (default --dry-run/--target/--preset, writes via the injected generator, runs the smoke simulation)",
-        args: ["random", "--seed", "777"],
+        label: "<bundleDir> --target outcomeLibrary --out <path> (republishes an already-built outcomeLibrary bundle via the injected builder)",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--out", "customBundleOut"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2382,31 +2336,15 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target given with no value",
         args: ["config.json", "--target"],
         expectedExitCode: 1,
-        expectedError: "--target requires a directory path. Usage: pokie build <config.json> [--target <dir>] [--dry-run]",
+        expectedError: "--target requires a value. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.",
     },
     {
         command: "build",
         kind: "invalid",
-        label: "random --seed given with no value",
-        args: ["random", "--seed"],
+        label: "--out given with no value",
+        args: ["config.json", "--target", "tsPackage", "--out"],
         expectedExitCode: 1,
-        expectedError: "--seed requires an integer value. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
-    },
-    {
-        command: "build",
-        kind: "invalid",
-        label: "random --target given with no value",
-        args: ["random", "--target"],
-        expectedExitCode: 1,
-        expectedError: "--target requires a directory path. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
-    },
-    {
-        command: "build",
-        kind: "invalid",
-        label: "random --preset given with no value",
-        args: ["random", "--preset"],
-        expectedExitCode: 1,
-        expectedError: "--preset must be one of: default, variant. Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]",
+        expectedError: "--out requires a path. Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]",
     },
 
     // --- certification: missing-value cases ---

@@ -27,8 +27,8 @@ non-zero.
 
 Designs a **Blueprint Project** — a standalone `GameBlueprint` JSON file (reels, symbols, paytable, reel
 weighting) — through an interactive wizard, rather than a ready-to-run package. Reach for this when you want that
-Blueprint file on its own: to build it with [`pokie build <file> --target <dir>`](#pokie-build-configjson), or to
-feed it into another tool (PAR sheet import/export, reel strip generation, a build pipeline of your own). To get a
+Blueprint file on its own: to build it with [`pokie build <file> --target tsPackage --out <dir>`](#pokie-build-project),
+or to feed it into another tool (PAR sheet import/export, reel strip generation, a build pipeline of your own). To get a
 ready-to-run package directly instead — the recommended way to start a new game — use
 [`pokie init`](#pokie-init-directory) below.
 
@@ -60,8 +60,8 @@ Save this blueprint? [Y/n]: y
 Game blueprint "Sample Slot" (id: "sample-slot") created at "./sample-slot.blueprint.json".
 
 Build it:
-  pokie build ./sample-slot.blueprint.json --dry-run
-  pokie build ./sample-slot.blueprint.json --target <dir>
+  pokie build ./sample-slot.blueprint.json --target tsPackage --out <dir> --dry-run
+  pokie build ./sample-slot.blueprint.json --target tsPackage --out <dir>
 ```
 
 Declining that confirmation, cancelling (**Ctrl+C**), or closing the input stream (**EOF**) at any point — including
@@ -101,7 +101,7 @@ defaults the name to the suggestion's `title` (e.g. `Blazing Riches`); typing a 
 title-casing that typed id, the same as before this generator integration existed.
 
 The wizard assembles a plain `GameBlueprint` object — the same shape a `<config.json>` file has — and hands it to
-`GameBlueprintValidator`, so everything in [`pokie build`](#pokie-build-configjson)'s own section (the field
+`GameBlueprintValidator`, so everything in [`pokie build`](#pokie-build-project)'s own section (the field
 format, validation rules) applies identically; the wizard has no *generation* logic of its own. It does do light,
 per-prompt input-shape checks (a number is a number, a symbol id isn't blank, ...), and a handful of these
 deliberately mirror `GameBlueprintValidator`'s own error-level rules — specifically the ones cheap to check
@@ -163,15 +163,16 @@ Options:
 
 ### `pokie create [name] --random`
 
-Writes a random, always-valid `GameBlueprint` (see [Random generation
-(`pokie build random`)](#random-generation-pokie-build-random) below — same generator, same guarantees) to a
-Blueprint Project file, rather than building a package — same as the plain `pokie create` path above, just with
-randomly generated content. Its reel weighting is always expressed as valid **per-reel generation**: an
-independent, reproducible `reelStripGeneration` entry per reel, inspectable straight off the written file. For
-`--preset default`, `DefaultRandomGameBlueprintStrategy` already generates its reel weighting this way by itself;
-for `--preset variant`, when `RandomGameBlueprintVariantStrategy` instead picks a flat `symbolWeights` map, `pokie
-create` converts it into the same per-reel shape (targeting the same symbol:weight ratio) before writing — a
-blueprint that already carries its own literal `reelStrips`/`reelStripGeneration` is left untouched.
+Writes a random, always-valid `GameBlueprint` to a Blueprint Project file, rather than building a package — same as
+the plain `pokie create` path above, just with randomly generated content. This is POKIE's one entry point for
+first-class random game generation — there is no `pokie build random`/`--random`; building the written file into a
+real package is a separate, explicit second step (see below). Its reel weighting is always expressed as valid
+**per-reel generation**: an independent, reproducible `reelStripGeneration` entry per reel, inspectable straight
+off the written file. For `--preset default`, `DefaultRandomGameBlueprintStrategy` already generates its reel
+weighting this way by itself; for `--preset variant`, when `RandomGameBlueprintVariantStrategy` instead picks a
+flat `symbolWeights` map, `pokie create` converts it into the same per-reel shape (targeting the same symbol:weight
+ratio) before writing — a blueprint that already carries its own literal `reelStrips`/`reelStripGeneration` is left
+untouched.
 
 ```
 pokie create --random                          # name and file path picked for you
@@ -181,112 +182,34 @@ pokie create --random --seed 42 --preset variant # same seed, richer strategy --
 pokie create --random --out my-game.blueprint.json # write to a specific path instead
 ```
 
-`<name>`, when given, is used verbatim as the manifest name (and, via the default output path, the written
-filename); omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
-validation error exits non-zero with a printed explanation instead of writing anything — but, unlike `pokie build
-random`, nothing is ever built or smoke-simulated: `pokie create --random` only ever writes the blueprint file. Feed
-the result into `pokie build <file> --target <dir>` for a real, playable package.
-
-## `pokie build [config.json]`
-
-Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
-paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
-file set `pokie init` does (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`,
-`dist/index.js`) — `dist/index.js` is written directly rather than requiring a real `npm install`/`npm run build`
-first: it's immediately loadable by every other command below, with `src/index.ts` there so a real `npm run build`
-(if you ever run one) still reproduces an equivalent `dist/index.js`. (`pokie create`, unlike `pokie build`/`pokie
-init`, never writes a package at all — see [`pokie create [name]`](#pokie-create-name) above.)
-
-There are two ways to provide the blueprint:
-
-- **config-driven** — `pokie build <config.json>` reads it from a JSON file (this section);
-- **random** — `pokie build random` generates an always-valid `GameBlueprint` on the fly (no file) and builds it
-  immediately (see [Random generation](#random-generation-pokie-build-random) below).
-
-To design the `GameBlueprint` first instead of building directly, use [`pokie create [name]`](#pokie-create-name)
-to write a Blueprint Project file, then feed it into `pokie build <file> --target <dir>` above. (For a ready-to-run
-package directly instead, see [`pokie init [directory]`](#pokie-init-directory) below.)
-
-Both produce the exact same `GameBlueprint` shape, go through the exact same validation
-([`GameBlueprintValidator`](#validation)) and generation ([`GamePackageGenerator`](#pokie-build-configjson)), and
-the resulting package supports the exact same
-[`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev).
-
-```
-pokie build examples/blueprints/sample-slot.blueprint.json
-cd sample-slot
-npm install
-```
-
-`pokie build <config.json>` validates the blueprint first (see below) and, if it has no errors, creates
-`./<manifest.id>` (or `--target <dir>`) — which must not already exist, or must be empty (see [Building into an
-existing `--target` directory](#building-into-an-existing---target-directory) below) — and writes:
-
-- `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
-  omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
-  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
-  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
-- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie init` writes (`tsconfig.json`
-  via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically in a built package;
-- `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
-  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
-  serve`/`dev` workflow below;
-- `src/index.ts`/`dist/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig`
-  with the given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a
-  `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
-  the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
-  exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
-  hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
-  byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
-  immediately loadable with no `npm install`/`npm run build` step; `src/index.ts` is typed (`GameBlueprint`
-  imported from `pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
-
-The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
-build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,
-or is constrained by, whatever produced it originally; see
-[Building into an existing `--target` directory](#building-into-an-existing---target-directory) below.
-
-After generation, `pokie build` prints a build summary to stdout: the files it wrote, package root,
-game id/name/version, blueprint hash, and source path (when known) — all computed purely for this printout, never
-persisted into the package itself.
-
-Options:
-
-- `--target <dir>` — write the package to `<dir>` instead of `./<manifest.id>`.
-- `--dry-run` — validate the blueprint and print a preview (game id/name/version, reels x rows, symbol count,
-  payline count, bets, blueprint hash, and the files a real build would generate) without creating or touching
-  the `--target` directory at all. Exit code follows the same rule as a normal build: non-zero if the blueprint has
-  errors, `0` if it's valid (warnings included).
-
-### Random generation (`pokie build random`)
-
-For a game with no config to write and no wizard prompts to answer at all:
-
-```
-pokie build random
-```
-
 ```
 Generated random game "Blazing Riches" (id: "blazing-riches") from seed 1845220913.
-Reproduce this exact game with: pokie build random --seed 1845220913 --preset default
+Reproduce this exact game with: pokie create --random --seed 1845220913 --preset default
 Provenance: generator 1.1.0, strategy "default-line-pay".
-Build summary:
-  ...
-Running a short smoke simulation...
-Smoke simulation OK: 200 rounds, RTP 96.14%, hit frequency 31.00%.
+  created  ./blazing-riches.blueprint.json
 
-Game package "Blazing Riches" (id: "blazing-riches") built in ".../blazing-riches".
+Game blueprint "Blazing Riches" (id: "blazing-riches") created at "./blazing-riches.blueprint.json".
+
+Build it:
+  pokie build ./blazing-riches.blueprint.json --target tsPackage --out <dir> --dry-run
+  pokie build ./blazing-riches.blueprint.json --target tsPackage --out <dir>
 ```
+
+`<name>`, when given, is used verbatim as the manifest name (and, via the default output path, the written
+filename); omitted, a generated name/id is used for both instead. The blueprint is validated before writing — a
+validation error exits non-zero with a printed explanation instead of writing anything — but nothing is ever built
+or smoke-simulated here: `pokie create --random` only ever writes the blueprint file. Feed the result into
+[`pokie build <file> --target tsPackage --out <dir>`](#pokie-build-project) for a real, playable package.
 
 > **No target-RTP promise.** `RandomGameBlueprintGenerator`'s math is *structurally* valid — every blueprint it
 > produces is guaranteed to pass [`GameBlueprintValidator`](#validation) with zero errors and zero warnings, by
 > construction — but it is not production-tuned math: it makes no promise about what RTP, volatility, or win-size
 > distribution a specific generated game will settle at. Run a real [`pokie sim`](#pokie-sim-packageroot) (thousands
-> of rounds, not the 200-round smoke check below) before treating a randomly generated game as anything more than a
-> structurally sound starting point.
+> of rounds) on the built package before treating a randomly generated game as anything more than a structurally
+> sound starting point.
 
-`random` (or the equivalent `--random` flag — `pokie build --random` behaves identically) generates a complete
-`GameBlueprint` in memory using two public, standalone services also available programmatically:
+`--random` generates a complete `GameBlueprint` in memory using two public, standalone services also available
+programmatically:
 
 - [`SlotGameNameGenerator`](#slotgamenamegenerator--randomgameblueprintgenerator) — picks a themed name (e.g.
   `title: "Blazing Riches"`) from small curated word lists, projected as a `title`/`slug`/`packageName` triple;
@@ -294,11 +217,8 @@ Game package "Blazing Riches" (id: "blazing-riches") built in ".../blazing-riche
   rows (3-4), 5-8 symbols, a paytable, and reel weights, using `SlotGameNameGenerator` for the manifest, and one
   of two `RandomGameBlueprintStrategy` implementations (see `--preset` below) for the mechanic-bearing fields.
 
-Both take an optional integer `seed`: the same seed (and, for the blueprint, the same `--preset`) always produces
-the exact same name/blueprint. No file is ever written for the blueprint itself; it goes straight into the same
-validate → generate pipeline `pokie build <config.json>` uses.
-
-Options (`--target`/`--dry-run` behave exactly as for a config-driven build):
+Both take an optional integer `seed`: the same seed (and the same `--preset`) always produces the exact same
+name/blueprint. Options:
 
 - `--seed <integer>` — reproduce a specific earlier random game. Omit it to mint a fresh one — the seed actually
   used is always echoed back on the first line, together with the exact command to reproduce it.
@@ -306,48 +226,21 @@ Options (`--target`/`--dry-run` behave exactly as for a config-driven build):
   to `default`:
   - `default` (`DefaultRandomGameBlueprintStrategy`, `provenance.strategy` `"default-line-pay"`) — the minimal
     line-pay shape (reels/rows/symbols/paytable/`reelStripGeneration`, default paylines, no
-    wilds/scatters/`winModel`) — its reel weighting is always inspectable, already-per-reel-generated content, not a
-    flat `symbolWeights` map;
+    wilds/scatters/`winModel`) — its reel weighting is always inspectable, already-per-reel-generated content, not
+    a flat `symbolWeights` map;
   - `variant` (`RandomGameBlueprintVariantStrategy`, `provenance.strategy` `"random-variant"`) — a richer shape
     drawn from the same guaranteed-valid space: custom paylines, "ways"/"clusters" `winModel`, and literal
     `reelStrips` in place of `symbolWeights`, picked per build (never combining `paylines` with a `winModel`, since
     `GameBlueprintValidator` warns on that combination).
   Same seed *and* same `--preset` always reproduces the same blueprint — switching `--preset` with the same seed
   produces a different game, since it selects an entirely different strategy.
-- `--target <dir>` — same as [`pokie build <config.json> --target <dir>`](#pokie-build-configjson): write to `<dir>`
-  instead of `./<manifest.id>`.
-- `--dry-run` — validate and preview only; skips both the real build and the smoke simulation below.
 
 The line right after the reproduce-command hint — `Provenance: generator <generatorVersion>, strategy
 "<strategy>".` — echoes `RandomGameBlueprintResult.provenance` (also available programmatically, see below):
 `generatorVersion` identifies `RandomGameBlueprintGenerator`'s own algorithm version (bumped only when a change
 would make the same seed produce a different blueprint) and `strategy` identifies which `RandomGameBlueprintStrategy`
 actually built the mechanics (`"default-line-pay"` or `"random-variant"`) — together with the seed, enough to know
-*exactly* what produced a given generated package without re-deriving it from the blueprint's own content. The
-build summary's `blueprint hash` line (shared with every other `pokie build` path) is the complementary piece: a
-`sha256` digest of the blueprint's exact content, for detecting whether a rebuild actually changed anything.
-
-Unlike a config-driven build, a successful (non-`--dry-run`) random build doesn't stop at validation: it
-also runs a short (200-round) in-process simulation against the freshly built package — the same
-`ParallelSimulationRunner` [`pokie sim`](#pokie-sim-packageroot) itself uses — as a sanity check that the randomly
-generated content actually loads and plays, not just that its shape passed validation. A failure here (the package
-fails to load, or a round throws) is reported as an error and the command exits non-zero, even though the files
-were already written; a pass prints the round count, RTP, and hit frequency achieved.
-
-Two additional, bounded quality gates run against that same smoke simulation's result and print as `warning` lines
-underneath it — neither ever fails the build on its own (see the no-target-RTP note above for why):
-
-- **feature termination** — warns if the session stopped before playing every one of the 200 requested rounds
-  (`canPlayNextGame()` turned false early), which usually means some mechanic isn't letting play continue;
-- **max-win sanity** — warns if the largest single payout observed isn't a finite, non-negative number (the
-  signature of broken paytable/`winModel` math, e.g. an overflowed multiplier), or is wildly out of proportion to
-  the average bet placed (beyond a deliberately generous 100,000x sanity multiplier — this is a backstop against a
-  broken generator, not a volatility limit).
-
-`pokie create [name] --random` (see [`pokie create [name] --random`](#pokie-create-name---random) above) shares
-this same generation pipeline (the provenance/reproduce-command lines, and validation against the same
-`GameBlueprintValidator`) but never builds or smoke-simulates a package — it only writes the resulting blueprint to
-a Blueprint Project file, ready to feed into a real `pokie build <file> --target <dir>`.
+*exactly* what produced a given generated blueprint without re-deriving it from its own content.
 
 #### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
 
@@ -390,6 +283,118 @@ is what the CLI's `Provenance: ...` output line above echoes.
 `SlotGameNameGenerator` is also the implementation behind every name the CLI itself suggests — `pokie name` (see
 below) and [`pokie create`](#pokie-create-name)'s own wizard's game-id suggestion both call through it directly;
 neither re-implements naming, slugging, or theming on its own.
+
+## `pokie build <project>`
+
+POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
+it, writing the result to `--out <path>`.
+
+```
+pokie build <project> --target <artifact> --out <path> [--dry-run]
+```
+
+```
+pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out sample-slot
+cd sample-slot
+npm install
+```
+
+Options:
+
+- `<project>` — a path pokie resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
+  already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
+  unrecognized throws, naming the project types pokie understands.
+- `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, `wasm`.
+  Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
+  the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building
+  `outcomeLibrary`/`stakeAdapter`/`parWorkbook` from a `blueprint` source, for instance, throws naming which source
+  types that target actually supports (`ArtifactBuilderRegistry.describe(target)`, also available
+  programmatically, reports the same thing without resolving a project first).
+- `--out <path>` — **required**; where the built artifact is written. Must not already exist, or must be an empty
+  directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
+  handling](#conflict-handling-an-existing---out-destination) below.
+- `--dry-run` — validate and preview without writing anything.
+
+Exactly one conversion actually *builds* something new: a `blueprint` source into a `tsPackage` — the classic
+"generate a game package from a `GameBlueprint`" path, described in full below. Every other accepted `--target`
+**republishes** an already-built artifact of its own type (an `outcomeLibrary` bundle, a `stakeAdapter` export, a
+`parWorkbook` .xlsx) to a new destination, atomically and byte-faithfully — reading it back with the same importer
+that produced it and re-exporting it unchanged, never re-deriving or recovering a game model from it. `wasm` is
+listed as an accepted `--target` value but has no source project type that grants it today, and no builder is
+registered for it — POKIE has no arbitrary package-to-WASM compiler; building it always throws, naming what's
+missing, rather than silently no-opting or pretending to compile something.
+
+For random game generation, there is no `build random`/`--random` — generation and building are two separate,
+explicit steps: [`pokie create --random`](#pokie-create-name---random) writes a Blueprint Project, then `pokie
+build <the written file> --target tsPackage --out <dir>` turns it into a real package.
+
+### `blueprint` -> `tsPackage`: generating a game package from a `GameBlueprint`
+
+Generates a working [game package](game-packages.md) from a `GameBlueprint` — reels/rows, symbols, paylines,
+paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
+file set `pokie init` does (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`,
+`dist/index.js`) — `dist/index.js` is written directly rather than requiring a real `npm install`/`npm run build`
+first: it's immediately loadable by every other command below, with `src/index.ts` there so a real `npm run build`
+(if you ever run one) still reproduces an equivalent `dist/index.js`. (`pokie create`, unlike `pokie build`/`pokie
+init`, never writes a package at all — see [`pokie create [name]`](#pokie-create-name) above.)
+
+To design the `GameBlueprint` first instead of building directly, use [`pokie create [name]`](#pokie-create-name)
+to write a Blueprint Project file, then feed it into `pokie build <file> --target tsPackage --out <dir>` above. (For
+a ready-to-run package directly instead, see [`pokie init [directory]`](#pokie-init-directory) below.) Both produce
+the exact same `GameBlueprint` shape, go through the exact same validation ([`GameBlueprintValidator`](#validation))
+and generation ([`GamePackageGenerator`](#pokie-build-project)), and the resulting package supports the exact same
+[`build -> inspect -> validate -> sim -> report -> replay -> serve`/`dev` workflow](#workflow-build---inspect---validate---sim---report---replay---servedev).
+
+`pokie build <config.json> --target tsPackage --out <dir>` validates the blueprint first (see below) and, if it has
+no errors, creates `<dir>` — which must not already exist, or must be empty (see [Conflict
+handling](#conflict-handling-an-existing---out-destination) below) — and writes:
+
+- `package.json` — name/version/description from `manifest` (a default description if `manifest.description` is
+  omitted), a `pokie` dependency, `start`/`server`/`client`/`build` scripts, and `pokie.entry`/`main`/`exports`
+  all pointing at `./dist/index.js` — the exact same entry path `pokie init` packages compile their own
+  TypeScript source into, written by the exact same shared `buildPackageJsonPatch` those commands use;
+- `package-lock.json`/`tsconfig.json` — the same lockfile seed/compiler config `pokie init` writes (`tsconfig.json`
+  via the same shared `renderTsconfig`), so `npm install && npm run build` behaves identically in a built package;
+- `README.md` — a short orientation doc for the built package itself: what each file is, that `src/index.ts`/
+  `dist/index.js` shouldn't be hand-edited, and the `build -> inspect -> validate -> sim -> report -> replay ->
+  serve`/`dev` workflow below;
+- `src/index.ts`/`dist/index.js` — a `PokieGame` implementation built from the blueprint: a `VideoSlotConfig`
+  with the given reels/rows/symbols/wilds/scatters/paytable/paylines/reel strips, wrapped in a
+  `VideoSlotSession`, with `getSessionSerializer()` returning `new VideoSlotSessionSerializer()`. Both files hold
+  the exact same generated logic — organized into labeled sections (blueprint data, config assembly, `PokieGame`
+  exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
+  hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
+  byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
+  immediately loadable with no `npm install`/`npm run build` step; `src/index.ts` is typed (`GameBlueprint`
+  imported from `pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
+
+The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
+build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,
+or is constrained by, whatever produced it originally; see [Conflict
+handling](#conflict-handling-an-existing---out-destination) below.
+
+After generation, `pokie build` prints a build summary to stdout: the files it wrote, package root,
+game id/name/version, blueprint hash, and source path (when known) — all computed purely for this printout, never
+persisted into the package itself. `--dry-run` prints the equivalent preview (game id/name/version, reels x rows,
+symbol count, payline count, bets, blueprint hash, and the files a real build would generate) without creating or
+touching `--out` at all. Exit code follows the same rule either way: non-zero if the blueprint has errors, `0` if
+it's valid (warnings included).
+
+### Republishing an already-built `outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact
+
+`--target outcomeLibrary`/`stakeAdapter`/`parWorkbook`, given a `<project>` that already resolves to that same
+artifact type, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
+re-export unchanged" round trip each format's own import/export commands already exercise (see [`pokie stakeengine
+export`](#pokie-stakeengine-export-configjson)/[`import`](#pokie-stakeengine-import-stakedir) and [`pokie par
+export`](#pokie-par-import-inputxlsx--pokie-par-export-configjson) below). `--dry-run` here only prints a one-line
+"would build \<target\> from \<project\> to \<out\>" preview — there is no blueprint to validate or summarize for
+these targets, since nothing is generated, only copied.
+
+```
+pokie build ./my-outcome-bundle --target outcomeLibrary --out ./my-outcome-bundle-copy
+pokie build ./my-stake-export --target stakeAdapter --out ./my-stake-export-copy
+pokie build ./my-par-sheet.xlsx --target parWorkbook --out ./my-par-sheet-copy.xlsx
+```
 
 ### The `GameBlueprint` format
 
@@ -598,36 +603,41 @@ None of these check the actual math (that's what [`pokie sim`](#pokie-sim-packag
 that are very likely to be a mistake, so run `pokie sim --rounds 100000` on anything they flag before trusting the
 math either way.
 
-Every error is printed with its code and message, followed by a one-line pointer back to this section
-(`<config.json> is a GameBlueprint ... — see docs/cli.md#pokie-build-configjson for the format.`), so a failed
-`pokie build` always tells you where to look next, not just what's wrong.
+Every error is printed with its code and message, so a failed `pokie build` always tells you what's wrong before
+generating anything.
 
 Failure modes:
 
-- A missing `<config.json>` (`pokie build` with no arguments at all — for a ready-to-run package instead, see
-  [`pokie init`](#pokie-init-directory)) or an unknown option throws a `Usage: pokie build <config.json>
-  [--target <dir>]` error (plus the same doc pointer as above).
-- A blueprint with any error-level issue prints every error plus the doc pointer and exits `1` without generating
+- `<project>` missing, or not recognized as a POKIE project at all (`pokie build` with no arguments, or an unknown
+  option) throws a `Usage: pokie build <project> --target <artifact> --out <path>` error naming the project types
+  pokie understands.
+- `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`,
+  throws before `<project>` is even resolved, listing the full accepted vocabulary.
+- `--target` given a value `<project>`'s own resolved type can't build (e.g. `outcomeLibrary` from a `blueprint`
+  source) throws naming which source types that target actually supports.
+- `--out` omitted throws — there is no default destination.
+- A blueprint (`tsPackage` target) with any error-level issue prints every error and exits `1` without generating
   anything.
-- The output directory (`./<manifest.id>` or `--target <dir>`) already existing as a *file* (not a directory)
-  throws — pick a different `--target` or remove it first.
-- The output directory already existing and having any content in it at all — even just your own unrelated
-  `package.json`, or a directory a previous `pokie build` run itself produced — throws, naming the directory.
-  See the next section.
+- `--out` already existing as a *file* where a directory target expects one (or vice versa for `parWorkbook`)
+  throws — pick a different `--out` or remove it first.
+- `--out` already existing and having any content in it at all — even just your own unrelated `package.json`, or a
+  directory a previous `pokie build` run itself produced — throws, naming the destination. See the next section.
 
-### Building into an existing `--target` directory
+### Conflict handling: an existing `--out` destination
 
-`pokie build` only ever writes into a missing or empty directory — there is no in-place merge/rebuild, and no
-recognition of "this directory is safe to overwrite because a prior `pokie build` produced it": a built package
-carries no metadata of its own for a later build to recognize itself by (see above). Building again — after
-editing the blueprint, or just to pick up a newer `pokie` version — means removing the destination (or its
-contents) first, or pointing `--target` at a different, empty directory.
+`pokie build` only ever writes into a missing (or, for a directory target, empty) destination — there is no
+in-place merge/rebuild, and no recognition of "this directory is safe to overwrite because a prior `pokie build`
+run produced it": a built artifact carries no metadata of its own for a later build to recognize itself by (see
+above). Building again — after editing the blueprint, picking up a newer `pokie` version, or republishing to the
+same place a second time — means removing the destination (or its contents) first, or pointing `--out` at a
+different, empty destination. Every target enforces this the same way (`ArtifactBuildConflictError`), not a
+per-target-different overwrite policy.
 
 Building the *same* blueprint with the same `pokie` version, into two different empty directories, reproduces
-every generated file byte-for-byte — every build is a pure function of the blueprint, never dependent on
-whatever (if anything) previously occupied the destination. Want to check this without writing anything at all?
-`pokie build <config.json> --dry-run` validates and prints the same blueprint hash a real build would produce,
-with no `--target` directory created or touched.
+every generated file byte-for-byte — every `tsPackage` build is a pure function of the blueprint, never dependent
+on whatever (if anything) previously occupied the destination. Want to check this without writing anything at all?
+`pokie build <config.json> --target tsPackage --out <dir> --dry-run` validates and prints the same blueprint hash a
+real build would produce, with no `--out` destination created or touched.
 
 ### Workflow: `build` -> `inspect` -> `validate` -> `sim` -> `report` -> `replay` -> `serve`/`dev`
 
@@ -636,7 +646,7 @@ the [`init` workflow](#workflow) below, there's no `npm run build` step in the m
 output is loadable immediately after `npm install`:
 
 ```
-pokie build examples/blueprints/sample-slot.blueprint.json
+pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out sample-slot
 cd sample-slot && npm install && cd ..
 
 pokie inspect ./sample-slot
@@ -743,7 +753,7 @@ Exit code is non-zero (and nothing is written) if there are any error-level diag
 
 ### `pokie par export <config.json>`
 
-Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-configjson)), validates it, and —
+Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, and —
 provided it has no error-level issues from either that validation or the exporter's own preflight (unsupported
 reel source, missing literal `reelStrips`) — writes a `.par.xlsx` workbook to `--out <file>` (default:
 `<config.json>` with `.blueprint.json`/`.json` replaced by `.par.xlsx`). On any error, nothing is written — see

@@ -1,81 +1,54 @@
 import {
-    buildGameBuildInfo,
-    BUILD_OPERATION,
+    ArtifactBuilderRegistry,
+    ArtifactTargetType,
     computeGameBlueprintHash,
-    describeUnsupportedProjectOperation,
+    buildGameBuildInfo,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
-    GamePackageGenerating,
-    GamePackageGenerator,
     loadGameBlueprint,
+    PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
-    RandomGameBlueprintGenerating,
-    RandomGameBlueprintGenerator,
-    RandomGameBlueprintVariantStrategy,
     resolveReelStripGeneration,
-    SlotGameNameGenerator,
 } from "pokie";
 import {Command} from "commander";
-import {evaluateRandomBuildQualityGates} from "../build/evaluateRandomBuildQualityGates.js";
-import {runSmokeSimulation, SmokeSimulationOutcome} from "../build/runSmokeSimulation.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-type RandomPreset = "default" | "variant";
+// Every ArtifactTargetType --target accepts -- the same closed vocabulary ArtifactBuilderRegistry.listTargets()
+// already returns, spelled out here so an invalid --target value is rejected by Commander's own option parser
+// (before a project is even resolved) rather than surfacing as a later, less specific registry error.
+const TARGET_TYPES: readonly ArtifactTargetType[] = ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"];
 
-type RandomBuildOptions = {
-    seed?: number;
-    outDir?: string;
-    dryRun: boolean;
-    preset: RandomPreset;
-};
+const USAGE = "Usage: pokie build <project> --target <artifact> --out <path> [--dry-run]";
+const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
+const PROJECT_HINT =
+    "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
+    "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
+    "other target republishes an already-built artifact of its own type to a new location.";
 
-const USAGE = "Usage: pokie build <config.json> [--target <dir>] [--dry-run]";
-const BLUEPRINT_HINT =
-    "<config.json> is a GameBlueprint (manifest, reels, rows, symbols, paytable, ...) — see docs/cli.md#pokie-build-configjson for the format.";
-const RANDOM_USAGE = "Usage: pokie build random [--seed <integer>] [--target <dir>] [--dry-run] [--preset default|variant]";
-const RANDOM_PRESETS: readonly RandomPreset[] = ["default", "variant"];
+type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean};
 
 export class BuildCommand implements CliCommandHandling {
     private readonly pokieVersion: string;
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly validator: GameBlueprintValidating;
-    private readonly generator: GamePackageGenerating;
-    private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
-    private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
-    private readonly runSmokeSimulation: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome>;
-    // Consulted once, only on the default "<config.json>" path (never random, which never takes an
-    // existing target to resolve) -- see runDefault's own comment on why a resolved,
-    // non-"blueprint" project produces an UnsupportedProjectOperationError instead of falling through to
-    // this.loadBlueprint's own confusing "not valid JSON"/shape error. An unrecognized path (resolve()
-    // returns undefined) is unaffected: it still reaches this.loadBlueprint exactly as before this
-    // resolver existed.
     private readonly resolveProject: ProjectResolving;
+    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(
         pokieVersion: string,
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
-        generator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
-        randomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(),
-        runSmoke: (projectRoot: string, seed: number) => Promise<SmokeSimulationOutcome> = runSmokeSimulation,
-        variantRandomBlueprintGenerator: RandomGameBlueprintGenerating = new RandomGameBlueprintGenerator(
-            new SlotGameNameGenerator(),
-            new RandomGameBlueprintVariantStrategy(),
-        ),
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
         this.validator = validator;
-        this.generator = generator;
-        this.randomBlueprintGenerator = randomBlueprintGenerator;
         this.resolveProject = resolveProject;
-        this.runSmokeSimulation = runSmoke;
-        this.variantRandomBlueprintGenerator = variantRandomBlueprintGenerator;
+        this.registry = registry;
     }
 
     public getName(): string {
@@ -84,10 +57,10 @@ export class BuildCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Generate a POKIE game package from a GameBlueprint JSON config (reels, symbols, paylines, paytable) " +
-            '(for a ready-to-run package instead, see "pokie init"). "random"/--random generates a first-class ' +
-            "random game instead (--seed to reproduce it, --preset default|variant to pick the generation " +
-            "strategy). --dry-run validates and previews without writing anything."
+            'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
+            "a tsPackage from a GameBlueprint source, or atomically republish an already-built outcomeLibrary/" +
+            'stakeAdapter/parWorkbook artifact to a new location (for a first random game instead, see "pokie ' +
+            'create --random"). --dry-run validates and previews without writing anything.'
         );
     }
 
@@ -96,159 +69,99 @@ export class BuildCommand implements CliCommandHandling {
     }
 
     public run(args: string[]): Promise<number> {
-        // "--random" is a pre-Commander alias for the real "random" subcommand -- Commander's own
-        // subcommand matching only recognizes non-"-"-prefixed tokens, and has no concept of a second
-        // spelling for the same subcommand -- so it's normalized here, before the real, unified
-        // Commander tree (see buildCommand()) ever sees it. Everything else (positionals, options,
-        // validation) is declared and validated by Commander alone.
-        const normalizedArgs = args[0] === "--random" ? ["random", ...args.slice(1)] : args;
-        const isRandom = normalizedArgs[0] === "random";
-
         const exitCodeRef = {value: 0};
         const command = this.buildCommand(exitCodeRef);
 
         return command
-            .parseAsync(normalizedArgs, {from: "user"})
+            .parseAsync(args, {from: "user"})
             .then(() => exitCodeRef.value)
             .catch((error: unknown) => {
                 if (isCommanderHelpDisplay(error)) {
                     return 0;
                 }
-                if (isRandom) {
-                    throw translateCommanderError(error, {
-                        unknownOption: (flag) => `Unknown option "${flag}". ${RANDOM_USAGE}`,
-                        optionMissingArgument: (flag) => {
-                            if (flag === "--seed") return `--seed requires an integer value. ${RANDOM_USAGE}`;
-                            if (flag === "--target") return `--target requires a directory path. ${RANDOM_USAGE}`;
-                            if (flag === "--preset") return `--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`;
-                            return `Unknown option "${flag}". ${RANDOM_USAGE}`;
-                        },
-                    });
-                }
                 throw translateCommanderError(error, {
-                    missingArgument: `${USAGE}\n${BLUEPRINT_HINT}`,
+                    missingArgument: `${USAGE}\n${PROJECT_HINT}`,
                     unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
-                    optionMissingArgument: (flag) =>
-                        flag === "--target" ? `--target requires a directory path. ${USAGE}` : `Unknown option "${flag}". ${USAGE}`,
+                    optionMissingArgument: (flag) => {
+                        if (flag === "--target") return `--target requires a value. ${TARGET_HINT}`;
+                        if (flag === "--out") return `--out requires a path. ${USAGE}`;
+                        return `Unknown option "${flag}". ${USAGE}`;
+                    },
                 });
             });
     }
 
-    // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
-    // getCommanderCommand() (for help-coverage introspection) and run() (for real parsing) use, so the
-    // two can never drift apart: the default "<config.json>" action lives on the parent itself, and
-    // "random" is a genuine Commander subcommand (`.command("random")`), so "pokie build --help" lists
-    // it and "pokie build random --help" answers its own help, with no second, hand-maintained tree.
-    // "--random" (the flag spelling) is a pre-Commander alias, not a second subcommand -- Commander's
-    // own subcommand matching only recognizes non-"-"-prefixed tokens -- normalized to "random" by
-    // run() below before this tree ever sees it.
+    // The exact Commander tree run() itself parses argv with -- see getCommanderCommand()'s own use for
+    // --help coverage. A single default action (no subcommands): "build" no longer has a "random" verb --
+    // first-class random generation lives on "pokie create --random" instead (see CreateCommand), which
+    // writes a Blueprint Project this command can then build like any other.
     private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
-        const parent = createCommanderCliCommand("build")
-            // Positional options: once "random" (a subcommand name, not a value for <configPath>) is
-            // seen, every option after it belongs to "random"'s own parser, not the parent's -- without
-            // this, the parent's own parseOptions() greedily consumes any --target/--dry-run it
-            // recognizes from the FULL remaining argv (regardless of position) before subcommand
-            // dispatch ever runs, leaving "random"'s own action with none of them. See Commander's own
-            // enablePositionalOptions() doc comment ("lets subcommands reuse the same option names").
-            .enablePositionalOptions()
+        return createCommanderCliCommand("build")
             .description(this.getDescription())
-            .argument("<configPath>", "a GameBlueprint JSON config (see docs/cli.md#pokie-build-configjson)")
+            .argument("<project>", "a path pokie resolves to a POKIE project (see docs/cli.md#pokie-build-project)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--target <dir>", "output directory (default: the generator's own default output directory)")
-            .option("--dry-run", "validate and preview without writing anything")
-            .action(async (configPath: string, excess: string[], options: {target?: string; dryRun?: boolean}) => {
-                // An empty-string positional ("pokie build ''") is present as far as Commander's own
-                // required-argument check is concerned, but the pre-Commander behavior this preserves
-                // treated it the same as an entirely missing one (`!configPath`) -- a truly empty argv
-                // ("pokie build" with no args at all) is Commander's own "commander.missingArgument",
-                // caught below and reported the same way.
-                if (!configPath || excess.length > 0) {
-                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : `${USAGE}\n${BLUEPRINT_HINT}`);
-                }
-                // Only ever rejects a *recognized*-but-wrong-type target (a tsPackage/outcomeLibrary/
-                // stakeAdapter/parWorkbook/wasm path) with a capability diagnostic explaining exactly
-                // why "build" can't run against it. An unrecognized path -- resolve() returns undefined,
-                // e.g. an arbitrary or malformed file this resolver can't classify at all -- falls
-                // straight through to loadBlueprint below exactly as it always has, so an ordinary
-                // "not valid JSON"/schema error is unaffected.
-                const project = await this.resolveProject.resolve(configPath);
-                if (project !== undefined && project.type !== "blueprint") {
-                    const diagnostic = describeUnsupportedProjectOperation(project, BUILD_OPERATION);
-                    if (diagnostic !== undefined) {
-                        throw new UnsupportedProjectOperationError(diagnostic);
-                    }
-                }
-                const blueprint = this.loadBlueprint(configPath);
-                exitCodeRef.value = await this.buildFromBlueprint(blueprint, options.target, configPath, options.dryRun ?? false);
-            });
-
-        // "random"/"--random": generates a fresh, always-valid GameBlueprint (see
-        // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
-        // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
-        // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
-        // smoke simulation, which a hand-authored blueprint build never runs. "--preset" only selects
-        // which already-registered RandomGameBlueprintStrategy generates the mechanics (default-line-pay
-        // vs the richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset
-        // always reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
-        parent
-            .command("random")
-            .description("Generate a first-class random game instead of loading a config file.")
-            .argument("[excess...]", "rejected if present -- this verb takes no positionals")
-            .option("--seed <integer>", "reproduce a specific random game", (value: string) => {
-                if (!Number.isInteger(Number(value))) {
-                    throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
-                }
-                return Number(value);
-            })
-            .option("--target <dir>", "output directory (default: the generator's own default output directory)")
-            .option("--dry-run", "validate and preview without writing anything")
             .option(
-                "--preset <preset>",
-                "which generation strategy to use",
+                "--target <artifact>",
+                TARGET_HINT,
                 (value: string) => {
-                    if (!RANDOM_PRESETS.includes(value as RandomPreset)) {
-                        throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
+                    if (!TARGET_TYPES.includes(value as ArtifactTargetType)) {
+                        throw new Error(`Unknown --target "${value}". ${TARGET_HINT}`);
                     }
-                    return value as RandomPreset;
+                    return value as ArtifactTargetType;
                 },
-                "default" as RandomPreset,
             )
-            .action(async (excess: string[], options: {seed?: number; target?: string; dryRun?: boolean; preset: RandomPreset}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${RANDOM_USAGE}`);
+            .option("--out <path>", "where to write the built artifact")
+            .option("--dry-run", "validate and preview without writing anything")
+            .action(async (projectPath: string, excess: string[], options: BuildOptions) => {
+                // An empty-string positional ("pokie build ''") is present as far as Commander's own
+                // required-argument check is concerned, but is treated the same as an entirely missing one --
+                // same convention the old <config.json>-only grammar used.
+                if (!projectPath || excess.length > 0) {
+                    throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : `${USAGE}\n${PROJECT_HINT}`);
                 }
-                exitCodeRef.value = await this.executeRandom({seed: options.seed, outDir: options.target, dryRun: options.dryRun ?? false, preset: options.preset});
+                exitCodeRef.value = await this.execute(projectPath, options);
             });
-
-        return parent;
     }
 
-    // "random"/"--random": generates a fresh, always-valid GameBlueprint (see
-    // RandomGameBlueprintGenerator's own doc comment for why it's guaranteed to pass validation) and
-    // runs it through the exact same validate/resolve/generate pipeline as a real <config.json> --
-    // "randomSeed" passed to buildFromBlueprint below is what additionally triggers the post-build
-    // smoke simulation, which a hand-authored blueprint build never runs. "--preset" only selects which
-    // already-registered RandomGameBlueprintStrategy generates the mechanics (default-line-pay vs the
-    // richer random-variant from RandomGameBlueprintVariantStrategy) -- same seed, same preset always
-    // reproduces the same blueprint (see RandomGameBlueprintGenerator.generate).
-    private executeRandom(options: RandomBuildOptions): Promise<number> {
-        const generator = options.preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
-        const {blueprint, seed, provenance} = generator.generate({seed: options.seed});
+    private async execute(projectPath: string, options: BuildOptions): Promise<number> {
+        // --target/--out are checked before ever resolving `projectPath` -- both are pure argv-shape problems
+        // (like a missing positional or an unknown option), so reporting them never needs the filesystem I/O
+        // resolving a project requires, the same "invalid argv is always side-effect-free" contract every other
+        // CLI_CONTRACT_CASES "invalid" case already relies on.
+        if (options.target === undefined) {
+            throw new Error(`--target is required. ${TARGET_HINT}\n\n${USAGE}`);
+        }
+        if (options.out === undefined) {
+            throw new Error(`--out is required. ${USAGE}`);
+        }
 
-        console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${seed}.`);
-        console.log(`Reproduce this exact game with: pokie build random --seed ${seed} --preset ${options.preset}`);
-        console.log(`Provenance: generator ${provenance.generatorVersion}, strategy "${provenance.strategy}".`);
+        const project = await this.resolveProject.resolve(projectPath);
+        if (project === undefined) {
+            throw new Error(`"${projectPath}" was not recognized as a POKIE project.\n\n${PROJECT_HINT}`);
+        }
 
-        return this.buildFromBlueprint(blueprint, options.outDir, undefined, options.dryRun, seed);
+        if (!this.registry.supportsConversionFrom(options.target, project.type)) {
+            const descriptor = this.registry.describe(options.target);
+            const supported = descriptor.supportedSources.length > 0 ? descriptor.supportedSources.join(", ") : "none today";
+            throw new Error(
+                `"${options.target}" cannot be built from a "${project.type}" project. Supported sources: ${supported}.\n` +
+                    descriptor.unsupportedNotes.join("\n"),
+            );
+        }
+
+        if (options.target === "tsPackage" && project.type === "blueprint") {
+            return this.buildTsPackageFromBlueprint(project, options.out, options.dryRun ?? false);
+        }
+
+        return this.buildArtifact(options.target, project, options.out, options.dryRun ?? false);
     }
 
-    private async buildFromBlueprint(
-        blueprint: unknown,
-        outDir: string | undefined,
-        sourcePath: string | undefined,
-        dryRun: boolean,
-        randomSeed?: number,
-    ): Promise<number> {
+    // The rich, well-known "pokie build" path: a GameBlueprint source built into a runnable tsPackage. Kept as
+    // its own method (rather than folded into buildArtifact) because only this conversion has a blueprint to
+    // validate/preview before ever reaching ArtifactBuilderRegistry.build() -- every other target already has
+    // nothing to validate beyond "does the resolved project support it" (checked in execute() above).
+    private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean): Promise<number> {
+        const blueprint = this.loadBlueprint(project.rootPath);
         const issues = this.validator.validate(blueprint);
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
@@ -258,20 +171,20 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         if (errors.length > 0) {
-            console.error(`Blueprint${sourcePath ? ` "${sourcePath}"` : ""} has ${errors.length} error(s):`);
+            console.error(`Blueprint "${project.rootPath}" has ${errors.length} error(s):`);
             for (const issue of errors) {
                 console.error(`  - ${issue.code}: ${issue.message}`);
             }
-            console.error(`\n${BLUEPRINT_HINT}`);
+            console.error(`\n${PROJECT_HINT}`);
             return 1;
         }
 
-        // Runs every "generated" reel of reelStripGeneration (if the blueprint has one) through the
-        // real ReelStripGenerator — validate() above only checked its shape, not whether each reel's
-        // constraints are satisfiable. A literal-reelStrips (or neither) blueprint is unaffected.
+        // Runs every "generated" reel of reelStripGeneration (if the blueprint has one) through the real
+        // ReelStripGenerator -- validate() above only checked its shape, not whether each reel's constraints
+        // are satisfiable. A literal-reelStrips (or neither) blueprint is unaffected.
         const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
         if (!resolution.success) {
-            console.error(`Blueprint${sourcePath ? ` "${sourcePath}"` : ""} could not generate its reel strips:`);
+            console.error(`Blueprint "${project.rootPath}" could not generate its reel strips:`);
             for (const reel of resolution.reels.filter((candidate) => !candidate.success)) {
                 console.error(`  - reel ${reel.reelIndex} (seed ${reel.seed}): failed after ${reel.attemptsUsed} attempt(s)`);
                 const lastDiagnostic = reel.diagnostics[reel.diagnostics.length - 1];
@@ -279,65 +192,64 @@ export class BuildCommand implements CliCommandHandling {
                     console.error(`      ${violation.constraintId}: ${violation.message}`);
                 }
             }
-            console.error(`\n${BLUEPRINT_HINT}`);
+            console.error(`\n${PROJECT_HINT}`);
             return 1;
         }
 
         if (dryRun) {
-            this.printDryRunSummary(blueprint as GameBlueprint, sourcePath);
+            this.printDryRunSummary(blueprint as GameBlueprint, project.rootPath);
             return 0;
         }
 
-        const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), outDir, resolution.reelStripGeneration);
+        const result = await this.registry.build("tsPackage", project, out);
 
-        // Computed purely for this console summary — never persisted into the built package itself
-        // (see GamePackageGenerator's own doc comment for why a built package tracks nothing about
-        // where it came from).
+        const manifest = (blueprint as GameBlueprint).manifest;
         const blueprintHash = computeGameBlueprintHash(blueprint);
 
         console.log("Build summary:");
-        for (const file of result.createdFiles) {
-            console.log(`  created          ${file}`);
-        }
-        console.log(`  package root     ${result.projectRoot}`);
-        console.log(`  game             ${result.manifest.name} (id: "${result.manifest.id}", v${result.manifest.version})`);
+        console.log(`  package root     ${result.outputPath}`);
+        console.log(`  game             ${manifest.name} (id: "${manifest.id}", v${manifest.version})`);
         console.log(`  blueprint hash   ${blueprintHash}`);
-        if (sourcePath) {
-            console.log(`  source           ${sourcePath}`);
-        }
+        console.log(`  source           ${project.rootPath}`);
 
-        if (randomSeed !== undefined) {
-            console.log("\nRunning a short smoke simulation...");
-            const smoke = await this.runSmokeSimulation(result.projectRoot, randomSeed);
-            if (!smoke.ok) {
-                console.error(`Smoke simulation failed: ${smoke.error}`);
-                return 1;
-            }
-            console.log(
-                `Smoke simulation OK: ${smoke.rounds} rounds, RTP ${(smoke.rtp * 100).toFixed(2)}%, hit frequency ${(smoke.hitFrequency * 100).toFixed(2)}%.`,
-            );
-            for (const warning of evaluateRandomBuildQualityGates(smoke)) {
-                console.log(`  warning  ${warning}`);
-            }
-        }
-
-        console.log(`\nGame package "${result.manifest.name}" (id: "${result.manifest.id}") built in "${result.projectRoot}".`);
+        console.log(`\nGame package "${manifest.name}" (id: "${manifest.id}") built in "${result.outputPath}".`);
         console.log(`\nNext:`);
-        console.log(`  cd ${result.projectRoot} && npm install`);
-        console.log(`  pokie inspect ${result.projectRoot}`);
-        console.log(`  pokie validate ${result.projectRoot}`);
-        console.log(`  pokie sim ${result.projectRoot} --rounds 10000 --seed demo --out sim.json`);
+        console.log(`  cd ${result.outputPath} && npm install`);
+        console.log(`  pokie inspect ${result.outputPath}`);
+        console.log(`  pokie validate ${result.outputPath}`);
+        console.log(`  pokie sim ${result.outputPath} --rounds 10000 --seed demo --out sim.json`);
         console.log(`  pokie report sim.json`);
-        console.log(`  pokie replay ${result.projectRoot} --seed demo --round 1`);
-        console.log(`  pokie dev ${result.projectRoot}`);
+        console.log(`  pokie replay ${result.outputPath} --seed demo --round 1`);
+        console.log(`  pokie dev ${result.outputPath}`);
 
         return 0;
     }
 
-    // Previews what "pokie build" would generate without touching the filesystem: same validation,
-    // same blueprintHash computation (buildGameBuildInfo is a pure function — no file I/O), just no
-    // GamePackageGenerator.generate() call, so there's no --target directory to reason about at all.
-    private printDryRunSummary(blueprint: GameBlueprint, sourcePath: string | undefined): void {
+    // Every other target: an already-built outcomeLibrary/stakeAdapter/parWorkbook artifact, atomically
+    // republished to a new destination (see OutcomeLibraryArtifactBuilder/StakeAdapterArtifactBuilder/
+    // ParWorkbookArtifactBuilder's own doc comments for exactly what each reads/writes).
+    private async buildArtifact(target: ArtifactTargetType, project: PokieProject, out: string, dryRun: boolean): Promise<number> {
+        if (dryRun) {
+            console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
+            return 0;
+        }
+
+        const result = await this.registry.build(target, project, out);
+
+        console.log("Build summary:");
+        console.log(`  artifact root    ${result.outputPath}`);
+        console.log(`  target           ${target}`);
+        console.log(`  source           ${project.rootPath}`);
+
+        console.log(`\nArtifact "${target}" built in "${result.outputPath}".`);
+
+        return 0;
+    }
+
+    // Previews what "pokie build" would generate without touching the filesystem: same validation, same
+    // blueprintHash computation (buildGameBuildInfo is a pure function -- no file I/O), just no
+    // ArtifactBuilderRegistry.build() call, so there's no destination directory to reason about at all.
+    private printDryRunSummary(blueprint: GameBlueprint, sourcePath: string): void {
         const buildInfo = buildGameBuildInfo(blueprint, this.pokieVersion, sourcePath);
         const paylines = blueprint.paylines ? String(blueprint.paylines.length) : "default (one horizontal line per row)";
         const bets = blueprint.availableBets ? blueprint.availableBets.join(", ") : "default";
@@ -352,5 +264,4 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  blueprint hash   ${buildInfo.blueprintHash}`);
         console.log(`  would generate   ${buildInfo.files!.join(", ")}`);
     }
-
 }
