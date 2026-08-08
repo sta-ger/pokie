@@ -557,6 +557,29 @@ export function ProjectDashboardPage() {
     const runtime = useRuntimeManager();
     const deployment = useDeploymentManager();
 
+    // Set by GameModelTab whenever its own in-progress section edit has unsaved changes (see its own
+    // `onDirtyChange` doc comment) -- folded into `hasActiveOperation`'s own "confirm before Close
+    // project" gate below, the same way an active simulation/replay/deployment/runtime already is,
+    // rather than letting a Close silently discard an unsaved Game Model edit.
+    const [gameModelDirty, setGameModelDirty] = useState(false);
+
+    // A successful Game Model section save (see GameModelTab's own `onBlueprintSaved`) means whatever
+    // this project's runtime was last materialized from (see materializeRuntimePackage.ts's own doc
+    // comment -- a "blueprint" project is always rematerialized fresh on every Play/Simulation/Replay/
+    // Runtime *start*, never cached across one) may now be stale. There's no server-side materialization
+    // cache to invalidate -- the next start already rematerializes from the freshly saved source on its
+    // own -- but a runtime that's already running was started from the old content and keeps serving it
+    // until stopped; stopping it here (only if one is actually running) is what makes "materialization is
+    // invalidated" true rather than merely eventually true the next time someone happens to restart it.
+    const handleGameModelSaved = useCallback(() => {
+        if (runtime.running) {
+            runtime.stop();
+        }
+        // Deliberately runtime.running/runtime.stop only, not the whole runtime object -- same
+        // convention this file's other runtime.*-consuming callbacks already follow.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [runtime.running, runtime.stop]);
+
     useEffect(() => {
         if (projectKey === undefined) {
             return;
@@ -645,11 +668,15 @@ export function ProjectDashboardPage() {
                 .catch((error: unknown) => setCloseError(errorMessage(error)))
                 .finally(() => closeGuard.end());
         };
-        if (!hasActiveOperation) {
+        if (!hasActiveOperation && !gameModelDirty) {
             doClose();
             return;
         }
-        confirm(`This project has an active simulation, replay, deployment, or running runtime. Close the project anyway?`, doClose);
+        const reasons = [
+            hasActiveOperation ? "an active simulation, replay, deployment, or running runtime" : undefined,
+            gameModelDirty ? "unsaved Game Model changes" : undefined,
+        ].filter((reason): reason is string => reason !== undefined);
+        confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, doClose);
     };
 
     if (header.status === "empty") {
@@ -716,8 +743,17 @@ export function ProjectDashboardPage() {
                             // Same reasoning as RuntimeTab's own key below -- GameModelTab owns all of
                             // its own fetch state locally (no page-level hook), so a genuine project
                             // switch needs a full remount, not just a re-render of a still-mounted
-                            // instance holding the previous project's own projection.
-                                <GameModelTab key={projectKey ?? "no-project"} />
+                            // instance holding the previous project's own projection. `editable` is exactly
+                            // BLUEPRINT_BUILD_CAPABILITY -- a saved Blueprint Project Studio can load/save
+                            // in place (see buildProjectGameModel's own doc comment); a materialized
+                            // tsPackage never carries that capability, so it never offers Edit here.
+                                <GameModelTab
+                                    key={projectKey ?? "no-project"}
+                                    editable={header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
+                                    projectRoot={projectKey}
+                                    onDirtyChange={setGameModelDirty}
+                                    onBlueprintSaved={handleGameModelSaved}
+                                />
                             )}
                             {activeTab === "play" && (
                                 <PlayTab
