@@ -1,6 +1,9 @@
-import {fireEvent, screen, waitFor} from "@testing-library/react";
+import {MantineProvider} from "@mantine/core";
+import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type {StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
+import type {RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
+import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
+import {describeRoundArtifact} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
@@ -225,5 +228,108 @@ describe("ProjectDashboardPage - Play", () => {
         await user.click(await screen.findByRole("button", {name: "New session"}));
 
         expect(await screen.findByRole("button", {name: "Find symbol win"})).toBeDisabled();
+    }, 30000);
+});
+
+// One fixture round (a real, already-computed RoundArtifact -- Studio never recomputes a win from a
+// screen) rendered two ways: through Play's own real workflow (New session -> Spin, driven through the
+// fetch-mocked API the same way every other test in this file drives it) and directly through
+// RoundArtifactInspector, the exact same component RoundSummary (Play, Session Spin), ReplayTab
+// (recorded/recreated/simulation-sampled rounds) and OutcomeSourceOverview (Outcome Library "Draw an
+// outcome") all render a RoundArtifact through -- see GameScreenView's own doc comment. Proves Play's
+// live UI produces the identical screen/highlight presentation a direct inspector render of the same
+// artifact does, closing the gap RoundArtifactInspector.test.tsx's own "Cross-surface round presentation
+// parity" suite leaves open: that suite compares RoundSummary/RoundArtifactInspector as components, never
+// through Play's own real session/spin request flow.
+describe("canonical player parity: Play renders the same fixture round Replay/Outcome Library render via RoundArtifactInspector", () => {
+    const GAME = {id: "a", name: "A", version: "1.0.0"};
+
+    // Mirrors the fixture round in tests/cli/client/player/renderPlayer.test.ts's own "canonical player
+    // fixture round parity" describe block: the same 3-reel screen (cherry/cherry/lemon on row 0), the
+    // same win amount -- expressed here as a RoundArtifact (Studio's own shared round shape) rather than a
+    // VideoSlotRoundResponse, since Play/Replay/Outcome Library render arbitrary game types, not only
+    // video slots.
+    function fixtureArtifact(): RoundArtifactJson {
+        const screen = [
+            ["cherry", "K", "Q"],
+            ["cherry", "K", "Q"],
+            ["lemon", "K", "Q"],
+        ];
+        const wins = [
+            {
+                type: "line",
+                id: "w1",
+                symbolId: "cherry",
+                winAmount: 12.5,
+                winningPositions: [[0, 0], [1, 0]],
+                multiplierBreakdown: [],
+                metadata: {definition: [0, 0, 0]},
+            },
+        ];
+        return {
+            schemaVersion: 1,
+            roundId: "fixture:canonical-player:1",
+            provenance: {game: GAME, pokieVersion: "1.0.0"},
+            betMode: "base",
+            stake: 5,
+            totalWin: 12.5,
+            payoutMultiplier: 2.5,
+            screen,
+            steps: [{index: 0, screen, totalWin: 12.5, wins}],
+            wins,
+            hash: "fixture-hash-1",
+        };
+    }
+
+    function renderArtifactDirectly(artifact: RoundArtifactJson) {
+        return render(
+            <MantineProvider>
+                <RoundArtifactInspector artifact={describeRoundArtifact(artifact)} credits={1012.5} />
+            </MantineProvider>,
+        );
+    }
+
+    it("Play's own Spin workflow renders the fixture round's screen/win highlighting identically to a direct RoundArtifactInspector render of the same artifact", async () => {
+        const user = userEvent.setup();
+        const artifact = fixtureArtifact();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor({bet: 5, win: 0})}}),
+            "/api/project/play/sessions/sess-1/spin": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    session: sessionFor({credits: 1012.5, bet: 5, win: 12.5, screen: artifact.screen as string[][], debug: {artifact}}),
+                },
+            }),
+        });
+
+        const routed = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "Spin"}));
+        await waitFor(() => expect(within(routed.container).getByText("12.50 (2.50x stake)")).toBeInTheDocument());
+
+        // Each render mounts into the shared document.body, so every query below is scoped to its own
+        // container -- otherwise a text query bound to either render's own result would ambiguously match
+        // both trees at once instead of proving each renders the fixture round independently.
+        const direct = renderArtifactDirectly(artifact);
+
+        const playScreenTable = within(routed.container).getByText("lemon").closest("table") as HTMLElement;
+        const directScreenTable = within(direct.container).getByText("lemon").closest("table") as HTMLElement;
+        for (const table of [playScreenTable, directScreenTable]) {
+            const cherryCells = within(table).getAllByText("cherry").map((el) => el.closest("td"));
+            expect(cherryCells).toHaveLength(2);
+            for (const cell of cherryCells) {
+                expect(cell).toHaveAttribute("data-winning", "true");
+                expect(cell).toHaveAttribute("data-payline", "true");
+            }
+            expect(within(table).getByText("lemon").closest("td")).not.toHaveAttribute("data-winning");
+        }
+
+        // Same win detail: real symbol, real position count, the same "x stake" unit.
+        expect(within(routed.container).getByText("2")).toBeInTheDocument();
+        expect(within(direct.container).getByText("2")).toBeInTheDocument();
     }, 30000);
 });

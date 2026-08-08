@@ -14,7 +14,17 @@ import {
     renderWinHighlightsList,
     renderWinsSection,
 } from "../../../../cli/client/player/renderPlayer.js";
-import type {WinHighlight} from "../../../../cli/client/player/videoSlotRoundView.js";
+import {
+    deriveAvailableBetModeIds,
+    deriveAvailableBets,
+    deriveBetModeId,
+    deriveFeatureCounters,
+    deriveLineDefinitions,
+    derivePaytableView,
+    deriveWinHighlights,
+    type VideoSlotRoundResponse,
+    type WinHighlight,
+} from "../../../../cli/client/player/videoSlotRoundView.js";
 
 // The one place this repo's own fast Jest environment renders the canonical player's DOM half --
 // videoSlotRoundView.test.ts already covers the pure derive* functions this module is built on top
@@ -224,5 +234,109 @@ describe("renderConnectionError / clearConnectionError", () => {
         container.hidden = false;
         clearConnectionError(container);
         expect(container.hidden).toBe(true);
+    });
+});
+
+// One fixture round (a real, already-computed VideoSlotWithFreeGames response, not something this test
+// derives a win from) rendered through the exact call sequence cli/client/main.ts's own
+// renderVideoSlotRound() and pokie-examples' src/ui/ui.ts's own renderRound() both make against this same
+// "./player" barrel -- proving those two consumers, plus this repo's own tests, all exercise one shared
+// canonical player rather than each having drifted onto its own copy. The Studio-side counterpart of this
+// same fixture round (same reels/win, expressed as a RoundArtifact) lives in
+// tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx's own
+// "canonical player parity" describe block -- deliberately not imported from here, since the two shapes
+// (this DTO vs. a RoundArtifact) and the two runtimes (jsdom-only vs. a full React/Testing Library tree)
+// are genuinely different, but they describe the identical round so a reader can compare them directly.
+describe("canonical player fixture round parity (dev client / pokie-examples)", () => {
+    const FIXTURE_RESPONSE: VideoSlotRoundResponse = {
+        reelsSymbols: [
+            ["cherry", "K", "Q"],
+            ["cherry", "K", "Q"],
+            ["lemon", "K", "Q"],
+        ],
+        totalWin: 12.5,
+        winningLines: {
+            "0": {definition: [0, 0, 0], pattern: [1, 1, 0], symbolsPositions: [0, 1], winAmount: 12.5},
+        },
+        paytable: {
+            "5": {
+                cherry: {"2": 12.5, "3": 20},
+                lemon: {"3": 5},
+                K: {"3": 3},
+                Q: {"3": 2},
+            },
+        },
+        linesDefinitions: {"0": [0, 0, 0]},
+        availableBets: [5, 10],
+        bet: 5,
+        availableBetModeIds: ["base", "ante"],
+        betModeId: "base",
+    };
+
+    // Mirrors renderVideoSlotRound()/renderRound() exactly: grid, then win highlights/list, then feature
+    // counters, bet/mode info, line definitions and paytable -- never a client-side recomputation of
+    // FIXTURE_RESPONSE's own already-computed winningLines/totalWin.
+    function renderFixtureRound() {
+        const gridContainer = document.createElement("div");
+        const winsSection = document.createElement("div");
+        const winsList = document.createElement("div");
+        const linesList = document.createElement("div");
+        const features = document.createElement("dl");
+        const betInfo = document.createElement("div");
+        const modeInfo = document.createElement("div");
+        const paytableHead = document.createElement("tr");
+        const paytableBody = document.createElement("tbody");
+
+        renderReelsGrid(gridContainer, FIXTURE_RESPONSE.reelsSymbols as string[][]);
+        const highlights = deriveWinHighlights(FIXTURE_RESPONSE);
+        applyPersistentHighlights(gridContainer, highlights);
+        renderWinsSection(winsSection, highlights.length > 0);
+        renderWinHighlightsList(winsList, gridContainer, highlights);
+        renderFeatureCounters(features, deriveFeatureCounters(FIXTURE_RESPONSE));
+        renderBetInfo(betInfo, deriveAvailableBets(FIXTURE_RESPONSE.availableBets), FIXTURE_RESPONSE.bet as number, () => undefined);
+        renderModeInfo(
+            modeInfo,
+            deriveAvailableBetModeIds(FIXTURE_RESPONSE.availableBetModeIds),
+            deriveBetModeId(FIXTURE_RESPONSE.betModeId),
+            () => undefined,
+        );
+        renderLineDefinitionsList(linesList, gridContainer, deriveLineDefinitions(FIXTURE_RESPONSE.linesDefinitions));
+        renderPaytable(paytableHead, paytableBody, derivePaytableView(FIXTURE_RESPONSE.paytable));
+
+        return {gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody};
+    }
+
+    it("presents orientation, win highlighting, paytable, bets/modes and navigation consistently for the one fixture round", () => {
+        const view = renderFixtureRound();
+
+        // Orientation: reel-major input, addressable by its own [data-cell="rowIndex:reelIndex"] id (see
+        // renderReelsGrid's own cellId()).
+        expect(view.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("cherry");
+        expect(view.gridContainer.querySelector('[data-cell="0:1"]')?.textContent).toBe("cherry");
+        expect(view.gridContainer.querySelector('[data-cell="0:2"]')?.textContent).toBe("lemon");
+
+        // Winning-line highlight: exactly the two matched cells this response's own winningLines already
+        // computed, never a third cell this test would only get right by recomputing the win itself.
+        const winningCellA = view.gridContainer.querySelector('[data-cell="0:0"]') as HTMLElement;
+        const winningCellB = view.gridContainer.querySelector('[data-cell="0:1"]') as HTMLElement;
+        const nonWinningCell = view.gridContainer.querySelector('[data-cell="0:2"]') as HTMLElement;
+        expect(winningCellA.style.backgroundColor).not.toBe("");
+        expect(winningCellB.style.backgroundColor).toBe(winningCellA.style.backgroundColor);
+        expect(nonWinningCell.style.backgroundColor).toBe("");
+        expect(view.winsSection.hidden).toBe(false);
+        expect(view.winsList.querySelector("button")?.textContent).toBe("Line: 0, win: 12.5");
+
+        // Paytable, straight off the response's own bet-keyed table.
+        expect(view.paytableHead.textContent).toBe("Symbol23");
+        expect(view.paytableBody.textContent).toBe("cherry12.520lemon5K3Q2");
+
+        // Bets/modes: the response's own current values, plus a clickable option per alternative.
+        expect(view.betInfo.textContent).toContain("Bet: 5");
+        expect(Array.from(view.betInfo.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["5", "10"]);
+        expect(view.modeInfo.textContent).toContain("Mode: base");
+        expect(Array.from(view.modeInfo.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["base", "ante"]);
+
+        // Navigation: this round's own line definitions are hover-browsable regardless of which won.
+        expect(view.linesList.querySelector("button")?.textContent).toBe("Line: 0");
     });
 });
