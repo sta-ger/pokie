@@ -23,6 +23,7 @@ import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
+import {withLocalPokieInstall} from "./prepare/PackageCommandRunner.js";
 
 export type RegisterCliCommandsOptions = {
     version: string;
@@ -58,7 +59,11 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new DiffCommand(),
         new EditCommand(),
         new FairnessCommand(),
-        new InitCommand(version),
+        // withLocalPokieInstall(pokiePackageRoot): the same mechanism createMaterializingRuntimePackageResolver
+        // wires into every Blueprint materialization below -- so a freshly scaffolded package's own "npm
+        // install" resolves "pokie" against this exact running installation instead of the registry, even
+        // when its own version has never been published.
+        new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
         new InspectCommand(),
         new NameCommand(),
         new OutcomeLibraryCommand(version),

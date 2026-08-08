@@ -1,10 +1,11 @@
+import {execFileSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {SimulationReport} from "pokie";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
 import {GamePackagePreparationError} from "../../cli/prepare/GamePackagePreparationError.js";
-import {PackageCommandRunning} from "../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandRunning, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
@@ -152,6 +153,98 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
 
         expect(retryExitCode).toBe(0);
         expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+        expect(await new ValidateCommand().run([projectRoot])).toBe(0);
+    });
+});
+
+// Proves "pokie init" resolves its own scaffolded "pokie" dependency through the exact same production
+// mechanism Blueprint materialization uses (withLocalPokieInstall -- see registerCliCommands.ts's own
+// InitCommand wiring) against a *real* npm-managed installation source, not the dev-checkout-shaped
+// REPO_ROOT every other test in this file installs against via localPokieDependencyRunner(). A real `npm
+// link` (never a hand-rolled symlink) is one of the concrete provenance shapes withLocalPokieDependency's
+// own doc comment lists a running POKIE installation can actually have on a real end user's machine
+// (dev checkout, npm-linked target, tarball-installed, ordinarily npm-installed) -- tests/packaging/
+// npmPackSmoke.test.ts already proves the tarball-installed shape end to end through the real packed and
+// installed binary; this proves the npm-linked shape through InitCommand directly, wired exactly as
+// production wires it.
+//
+// "9.9.9" -- a version string indistinguishable from a real, already-published release -- is deliberately
+// never an obviously-unpublished prerelease tag: this proves the mechanism resolves "pokie" locally
+// because it always does, never because the version merely looks unpublishable (see
+// BlueprintProjectMaterializer.offline.integration.test.ts's own UNPUBLISHED_POKIE_VERSION doc comment
+// for the same point made about Blueprint materialization). Once "pokie" is genuinely published, the very
+// same mechanism resolves identically against a real registry-installed copy's own root.
+//
+// Real `npm link`/`npm install`/`npm run build` calls are slow, hence "pokie-integration" (see this
+// file's own doc comment above).
+describe("CLI workflow (integration): pokie init resolves \"pokie\" through the real production wiring mechanism, from a real npm-linked installation", () => {
+    jest.setTimeout(300000);
+
+    let linkNpmPrefix: string;
+    let linkInstallDir: string;
+    let linkedPokieRoot: string;
+    let workDir: string;
+
+    beforeAll(() => {
+        ensureCompiledTestOutput({
+            repositoryRoot: REPO_ROOT,
+            outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
+            lockName: "compiled-runtime",
+            command: ["npm", "run", "build-test-runtime"],
+        });
+
+        // Routed through a scratch npm_config_prefix (never this environment's real global npm folder)
+        // so the real npm-managed symlink `npm link` creates can never leak state outside this test's own
+        // temp directories.
+        linkNpmPrefix = fs.mkdtempSync(path.join(os.tmpdir(), "pokie init link prefix "));
+        fs.mkdirSync(path.join(linkNpmPrefix, "lib", "node_modules"), {recursive: true});
+        linkInstallDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie init link consumer "));
+        fs.writeFileSync(
+            path.join(linkInstallDir, "package.json"),
+            JSON.stringify({name: "pokie-init-link-consumer", version: "0.0.0", private: true}, null, 4),
+        );
+        execFileSync("npm", ["link", REPO_ROOT], {
+            cwd: linkInstallDir,
+            encoding: "utf-8",
+            env: {...process.env, "npm_config_prefix": linkNpmPrefix},
+        });
+        linkedPokieRoot = path.join(linkInstallDir, "node_modules", "pokie");
+    });
+
+    afterAll(() => {
+        fs.rmSync(linkInstallDir, {recursive: true, force: true});
+        fs.rmSync(linkNpmPrefix, {recursive: true, force: true});
+    });
+
+    beforeEach(() => {
+        workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie init link project "));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        jest.spyOn(console, "error").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(workDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+        (console.error as jest.Mock).mockRestore();
+    });
+
+    it("scaffolds/installs/builds an in-place package whose \"pokie\" dependency resolves to the real npm-linked root, producing a genuinely loadable runtime", async () => {
+        const projectRoot = path.join(workDir, "sample-slot");
+        const initCommand = new InitCommand("9.9.9", undefined, withLocalPokieInstall(linkedPokieRoot));
+
+        const exitCode = await initCommand.run([projectRoot]);
+
+        expect(exitCode).toBe(0);
+        const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {
+            dependencies?: Record<string, string>;
+        };
+        expect(pkg.dependencies?.pokie).toBe(`file:${linkedPokieRoot}`);
+        expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
+
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
+        expect(game.getManifest().id).toBe("sample-slot");
+
         expect(await new ValidateCommand().run([projectRoot])).toBe(0);
     });
 });

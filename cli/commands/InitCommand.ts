@@ -4,7 +4,7 @@ import path from "path";
 import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GamePackagePreparationError, GamePackagePreparationPhase} from "../prepare/GamePackagePreparationError.js";
-import {PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
+import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "../scaffold/GamePackageMerging.js";
 import {GamePackageMerger} from "../scaffold/GamePackageMerger.js";
 import {ScaffoldResult} from "../scaffold/ScaffoldResult.js";
@@ -228,7 +228,7 @@ export class InitCommand implements CliCommandHandling {
         }
 
         if (parsed.install) {
-            await this.runManagedCommand("dependencies", ["install"], projectRoot);
+            await this.runManagedCommand("dependencies", ["install"], projectRoot, extractNpmStderr);
         }
         await this.runManagedCommand("build", ["run", "build"], projectRoot);
         await this.runVerifyPhase(projectRoot);
@@ -237,7 +237,12 @@ export class InitCommand implements CliCommandHandling {
         return 0;
     }
 
-    private async runManagedCommand(phase: GamePackagePreparationPhase, npmArgs: string[], projectRoot: string): Promise<void> {
+    private async runManagedCommand(
+        phase: GamePackagePreparationPhase,
+        npmArgs: string[],
+        projectRoot: string,
+        extractDetails?: (error: unknown) => string | undefined,
+    ): Promise<void> {
         const npmCommand = `npm ${npmArgs.join(" ")}`;
         try {
             await this.runCommand("npm", npmArgs, projectRoot);
@@ -248,6 +253,7 @@ export class InitCommand implements CliCommandHandling {
                 `"${npmCommand}" failed in "${projectRoot}": ${detail}\n` +
                     `Run "${npmCommand}" manually in "${projectRoot}" to see the full output, fix the underlying ` +
                     `issue, then re-run "pokie init ${projectRoot}" to retry.`,
+                extractDetails?.(error),
             );
         }
     }
