@@ -3139,11 +3139,12 @@ redirected; every builder they used to own is one of this tab's own cards, group
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-adapter-sdk.md):
   `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundArtifact`,
   generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
-  to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio only owns two things on top
-  of that: which target(s) are available (a registry seeded with exactly the SDK's own local-filesystem example
-  target, `createLocalJsonExternalDeploymentTarget` — Studio ships no private RGS integration, same as the SDK
-  itself, and is deliberately never listed as a real deployable target — register a real one to replace this
-  group's placeholder), and turning the card's own form into the SDK's input shapes. Selecting a registered
+  to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio ships no private RGS
+  integration of its own — Publish is only ever offered once a project has registered a real
+  `ExternalDeploymentTarget` (see the SDK doc above); until then, this group shows only a placeholder card
+  explaining that nothing deployable is registered yet. Studio only owns two things on top of the SDK: which
+  real, registered target(s) are available for the active project to select as cards, and turning the card's own
+  form into the SDK's input shapes. Selecting a registered
   target shows its `id`, `version`, `requirements` (`minPokieVersion`/`symbolAlphabet`/
   `requiresHomogeneousProvenance`, whichever are set), and `capabilities`; the deploy form then asks for one or
   more **modes**, each a **mode name** and a **library JSON path** (a `WeightedOutcomeLibrary` file, resolved
