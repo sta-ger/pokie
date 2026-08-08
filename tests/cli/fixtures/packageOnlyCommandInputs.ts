@@ -50,6 +50,10 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
 
     {command: "diff", verb: undefined, requiresLoadablePackage: false, primaryInput: "leftReportJson + rightReportJson (pokie sim --out reports)"},
 
+    // --- edit: interactively edits an existing Blueprint Project (a GameBlueprint JSON file) in place; never
+    // reads/loads a runnable package. ---
+    {command: "edit", verb: undefined, requiresLoadablePackage: false, primaryInput: "blueprint (an existing Blueprint Project file)"},
+
     // --- fairness: reads a bundleDir/plain seed-and-proof files, never a package directly. ---
     {command: "fairness", verb: "seed-commit", requiresLoadablePackage: false, primaryInput: "serverSeed.txt"},
     {command: "fairness", verb: "commit", requiresLoadablePackage: false, primaryInput: "serverSeedCommitment.json + --source bundleDir"},

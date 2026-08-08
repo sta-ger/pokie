@@ -20,6 +20,15 @@ export type GameBlueprintWizardOptions = {
         label: string;
         defaultPathFor: (id: string) => string;
     };
+    // e.g. "pokie edit <blueprint>"'s own flag -- when true, every question that has no Enter-default
+    // at all in a plain "create" run (manifest id/name, wilds, scatters, paylines, the reel-weighting
+    // mode, free games) instead defaults to -- and Enter *preserves* -- the value already sitting on
+    // the GameBlueprint this wizard was constructed with (see GameBlueprintWizard's own
+    // "createDefaultBlueprint" constructor param, which "pokie edit" seeds with the blueprint it loaded
+    // rather than the starter template "pokie create" seeds it with). Omitted (the default), every
+    // question behaves exactly as it always has -- this flag changes nothing about "pokie create"'s own
+    // wizard run.
+    editing?: boolean;
 };
 
 export interface GameBlueprintWizarding {

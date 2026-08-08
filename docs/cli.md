@@ -284,6 +284,68 @@ is what the CLI's `Provenance: ...` output line above echoes.
 below) and [`pokie create`](#pokie-create-name)'s own wizard's game-id suggestion both call through it directly;
 neither re-implements naming, slugging, or theming on its own.
 
+## `pokie edit <blueprint> [--out <file>]`
+
+Interactively edits an existing **Blueprint Project** (a `GameBlueprint` JSON file — see [`pokie
+create`](#pokie-create-name)) through the exact same wizard `pokie create` runs, just seeded with the file's own
+current values instead of the starter template:
+
+```
+pokie edit sample-slot.blueprint.json
+```
+
+Every question shows the value already on the loaded file as its own default, and pressing Enter *preserves* it
+rather than falling back to some other value — the same "traverse every section" flow `pokie create` uses (game
+basics, layout, symbols/wild/scatter roles, available bets, paylines, paytable, reel weighting, scatter-triggered
+free games), just editing in place instead of designing from scratch. Once every question is answered, it validates
+the result (same `GameBlueprintValidator` every other Blueprint path uses — see [`pokie build`](#pokie-build-project)
+for the field/validation rules) and prints a diff against the file as it was loaded:
+
+```
+Changes:
+  version: 0.1.0 -> 0.2.0
+  symbols: ["A","K","Q","J"] -> ["A","K","Q","J","W"]
+  wilds: (none) -> ["W"]
+
+Destination: sample-slot.blueprint.json
+
+Save this blueprint? [Y/n]: y
+
+  saved  sample-slot.blueprint.json
+
+Game blueprint "Sample Slot" (id: "sample-slot") saved at "sample-slot.blueprint.json".
+```
+
+Nothing is written until that confirmation — declining it, cancelling (**Ctrl+C**), closing the input stream
+(**EOF**), or a validation error all leave the original file completely untouched, at any point in the run. The
+write itself is atomic (staged beside the destination, then renamed into place — see `writeFileAtomically`), so a
+failed or interrupted save can never leave a truncated or partially-edited file behind either.
+
+`--out <file>` is a **Save As**: the result is always written there instead of overwriting `<blueprint>`, leaving the
+original file untouched. The destination question still shows `--out`'s value as its own default and still asks, but
+unlike every other question here it isn't actually editable — whatever it's answered, the file is written to `--out`.
+
+A blueprint whose reel weighting is a "generated" `reelStripGeneration` (see [`pokie reel
+generate`](#pokie-reel-generate-blueprintjson) and `docs/reel-strip-generation.md`) has that field carried through
+completely untouched — the reel-weighting question isn't even asked in that case, since this wizard has no way to
+represent that shape. `pokie reel generate` remains the one dedicated editor for it; edit everything else about the
+blueprint with `pokie edit`, then adjust its generated reels separately.
+
+Pointed at a path that resolves to a project type other than `blueprint` (an already-built `tsPackage`, a `wasm`
+component, an `outcomeLibrary`/`stakeAdapter` export, a `parWorkbook`), `pokie edit` never even reaches the wizard —
+it reports the same resolver-derived capability diagnostic every other migrated CLI command does (see
+`describeUnsupportedProjectOperation`), explaining which capability is missing and which project types actually
+support editing:
+
+```
+"edit" is not supported for a "tsPackage" project (missing the "blueprint.build" capability). No project type currently supports it.
+```
+
+Without a real terminal to run the wizard in (a script, CI, or any other non-interactive invocation), `pokie edit`
+exits immediately with guidance instead of hanging or silently doing nothing — there's no non-interactive shortcut
+here the way `pokie create --blank`/`--random` offer: hand-edit the JSON file directly, then check it with `pokie
+validate`/`pokie build --dry-run`.
+
 ## `pokie build <project>`
 
 POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
