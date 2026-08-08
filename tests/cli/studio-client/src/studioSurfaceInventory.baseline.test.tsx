@@ -164,7 +164,7 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         expect(outcomeLibrariesRender.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
     });
 
-    it("lists only Overview and Game Model for a read-only/package-exchange project (e.g. an outcome library), hiding every runtime-dependent section", async () => {
+    it("lists Overview, Game Model, Build/Export and Certification for a read-only outcome-library project -- reachable without RUNTIME_EXECUTE_CAPABILITY, but Play/Simulation/Replay/Fairness (which need a real draw or live session) stay hidden", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/context": () => ({
@@ -185,10 +185,10 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
 
         const nav = screen.getByRole("navigation", {name: "Sections"});
         const tabButtons = within(nav).getAllByRole("button");
-        expect(tabButtons.map((button) => button.textContent)).toEqual(["Overview", "Game Model"]);
+        expect(tabButtons.map((button) => button.textContent)).toEqual(["Overview", "Game Model", "Build/Export", "Certification"]);
     });
 
-    it("shows a diagnostic instead of the Certification workflow when deep-linking to an operation a read-only/package-exchange project's own capabilities don't support", async () => {
+    it("shows a diagnostic instead of the Simulation workflow when deep-linking to an operation a read-only/package-exchange project's own capabilities don't support", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/context": () => ({
@@ -204,11 +204,11 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/certification"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
         await screen.findByRole("heading", {name: "My Slot"});
 
-        expect(screen.getByRole("alert")).toHaveTextContent('"Certification" isn\'t available for this project');
-        expect(screen.queryByRole("button", {name: stepperStep("Select/configure", "Bundle & modes")})).not.toBeInTheDocument();
+        expect(screen.getByRole("alert")).toHaveTextContent('"Simulation" isn\'t available for this project');
+        expect(screen.queryByRole("button", {name: stepperStep("Configure", "Set rounds")})).not.toBeInTheDocument();
     });
 });
 

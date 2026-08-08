@@ -96,6 +96,25 @@ export const RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "runtime.exec
 // library (never one it has to generate itself) applies.
 export const OUTCOME_LIBRARY_READ_CAPABILITY: StudioProjectCapability = "outcomeLibrary.read";
 
+// Granted to both "outcomeLibrary" and "stakeAdapter" projects (see PROJECT_TYPE_CAPABILITIES) -- what
+// Overview's own Exact Analysis section (OutcomeSourceOverview) requires to be reachable at all: both
+// types already have their own canonical outcome-source reader, even though only "outcomeLibrary" can
+// also be drawn from (see OUTCOME_SOURCE_SAMPLE_CAPABILITY below).
+export const OUTCOME_SOURCE_READ_CAPABILITY: StudioProjectCapability = "outcomeSource.read";
+
+// Granted only to "outcomeLibrary" (see PROJECT_TYPE_CAPABILITIES) -- what Play/Simulation/Replay each
+// require in addition to (never instead of) RUNTIME_CAPABLE_CAPABILITIES, since a resolved
+// "outcomeLibrary" project reaches each of those sections through its own real OutcomeSource adapters
+// (StudioPlayService/StudioSimulationService/StudioReplayExecutionService), never loadPokieGame. A
+// "stakeAdapter" export has no draw contract of its own and never grants this.
+export const OUTCOME_SOURCE_SAMPLE_CAPABILITY: StudioProjectCapability = "outcomeSource.sample";
+
+// Granted only to "stakeAdapter" (see PROJECT_TYPE_CAPABILITIES) -- alongside OUTCOME_LIBRARY_READ_CAPABILITY,
+// what ExportDeployTab's own capability-driven cards read to decide whether a Stake Engine export project can
+// still reach the Build/Export section (to republish itself), even though it can never generate a fresh
+// outcome library or be drawn from.
+export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stakeAdapter.exchange";
+
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",
     tsPackage: "Package",
@@ -112,6 +131,8 @@ const CAPABILITY_LABEL: Record<string, string> = {
     "stakeAdapter.exchange": "Exchange with Stake Engine",
     "parWorkbook.exchange": "Exchange as a PAR sheet",
     "wasm.export": "Export to WASM",
+    "outcomeSource.read": "Read canonical outcome-source analysis",
+    "outcomeSource.sample": "Draw/sample/replay real outcomes",
 };
 
 // Capability ids are an open, plain-string vocabulary (see StudioProjectCapability's own doc comment)

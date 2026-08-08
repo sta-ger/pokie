@@ -3,15 +3,26 @@ import {
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
+    describeUnsupportedProjectOperation,
     GameSessionHandling,
     loadPokieGame,
+    OUTCOME_SOURCE_REPLAY_OPERATION,
+    OutcomeLibraryBundleOutcomeSource,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
     PokieGame,
     PokieGameContext,
+    PokieGameManifest,
     PokieJsonRoundArtifactProjector,
+    PokieProject,
     PokieSessionState,
     ReplayDescriptor,
     resolveGameSessionSerializer,
+    RoundArtifact,
+    SecureWeightedOutcomeRandomSource,
+    SeededWeightedOutcomeRandomSource,
     VideoSlotSessionHandling,
+    WeightedOutcomeRandomSource,
 } from "pokie";
 import crypto from "crypto";
 import {InMemoryStudioReplayRepository} from "./InMemoryStudioReplayRepository.js";
@@ -59,6 +70,9 @@ export class StudioReplayExecutionService {
     // soon as the job that produced it is done. A no-op default keeps every other caller (every test
     // that constructs this service directly) unaffected.
     private readonly onCompleted: (record: StudioReplayJobRecord) => void;
+    // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
+    // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
+    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -72,6 +86,7 @@ export class StudioReplayExecutionService {
         createId: () => string = () => crypto.randomUUID(),
         pokieVersion = "unknown",
         onCompleted: (record: StudioReplayJobRecord) => void = () => undefined,
+        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -81,13 +96,20 @@ export class StudioReplayExecutionService {
         this.createId = createId;
         this.pokieVersion = pokieVersion;
         this.onCompleted = onCompleted;
+        this.outcomeLibraryReader = outcomeLibraryReader;
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
     // never blocking the caller (StudioServer's POST handler). Rejects with a conflict instead of
     // creating a second job when one is already queued/running for this projectRoot, same reasoning as
     // StudioSimulationService.start().
-    public start(projectRoot: string, request: ValidatedReplayRequest): StudioReplayStartResult {
+    //
+    // `outcomeSourceProject`, when given, is the already-resolved "outcomeLibrary"/"stakeAdapter"
+    // PokieProject StudioServer's own ProjectDashboardContext resolved when it opened `projectRoot` --
+    // same "caller already knows, pass it through" convention as StudioSimulationService.start()'s own
+    // parameter of the same name (see that doc comment for why this service never re-resolves
+    // `projectRoot`'s own type itself).
+    public start(projectRoot: string, request: ValidatedReplayRequest, outcomeSourceProject?: PokieProject): StudioReplayStartResult {
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
             return {status: "conflict", activeJobId: active.id};
@@ -104,6 +126,7 @@ export class StudioReplayExecutionService {
             completedRounds: 0,
             durationMs: 0,
             abortController: new AbortController(),
+            outcomeSourceProject,
         };
         this.repository.save(record);
 
@@ -212,6 +235,11 @@ export class StudioReplayExecutionService {
     // resulting descriptor, is identical to what ReplayRecorder's own uninterrupted loop would produce
     // for the same seed/round; only the *scheduling* differs.
     private async run(record: StudioReplayJobRecord): Promise<void> {
+        if (record.outcomeSourceProject !== undefined) {
+            await this.runOutcomeSourceReplay(record, record.outcomeSourceProject);
+            return;
+        }
+
         let game: PokieGame;
         try {
             game = await this.loadGame(record.projectRoot);
@@ -314,6 +342,106 @@ export class StudioReplayExecutionService {
             artifact: this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
             ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
             ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
+        };
+
+        record.status = "completed";
+        record.descriptor = descriptor;
+        this.markTerminal(record);
+        this.onCompleted(record);
+    }
+
+    // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was
+    // given an already-resolved `outcomeSourceProject` (see that parameter's own doc comment). A "stakeAdapter" export has no
+    // draw contract of its own (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) and fails here
+    // with the same structured capability diagnostic every other POKIE surface gives it, before ever
+    // reading a bundle file. A resolved "outcomeLibrary" project reproduces round `record.round` of a
+    // seeded draw stream against its manifest's own first mode (Replay has no mode picker of its own,
+    // same convention as StudioPlayService's own Play session and StudioSimulationService's own
+    // sampling) -- the exact same OutcomeLibraryBundleOutcomeSource selector Play/Simulation already
+    // draw through, drawn forward `record.round` times and keeping only the last draw, mirroring
+    // exactly what a fresh Play session seeded the same way would show at that Nth draw. Unlike the
+    // "runtime" branch above, there is no live GameSessionHandling/PokieSessionState to snapshot
+    // before/after -- a drawn WeightedOutcome carries no session state of its own (see
+    // StudioPlayService's own buildOutcomeSourceSessionView doc comment) -- so the resulting
+    // ReplayDescriptor never sets stateBefore/stateAfter, only its own real artifact.
+    private async runOutcomeSourceReplay(record: StudioReplayJobRecord, project: PokieProject): Promise<void> {
+        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
+        if (diagnostic !== undefined) {
+            this.fail(record, new Error(diagnostic.message));
+            return;
+        }
+
+        let modeName: string;
+        let manifestGame: PokieGameManifest;
+        try {
+            const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
+            if (manifest.modes.length === 0) {
+                this.fail(record, new Error(`"${project.rootPath}" has no outcome-library modes to replay.`));
+                return;
+            }
+            modeName = manifest.modes[0].modeName;
+            manifestGame = manifest.game;
+        } catch (error) {
+            this.fail(record, error);
+            return;
+        }
+
+        if (record.abortController.signal.aborted) {
+            this.cancelRecord(record);
+            return;
+        }
+        record.status = "running";
+        const gameIdentity = {id: manifestGame.id, name: manifestGame.name, version: manifestGame.version};
+        record.game = gameIdentity;
+
+        const sessionId = this.createId();
+        const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
+        const randomSource: WeightedOutcomeRandomSource =
+            record.seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(record.seed);
+
+        let roundsRemaining = record.round;
+        let lastArtifact: RoundArtifact | undefined;
+        try {
+            while (roundsRemaining > 0) {
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+
+                const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
+                for (let played = 0; played < chunkRounds; played++) {
+                    const selection = await outcomeSource.drawOutcome(randomSource);
+                    lastArtifact = selection.outcome.artifact;
+                }
+
+                record.completedRounds += chunkRounds;
+                record.durationMs = this.now() - record.startedAt;
+                roundsRemaining -= chunkRounds;
+                if (roundsRemaining > 0) {
+                    await this.yieldToEventLoop();
+                }
+            }
+        } catch (error) {
+            this.fail(record, error);
+            return;
+        }
+
+        if (lastArtifact === undefined) {
+            this.fail(record, new Error("Replay produced no outcome."));
+            return;
+        }
+
+        const descriptor: ReplayDescriptor = {
+            sessionId,
+            game: gameIdentity,
+            seed: record.seed ?? null,
+            round: record.round,
+            totalBet: lastArtifact.stake,
+            totalWin: lastArtifact.totalWin,
+            screen: lastArtifact.screen.map((row) => [...row]),
+            timestamp: record.startedAt,
+            durationMs: record.durationMs,
+            artifact: new PokieJsonRoundArtifactProjector().project(lastArtifact),
         };
 
         record.status = "completed";

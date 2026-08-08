@@ -1,11 +1,22 @@
 import {
+    describeUnsupportedProjectOperation,
     loadPokieGame,
+    OUTCOME_SOURCE_SIMULATE_OPERATION,
+    OutcomeLibraryBundleOutcomeSource,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
     ParallelSimulationRunner,
     ParallelSimulationRunOptions,
+    PokieGameManifest,
+    PokieProject,
+    SecureWeightedOutcomeRandomSource,
+    SeededWeightedOutcomeRandomSource,
+    SimulationAccumulator,
     SimulationCancelledError,
     SimulationReport,
     SimulationReportBuilder,
     SimulationReportBuilding,
+    WeightedOutcomeRandomSource,
 } from "pokie";
 import crypto from "crypto";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
@@ -55,6 +66,9 @@ export class StudioSimulationService {
         rounds: number,
         options: ParallelSimulationRunOptions,
     ) => ParallelSimulationRunner;
+    // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
+    // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
+    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -73,6 +87,7 @@ export class StudioSimulationService {
             rounds: number,
             options: ParallelSimulationRunOptions,
         ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
+        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -83,13 +98,22 @@ export class StudioSimulationService {
         this.createId = createId;
         this.workerEntryUrl = workerEntryUrl;
         this.createParallelSimulationRunner = createParallelSimulationRunner;
+        this.outcomeLibraryReader = outcomeLibraryReader;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
     // run()), never blocking the caller (StudioServer's POST handler). Rejects with a conflict
     // instead of creating a second job when one is already queued/running for this projectRoot, so a
     // duplicate/retried request can never corrupt (or race against) the job already in flight.
-    public start(projectRoot: string, request: ValidatedSimulationRequest): StudioSimulationStartResult {
+    //
+    // `outcomeSourceProject`, when given, is the already-resolved "outcomeLibrary"/"stakeAdapter"
+    // PokieProject StudioServer's own ProjectDashboardContext resolved when it opened `projectRoot` (see
+    // StudioServer's own "outcome-source" dashboard status) -- this service deliberately never re-resolves
+    // `projectRoot`'s own type itself (that would mean every ordinary "tsPackage"/"blueprint" simulation
+    // paid for a redundant filesystem resolution it never needed), the same "caller already knows, pass it
+    // through" convention handleOutcomeSourceSample already uses for the sample route. Undefined here means
+    // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
+    public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
             return {status: "conflict", activeJobId: active.id};
@@ -106,6 +130,7 @@ export class StudioSimulationService {
             roundsCompleted: 0,
             durationMs: 0,
             abortController: new AbortController(),
+            outcomeSourceProject,
         };
         this.repository.save(record);
 
@@ -225,6 +250,11 @@ export class StudioSimulationService {
     }
 
     private async run(record: StudioSimulationJobRecord): Promise<void> {
+        if (record.outcomeSourceProject !== undefined) {
+            await this.runOutcomeSourceSampling(record, record.outcomeSourceProject);
+            return;
+        }
+
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);
             return;
@@ -278,6 +308,101 @@ export class StudioSimulationService {
             averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
             rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
             payoutHistogram: result.statistics.payoutHistogram,
+        };
+        this.markTerminal(record);
+    }
+
+    // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was
+    // given an already-resolved `outcomeSourceProject` (see that parameter's own doc comment). A "stakeAdapter" export has no
+    // draw contract of its own (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) and fails here
+    // with the same structured capability diagnostic every other POKIE surface gives it, before ever
+    // reading a bundle file. A resolved "outcomeLibrary" project samples its manifest's own first mode
+    // (Simulation has no mode picker of its own, same convention as StudioPlayService's own Play session)
+    // through real, independent draws from OutcomeLibraryBundleOutcomeSource -- the exact same selector
+    // simulateOutcomeSourceProject/sampleOutcomeSourceProject already draw through -- accumulated into an
+    // ordinary SimulationAccumulator, chunked and abort-aware exactly like the ParallelSimulationRunner
+    // path above, never a freshly regenerated game-model simulation. Always reports `workers: 1` on the
+    // built report regardless of what was requested -- sampling here is never split across worker threads
+    // the way a "tsPackage" simulation can be.
+    private async runOutcomeSourceSampling(record: StudioSimulationJobRecord, project: PokieProject): Promise<void> {
+        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
+        if (diagnostic !== undefined) {
+            this.fail(record, new Error(diagnostic.message));
+            return;
+        }
+
+        let modeName: string;
+        let manifestGame: PokieGameManifest;
+        try {
+            const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
+            if (manifest.modes.length === 0) {
+                this.fail(record, new Error(`"${project.rootPath}" has no outcome-library modes to simulate.`));
+                return;
+            }
+            modeName = manifest.modes[0].modeName;
+            manifestGame = manifest.game;
+        } catch (error) {
+            this.fail(record, error);
+            return;
+        }
+
+        if (record.abortController.signal.aborted) {
+            this.cancelRecord(record);
+            return;
+        }
+        record.status = "running";
+
+        const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
+        const randomSource: WeightedOutcomeRandomSource =
+            record.seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(record.seed);
+        const accumulator = new SimulationAccumulator();
+
+        let roundsRemaining = record.rounds;
+        try {
+            while (roundsRemaining > 0) {
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+
+                const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
+                for (let played = 0; played < chunkRounds; played++) {
+                    const selection = await outcomeSource.drawOutcome(randomSource);
+                    accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
+                }
+
+                record.roundsCompleted += chunkRounds;
+                record.durationMs = this.now() - record.startedAt;
+                roundsRemaining -= chunkRounds;
+                if (roundsRemaining > 0) {
+                    await this.yieldToEventLoop();
+                }
+            }
+        } catch (error) {
+            this.fail(record, error);
+            return;
+        }
+
+        const statistics = accumulator.getStatistics();
+        const report: SimulationReport = this.reportBuilder.build({
+            manifest: manifestGame,
+            requestedRounds: record.rounds,
+            seed: record.seed,
+            statistics,
+            durationMs: record.durationMs,
+            packageRoot: record.projectRoot,
+            workers: 1,
+        });
+
+        record.status = "completed";
+        record.report = report;
+        record.statistics = {
+            volatility: statistics.volatility,
+            payoutStandardDeviation: statistics.payoutStandardDeviation,
+            returnStandardDeviation: statistics.returnStandardDeviation,
+            averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+            rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+            payoutHistogram: statistics.payoutHistogram,
         };
         this.markTerminal(record);
     }
