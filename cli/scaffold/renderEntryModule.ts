@@ -1,7 +1,16 @@
 import {PokieGameManifest} from "pokie";
 
 export function renderEntryModule(manifest: PokieGameManifest): string {
-    return `import {PokieGame, VideoSlotConfig, VideoSlotSession, VideoSlotSessionSerializer} from "pokie";
+    return `import {
+    PokieGame,
+    PokieGameContext,
+    ReelsSymbolsSequencesGenerator,
+    SeededRandomNumberGenerator,
+    SymbolsCombinationsGenerator,
+    VideoSlotConfig,
+    VideoSlotSession,
+    VideoSlotSessionSerializer,
+} from "pokie";
 
 const manifest = ${JSON.stringify(manifest, null, 4)};
 
@@ -9,9 +18,17 @@ const game: PokieGame = {
     getManifest() {
         return manifest;
     },
-    createSession() {
-        const config = new VideoSlotConfig();
-        return new VideoSlotSession(config);
+    createSession(context?: PokieGameContext) {
+        const seedRng = context && context.seed !== undefined ? new SeededRandomNumberGenerator(context.seed) : undefined;
+        // VideoSlotConfig's own default reel-strip content (this scaffold sets no symbols/reelStrips of
+        // its own -- a developer hand-edits those in) is otherwise shuffled with unseeded Math.random()
+        // at construction time; passing a seeded ReelsSymbolsSequencesGenerator here makes it
+        // deterministic too, not just the stop-position draws below.
+        const config = new VideoSlotConfig(undefined, seedRng ? new ReelsSymbolsSequencesGenerator(seedRng) : undefined);
+        const combinationsGenerator = context && context.seed !== undefined
+            ? new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context.seed))
+            : new SymbolsCombinationsGenerator(config);
+        return new VideoSlotSession(config, combinationsGenerator);
     },
     getSessionSerializer() {
         return new VideoSlotSessionSerializer();

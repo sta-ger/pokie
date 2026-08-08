@@ -2,14 +2,20 @@
 
 # P5-POLISH-19 real-user-journey evidence
 
-**Step:** `[P5-POLISH-19]` "Prove end-to-end real user journeys." Gathered 2026-08-08 against product `HEAD`
-`c9a1c43921becbc1c5e5429e78d7f34073c969ad`, a fresh build from source (see "Method"). Companion
-(`/pokie-examples`) confirmed synced: local `develop` `4a65860e3e770a441b0f88cf71ed4b952f3b3d9b` is `origin/develop`
-(`af432206a435db5c1063ca5cd9dd81652b886a6e`, fetched fresh over HTTPS — SSH is unavailable in this sandbox, same
-as every prior round) plus 5 already-committed local commits, confirmed via
-`git merge-base --is-ancestor FETCH_HEAD HEAD`; no divergence. This round made **no new commits in
-`/pokie-examples`** — its own adoption of `pokie/client/player` (landed by `9e242fa`/`4a65860`) is exercised
-as-is, not modified.
+**Step:** `[P5-POLISH-19]` "Prove end-to-end real user journeys." Original round gathered 2026-08-08 against
+product `HEAD` `c9a1c43921becbc1c5e5429e78d7f34073c969ad`, a fresh build from source (see "Method"). **This is a
+review-correction round**, built atop that round's own landed commit `faa647c91b5b598f6a0d9e52605dea2f7672e8f`:
+review found the player-parity acceptance criterion unmet (generated-package seeds were verified inert, not
+fixed, and the four surfaces' own captured artifacts used different rounds) — see "Player parity" below for the
+fix (`src/generated/renderBuiltGameModule.ts`, `cli/scaffold/renderSessionModule.ts`,
+`cli/scaffold/renderEntryModule.ts`, plus the `SeededRandomNumberGenerator`/`SymbolsSequence`/
+`ReelsSymbolsSequencesGenerator` primitives it depends on) and the new one-fixture-round-across-four-surfaces
+evidence. Companion (`/pokie-examples`) confirmed synced at the start of this correction round the same way
+every prior round did (`develop` vs. `origin/develop`, fetched fresh over HTTPS, `git merge-base
+--is-ancestor`). Unlike the original round, **this correction round does make a new commit in `/pokie-examples`**
+— a new test case in `tests/ui.test.ts` rendering this round's own captured fixture round through the real
+`ui.ts`/`data.ts` adoption (landed by `9e242fa`/`4a65860`, exercised for real, not modified) — see "Player
+parity" below.
 
 ## Method
 
@@ -59,7 +65,7 @@ precedent `pokie-phase5-inventory.md`/`phase5-evidence/README.md` already establ
 | [`cli/prog-npm-build.txt`](cli/prog-npm-build.txt) | `npm run build`'s real underlying command (`tsc`, per the scaffolded `package.json`'s own `scripts.build`) invoked directly against the linked package — a real `dist/index.js` compiled from the scaffolded `src/index.ts`. |
 | [`cli/prog-npm-start.txt`](cli/prog-npm-start.txt), [`cli/prog-npm-start-server.log`](cli/prog-npm-start-server.log) | `npm start`'s real underlying command (`pokie dev .`, per `scripts.start`) actually started as a real child process, polled on its own real `/health` route, then driven through a real `POST /sessions` (seeded) and `POST /sessions/:id/spin` — a genuine win captured (`totalWin: 1`, a Q line) — before being cleanly killed. Also proves the served `/`-root client preview (`pokie client`'s own HTML shell) responds `200`. |
 | [`cli/prog-sim.txt`](cli/prog-sim.txt), [`cli/prog-sim-report.json`](cli/prog-sim-report.json) | `pokie sim . --rounds 500 --seed demo-sim --out ...` — a real, seeded simulation report (RTP/hit-frequency/volatility) against the linked package. |
-| [`cli/prog-replay-help.txt`](cli/prog-replay-help.txt), [`cli/prog-replay.txt`](cli/prog-replay.txt) | `pokie replay . --seed ... --round 1` — a real replay descriptor. **Real finding, see "Determinism" below**: two consecutive replays of the identical `(seed, round)` against this same package produced *different* screens — this package's own `createSession()` (the standard `pokie build`/`pokie init` codegen template) never threads `context.seed` into any RNG at all, so `--seed` here is inert for a stock generated package; this is documented, not silently discovered — `ReplayRecorder`'s own source comment already says reproducibility "depends entirely on the game package actually threading context.seed into a deterministic setup." |
+| [`cli/prog-replay-help.txt`](cli/prog-replay-help.txt), [`cli/prog-replay.txt`](cli/prog-replay.txt) | `pokie replay . --seed ... --round 1` — a real replay descriptor. `cli/prog-replay.txt` predates this round's fix and documents the now-superseded pre-fix finding (two consecutive replays of the identical `(seed, round)` produced *different* screens); see "Player parity" below for the fix and fresh, reproducible replay evidence against a real generated package. |
 | §4 "Build" below | `pokie build`/Studio's `/api/home/blueprints/build` is this persona's own real "build" step — see "Random generated reels + Blueprint build" below (the same command a programmer and Valera both use). |
 
 ## 2. Random generated reels + Blueprint build
@@ -154,44 +160,79 @@ real `npm install` — see step 3 in §3 above):
 
 ## Player parity
 
-The instruction's own four surfaces — examples, package `npm start`, Studio Play, Studio Replay — are not four
-independent implementations to keep in sync by hand; `pokie-examples`' own `9e242fa`/`4a65860` (already landed,
-confirmed synced in "Provenance" above) and this repo's own `CanonicalPlayerView.tsx` both already point this
-out in their own doc comments: **all four import and call the exact same `cli/client/player` module** —
-`cli/client/main.ts` (served by `pokie serve`/`pokie dev`/embedded in Studio Play's own `<iframe>`),
-`CanonicalPlayerView.tsx` (Studio's own Play/Replay/Session-Spin panels), and `pokie-examples/src/ui/ui.ts`
-(every example) all call `renderReelsGrid`/`applyPersistentHighlights`/`renderWinHighlightsList`/`renderPaytable`/
-etc. from that one module, never a second, independently-maintained re-implementation. This round verified that
-claim two ways rather than trusting the doc comments alone:
+**Superseded finding, fixed this round**: the prior round's own "Player parity" section (see git history)
+verified only the **rendering** layer (one shared `cli/client/player` module) and explicitly documented the
+**RNG** layer as broken — `context.seed` was never threaded into any RNG by the standard `pokie build`/`pokie
+init` codegen template, so two consecutive `pokie replay . --seed X --round 1` invocations against the same
+package produced different screens (`parity/before-fix-cli-replay-run1.json` vs.
+`parity/before-fix-cli-replay-run2.json`, and `parity/before-fix-cli-replay-round1-standalone.json`,
+`parity/before-fix-npm-start-spin.json`, `parity/before-fix-studio-play-and-replay.json`,
+`parity/before-fix-pokie-examples-ui-tests.txt` — captures of different rounds across the four surfaces, kept
+here as the "before" record). Review correctly rejected that as an unmet acceptance criterion, not sufficient
+parity evidence.
 
-1. **Real regression suite, run live**: `node node_modules/.bin/jest --selectProjects pokie-examples` — see
-   [`parity/pokie-examples-ui-tests.txt`](parity/pokie-examples-ui-tests.txt). **8/8 real tests pass**, each one
-   asserting the shared module actually renders a real grid/win-highlight/paytable/bet-selection/mode-selection/
-   error-retry correctly for a real example game — not mocked, not a stub renderer.
-2. **A real captured round, rendered through the literal shared module in a real DOM**:
-   [`parity/npm-start-spin.json`](parity/npm-start-spin.json) (the real winning spin §1's `npm start` evidence
-   captured, `totalWin: 1`, a Q line win at positions `[[0,1],[1,1],[2,1]]`) was fed through
-   `renderReelsGrid`/`applyPersistentHighlights`/`renderPaytable` — imported from `cli/client/player` by real
-   relative path, unmodified — inside this project's own `jest-environment-jsdom` harness (the same one
-   `phase5-evidence/browser/` used, `studio-client-components` project). The resulting real DOM
-   ([`browser/player-parity-render.html`](browser/player-parity-render.html), capture script at
-   [`browser/parity-render-capture-script.tsx.txt`](browser/parity-render-capture-script.tsx.txt)) shows: a 5×3
-   grid with exactly the captured symbols, the three captured winning cells each carrying a real applied
-   highlight color (every other cell left unhighlighted), and the paytable body containing the real Q payout row
-   — asserted, not eyeballed, before the DOM was ever written out.
+**The fix** (`src/generated/renderBuiltGameModule.ts`, `cli/scaffold/renderSessionModule.ts`,
+`cli/scaffold/renderEntryModule.ts`): every generated package's `createSession(context)` now honors
+`context.seed` — for **both** randomness sources a round actually depends on, not just one:
 
-**Why not one seed threaded live across all four servers instead**: this round tried that first and hit a real,
-verified fact rather than a broken test — see §1's "real finding" on `pokie replay`'s own seed determinism.
-`context.seed` is not threaded into any RNG by the standard `pokie build`/`pokie init` codegen template (only a
-hand-authored game that explicitly constructs its own `SeededRandomNumberGenerator`, like `pokie-examples`' own
-`verifiable-spin`, gets seed-reproducible rounds — confirmed by reading that example's own `index.ts` and
-comparing against the generated template's `createSession()`, which takes no parameters at all). Two consecutive
-`pokie replay . --seed X --round 1` invocations against the same package produced different screens, proving
-this empirically rather than assuming it from the source. Since the actual, real parity guarantee this codebase
-provides is at the **rendering** layer (one shared module) rather than the **RNG** layer (no shared seed
-contract across a generated package's independent server processes), that is the guarantee this round verified,
-concretely, with a real captured round — not a jsdom-only claim standing in for it, since the round rendered was
-real, captured live from a real running `pokie dev` server, not invented.
+- **Stop-position draws** (`SymbolsCombinationsGenerator`): now built with a `SeededRandomNumberGenerator(
+  context.seed)` when a seed is supplied, instead of always defaulting to the unseeded
+  `PseudorandomNumberGenerator`.
+- **Default reel-strip content** (`VideoSlotConfig`'s own `ReelsSymbolsSequencesGenerator`, used whenever a
+  blueprint has no literal `reelStrips`/`symbolWeights` — a real, common shape, not a hypothetical one; see
+  `VideoSlotGoldenTestFixtures.ts`'s own pre-existing doc comment naming this exact gap): `VideoSlotConfig` is
+  now constructed with a `ReelsSymbolsSequencesGenerator` seeded the same way, and the `symbolWeights` branch's
+  own `.shuffle()` call takes the same seed. Both `SymbolsSequence.shuffle()` and `ReelsSymbolsSequencesGenerator`
+  gained an optional RNG parameter (default: unseeded `Math.random()`, byte-identical to before) to make this
+  possible — see `src/session/videoslot/combinations/SeededRandomNumberGenerator.ts`, which also gained string-seed
+  support (FNV-1a folded into mulberry32 state) since `PokieGameContext.seed` is `string | number`.
+
+Focused regression coverage (fails on the pre-fix code, passes after):
+[`parity/after-fix-unit-determinism-tests.txt`](parity/after-fix-unit-determinism-tests.txt) (new
+`SeededRandomNumberGenerator`/`SymbolsSequence`/`ReelsSymbolsSequencesGenerator` unit tests — **38/38 pass**) and
+[`parity/after-fix-workflow-determinism-tests.txt`](parity/after-fix-workflow-determinism-tests.txt) (new
+`tests/cli/Workflow.integration.test.ts` suite building a real `pokie build` package via `GamePackageGenerator` —
+the same generator `BlueprintProjectMaterializer`/`BuildCommand` use — and replaying it through the real CLI
+`ReplayCommand` twice; **3/3 pass**: identical `(seed, round)` reproduces the identical screen/win across
+independently loaded sessions, a different seed diverges, and round index actually advances the draw sequence).
+
+### One identical fixture round, captured live across all four surfaces
+
+Fixture: `fixture-slot` ([`parity/after-fix-fixture-blueprint.json`](parity/after-fix-fixture-blueprint.json)),
+a real `pokie create fixture-slot --blank` blueprint (3 reels × 3 rows, symbols A/B/C, no explicit `reelStrips` —
+deliberately the harder, previously-broken case) built with a real `pokie build ... --target tsPackage` into a
+real package (`node_modules/pokie` symlinked at this checkout's own fresh `dist/`, same `npm install` workaround
+as every prior round — see "Method"; the generated `dist/index.js` itself is captured at
+[`parity/after-fix-fixture-slot-generated-index.js`](parity/after-fix-fixture-slot-generated-index.js)). Every
+surface below was driven with `seed: "fixture-round"`, round 1, against this exact package:
+
+| Surface | Real command/request | Artifact |
+| --- | --- | --- |
+| CLI `pokie replay` | `pokie replay <pkg> --seed fixture-round --round 1`, run twice | [`run1`](parity/after-fix-cli-replay-run1.json) / [`run2`](parity/after-fix-cli-replay-run2.json) |
+| Generated package `npm start` | `pokie dev <pkg> --no-open` (the real `scripts.start` underlying command), `POST /sessions {seed}` then `POST /sessions/:id/spin` | [`session`](parity/after-fix-npm-start-session.json) / [`spin`](parity/after-fix-npm-start-spin.json) |
+| Studio Play | `pokie studio --no-open`, `POST /api/home/projects/open` then `POST /api/project/play/session {seed}` then `POST /api/project/play/sessions/:id/spin` | [`session`](parity/after-fix-studio-play-session.json) / [`spin`](parity/after-fix-studio-play-spin.json) |
+| Studio Replay | `POST /api/project/replays {round: 1, seed: "fixture-round"}`, polled to completion | [`job`](parity/after-fix-studio-replay-job.json) |
+
+All four independently produced the exact same round:
+
+- **Orientation**: `[["A","C","A"],["A","A","C"],["A","A","A"]]` (3 reels × 3 rows) — identical in every
+  artifact above.
+- **Payline**: line `"1"` (`definition: [0,0,0]`, the top row), `symbolId: "A"`.
+- **Winning positions**: `[[0,0],[1,0],[2,0]]` — identical in every artifact.
+- **Paytable-driven win**: `totalWin: 5` (A pays 5 for 3-of-a-kind at bet 1, per the fixture's own paytable,
+  embedded and identical in every artifact's own `paytable`/`winningLines` fields).
+
+The **examples** surface renders this identical fixture round through `pokie-examples`' own real `ui.ts`/
+`data.ts` (not the raw shared module in isolation — the genuine examples adoption), committed as a new test in
+the companion workspace: `/pokie-examples/tests/ui.test.ts`'s own
+`"P5-POLISH-19: examples surface renders the identical fixture round..."` describe block, feeding the literal
+screen/`winningLines`/paytable captured above through the real render pipeline and asserting the same 3×3
+orientation, the same `"Line: 1, win: 5"` highlight, and the same paytable content. Run live:
+[`parity/after-fix-pokie-examples-ui-tests.txt`](parity/after-fix-pokie-examples-ui-tests.txt) — **9/9 pass**
+(8 pre-existing + 1 new).
+
+This closes the gap the prior round's own "rendering-layer-only" argument left open: all four surfaces are now
+verified end-to-end for one real, identical, winning round — not asserted from shared code alone.
 
 ## Owner steps (unchanged from `pokie-phase5-inventory.md`)
 
@@ -200,12 +241,10 @@ real, captured live from a real running `pokie dev` server, not invented.
   "Method"); `phase5-evidence/browser/`'s own real-DOM-without-Chromium approach (extended here with one more
   real-captured-round render, see "Player parity") remains the closest available substitute until a
   browser-capable-host round closes this the same way `phase4-evidence/browser/` eventually did for Phase 4.
-- **`pokie build`/`pokie init`-generated packages never thread `context.seed` into a deterministic RNG** — a
-  real, verified fact (see "Player parity" above and `cli/prog-replay.txt`), not previously named in
-  `pokie-phase5-inventory.md`. Not fixed here (out of this step's own scope, and `ReplayRecorder`'s existing
-  "best-effort" framing suggests it may be intentional rather than an oversight) — flagged for whichever later
-  step owns codegen/replay determinism to decide whether standard generated packages should gain an opt-in
-  seeded-RNG mode the way `verifiable-spin` hand-wires one today.
+- ~~`pokie build`/`pokie init`-generated packages never thread `context.seed` into a deterministic RNG`~~ —
+  **fixed this round**, see "Player parity" above (`src/generated/renderBuiltGameModule.ts`,
+  `cli/scaffold/renderSessionModule.ts`, `cli/scaffold/renderEntryModule.ts`); `cli/prog-replay.txt` documents
+  the now-superseded pre-fix behavior.
 - **This sandbox's own `npm` wrapper remains broken independent of anything in this repository** — reconfirmed
   fresh this round, same root cause `pokie-phase4-inventory.md`/`pokie-phase5-inventory.md` already named; still
   not a product gap.

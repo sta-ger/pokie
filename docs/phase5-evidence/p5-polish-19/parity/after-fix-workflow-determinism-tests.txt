@@ -1,0 +1,316 @@
+Running one project: pokie-integration
+PASS pokie-integration tests/cli/Workflow.integration.test.ts
+  ● Console
+
+    console.log
+      {
+          "sessionId": "394d2538-e2ee-4a75-86a3-00b3a44ef82d",
+          "game": {
+              "id": "seed-determinism-slot",
+              "name": "Seed Determinism Slot",
+              "version": "1.0.0"
+          },
+          "seed": "fixture-seed",
+          "round": 5,
+          "totalBet": 5,
+          "totalWin": 7,
+          "screen": [
+              [
+                  "D",
+                  "C",
+                  "E"
+              ],
+              [
+                  "C",
+                  "E",
+                  "C"
+              ],
+              [
+                  "C",
+                  "D",
+                  "E"
+              ],
+              [
+                  "A",
+                  "C",
+                  "B"
+              ],
+              [
+                  "C",
+                  "B",
+                  "C"
+              ]
+          ],
+          "timestamp": 1786227958858,
+          "durationMs": 5
+      }
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:120:17)
+
+    console.log
+      
+      Replay written to "/tmp/pokie-determinism-test-zMIvzD/first.json".
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:122:21)
+
+    console.log
+      {
+          "sessionId": "671e76e4-d61f-4359-915e-e9277ebd2182",
+          "game": {
+              "id": "seed-determinism-slot",
+              "name": "Seed Determinism Slot",
+              "version": "1.0.0"
+          },
+          "seed": "fixture-seed",
+          "round": 5,
+          "totalBet": 5,
+          "totalWin": 7,
+          "screen": [
+              [
+                  "D",
+                  "C",
+                  "E"
+              ],
+              [
+                  "C",
+                  "E",
+                  "C"
+              ],
+              [
+                  "C",
+                  "D",
+                  "E"
+              ],
+              [
+                  "A",
+                  "C",
+                  "B"
+              ],
+              [
+                  "C",
+                  "B",
+                  "C"
+              ]
+          ],
+          "timestamp": 1786227958880,
+          "durationMs": 1
+      }
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:120:17)
+
+    console.log
+      
+      Replay written to "/tmp/pokie-determinism-test-zMIvzD/second.json".
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:122:21)
+
+    console.log
+      {
+          "sessionId": "291610a9-7a7b-4365-8d34-f76cc5d96f06",
+          "game": {
+              "id": "seed-determinism-slot",
+              "name": "Seed Determinism Slot",
+              "version": "1.0.0"
+          },
+          "seed": "fixture-seed-a",
+          "round": 5,
+          "totalBet": 5,
+          "totalWin": 4,
+          "screen": [
+              [
+                  "E",
+                  "C",
+                  "E"
+              ],
+              [
+                  "E",
+                  "C",
+                  "B"
+              ],
+              [
+                  "B",
+                  "C",
+                  "B"
+              ],
+              [
+                  "B",
+                  "E",
+                  "D"
+              ],
+              [
+                  "E",
+                  "D",
+                  "A"
+              ]
+          ],
+          "timestamp": 1786227958891,
+          "durationMs": 1
+      }
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:120:17)
+
+    console.log
+      
+      Replay written to "/tmp/pokie-determinism-test-zMIvzD/seed-a.json".
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:122:21)
+
+    console.log
+      {
+          "sessionId": "53b79dcb-f6a9-4864-934e-eef9bf543701",
+          "game": {
+              "id": "seed-determinism-slot",
+              "name": "Seed Determinism Slot",
+              "version": "1.0.0"
+          },
+          "seed": "fixture-seed-b",
+          "round": 5,
+          "totalBet": 5,
+          "totalWin": 4,
+          "screen": [
+              [
+                  "C",
+                  "E",
+                  "B"
+              ],
+              [
+                  "B",
+                  "C",
+                  "B"
+              ],
+              [
+                  "D",
+                  "D",
+                  "B"
+              ],
+              [
+                  "D",
+                  "A",
+                  "A"
+              ],
+              [
+                  "B",
+                  "B",
+                  "A"
+              ]
+          ],
+          "timestamp": 1786227958897,
+          "durationMs": 1
+      }
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:120:17)
+
+    console.log
+      
+      Replay written to "/tmp/pokie-determinism-test-zMIvzD/seed-b.json".
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:122:21)
+
+    console.log
+      {
+          "sessionId": "6a4d2e72-4106-4840-9eef-cc24fbaa6398",
+          "game": {
+              "id": "seed-determinism-slot",
+              "name": "Seed Determinism Slot",
+              "version": "1.0.0"
+          },
+          "seed": "fixture-seed",
+          "round": 1,
+          "totalBet": 1,
+          "totalWin": 0,
+          "screen": [
+              [
+                  "C",
+                  "C",
+                  "B"
+              ],
+              [
+                  "A",
+                  "B",
+                  "B"
+              ],
+              [
+                  "A",
+                  "A",
+                  "D"
+              ],
+              [
+                  "E",
+                  "A",
+                  "D"
+              ],
+              [
+                  "B",
+                  "A",
+                  "E"
+              ]
+          ],
+          "timestamp": 1786227958903,
+          "durationMs": 0
+      }
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:120:17)
+
+    console.log
+      
+      Replay written to "/tmp/pokie-determinism-test-zMIvzD/round-1.json".
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:122:21)
+
+    console.log
+      {
+          "sessionId": "c54a1c73-7202-4fa2-a720-8a81a65488f5",
+          "game": {
+              "id": "seed-determinism-slot",
+              "name": "Seed Determinism Slot",
+              "version": "1.0.0"
+          },
+          "seed": "fixture-seed",
+          "round": 5,
+          "totalBet": 5,
+          "totalWin": 7,
+          "screen": [
+              [
+                  "D",
+                  "C",
+                  "E"
+              ],
+              [
+                  "C",
+                  "E",
+                  "C"
+              ],
+              [
+                  "C",
+                  "D",
+                  "E"
+              ],
+              [
+                  "A",
+                  "C",
+                  "B"
+              ],
+              [
+                  "C",
+                  "B",
+                  "C"
+              ]
+          ],
+          "timestamp": 1786227958908,
+          "durationMs": 1
+      }
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:120:17)
+
+    console.log
+      
+      Replay written to "/tmp/pokie-determinism-test-zMIvzD/round-5.json".
+
+      at ReplayCommand.<anonymous> (cli/commands/ReplayCommand.ts:122:21)
+
+
+Test Suites: 9 skipped, 1 passed, 1 of 10 total
+Tests:       39 skipped, 3 passed, 42 total
+Snapshots:   0 total
+Time:        5.492 s, estimated 7 s
+Ran all test suites matching /Workflow.integration.test.ts/i with tests matching "generated tsPackage round reproducibility".

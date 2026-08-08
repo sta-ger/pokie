@@ -1,4 +1,4 @@
-import {SymbolsSequence} from "pokie";
+import {SeededRandomNumberGenerator, SymbolsSequence} from "pokie";
 
 describe("DefaultSymbolsSequence", () => {
     let sequence: SymbolsSequence;
@@ -136,6 +136,28 @@ describe("DefaultSymbolsSequence", () => {
             const originalSequence = sequence.toArray();
             sequence.shuffle();
             expect(sequence.toArray()).not.toEqual(originalSequence);
+        });
+
+        // Regression coverage for the fix in src/generated/renderBuiltGameModule.ts/renderSessionModule.ts:
+        // a generated package's own default reel-strip content used to be shuffled with unseeded
+        // Math.random() regardless of any session seed, so "same seed" never meant "same reel content" for
+        // a blueprint without literal reelStrips. shuffle() now accepts an optional RandomNumberGenerating.
+        it("produces the exact same order for the same rng seed, across independent SymbolsSequence instances", () => {
+            const symbols = new Array(20).fill(0).map((_, i) => `symbol${i}`);
+
+            const first = new SymbolsSequence<string>().fromArray(symbols).shuffle(new SeededRandomNumberGenerator(2024));
+            const second = new SymbolsSequence<string>().fromArray(symbols).shuffle(new SeededRandomNumberGenerator(2024));
+
+            expect(first.toArray()).toEqual(second.toArray());
+        });
+
+        it("produces a different order for a different rng seed", () => {
+            const symbols = new Array(20).fill(0).map((_, i) => `symbol${i}`);
+
+            const first = new SymbolsSequence<string>().fromArray(symbols).shuffle(new SeededRandomNumberGenerator(1));
+            const second = new SymbolsSequence<string>().fromArray(symbols).shuffle(new SeededRandomNumberGenerator(2));
+
+            expect(first.toArray()).not.toEqual(second.toArray());
         });
     });
 

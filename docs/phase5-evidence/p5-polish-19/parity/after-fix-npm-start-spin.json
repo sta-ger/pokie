@@ -1,0 +1,116 @@
+{
+    "credits": 1004,
+    "bet": 1,
+    "reelsSymbols": [
+        [
+            "A",
+            "C",
+            "A"
+        ],
+        [
+            "A",
+            "A",
+            "C"
+        ],
+        [
+            "A",
+            "A",
+            "A"
+        ]
+    ],
+    "totalWin": 5,
+    "winningPositions": [
+        [
+            0,
+            0
+        ],
+        [
+            1,
+            0
+        ],
+        [
+            2,
+            0
+        ]
+    ],
+    "winEvaluationResult": {
+        "totalWin": 5,
+        "winningPositions": [
+            [
+                0,
+                0
+            ],
+            [
+                1,
+                0
+            ],
+            [
+                2,
+                0
+            ]
+        ],
+        "lineWins": [
+            {
+                "definition": [
+                    0,
+                    0,
+                    0
+                ],
+                "pattern": [
+                    1,
+                    1,
+                    1
+                ],
+                "symbolId": "A",
+                "lineId": "1",
+                "symbolsPositions": [
+                    0,
+                    1,
+                    2
+                ],
+                "wildSymbolsPositions": [],
+                "winAmount": 5
+            }
+        ],
+        "scatterWins": [],
+        "clusterWins": [],
+        "valueWins": [],
+        "waysWins": [],
+        "metadata": {
+            "aggregationPolicy": "error-if-incompatible",
+            "evaluators": [
+                "line",
+                "scatter"
+            ]
+        }
+    },
+    "winningLines": {
+        "1": {
+            "definition": [
+                0,
+                0,
+                0
+            ],
+            "pattern": [
+                1,
+                1,
+                1
+            ],
+            "symbolId": "A",
+            "lineId": "1",
+            "symbolsPositions": [
+                0,
+                1,
+                2
+            ],
+            "wildSymbolsPositions": [],
+            "winAmount": 5
+        }
+    },
+    "sessionId": "9eb100e0-5b9a-4966-98f2-0c69441bb685",
+    "game": {
+        "id": "fixture-slot",
+        "name": "Fixture Slot",
+        "version": "0.1.0"
+    }
+}

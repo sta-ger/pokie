@@ -44,6 +44,30 @@ describe("SeededRandomNumberGenerator", () => {
         expect(drawsFrom(-1)).toEqual(drawsFrom(-1));
     });
 
+    // PokieGameContext.seed (see src/gamepackage/PokieGameContext.ts) is string | number -- a generated
+    // package's createSession(context) (renderBuiltGameModule.ts/renderSessionModule.ts) passes it
+    // straight through here, so a string seed must be just as reproducible as a numeric one.
+    test("a string seed produces the same sequence of draws across independent instances", () => {
+        const drawsFrom = (seed: string): number[] => {
+            const generator = new SeededRandomNumberGenerator(seed);
+            return new Array(20).fill(0).map(() => generator.getRandomInt(0, 1000));
+        };
+
+        expect(drawsFrom("fixture-seed")).toEqual(drawsFrom("fixture-seed"));
+        expect(drawsFrom("fixture-seed")).not.toEqual(drawsFrom("a-different-seed"));
+    });
+
+    test("an empty string seed is handled without throwing and remains reproducible", () => {
+        expect(() => new SeededRandomNumberGenerator("").getRandomInt(0, 10)).not.toThrow();
+
+        const drawsFrom = (): number[] => {
+            const generator = new SeededRandomNumberGenerator("");
+            return new Array(10).fill(0).map(() => generator.getRandomInt(0, 1000));
+        };
+
+        expect(drawsFrom()).toEqual(drawsFrom());
+    });
+
     test("is suitable as a drop-in deterministic replacement in repeated test runs", () => {
         // simulates the pattern a regression/golden test would use: construct fresh each time,
         // draw a sequence, and expect byte-for-byte reproducibility across "test runs".

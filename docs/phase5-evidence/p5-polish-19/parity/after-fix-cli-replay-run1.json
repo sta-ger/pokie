@@ -1,0 +1,31 @@
+{
+    "sessionId": "171d6309-0fed-4f14-97e3-f85864b50a33",
+    "game": {
+        "id": "fixture-slot",
+        "name": "Fixture Slot",
+        "version": "0.1.0"
+    },
+    "seed": "fixture-round",
+    "round": 1,
+    "totalBet": 1,
+    "totalWin": 5,
+    "screen": [
+        [
+            "A",
+            "C",
+            "A"
+        ],
+        [
+            "A",
+            "A",
+            "C"
+        ],
+        [
+            "A",
+            "A",
+            "A"
+        ]
+    ],
+    "timestamp": 1786227664585,
+    "durationMs": 4
+}

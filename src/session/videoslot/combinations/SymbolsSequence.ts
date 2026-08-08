@@ -1,3 +1,4 @@
+import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 import type {SymbolsSequenceRepresenting} from "./SymbolsSequenceRepresenting.js";
 
 export class SymbolsSequence<T extends string | number | symbol = string> implements SymbolsSequenceRepresenting<T> {
@@ -118,9 +119,13 @@ export class SymbolsSequence<T extends string | number | symbol = string> implem
         return stacks;
     }
 
-    public shuffle(): this {
+    // Fisher-Yates shuffle. "rng" is optional (defaults to unseeded Math.random(), same as before this
+    // param existed) -- a caller building a reproducible session (see ReelsSymbolsSequencesGenerator
+    // and renderBuiltGameModule.ts's own createConfig()) passes a SeededRandomNumberGenerator instead,
+    // so the same seed always shuffles this exact sequence into the same order.
+    public shuffle(rng?: RandomNumberGenerating): this {
         for (let i = this.sequence.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
+            const j = rng ? rng.getRandomInt(0, i + 1) : Math.floor(Math.random() * (i + 1));
             [this.sequence[i], this.sequence[j]] = [this.sequence[j], this.sequence[i]];
         }
         return this;

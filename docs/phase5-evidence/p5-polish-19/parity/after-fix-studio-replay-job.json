@@ -1,0 +1,733 @@
+{
+    "id": "4096854b-1bf4-4680-a399-1e96250bb50b",
+    "status": "completed",
+    "round": 1,
+    "seed": "fixture-round",
+    "startedAt": "2026-08-08T22:22:24.528Z",
+    "completedRounds": 1,
+    "durationMs": 8,
+    "game": {
+        "id": "fixture-slot",
+        "name": "Fixture Slot",
+        "version": "0.1.0"
+    },
+    "descriptor": {
+        "sessionId": "5bbeb0fd-6756-4bed-8a1c-a115fbd2e8a3",
+        "game": {
+            "id": "fixture-slot",
+            "name": "Fixture Slot",
+            "version": "0.1.0"
+        },
+        "seed": "fixture-round",
+        "round": 1,
+        "totalBet": 1,
+        "totalWin": 5,
+        "screen": [
+            [
+                "A",
+                "C",
+                "A"
+            ],
+            [
+                "A",
+                "A",
+                "C"
+            ],
+            [
+                "A",
+                "A",
+                "A"
+            ]
+        ],
+        "timestamp": 1786227744528,
+        "durationMs": 5,
+        "artifact": {
+            "betMode": "base",
+            "payoutMultiplier": 5,
+            "provenance": {
+                "game": {
+                    "id": "fixture-slot",
+                    "name": "Fixture Slot",
+                    "version": "0.1.0"
+                },
+                "pokieVersion": "1.3.0"
+            },
+            "roundId": "replay:fixture-round:1",
+            "schemaVersion": 1,
+            "screen": [
+                [
+                    "A",
+                    "C",
+                    "A"
+                ],
+                [
+                    "A",
+                    "A",
+                    "C"
+                ],
+                [
+                    "A",
+                    "A",
+                    "A"
+                ]
+            ],
+            "stake": 1,
+            "steps": [
+                {
+                    "index": 0,
+                    "screen": [
+                        [
+                            "A",
+                            "C",
+                            "A"
+                        ],
+                        [
+                            "A",
+                            "A",
+                            "C"
+                        ],
+                        [
+                            "A",
+                            "A",
+                            "A"
+                        ]
+                    ],
+                    "totalWin": 5,
+                    "wins": [
+                        {
+                            "id": "1",
+                            "metadata": {
+                                "definition": [
+                                    0,
+                                    0,
+                                    0
+                                ],
+                                "pattern": [
+                                    1,
+                                    1,
+                                    1
+                                ],
+                                "symbolsPositions": [
+                                    0,
+                                    1,
+                                    2
+                                ],
+                                "wildSymbolsPositions": []
+                            },
+                            "multiplierBreakdown": [],
+                            "symbolId": "A",
+                            "type": "line",
+                            "winAmount": 5,
+                            "winningPositions": [
+                                [
+                                    0,
+                                    0
+                                ],
+                                [
+                                    1,
+                                    0
+                                ],
+                                [
+                                    2,
+                                    0
+                                ]
+                            ]
+                        }
+                    ]
+                }
+            ],
+            "totalWin": 5,
+            "wins": [
+                {
+                    "id": "1",
+                    "metadata": {
+                        "definition": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "pattern": [
+                            1,
+                            1,
+                            1
+                        ],
+                        "symbolsPositions": [
+                            0,
+                            1,
+                            2
+                        ],
+                        "wildSymbolsPositions": []
+                    },
+                    "multiplierBreakdown": [],
+                    "symbolId": "A",
+                    "type": "line",
+                    "winAmount": 5,
+                    "winningPositions": [
+                        [
+                            0,
+                            0
+                        ],
+                        [
+                            1,
+                            0
+                        ],
+                        [
+                            2,
+                            0
+                        ]
+                    ]
+                }
+            ],
+            "hash": "sha256:51ab4fda54b9b86f265711e0666b53f88d841054a5df7aa948f01201d4bf1cba"
+        },
+        "stateBefore": {
+            "context": {
+                "seed": "fixture-round"
+            },
+            "bet": 1,
+            "win": 0,
+            "screen": [
+                [
+                    "B",
+                    "C",
+                    "C"
+                ],
+                [
+                    "C",
+                    "B",
+                    "B"
+                ],
+                [
+                    "C",
+                    "C",
+                    "C"
+                ]
+            ],
+            "initialPayload": {
+                "credits": 9007199254740991,
+                "bet": 1,
+                "availableBets": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    10,
+                    20,
+                    30,
+                    40,
+                    50,
+                    100
+                ],
+                "reelsSymbols": [
+                    [
+                        "B",
+                        "C",
+                        "C"
+                    ],
+                    [
+                        "C",
+                        "B",
+                        "B"
+                    ],
+                    [
+                        "C",
+                        "C",
+                        "C"
+                    ]
+                ],
+                "totalWin": 0,
+                "winningPositions": [],
+                "winEvaluationResult": {
+                    "totalWin": 0,
+                    "winningPositions": [],
+                    "lineWins": [],
+                    "scatterWins": [],
+                    "clusterWins": [],
+                    "valueWins": [],
+                    "waysWins": [],
+                    "metadata": {}
+                },
+                "availableSymbols": [
+                    "A",
+                    "B",
+                    "C"
+                ],
+                "reelsNumber": 3,
+                "reelsSymbolsNumber": 3,
+                "paytable": {
+                    "1": {
+                        "A": {
+                            "3": 5
+                        },
+                        "B": {
+                            "3": 3
+                        },
+                        "C": {
+                            "3": 1
+                        }
+                    },
+                    "2": {
+                        "A": {
+                            "3": 10
+                        },
+                        "B": {
+                            "3": 6
+                        },
+                        "C": {
+                            "3": 2
+                        }
+                    },
+                    "3": {
+                        "A": {
+                            "3": 15
+                        },
+                        "B": {
+                            "3": 9
+                        },
+                        "C": {
+                            "3": 3
+                        }
+                    },
+                    "4": {
+                        "A": {
+                            "3": 20
+                        },
+                        "B": {
+                            "3": 12
+                        },
+                        "C": {
+                            "3": 4
+                        }
+                    },
+                    "5": {
+                        "A": {
+                            "3": 25
+                        },
+                        "B": {
+                            "3": 15
+                        },
+                        "C": {
+                            "3": 5
+                        }
+                    },
+                    "10": {
+                        "A": {
+                            "3": 50
+                        },
+                        "B": {
+                            "3": 30
+                        },
+                        "C": {
+                            "3": 10
+                        }
+                    },
+                    "20": {
+                        "A": {
+                            "3": 100
+                        },
+                        "B": {
+                            "3": 60
+                        },
+                        "C": {
+                            "3": 20
+                        }
+                    },
+                    "30": {
+                        "A": {
+                            "3": 150
+                        },
+                        "B": {
+                            "3": 90
+                        },
+                        "C": {
+                            "3": 30
+                        }
+                    },
+                    "40": {
+                        "A": {
+                            "3": 200
+                        },
+                        "B": {
+                            "3": 120
+                        },
+                        "C": {
+                            "3": 40
+                        }
+                    },
+                    "50": {
+                        "A": {
+                            "3": 250
+                        },
+                        "B": {
+                            "3": 150
+                        },
+                        "C": {
+                            "3": 50
+                        }
+                    },
+                    "100": {
+                        "A": {
+                            "3": 500
+                        },
+                        "B": {
+                            "3": 300
+                        },
+                        "C": {
+                            "3": 100
+                        }
+                    }
+                },
+                "linesDefinitions": {
+                    "0": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "1": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "2": [
+                        2,
+                        2,
+                        2
+                    ]
+                }
+            }
+        },
+        "stateAfter": {
+            "context": {
+                "seed": "fixture-round"
+            },
+            "bet": 1,
+            "win": 5,
+            "screen": [
+                [
+                    "A",
+                    "C",
+                    "A"
+                ],
+                [
+                    "A",
+                    "A",
+                    "C"
+                ],
+                [
+                    "A",
+                    "A",
+                    "A"
+                ]
+            ],
+            "capturePolicy": {
+                "version": 1,
+                "mode": "partial",
+                "captureDebugPayloads": true
+            },
+            "initialPayload": {
+                "credits": 9007199254740991,
+                "bet": 1,
+                "availableBets": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    10,
+                    20,
+                    30,
+                    40,
+                    50,
+                    100
+                ],
+                "reelsSymbols": [
+                    [
+                        "B",
+                        "C",
+                        "C"
+                    ],
+                    [
+                        "C",
+                        "B",
+                        "B"
+                    ],
+                    [
+                        "C",
+                        "C",
+                        "C"
+                    ]
+                ],
+                "totalWin": 0,
+                "winningPositions": [],
+                "winEvaluationResult": {
+                    "totalWin": 0,
+                    "winningPositions": [],
+                    "lineWins": [],
+                    "scatterWins": [],
+                    "clusterWins": [],
+                    "valueWins": [],
+                    "waysWins": [],
+                    "metadata": {}
+                },
+                "availableSymbols": [
+                    "A",
+                    "B",
+                    "C"
+                ],
+                "reelsNumber": 3,
+                "reelsSymbolsNumber": 3,
+                "paytable": {
+                    "1": {
+                        "A": {
+                            "3": 5
+                        },
+                        "B": {
+                            "3": 3
+                        },
+                        "C": {
+                            "3": 1
+                        }
+                    },
+                    "2": {
+                        "A": {
+                            "3": 10
+                        },
+                        "B": {
+                            "3": 6
+                        },
+                        "C": {
+                            "3": 2
+                        }
+                    },
+                    "3": {
+                        "A": {
+                            "3": 15
+                        },
+                        "B": {
+                            "3": 9
+                        },
+                        "C": {
+                            "3": 3
+                        }
+                    },
+                    "4": {
+                        "A": {
+                            "3": 20
+                        },
+                        "B": {
+                            "3": 12
+                        },
+                        "C": {
+                            "3": 4
+                        }
+                    },
+                    "5": {
+                        "A": {
+                            "3": 25
+                        },
+                        "B": {
+                            "3": 15
+                        },
+                        "C": {
+                            "3": 5
+                        }
+                    },
+                    "10": {
+                        "A": {
+                            "3": 50
+                        },
+                        "B": {
+                            "3": 30
+                        },
+                        "C": {
+                            "3": 10
+                        }
+                    },
+                    "20": {
+                        "A": {
+                            "3": 100
+                        },
+                        "B": {
+                            "3": 60
+                        },
+                        "C": {
+                            "3": 20
+                        }
+                    },
+                    "30": {
+                        "A": {
+                            "3": 150
+                        },
+                        "B": {
+                            "3": 90
+                        },
+                        "C": {
+                            "3": 30
+                        }
+                    },
+                    "40": {
+                        "A": {
+                            "3": 200
+                        },
+                        "B": {
+                            "3": 120
+                        },
+                        "C": {
+                            "3": 40
+                        }
+                    },
+                    "50": {
+                        "A": {
+                            "3": 250
+                        },
+                        "B": {
+                            "3": 150
+                        },
+                        "C": {
+                            "3": 50
+                        }
+                    },
+                    "100": {
+                        "A": {
+                            "3": 500
+                        },
+                        "B": {
+                            "3": 300
+                        },
+                        "C": {
+                            "3": 100
+                        }
+                    }
+                },
+                "linesDefinitions": {
+                    "0": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "1": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "2": [
+                        2,
+                        2,
+                        2
+                    ]
+                }
+            },
+            "roundPayload": {
+                "credits": 9007199254740996,
+                "bet": 1,
+                "reelsSymbols": [
+                    [
+                        "A",
+                        "C",
+                        "A"
+                    ],
+                    [
+                        "A",
+                        "A",
+                        "C"
+                    ],
+                    [
+                        "A",
+                        "A",
+                        "A"
+                    ]
+                ],
+                "totalWin": 5,
+                "winningPositions": [
+                    [
+                        0,
+                        0
+                    ],
+                    [
+                        1,
+                        0
+                    ],
+                    [
+                        2,
+                        0
+                    ]
+                ],
+                "winEvaluationResult": {
+                    "totalWin": 5,
+                    "winningPositions": [
+                        [
+                            0,
+                            0
+                        ],
+                        [
+                            1,
+                            0
+                        ],
+                        [
+                            2,
+                            0
+                        ]
+                    ],
+                    "lineWins": [
+                        {
+                            "definition": [
+                                0,
+                                0,
+                                0
+                            ],
+                            "pattern": [
+                                1,
+                                1,
+                                1
+                            ],
+                            "symbolId": "A",
+                            "lineId": "1",
+                            "symbolsPositions": [
+                                0,
+                                1,
+                                2
+                            ],
+                            "wildSymbolsPositions": [],
+                            "winAmount": 5
+                        }
+                    ],
+                    "scatterWins": [],
+                    "clusterWins": [],
+                    "valueWins": [],
+                    "waysWins": [],
+                    "metadata": {
+                        "aggregationPolicy": "error-if-incompatible",
+                        "evaluators": [
+                            "line",
+                            "scatter"
+                        ]
+                    }
+                },
+                "winningLines": {
+                    "1": {
+                        "definition": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "pattern": [
+                            1,
+                            1,
+                            1
+                        ],
+                        "symbolId": "A",
+                        "lineId": "1",
+                        "symbolsPositions": [
+                            0,
+                            1,
+                            2
+                        ],
+                        "wildSymbolsPositions": [],
+                        "winAmount": 5
+                    }
+                }
+            }
+        }
+    }
+}

@@ -33,6 +33,9 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const requireNames = [
         "computeGameBlueprintHash",
         "CustomLinesDefinitions",
+        "ReelsSymbolsSequencesGenerator",
+        "SeededRandomNumberGenerator",
+        "SymbolsCombinationsGenerator",
         "SymbolsSequence",
         "VideoSlotConfig",
         "VideoSlotSession",
@@ -67,14 +70,21 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     });
 `;
     }
-    const winCalculatorArgs = winModel.type === "lines" ? "" : ", undefined, winCalculator";
+    const winCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
     const sessionClassName = freeGames ? "VideoSlotWithFreeGamesSession" : "VideoSlotSession";
-    // Only introduce an intermediate "config" local when a winCalculator actually needs to reference
-    // it — otherwise createSession() stays the exact one-liner it's always been.
-    const sessionConstructionExpression = winCalculatorDeclaration
-        ? `new ${sessionClassName}(config${winCalculatorArgs})`
-        : `new ${sessionClassName}(createConfig())`;
-    const configDeclaration = winCalculatorDeclaration ? `        const config = createConfig();\n${winCalculatorDeclaration}` : "";
+    const sessionConstructionExpression = `new ${sessionClassName}(config, combinationsGenerator${winCalculatorArgs})`;
+    // "config" and "combinationsGenerator" locals are always introduced (not just when a winCalculator
+    // needs to reference "config"): createSession(context) must thread a caller-supplied context.seed
+    // into the same SymbolsCombinationsGenerator/SeededRandomNumberGenerator pairing
+    // createExactEnumerationSession's own doc comment already describes, so the same (seed, round index)
+    // reproduces the same round across fresh processes -- see PokieGameContext.seed and ReplayRecorder,
+    // which already threads context.seed through every game.createSession() call and only needed the
+    // generated package itself to stop ignoring it.
+    const combinationsGeneratorDeclaration = `        const combinationsGenerator = context && context.seed !== undefined
+            ? new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context.seed))
+            : new SymbolsCombinationsGenerator(config);
+`;
+    const configDeclaration = `        const config = createConfig(context);\n${combinationsGeneratorDeclaration}${winCalculatorDeclaration}`;
     // Only wraps the session in VideoSlotWithBetModesSession when resolveBetModeCodegenWiring()
     // reports the whole betModes array validates cleanly under the explicit runtime-semantics contract
     // (see that function and gamepackage/BetMode.ts's own doc comment) -- costMultiplier alone (the
@@ -138,6 +148,11 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     // "ts" format without narrowing what a caller may pass; the "cjs" format stays annotation-free,
     // exactly as before.
     const combinationsGeneratorParam = format === "ts" ? "combinationsGenerator: unknown" : "combinationsGenerator";
+    // Same reasoning as "combinationsGeneratorParam" above, applied to createSession's/createConfig's
+    // own "context" param: "ts" format needs an explicit type for noImplicitAny (context.seed is read
+    // below), "cjs" format stays annotation-free. Shared by both functions since they need the exact
+    // same type.
+    const contextParam = format === "ts" ? "context?: PokieGameContext" : "context";
     const exactEnumerationSessionExport = freeGames
         ? ""
         : `
@@ -157,7 +172,7 @@ ${winCalculatorDeclaration}        return new VideoSlotSession(config, combinati
     // "any" either way, so this never depends on "pokie"'s own exported method signatures) and the
     // final "module.exports" -- is byte-identical in both, so a real "npm run build" here reproduces
     // an equivalent, working dist/index.js.
-    const typeImport = format === "ts" ? `import type {GameBlueprint} from "pokie";\n\n` : "";
+    const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "pokie";\n\n` : "";
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -193,9 +208,17 @@ ${blueprintDeclaration}
 // reel sequences from whatever wilds/scatters are set at that point. The paytable, paylines, and
 // reel strips are set after setAvailableSymbols, since it would otherwise overwrite them. See
 // VideoSlotConfig for the full contract.
+//
+// "context" (present only to read context.seed) makes every random choice this function itself makes
+// -- VideoSlotConfig's own default reel-strip shuffle (absent explicit reelStrips/symbolWeights) and
+// the symbolWeights branch's own shuffle() below -- deterministic for a given seed, the same as
+// createSession's own combinationsGenerator (see the "combinationsGeneratorDeclaration" this function
+// is called from). A blueprint with literal blueprint.reelStrips needs none of this: it never calls
+// shuffle() at all.
 // ---------------------------------------------------------------------------
-function createConfig() {
-    const config = new VideoSlotConfig();
+function createConfig(${contextParam}) {
+    const reelStripRng = context && context.seed !== undefined ? new SeededRandomNumberGenerator(context.seed) : undefined;
+    const config = new VideoSlotConfig(undefined, reelStripRng ? new ReelsSymbolsSequencesGenerator(reelStripRng) : undefined);
 
     if (blueprint.availableBets) {
         config.setAvailableBets(blueprint.availableBets);
@@ -225,7 +248,7 @@ function createConfig() {
     } else if (blueprint.symbolWeights) {
         const sequences = [];
         for (let i = 0; i < blueprint.reels; i++) {
-            sequences.push(new SymbolsSequence().fromNumbersOfSymbols(blueprint.symbolWeights).shuffle());
+            sequences.push(new SymbolsSequence().fromNumbersOfSymbols(blueprint.symbolWeights).shuffle(reelStripRng));
         }
         config.setSymbolsSequences(sequences);
     }
@@ -240,7 +263,7 @@ module.exports = {
     getManifest() {
         return blueprint.manifest;
     },
-    createSession() {
+    createSession(${contextParam}) {
 ${createSessionBody}    },
     getSessionSerializer() {
         return new VideoSlotSessionSerializer();
