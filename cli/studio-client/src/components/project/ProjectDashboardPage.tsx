@@ -556,7 +556,7 @@ export function ProjectDashboardPage() {
     }, [fetchImpl]);
 
     const runtime = useRuntimeManager();
-    const play = usePlaySession();
+    const play = usePlaySession(refreshRecentSpins);
     const deployment = useDeploymentManager();
 
     // Set by GameModelTab whenever its own in-progress section edit has unsaved changes (see its own
@@ -730,7 +730,7 @@ export function ProjectDashboardPage() {
             )}
             {header.status === "outcome-source" && (
                 <div style={{marginTop: "1rem"}}>
-                    <OutcomeSourceOverview header={header} />
+                    <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
                 </div>
             )}
 

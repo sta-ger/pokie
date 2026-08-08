@@ -745,21 +745,25 @@ export type StudioRuntimeStateView =
     | {status: "stopping"}
     | {status: "failed"; error: string};
 
-// The Runtime tab's Session Tools response DTO — see cli/studio/runtime/StudioRuntimeSessionView.ts's
-// own doc comment. `sessionVersion` is present whenever the runtime's configured repository is
-// versioned, regardless of debug mode; `studioRequestId` is Studio's own bookkeeping (the client's
-// requestId for this spin), present whenever one was supplied, regardless of debug mode; `debug` is
-// only present when the runtime was started with debug mode on. `studioRound`/`studioRecordedAt`/
-// `studioSource` are present only on entries that came back from the recent-spins list (GET
-// /api/project/runtime/spins) — never on a plain create/get-session response — and together give each
-// recent spin its own unambiguous, session-scoped identity: `studioRound` is that session's stable
-// 1-based round index (survives both the list's own bound and an idempotent retry of the same
-// requestId), `studioRecordedAt` is when Studio recorded it, and `studioSource` distinguishes a live
-// spin from one played against a pre-generated outcome library.
+// The Runtime tab's Session Tools (and Play tab, and Outcome Source Analysis "Sample") response DTO —
+// see cli/studio/runtime/StudioRuntimeSessionView.ts's own doc comment. `sessionVersion` is present
+// whenever the runtime's configured repository is versioned, regardless of debug mode; `studioRequestId`
+// is Studio's own bookkeeping (the client's requestId for this spin), present whenever one was supplied,
+// regardless of debug mode; `debug` is only present when the runtime was started with debug mode on (the
+// Play tab and Outcome Source Analysis always attach it). `studioRound`/`studioRecordedAt`/`studioSource`/
+// `studioOperation` are present only on a round the shared StudioRoundRecorder actually recorded (every
+// spin/draw across every tab — see that class's own doc comment) — never on a plain create/get-session
+// response — and together give each recorded round its own unambiguous, session-scoped identity:
+// `studioRound` is that session's stable 1-based round index (survives both the recorder's own bound and
+// an idempotent retry of the same requestId), `studioRecordedAt` is when Studio recorded it, `studioSource`
+// names which tab/route produced it, and `studioOperation` names the concrete action within that tab.
 export type StudioRuntimeSessionView = {
     sessionId: string;
     game: {id: string; name: string; version: string};
-    credits: number;
+    // Absent only for a stateless one-shot draw with no session/wallet of its own (the Outcome Source
+    // Analysis tab's "Sample" route) -- never fabricated as 0 to fill the shape out where there truly
+    // isn't a credits figure at all.
+    credits?: number;
     bet?: number;
     win?: number;
     screen?: unknown[][];
@@ -770,7 +774,17 @@ export type StudioRuntimeSessionView = {
     studioRequestId?: string;
     studioRound?: number;
     studioRecordedAt?: string;
-    studioSource?: "live" | "pre-generated";
+    // Which of Studio's own tabs/routes produced this round -- "live"/"pre-generated" are the Runtime
+    // tab's Session Tools, "play"/"play-outcome-source" are the Play tab (an ordinary session vs. a draw
+    // against a resolved "outcomeLibrary" project), "outcome-source-sample" is the Outcome Source
+    // Analysis tab's own one-shot "Sample" draw.
+    studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample";
+    // The concrete action that produced this round, independent of studioSource -- "find-any-win"/
+    // "find-symbol-win" are the Play tab's own scenario-search controls (every spin along the way is
+    // recorded under the operation actually driving it, not demoted to a bare "spin").
+    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample";
+    studioProjectRoot?: string;
+    studioSeed?: string | number;
     debug?: {
         stateAfter?: unknown;
         stateBefore?: unknown;

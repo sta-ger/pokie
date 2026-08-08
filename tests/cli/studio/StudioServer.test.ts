@@ -4687,6 +4687,36 @@ describe("StudioServer", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
+        it("records a Play tab round played against a resolved outcome-library project into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+            const bundleDir = await buildLibraryBundle();
+            const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
+            outcomeServer = createOutcomeSourceServer(bundleDir, loadGame);
+            const address = await outcomeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {seed: "play-outcome-seed"});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+            await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
+
+            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            expect(status).toBe(200);
+            const entries = body as Array<{
+                sessionId: string;
+                studioSource?: string;
+                studioOperation?: string;
+                studioProjectRoot?: string;
+                studioSeed?: string | number;
+                studioRound?: number;
+            }>;
+            expect(entries).toHaveLength(1);
+            expect(entries[0].sessionId).toBe(sessionId);
+            expect(entries[0].studioSource).toBe("play-outcome-source");
+            expect(entries[0].studioOperation).toBe("spin");
+            expect(entries[0].studioProjectRoot).toBe(bundleDir);
+            expect(entries[0].studioSeed).toBe("play-outcome-seed");
+            expect(entries[0].studioRound).toBe(1);
+        });
+
         it("reports the resolver-derived 'outcomeSource.sample' capability diagnostic for a resolved Stake Engine export, never loadPokieGame", async () => {
             const stakeDir = await buildStakeExportDir();
             const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));

@@ -14,7 +14,13 @@ export type PlaySessionView = PlaySessionResultView | PlaySpinResultView;
 // "New session" and "Reset" are the exact same action from this hook's own point of view -- both just
 // call newSession() again, discarding whatever was active (see StudioPlayService.newSession()'s own doc
 // comment) -- PlayTab is what gives the two calls their own distinct labels/affordances.
-export function usePlaySession() {
+// "onRoundRecorded", when given, fires after every successful spin/findAnyWin/findSymbolWin -- Play's own
+// rounds pass through the same shared StudioRoundRecorder every other Studio tab's rounds do (see
+// StudioPlayService's own doc comment), so a caller wired to it (ProjectDashboardPage, passing its own
+// refreshRecentSpins) sees a Play round in the Replay tab's "Session Spin" list without the user having to
+// remember to click that list's own Refresh button -- the same "refresh automatically after every real
+// spin" contract the Runtime tab's RuntimeTab already gives its own onRefreshRecentSpins.
+export function usePlaySession(onRoundRecorded?: () => void) {
     const fetchImpl = useStudioApi();
     const [session, setSession] = useState<PlaySessionView>({status: "idle"});
     const [sessionId, setSessionId] = useState<string>();
@@ -69,7 +75,11 @@ export function usePlaySession() {
                     if (requestId !== requestIdRef.current) {
                         return;
                     }
-                    setSession(describePlaySpinResult(result));
+                    const described = describePlaySpinResult(result);
+                    setSession(described);
+                    if (described.status === "ok") {
+                        onRoundRecorded?.();
+                    }
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
@@ -79,7 +89,7 @@ export function usePlaySession() {
                 .finally(() => spinGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [fetchImpl, sessionId],
+        [fetchImpl, sessionId, onRoundRecorded],
     );
 
     const spin = useCallback(() => {

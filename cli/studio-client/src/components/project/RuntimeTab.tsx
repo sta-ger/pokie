@@ -50,7 +50,7 @@ function runtimeStateLabel(state: RuntimeStateView): string {
 
 function describeRoundEntry(entry: StudioRuntimeSessionView): string {
     return (
-        `Round ${entry.studioRound ?? "?"} in session ${entry.sessionId} — credits ${entry.credits.toFixed(2)}, win ${(entry.win ?? 0).toFixed(2)}` +
+        `Round ${entry.studioRound ?? "?"} in session ${entry.sessionId} — credits ${entry.credits !== undefined ? entry.credits.toFixed(2) : "—"}, win ${(entry.win ?? 0).toFixed(2)}` +
         (entry.studioRequestId ? `, request ${entry.studioRequestId}` : "") +
         (entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : "")
     );
@@ -497,7 +497,7 @@ export function RuntimeTab({
                     <div>
                         <Text size="sm" c="dimmed" mb="sm">
                             Session {sessionId}
-                            {session.status === "ok" ? ` — credits ${session.session.credits.toFixed(2)}` : ""}
+                            {session.status === "ok" && session.session.credits !== undefined ? ` — credits ${session.session.credits.toFixed(2)}` : ""}
                         </Text>
                         <QuickActions>
                             <Button onClick={handleSpin} loading={session.status === "loading"}>

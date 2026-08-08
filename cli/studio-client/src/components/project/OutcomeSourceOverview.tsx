@@ -22,7 +22,12 @@ type OutcomeSourceHeader = Extract<ProjectHeaderView, {status: "outcome-source"}
 // project offers "Draw an outcome" -- see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment for why a
 // "stakeAdapter" export has no draw contract of its own; the route itself still enforces this (the
 // structured diagnostic is rendered if the button is ever reached for a type that doesn't support it).
-export function OutcomeSourceOverview({header}: {header: OutcomeSourceHeader}) {
+// "onRoundRecorded", when given, fires after every successful draw -- a sample draw passes through the
+// same shared StudioRoundRecorder every other Studio tab's rounds do (see StudioServer's own outcome-
+// source sample route), so a caller wired to it (ProjectDashboardPage, passing its own
+// refreshRecentSpins) sees this draw in the Replay tab's "Session Spin" list without the user having to
+// remember to click that list's own Refresh button.
+export function OutcomeSourceOverview({header, onRoundRecorded}: {header: OutcomeSourceHeader; onRoundRecorded?: () => void}) {
     const fetchImpl = useStudioApi();
     const [seed, setSeed] = useState("");
     const [result, setResult] = useState<OutcomeSourceSampleView | undefined>(undefined);
@@ -37,7 +42,12 @@ export function OutcomeSourceOverview({header}: {header: OutcomeSourceHeader}) {
         setDrawing(true);
         setError(undefined);
         sampleOutcomeSource(fetchImpl, modeName, seed.trim().length > 0 ? seed.trim() : undefined)
-            .then(setResult)
+            .then((sampled) => {
+                setResult(sampled);
+                if (sampled.supported) {
+                    onRoundRecorded?.();
+                }
+            })
             .catch((thrown: unknown) => setError(errorMessage(thrown)))
             .finally(() => setDrawing(false));
     };

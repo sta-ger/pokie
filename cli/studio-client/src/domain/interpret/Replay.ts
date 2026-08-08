@@ -726,14 +726,74 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
         completeness = "Minimal -- no screen or debug data was captured for this spin.";
     }
     return {
-        source: spin.studioSource === "pre-generated" ? "Recorded -- pre-generated spin" : "Recorded -- live spin",
+        source: `Recorded -- ${describeStudioRoundSourceForCard(spin.studioSource)}`,
         identities: identityParts.join(", "),
-        seed: "(not tracked per spin -- see the runtime session's own seed)",
+        seed: spin.studioSeed !== undefined ? String(spin.studioSeed) : "(no seed was given for this session)",
         versionHash: `${spin.game.id} v${spin.game.version}`,
         timestamp: spin.studioRecordedAt ? new Date(spin.studioRecordedAt).toLocaleString() : "(unknown)",
         completeness,
         capabilities: describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
     };
+}
+
+// describeLoadedSpin's own "source" summary reads "Recorded -- <phrase>" -- kept as its own small mapping
+// (rather than reusing describeStudioRoundSource below directly) so the pre-existing, already-established
+// "Recorded -- live spin"/"Recorded -- pre-generated spin" phrasing for the Runtime tab's two sources
+// never changes, while the newer Play/Outcome-Source-Analysis sources still get an honest phrase of their
+// own instead of silently falling back to "live spin".
+function describeStudioRoundSourceForCard(source: StudioRuntimeSessionView["studioSource"]): string {
+    switch (source) {
+        case "pre-generated":
+            return "pre-generated spin";
+        case "play":
+            return "Play tab spin";
+        case "play-outcome-source":
+            return "Play tab outcome-library draw";
+        case "outcome-source-sample":
+            return "Outcome Source Analysis sample";
+        case "live":
+        default:
+            return "live spin";
+    }
+}
+
+// Which of Studio's own tabs/routes produced a recorded round -- backs the Replay tab's own "Session
+// Spin" detail table (a plain "Source" row, not the "Recorded -- ..." card summary above). See
+// StudioRoundRecorder's own doc comment (cli/studio/runtime/StudioRoundRecorder.ts) for what each value
+// actually means.
+export function describeStudioRoundSource(source: StudioRuntimeSessionView["studioSource"]): string {
+    switch (source) {
+        case "live":
+            return "Live spin";
+        case "pre-generated":
+            return "Pre-generated outcome library";
+        case "play":
+            return "Play tab";
+        case "play-outcome-source":
+            return "Play tab -- outcome library draw";
+        case "outcome-source-sample":
+            return "Outcome Source Analysis sample";
+        default:
+            return "Unknown";
+    }
+}
+
+// The concrete action within a tab that produced a recorded round -- see StudioRoundRecorder's own doc
+// comment for the full story on why a Play tab round found via "Find any win"/"Find symbol win" is never
+// relabeled as a bare "spin".
+export function describeStudioRoundOperation(operation: StudioRuntimeSessionView["studioOperation"]): string {
+    switch (operation) {
+        case "spin":
+            return "Spin";
+        case "find-any-win":
+            return "Find any win";
+        case "find-symbol-win":
+            return "Find symbol win";
+        case "outcome-source-sample":
+            return "Sample";
+        default:
+            return "Unknown";
+    }
 }
 
 function describeLoadedArtifact(
