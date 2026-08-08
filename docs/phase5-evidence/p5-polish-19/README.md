@@ -17,6 +17,18 @@ every prior round did (`develop` vs. `origin/develop`, fetched fresh over HTTPS,
 `ui.ts`/`data.ts` adoption (landed by `9e242fa`/`4a65860`, exercised for real, not modified) — see "Player
 parity" below.
 
+**Second review-correction pass** (this commit, built atop this round's own landed
+`582f5323efdd1baaa6c95bb00f761def24b2c287`): review found the four-surface rendered-parity evidence still
+incomplete — `browser/parity-render-capture-script.tsx.txt`/`browser/player-parity-render.html` still rendered
+the *old*, pre-fix 5×3 fixture (referencing a `parity/npm-start-spin.json` this round had already deleted), and
+`/pokie-examples/tests/ui.test.ts`'s own P5-POLISH-19 test fed the render pipeline hand-typed literal fixture
+data rather than the actual captured JSON. Both are fixed in this pass: the browser capture script/HTML now
+render the real after-fix `fixture-slot` round (see "Player parity" below), and the examples test now loads the
+real captured JSON files verbatim (committed at `/pokie-examples/tests/fixtures/p5-polish-19/`) and cross-checks
+them against each other before rendering. This pass also corrects this document's own prior overclaim that
+every after-fix artifact carries identical `paytable`/`winningLines` fields — `pokie replay`'s own descriptor
+never did (see "Player parity" below).
+
 ## Method
 
 Same sandbox, same constraints `pokie-phase5-inventory.md`'s own "Method" section and
@@ -54,8 +66,8 @@ precedent `pokie-phase5-inventory.md`/`phase5-evidence/README.md` already establ
 - **Browser/DOM rendering**: exactly one artifact ([`browser/`](browser/)) uses `jest-environment-jsdom`, for
   the one thing only a DOM can prove (that `pokie/client/player`'s real render functions correctly draw a real
   captured round) — see "Player parity" below for why this is not a substitute for the CLI/HTTP evidence
-  everywhere else, and `browser/README.md`'s own "What this is not" for the jsdom-vs-Chromium boundary this round
-  still cannot close (tracked, unchanged, in "Owner steps" below).
+  everywhere else, and [`../browser/README.md`](../browser/README.md)'s own "What this is not" for the
+  jsdom-vs-Chromium boundary this round still cannot close (tracked, unchanged, in "Owner steps" below).
 
 ## 1. Programmer persona: `init` / `npm start` / `npm build` / `sim` / `build`
 
@@ -213,26 +225,58 @@ surface below was driven with `seed: "fixture-round"`, round 1, against this exa
 | Studio Play | `pokie studio --no-open`, `POST /api/home/projects/open` then `POST /api/project/play/session {seed}` then `POST /api/project/play/sessions/:id/spin` | [`session`](parity/after-fix-studio-play-session.json) / [`spin`](parity/after-fix-studio-play-spin.json) |
 | Studio Replay | `POST /api/project/replays {round: 1, seed: "fixture-round"}`, polled to completion | [`job`](parity/after-fix-studio-replay-job.json) |
 
-All four independently produced the exact same round:
+All four independently produced the exact same round — screen and aggregate win, every artifact:
 
 - **Orientation**: `[["A","C","A"],["A","A","C"],["A","A","A"]]` (3 reels × 3 rows) — identical in every
   artifact above.
-- **Payline**: line `"1"` (`definition: [0,0,0]`, the top row), `symbolId: "A"`.
 - **Winning positions**: `[[0,0],[1,0],[2,0]]` — identical in every artifact.
-- **Paytable-driven win**: `totalWin: 5` (A pays 5 for 3-of-a-kind at bet 1, per the fixture's own paytable,
-  embedded and identical in every artifact's own `paytable`/`winningLines` fields).
+- **Total win**: `totalWin: 5` — identical in every artifact.
+
+Not every artifact carries the same *fields*, honestly: `pokie replay`'s own descriptor
+(`parity/after-fix-cli-replay-run1.json`/`run2.json`) only ever reports `screen`/`totalBet`/`totalWin` (no
+`paytable`/`winningLines` — a replay descriptor was never designed to re-embed a package's own static config),
+while the npm-start/Studio-Play session-creation responses and the Studio-Replay job's own `descriptor` do carry
+the full `paytable`/`winningLines`/`lineWins` detail (**payline**: line `"1"`, `definition: [0,0,0]` — the top
+row, `symbolId: "A"`; **paytable-driven win**: A pays `5` for 3-of-a-kind at bet 1). The four-surface parity
+claim above is about the round every surface actually produced, not a claim that every artifact's JSON shape is
+identical — see the individual artifact files linked in the table for what each one actually contains.
+
+**Rendered, not just JSON**: [`browser/parity-render-capture-script.tsx.txt`](browser/parity-render-capture-script.tsx.txt)
+(run live, output at [`browser/player-parity-render.html`](browser/player-parity-render.html)) loads the real
+`after-fix-npm-start-session.json`/`after-fix-npm-start-spin.json` captures above — unmodified, the same files
+the table links — merges them the same way a real client retains a session's static fields across rounds, and
+renders the result through the exact `cli/client/player` module every one of the non-CLI surfaces actually
+uses to draw a screen: `cli/client/main.ts` (served by `pokie serve`/`pokie dev` — i.e. this same generated
+package's own `npm start`) and `CanonicalPlayerView.tsx` (Studio's Play/Replay/Session-Spin panels) both import
+it unmodified, not a fork or a reimplementation. The resulting DOM shows the real 3×3 grid, the top row
+(`data-cell="0:0"`/`"0:1"`/`"0:2"`) rendered with a real, non-empty highlight color and every other cell left
+unhighlighted, and a real paytable body containing `A`/`5` — proving this shared rendering code actually draws
+this exact round correctly, not just that the JSON payloads agree with each other. This is the fix for the prior
+round's own stale artifact here (`parity-render-capture-script.tsx.txt` used to reference the by-then-removed
+`parity/npm-start-spin.json` and assert a different, pre-fix 5×3 round — review correctly rejected that; this
+round's script and its regenerated `.html` output both use this round's own after-fix `fixture-slot` capture).
 
 The **examples** surface renders this identical fixture round through `pokie-examples`' own real `ui.ts`/
 `data.ts` (not the raw shared module in isolation — the genuine examples adoption), committed as a new test in
 the companion workspace: `/pokie-examples/tests/ui.test.ts`'s own
-`"P5-POLISH-19: examples surface renders the identical fixture round..."` describe block, feeding the literal
-screen/`winningLines`/paytable captured above through the real render pipeline and asserting the same 3×3
-orientation, the same `"Line: 1, win: 5"` highlight, and the same paytable content. Run live:
-[`parity/after-fix-pokie-examples-ui-tests.txt`](parity/after-fix-pokie-examples-ui-tests.txt) — **9/9 pass**
-(8 pre-existing + 1 new).
+`"P5-POLISH-19: examples surface renders the identical fixture round..."` describe block. Unlike the prior
+round of this test (which fed the render pipeline hand-typed literal objects that merely claimed to match the
+four captures), this version loads the real captured JSON files verbatim — committed at
+`/pokie-examples/tests/fixtures/p5-polish-19/*.json`, byte-for-byte copies of
+`after-fix-npm-start-session.json`/`after-fix-npm-start-spin.json`/`after-fix-cli-replay-run1.json`/
+`after-fix-studio-play-spin.json`/`after-fix-studio-replay-job.json` above — and its first `it()` asserts those
+four surfaces' own captured screen/winning-positions/total-win agree with each other *before* any rendering
+happens, so a future edit to any one committed fixture file fails this test rather than silently drifting from
+the pokie repo's own captures. Only then does its second `it()` feed the npm-start capture through the real
+render pipeline and assert the same 3×3 orientation, the same `"Line: 1, win: 5"` highlight, and the same
+paytable content (read straight from the captured session response, not retyped). Run live:
+[`parity/after-fix-pokie-examples-ui-tests.txt`](parity/after-fix-pokie-examples-ui-tests.txt) — **10/10 pass**
+(8 pre-existing + 2 new).
 
-This closes the gap the prior round's own "rendering-layer-only" argument left open: all four surfaces are now
-verified end-to-end for one real, identical, winning round — not asserted from shared code alone.
+This closes the gap the prior round's own "rendering-layer-only" argument left open, and the gap this round's
+own review found in the first pass (a stale browser artifact plus a literal-only examples fixture): all four
+surfaces are now verified end-to-end for one real, identical, winning round, with real rendered/DOM evidence —
+not shared-code-alone assertions, and not hand-typed literals standing in for the real captures.
 
 ## Owner steps (unchanged from `pokie-phase5-inventory.md`)
 
