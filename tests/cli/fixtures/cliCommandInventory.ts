@@ -169,8 +169,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             "for an always-valid randomly generated one, with its reel weighting already expressed as valid " +
             "per-reel generation (--seed to reproduce it, --preset default|variant to pick the generation " +
             'strategy). For a prepared, immediately valid package instead, use "pokie init".',
-        // Three independent verbs, same "sentinel flag rather than a positional" shape "build" already
-        // uses for "random" (see deriveVerbForCase's own doc comment): the bare/named
+        // Three independent verbs, each a sentinel flag rather than a positional (see
+        // deriveVerbForCase's own doc comment): the bare/named
         // path (no --blank/--random) always runs the interactive wizard (fully dependency-injectable, so
         // still exercisable without a real terminal or touching this repo's own working directory -- see
         // "init"'s own descriptor comment for the same pattern); "--blank" and "--random" are its two

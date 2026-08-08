@@ -117,9 +117,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     Outcome Library Bundle; `pokie certification verify <certDir>`, which verifies one against its live source
     bundle; `pokie fairness seed-commit <serverSeed.txt>`/`commit`/`reveal`/`verify`, the full Provably Fair
     commit-reveal CLI workflow (see item 26 below); and `pokie`/`pokie studio` (experimental), a local GUI
-    covering most of the commands above (Create/Init, the Mechanics Editor, Build/Export — outcome
-    libraries, Stake Engine export, and remote deployment via the External Adapter SDK, all as one
-    surface — PAR Sheet, Certification, Provably Fair, Play, Replay, Simulation) — see
+    covering most of the commands above (a guided Design Game flow for a new/random/existing blueprint plus a
+    Projects panel on Home; and, once a project is open, Build/Export — outcome libraries, Stake Engine export,
+    and remote deployment via the External Adapter SDK, all as one surface — plus PAR Sheet, Certification,
+    Provably Fair, Play, Replay, Simulation) — see
     [`studio-frontend.md`](studio-frontend.md) for its own React + Mantine frontend stack and dev workflow, and
     [`studio-phase2-inventory.md`](studio-phase2-inventory.md) for the versioned, executable-fixture-backed
     route/UI/contract baseline frozen ahead of Phase 2 redesign work.

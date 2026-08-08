@@ -12,8 +12,8 @@ changed; only how the frontend is built, rendered, and organized has.
 - **Vite** for the dev server and production build (replacing the old bare-`tsc` compile).
 - **`react-router-dom`**, hash routing via the **data router** API (`createHashRouter` + `RouterProvider`,
   not the declarative `<HashRouter><Routes>`) — required for `useBlocker` (see the dirty-navigation guard
-  below), which only works under a data router. Every section has a stable URL: `/home/:tab` (Design &
-  Build / Open Project / Advanced Tools) and `/project/:tab` (the 7 Project Dashboard tabs) — `/` and
+  below), which only works under a data router. Every section has a stable URL: `/home/:tab` (Design Game /
+  Projects) and `/project/:tab` (the 8 Project Dashboard tabs) — `/` and
   `/project` redirect to their default tab. A single `:tab` param route per page is enough to make
   refresh/back-forward/direct-link land on the right section, since react-router keeps the same
   `HomePage`/`ProjectDashboardPage` element instance mounted across param-only changes.
@@ -26,10 +26,12 @@ changed; only how the frontend is built, rendered, and organized has.
 Navigation is organized around the user's task sequence — open/create → configure the game model →
 validate → build → simulate → view a report — not around internal module names.
 
-**Home (`/home/:tab`)** — 3 tabs, all permanently mounted (hidden via CSS, never unmounted, so switching
+**Home (`/home/:tab`)** — 2 tabs, both permanently mounted (hidden via CSS, never unmounted, so switching
 tabs never loses in-progress work):
 
-- **Design & Build** (`/home/design`, the default) — the guided happy path. Renders `BlueprintEditorPage` in
+- **Design Game** (`/home/design`, the default) — the guided happy path: a New Blueprint dialog (Blank/Random/
+  from an existing file) starts a draft, then the same editor configures, validates, and builds it. Renders
+  `BlueprintEditorPage` in
   `guided` mode: a `StepProgressList` (Configure → Validate → Build, a read-only status list — not a
   `Stepper`, since there's nothing to click ahead to; see "Stepper vs. other step UI" below) and a
   `NextStepCallout` next-step hint, both driven by the panel's own existing local validation state. JSON
@@ -51,9 +53,7 @@ tabs never loses in-progress work):
   `StatusBadge` (error count / warning count / a green check once validated clean) shown on each tab, plus
   a filtered `IssueList` inline in that section's own panel. `BlueprintValidationPanel` at the bottom is
   unchanged and still the one full, unfiltered summary. Reels/rows moved out of `MetadataFieldset` into a
-  new `LayoutFieldset` (Game basics keeps only the manifest fields) — the raw/non-guided editor (Advanced
-  Tools' own instance) renders both flat, unchanged, with `LayoutFieldset` simply added alongside
-  `MetadataFieldset` in its existing field sequence so it doesn't lose reels/rows editing.
+  new `LayoutFieldset` (Game basics keeps only the manifest fields).
 
   The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
   cleared on a fresh New/Load or a successful Save/Build) and guarded by one centralized mechanism,
@@ -84,16 +84,20 @@ tabs never loses in-progress work):
   only way to dismiss it is an explicit Leave/Stay choice.
 
   Reload/tab-close is guarded separately by a native `beforeunload` listener, attached only while dirty.
-  Switching between Home's own 3 tabs is never blocked by any of the above.
-- **Open Project** (`/home/open`) — merges what were two separate "ways to open an already-built project"
-  tabs (Recent Projects, Open by path) into one.
-- **Advanced Tools** (`/home/advanced`) — everything else, unchanged functionally, only regrouped:
-  scaffolding a hand-coded game (`pokie create` — hand-written TypeScript game logic, no blueprint/game
-  model), initializing an existing directory (`pokie init`), building from an existing blueprint file
-  directly (skips the guided editor), and the raw (non-`guided`) Blueprint Editor.
+  Switching between Home's own 2 tabs is never blocked by any of the above.
+- **Projects** (`/home/projects`) — every already-known project: managed (created/opened this Studio session,
+  in-memory only, reset on restart) and registered (persisted across restarts via
+  `StudioProjectRegistrationService`), plus **Import Project**, which previews/validates a target path before
+  ever registering it and routes a detected PAR sheet into Design Game's own PAR Sheet Import/Export panel
+  instead (there's no "open" story for a PAR sheet the way there is for a runnable package). There is no
+  scaffolding/init/build-from-an-existing-blueprint-file surface in Studio any more — those flows now live only
+  in the CLI (`pokie init [directory]`, `pokie create [name]`); Home doesn't duplicate them, only imports what
+  they produce. The old, separate, always-mounted "raw" (non-`guided`) Blueprint Editor instance that used to
+  back that surface is gone too — Design Game's own JSON mode and Load/Save-by-path (behind its "Show advanced
+  options" disclosure) already cover the same ground.
 
-**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Play, Simulation**
-(the primary flow, in that order), then a visually separated **Advanced** group — Replay,
+**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Game Model, Play,
+Simulation** (the primary flow, in that order), then a visually separated **Advanced** group — Replay,
 Build/Export, Certification, Fairness (`NavTabItem`'s optional `section` field drives the grouping in
 `NavTabs`; see `ALL_PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact, current tab list). There is
 no standalone "Validate" tab any more (validation is now automatic diagnostics folded into Overview), and
@@ -121,8 +125,11 @@ Dashboard passes `[projectName, activeTabLabel]`). Every page sets `document.tit
 (a `tabIndex={-1}` wrapper + a `useEffect` keyed on the URL-derived active tab), so keyboard/screen-reader
 users don't lose their place after a tab switch or a cross-page navigation.
 
-This is a first vertical slice, not a rewrite: every advanced tool from before this redesign is still fully
-reachable — none of it was removed, only re-labeled and de-emphasized relative to the primary flow.
+This redesign consolidated rather than merely relabeled: Home's old standalone scaffolding/init/build-from-file
+surface ("Advanced Tools") was removed outright — those flows now live only in the CLI — and the Project
+Dashboard's old standalone Deployment/Outcome Libraries/Stake Engine Export tabs were likewise removed, folded
+into Build/Export's own cards (see the Project Dashboard section above). Everything else from before the
+redesign is still reachable, just re-labeled and de-emphasized relative to the primary flow.
 
 ## Directory layout
 
@@ -139,7 +146,7 @@ cli/studio-client/
     api/                 # apiClient.ts, types.ts -- ported ~verbatim from the pre-React app
     domain/               # blueprintEditorState.ts, blueprintFormOps.ts, deploymentRunTracker.ts,
                            # errorMessage.ts, formatTimestamp.ts, asStringList.ts, interpret/*.ts
-                           # (including BlueprintSections.ts, the Design & Build section classifier) --
+                           # (including BlueprintSections.ts, the Design Game section classifier) --
                            # all pure, framework-agnostic TypeScript, unit-tested independently of React
     context/StudioApiProvider.tsx   # supplies the FetchLike apiClient functions expect
     context/DesignNavigationGuardContext.tsx   # threads useDesignNavigationGuard's GuardedAction to
@@ -153,16 +160,16 @@ cli/studio-client/
                            # `section` grouping label per item)
       common/             # LoadingState/EmptyState/ErrorState/SuccessResult, NextStepCallout (the shared
                            # "here's what to do next" affordance), IssueList/FileList, StatusBadge (the
-                           # per-section error/warning/success indicator on Design & Build's tabs),
+                           # per-section error/warning/success indicator on Design Game's tabs),
                            # RowActions/QuickActions/PageSection, BufferedTextInput/BufferedNumberInput,
                            # SimulationReportDisplay, ScreenTable, BuildPreviewDisplay/BuildResultDisplay,
                            # PathInput/PathBrowseModal (a filesystem-path TextInput plus a "Browse" action
                            # -- GET /api/home/fs/browse -- and a resolved-path hint shown on focus, used by
                            # every project-creation path input so a bare "." always has a concrete location
                            # shown alongside it)
-      home/               # HomePage (Design & Build / Open Project / Advanced Tools),
-                           # Recent/Create/Init/Build/Open panels (composed into the tabs above)
-      blueprintEditor/    # BlueprintEditorPage (plain, or `guided` for Home's Design & Build tab),
+      home/               # HomePage (Design Game / Projects), ProjectsPanel (managed + registered
+                           # projects, Import Project)
+      blueprintEditor/    # BlueprintEditorPage (plain, or `guided` for Home's Design Game tab),
                            # SectionedFormEditor (guided mode's 6-section layout, see UX/Information
                            # architecture above), Metadata/Layout/Symbols/Bets/Paylines/Paytable editors,
                            # the Reel Strip Modeler (ReelStripGenerationEditor.tsx), Load/Save/Validate/
@@ -253,7 +260,7 @@ Two Jest projects (`jest.config.mjs`):
   button (exactly the Leave/Stay pair), Stay releases a `guardedAction` caller's loading state and
   double-submit guard, and a subsequent attempt after Stay completes normally.
   `tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx` covers
-  Design & Build's sectioned layout: editing across sections (Game basics/Symbols/Bets) through to a
+  Design Game's sectioned layout: editing across sections (Game basics/Symbols/Bets) through to a
   successful Validate → Build → Project Dashboard, an in-progress edit in one section surviving a switch
   to another and back, a validation error surfacing as both a section's own badge/inline `IssueList` and
   in the unchanged bottom summary, and arrow-key navigation between section tabs. The domain-level section
@@ -318,11 +325,11 @@ stale "Kept as Stepper" disposition.
 | Simulation | `project/SimulationTab.tsx` | Partially linear | Kept as `Stepper`. Auto-advances when a running job goes terminal; the pattern Replay's own auto-advance explicitly mirrors. |
 | PAR Sheet Import/Export | `blueprintEditor/ParSheetImportExportPanel.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; final step never disabled. |
 | Reel Strip Generation | `blueprintEditor/ReelStripGenerationEditor.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; a reel-selection change resets the stepper back to an earlier step. |
-| Guided Design & Build | `blueprintEditor/BlueprintEditorPage.tsx` (`guided`) | Linear, non-interactive | **Changed.** `active` was a pure function of validation status with no `onStepClick` at all -- Mantine's `Stepper` still rendered every step as a real, focusable `<button>` that silently did nothing when clicked (a false affordance for keyboard/screen-reader users, and the reason nearby tests had to disambiguate "Validate" button matches). Replaced with `common/StepProgressList.tsx`, a read-only `<ol>`/`<li>` list (no buttons, `role="list"`) supporting the full `completed \| current \| available \| blocked \| skipped \| failed` state vocabulary, with `aria-current="step"` on the active stage and each stage's status mirrored as real (non-color-only) text via `VisuallyHidden`, the same icon+text split `StatusBadge.tsx` already uses. |
-| Guided Design & Build sections | `blueprintEditor/SectionedFormEditor.tsx` | Nonlinear | Already correct -- Mantine `Tabs` (ARIA tablist, roving tabindex), no order dependency between Game basics/Layout/Symbols/Bets/Paylines/Paytable/Reels. No change. |
+| Guided Design Game | `blueprintEditor/BlueprintEditorPage.tsx` (`guided`) | Linear, non-interactive | **Changed.** `active` was a pure function of validation status with no `onStepClick` at all -- Mantine's `Stepper` still rendered every step as a real, focusable `<button>` that silently did nothing when clicked (a false affordance for keyboard/screen-reader users, and the reason nearby tests had to disambiguate "Validate" button matches). Replaced with `common/StepProgressList.tsx`, a read-only `<ol>`/`<li>` list (no buttons, `role="list"`) supporting the full `completed \| current \| available \| blocked \| skipped \| failed` state vocabulary, with `aria-current="step"` on the active stage and each stage's status mirrored as real (non-color-only) text via `VisuallyHidden`, the same icon+text split `StatusBadge.tsx` already uses. |
+| Guided Design Game sections | `blueprintEditor/SectionedFormEditor.tsx` | Nonlinear | Already correct -- Mantine `Tabs` (ARIA tablist, roving tabindex), no order dependency between Game basics/Layout/Symbols/Bets/Paylines/Paytable/Reels. No change. |
 | Home/Project top-level navigation | `layout/NavTabs.tsx` | Nonlinear | Already correct -- a plain `<nav>` of buttons with `aria-current="page"`, one level above any per-tab Stepper; switching never implies sequencing. No change. |
 
 No workflow here is **strictly linear with a backward lock** -- every gated flow lets the user revisit an
 earlier, already-reached step (there is no code path anywhere that blocks *revisiting*), so none needed a
-one-way "wizard" treatment. The one flow that had no navigation at all (guided Design & Build's top-level
+one-way "wizard" treatment. The one flow that had no navigation at all (guided Design Game's top-level
 stage indicator) is the only one that was actually misusing `Stepper`, and is the only one converted.
