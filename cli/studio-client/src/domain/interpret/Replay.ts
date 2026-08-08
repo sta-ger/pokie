@@ -751,6 +751,8 @@ function describeStudioRoundSourceForCard(source: StudioRuntimeSessionView["stud
             return "Play tab outcome-library draw";
         case "outcome-source-sample":
             return "Outcome Source Analysis sample";
+        case "simulation-sample":
+            return "Recent Simulation reproduction";
         case "live":
         default:
             return "live spin";
@@ -773,6 +775,8 @@ export function describeStudioRoundSource(source: StudioRuntimeSessionView["stud
             return "Play tab -- outcome library draw";
         case "outcome-source-sample":
             return "Outcome Source Analysis sample";
+        case "simulation-sample":
+            return "Replay tab -- Recent Simulation";
         default:
             return "Unknown";
     }
@@ -791,6 +795,8 @@ export function describeStudioRoundOperation(operation: StudioRuntimeSessionView
             return "Find symbol win";
         case "outcome-source-sample":
             return "Sample";
+        case "simulation-sample":
+            return "Simulation sample";
         default:
             return "Unknown";
     }
