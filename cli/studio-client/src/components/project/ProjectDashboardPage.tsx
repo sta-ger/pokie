@@ -32,6 +32,7 @@ import {describeReplayActionError} from "../../domain/replayActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useRuntimeManager} from "../../hooks/useRuntimeManager";
@@ -555,6 +556,7 @@ export function ProjectDashboardPage() {
     }, [fetchImpl]);
 
     const runtime = useRuntimeManager();
+    const play = usePlaySession();
     const deployment = useDeploymentManager();
 
     // Set by GameModelTab whenever its own in-progress section edit has unsaved changes (see its own
@@ -620,6 +622,7 @@ export function ProjectDashboardPage() {
         refreshRecentSpins();
         runtime.resetForProjectSwitch();
         runtime.refresh();
+        play.resetForProjectSwitch();
         deployment.resetForProjectSwitch();
         deployment.refreshTargets();
         deployment.refreshProjectModesAndRegistry();
@@ -756,15 +759,7 @@ export function ProjectDashboardPage() {
                                 />
                             )}
                             {activeTab === "play" && (
-                                <PlayTab
-                                    state={runtime.state}
-                                    running={runtime.running}
-                                    session={runtime.session}
-                                    sessionId={runtime.sessionId}
-                                    onStart={runtime.start}
-                                    onCreateSession={runtime.createSession}
-                                    onRefreshSession={runtime.refreshSession}
-                                />
+                                <PlayTab session={play.session} sessionId={play.sessionId} onNewSession={play.newSession} onSpin={play.spin} />
                             )}
                             {activeTab === "simulation" && (
                                 <SimulationTab

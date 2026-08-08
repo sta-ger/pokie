@@ -76,12 +76,14 @@ import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
+import {StudioPlayService, StudioPlaySpinResult} from "./runtime/StudioPlayService.js";
 import {StudioRuntimeManager, StudioRuntimeSessionResult, StudioRuntimeSpinResult, StudioRuntimeStartResult} from "./runtime/StudioRuntimeManager.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
 import {validateProjectLocationRequest, ProjectLocationRequestInput} from "./validateProjectLocationRequest.js";
 import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} from "./validateProjectRegistrationRequest.js";
 import {validateRuntimeSessionRequest, RuntimeSessionRequestInput} from "./runtime/validateRuntimeSessionRequest.js";
 import {validateRuntimeSpinRequest, RuntimeSpinRequestInput} from "./runtime/validateRuntimeSpinRequest.js";
+import {validatePlaySessionRequest, PlaySessionRequestInput} from "./runtime/validatePlaySessionRequest.js";
 import {validateStartRuntimeRequest, StartRuntimeRequestInput, ValidatedStartRuntimeRequest} from "./runtime/validateStartRuntimeRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
@@ -180,6 +182,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly simulationService: StudioSimulationService;
     private readonly replayService: StudioReplayExecutionService;
     private readonly runtimeManager: StudioRuntimeManager;
+    private readonly playService: StudioPlayService;
     private readonly deploymentService: StudioDeploymentService;
     private readonly outcomeLibraryGenerateService: StudioOutcomeLibraryGenerateService;
     private readonly certificationService: StudioCertificationService;
@@ -219,6 +222,7 @@ export class StudioServer implements StudioServerHandling {
         this.runtimeManager =
             options.runtimeManager ??
             new StudioRuntimeManager(this.loadGame, undefined, undefined, this.resolveRuntimePackageRoot, this.pokieVersion, options.clientRoot ?? "");
+        this.playService = options.playService ?? new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
@@ -271,6 +275,9 @@ export class StudioServer implements StudioServerHandling {
         // Unlike the two above, a runtime server genuinely holds an OS port — awaited so it's released
         // before this method resolves, not left listening after Studio itself has shut down.
         await this.runtimeManager.stopForShutdown();
+        // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
+        // session was active -- same reasoning as runtimeManager above, just synchronous.
+        this.playService.reset();
         return new Promise((resolve, reject) => {
             if (!this.server) {
                 resolve();
@@ -490,6 +497,7 @@ export class StudioServer implements StudioServerHandling {
             // for that same project are cancelled too — see cancelActiveJobsForOldProject()'s own doc
             // comment for why this can't just rely on their existing projectRoot scoping alone.
             await this.runtimeManager.stopForProjectSwitch();
+            this.playService.reset();
             this.cancelActiveJobsForOldProject();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
@@ -615,6 +623,17 @@ export class StudioServer implements StudioServerHandling {
         const runtimeSessionId = this.matchRuntimeSessionRoute(url.pathname);
         if (runtimeSessionId !== undefined && method === "GET") {
             await this.handleRuntimeGetSession(res, runtimeSessionId);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/project/play/session") {
+            await this.handlePlayNewSession(req, res);
+            return;
+        }
+
+        const playSpinSessionId = this.matchPlaySpinRoute(url.pathname);
+        if (playSpinSessionId !== undefined && method === "POST") {
+            await this.handlePlaySpin(res, playSpinSessionId);
             return;
         }
 
@@ -804,6 +823,21 @@ export class StudioServer implements StudioServerHandling {
         return undefined;
     }
 
+    private matchPlaySpinRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (
+            segments.length === 6 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "play" &&
+            segments[3] === "sessions" &&
+            segments[5] === "spin"
+        ) {
+            return decodeURIComponent(segments[4]);
+        }
+        return undefined;
+    }
+
     private async tryToolHandlers(
         toolId: string,
         method: string,
@@ -907,6 +941,7 @@ export class StudioServer implements StudioServerHandling {
         // never strands the previous project's runtime prematurely. Same reasoning as the
         // /api/projects/close branch's own call.
         await this.runtimeManager.stopForProjectSwitch();
+        this.playService.reset();
         this.cancelActiveJobsForOldProject();
 
         // The explicit Home → Project Studio context transition: mutates this same running server's
@@ -2097,6 +2132,65 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendRuntimeErrorResult(res, sessionId, result);
+    }
+
+    // The Play tab's own two handlers -- POST /api/project/play/session (new/reset), POST
+    // /api/project/play/sessions/:id/spin -- Studio's own API, never any part of PokieDevServer's own
+    // HTTP contract (see StudioPlayService's own doc comment). Same "No active project." 409 guard as
+    // every other /api/project/* route; StudioPlayService never throws, so nothing here ever sees a
+    // SessionRepository/WalletPort/raw session object either, only the same StudioRuntimeSessionView
+    // shape the Runtime tab's own Session Tools already render through.
+    private async handlePlayNewSession(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validatePlaySessionRequest((body ?? {}) as PlaySessionRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.playService.newSession(this.currentContext.projectRoot, validated.seed);
+        if (result.status === "ok") {
+            this.sendJson(res, 201, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendJson(res, 200, {status: "failed", error: result.error});
+    }
+
+    private async handlePlaySpin(res: ServerResponse, sessionId: string): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const result = await this.playService.spin(sessionId);
+        if (result.status === "ok") {
+            this.sendJson(res, 200, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendPlayErrorResult(res, sessionId, result);
+    }
+
+    // Same "not-found"/"blocked"/"error" split sendRuntimeErrorResult uses for the Runtime tab's own
+    // Session Tools -- but never "not-running"/"conflict", neither of which StudioPlaySpinResult can
+    // ever report (there is no server to not be running, and no expectedVersion/shared store to
+    // conflict over -- see StudioPlayService.spin()'s own doc comment).
+    private sendPlayErrorResult(res: ServerResponse, sessionId: string, result: Exclude<StudioPlaySpinResult, {status: "ok"}>): void {
+        if (result.status === "not-found") {
+            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            return;
+        }
+        if (result.status === "blocked") {
+            this.sendJson(res, 400, {error: result.error});
+            return;
+        }
+        this.sendJson(res, 200, {status: "error", error: result.error});
     }
 
     // Shared by getSession/spin's non-"ok" outcomes (createSession only ever reaches "not-running"/

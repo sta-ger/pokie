@@ -852,6 +852,66 @@ export async function spinRuntimeSession(
     return readRuntimeSpinResult(response);
 }
 
+export type PlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; message: string} | {status: "no-active-project"};
+
+export type PlaySpinResult =
+    | {status: "ok"; session: StudioRuntimeSessionView}
+    | {status: "error"; message: string}
+    | {status: "not-found"}
+    | {status: "blocked"; message: string}
+    | {status: "no-active-project"};
+
+// Play's own two calls -- POST /api/project/play/session, POST /api/project/play/sessions/:id/spin --
+// Studio's own API, never PokieDevServer's own HTTP contract the Runtime tab's session calls above talk
+// to (see StudioPlayService's own doc comment). Every outcome is a typed result, never thrown, same
+// "domain outcome, not a failed request" reasoning as readRuntimeSessionResult/readRuntimeSpinResult --
+// "no-active-project" is Play's own equivalent of those two's "not-running" (there is no server to be
+// running or not; the one precondition this route actually has is a project being open at all).
+export async function createPlaySession(fetchImpl: FetchLike, seed?: string | number): Promise<PlaySessionResult> {
+    const requestBody: Record<string, unknown> = {};
+    if (seed !== undefined) {
+        requestBody.seed = seed;
+    }
+    const response = await fetchImpl("/api/project/play/session", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(requestBody),
+    });
+    if (response.status === 409) {
+        return {status: "no-active-project"};
+    }
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to create a play session"));
+    }
+    const body = (await response.json()) as {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
+    if (body.status === "ok") {
+        return {status: "ok", session: body.session};
+    }
+    return {status: "error", message: body.error};
+}
+
+export async function spinPlaySession(fetchImpl: FetchLike, sessionId: string): Promise<PlaySpinResult> {
+    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {method: "POST"});
+    if (response.status === 409) {
+        return {status: "no-active-project"};
+    }
+    if (response.status === 404) {
+        return {status: "not-found"};
+    }
+    if (response.status === 400) {
+        const body = (await response.json()) as {error: string};
+        return {status: "blocked", message: body.error};
+    }
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to spin"));
+    }
+    const body = (await response.json()) as {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; error: string};
+    if (body.status === "ok") {
+        return {status: "ok", session: body.session};
+    }
+    return {status: "error", message: body.error};
+}
+
 export async function listDeploymentTargets(fetchImpl: FetchLike): Promise<StudioDeploymentTargetSummary[]> {
     const response = await fetchImpl("/api/project/deployment/targets");
     if (!response.ok) {
