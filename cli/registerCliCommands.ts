@@ -6,6 +6,7 @@ import {ClientCommand} from "./commands/ClientCommand.js";
 import {CreateCommand} from "./commands/CreateCommand.js";
 import {DevCommand} from "./commands/DevCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
+import {EditCommand} from "./commands/EditCommand.js";
 import {FairnessCommand} from "./commands/FairnessCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
@@ -55,6 +56,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             createMaterializingRuntimePackageResolver(version, DEV_OPERATION, pokiePackageRoot),
         ),
         new DiffCommand(),
+        new EditCommand(),
         new FairnessCommand(),
         new InitCommand(version),
         new InspectCommand(),

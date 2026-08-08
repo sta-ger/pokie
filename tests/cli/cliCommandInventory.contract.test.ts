@@ -30,6 +30,7 @@ import {ClientCommand} from "../../cli/commands/ClientCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {DevCommand} from "../../cli/commands/DevCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
+import {EditCommand} from "../../cli/commands/EditCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
@@ -75,6 +76,7 @@ function registerCommands(): CliCommandHandling[] {
         new CreateCommand(TEST_VERSION),
         new DevCommand(),
         new DiffCommand(),
+        new EditCommand(),
         new FairnessCommand(),
         new InitCommand(TEST_VERSION),
         new InspectCommand(),
@@ -252,6 +254,18 @@ const REEL_FIXTURE_BLUEPRINT: GameBlueprint = {
         {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 42},
         {type: "generated", length: 6, symbolCounts: {A: 3, B: 3}, seed: 43},
     ],
+};
+
+// Shared by both "edit::" valid cases below — the same shape createBlankGameBlueprint() produces (known
+// to pass GameBlueprintValidator with zero errors, see that function's own test), so EditCommand's real,
+// unstubbed validator/diff/confirm flow all run for real against it; only loadBlueprint/resolveProject/
+// the wizard itself/writeFile/the prompt/isInteractiveTerminal are swapped for fakes.
+const EDIT_FIXTURE_BLUEPRINT: GameBlueprint = {
+    manifest: {id: "edit-fixture", name: "Edit Fixture", version: "0.1.0"},
+    reels: 3,
+    rows: 3,
+    symbols: ["A", "B", "C"],
+    paytable: {A: {"3": 5}, B: {"3": 3}, C: {"3": 1}},
 };
 
 // Wraps the REAL resolveReelStripGeneration (never reimplemented) so --reel/--seed's actual parsed
@@ -751,6 +765,47 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 (file) => {
                     observe(key, "--out", file);
                 },
+            ),
+
+        // Both "edit::" cases stub isInteractiveTerminal true, resolveProject to "not a recognized
+        // project" (skipping the capability check, same as an ordinary standalone Blueprint file), the
+        // wizard itself (echoing back EDIT_FIXTURE_BLUEPRINT untouched, so EditCommand's own real
+        // validator/diff/write path all run against a genuinely valid blueprint), and an auto-confirming
+        // prompt for the post-diff "Save this blueprint?" question. --out's own destination question
+        // always resolves to a concrete path either way (see GameBlueprintWizardOptions.destination), so
+        // writeFile is observed in both cases -- unlike diff's own default case above, no
+        // deferValueUnlessCalled() is needed here.
+        "edit::<blueprint> (no options, interactive terminal — default destination overwrites <blueprint>)": (key) =>
+            new EditCommand(
+                () => EDIT_FIXTURE_BLUEPRINT,
+                undefined,
+                stub<ProjectResolving>({resolve: () => Promise.resolve(undefined)}),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return Promise.resolve();
+                },
+                (defaultBlueprint) => ({
+                    run: (_prompt, options) =>
+                        Promise.resolve({blueprint: defaultBlueprint, outDir: options?.destination?.defaultPathFor("edit-fixture")}),
+                }),
+                () => ({ask: () => Promise.resolve(""), close: () => undefined}),
+                () => true,
+            ),
+        "edit::<blueprint> --out <file> (accepted --out value, interactive terminal)": (key) =>
+            new EditCommand(
+                () => EDIT_FIXTURE_BLUEPRINT,
+                undefined,
+                stub<ProjectResolving>({resolve: () => Promise.resolve(undefined)}),
+                (filePath) => {
+                    observe(key, "--out", filePath);
+                    return Promise.resolve();
+                },
+                (defaultBlueprint) => ({
+                    run: (_prompt, options) =>
+                        Promise.resolve({blueprint: defaultBlueprint, outDir: options?.destination?.defaultPathFor("edit-fixture")}),
+                }),
+                () => ({ask: () => Promise.resolve(""), close: () => undefined}),
+                () => true,
             ),
 
         "fairness::seed-commit <serverSeed.txt> (default, no --out — prints the commitment JSON)": (key) => {

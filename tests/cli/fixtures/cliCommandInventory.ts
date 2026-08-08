@@ -256,6 +256,38 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         ],
     },
     {
+        name: "edit",
+        description:
+            "Interactively edit an existing Blueprint Project through the same canonical GameBlueprint wizard " +
+            '"pokie create" uses ("pokie edit <blueprint> [--out <file>]") -- every question pre-fills the ' +
+            "current value and Enter preserves it, then a diff against the loaded file is shown and nothing is " +
+            "written until it's explicitly confirmed. --out saves the result to a different file instead of " +
+            'overwriting <blueprint> ("Save As"). Pointed at a non-Blueprint project (tsPackage/wasm/' +
+            "outcomeLibrary/stakeAdapter/parWorkbook), reports why it can't be edited here instead of running the " +
+            'wizard. A "generated" reelStripGeneration is left untouched -- see "pokie reel generate" for that.',
+        verbs: [
+            {
+                verb: undefined,
+                usage: "Usage: pokie edit <blueprint> [--out <file>]",
+                positionals: ["blueprint"],
+                // defaultValue/acceptedValue: both observed at the injected writeFile's own filePath argument,
+                // once a stubbed wizard/prompt run the (fully dependency-injectable, non-TTY-independent)
+                // interactive path to completion -- "edit-fixture.blueprint.json" is the same path
+                // EDIT_FIXTURE_BLUEPRINT's fixture case is invoked against, reached via the destination
+                // question's own defaultPathFor(id) when --out is omitted.
+                options: [
+                    {
+                        flag: "--out",
+                        required: false,
+                        kind: "unvalidated",
+                        defaultValue: "edit-fixture.blueprint.json",
+                        acceptedValue: "custom-edit-out.blueprint.json",
+                    },
+                ],
+            },
+        ],
+    },
+    {
         name: "fairness",
         description:
             "Provably Fair commit-reveal workflow: publish a server-seed commitment, publish a round commitment " +
@@ -1057,6 +1089,32 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<left> <right> --out <file> (accepted --out value, default --format summary)",
         args: ["left.json", "right.json", "--out", "diff-out.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+
+    // --- edit ---
+    {
+        command: "edit",
+        kind: "invalid",
+        label: "missing <blueprint>",
+        args: [],
+        expectedExitCode: 1,
+        expectedError: "Usage: pokie edit <blueprint> [--out <file>]",
+    },
+    {
+        command: "edit",
+        kind: "valid",
+        label: "<blueprint> (no options, interactive terminal — default destination overwrites <blueprint>)",
+        args: ["edit-fixture.blueprint.json"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "edit",
+        kind: "valid",
+        label: "<blueprint> --out <file> (accepted --out value, interactive terminal)",
+        args: ["edit-fixture.blueprint.json", "--out", "custom-edit-out.blueprint.json"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2504,6 +2562,16 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["left.json", "right.json", "--format", "json", "--out"],
         expectedExitCode: 1,
         expectedError: "--out requires a file path. Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]",
+    },
+
+    // --- edit: missing-value cases ---
+    {
+        command: "edit",
+        kind: "invalid",
+        label: "--out given with no value",
+        args: ["edit-fixture.blueprint.json", "--out"],
+        expectedExitCode: 1,
+        expectedError: "--out requires a file path. Usage: pokie edit <blueprint> [--out <file>]",
     },
 
     // --- fairness: missing-value cases ---

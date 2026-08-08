@@ -21,6 +21,10 @@ export const BUILD_OPERATION: PokieOperation = "build";
 export const SIM_OPERATION: PokieOperation = "sim";
 export const REPLAY_OPERATION: PokieOperation = "replay";
 export const VALIDATE_OPERATION: PokieOperation = "validate";
+// Interactively edits an existing Blueprint Project's own canonical GameBlueprint (see "pokie edit") --
+// requires BLUEPRINT_BUILD_CAPABILITY, the same single capability BUILD_OPERATION requires, since
+// editing and building both only ever operate on a resolved "blueprint" project's own JSON file.
+export const EDIT_OPERATION: PokieOperation = "edit";
 export const INSPECT_OPERATION: PokieOperation = "inspect";
 export const SERVE_OPERATION: PokieOperation = "serve";
 export const DEV_OPERATION: PokieOperation = "dev";
@@ -84,6 +88,7 @@ export const CERTIFICATION_VERIFY_OPERATION: PokieOperation = "certification.ver
 // this module has nothing to say about an operation it doesn't recognize, rather than guessing.
 export const OPERATION_REQUIRED_CAPABILITY: Readonly<Record<PokieOperation, ProjectCapability>> = {
     [BUILD_OPERATION]: BLUEPRINT_BUILD_CAPABILITY,
+    [EDIT_OPERATION]: BLUEPRINT_BUILD_CAPABILITY,
     [SIM_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [REPLAY_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
     [VALIDATE_OPERATION]: RUNTIME_EXECUTE_CAPABILITY,
