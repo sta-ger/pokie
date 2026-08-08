@@ -1,5 +1,9 @@
 [← Back to docs index](../README.md)
 
+See also [`p5-polish-19/`](p5-polish-19/README.md) for later, end-to-end real-user-journey evidence (Blueprint
+create/edit/play/find/replay/sim/build, a programmer's init/npm start/npm build/sim/build, Outcome Library and
+Stake Engine imports, direct Blueprint Overview, and player-rendering parity across examples/package/Studio).
+
 # P5-POLISH-01 sandbox-evidence artifacts
 
 Raw transcripts backing the "Method" and findings sections of

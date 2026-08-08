@@ -1,0 +1,13 @@
+Reel strip generation for "blueprint.json"
+  reel 0  seed 1510695912  attempts 1  length 15
+    J 8 9 8 9 7 J 9 K 8 K K 9 K K
+  reel 1  seed 1821914230  attempts 1  length 15
+    9 9 K K K J K 9 K 9 8 8 7 J 8
+  reel 2  seed 295948017  attempts 1  length 15
+    9 7 8 K 9 8 K K J J 8 9 K K 9
+  reel 3  seed 1474920135  attempts 1  length 15
+    9 8 K K 8 7 9 J K K K 9 J 9 8
+  reel 4  seed 1186027021  attempts 1  length 15
+    K J K 9 8 9 K 9 K 7 8 K 8 J 9
+
+Dry run -- no files written. Re-run with --apply to pin these strips into reelStripGeneration.

@@ -1,0 +1,3638 @@
+=== POST /api/home/blueprints/random {seed:4242} ===
+{
+  "status": 200,
+  "body": {
+    "status": "ok",
+    "blueprint": {
+      "manifest": {
+        "id": "roaring-savage-olympus",
+        "name": "Roaring Savage Olympus",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 4242)."
+      },
+      "reels": 5,
+      "rows": 3,
+      "symbols": [
+        "A",
+        "Q",
+        "J",
+        "8",
+        "9",
+        "K",
+        "7",
+        "10"
+      ],
+      "paytable": {
+        "7": {
+          "3": 2,
+          "4": 4,
+          "5": 6
+        },
+        "8": {
+          "3": 5,
+          "4": 10,
+          "5": 15
+        },
+        "9": {
+          "3": 4,
+          "4": 8,
+          "5": 12
+        },
+        "10": {
+          "3": 1,
+          "4": 2,
+          "5": 3
+        },
+        "A": {
+          "3": 8,
+          "4": 16,
+          "5": 24
+        },
+        "Q": {
+          "3": 7,
+          "4": 14,
+          "5": 21
+        },
+        "J": {
+          "3": 6,
+          "4": 12,
+          "5": 18
+        },
+        "K": {
+          "3": 3,
+          "4": 6,
+          "5": 9
+        }
+      },
+      "reelStripGeneration": [
+        {
+          "type": "generated",
+          "length": 36,
+          "symbolWeights": {
+            "7": 7,
+            "8": 4,
+            "9": 5,
+            "10": 8,
+            "A": 1,
+            "Q": 2,
+            "J": 3,
+            "K": 6
+          },
+          "seed": 1570255406
+        },
+        {
+          "type": "generated",
+          "length": 36,
+          "symbolWeights": {
+            "7": 7,
+            "8": 4,
+            "9": 5,
+            "10": 8,
+            "A": 1,
+            "Q": 2,
+            "J": 3,
+            "K": 6
+          },
+          "seed": 1620178228
+        },
+        {
+          "type": "generated",
+          "length": 36,
+          "symbolWeights": {
+            "7": 7,
+            "8": 4,
+            "9": 5,
+            "10": 8,
+            "A": 1,
+            "Q": 2,
+            "J": 3,
+            "K": 6
+          },
+          "seed": 1304827817
+        },
+        {
+          "type": "generated",
+          "length": 36,
+          "symbolWeights": {
+            "7": 7,
+            "8": 4,
+            "9": 5,
+            "10": 8,
+            "A": 1,
+            "Q": 2,
+            "J": 3,
+            "K": 6
+          },
+          "seed": 2134940196
+        },
+        {
+          "type": "generated",
+          "length": 36,
+          "symbolWeights": {
+            "7": 7,
+            "8": 4,
+            "9": 5,
+            "10": 8,
+            "A": 1,
+            "Q": 2,
+            "J": 3,
+            "K": 6
+          },
+          "seed": 723984922
+        }
+      ],
+      "availableBets": [
+        1,
+        2,
+        5,
+        10
+      ]
+    },
+    "seed": 4242,
+    "preset": "default",
+    "provenance": {
+      "generatorVersion": "1.1.0",
+      "strategy": "default-line-pay",
+      "seed": 4242
+    }
+  }
+}
+
+=== POST /api/home/blueprints/validate (after edit) ===
+{
+  "status": 200,
+  "body": {
+    "status": "ok",
+    "warnings": []
+  }
+}
+
+=== POST /api/home/blueprints/save-managed ===
+{
+  "status": 201,
+  "body": {
+    "status": "ok",
+    "path": "/home/agent/POKIE Projects/roaring-savage-olympus-2/blueprint.json",
+    "name": "roaring-savage-olympus-2",
+    "blueprintHash": "sha256:5d65fe08b9dd030451ad8c3b1478027eb1bc5f8bb2360ed1841b5b1e45643ab4"
+  }
+}
+
+=== POST /api/home/projects/open (direct blueprint file -- expect a clean materialize error, never ENOTDIR) ===
+{
+  "status": 400,
+  "body": {
+    "error": "Could not install this Blueprint's runtime dependencies in \"/tmp/pokie-materialize-cache/afd8debcc771292bc34416433acc314cd21a22b6a06620f983742b218a623b9d.staging-a8841ebaf67efe4a\". This is usually a local npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" for the exact npm output.",
+    "detail": "/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting \")\")\n"
+  }
+}
+
+=== POST /api/home/blueprints/build ===
+{
+  "status": 201,
+  "body": {
+    "status": "ok",
+    "projectRoot": "/tmp/p5-19-evidence/valera-build-out",
+    "manifest": {
+      "id": "roaring-savage-olympus",
+      "name": "Valera's Golden Reels",
+      "version": "0.1.0",
+      "description": "Randomly generated video slot (seed 4242)."
+    },
+    "createdFiles": [
+      "package.json",
+      "package-lock.json",
+      "tsconfig.json",
+      "README.md",
+      "src/index.ts",
+      "dist/index.js"
+    ],
+    "buildInfo": {
+      "schemaVersion": 1,
+      "generatedBy": "pokie build",
+      "pokieVersion": "1.3.0",
+      "generatedAt": "2026-08-08T21:22:51.290Z",
+      "blueprintHash": "sha256:5d65fe08b9dd030451ad8c3b1478027eb1bc5f8bb2360ed1841b5b1e45643ab4",
+      "source": "/home/agent/POKIE Projects/roaring-savage-olympus-2/blueprint.json",
+      "files": [
+        "README.md",
+        "dist/index.js",
+        "package-lock.json",
+        "package.json",
+        "src/index.ts",
+        "tsconfig.json"
+      ],
+      "game": {
+        "id": "roaring-savage-olympus",
+        "name": "Valera's Golden Reels",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 4242)."
+      }
+    },
+    "warnings": []
+  }
+}
+
+=== POST /api/home/projects/open (built + linked tsPackage) ===
+{
+  "status": 200,
+  "body": {
+    "context": {
+      "mode": "project",
+      "projectRoot": "/tmp/p5-19-evidence/valera-build-out"
+    },
+    "manifest": {
+      "id": "roaring-savage-olympus",
+      "name": "Valera's Golden Reels",
+      "version": "0.1.0",
+      "description": "Randomly generated video slot (seed 4242)."
+    }
+  }
+}
+
+=== GET /api/project/context (Overview) ===
+{
+  "status": 200,
+  "body": {
+    "status": "loaded",
+    "projectRoot": "/tmp/p5-19-evidence/valera-build-out",
+    "game": {
+      "id": "roaring-savage-olympus",
+      "name": "Valera's Golden Reels",
+      "version": "0.1.0",
+      "description": "Randomly generated video slot (seed 4242)."
+    },
+    "type": "tsPackage",
+    "capabilities": [
+      "runtime.execute"
+    ]
+  }
+}
+
+=== GET /api/project/inspect ===
+{
+  "status": 200,
+  "body": {
+    "packageRoot": "/tmp/p5-19-evidence/valera-build-out",
+    "valid": true,
+    "packageJson": {
+      "name": "roaring-savage-olympus",
+      "version": "0.1.0",
+      "description": "Randomly generated video slot (seed 4242)."
+    }
+  }
+}
+
+=== GET /api/project/validate ===
+{
+  "status": 200,
+  "body": {
+    "packageRoot": "/tmp/p5-19-evidence/valera-build-out",
+    "valid": true,
+    "game": {
+      "id": "roaring-savage-olympus",
+      "name": "Valera's Golden Reels",
+      "version": "0.1.0"
+    },
+    "errors": [],
+    "warnings": [],
+    "suggestions": []
+  }
+}
+
+=== GET /api/project/gameModel ===
+{
+  "status": 200,
+  "body": {
+    "basics": {
+      "status": "available",
+      "data": {
+        "name": "roaring-savage-olympus",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 4242)."
+      }
+    },
+    "layout": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    },
+    "symbols": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    },
+    "reels": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    },
+    "paytable": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    },
+    "betsAndModes": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    },
+    "mechanics": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    },
+    "limits": {
+      "status": "unavailable",
+      "reason": "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model."
+    }
+  }
+}
+
+=== POST /api/project/play/session {seed} ===
+{
+  "status": 201,
+  "body": {
+    "status": "ok",
+    "session": {
+      "credits": 1000,
+      "bet": 1,
+      "availableBets": [
+        1,
+        2,
+        5,
+        10
+      ],
+      "reelsSymbols": [
+        [
+          "8",
+          "10",
+          "A"
+        ],
+        [
+          "Q",
+          "7",
+          "7"
+        ],
+        [
+          "Q",
+          "7",
+          "10"
+        ],
+        [
+          "9",
+          "Q",
+          "10"
+        ],
+        [
+          "7",
+          "10",
+          "10"
+        ]
+      ],
+      "totalWin": 0,
+      "winningPositions": [],
+      "winEvaluationResult": {
+        "totalWin": 0,
+        "winningPositions": [],
+        "lineWins": [],
+        "scatterWins": [],
+        "clusterWins": [],
+        "valueWins": [],
+        "waysWins": [],
+        "metadata": {}
+      },
+      "availableSymbols": [
+        "A",
+        "Q",
+        "J",
+        "8",
+        "9",
+        "K",
+        "7",
+        "10"
+      ],
+      "reelsNumber": 5,
+      "reelsSymbolsNumber": 3,
+      "paytable": {
+        "1": {
+          "7": {
+            "3": 2,
+            "4": 4,
+            "5": 6
+          },
+          "8": {
+            "3": 5,
+            "4": 10,
+            "5": 15
+          },
+          "9": {
+            "3": 4,
+            "4": 8,
+            "5": 12
+          },
+          "10": {
+            "3": 1,
+            "4": 2,
+            "5": 3
+          },
+          "A": {
+            "3": 8,
+            "4": 16,
+            "5": 24
+          },
+          "Q": {
+            "3": 7,
+            "4": 14,
+            "5": 21
+          },
+          "J": {
+            "3": 6,
+            "4": 12,
+            "5": 18
+          },
+          "K": {
+            "3": 3,
+            "4": 6,
+            "5": 9
+          }
+        },
+        "2": {
+          "7": {
+            "3": 4,
+            "4": 8,
+            "5": 12
+          },
+          "8": {
+            "3": 10,
+            "4": 20,
+            "5": 30
+          },
+          "9": {
+            "3": 8,
+            "4": 16,
+            "5": 24
+          },
+          "10": {
+            "3": 2,
+            "4": 4,
+            "5": 6
+          },
+          "A": {
+            "3": 16,
+            "4": 32,
+            "5": 48
+          },
+          "Q": {
+            "3": 14,
+            "4": 28,
+            "5": 42
+          },
+          "J": {
+            "3": 12,
+            "4": 24,
+            "5": 36
+          },
+          "K": {
+            "3": 6,
+            "4": 12,
+            "5": 18
+          }
+        },
+        "5": {
+          "7": {
+            "3": 10,
+            "4": 20,
+            "5": 30
+          },
+          "8": {
+            "3": 25,
+            "4": 50,
+            "5": 75
+          },
+          "9": {
+            "3": 20,
+            "4": 40,
+            "5": 60
+          },
+          "10": {
+            "3": 5,
+            "4": 10,
+            "5": 15
+          },
+          "A": {
+            "3": 40,
+            "4": 80,
+            "5": 120
+          },
+          "Q": {
+            "3": 35,
+            "4": 70,
+            "5": 105
+          },
+          "J": {
+            "3": 30,
+            "4": 60,
+            "5": 90
+          },
+          "K": {
+            "3": 15,
+            "4": 30,
+            "5": 45
+          }
+        },
+        "10": {
+          "7": {
+            "3": 20,
+            "4": 40,
+            "5": 60
+          },
+          "8": {
+            "3": 50,
+            "4": 100,
+            "5": 150
+          },
+          "9": {
+            "3": 40,
+            "4": 80,
+            "5": 120
+          },
+          "10": {
+            "3": 10,
+            "4": 20,
+            "5": 30
+          },
+          "A": {
+            "3": 80,
+            "4": 160,
+            "5": 240
+          },
+          "Q": {
+            "3": 70,
+            "4": 140,
+            "5": 210
+          },
+          "J": {
+            "3": 60,
+            "4": 120,
+            "5": 180
+          },
+          "K": {
+            "3": 30,
+            "4": 60,
+            "5": 90
+          }
+        }
+      },
+      "linesDefinitions": {
+        "0": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "1": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "2": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ]
+      },
+      "sessionId": "bd3cd855-1884-4b57-a883-38ad6e24d260",
+      "game": {
+        "id": "roaring-savage-olympus",
+        "name": "Valera's Golden Reels",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 4242)."
+      },
+      "debug": {
+        "stateAfter": {
+          "context": {
+            "seed": "valera-play-fixture"
+          },
+          "bet": 1,
+          "win": 0,
+          "screen": [
+            [
+              "8",
+              "10",
+              "A"
+            ],
+            [
+              "Q",
+              "7",
+              "7"
+            ],
+            [
+              "Q",
+              "7",
+              "10"
+            ],
+            [
+              "9",
+              "Q",
+              "10"
+            ],
+            [
+              "7",
+              "10",
+              "10"
+            ]
+          ],
+          "initialPayload": {
+            "credits": 1000,
+            "bet": 1,
+            "availableBets": [
+              1,
+              2,
+              5,
+              10
+            ],
+            "reelsSymbols": [
+              [
+                "8",
+                "10",
+                "A"
+              ],
+              [
+                "Q",
+                "7",
+                "7"
+              ],
+              [
+                "Q",
+                "7",
+                "10"
+              ],
+              [
+                "9",
+                "Q",
+                "10"
+              ],
+              [
+                "7",
+                "10",
+                "10"
+              ]
+            ],
+            "totalWin": 0,
+            "winningPositions": [],
+            "winEvaluationResult": {
+              "totalWin": 0,
+              "winningPositions": [],
+              "lineWins": [],
+              "scatterWins": [],
+              "clusterWins": [],
+              "valueWins": [],
+              "waysWins": [],
+              "metadata": {}
+            },
+            "availableSymbols": [
+              "A",
+              "Q",
+              "J",
+              "8",
+              "9",
+              "K",
+              "7",
+              "10"
+            ],
+            "reelsNumber": 5,
+            "reelsSymbolsNumber": 3,
+            "paytable": {
+              "1": {
+                "7": {
+                  "3": 2,
+                  "4": 4,
+                  "5": 6
+                },
+                "8": {
+                  "3": 5,
+                  "4": 10,
+                  "5": 15
+                },
+                "9": {
+                  "3": 4,
+                  "4": 8,
+                  "5": 12
+                },
+                "10": {
+                  "3": 1,
+                  "4": 2,
+                  "5": 3
+                },
+                "A": {
+                  "3": 8,
+                  "4": 16,
+                  "5": 24
+                },
+                "Q": {
+                  "3": 7,
+                  "4": 14,
+                  "5": 21
+                },
+                "J": {
+                  "3": 6,
+                  "4": 12,
+                  "5": 18
+                },
+                "K": {
+                  "3": 3,
+                  "4": 6,
+                  "5": 9
+                }
+              },
+              "2": {
+                "7": {
+                  "3": 4,
+                  "4": 8,
+                  "5": 12
+                },
+                "8": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "9": {
+                  "3": 8,
+                  "4": 16,
+                  "5": 24
+                },
+                "10": {
+                  "3": 2,
+                  "4": 4,
+                  "5": 6
+                },
+                "A": {
+                  "3": 16,
+                  "4": 32,
+                  "5": 48
+                },
+                "Q": {
+                  "3": 14,
+                  "4": 28,
+                  "5": 42
+                },
+                "J": {
+                  "3": 12,
+                  "4": 24,
+                  "5": 36
+                },
+                "K": {
+                  "3": 6,
+                  "4": 12,
+                  "5": 18
+                }
+              },
+              "5": {
+                "7": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "8": {
+                  "3": 25,
+                  "4": 50,
+                  "5": 75
+                },
+                "9": {
+                  "3": 20,
+                  "4": 40,
+                  "5": 60
+                },
+                "10": {
+                  "3": 5,
+                  "4": 10,
+                  "5": 15
+                },
+                "A": {
+                  "3": 40,
+                  "4": 80,
+                  "5": 120
+                },
+                "Q": {
+                  "3": 35,
+                  "4": 70,
+                  "5": 105
+                },
+                "J": {
+                  "3": 30,
+                  "4": 60,
+                  "5": 90
+                },
+                "K": {
+                  "3": 15,
+                  "4": 30,
+                  "5": 45
+                }
+              },
+              "10": {
+                "7": {
+                  "3": 20,
+                  "4": 40,
+                  "5": 60
+                },
+                "8": {
+                  "3": 50,
+                  "4": 100,
+                  "5": 150
+                },
+                "9": {
+                  "3": 40,
+                  "4": 80,
+                  "5": 120
+                },
+                "10": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "A": {
+                  "3": 80,
+                  "4": 160,
+                  "5": 240
+                },
+                "Q": {
+                  "3": 70,
+                  "4": 140,
+                  "5": 210
+                },
+                "J": {
+                  "3": 60,
+                  "4": 120,
+                  "5": 180
+                },
+                "K": {
+                  "3": 30,
+                  "4": 60,
+                  "5": 90
+                }
+              }
+            },
+            "linesDefinitions": {
+              "0": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "1": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "2": [
+                2,
+                2,
+                2,
+                2,
+                2
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+=== POST /api/project/play/sessions/:id/spin ===
+{
+  "status": 200,
+  "body": {
+    "status": "ok",
+    "session": {
+      "credits": 999,
+      "bet": 1,
+      "reelsSymbols": [
+        [
+          "8",
+          "10",
+          "A"
+        ],
+        [
+          "7",
+          "9",
+          "10"
+        ],
+        [
+          "8",
+          "Q",
+          "K"
+        ],
+        [
+          "10",
+          "9",
+          "9"
+        ],
+        [
+          "J",
+          "10",
+          "7"
+        ]
+      ],
+      "totalWin": 0,
+      "winningPositions": [],
+      "winEvaluationResult": {
+        "totalWin": 0,
+        "winningPositions": [],
+        "lineWins": [],
+        "scatterWins": [],
+        "clusterWins": [],
+        "valueWins": [],
+        "waysWins": [],
+        "metadata": {
+          "aggregationPolicy": "error-if-incompatible",
+          "evaluators": [
+            "line",
+            "scatter"
+          ]
+        }
+      },
+      "sessionId": "bd3cd855-1884-4b57-a883-38ad6e24d260",
+      "game": {
+        "id": "roaring-savage-olympus",
+        "name": "Valera's Golden Reels",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 4242)."
+      },
+      "availableSymbols": [
+        "A",
+        "Q",
+        "J",
+        "8",
+        "9",
+        "K",
+        "7",
+        "10"
+      ],
+      "debug": {
+        "stateAfter": {
+          "context": {
+            "seed": "valera-play-fixture"
+          },
+          "bet": 1,
+          "win": 0,
+          "screen": [
+            [
+              "8",
+              "10",
+              "A"
+            ],
+            [
+              "7",
+              "9",
+              "10"
+            ],
+            [
+              "8",
+              "Q",
+              "K"
+            ],
+            [
+              "10",
+              "9",
+              "9"
+            ],
+            [
+              "J",
+              "10",
+              "7"
+            ]
+          ],
+          "capturePolicy": {
+            "version": 1,
+            "mode": "full",
+            "captureDebugPayloads": true
+          },
+          "initialPayload": {
+            "credits": 1000,
+            "bet": 1,
+            "availableBets": [
+              1,
+              2,
+              5,
+              10
+            ],
+            "reelsSymbols": [
+              [
+                "8",
+                "10",
+                "A"
+              ],
+              [
+                "Q",
+                "7",
+                "7"
+              ],
+              [
+                "Q",
+                "7",
+                "10"
+              ],
+              [
+                "9",
+                "Q",
+                "10"
+              ],
+              [
+                "7",
+                "10",
+                "10"
+              ]
+            ],
+            "totalWin": 0,
+            "winningPositions": [],
+            "winEvaluationResult": {
+              "totalWin": 0,
+              "winningPositions": [],
+              "lineWins": [],
+              "scatterWins": [],
+              "clusterWins": [],
+              "valueWins": [],
+              "waysWins": [],
+              "metadata": {}
+            },
+            "availableSymbols": [
+              "A",
+              "Q",
+              "J",
+              "8",
+              "9",
+              "K",
+              "7",
+              "10"
+            ],
+            "reelsNumber": 5,
+            "reelsSymbolsNumber": 3,
+            "paytable": {
+              "1": {
+                "7": {
+                  "3": 2,
+                  "4": 4,
+                  "5": 6
+                },
+                "8": {
+                  "3": 5,
+                  "4": 10,
+                  "5": 15
+                },
+                "9": {
+                  "3": 4,
+                  "4": 8,
+                  "5": 12
+                },
+                "10": {
+                  "3": 1,
+                  "4": 2,
+                  "5": 3
+                },
+                "A": {
+                  "3": 8,
+                  "4": 16,
+                  "5": 24
+                },
+                "Q": {
+                  "3": 7,
+                  "4": 14,
+                  "5": 21
+                },
+                "J": {
+                  "3": 6,
+                  "4": 12,
+                  "5": 18
+                },
+                "K": {
+                  "3": 3,
+                  "4": 6,
+                  "5": 9
+                }
+              },
+              "2": {
+                "7": {
+                  "3": 4,
+                  "4": 8,
+                  "5": 12
+                },
+                "8": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "9": {
+                  "3": 8,
+                  "4": 16,
+                  "5": 24
+                },
+                "10": {
+                  "3": 2,
+                  "4": 4,
+                  "5": 6
+                },
+                "A": {
+                  "3": 16,
+                  "4": 32,
+                  "5": 48
+                },
+                "Q": {
+                  "3": 14,
+                  "4": 28,
+                  "5": 42
+                },
+                "J": {
+                  "3": 12,
+                  "4": 24,
+                  "5": 36
+                },
+                "K": {
+                  "3": 6,
+                  "4": 12,
+                  "5": 18
+                }
+              },
+              "5": {
+                "7": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "8": {
+                  "3": 25,
+                  "4": 50,
+                  "5": 75
+                },
+                "9": {
+                  "3": 20,
+                  "4": 40,
+                  "5": 60
+                },
+                "10": {
+                  "3": 5,
+                  "4": 10,
+                  "5": 15
+                },
+                "A": {
+                  "3": 40,
+                  "4": 80,
+                  "5": 120
+                },
+                "Q": {
+                  "3": 35,
+                  "4": 70,
+                  "5": 105
+                },
+                "J": {
+                  "3": 30,
+                  "4": 60,
+                  "5": 90
+                },
+                "K": {
+                  "3": 15,
+                  "4": 30,
+                  "5": 45
+                }
+              },
+              "10": {
+                "7": {
+                  "3": 20,
+                  "4": 40,
+                  "5": 60
+                },
+                "8": {
+                  "3": 50,
+                  "4": 100,
+                  "5": 150
+                },
+                "9": {
+                  "3": 40,
+                  "4": 80,
+                  "5": 120
+                },
+                "10": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "A": {
+                  "3": 80,
+                  "4": 160,
+                  "5": 240
+                },
+                "Q": {
+                  "3": 70,
+                  "4": 140,
+                  "5": 210
+                },
+                "J": {
+                  "3": 60,
+                  "4": 120,
+                  "5": 180
+                },
+                "K": {
+                  "3": 30,
+                  "4": 60,
+                  "5": 90
+                }
+              }
+            },
+            "linesDefinitions": {
+              "0": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "1": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "2": [
+                2,
+                2,
+                2,
+                2,
+                2
+              ]
+            }
+          },
+          "roundPayload": {
+            "credits": 999,
+            "bet": 1,
+            "reelsSymbols": [
+              [
+                "8",
+                "10",
+                "A"
+              ],
+              [
+                "7",
+                "9",
+                "10"
+              ],
+              [
+                "8",
+                "Q",
+                "K"
+              ],
+              [
+                "10",
+                "9",
+                "9"
+              ],
+              [
+                "J",
+                "10",
+                "7"
+              ]
+            ],
+            "totalWin": 0,
+            "winningPositions": [],
+            "winEvaluationResult": {
+              "totalWin": 0,
+              "winningPositions": [],
+              "lineWins": [],
+              "scatterWins": [],
+              "clusterWins": [],
+              "valueWins": [],
+              "waysWins": [],
+              "metadata": {
+                "aggregationPolicy": "error-if-incompatible",
+                "evaluators": [
+                  "line",
+                  "scatter"
+                ]
+              }
+            }
+          },
+          "roundArtifact": {
+            "schemaVersion": 1,
+            "roundId": "acc89cce-00ef-49eb-bc8f-309b7e226a60",
+            "provenance": {
+              "game": {
+                "id": "roaring-savage-olympus",
+                "name": "Valera's Golden Reels",
+                "version": "0.1.0",
+                "description": "Randomly generated video slot (seed 4242)."
+              },
+              "pokieVersion": "1.3.0",
+              "configHash": "sha256:c360d6bc5be370a29f2a4156096b4fd91a8873f1160f65e4454f3238e228c22f"
+            },
+            "betMode": "base",
+            "stake": 1,
+            "totalWin": 0,
+            "payoutMultiplier": 0,
+            "screen": [
+              [
+                "8",
+                "10",
+                "A"
+              ],
+              [
+                "7",
+                "9",
+                "10"
+              ],
+              [
+                "8",
+                "Q",
+                "K"
+              ],
+              [
+                "10",
+                "9",
+                "9"
+              ],
+              [
+                "J",
+                "10",
+                "7"
+              ]
+            ],
+            "steps": [
+              {
+                "index": 0,
+                "screen": [
+                  [
+                    "8",
+                    "10",
+                    "A"
+                  ],
+                  [
+                    "7",
+                    "9",
+                    "10"
+                  ],
+                  [
+                    "8",
+                    "Q",
+                    "K"
+                  ],
+                  [
+                    "10",
+                    "9",
+                    "9"
+                  ],
+                  [
+                    "J",
+                    "10",
+                    "7"
+                  ]
+                ],
+                "totalWin": 0,
+                "wins": []
+              }
+            ],
+            "wins": [],
+            "debug": {
+              "command": "spin",
+              "credits": 999,
+              "seed": "valera-play-fixture",
+              "stateAfter": {
+                "bet": 1,
+                "screen": [
+                  [
+                    "8",
+                    "10",
+                    "A"
+                  ],
+                  [
+                    "7",
+                    "9",
+                    "10"
+                  ],
+                  [
+                    "8",
+                    "Q",
+                    "K"
+                  ],
+                  [
+                    "10",
+                    "9",
+                    "9"
+                  ],
+                  [
+                    "J",
+                    "10",
+                    "7"
+                  ]
+                ],
+                "win": 0
+              },
+              "stateBefore": {
+                "bet": 1,
+                "screen": [
+                  [
+                    "8",
+                    "10",
+                    "A"
+                  ],
+                  [
+                    "Q",
+                    "7",
+                    "7"
+                  ],
+                  [
+                    "Q",
+                    "7",
+                    "10"
+                  ],
+                  [
+                    "9",
+                    "Q",
+                    "10"
+                  ],
+                  [
+                    "7",
+                    "10",
+                    "10"
+                  ]
+                ],
+                "win": 0
+              }
+            }
+          }
+        },
+        "artifact": {
+          "betMode": "base",
+          "debug": {
+            "command": "spin",
+            "credits": 999,
+            "seed": "valera-play-fixture",
+            "stateAfter": {
+              "bet": 1,
+              "screen": [
+                [
+                  "8",
+                  "10",
+                  "A"
+                ],
+                [
+                  "7",
+                  "9",
+                  "10"
+                ],
+                [
+                  "8",
+                  "Q",
+                  "K"
+                ],
+                [
+                  "10",
+                  "9",
+                  "9"
+                ],
+                [
+                  "J",
+                  "10",
+                  "7"
+                ]
+              ],
+              "win": 0
+            },
+            "stateBefore": {
+              "bet": 1,
+              "screen": [
+                [
+                  "8",
+                  "10",
+                  "A"
+                ],
+                [
+                  "Q",
+                  "7",
+                  "7"
+                ],
+                [
+                  "Q",
+                  "7",
+                  "10"
+                ],
+                [
+                  "9",
+                  "Q",
+                  "10"
+                ],
+                [
+                  "7",
+                  "10",
+                  "10"
+                ]
+              ],
+              "win": 0
+            }
+          },
+          "payoutMultiplier": 0,
+          "provenance": {
+            "configHash": "sha256:c360d6bc5be370a29f2a4156096b4fd91a8873f1160f65e4454f3238e228c22f",
+            "game": {
+              "description": "Randomly generated video slot (seed 4242).",
+              "id": "roaring-savage-olympus",
+              "name": "Valera's Golden Reels",
+              "version": "0.1.0"
+            },
+            "pokieVersion": "1.3.0"
+          },
+          "roundId": "acc89cce-00ef-49eb-bc8f-309b7e226a60",
+          "schemaVersion": 1,
+          "screen": [
+            [
+              "8",
+              "10",
+              "A"
+            ],
+            [
+              "7",
+              "9",
+              "10"
+            ],
+            [
+              "8",
+              "Q",
+              "K"
+            ],
+            [
+              "10",
+              "9",
+              "9"
+            ],
+            [
+              "J",
+              "10",
+              "7"
+            ]
+          ],
+          "stake": 1,
+          "steps": [
+            {
+              "index": 0,
+              "screen": [
+                [
+                  "8",
+                  "10",
+                  "A"
+                ],
+                [
+                  "7",
+                  "9",
+                  "10"
+                ],
+                [
+                  "8",
+                  "Q",
+                  "K"
+                ],
+                [
+                  "10",
+                  "9",
+                  "9"
+                ],
+                [
+                  "J",
+                  "10",
+                  "7"
+                ]
+              ],
+              "totalWin": 0,
+              "wins": []
+            }
+          ],
+          "totalWin": 0,
+          "wins": [],
+          "hash": "sha256:e1aec43eeda8ba4f493ea2e4d265481f3d6e2d7d9e41fc8ccbb1908611f584ca"
+        }
+      },
+      "studioRound": 1,
+      "studioRecordedAt": "2026-08-08T21:22:51.631Z",
+      "studioSource": "play",
+      "studioOperation": "spin",
+      "studioProjectRoot": "/tmp/p5-19-evidence/valera-build-out",
+      "studioSeed": "valera-play-fixture"
+    }
+  }
+}
+
+=== POST /api/project/play/sessions/:id/find-any-win ===
+{
+  "status": 200,
+  "body": {
+    "status": "ok",
+    "session": {
+      "credits": 998,
+      "bet": 1,
+      "reelsSymbols": [
+        [
+          "7",
+          "8",
+          "10"
+        ],
+        [
+          "7",
+          "9",
+          "10"
+        ],
+        [
+          "7",
+          "8",
+          "9"
+        ],
+        [
+          "K",
+          "10",
+          "A"
+        ],
+        [
+          "10",
+          "J",
+          "10"
+        ]
+      ],
+      "totalWin": 2,
+      "winningPositions": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "winEvaluationResult": {
+        "totalWin": 2,
+        "winningPositions": [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            2,
+            0
+          ]
+        ],
+        "lineWins": [
+          {
+            "definition": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "pattern": [
+              1,
+              1,
+              1,
+              0,
+              0
+            ],
+            "symbolId": "7",
+            "lineId": "1",
+            "symbolsPositions": [
+              0,
+              1,
+              2
+            ],
+            "wildSymbolsPositions": [],
+            "winAmount": 2
+          }
+        ],
+        "scatterWins": [],
+        "clusterWins": [],
+        "valueWins": [],
+        "waysWins": [],
+        "metadata": {
+          "aggregationPolicy": "error-if-incompatible",
+          "evaluators": [
+            "line",
+            "scatter"
+          ]
+        }
+      },
+      "winningLines": {
+        "1": {
+          "definition": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "pattern": [
+            1,
+            1,
+            1,
+            0,
+            0
+          ],
+          "symbolId": "7",
+          "lineId": "1",
+          "symbolsPositions": [
+            0,
+            1,
+            2
+          ],
+          "wildSymbolsPositions": [],
+          "winAmount": 2
+        }
+      },
+      "sessionId": "bd3cd855-1884-4b57-a883-38ad6e24d260",
+      "game": {
+        "id": "roaring-savage-olympus",
+        "name": "Valera's Golden Reels",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 4242)."
+      },
+      "availableSymbols": [
+        "A",
+        "Q",
+        "J",
+        "8",
+        "9",
+        "K",
+        "7",
+        "10"
+      ],
+      "debug": {
+        "stateAfter": {
+          "context": {
+            "seed": "valera-play-fixture"
+          },
+          "bet": 1,
+          "win": 2,
+          "screen": [
+            [
+              "7",
+              "8",
+              "10"
+            ],
+            [
+              "7",
+              "9",
+              "10"
+            ],
+            [
+              "7",
+              "8",
+              "9"
+            ],
+            [
+              "K",
+              "10",
+              "A"
+            ],
+            [
+              "10",
+              "J",
+              "10"
+            ]
+          ],
+          "capturePolicy": {
+            "version": 1,
+            "mode": "full",
+            "captureDebugPayloads": true
+          },
+          "initialPayload": {
+            "credits": 1000,
+            "bet": 1,
+            "availableBets": [
+              1,
+              2,
+              5,
+              10
+            ],
+            "reelsSymbols": [
+              [
+                "8",
+                "10",
+                "A"
+              ],
+              [
+                "Q",
+                "7",
+                "7"
+              ],
+              [
+                "Q",
+                "7",
+                "10"
+              ],
+              [
+                "9",
+                "Q",
+                "10"
+              ],
+              [
+                "7",
+                "10",
+                "10"
+              ]
+            ],
+            "totalWin": 0,
+            "winningPositions": [],
+            "winEvaluationResult": {
+              "totalWin": 0,
+              "winningPositions": [],
+              "lineWins": [],
+              "scatterWins": [],
+              "clusterWins": [],
+              "valueWins": [],
+              "waysWins": [],
+              "metadata": {}
+            },
+            "availableSymbols": [
+              "A",
+              "Q",
+              "J",
+              "8",
+              "9",
+              "K",
+              "7",
+              "10"
+            ],
+            "reelsNumber": 5,
+            "reelsSymbolsNumber": 3,
+            "paytable": {
+              "1": {
+                "7": {
+                  "3": 2,
+                  "4": 4,
+                  "5": 6
+                },
+                "8": {
+                  "3": 5,
+                  "4": 10,
+                  "5": 15
+                },
+                "9": {
+                  "3": 4,
+                  "4": 8,
+                  "5": 12
+                },
+                "10": {
+                  "3": 1,
+                  "4": 2,
+                  "5": 3
+                },
+                "A": {
+                  "3": 8,
+                  "4": 16,
+                  "5": 24
+                },
+                "Q": {
+                  "3": 7,
+                  "4": 14,
+                  "5": 21
+                },
+                "J": {
+                  "3": 6,
+                  "4": 12,
+                  "5": 18
+                },
+                "K": {
+                  "3": 3,
+                  "4": 6,
+                  "5": 9
+                }
+              },
+              "2": {
+                "7": {
+                  "3": 4,
+                  "4": 8,
+                  "5": 12
+                },
+                "8": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "9": {
+                  "3": 8,
+                  "4": 16,
+                  "5": 24
+                },
+                "10": {
+                  "3": 2,
+                  "4": 4,
+                  "5": 6
+                },
+                "A": {
+                  "3": 16,
+                  "4": 32,
+                  "5": 48
+                },
+                "Q": {
+                  "3": 14,
+                  "4": 28,
+                  "5": 42
+                },
+                "J": {
+                  "3": 12,
+                  "4": 24,
+                  "5": 36
+                },
+                "K": {
+                  "3": 6,
+                  "4": 12,
+                  "5": 18
+                }
+              },
+              "5": {
+                "7": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "8": {
+                  "3": 25,
+                  "4": 50,
+                  "5": 75
+                },
+                "9": {
+                  "3": 20,
+                  "4": 40,
+                  "5": 60
+                },
+                "10": {
+                  "3": 5,
+                  "4": 10,
+                  "5": 15
+                },
+                "A": {
+                  "3": 40,
+                  "4": 80,
+                  "5": 120
+                },
+                "Q": {
+                  "3": 35,
+                  "4": 70,
+                  "5": 105
+                },
+                "J": {
+                  "3": 30,
+                  "4": 60,
+                  "5": 90
+                },
+                "K": {
+                  "3": 15,
+                  "4": 30,
+                  "5": 45
+                }
+              },
+              "10": {
+                "7": {
+                  "3": 20,
+                  "4": 40,
+                  "5": 60
+                },
+                "8": {
+                  "3": 50,
+                  "4": 100,
+                  "5": 150
+                },
+                "9": {
+                  "3": 40,
+                  "4": 80,
+                  "5": 120
+                },
+                "10": {
+                  "3": 10,
+                  "4": 20,
+                  "5": 30
+                },
+                "A": {
+                  "3": 80,
+                  "4": 160,
+                  "5": 240
+                },
+                "Q": {
+                  "3": 70,
+                  "4": 140,
+                  "5": 210
+                },
+                "J": {
+                  "3": 60,
+                  "4": 120,
+                  "5": 180
+                },
+                "K": {
+                  "3": 30,
+                  "4": 60,
+                  "5": 90
+                }
+              }
+            },
+            "linesDefinitions": {
+              "0": [
+                1,
+                1,
+                1,
+                1,
+                1
+              ],
+              "1": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "2": [
+                2,
+                2,
+                2,
+                2,
+                2
+              ]
+            }
+          },
+          "roundPayload": {
+            "credits": 998,
+            "bet": 1,
+            "reelsSymbols": [
+              [
+                "7",
+                "8",
+                "10"
+              ],
+              [
+                "7",
+                "9",
+                "10"
+              ],
+              [
+                "7",
+                "8",
+                "9"
+              ],
+              [
+                "K",
+                "10",
+                "A"
+              ],
+              [
+                "10",
+                "J",
+                "10"
+              ]
+            ],
+            "totalWin": 2,
+            "winningPositions": [
+              [
+                0,
+                0
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                0
+              ]
+            ],
+            "winEvaluationResult": {
+              "totalWin": 2,
+              "winningPositions": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  1,
+                  0
+                ],
+                [
+                  2,
+                  0
+                ]
+              ],
+              "lineWins": [
+                {
+                  "definition": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "pattern": [
+                    1,
+                    1,
+                    1,
+                    0,
+                    0
+                  ],
+                  "symbolId": "7",
+                  "lineId": "1",
+                  "symbolsPositions": [
+                    0,
+                    1,
+                    2
+                  ],
+                  "wildSymbolsPositions": [],
+                  "winAmount": 2
+                }
+              ],
+              "scatterWins": [],
+              "clusterWins": [],
+              "valueWins": [],
+              "waysWins": [],
+              "metadata": {
+                "aggregationPolicy": "error-if-incompatible",
+                "evaluators": [
+                  "line",
+                  "scatter"
+                ]
+              }
+            },
+            "winningLines": {
+              "1": {
+                "definition": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "pattern": [
+                  1,
+                  1,
+                  1,
+                  0,
+                  0
+                ],
+                "symbolId": "7",
+                "lineId": "1",
+                "symbolsPositions": [
+                  0,
+                  1,
+                  2
+                ],
+                "wildSymbolsPositions": [],
+                "winAmount": 2
+              }
+            }
+          },
+          "roundArtifact": {
+            "schemaVersion": 1,
+            "roundId": "db10bcbf-32e0-4749-8275-60095c21c6e5",
+            "provenance": {
+              "game": {
+                "id": "roaring-savage-olympus",
+                "name": "Valera's Golden Reels",
+                "version": "0.1.0",
+                "description": "Randomly generated video slot (seed 4242)."
+              },
+              "pokieVersion": "1.3.0",
+              "configHash": "sha256:c360d6bc5be370a29f2a4156096b4fd91a8873f1160f65e4454f3238e228c22f"
+            },
+            "betMode": "base",
+            "stake": 1,
+            "totalWin": 2,
+            "payoutMultiplier": 2,
+            "screen": [
+              [
+                "7",
+                "8",
+                "10"
+              ],
+              [
+                "7",
+                "9",
+                "10"
+              ],
+              [
+                "7",
+                "8",
+                "9"
+              ],
+              [
+                "K",
+                "10",
+                "A"
+              ],
+              [
+                "10",
+                "J",
+                "10"
+              ]
+            ],
+            "steps": [
+              {
+                "index": 0,
+                "screen": [
+                  [
+                    "7",
+                    "8",
+                    "10"
+                  ],
+                  [
+                    "7",
+                    "9",
+                    "10"
+                  ],
+                  [
+                    "7",
+                    "8",
+                    "9"
+                  ],
+                  [
+                    "K",
+                    "10",
+                    "A"
+                  ],
+                  [
+                    "10",
+                    "J",
+                    "10"
+                  ]
+                ],
+                "totalWin": 2,
+                "wins": [
+                  {
+                    "type": "line",
+                    "id": "1",
+                    "symbolId": "7",
+                    "winAmount": 2,
+                    "winningPositions": [
+                      [
+                        0,
+                        0
+                      ],
+                      [
+                        1,
+                        0
+                      ],
+                      [
+                        2,
+                        0
+                      ]
+                    ],
+                    "multiplierBreakdown": [],
+                    "metadata": {
+                      "definition": [
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                      ],
+                      "pattern": [
+                        1,
+                        1,
+                        1,
+                        0,
+                        0
+                      ],
+                      "symbolsPositions": [
+                        0,
+                        1,
+                        2
+                      ],
+                      "wildSymbolsPositions": []
+                    }
+                  }
+                ]
+              }
+            ],
+            "wins": [
+              {
+                "type": "line",
+                "id": "1",
+                "symbolId": "7",
+                "winAmount": 2,
+                "winningPositions": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    2,
+                    0
+                  ]
+                ],
+                "multiplierBreakdown": [],
+                "metadata": {
+                  "definition": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                  ],
+                  "pattern": [
+                    1,
+                    1,
+                    1,
+                    0,
+                    0
+                  ],
+                  "symbolsPositions": [
+                    0,
+                    1,
+                    2
+                  ],
+                  "wildSymbolsPositions": []
+                }
+              }
+            ],
+            "debug": {
+              "command": "spin",
+              "credits": 998,
+              "seed": "valera-play-fixture",
+              "stateAfter": {
+                "bet": 1,
+                "screen": [
+                  [
+                    "7",
+                    "8",
+                    "10"
+                  ],
+                  [
+                    "7",
+                    "9",
+                    "10"
+                  ],
+                  [
+                    "7",
+                    "8",
+                    "9"
+                  ],
+                  [
+                    "K",
+                    "10",
+                    "A"
+                  ],
+                  [
+                    "10",
+                    "J",
+                    "10"
+                  ]
+                ],
+                "win": 2
+              },
+              "stateBefore": {
+                "bet": 1,
+                "screen": [
+                  [
+                    "10",
+                    "9",
+                    "8"
+                  ],
+                  [
+                    "8",
+                    "9",
+                    "7"
+                  ],
+                  [
+                    "10",
+                    "J",
+                    "J"
+                  ],
+                  [
+                    "8",
+                    "Q",
+                    "K"
+                  ],
+                  [
+                    "10",
+                    "Q",
+                    "7"
+                  ]
+                ],
+                "win": 0
+              }
+            }
+          }
+        },
+        "artifact": {
+          "betMode": "base",
+          "debug": {
+            "command": "spin",
+            "credits": 998,
+            "seed": "valera-play-fixture",
+            "stateAfter": {
+              "bet": 1,
+              "screen": [
+                [
+                  "7",
+                  "8",
+                  "10"
+                ],
+                [
+                  "7",
+                  "9",
+                  "10"
+                ],
+                [
+                  "7",
+                  "8",
+                  "9"
+                ],
+                [
+                  "K",
+                  "10",
+                  "A"
+                ],
+                [
+                  "10",
+                  "J",
+                  "10"
+                ]
+              ],
+              "win": 2
+            },
+            "stateBefore": {
+              "bet": 1,
+              "screen": [
+                [
+                  "10",
+                  "9",
+                  "8"
+                ],
+                [
+                  "8",
+                  "9",
+                  "7"
+                ],
+                [
+                  "10",
+                  "J",
+                  "J"
+                ],
+                [
+                  "8",
+                  "Q",
+                  "K"
+                ],
+                [
+                  "10",
+                  "Q",
+                  "7"
+                ]
+              ],
+              "win": 0
+            }
+          },
+          "payoutMultiplier": 2,
+          "provenance": {
+            "configHash": "sha256:c360d6bc5be370a29f2a4156096b4fd91a8873f1160f65e4454f3238e228c22f",
+            "game": {
+              "description": "Randomly generated video slot (seed 4242).",
+              "id": "roaring-savage-olympus",
+              "name": "Valera's Golden Reels",
+              "version": "0.1.0"
+            },
+            "pokieVersion": "1.3.0"
+          },
+          "roundId": "db10bcbf-32e0-4749-8275-60095c21c6e5",
+          "schemaVersion": 1,
+          "screen": [
+            [
+              "7",
+              "8",
+              "10"
+            ],
+            [
+              "7",
+              "9",
+              "10"
+            ],
+            [
+              "7",
+              "8",
+              "9"
+            ],
+            [
+              "K",
+              "10",
+              "A"
+            ],
+            [
+              "10",
+              "J",
+              "10"
+            ]
+          ],
+          "stake": 1,
+          "steps": [
+            {
+              "index": 0,
+              "screen": [
+                [
+                  "7",
+                  "8",
+                  "10"
+                ],
+                [
+                  "7",
+                  "9",
+                  "10"
+                ],
+                [
+                  "7",
+                  "8",
+                  "9"
+                ],
+                [
+                  "K",
+                  "10",
+                  "A"
+                ],
+                [
+                  "10",
+                  "J",
+                  "10"
+                ]
+              ],
+              "totalWin": 2,
+              "wins": [
+                {
+                  "id": "1",
+                  "metadata": {
+                    "definition": [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0
+                    ],
+                    "pattern": [
+                      1,
+                      1,
+                      1,
+                      0,
+                      0
+                    ],
+                    "symbolsPositions": [
+                      0,
+                      1,
+                      2
+                    ],
+                    "wildSymbolsPositions": []
+                  },
+                  "multiplierBreakdown": [],
+                  "symbolId": "7",
+                  "type": "line",
+                  "winAmount": 2,
+                  "winningPositions": [
+                    [
+                      0,
+                      0
+                    ],
+                    [
+                      1,
+                      0
+                    ],
+                    [
+                      2,
+                      0
+                    ]
+                  ]
+                }
+              ]
+            }
+          ],
+          "totalWin": 2,
+          "wins": [
+            {
+              "id": "1",
+              "metadata": {
+                "definition": [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "pattern": [
+                  1,
+                  1,
+                  1,
+                  0,
+                  0
+                ],
+                "symbolsPositions": [
+                  0,
+                  1,
+                  2
+                ],
+                "wildSymbolsPositions": []
+              },
+              "multiplierBreakdown": [],
+              "symbolId": "7",
+              "type": "line",
+              "winAmount": 2,
+              "winningPositions": [
+                [
+                  0,
+                  0
+                ],
+                [
+                  1,
+                  0
+                ],
+                [
+                  2,
+                  0
+                ]
+              ]
+            }
+          ],
+          "hash": "sha256:5169ead8307f04eb0d92f460dcab642a8659674cf9469b1d75c5a7c00d1633ed"
+        }
+      },
+      "studioRound": 4,
+      "studioRecordedAt": "2026-08-08T21:22:51.645Z",
+      "studioSource": "play",
+      "studioOperation": "find-any-win",
+      "studioProjectRoot": "/tmp/p5-19-evidence/valera-build-out",
+      "studioSeed": "valera-play-fixture"
+    }
+  }
+}
+
+=== POST /api/project/play/sessions/:id/find-symbol-win {symbolId:A} ===
+{
+  "status": 400,
+  "body": {
+    "error": "Session \"bd3cd855-1884-4b57-a883-38ad6e24d260\" cannot play the next round (canPlayNextGame() returned false)."
+  }
+}
+
+=== POST /api/project/simulations ===
+{
+  "status": 202,
+  "body": {
+    "id": "a1e37b7c-3c9a-4bf3-add4-af4f9849fe49",
+    "status": "queued",
+    "rounds": 1000,
+    "seed": "valera-sim",
+    "workers": 1,
+    "startedAt": "2026-08-08T21:22:52.569Z",
+    "roundsCompleted": 0,
+    "durationMs": 0
+  }
+}
+
+=== GET /api/project/simulations/:id (final) ===
+{
+  "id": "a1e37b7c-3c9a-4bf3-add4-af4f9849fe49",
+  "status": "completed",
+  "rounds": 1000,
+  "seed": "valera-sim",
+  "workers": 1,
+  "startedAt": "2026-08-08T21:22:52.569Z",
+  "roundsCompleted": 1000,
+  "durationMs": 43,
+  "report": {
+    "game": {
+      "id": "roaring-savage-olympus",
+      "name": "Valera's Golden Reels",
+      "version": "0.1.0"
+    },
+    "requestedRounds": 1000,
+    "rounds": 1000,
+    "seed": "valera-sim",
+    "totalBet": 1000,
+    "totalWin": 201,
+    "rtp": 0.20099999999999993,
+    "hitFrequency": 0.074,
+    "maxWin": 10,
+    "durationMs": 42,
+    "spinsPerSecond": 23810,
+    "workers": 1,
+    "averageBet": 1,
+    "averagePayout": 0.201,
+    "volatility": 0.877837684312994,
+    "payoutHistogram": {
+      "0": 926,
+      "1-9": 72,
+      "10-99": 2
+    },
+    "maxWinFrequency": 0.002,
+    "reproducibility": {
+      "game": {
+        "id": "roaring-savage-olympus",
+        "name": "Valera's Golden Reels",
+        "version": "0.1.0"
+      },
+      "seed": "valera-sim",
+      "requestedRounds": 1000,
+      "actualRounds": 1000,
+      "command": "pokie sim /tmp/p5-19-evidence/valera-build-out --rounds 1000 --seed valera-sim",
+      "workerSeedStrategy": "identity (single worker uses the original seed unchanged)"
+    },
+    "warnings": [
+      "Requested rounds (1000) is low — RTP/hit-frequency estimates may be noisy."
+    ],
+    "recommendations": [
+      "Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates.",
+      "Use \"pokie diff\" to compare this report against a previous run after changing the game's math.",
+      "Save this report as JSON via --out to keep a record you can diff or replay against later."
+    ]
+  },
+  "statistics": {
+    "volatility": 0.877837684312994,
+    "payoutStandardDeviation": 0.877837684312994,
+    "returnStandardDeviation": 0.877837684312994,
+    "averagePayoutConfidenceInterval95": {
+      "low": 0.14659105663220431,
+      "high": 0.25540894336779574
+    },
+    "rtpConfidenceInterval95": {
+      "low": 0.14659105663220423,
+      "high": 0.2554089433677956
+    },
+    "payoutHistogram": {
+      "0": 926,
+      "1-9": 72,
+      "10-99": 2
+    }
+  }
+}
+
+=== GET /api/project/reports ===
+{
+  "status": 200,
+  "body": [
+    {
+      "id": "a1e37b7c-3c9a-4bf3-add4-af4f9849fe49",
+      "status": "completed",
+      "game": {
+        "id": "roaring-savage-olympus",
+        "version": "0.1.0"
+      },
+      "requestedRounds": 1000,
+      "actualRounds": 1000,
+      "seed": "valera-sim",
+      "workers": 1,
+      "rtp": 0.20099999999999993,
+      "hitFrequency": 0.074,
+      "maxWin": 10,
+      "startedAt": "2026-08-08T21:22:52.569Z",
+      "completedAt": "2026-08-08T21:22:52.612Z",
+      "durationMs": 43,
+      "hasWarnings": true
+    }
+  ]
+}
+
+=== POST /api/project/replays {round:1, seed:valera-play-fixture} ===
+{
+  "status": 202,
+  "body": {
+    "id": "45efe1fa-1cb7-4f61-89c9-83d2990ded90",
+    "status": "queued",
+    "round": 1,
+    "seed": "valera-play-fixture",
+    "startedAt": "2026-08-08T21:22:52.836Z",
+    "completedRounds": 0,
+    "durationMs": 0
+  }
+}
+
+=== GET /api/project/replays/:id (final) ===
+{
+  "id": "45efe1fa-1cb7-4f61-89c9-83d2990ded90",
+  "status": "completed",
+  "round": 1,
+  "seed": "valera-play-fixture",
+  "startedAt": "2026-08-08T21:22:52.836Z",
+  "completedRounds": 1,
+  "durationMs": 5,
+  "game": {
+    "id": "roaring-savage-olympus",
+    "name": "Valera's Golden Reels",
+    "version": "0.1.0"
+  },
+  "descriptor": {
+    "sessionId": "5246f6af-c265-4fe7-8d30-70f7ec3088a4",
+    "game": {
+      "id": "roaring-savage-olympus",
+      "name": "Valera's Golden Reels",
+      "version": "0.1.0"
+    },
+    "seed": "valera-play-fixture",
+    "round": 1,
+    "totalBet": 1,
+    "totalWin": 0,
+    "screen": [
+      [
+        "J",
+        "K",
+        "9"
+      ],
+      [
+        "9",
+        "10",
+        "7"
+      ],
+      [
+        "9",
+        "10",
+        "10"
+      ],
+      [
+        "7",
+        "K",
+        "10"
+      ],
+      [
+        "10",
+        "9",
+        "8"
+      ]
+    ],
+    "timestamp": 1786224172836,
+    "durationMs": 3,
+    "artifact": {
+      "betMode": "base",
+      "payoutMultiplier": 0,
+      "provenance": {
+        "game": {
+          "description": "Randomly generated video slot (seed 4242).",
+          "id": "roaring-savage-olympus",
+          "name": "Valera's Golden Reels",
+          "version": "0.1.0"
+        },
+        "pokieVersion": "1.3.0"
+      },
+      "roundId": "replay:valera-play-fixture:1",
+      "schemaVersion": 1,
+      "screen": [
+        [
+          "J",
+          "K",
+          "9"
+        ],
+        [
+          "9",
+          "10",
+          "7"
+        ],
+        [
+          "9",
+          "10",
+          "10"
+        ],
+        [
+          "7",
+          "K",
+          "10"
+        ],
+        [
+          "10",
+          "9",
+          "8"
+        ]
+      ],
+      "stake": 1,
+      "steps": [
+        {
+          "index": 0,
+          "screen": [
+            [
+              "J",
+              "K",
+              "9"
+            ],
+            [
+              "9",
+              "10",
+              "7"
+            ],
+            [
+              "9",
+              "10",
+              "10"
+            ],
+            [
+              "7",
+              "K",
+              "10"
+            ],
+            [
+              "10",
+              "9",
+              "8"
+            ]
+          ],
+          "totalWin": 0,
+          "wins": []
+        }
+      ],
+      "totalWin": 0,
+      "wins": [],
+      "hash": "sha256:f295dfc4dc8a53ebb09f9063ea02c6c0670e4b96f89567cd197222a9c890c7e8"
+    },
+    "stateBefore": {
+      "context": {
+        "seed": "valera-play-fixture"
+      },
+      "bet": 1,
+      "win": 0,
+      "screen": [
+        [
+          "10",
+          "7",
+          "K"
+        ],
+        [
+          "J",
+          "8",
+          "8"
+        ],
+        [
+          "7",
+          "10",
+          "7"
+        ],
+        [
+          "K",
+          "7",
+          "7"
+        ],
+        [
+          "7",
+          "10",
+          "J"
+        ]
+      ],
+      "initialPayload": {
+        "credits": 9007199254740991,
+        "bet": 1,
+        "availableBets": [
+          1,
+          2,
+          5,
+          10
+        ],
+        "reelsSymbols": [
+          [
+            "10",
+            "7",
+            "K"
+          ],
+          [
+            "J",
+            "8",
+            "8"
+          ],
+          [
+            "7",
+            "10",
+            "7"
+          ],
+          [
+            "K",
+            "7",
+            "7"
+          ],
+          [
+            "7",
+            "10",
+            "J"
+          ]
+        ],
+        "totalWin": 0,
+        "winningPositions": [],
+        "winEvaluationResult": {
+          "totalWin": 0,
+          "winningPositions": [],
+          "lineWins": [],
+          "scatterWins": [],
+          "clusterWins": [],
+          "valueWins": [],
+          "waysWins": [],
+          "metadata": {}
+        },
+        "availableSymbols": [
+          "A",
+          "Q",
+          "J",
+          "8",
+          "9",
+          "K",
+          "7",
+          "10"
+        ],
+        "reelsNumber": 5,
+        "reelsSymbolsNumber": 3,
+        "paytable": {
+          "1": {
+            "7": {
+              "3": 2,
+              "4": 4,
+              "5": 6
+            },
+            "8": {
+              "3": 5,
+              "4": 10,
+              "5": 15
+            },
+            "9": {
+              "3": 4,
+              "4": 8,
+              "5": 12
+            },
+            "10": {
+              "3": 1,
+              "4": 2,
+              "5": 3
+            },
+            "A": {
+              "3": 8,
+              "4": 16,
+              "5": 24
+            },
+            "Q": {
+              "3": 7,
+              "4": 14,
+              "5": 21
+            },
+            "J": {
+              "3": 6,
+              "4": 12,
+              "5": 18
+            },
+            "K": {
+              "3": 3,
+              "4": 6,
+              "5": 9
+            }
+          },
+          "2": {
+            "7": {
+              "3": 4,
+              "4": 8,
+              "5": 12
+            },
+            "8": {
+              "3": 10,
+              "4": 20,
+              "5": 30
+            },
+            "9": {
+              "3": 8,
+              "4": 16,
+              "5": 24
+            },
+            "10": {
+              "3": 2,
+              "4": 4,
+              "5": 6
+            },
+            "A": {
+              "3": 16,
+              "4": 32,
+              "5": 48
+            },
+            "Q": {
+              "3": 14,
+              "4": 28,
+              "5": 42
+            },
+            "J": {
+              "3": 12,
+              "4": 24,
+              "5": 36
+            },
+            "K": {
+              "3": 6,
+              "4": 12,
+              "5": 18
+            }
+          },
+          "5": {
+            "7": {
+              "3": 10,
+              "4": 20,
+              "5": 30
+            },
+            "8": {
+              "3": 25,
+              "4": 50,
+              "5": 75
+            },
+            "9": {
+              "3": 20,
+              "4": 40,
+              "5": 60
+            },
+            "10": {
+              "3": 5,
+              "4": 10,
+              "5": 15
+            },
+            "A": {
+              "3": 40,
+              "4": 80,
+              "5": 120
+            },
+            "Q": {
+              "3": 35,
+              "4": 70,
+              "5": 105
+            },
+            "J": {
+              "3": 30,
+              "4": 60,
+              "5": 90
+            },
+            "K": {
+              "3": 15,
+              "4": 30,
+              "5": 45
+            }
+          },
+          "10": {
+            "7": {
+              "3": 20,
+              "4": 40,
+              "5": 60
+            },
+            "8": {
+              "3": 50,
+              "4": 100,
+              "5": 150
+            },
+            "9": {
+              "3": 40,
+              "4": 80,
+              "5": 120
+            },
+            "10": {
+              "3": 10,
+              "4": 20,
+              "5": 30
+            },
+            "A": {
+              "3": 80,
+              "4": 160,
+              "5": 240
+            },
+            "Q": {
+              "3": 70,
+              "4": 140,
+              "5": 210
+            },
+            "J": {
+              "3": 60,
+              "4": 120,
+              "5": 180
+            },
+            "K": {
+              "3": 30,
+              "4": 60,
+              "5": 90
+            }
+          }
+        },
+        "linesDefinitions": {
+          "0": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "1": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "2": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        }
+      }
+    },
+    "stateAfter": {
+      "context": {
+        "seed": "valera-play-fixture"
+      },
+      "bet": 1,
+      "win": 0,
+      "screen": [
+        [
+          "J",
+          "K",
+          "9"
+        ],
+        [
+          "9",
+          "10",
+          "7"
+        ],
+        [
+          "9",
+          "10",
+          "10"
+        ],
+        [
+          "7",
+          "K",
+          "10"
+        ],
+        [
+          "10",
+          "9",
+          "8"
+        ]
+      ],
+      "capturePolicy": {
+        "version": 1,
+        "mode": "partial",
+        "captureDebugPayloads": true
+      },
+      "initialPayload": {
+        "credits": 9007199254740991,
+        "bet": 1,
+        "availableBets": [
+          1,
+          2,
+          5,
+          10
+        ],
+        "reelsSymbols": [
+          [
+            "10",
+            "7",
+            "K"
+          ],
+          [
+            "J",
+            "8",
+            "8"
+          ],
+          [
+            "7",
+            "10",
+            "7"
+          ],
+          [
+            "K",
+            "7",
+            "7"
+          ],
+          [
+            "7",
+            "10",
+            "J"
+          ]
+        ],
+        "totalWin": 0,
+        "winningPositions": [],
+        "winEvaluationResult": {
+          "totalWin": 0,
+          "winningPositions": [],
+          "lineWins": [],
+          "scatterWins": [],
+          "clusterWins": [],
+          "valueWins": [],
+          "waysWins": [],
+          "metadata": {}
+        },
+        "availableSymbols": [
+          "A",
+          "Q",
+          "J",
+          "8",
+          "9",
+          "K",
+          "7",
+          "10"
+        ],
+        "reelsNumber": 5,
+        "reelsSymbolsNumber": 3,
+        "paytable": {
+          "1": {
+            "7": {
+              "3": 2,
+              "4": 4,
+              "5": 6
+            },
+            "8": {
+              "3": 5,
+              "4": 10,
+              "5": 15
+            },
+            "9": {
+              "3": 4,
+              "4": 8,
+              "5": 12
+            },
+            "10": {
+              "3": 1,
+              "4": 2,
+              "5": 3
+            },
+            "A": {
+              "3": 8,
+              "4": 16,
+              "5": 24
+            },
+            "Q": {
+              "3": 7,
+              "4": 14,
+              "5": 21
+            },
+            "J": {
+              "3": 6,
+              "4": 12,
+              "5": 18
+            },
+            "K": {
+              "3": 3,
+              "4": 6,
+              "5": 9
+            }
+          },
+          "2": {
+            "7": {
+              "3": 4,
+              "4": 8,
+              "5": 12
+            },
+            "8": {
+              "3": 10,
+              "4": 20,
+              "5": 30
+            },
+            "9": {
+              "3": 8,
+              "4": 16,
+              "5": 24
+            },
+            "10": {
+              "3": 2,
+              "4": 4,
+              "5": 6
+            },
+            "A": {
+              "3": 16,
+              "4": 32,
+              "5": 48
+            },
+            "Q": {
+              "3": 14,
+              "4": 28,
+              "5": 42
+            },
+            "J": {
+              "3": 12,
+              "4": 24,
+              "5": 36
+            },
+            "K": {
+              "3": 6,
+              "4": 12,
+              "5": 18
+            }
+          },
+          "5": {
+            "7": {
+              "3": 10,
+              "4": 20,
+              "5": 30
+            },
+            "8": {
+              "3": 25,
+              "4": 50,
+              "5": 75
+            },
+            "9": {
+              "3": 20,
+              "4": 40,
+              "5": 60
+            },
+            "10": {
+              "3": 5,
+              "4": 10,
+              "5": 15
+            },
+            "A": {
+              "3": 40,
+              "4": 80,
+              "5": 120
+            },
+            "Q": {
+              "3": 35,
+              "4": 70,
+              "5": 105
+            },
+            "J": {
+              "3": 30,
+              "4": 60,
+              "5": 90
+            },
+            "K": {
+              "3": 15,
+              "4": 30,
+              "5": 45
+            }
+          },
+          "10": {
+            "7": {
+              "3": 20,
+              "4": 40,
+              "5": 60
+            },
+            "8": {
+              "3": 50,
+              "4": 100,
+              "5": 150
+            },
+            "9": {
+              "3": 40,
+              "4": 80,
+              "5": 120
+            },
+            "10": {
+              "3": 10,
+              "4": 20,
+              "5": 30
+            },
+            "A": {
+              "3": 80,
+              "4": 160,
+              "5": 240
+            },
+            "Q": {
+              "3": 70,
+              "4": 140,
+              "5": 210
+            },
+            "J": {
+              "3": 60,
+              "4": 120,
+              "5": 180
+            },
+            "K": {
+              "3": 30,
+              "4": 60,
+              "5": 90
+            }
+          }
+        },
+        "linesDefinitions": {
+          "0": [
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "1": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "2": [
+            2,
+            2,
+            2,
+            2,
+            2
+          ]
+        }
+      },
+      "roundPayload": {
+        "credits": 9007199254740990,
+        "bet": 1,
+        "reelsSymbols": [
+          [
+            "J",
+            "K",
+            "9"
+          ],
+          [
+            "9",
+            "10",
+            "7"
+          ],
+          [
+            "9",
+            "10",
+            "10"
+          ],
+          [
+            "7",
+            "K",
+            "10"
+          ],
+          [
+            "10",
+            "9",
+            "8"
+          ]
+        ],
+        "totalWin": 0,
+        "winningPositions": [],
+        "winEvaluationResult": {
+          "totalWin": 0,
+          "winningPositions": [],
+          "lineWins": [],
+          "scatterWins": [],
+          "clusterWins": [],
+          "valueWins": [],
+          "waysWins": [],
+          "metadata": {
+            "aggregationPolicy": "error-if-incompatible",
+            "evaluators": [
+              "line",
+              "scatter"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+
+=== GET /api/project/artifacts/targets ===
+{
+  "status": 200,
+  "body": [
+    {
+      "target": "tsPackage",
+      "supported": false,
+      "unsupportedNotes": [
+        "Builds a runnable package from its own GameBlueprint source only -- never compiles or targets WASM, and a built package cannot itself be converted into any other target type."
+      ]
+    },
+    {
+      "target": "outcomeLibrary",
+      "supported": false,
+      "unsupportedNotes": [
+        "Packages already-computed weighted outcomes into a bundle -- never re-derives or recovers the game model/blueprint that produced those outcomes; that recovery is not supported by any builder."
+      ]
+    },
+    {
+      "target": "stakeAdapter",
+      "supported": false,
+      "unsupportedNotes": [
+        "Exports already-computed weighted outcomes into Stake Engine's own book-line format -- never re-derives or recovers the game model/blueprint that produced those outcomes; that recovery is not supported by any builder."
+      ]
+    },
+    {
+      "target": "parWorkbook",
+      "supported": false,
+      "unsupportedNotes": [
+        "Exports an already-loaded PAR sheet model to its own .xlsx workbook format only -- does not derive a PAR sheet from a package/blueprint on its own."
+      ]
+    },
+    {
+      "target": "wasm",
+      "supported": false,
+      "unsupportedNotes": [
+        "No ProjectType grants the capability this target requires and no builder is registered for it -- POKIE has no arbitrary package-to-WASM compiler today (see ProjectType.ts's own \"wasm\" doc comment)."
+      ]
+    }
+  ]
+}
+
+=== POST /api/project/artifacts/build {target:tsPackage} ===
+{
+  "status": 200,
+  "body": {
+    "status": "unsupported",
+    "target": "tsPackage",
+    "message": "\"tsPackage\" cannot be built from a \"tsPackage\" project. Supported sources: blueprint. Builds a runnable package from its own GameBlueprint source only -- never compiles or targets WASM, and a built package cannot itself be converted into any other target type."
+  }
+}
+
+=== server process log ===
+POKIE Studio listening on http://127.0.0.1:4791
+

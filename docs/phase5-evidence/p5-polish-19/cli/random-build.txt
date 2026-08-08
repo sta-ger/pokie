@@ -1,0 +1,16 @@
+Build summary:
+  package root     /tmp/p5-19-evidence/random/pkg
+  game             Golden Comet (id: "golden-comet", v0.1.0)
+  blueprint hash   sha256:f2676d0dc338e4f5c7e678b1c01781de5315cb155ffca3e528e9acf318e27b3f
+  source           /tmp/p5-19-evidence/random/blueprint.json
+
+Game package "Golden Comet" (id: "golden-comet") built in "/tmp/p5-19-evidence/random/pkg".
+
+Next:
+  cd /tmp/p5-19-evidence/random/pkg && npm install
+  pokie inspect /tmp/p5-19-evidence/random/pkg
+  pokie validate /tmp/p5-19-evidence/random/pkg
+  pokie sim /tmp/p5-19-evidence/random/pkg --rounds 10000 --seed demo --out sim.json
+  pokie report sim.json
+  pokie replay /tmp/p5-19-evidence/random/pkg --seed demo --round 1
+  pokie dev /tmp/p5-19-evidence/random/pkg

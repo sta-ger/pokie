@@ -1,0 +1,41 @@
+{
+    "sessionId": "55e339ea-7eb5-44a0-8bdd-6571d40c9219",
+    "game": {
+        "id": "golden-comet",
+        "name": "Golden Comet",
+        "version": "0.1.0"
+    },
+    "seed": "parity-fixture-1",
+    "round": 1,
+    "totalBet": 1,
+    "totalWin": 2,
+    "screen": [
+        [
+            "J",
+            "9",
+            "K"
+        ],
+        [
+            "8",
+            "9",
+            "9"
+        ],
+        [
+            "K",
+            "9",
+            "9"
+        ],
+        [
+            "9",
+            "J",
+            "9"
+        ],
+        [
+            "K",
+            "J",
+            "K"
+        ]
+    ],
+    "timestamp": 1786223558150,
+    "durationMs": 3
+}

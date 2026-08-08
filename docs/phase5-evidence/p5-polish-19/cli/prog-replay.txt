@@ -1,0 +1,43 @@
+{
+    "sessionId": "d816377d-318a-43a7-848f-300ef31a65bb",
+    "game": {
+        "id": "demo-programmer-game",
+        "name": "Demo Programmer Game",
+        "version": "0.1.0"
+    },
+    "seed": "parity-fixture-1",
+    "round": 1,
+    "totalBet": 1,
+    "totalWin": 0,
+    "screen": [
+        [
+            "10",
+            "10",
+            "K"
+        ],
+        [
+            "K",
+            "9",
+            "W"
+        ],
+        [
+            "9",
+            "9",
+            "9"
+        ],
+        [
+            "A",
+            "J",
+            "Q"
+        ],
+        [
+            "A",
+            "Q",
+            "Q"
+        ]
+    ],
+    "timestamp": 1786223478094,
+    "durationMs": 3
+}
+
+Replay written to "/workspace/docs/phase5-evidence/p5-polish-19/parity/cli-replay-round1.json".

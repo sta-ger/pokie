@@ -1,0 +1,161 @@
+=== POST /api/home/projects/open (real Outcome Library bundle, no npm needed) ===
+{
+  "status": 200,
+  "body": {
+    "context": {
+      "mode": "project",
+      "projectRoot": "/tmp/p5-19-evidence/tiny/bundle"
+    }
+  }
+}
+
+=== GET /api/project/context (Overview of an Outcome Library project) ===
+{
+  "status": 200,
+  "body": {
+    "status": "outcome-source",
+    "projectRoot": "/tmp/p5-19-evidence/tiny/bundle",
+    "project": {
+      "type": "outcomeLibrary",
+      "rootPath": "/tmp/p5-19-evidence/tiny/bundle",
+      "capabilities": [
+        "outcomeLibrary.read",
+        "outcomeSource.read",
+        "outcomeSource.sample"
+      ],
+      "provenance": "\"manifest.json\" matches the outcome-library bundle manifest shape (schemaVersion 1)"
+    },
+    "report": {
+      "rootPath": "/tmp/p5-19-evidence/tiny/bundle",
+      "descriptor": {
+        "kind": "native",
+        "streaming": true,
+        "limitations": [
+          "Serves already-computed outcomes exactly as built -- never re-derives or recovers the game model/blueprint that produced them.",
+          "Draws are only ever atomic against this bundle's own current on-disk content -- a rebuild mid-read surfaces as a PreGeneratedOutcomeSourceConflictError, never a silently stale result."
+        ]
+      },
+      "issues": [],
+      "modes": [
+        {
+          "modeName": "base",
+          "analysis": {
+            "totalWeight": 9,
+            "rtp": 1.5555555555555556,
+            "hitFrequency": 0.4444444444444444,
+            "zeroWinFrequency": 0.5555555555555556,
+            "variance": 4.0246913580246915,
+            "standardDeviation": 2.006163342807532,
+            "maxWin": 5,
+            "maxWinProbability": 0.2222222222222222,
+            "payoutDistribution": [
+              {
+                "payoutMultiplier": 0,
+                "probability": 0.5555555555555556
+              },
+              {
+                "payoutMultiplier": 2,
+                "probability": 0.2222222222222222
+              },
+              {
+                "payoutMultiplier": 5,
+                "probability": 0.2222222222222222
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+
+=== GET /api/project/inspect ===
+{
+  "status": 200,
+  "body": {
+    "packageRoot": "/tmp/p5-19-evidence/tiny/bundle",
+    "valid": true
+  }
+}
+
+=== GET /api/project/validate ===
+{
+  "status": 200,
+  "body": {
+    "packageRoot": "/tmp/p5-19-evidence/tiny/bundle",
+    "valid": true,
+    "game": null,
+    "errors": [],
+    "warnings": [],
+    "suggestions": []
+  }
+}
+
+=== POST /api/project/stakeengine/validate (auto-canonicalizing content-addressed ids) ===
+{
+  "status": 200,
+  "body": {
+    "status": "ok",
+    "modes": [
+      {
+        "modeName": "base",
+        "cost": 1,
+        "outcomeCount": 9,
+        "libraryId": "tiny-outcome-demo",
+        "libraryHash": "sha256:479b50629b792575fa28da656e40db1ecc4f26a5bd57978ec583fc4c4785c2b6"
+      }
+    ],
+    "errors": [],
+    "warnings": []
+  }
+}
+
+=== POST /api/project/stakeengine/export (real Stake Engine import surface) ===
+{
+  "status": 201,
+  "body": {
+    "status": "ok",
+    "outDir": "/tmp/p5-19-evidence/tiny/bundle/studio-stake-export",
+    "files": [
+      "lookup_base.csv",
+      "books_base.jsonl.zst",
+      "index.json",
+      "pokie-manifest.json"
+    ],
+    "manifest": {
+      "schemaVersion": 1,
+      "generatedBy": "pokie stakeengine export",
+      "pokieVersion": "1.3.0",
+      "generatedAt": "2026-08-08T21:39:11.200Z",
+      "game": {
+        "id": "tiny-outcome-demo",
+        "name": "Tiny Outcome Demo",
+        "version": "0.1.0"
+      },
+      "modes": [
+        {
+          "name": "base",
+          "betMode": "base",
+          "stake": 1,
+          "cost": 1,
+          "outcomeCount": 9,
+          "libraryId": "tiny-outcome-demo",
+          "libraryHash": "sha256:479b50629b792575fa28da656e40db1ecc4f26a5bd57978ec583fc4c4785c2b6",
+          "events": "books_base.jsonl.zst",
+          "weights": "lookup_base.csv"
+        }
+      ],
+      "files": [
+        "lookup_base.csv",
+        "books_base.jsonl.zst",
+        "index.json",
+        "pokie-manifest.json"
+      ]
+    },
+    "warnings": []
+  }
+}
+
+=== server process log ===
+POKIE Studio listening on http://127.0.0.1:4792
+

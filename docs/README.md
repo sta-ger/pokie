@@ -259,4 +259,8 @@ baseline frozen ahead of Phase 4 work, including an explicit account of exactly 
 retained rather than reopened, and [`pokie-phase5-inventory.md`](pokie-phase5-inventory.md) for the synced-SHA,
 fresh-build, real-CLI/Studio-HTTP baseline frozen ahead of Phase 5 work — including a stale public-API barrel, a
 `pokie build random` smoke-simulation regression, and a Blueprint Design build-destination default, all found by
-actually running the current tree rather than trusting its own tests/comments.
+actually running the current tree rather than trusting its own tests/comments, plus
+[`phase5-evidence/p5-polish-19/README.md`](phase5-evidence/p5-polish-19/README.md) for later, end-to-end
+real-user-journey evidence (Blueprint create/edit/play/find/replay/sim/build, a programmer's init/npm start/npm
+build/sim/build, Outcome Library and Stake Engine imports, direct Blueprint Overview, and player-rendering parity
+across examples/package/Studio).

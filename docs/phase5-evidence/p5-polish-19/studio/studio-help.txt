@@ -1,0 +1,17 @@
+Usage: studio [options] [projectRoot] [excess...]
+
+Launch POKIE Studio, a local web app for creating/opening/inspecting game
+packages.
+
+Arguments:
+  projectRoot      a game package/blueprint to open on launch (default: the
+                   Studio home screen)
+  excess           rejected if present -- this command takes no further
+                   positionals
+
+Options:
+  --port <number>  port to listen on (default: an available port)
+  --host <string>  host to listen on (default: loopback only)
+  --no-open        do not open a browser pointed at Studio
+  -h, --help       Display help for this command.
+

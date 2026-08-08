@@ -1,0 +1,80 @@
+import fs from "fs";
+import path from "path";
+import {applyPersistentHighlights, renderPaytable, renderReelsGrid} from "../../../../../cli/client/player/renderPlayer";
+import {deriveWinHighlights, derivePaytableView, isVideoSlotRoundResponse} from "../../../../../cli/client/player/videoSlotRoundView";
+
+// P5-POLISH-19 player-parity evidence: a real winning spin response captured live from
+// "pokie dev . --no-open" (the "npm start" persona surface -- see
+// docs/phase5-evidence/p5-polish-19/cli/prog-npm-start.txt) is rendered here through the exact
+// "pokie/client/player" module cli/client/main.ts (served by "pokie serve"/"pokie dev"/Studio's Play
+// iframe), CanonicalPlayerView.tsx (Studio's own Play/Replay/Session-Spin panels), and
+// pokie-examples/src/ui/ui.ts all import unmodified -- proving all three surfaces would render this
+// one real round identically, since they share the literal same rendering code, not independent
+// reimplementations. Not a permanent test (depends on a fixture file this repo doesn't otherwise keep);
+// captured once, output copied to docs/phase5-evidence/p5-polish-19/browser/, then removed.
+describe("P5-POLISH-19 player-parity rendering evidence", () => {
+    it("renders the real captured npm-start winning round identically to what Studio Play/Replay and examples would draw", () => {
+        const fixturePath = path.join(__dirname, "../../../../../docs/phase5-evidence/p5-polish-19/parity/npm-start-spin.json");
+        const captured = JSON.parse(fs.readFileSync(fixturePath, "utf-8")) as {
+            session: Record<string, unknown>;
+            spin: Record<string, unknown>;
+        };
+        // The real client's own contract (see videoSlotRoundView.ts's own doc comment): only session
+        // creation returns static config (paytable/availableBets/linesDefinitions); each spin response
+        // carries only that round's own result. A real player retains the session's static fields and
+        // merges them with each round's result -- exactly what this reproduces from the two real,
+        // separately-captured responses.
+        const response = {...captured.session, ...captured.spin};
+
+        expect(isVideoSlotRoundResponse(response)).toBe(true);
+        if (!isVideoSlotRoundResponse(response)) {
+            throw new Error("fixture is not a VideoSlotRoundResponse");
+        }
+
+        const grid = document.createElement("div");
+        const paytableHead = document.createElement("tr");
+        const paytableBody = document.createElement("tbody");
+        document.body.appendChild(grid);
+
+        renderReelsGrid(grid, response.reelsSymbols);
+        const highlights = deriveWinHighlights(response);
+        applyPersistentHighlights(grid, highlights);
+        renderPaytable(paytableHead, paytableBody, derivePaytableView(response.paytable));
+
+        // Orientation: 5 reels x 3 rows, symbols exactly as captured live.
+        const cells = Array.from(grid.querySelectorAll<HTMLElement>("[data-cell]"));
+        expect(cells).toHaveLength(15);
+        expect(response.reelsSymbols).toEqual([
+            ["9", "Q", "9"],
+            ["J", "W", "W"],
+            ["A", "Q", "K"],
+            ["J", "J", "9"],
+            ["A", "A", "A"],
+        ]);
+
+        // Win positions: the real line win at reel 0-2, row 1 (0-indexed) -- rendered with a real
+        // persistent highlight color, not left at the base "no highlight" state.
+        expect(response.winningPositions).toEqual([
+            [0, 1],
+            [1, 1],
+            [2, 1],
+        ]);
+        for (const [reelIndex, rowIndex] of response.winningPositions) {
+            const cell = grid.querySelector<HTMLElement>(`[data-cell="${rowIndex}:${reelIndex}"]`);
+            expect(cell?.style.backgroundColor).not.toBe("");
+        }
+        const unwonCell = grid.querySelector<HTMLElement>('[data-cell="0:0"]');
+        expect(unwonCell?.style.backgroundColor).toBe("");
+
+        // Paytable: the real fixture's Q payout for a 3-of-a-kind at bet 1.
+        expect(response.totalWin).toBe(1);
+        expect(paytableBody.textContent).toContain("Q");
+        expect(paytableBody.textContent).toContain("1");
+
+        document.body.innerHTML = `<pre>GRID:\n${grid.outerHTML}\n\nPAYTABLE HEAD:\n${paytableHead.outerHTML}\n\nPAYTABLE BODY:\n${paytableBody.outerHTML}</pre>`;
+        fs.writeFileSync(
+            path.join(__dirname, "../../../../../docs/phase5-evidence/p5-polish-19/browser/player-parity-render.html"),
+            document.documentElement.outerHTML,
+        );
+    });
+});

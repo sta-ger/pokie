@@ -1,0 +1,717 @@
+{
+    "library": {
+        "schemaVersion": 1,
+        "libraryId": "tiny-outcome-demo",
+        "outcomes": [
+            {
+                "id": "outcome-323562aaab807f59",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-323562aaab807f59",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 0,
+                    "payoutMultiplier": 0,
+                    "screen": [
+                        [
+                            "B",
+                            "A"
+                        ],
+                        [
+                            "A",
+                            "B"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "B",
+                                    "A"
+                                ],
+                                [
+                                    "A",
+                                    "B"
+                                ]
+                            ],
+                            "totalWin": 0,
+                            "wins": []
+                        }
+                    ],
+                    "wins": []
+                }
+            },
+            {
+                "id": "outcome-50160144c4d4a625",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-50160144c4d4a625",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 5,
+                    "payoutMultiplier": 5,
+                    "screen": [
+                        [
+                            "A",
+                            "B"
+                        ],
+                        [
+                            "A",
+                            "B"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "A",
+                                    "B"
+                                ],
+                                [
+                                    "A",
+                                    "B"
+                                ]
+                            ],
+                            "totalWin": 5,
+                            "wins": [
+                                {
+                                    "type": "line",
+                                    "id": "0",
+                                    "symbolId": "A",
+                                    "winAmount": 5,
+                                    "winningPositions": [
+                                        [
+                                            0,
+                                            0
+                                        ],
+                                        [
+                                            1,
+                                            0
+                                        ]
+                                    ],
+                                    "multiplierBreakdown": [],
+                                    "metadata": {
+                                        "definition": [
+                                            0,
+                                            0
+                                        ],
+                                        "pattern": [
+                                            1,
+                                            1
+                                        ],
+                                        "symbolsPositions": [
+                                            0,
+                                            1
+                                        ],
+                                        "wildSymbolsPositions": []
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "wins": [
+                        {
+                            "type": "line",
+                            "id": "0",
+                            "symbolId": "A",
+                            "winAmount": 5,
+                            "winningPositions": [
+                                [
+                                    0,
+                                    0
+                                ],
+                                [
+                                    1,
+                                    0
+                                ]
+                            ],
+                            "multiplierBreakdown": [],
+                            "metadata": {
+                                "definition": [
+                                    0,
+                                    0
+                                ],
+                                "pattern": [
+                                    1,
+                                    1
+                                ],
+                                "symbolsPositions": [
+                                    0,
+                                    1
+                                ],
+                                "wildSymbolsPositions": []
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "id": "outcome-963907b715342ff9",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-963907b715342ff9",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 0,
+                    "payoutMultiplier": 0,
+                    "screen": [
+                        [
+                            "A",
+                            "A"
+                        ],
+                        [
+                            "B",
+                            "A"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "A",
+                                    "A"
+                                ],
+                                [
+                                    "B",
+                                    "A"
+                                ]
+                            ],
+                            "totalWin": 0,
+                            "wins": []
+                        }
+                    ],
+                    "wins": []
+                }
+            },
+            {
+                "id": "outcome-9e3e10cc45bc0982",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-9e3e10cc45bc0982",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 0,
+                    "payoutMultiplier": 0,
+                    "screen": [
+                        [
+                            "A",
+                            "A"
+                        ],
+                        [
+                            "B",
+                            "B"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "A",
+                                    "A"
+                                ],
+                                [
+                                    "B",
+                                    "B"
+                                ]
+                            ],
+                            "totalWin": 0,
+                            "wins": []
+                        }
+                    ],
+                    "wins": []
+                }
+            },
+            {
+                "id": "outcome-b982eb76c867632c",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-b982eb76c867632c",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 2,
+                    "payoutMultiplier": 2,
+                    "screen": [
+                        [
+                            "B",
+                            "A"
+                        ],
+                        [
+                            "B",
+                            "A"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "B",
+                                    "A"
+                                ],
+                                [
+                                    "B",
+                                    "A"
+                                ]
+                            ],
+                            "totalWin": 2,
+                            "wins": [
+                                {
+                                    "type": "line",
+                                    "id": "0",
+                                    "symbolId": "B",
+                                    "winAmount": 2,
+                                    "winningPositions": [
+                                        [
+                                            0,
+                                            0
+                                        ],
+                                        [
+                                            1,
+                                            0
+                                        ]
+                                    ],
+                                    "multiplierBreakdown": [],
+                                    "metadata": {
+                                        "definition": [
+                                            0,
+                                            0
+                                        ],
+                                        "pattern": [
+                                            1,
+                                            1
+                                        ],
+                                        "symbolsPositions": [
+                                            0,
+                                            1
+                                        ],
+                                        "wildSymbolsPositions": []
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "wins": [
+                        {
+                            "type": "line",
+                            "id": "0",
+                            "symbolId": "B",
+                            "winAmount": 2,
+                            "winningPositions": [
+                                [
+                                    0,
+                                    0
+                                ],
+                                [
+                                    1,
+                                    0
+                                ]
+                            ],
+                            "multiplierBreakdown": [],
+                            "metadata": {
+                                "definition": [
+                                    0,
+                                    0
+                                ],
+                                "pattern": [
+                                    1,
+                                    1
+                                ],
+                                "symbolsPositions": [
+                                    0,
+                                    1
+                                ],
+                                "wildSymbolsPositions": []
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "id": "outcome-c513e45bab1907cf",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-c513e45bab1907cf",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 0,
+                    "payoutMultiplier": 0,
+                    "screen": [
+                        [
+                            "A",
+                            "B"
+                        ],
+                        [
+                            "B",
+                            "A"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "A",
+                                    "B"
+                                ],
+                                [
+                                    "B",
+                                    "A"
+                                ]
+                            ],
+                            "totalWin": 0,
+                            "wins": []
+                        }
+                    ],
+                    "wins": []
+                }
+            },
+            {
+                "id": "outcome-d148f2981e09afd3",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-d148f2981e09afd3",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 0,
+                    "payoutMultiplier": 0,
+                    "screen": [
+                        [
+                            "A",
+                            "B"
+                        ],
+                        [
+                            "B",
+                            "B"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "A",
+                                    "B"
+                                ],
+                                [
+                                    "B",
+                                    "B"
+                                ]
+                            ],
+                            "totalWin": 0,
+                            "wins": []
+                        }
+                    ],
+                    "wins": []
+                }
+            },
+            {
+                "id": "outcome-ddacadd4bbf451b1",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-ddacadd4bbf451b1",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 2,
+                    "payoutMultiplier": 2,
+                    "screen": [
+                        [
+                            "B",
+                            "A"
+                        ],
+                        [
+                            "B",
+                            "B"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "B",
+                                    "A"
+                                ],
+                                [
+                                    "B",
+                                    "B"
+                                ]
+                            ],
+                            "totalWin": 2,
+                            "wins": [
+                                {
+                                    "type": "line",
+                                    "id": "0",
+                                    "symbolId": "B",
+                                    "winAmount": 2,
+                                    "winningPositions": [
+                                        [
+                                            0,
+                                            0
+                                        ],
+                                        [
+                                            1,
+                                            0
+                                        ]
+                                    ],
+                                    "multiplierBreakdown": [],
+                                    "metadata": {
+                                        "definition": [
+                                            0,
+                                            0
+                                        ],
+                                        "pattern": [
+                                            1,
+                                            1
+                                        ],
+                                        "symbolsPositions": [
+                                            0,
+                                            1
+                                        ],
+                                        "wildSymbolsPositions": []
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "wins": [
+                        {
+                            "type": "line",
+                            "id": "0",
+                            "symbolId": "B",
+                            "winAmount": 2,
+                            "winningPositions": [
+                                [
+                                    0,
+                                    0
+                                ],
+                                [
+                                    1,
+                                    0
+                                ]
+                            ],
+                            "multiplierBreakdown": [],
+                            "metadata": {
+                                "definition": [
+                                    0,
+                                    0
+                                ],
+                                "pattern": [
+                                    1,
+                                    1
+                                ],
+                                "symbolsPositions": [
+                                    0,
+                                    1
+                                ],
+                                "wildSymbolsPositions": []
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "id": "outcome-dea72d9a9a720219",
+                "weight": 1,
+                "artifact": {
+                    "schemaVersion": 1,
+                    "roundId": "outcome-dea72d9a9a720219",
+                    "provenance": {
+                        "game": {
+                            "id": "tiny-outcome-demo",
+                            "name": "Tiny Outcome Demo",
+                            "version": "0.1.0"
+                        },
+                        "pokieVersion": "1.3.0"
+                    },
+                    "betMode": "base",
+                    "stake": 1,
+                    "totalWin": 5,
+                    "payoutMultiplier": 5,
+                    "screen": [
+                        [
+                            "A",
+                            "A"
+                        ],
+                        [
+                            "A",
+                            "B"
+                        ]
+                    ],
+                    "steps": [
+                        {
+                            "index": 0,
+                            "screen": [
+                                [
+                                    "A",
+                                    "A"
+                                ],
+                                [
+                                    "A",
+                                    "B"
+                                ]
+                            ],
+                            "totalWin": 5,
+                            "wins": [
+                                {
+                                    "type": "line",
+                                    "id": "0",
+                                    "symbolId": "A",
+                                    "winAmount": 5,
+                                    "winningPositions": [
+                                        [
+                                            0,
+                                            0
+                                        ],
+                                        [
+                                            1,
+                                            0
+                                        ]
+                                    ],
+                                    "multiplierBreakdown": [],
+                                    "metadata": {
+                                        "definition": [
+                                            0,
+                                            0
+                                        ],
+                                        "pattern": [
+                                            1,
+                                            1
+                                        ],
+                                        "symbolsPositions": [
+                                            0,
+                                            1
+                                        ],
+                                        "wildSymbolsPositions": []
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "wins": [
+                        {
+                            "type": "line",
+                            "id": "0",
+                            "symbolId": "A",
+                            "winAmount": 5,
+                            "winningPositions": [
+                                [
+                                    0,
+                                    0
+                                ],
+                                [
+                                    1,
+                                    0
+                                ]
+                            ],
+                            "multiplierBreakdown": [],
+                            "metadata": {
+                                "definition": [
+                                    0,
+                                    0
+                                ],
+                                "pattern": [
+                                    1,
+                                    1
+                                ],
+                                "symbolsPositions": [
+                                    0,
+                                    1
+                                ],
+                                "wildSymbolsPositions": []
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "diagnostics": {
+        "algorithm": "pokie-exact-reel-enumeration-v1",
+        "strategy": "exact",
+        "totalOutcomeSpaceSize": 9,
+        "sampledRawCount": 9,
+        "pokieVersion": "1.3.0",
+        "game": {
+            "id": "tiny-outcome-demo",
+            "name": "Tiny Outcome Demo",
+            "version": "0.1.0"
+        },
+        "generatedAt": "2026-08-08T21:36:26.509Z"
+    }
+}
