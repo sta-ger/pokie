@@ -224,6 +224,47 @@ describe("InitCommand", () => {
             await expect(command.run(["some-dir"])).rejects.toMatchObject({phase: "dependencies"});
         });
 
+        it("carries a failed 'npm install's raw stderr as 'details', without leaking it into the primary message -- same convention BlueprintMaterializationError uses", async () => {
+            const runCommand: PackageCommandRunning = () =>
+                Promise.reject(
+                    Object.assign(new Error("Command failed: npm install"), {
+                        stderr: "npm ERR! simulated failure resolving \"pokie\"",
+                    }),
+                );
+            const {command} = createCommand(undefined, runCommand);
+
+            let caught: unknown;
+            try {
+                await command.run(["some-dir"]);
+            } catch (error) {
+                caught = error;
+            }
+
+            expect(caught).toBeInstanceOf(GamePackagePreparationError);
+            const preparationError = caught as GamePackagePreparationError;
+            expect(preparationError.phase).toBe("dependencies");
+            expect(preparationError.message).not.toContain("npm ERR!");
+            expect(preparationError.details).toBe("npm ERR! simulated failure resolving \"pokie\"");
+        });
+
+        it("never sets 'details' on a 'npm run build' failure -- only 'npm install' failures carry npm stderr", async () => {
+            const runCommand: PackageCommandRunning = (_command, args) =>
+                args[0] === "run"
+                    ? Promise.reject(Object.assign(new Error("tsc failed"), {stderr: "npm ERR! tsc failed"}))
+                    : Promise.resolve({stdout: "", stderr: ""});
+            const {command} = createCommand(undefined, runCommand);
+
+            let caught: unknown;
+            try {
+                await command.run(["some-dir"]);
+            } catch (error) {
+                caught = error;
+            }
+
+            expect((caught as GamePackagePreparationError).phase).toBe("build");
+            expect((caught as GamePackagePreparationError).details).toBeUndefined();
+        });
+
         it("rejects with a GamePackagePreparationError when 'npm run build' fails", async () => {
             const runCommand: PackageCommandRunning = (_command, args) =>
                 args[0] === "run" ? Promise.reject(new Error("tsc failed")) : Promise.resolve({stdout: "", stderr: ""});

@@ -79,3 +79,17 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
         return base(command, args, cwd);
     };
 }
+
+// execFile/execFileAsync's own rejection carries a failed command's real stderr as a plain "stderr"
+// property alongside its (much noisier, command-line-and-exit-code-prefixed) "message" -- shared by
+// every "dependencies" phase failure that wants that raw npm output as a secondary "details" field
+// (BlueprintMaterializationError, GamePackagePreparationError) without leaking it into the primary,
+// human-facing message. Returns undefined for a runCommand implementation that doesn't shape its
+// rejections that way, or whose "stderr" is blank.
+export function extractNpmStderr(error: unknown): string | undefined {
+    if (typeof error !== "object" || error === null || !("stderr" in error)) {
+        return undefined;
+    }
+    const stderr = (error as {stderr?: unknown}).stderr;
+    return typeof stderr === "string" && stderr.trim().length > 0 ? stderr : undefined;
+}

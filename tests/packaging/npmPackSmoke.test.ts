@@ -356,30 +356,26 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         );
     });
 
-    it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installs/builds it from the same packed tarball, then validates and simulates it", () => {
+    it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root (never the registry, never a manual rewrite), then validates and simulates it", () => {
         const projectRoot = path.join(installDir!, "sample-slot");
-        // --no-prepare: the scaffolded package.json's own "pokie" dependency (a plain semver range) may
-        // not be resolvable from the real registry yet for an as-yet-unpublished dev version, so this
-        // must never let "pokie init" run its own "npm install" -- unlike installDir's own outer install
-        // above, which already has tarballPath to install from directly. (Unlike --no-prepare, --no-install
-        // alone still runs "npm run build" afterwards -- see InitCommand.test.ts -- which would only make
-        // this worse: a build with no dependencies installed at all.) Rewritten below to point at that
-        // exact tarball before installing for real.
-        const init = spawnSync(pokieBinPath, ["init", projectRoot, "--no-prepare"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        // No --no-prepare, no --no-install, no manual package.json rewrite: "pokie init" now resolves its
+        // own scaffolded "pokie" dependency against the running installation's own root (readOwnPackageRoot()
+        // -- here, installDir/node_modules/pokie, exactly what the outer `npm install tarballPath` above
+        // already installed) via the same withLocalPokieInstall mechanism Blueprint materialization uses --
+        // see registerCliCommands.ts's own InitCommand wiring. Proves this works even though this dev
+        // version was never published: only "pokie" itself needs that local resolution, "typescript" (a
+        // real, always-available registry package) installs normally alongside it.
+        const init = spawnSync(pokieBinPath, ["init", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 120000});
 
         expect(init.status).toBe(0);
         expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "src", "index.ts"))).toBe(true);
-        expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(false);
+        expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
         const packageJsonPath = path.join(projectRoot, "package.json");
         const scaffoldedPkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {dependencies?: Record<string, string>};
-        scaffoldedPkg.dependencies = {...scaffoldedPkg.dependencies, pokie: tarballPath!};
-        fs.writeFileSync(packageJsonPath, `${JSON.stringify(scaffoldedPkg, null, 4)}\n`);
-
-        execFileSync("npm", ["install", "--no-audit", "--no-fund"], {cwd: projectRoot, encoding: "utf-8"});
-        execFileSync("npm", ["run", "build"], {cwd: projectRoot, encoding: "utf-8"});
-        expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
+        expect(scaffoldedPkg.dependencies?.pokie).toBe(`file:${path.join(installDir!, "node_modules", "pokie")}`);
+        expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
 
         const validate = spawnSync(pokieBinPath, ["validate", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         expect(validate.status).toBe(0);

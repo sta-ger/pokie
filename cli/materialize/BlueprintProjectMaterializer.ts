@@ -18,7 +18,7 @@ import {
     ProjectMaterializing,
 } from "pokie";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
-import {PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
+import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
 
 // Where every BlueprintProjectMaterializer defaults to caching a materialized runtime -- a machine-wide,
 // process-external location, deliberately never inside the blueprint's own directory or the caller's cwd
@@ -244,21 +244,9 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
                     "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
                     "for the exact npm output.",
-                this.extractNpmStderr(error) ?? (error instanceof Error ? error.message : String(error)),
+                extractNpmStderr(error) ?? (error instanceof Error ? error.message : String(error)),
             );
         }
-    }
-
-    // execFile/execFileAsync's own rejection carries the failed command's real stderr as a plain "stderr"
-    // property alongside its (much noisier, command-line-and-exit-code-prefixed) "message" -- preferred here
-    // as the "details" a human might actually want to read, falling back to the raw error's own message only
-    // for a runCommand implementation that doesn't shape its rejections that way.
-    private extractNpmStderr(error: unknown): string | undefined {
-        if (typeof error !== "object" || error === null || !("stderr" in error)) {
-            return undefined;
-        }
-        const stderr = (error as {stderr?: unknown}).stderr;
-        return typeof stderr === "string" && stderr.trim().length > 0 ? stderr : undefined;
     }
 
     private async runVerifyPhase(stagingDir: string, blueprintPath: string): Promise<void> {

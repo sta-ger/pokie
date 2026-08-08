@@ -1,6 +1,8 @@
 import {Command} from "commander";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {dispatch} from "../../cli/dispatch.js";
+import {BlueprintMaterializationError} from "../../cli/materialize/BlueprintMaterializationError.js";
+import {GamePackagePreparationError} from "../../cli/prepare/GamePackagePreparationError.js";
 
 // A stand-in registered command whose run() behavior is configurable per test, so dispatch's own
 // mechanics (argv resolution, exit-code mapping, stdout/stderr separation) can be exercised without
@@ -135,6 +137,33 @@ describe("dispatch (the real top-level CLI dispatcher cli/pokie.ts's run() deleg
 
         expect(exitCode).toBe(1);
         expect(errorSpy).toHaveBeenCalledWith("synchronous boom");
+    });
+
+    // Blueprint materialization and "pokie init" both fail a bad "npm install" through this same
+    // "details" convention (see BlueprintMaterializationError's and GamePackagePreparationError's own
+    // doc comments) -- dispatch prints it identically for either one, as a secondary, clearly-labeled
+    // block after the human-facing message, never folded into it.
+    it.each([
+        ["BlueprintMaterializationError", () => new BlueprintMaterializationError("dependencies", "materialization failed", "npm ERR! simulated")],
+        ["GamePackagePreparationError", () => new GamePackagePreparationError("dependencies", "preparation failed", "npm ERR! simulated")],
+    ])("prints a %s's own 'details' as a secondary 'npm output:' block, after its primary message", async (_label, buildError) => {
+        const commands = [new FakeCommand("init", () => Promise.reject(buildError()))];
+
+        const exitCode = await dispatch(commands, ["node", "pokie", "init"]);
+
+        expect(exitCode).toBe(1);
+        expect(errorSpy).toHaveBeenCalledTimes(2);
+        expect(errorSpy.mock.calls[0][0]).not.toContain("npm ERR!");
+        expect(errorSpy.mock.calls[1][0]).toBe("\nnpm output:\nnpm ERR! simulated");
+    });
+
+    it("never prints a secondary 'npm output:' block when the failing error carries no 'details'", async () => {
+        const commands = [new FakeCommand("init", () => Promise.reject(new GamePackagePreparationError("build", "build failed")))];
+
+        const exitCode = await dispatch(commands, ["node", "pokie", "init"]);
+
+        expect(exitCode).toBe(1);
+        expect(errorSpy).toHaveBeenCalledTimes(1);
     });
 
     // dispatch() (and everything it calls: CliCommandHandling.run(), buildUsageText()) never reads
