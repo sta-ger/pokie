@@ -2664,6 +2664,28 @@ describe("StudioServer", () => {
             expect(JSON.stringify(body)).not.toContain("ENOTDIR");
             expect(JSON.stringify(body)).not.toContain("\\n    at ");
         });
+
+        it("re-rolls the reels section's own dynamic inspection sample via ?sharedWeightsSampleSeed, for the Game Model Reels view's own \"New sample\" action", async () => {
+            const blueprintPath = writeBlueprintFile({
+                manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}, B: {3: 2}},
+                symbolWeights: {A: 1, B: 3},
+            });
+            const projectBaseUrl = await startServerForBlueprintProject(blueprintPath);
+
+            const defaultResult = await get(`${projectBaseUrl}/api/project/gameModel`);
+            const rerolledResult = await get(`${projectBaseUrl}/api/project/gameModel?sharedWeightsSampleSeed=99`);
+
+            expect(defaultResult.status).toBe(200);
+            expect(rerolledResult.status).toBe(200);
+            const rerolledReels = (rerolledResult.body as {reels: {status: string; data: {sharedWeightsSample: {seed: number}}}}).reels;
+            expect(rerolledReels.status).toBe("available");
+            expect(rerolledReels.data.sharedWeightsSample.seed).toEqual(99);
+            expect(rerolledResult.body).not.toEqual(defaultResult.body);
+        });
     });
 
     describe("GET /api/project/gameModel for a resolved 'tsPackage' project (real fixtures on disk)", () => {

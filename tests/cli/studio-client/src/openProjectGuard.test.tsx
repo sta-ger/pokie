@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
@@ -136,7 +136,7 @@ describe("useOpenProject: guarded side effects", () => {
         // The failed attempt must not leave the router-level one-shot bypass stuck "on" -- a later,
         // unrelated navigation away from Home while still dirty must still be blocked, not silently let
         // through unconfirmed.
-        router.navigate("/project/overview");
+        await act(() => router.navigate("/project/overview"));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
     }, 60000);
@@ -151,13 +151,13 @@ describe("useOpenProject: guarded side effects", () => {
 
         await dirtyTheDesignDraft(user);
 
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
         await user.click(screen.getByRole("button", {name: "Stay"}));
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
 
-        router.navigate("/project/overview");
+        await act(() => router.navigate("/project/overview"));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
     }, 60000);

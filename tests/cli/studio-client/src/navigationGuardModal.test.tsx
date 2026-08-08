@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {act, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
@@ -49,7 +49,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
         await dirtyTheDesignDraft(user);
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
         await user.keyboard("{Escape}");
@@ -70,7 +70,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
         await dirtyTheDesignDraft(user);
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
         const overlay = document.querySelector(".mantine-Overlay-root");
@@ -92,7 +92,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
         await dirtyTheDesignDraft(user);
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
         const dialog = screen.getByRole("dialog");

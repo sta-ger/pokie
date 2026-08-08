@@ -481,10 +481,12 @@ export class StudioBlueprintService {
     // blocks on GameBlueprintValidator's own errors first: an in-progress draft is exactly when a live
     // preview is most useful, so this tolerates a structurally incomplete draft (a required field
     // temporarily missing mid-edit) by falling back to an explicit "unavailable" projection instead of
-    // ever throwing back to the caller.
-    public previewGameModel(blueprint: unknown): GameModelProjection {
+    // ever throwing back to the caller. `sharedWeightsSampleSeed` re-rolls a "symbolWeights"/"default"
+    // blueprint's own dynamic inspection sample (see BuildGameModelReelsOptions) -- undefined keeps the
+    // default, reproducible one.
+    public previewGameModel(blueprint: unknown, sharedWeightsSampleSeed?: number): GameModelProjection {
         try {
-            return buildGameModelProjection(blueprint as GameBlueprint);
+            return buildGameModelProjection(blueprint as GameBlueprint, undefined, {sharedWeightsSampleSeed});
         } catch (error) {
             return buildGameModelProjection(undefined, {
                 reason: `This draft can't be projected into a game model yet: ${error instanceof Error ? error.message : String(error)}`,

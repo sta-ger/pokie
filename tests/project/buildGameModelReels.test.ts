@@ -160,6 +160,19 @@ describe("buildGameModelReels", () => {
         expect(reel.analysis.symbolCounts).toEqual({A: 5, B: 15, S: 3});
     });
 
+    it("re-rolls the shared-weights sample deterministically for a given sharedWeightsSampleSeed -- a different seed still reproduces the exact same sample when asked again", () => {
+        const blueprint: GameBlueprint = {...BASE_BLUEPRINT, reels: 2, symbolWeights: {A: 1, B: 3}};
+        const defaultSeed = buildGameModelReels(blueprint);
+        const rerolled = buildGameModelReels(blueprint, {sharedWeightsSampleSeed: 99});
+
+        expect(rerolled.sharedWeightsSample!.seed).toEqual(99);
+        expect(rerolled.sharedWeightsSample!.weights).toEqual(defaultSeed.sharedWeightsSample!.weights);
+        expect(rerolled).not.toEqual(defaultSeed);
+
+        const rerolledAgain = buildGameModelReels(blueprint, {sharedWeightsSampleSeed: 99});
+        expect(rerolledAgain).toEqual(rerolled);
+    });
+
     describe("convertSharedWeightsToReelStrips", () => {
         it("returns exactly the same per-reel sample strips buildGameModelReels itself already shows for symbolWeights, never a second, independently re-derived conversion", () => {
             const blueprint: GameBlueprint = {...BASE_BLUEPRINT, reels: 2, symbolWeights: {A: 1, B: 3}};
@@ -175,6 +188,15 @@ describe("buildGameModelReels", () => {
             const stripsFromSample = sampleReels.map((reel) => ("positions" in reel ? reel.positions.map((position) => position.symbolId) : []));
 
             expect(convertSharedWeightsToReelStrips(blueprint)).toEqual(stripsFromSample);
+        });
+
+        it("converts exactly the re-rolled sample when given the same seed a caller's own 'New sample' re-roll used, not the default one", () => {
+            const blueprint: GameBlueprint = {...BASE_BLUEPRINT, reels: 2, symbolWeights: {A: 1, B: 3}};
+            const rerolledSampleReels = buildGameModelReels(blueprint, {sharedWeightsSampleSeed: 99}).reels;
+            const stripsFromRerolledSample = rerolledSampleReels.map((reel) => ("positions" in reel ? reel.positions.map((position) => position.symbolId) : []));
+
+            expect(convertSharedWeightsToReelStrips(blueprint, 99)).toEqual(stripsFromRerolledSample);
+            expect(convertSharedWeightsToReelStrips(blueprint, 99)).not.toEqual(convertSharedWeightsToReelStrips(blueprint));
         });
     });
 });

@@ -289,6 +289,24 @@ describe("StudioBlueprintService", () => {
         });
     });
 
+    describe("previewGameModel", () => {
+        it("re-rolls a symbolWeights blueprint's own dynamic inspection sample given a sharedWeightsSampleSeed, deterministically", () => {
+            const service = createService();
+            const blueprint = buildBlueprint({symbolWeights: {A: 1, B: 3}});
+
+            const defaultProjection = service.previewGameModel(blueprint);
+            const rerolled = service.previewGameModel(blueprint, 99);
+            const rerolledAgain = service.previewGameModel(blueprint, 99);
+
+            if (defaultProjection.reels.status !== "available" || rerolled.reels.status !== "available") {
+                throw new Error("expected an available reels section");
+            }
+            expect(rerolled.reels.data.sharedWeightsSample!.seed).toEqual(99);
+            expect(rerolled.reels.data).not.toEqual(defaultProjection.reels.data);
+            expect(rerolledAgain).toEqual(rerolled);
+        });
+    });
+
     describe("importParSheet", () => {
         async function writeParSheet(dir: string, sheets: Record<string, unknown[][]>): Promise<string> {
             const filePath = path.join(dir, "in.par.xlsx");
