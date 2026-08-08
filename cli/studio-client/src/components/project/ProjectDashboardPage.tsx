@@ -472,11 +472,11 @@ export function ProjectDashboardPage() {
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
     // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
     const runReplay = useCallback(
-        (round: number, seed: string | undefined, keepExpected = false) => {
+        (round: number, seed: string | undefined, simulationId?: string, keepExpected = false) => {
             if (!keepExpected) {
                 clearExpectedReplay();
             }
-            replay.run(round, seed);
+            replay.run(round, seed, simulationId);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [replay.run, clearExpectedReplay],
@@ -556,7 +556,7 @@ export function ProjectDashboardPage() {
     }, [fetchImpl]);
 
     const runtime = useRuntimeManager();
-    const play = usePlaySession();
+    const play = usePlaySession(refreshRecentSpins);
     const deployment = useDeploymentManager();
 
     // Set by GameModelTab whenever its own in-progress section edit has unsaved changes (see its own
@@ -730,7 +730,7 @@ export function ProjectDashboardPage() {
             )}
             {header.status === "outcome-source" && (
                 <div style={{marginTop: "1rem"}}>
-                    <OutcomeSourceOverview header={header} />
+                    <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
                 </div>
             )}
 
@@ -810,7 +810,9 @@ export function ProjectDashboardPage() {
                                     error={replay.error}
                                     onRun={runReplay}
                                     onCancel={replay.cancel}
-                                    onRetry={() => replay.job && runReplay(replay.job.round, replay.job.seed, expectedReplay.status === "loaded")}
+                                    onRetry={() =>
+                                        replay.job && runReplay(replay.job.round, replay.job.seed, replay.job.simulationId, expectedReplay.status === "loaded")
+                                    }
                                     listView={replayListView}
                                     listError={replayListError}
                                     onRefreshList={refreshReplayList}

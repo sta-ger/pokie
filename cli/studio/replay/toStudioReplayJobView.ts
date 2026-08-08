@@ -9,6 +9,7 @@ export function toStudioReplayJobView(record: StudioReplayJobRecord): StudioRepl
         status: record.status,
         round: record.round,
         seed: record.seed,
+        simulationId: record.simulationId,
         startedAt: new Date(record.startedAt).toISOString(),
         completedRounds: record.completedRounds,
         durationMs: record.durationMs,

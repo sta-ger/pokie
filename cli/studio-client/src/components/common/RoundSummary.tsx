@@ -45,16 +45,19 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
         );
     }
 
-    // studioRequestId/studioRound/studioRecordedAt/studioSource are all Studio's own bookkeeping (see
-    // StudioRuntimeSessionView's own doc comment), never part of the game's actual public response --
-    // excluded here alongside `debug` so "Public response" stays an honest dump of what the game server
-    // itself returned.
+    // studioRequestId/studioRound/studioRecordedAt/studioSource/studioOperation/studioProjectRoot/
+    // studioSeed are all Studio's own bookkeeping (see StudioRuntimeSessionView's own doc comment), never
+    // part of the game's actual public response -- excluded here alongside `debug` so "Public response"
+    // stays an honest dump of what the game server itself returned.
     const {
         debug,
         studioRequestId: _studioRequestId,
         studioRound: _studioRound,
         studioRecordedAt: _studioRecordedAt,
         studioSource: _studioSource,
+        studioOperation: _studioOperation,
+        studioProjectRoot: _studioProjectRoot,
+        studioSeed: _studioSeed,
         ...publicFields
     } = session;
     const additional = extractAdditionalRoundFields(session);
@@ -84,7 +87,7 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Credits</Table.Th>
-                        <Table.Td>{session.credits.toFixed(2)}</Table.Td>
+                        <Table.Td>{session.credits !== undefined ? session.credits.toFixed(2) : "—"}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Bet</Table.Th>

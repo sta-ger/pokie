@@ -12,7 +12,11 @@ import type {RoundArtifactJson} from "pokie";
 export type StudioRuntimeSessionView = {
     sessionId: string;
     game: {id: string; name: string; version: string};
-    credits: number;
+    // Absent only for a stateless one-shot draw with no session/wallet of its own at all (the Outcome
+    // Source Analysis tab's "Sample" route) -- every genuine session (Runtime tab, Play tab) always has a
+    // real credits figure, so this is never fabricated as 0 to fill the shape out where there truly isn't
+    // one.
+    credits?: number;
     bet?: number;
     win?: number;
     screen?: unknown[][];
@@ -30,18 +34,24 @@ export type StudioRuntimeSessionView = {
     // below (the game server's own echoed value, only ever present alongside the rest of the debug
     // bundle).
     studioRequestId?: string;
-    // Studio's own bookkeeping too, attached only by StudioRuntimeManager.recordRecentSpin() -- so these
-    // are present on every entry `listRecentSpins()` returns, but absent from a plain createSession()/
-    // getSession() result (neither of which is ever recorded as a "recent spin"). `studioRound` is this
-    // session's own 1-based round index (stable across MAX_RECENT_SPINS eviction and across an
-    // idempotent retry of the same requestId -- see recordRecentSpin()'s own doc comment), the one piece
-    // of unambiguous identity that survives everything else about a round changing. `studioRecordedAt` is
-    // when Studio recorded it (the game server itself returns no timestamp). `studioSource` distinguishes
-    // a live spin from one played against a pre-generated outcome library, which otherwise looks
-    // identical in the list.
+    // Studio's own bookkeeping too, attached only by StudioRoundRecorder.record() -- so these are present
+    // on every entry the shared recorder's `list()` returns, but absent from a plain createSession()/
+    // getSession() result (neither of which is ever recorded as a round). `studioRound` is this session's
+    // own 1-based round index (stable across the recorder's own bound and across an idempotent retry of
+    // the same requestId -- see StudioRoundRecorder.record()'s own doc comment), the one piece of
+    // unambiguous identity that survives everything else about a round changing. `studioRecordedAt` is
+    // when Studio recorded it (no producer returns a timestamp of its own). `studioSource` names which of
+    // Studio's own tabs/routes actually produced this round (see StudioRoundSource); `studioOperation`
+    // names the concrete action within that tab (see StudioRoundOperation) -- e.g. a Play tab round can be
+    // an ordinary "spin" or one found by "find-any-win"/"find-symbol-win". `studioProjectRoot`/
+    // `studioSeed` are attached only when the producer genuinely had them at record time (every producer
+    // except a one-shot outcome-source sample without an explicit seed) -- never invented otherwise.
     studioRound?: number;
     studioRecordedAt?: string;
-    studioSource?: "live" | "pre-generated";
+    studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
+    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
+    studioProjectRoot?: string;
+    studioSeed?: string | number;
     debug?: {
         stateAfter?: unknown;
         stateBefore?: unknown;

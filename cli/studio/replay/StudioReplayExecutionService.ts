@@ -52,6 +52,13 @@ export class StudioReplayExecutionService {
     private readonly yieldToEventLoop: () => Promise<void>;
     private readonly createId: () => string;
     private readonly pokieVersion: string;
+    // Fired exactly once per job, right after a reproduction genuinely completes (never for a
+    // failed/cancelled one) -- StudioServer's only hook for recording a "Recent Simulation" selection
+    // (see StudioReplayJobRecord.simulationId) into the shared StudioRoundRecorder the moment it's real,
+    // rather than reactively (e.g. from a status poll), so GET /api/project/runtime/spins reflects it as
+    // soon as the job that produced it is done. A no-op default keeps every other caller (every test
+    // that constructs this service directly) unaffected.
+    private readonly onCompleted: (record: StudioReplayJobRecord) => void;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -64,6 +71,7 @@ export class StudioReplayExecutionService {
             }),
         createId: () => string = () => crypto.randomUUID(),
         pokieVersion = "unknown",
+        onCompleted: (record: StudioReplayJobRecord) => void = () => undefined,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -72,6 +80,7 @@ export class StudioReplayExecutionService {
         this.yieldToEventLoop = yieldToEventLoop;
         this.createId = createId;
         this.pokieVersion = pokieVersion;
+        this.onCompleted = onCompleted;
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -90,6 +99,7 @@ export class StudioReplayExecutionService {
             status: "queued",
             round: request.round,
             seed: request.seed,
+            simulationId: request.simulationId,
             startedAt: this.now(),
             completedRounds: 0,
             durationMs: 0,
@@ -309,6 +319,7 @@ export class StudioReplayExecutionService {
         record.status = "completed";
         record.descriptor = descriptor;
         this.markTerminal(record);
+        this.onCompleted(record);
     }
 
     // "useInitialStateDirectly" covers round 1's own "before" snapshot: at that point no play() has

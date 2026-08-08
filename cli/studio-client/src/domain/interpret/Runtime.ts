@@ -288,6 +288,9 @@ const KNOWN_SESSION_VIEW_FIELDS = new Set([
     "studioRound",
     "studioRecordedAt",
     "studioSource",
+    "studioOperation",
+    "studioProjectRoot",
+    "studioSeed",
     "debug",
 ]);
 

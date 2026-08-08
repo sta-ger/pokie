@@ -22,6 +22,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
 import {StudioOutcomeLibraryService, type ResolvedOutcomeLibrary} from "../outcomeLibrary/StudioOutcomeLibraryService.js";
 import {RuntimeHttpResult, RuntimeSessionClient} from "./RuntimeSessionClient.js";
+import {StudioRoundRecorder} from "./StudioRoundRecorder.js";
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 import type {StudioRuntimeStateView} from "./StudioRuntimeStateView.js";
 import type {ValidatedStartRuntimeRequest} from "./validateStartRuntimeRequest.js";
@@ -79,8 +80,6 @@ type PinnedPreGeneratedLibraryResolution = Exclude<PreGeneratedLibraryResolution
 // instance, a WalletPort, or a raw session object — it only ever has the same plain JSON any client of
 // the real server would get back.
 export class StudioRuntimeManager {
-    private static readonly MAX_RECENT_SPINS = 20;
-
     private readonly loadGame: typeof loadPokieGame;
     private readonly createServer: (game: PokieGame, options: PokieDevServerOptions) => PokieDevServerHandling;
     // Where the compiled cli/client assets live (dist/cli/client at runtime) -- the exact same
@@ -121,20 +120,24 @@ export class StudioRuntimeManager {
     // one. Cleared on every teardown path alongside everything else in stopServerIfAny(), so a later
     // start (plain or pre-generated) never inherits a stale mode from a previous one.
     private preGeneratedLibrary: {libraryId: string; hash: string} | undefined;
-    // Most-recent-first, bounded -- the game server itself keeps no round history at all (each spin
-    // overwrites the previous session state), so this is the only place "find a past spin by request id"
-    // can look. Studio's own bookkeeping only, same pattern StudioSimulationService/
-    // StudioReplayExecutionService already use for their own in-memory job repositories -- never touches
-    // core session/game logic. Cleared on every teardown path (see stopServerIfAny()) so a spin from a
-    // previous project (or a previous runtime start) never leaks into a later one.
-    private recentSpins: StudioRuntimeSessionView[] = [];
-    // Session-local round counters backing each recorded spin's `studioRound` -- keyed by sessionId,
-    // strictly increasing per session regardless of `recentSpins`' own MAX_RECENT_SPINS eviction, so
-    // "Round 23 in session X" stays correctly numbered even once round 1-3's own entries have scrolled
-    // out of the bounded list. Cleared alongside `recentSpins` on every teardown path (see
-    // stopServerIfAny()) for the same reason -- a round count from a torn-down runtime instance must
-    // never bleed into a later one, even if a later session happens to reuse the same id.
-    private sessionRoundCounters = new Map<string, number>();
+    // The one shared history every round-producing action across all of Studio (this manager's own
+    // spins, the Play tab, Outcome Source Analysis sample draws) records into -- see StudioRoundRecorder's
+    // own doc comment. Defaults to a private instance so every existing standalone caller/test keeps
+    // seeing only its own spins, exactly as before this class existed; StudioServer constructs one
+    // instance and shares it with StudioPlayService (and its own outcome-source sample route) so a round
+    // played anywhere in Studio is visible from anywhere else that reads this same recorder.
+    private readonly roundRecorder: StudioRoundRecorder;
+    // The projectRoot this manager's currently-running (or most-recently-run) server was started
+    // against -- stamped onto every round this manager records as that round's own `studioProjectRoot`
+    // (see spin()). Set at the top of every startInternal() call, alongside every other per-start field.
+    private projectRoot: string | undefined;
+    // Session-scoped seeds, keyed by sessionId -- recorded from createSession()'s own effectiveSeed
+    // (whichever of the caller-supplied seed / this.defaultSeed actually applied) so every later spin
+    // against that session can stamp its own recorded round with the real seed it was created under,
+    // never invented for a session created without one. Cleared alongside every other per-server-instance
+    // state on teardown (see stopServerIfAny()) so a seed from a torn-down instance never applies to a
+    // later session that happens to reuse the same id.
+    private sessionSeeds = new Map<string, string | number>();
 
     constructor(
         loadGame: typeof loadPokieGame = loadPokieGame,
@@ -151,6 +154,7 @@ export class StudioRuntimeManager {
         clientRoot = "",
         createClientServer: (clientRoot: string, options: PokieClientServerOptions) => PokieClientServerHandling = (clientRoot, options) =>
             new PokieClientServer(clientRoot, options),
+        roundRecorder: StudioRoundRecorder = new StudioRoundRecorder(),
     ) {
         this.loadGame = loadGame;
         this.createServer = createServer;
@@ -159,6 +163,7 @@ export class StudioRuntimeManager {
         this.pokieVersion = pokieVersion;
         this.clientRoot = clientRoot;
         this.createClientServer = createClientServer;
+        this.roundRecorder = roundRecorder;
     }
 
     public getState(): StudioRuntimeStateView {
@@ -248,14 +253,23 @@ export class StudioRuntimeManager {
             return {status: "not-running"};
         }
         const effectiveSeed = seed ?? this.defaultSeed;
-        if (this.preGeneratedLibrary !== undefined) {
-            // The pre-generated create endpoint only ever accepts a string seed (see
+        const result =
+            this.preGeneratedLibrary !== undefined
+                ? // The pre-generated create endpoint only ever accepts a string seed (see
             // RuntimeSessionClient.createPreGeneratedSession's own doc comment) -- a numeric seed is
             // stringified rather than silently dropped.
-            const preGeneratedSeed = effectiveSeed === undefined ? undefined : String(effectiveSeed);
-            return this.translateSessionResult(await this.sessionClient.createPreGeneratedSession(preGeneratedSeed, initialBalance), true);
+                this.translateSessionResult(
+                    await this.sessionClient.createPreGeneratedSession(effectiveSeed === undefined ? undefined : String(effectiveSeed), initialBalance),
+                    true,
+                )
+                : this.translateSessionResult(await this.sessionClient.createSession(effectiveSeed));
+        // Remembered here (rather than re-derived at spin() time, which has no seed parameter of its own)
+        // so every later recorded round for this session can stamp its own real `studioSeed` -- never
+        // stored for a session created without one, so a later round is never given a fabricated seed.
+        if (result.status === "ok" && effectiveSeed !== undefined) {
+            this.sessionSeeds.set(result.session.sessionId, effectiveSeed);
         }
-        return this.translateSessionResult(await this.sessionClient.createSession(effectiveSeed));
+        return result;
     }
 
     public async getSession(sessionId: string): Promise<StudioRuntimeSessionResult> {
@@ -290,57 +304,23 @@ export class StudioRuntimeManager {
             if (requestId !== undefined) {
                 result.session.studioRequestId = requestId;
             }
-            this.recordRecentSpin(result.session);
+            this.roundRecorder.record(result.session, {
+                source: this.preGeneratedLibrary !== undefined ? "pre-generated" : "live",
+                operation: "spin",
+                projectRoot: this.projectRoot,
+                seed: this.sessionSeeds.get(sessionId),
+            });
         }
         return result;
     }
 
     // Read-only snapshot, most-recent-first -- the Replay & Debug tab's "Session Spin" find method lists
     // and looks up by requestId against this directly, via each entry's own `studioRequestId` (present
-    // whenever the spin was made with a requestId, regardless of debug mode).
+    // whenever the spin was made with a requestId, regardless of debug mode). Delegates straight to the
+    // shared StudioRoundRecorder (see its own doc comment) -- this manager itself keeps no round history
+    // of its own anymore.
     public listRecentSpins(): StudioRuntimeSessionView[] {
-        return [...this.recentSpins];
-    }
-
-    // Stamps every *newly* recorded spin with its own unambiguous, session-scoped identity --
-    // `studioRound` (this session's 1-based round index), `studioRecordedAt` (when Studio first recorded
-    // it, ISO -- the game server itself returns no timestamp), and `studioSource` (live play vs. a
-    // pre-generated outcome library, since the two can otherwise look identical in the list). Retrying the
-    // *same* (sessionId, studioRequestId) pair -- e.g. the Debug tab's "Retry last request", or a genuine
-    // network-level retry -- replays the same underlying round rather than playing a new one (see
-    // SpinCommandHandler's idempotent-replay path): this canonical identity is what's deduplicated on,
-    // reusing the original entry's round/timestamp/source verbatim and leaving the list itself untouched
-    // rather than filing (or bumping the position of) a second entry for what is the same round. A spin
-    // made *without* a requestId can't be identified as a retry of anything (there's no id to match on),
-    // so it's always treated as its own new round. This never dedupes a legitimate round from a
-    // *different* session, since the match always requires sessionId to agree too, not studioRequestId
-    // alone.
-    private recordRecentSpin(session: StudioRuntimeSessionView): void {
-        const requestId = session.studioRequestId;
-        if (requestId !== undefined) {
-            const duplicate = this.recentSpins.find((entry) => entry.sessionId === session.sessionId && entry.studioRequestId === requestId);
-            if (duplicate !== undefined) {
-                session.studioRound = duplicate.studioRound;
-                session.studioRecordedAt = duplicate.studioRecordedAt;
-                session.studioSource = duplicate.studioSource;
-                return;
-            }
-        }
-
-        session.studioRound = this.nextSessionRound(session.sessionId);
-        session.studioRecordedAt = new Date().toISOString();
-        session.studioSource = this.preGeneratedLibrary !== undefined ? "pre-generated" : "live";
-
-        this.recentSpins.unshift(session);
-        if (this.recentSpins.length > StudioRuntimeManager.MAX_RECENT_SPINS) {
-            this.recentSpins.length = StudioRuntimeManager.MAX_RECENT_SPINS;
-        }
-    }
-
-    private nextSessionRound(sessionId: string): number {
-        const next = (this.sessionRoundCounters.get(sessionId) ?? 0) + 1;
-        this.sessionRoundCounters.set(sessionId, next);
-        return next;
+        return this.roundRecorder.list();
     }
 
     // Shared by startInternal() and restart()'s own preflight -- resolves options.preGeneratedLibrarySelector
@@ -391,6 +371,7 @@ export class StudioRuntimeManager {
         pinnedPreGeneratedResolution?: PinnedPreGeneratedLibraryResolution,
     ): Promise<StudioRuntimeStartResult> {
         this.state = {status: "starting"};
+        this.projectRoot = projectRoot;
 
         let game: PokieGame;
         try {
@@ -509,9 +490,13 @@ export class StudioRuntimeManager {
         // Every teardown path (manual Stop, Restart, project switch, Studio shutdown) already funnels
         // through here -- a stopped server's past spins are neither reachable nor meaningful to keep
         // around (in-memory sessions are gone; even file-mode sessions have no server serving them), so
-        // this is the one place recentSpins needs clearing, not a separate per-caller responsibility.
-        this.recentSpins = [];
-        this.sessionRoundCounters = new Map();
+        // this is the one place this manager's own recorded rounds need clearing, not a separate
+        // per-caller responsibility. Scoped to just this manager's own two sources ("live"/
+        // "pre-generated") -- the shared recorder may also hold genuinely unrelated rounds from the Play
+        // tab or Outcome Source Analysis (see StudioRoundRecorder.clearSources()' own doc comment), which
+        // this manager stopping/restarting its own server must never discard.
+        this.roundRecorder.clearSources(["live", "pre-generated"]);
+        this.sessionSeeds = new Map();
     }
 
     private async resetProjectScopedState(): Promise<void> {

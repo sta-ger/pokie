@@ -11,6 +11,12 @@ export type StudioReplayJobRecord = {
     status: StudioReplayStatus;
     round: number;
     seed?: string;
+    // Only set when this job originated from the Replay tab's "Recent Simulation" source (see
+    // ValidatedReplayRequest.simulationId) -- the id of the completed simulation report this round was
+    // selected from. Drives StudioServer's own onCompleted recording of the reproduced round as a
+    // genuine simulation sample (see StudioReplayExecutionService's constructor); absent for every
+    // other source ("Recreate from seed", "Replay Artifact"), which never claim to be one.
+    simulationId?: string;
     startedAt: number;
     // Set exactly once, the moment status first becomes terminal (completed/failed/cancelled) — see
     // StudioReplayExecutionService's fail()/cancelRecord()/completion path. Undefined while

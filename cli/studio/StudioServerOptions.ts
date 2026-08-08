@@ -12,6 +12,7 @@ import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioPlayService} from "./runtime/StudioPlayService.js";
+import {StudioRoundRecorder} from "./runtime/StudioRoundRecorder.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
@@ -97,6 +98,15 @@ export type StudioServerOptions = {
     // Runs replays for the Project Dashboard's Replay tab (POST/GET/DELETE /api/project/replays*) —
     // same "defaults around this same `loadGame`" reasoning as simulationService above.
     replayService?: StudioReplayExecutionService;
+    // The one shared history every round-producing action across Studio (Runtime tab spins, Play tab
+    // spins/scenario searches/outcome-source draws, Outcome Source Analysis's own "Sample" draw) records
+    // into -- see StudioRoundRecorder's own doc comment. Defaults to a fresh instance shared by the
+    // default runtimeManager/playService below (and this class's own outcome-source sample route) so a
+    // round played anywhere in Studio is visible from the Replay tab's "Session Spin" find method,
+    // regardless of which tab actually produced it. A caller supplying its own runtimeManager/playService
+    // is responsible for giving both the *same* recorder instance if it wants their rounds unified too --
+    // this option exists mainly so a test can hand all three the one instance it wants to assert against.
+    roundRecorder?: StudioRoundRecorder;
     // Owns the Project Dashboard's Runtime tab (GET/POST /api/project/runtime*) — a process-local
     // in-process `pokie serve`-equivalent server for the active project, plus its Session Tools. Same
     // "defaults around this same `loadGame`" reasoning as simulationService/replayService above; no

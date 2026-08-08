@@ -34,6 +34,7 @@ import {
 } from "pokie";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
+import {StudioRoundRecorder, type StudioRoundOperation} from "./StudioRoundRecorder.js";
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
@@ -56,6 +57,11 @@ type ActiveRuntimeSession = {
     // PlayUntilSymbolWinStrategy against a real session rather than re-deriving an equivalent check from
     // the wire-shaped response.
     readonly session: GameSessionHandling;
+    // This session's own creation parameters -- stamped onto every round this session ever produces (see
+    // spin()) as that round's own `studioProjectRoot`/`studioSeed`. `seed` is only ever set when
+    // newSession() was actually given one, never invented for a session created without one.
+    readonly projectRoot: string;
+    readonly seed?: string | number;
 };
 
 type ActiveOutcomeSourceSession = {
@@ -64,6 +70,9 @@ type ActiveOutcomeSourceSession = {
     readonly outcomeSource: PreGeneratedOutcomeSourcing;
     readonly randomSource: WeightedOutcomeRandomSource;
     credits: number;
+    // Same reasoning as ActiveRuntimeSession's own projectRoot/seed above.
+    readonly projectRoot: string;
+    readonly seed?: string | number;
 };
 
 type ActiveSession = ActiveRuntimeSession | ActiveOutcomeSourceSession;
@@ -134,6 +143,12 @@ export class StudioPlayService {
     // spinUntilMatch()'s own doc comment for why the search itself is real spins, not something a smaller
     // bound changes the nature of.
     private readonly maxFindScenarioSpins: number;
+    // The shared history every round-producing action across Studio records into -- see
+    // StudioRoundRecorder's own doc comment. Defaults to a private instance so every existing standalone
+    // caller/test keeps seeing only its own rounds, exactly as before this recording existed; StudioServer
+    // constructs one instance and shares it with StudioRuntimeManager (and its own outcome-source sample
+    // route) so a round played here is visible from anywhere else that reads this same recorder.
+    private readonly roundRecorder: StudioRoundRecorder;
 
     private active: ActiveSession | undefined;
     private currentSessionId: string | undefined;
@@ -145,6 +160,7 @@ export class StudioPlayService {
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         maxFindScenarioSpins = StudioPlayService.DEFAULT_MAX_FIND_SCENARIO_SPINS,
+        roundRecorder: StudioRoundRecorder = new StudioRoundRecorder(),
     ) {
         this.loadGame = loadGame;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
@@ -152,6 +168,7 @@ export class StudioPlayService {
         this.resolveProject = resolveProject;
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.maxFindScenarioSpins = maxFindScenarioSpins;
+        this.roundRecorder = roundRecorder;
     }
 
     // Materializes/loads `projectRoot` fresh on every call -- never caches a previously loaded game across
@@ -218,7 +235,7 @@ export class StudioPlayService {
             return this.fail(error);
         }
 
-        this.active = {kind: "runtime", manifest, spinHandler, session};
+        this.active = {kind: "runtime", manifest, spinHandler, session, projectRoot, seed};
         this.currentSessionId = sessionId;
 
         const credits = await wallet.getBalance(sessionId);
@@ -229,42 +246,59 @@ export class StudioPlayService {
     // one alive at a time (see the class doc comment), so a spin against an id from a session that's
     // since been replaced by a newer newSession() call (or never existed) is honestly "not-found," never
     // silently resurrected.
-    public async spin(sessionId: string): Promise<StudioPlaySpinResult> {
+    // "operation" names the concrete action actually driving this spin -- a plain Spin click always
+    // passes the default "spin"; findAnyWin()/findSymbolWin() below pass their own operation through
+    // every attempt of their search loop (see spinUntilMatch()), so a round recorded mid-search is never
+    // misreported as an ordinary spin. Recording happens exactly once, here, after either branch below
+    // has produced a genuine result -- the one choke point every Play tab round (runtime or
+    // outcomeSource) passes through, so StudioRoundRecorder never needs a second call site to stay
+    // complete.
+    public async spin(sessionId: string, operation: StudioRoundOperation = "spin"): Promise<StudioPlaySpinResult> {
         if (this.active === undefined || sessionId !== this.currentSessionId) {
             return {status: "not-found"};
         }
+        const active = this.active;
 
-        if (this.active.kind === "outcomeSource") {
-            return this.spinOutcomeSource(sessionId, this.active);
+        let result: StudioPlaySpinResult;
+        if (active.kind === "outcomeSource") {
+            result = await this.spinOutcomeSource(sessionId, active);
+        } else {
+            const handled = await active.spinHandler.handle(sessionId);
+            if (handled.status === "not-found") {
+                result = {status: "not-found"};
+            } else if (handled.status === "blocked") {
+                result = {status: "blocked", error: handled.reason};
+            } else if (handled.status === "conflict" || handled.status === "recovery-required") {
+                // Neither can actually happen here in practice -- this service never passes an
+                // expectedVersion, and never shares its stores with another SpinCommandHandler instance
+                // (see the class doc comment) -- surfaced as a plain error rather than silently dropped
+                // in the (unreachable in normal operation) case they somehow ever did.
+                result = {status: "error", error: handled.reason};
+            } else {
+                result = {
+                    status: "ok",
+                    session: this.buildSessionView(
+                        sessionId,
+                        active.manifest,
+                        handled.state,
+                        handled.credits,
+                        handled.win,
+                        handled.state.roundPayload,
+                        active.session,
+                    ),
+                };
+            }
         }
 
-        const result = await this.active.spinHandler.handle(sessionId);
-        if (result.status === "not-found") {
-            return {status: "not-found"};
+        if (result.status === "ok") {
+            this.roundRecorder.record(result.session, {
+                source: active.kind === "outcomeSource" ? "play-outcome-source" : "play",
+                operation,
+                projectRoot: active.projectRoot,
+                seed: active.seed,
+            });
         }
-        if (result.status === "blocked") {
-            return {status: "blocked", error: result.reason};
-        }
-        if (result.status === "conflict" || result.status === "recovery-required") {
-            // Neither can actually happen here in practice -- this service never passes an
-            // expectedVersion, and never shares its stores with another SpinCommandHandler instance (see
-            // the class doc comment) -- surfaced as a plain error rather than silently dropped in the
-            // (unreachable in normal operation) case they somehow ever did.
-            return {status: "error", error: result.reason};
-        }
-
-        return {
-            status: "ok",
-            session: this.buildSessionView(
-                sessionId,
-                this.active.manifest,
-                result.state,
-                result.credits,
-                result.win,
-                result.state.roundPayload,
-                this.active.session,
-            ),
-        };
+        return result;
     }
 
     // PlayTab's "Find any win" scenario control -- repeats real, authoritative spin() calls (the exact
@@ -280,6 +314,7 @@ export class StudioPlayService {
     public findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
         return this.spinUntilMatch(
             sessionId,
+            "find-any-win",
             (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
             (artifact) => artifact.totalWin > 0,
         );
@@ -307,6 +342,7 @@ export class StudioPlayService {
         }
         return this.spinUntilMatch(
             sessionId,
+            "find-symbol-win",
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
             (artifact) => artifact.wins.some((win) => win.symbolId === symbolId),
         );
@@ -334,6 +370,7 @@ export class StudioPlayService {
 
     private async spinUntilMatch(
         sessionId: string,
+        operation: StudioRoundOperation,
         matchesLiveSession: (session: GameSessionHandling) => boolean,
         matchesArtifact: (artifact: RoundArtifactJson) => boolean,
     ): Promise<StudioPlaySpinResult> {
@@ -343,7 +380,7 @@ export class StudioPlayService {
                 return {status: "not-found"};
             }
 
-            const round = await this.spin(sessionId);
+            const round = await this.spin(sessionId, operation);
             if (round.status !== "ok") {
                 return round;
             }
@@ -406,6 +443,8 @@ export class StudioPlayService {
             outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName),
             randomSource,
             credits: 0,
+            projectRoot: project.rootPath,
+            seed,
         };
         this.currentSessionId = sessionId;
 

@@ -9,6 +9,8 @@ import {
     describeReplayEntryStatus,
     describeReplayReproducibility,
     describeRoundArtifact,
+    describeStudioRoundOperation,
+    describeStudioRoundSource,
     isReplayListEntryReproducible,
     type LoadedReplayCardView,
     type ReplayCapabilitiesView,
@@ -165,7 +167,7 @@ export function ReplayTab({
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
     error: string | undefined;
-    onRun: (round: number, seed: string | undefined, keepExpected?: boolean) => void;
+    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean) => void;
     onCancel: () => void;
     onRetry: () => void;
     listView: ReplayListView;
@@ -555,8 +557,8 @@ export function ReplayTab({
                                                     }}
                                                     style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                                 >
-                                                    Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits {entry.credits}, win{" "}
-                                                    {entry.win ?? 0}
+                                                    Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits{" "}
+                                                    {entry.credits ?? "—"}, win {entry.win ?? 0}
                                                     {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
                                                     {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
                                                 </Anchor>
@@ -725,14 +727,18 @@ export function ReplayTab({
                                             {selectedSpin.studioSource && (
                                                 <Table.Tr>
                                                     <Table.Th>Source</Table.Th>
-                                                    <Table.Td>
-                                                        {selectedSpin.studioSource === "pre-generated" ? "Pre-generated outcome library" : "Live spin"}
-                                                    </Table.Td>
+                                                    <Table.Td>{describeStudioRoundSource(selectedSpin.studioSource)}</Table.Td>
+                                                </Table.Tr>
+                                            )}
+                                            {selectedSpin.studioOperation && (
+                                                <Table.Tr>
+                                                    <Table.Th>Operation</Table.Th>
+                                                    <Table.Td>{describeStudioRoundOperation(selectedSpin.studioOperation)}</Table.Td>
                                                 </Table.Tr>
                                             )}
                                             <Table.Tr>
                                                 <Table.Th>Credits</Table.Th>
-                                                <Table.Td>{selectedSpin.credits}</Table.Td>
+                                                <Table.Td>{selectedSpin.credits ?? "—"}</Table.Td>
                                             </Table.Tr>
                                             <Table.Tr>
                                                 <Table.Th>Bet</Table.Th>
@@ -873,7 +879,12 @@ export function ReplayTab({
                                     <Button
                                         disabled={reproduceDisabled}
                                         onClick={() => {
-                                            onRun(reproduceTarget.round, reproduceTarget.seed, findMethod === "artifact" ? true : undefined);
+                                            onRun(
+                                                reproduceTarget.round,
+                                                reproduceTarget.seed,
+                                                findMethod === "simulation" ? selectedSimEntry?.id : undefined,
+                                                findMethod === "artifact" ? true : undefined,
+                                            );
                                             setJobLoaded(true);
                                         }}
                                     >

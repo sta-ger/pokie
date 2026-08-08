@@ -7,6 +7,8 @@ import {
     describeReplayReproducibility,
     describeReplayResult,
     describeLoadedReplay,
+    describeStudioRoundOperation,
+    describeStudioRoundSource,
     isReplayActive,
     isReplayListEntryReproducible,
     isReplayTerminal,
@@ -831,6 +833,12 @@ describe("describeLoadedReplay", () => {
         expect(card.source).toBe("Recorded -- pre-generated spin");
     });
 
+    it("labels a recorded simulation-sample spin truthfully, never falling back to live spin", () => {
+        const card = describeLoadedReplay({source: "spin", spin: createSpin({studioSource: "simulation-sample"}), canExport: true});
+
+        expect(card.source).toBe("Recorded -- Recent Simulation reproduction");
+    });
+
     it("reports spin completeness from whether a debug bundle was captured", () => {
         const noDebug = describeLoadedReplay({source: "spin", spin: createSpin(), canExport: true});
         expect(noDebug.completeness).toContain("Minimal");
@@ -918,5 +926,25 @@ describe("describeLoadedReplay", () => {
         });
 
         expect(card.versionHash).toBe("sample-slot v0.1.0, hash sha256:fixed-for-tests");
+    });
+});
+
+describe("describeStudioRoundSource", () => {
+    it("names the Replay tab's Recent Simulation as a simulation-sample's source, never Unknown or live spin", () => {
+        expect(describeStudioRoundSource("simulation-sample")).toBe("Replay tab -- Recent Simulation");
+    });
+
+    it("falls back to Unknown only for a genuinely unrecognized source", () => {
+        expect(describeStudioRoundSource(undefined)).toBe("Unknown");
+    });
+});
+
+describe("describeStudioRoundOperation", () => {
+    it("names a simulation-sample's operation truthfully, never Unknown", () => {
+        expect(describeStudioRoundOperation("simulation-sample")).toBe("Simulation sample");
+    });
+
+    it("falls back to Unknown only for a genuinely unrecognized operation", () => {
+        expect(describeStudioRoundOperation(undefined)).toBe("Unknown");
     });
 });

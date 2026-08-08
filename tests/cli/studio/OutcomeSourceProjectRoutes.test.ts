@@ -127,6 +127,29 @@ describe("StudioServer outcome-source project routes", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
+        it("records a sample draw into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+            const bundleDir = await buildNativeLibraryDir();
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
+
+            await post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base", seed: "studio-sample-seed"});
+
+            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            expect(status).toBe(200);
+            const entries = body as Array<{
+                studioSource?: string;
+                studioOperation?: string;
+                studioProjectRoot?: string;
+                studioSeed?: string | number;
+                credits?: number;
+            }>;
+            expect(entries).toHaveLength(1);
+            expect(entries[0].studioSource).toBe("outcome-source-sample");
+            expect(entries[0].studioOperation).toBe("outcome-source-sample");
+            expect(entries[0].studioProjectRoot).toBe(bundleDir);
+            expect(entries[0].studioSeed).toBe("studio-sample-seed");
+            expect(entries[0].credits).toBeUndefined();
+        });
+
         it("rejects a sample request missing modeName with 400, without ever touching the project", async () => {
             const bundleDir = await buildNativeLibraryDir();
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});

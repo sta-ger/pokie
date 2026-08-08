@@ -9,15 +9,18 @@ import {
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
+    PokieJsonRoundArtifactProjector,
     PokieProject,
     ProjectTargetResolver,
     readWasmComponentManifest,
+    RoundArtifact,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     STUDIO_OPERATION,
 } from "pokie";
+import crypto from "crypto";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
 import path from "path";
@@ -73,11 +76,14 @@ import {isPathWithin} from "./isPathWithin.js";
 import {openInFileManager} from "../openInFileManager.js";
 import {validateOpenFolderRequest, OpenFolderRequestInput} from "./home/validateOpenFolderRequest.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
+import type {StudioReplayJobRecord} from "./replay/StudioReplayJobRecord.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
 import {StudioPlayService, StudioPlaySpinResult} from "./runtime/StudioPlayService.js";
+import {StudioRoundRecorder} from "./runtime/StudioRoundRecorder.js";
 import {StudioRuntimeManager, StudioRuntimeSessionResult, StudioRuntimeSpinResult, StudioRuntimeStartResult} from "./runtime/StudioRuntimeManager.js";
+import type {StudioRuntimeSessionView} from "./runtime/StudioRuntimeSessionView.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
 import {validateProjectLocationRequest, ProjectLocationRequestInput} from "./validateProjectLocationRequest.js";
 import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} from "./validateProjectRegistrationRequest.js";
@@ -182,6 +188,11 @@ export class StudioServer implements StudioServerHandling {
     private readonly outcomeSourceProjectAnalyzer: OutcomeSourceProjectAnalyzing;
     private readonly simulationService: StudioSimulationService;
     private readonly replayService: StudioReplayExecutionService;
+    // The one shared history every round-producing action across Studio records into -- see
+    // StudioRoundRecorder's own doc comment. Shared with runtimeManager/playService below (unless a
+    // caller supplied its own of either, see StudioServerOptions.roundRecorder's own doc comment) and
+    // used directly by this class's own outcome-source sample route and handleListRecentSpins().
+    private readonly roundRecorder: StudioRoundRecorder;
     private readonly runtimeManager: StudioRuntimeManager;
     private readonly playService: StudioPlayService;
     private readonly deploymentService: StudioDeploymentService;
@@ -219,11 +230,27 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
-        this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
+        this.replayService =
+            options.replayService ??
+            new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
+                this.recordSimulationSampleReplay(record),
+            );
+        this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
         this.runtimeManager =
             options.runtimeManager ??
-            new StudioRuntimeManager(this.loadGame, undefined, undefined, this.resolveRuntimePackageRoot, this.pokieVersion, options.clientRoot ?? "");
-        this.playService = options.playService ?? new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion);
+            new StudioRuntimeManager(
+                this.loadGame,
+                undefined,
+                undefined,
+                this.resolveRuntimePackageRoot,
+                this.pokieVersion,
+                options.clientRoot ?? "",
+                undefined,
+                this.roundRecorder,
+            );
+        this.playService =
+            options.playService ??
+            new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
@@ -279,6 +306,9 @@ export class StudioServer implements StudioServerHandling {
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active -- same reasoning as runtimeManager above, just synchronous.
         this.playService.reset();
+        // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
+        // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
+        this.roundRecorder.clearAll();
         return new Promise((resolve, reject) => {
             if (!this.server) {
                 resolve();
@@ -499,6 +529,9 @@ export class StudioServer implements StudioServerHandling {
             // comment for why this can't just rely on their existing projectRoot scoping alone.
             await this.runtimeManager.stopForProjectSwitch();
             this.playService.reset();
+            // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
+            // project being left.
+            this.roundRecorder.clearAll();
             this.cancelActiveJobsForOldProject();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
@@ -985,6 +1018,9 @@ export class StudioServer implements StudioServerHandling {
         // /api/projects/close branch's own call.
         await this.runtimeManager.stopForProjectSwitch();
         this.playService.reset();
+        // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
+        // project being left.
+        this.roundRecorder.clearAll();
         this.cancelActiveJobsForOldProject();
 
         // The explicit Home → Project Studio context transition: mutates this same running server's
@@ -1580,7 +1616,59 @@ export class StudioServer implements StudioServerHandling {
         const randomSource =
             validated.seed !== undefined ? new SeededWeightedOutcomeRandomSource(validated.seed) : new SecureWeightedOutcomeRandomSource();
         const result = await sampleOutcomeSourceProject(this.projectDashboard.project, validated.modeName, randomSource);
+        if (result.supported) {
+            this.recordOutcomeSourceSample(result.selection.outcome.artifact, this.currentContext.projectRoot, validated.seed);
+        }
         this.sendJson(res, 200, result);
+    }
+
+    // Records a "Sample" draw into the shared round history exactly like every other round-producing
+    // action in Studio (see StudioRoundRecorder's own doc comment) -- but unlike a Runtime/Play session,
+    // there is no session or wallet behind a one-shot sample draw at all: `sessionId` is a fresh id minted
+    // purely as this recorded entry's own identity (so it still fits the shared StudioRuntimeSessionView
+    // shape every other source uses), never a reusable session, and `credits` is genuinely omitted rather
+    // than fabricated as 0 (see StudioRuntimeSessionView.credits's own doc comment). Every other field --
+    // game/bet/win/screen/artifact -- is read straight off the real, already-drawn RoundArtifact, never
+    // recomputed.
+    private recordOutcomeSourceSample(artifact: RoundArtifact, projectRoot: string, seed: string | undefined): void {
+        const view: StudioRuntimeSessionView = {
+            sessionId: crypto.randomUUID(),
+            game: artifact.provenance.game,
+            bet: artifact.stake,
+            win: artifact.totalWin,
+            screen: artifact.screen.map((row) => [...row]),
+            debug: {artifact: new PokieJsonRoundArtifactProjector().project(artifact)},
+        };
+        this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed});
+    }
+
+    // StudioReplayExecutionService's own onCompleted hook (see its constructor) -- fires for every
+    // completed replay job, but only ever records one when `record.simulationId` is set, i.e. this
+    // reproduction genuinely originated from the Replay tab's "Recent Simulation" source (handleStartReplay
+    // below only lets that field through once it's verified against a real completed simulation report for
+    // this project). Every field comes straight off the real ReplayDescriptor this exact reproduction just
+    // produced -- never recomputed, never fabricated for a session/game type that didn't produce one (e.g.
+    // `screen`/`debug.artifact` stay absent for a non-video-slot session, same as `credits` staying absent
+    // for this stateless one-shot reproduction, mirroring recordOutcomeSourceSample's own reasoning).
+    private recordSimulationSampleReplay(record: StudioReplayJobRecord): void {
+        if (record.simulationId === undefined || record.descriptor === undefined) {
+            return;
+        }
+        const {descriptor} = record;
+        const view: StudioRuntimeSessionView = {
+            sessionId: descriptor.sessionId,
+            game: descriptor.game,
+            bet: descriptor.totalBet,
+            win: descriptor.totalWin,
+            ...(descriptor.screen !== null ? {screen: descriptor.screen} : {}),
+            ...(descriptor.artifact !== undefined ? {debug: {artifact: descriptor.artifact}} : {}),
+        };
+        this.roundRecorder.record(view, {
+            source: "simulation-sample",
+            operation: "simulation-sample",
+            projectRoot: record.projectRoot,
+            seed: record.seed,
+        });
     }
 
     private async handleValidateCertificationSourceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1913,6 +2001,18 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        // A `simulationId` claims this reproduction is a genuine "Recent Simulation" sample (see
+        // recordSimulationSampleReplay) -- verified against a real, completed simulation report for this
+        // project before it's ever let through, so a bogus/stale/other-project id can never fabricate
+        // provenance for a round that's about to be recorded into the shared history as one.
+        if (validated.simulationId !== undefined) {
+            const simulationResult = this.simulationService.getReport(this.currentContext.projectRoot, validated.simulationId);
+            if (simulationResult.status !== "ok") {
+                this.sendJson(res, 400, {error: `Unknown or incomplete simulation "${validated.simulationId}" to sample from.`});
+                return;
+            }
+        }
+
         const result = this.replayService.start(this.currentContext.projectRoot, validated);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
@@ -2049,7 +2149,9 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, this.runtimeManager.listRecentSpins());
+        // Reads the shared recorder directly (rather than this.runtimeManager.listRecentSpins(), which
+        // would only ever see the Runtime tab's own rounds) -- see StudioRoundRecorder's own doc comment.
+        this.sendJson(res, 200, this.roundRecorder.list());
     }
 
     private async handleRuntimeStart(req: IncomingMessage, res: ServerResponse): Promise<void> {
