@@ -672,7 +672,7 @@ async function extractErrorMessage(
 // array (nothing spun yet, debug mode was off, or the project was since switched) — never an error for
 // "nothing to show".
 export async function listRecentSpins(fetchImpl: FetchLike): Promise<StudioRuntimeSessionView[]> {
-    const response = await fetchImpl("/api/project/runtime/spins");
+    const response = await fetchImpl("/api/project/rounds");
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to list recent spins"));
     }

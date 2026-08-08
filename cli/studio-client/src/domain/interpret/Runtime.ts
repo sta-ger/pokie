@@ -66,7 +66,7 @@ function formatScreenCell(cell: unknown): string {
 
 // Same role as interpretReplay.ts's own ReplayListView — distinguishes "no spins recorded yet" from
 // "here's the list". Backs the Replay & Debug tab's own "Session Spin" find method, which reads the
-// shared GET /api/project/runtime/spins data (StudioRoundRecorder.list()). "loading" (set directly by
+// shared GET /api/project/rounds data (StudioRoundRecorder.list()). "loading" (set directly by
 // ProjectDashboardPage's refreshRecentSpins(), not constructed here) is what lets a consumer tell "the
 // fetch hasn't resolved yet" apart from "it resolved and there's genuinely nothing", which matters for
 // not flashing a false "not found" while the list is still in flight.

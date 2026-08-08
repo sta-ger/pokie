@@ -592,7 +592,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        if (method === "GET" && url.pathname === "/api/project/runtime/spins") {
+        if (method === "GET" && url.pathname === "/api/project/rounds") {
             this.handleListRecentSpins(res);
             return;
         }

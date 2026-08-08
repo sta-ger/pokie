@@ -43,7 +43,7 @@ const PROJECT_ROUTES = {
     }),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-    "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+    "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
 };
 

@@ -3078,7 +3078,7 @@ The source choice offers four methods:
   reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
   reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
   side for comparison.
-- **Session Spin** — pick a round from a shared, project-scoped recent-spins list (`GET /api/project/runtime/spins`
+- **Session Spin** — pick a round from a shared, project-scoped recent-spins list (`GET /api/project/rounds`
   — see the API section below), optionally filtered down to one session; every real round played anywhere in
   Studio (a Play tab spin/scenario search, an Outcome Source Analysis sample draw, a Replay tab "Recent Simulation"
   reproduction) is recorded into this one list, most-recent-first, capped at the 20 most recent, cleared on project
@@ -3361,7 +3361,7 @@ client, even for a load/validation failure.
   — a structurally invalid `artifact` is reported back as non-fatal `artifactWarnings`, never a failure by itself,
   since `round`/`seed` alone are enough to attempt a reproduction. `400 {"error": "..."}` for an invalid
   `round`/`seed`; `409 {"error": "No active project."}` in Home mode.
-- `GET /api/project/runtime/spins` — the active project's shared, cross-tab recent-spins list (see
+- `GET /api/project/rounds` — the active project's shared, cross-tab recent-spins list (see
   [Session Spin](#replay) above), most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound`
   (session-local round index), `studioRequestId` (when the producer supplied one), `studioRecordedAt`,
   `studioSource` (which tab/route produced it — `"play"`, `"play-outcome-source"`, `"outcome-source-sample"`, or

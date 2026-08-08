@@ -19,7 +19,7 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-    "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+    "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
 };
 
@@ -877,7 +877,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
             }),
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/b", valid: true, generated: false}}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
         });
@@ -938,7 +938,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         };
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: [spin]}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: [spin]}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -969,7 +969,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         };
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: [spin]}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: [spin]}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -1009,7 +1009,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         };
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: [spin]}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: [spin]}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -1244,7 +1244,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         ];
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: spins}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: spins}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -1280,7 +1280,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         let spinsCall = 0;
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => {
+            "/api/project/rounds": () => {
                 spinsCall += 1;
                 const initial: StudioRuntimeSessionView[] = [
                     {sessionId: "sess-1", game: GAME, credits: 200, bet: 1, win: 0, studioRequestId: "req-a1", studioRound: 1},
@@ -1344,7 +1344,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         ];
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => ({ok: true, status: 200, body: spins}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: spins}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -1374,7 +1374,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/runtime/spins": () => ({ok: false, status: 500, body: {error: "spins.json is corrupted on disk"}}),
+            "/api/project/rounds": () => ({ok: false, status: 500, body: {error: "spins.json is corrupted on disk"}}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});

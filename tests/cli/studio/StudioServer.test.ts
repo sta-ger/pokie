@@ -3622,7 +3622,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(400);
             expect(body).toEqual({error: 'Unknown or incomplete simulation "does-not-exist" to sample from.'});
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
         });
 
         // Proves the Replay tab's "Recent Simulation" source -- picking a round from a completed
@@ -3630,7 +3630,7 @@ describe("StudioServer", () => {
         // round-producing action in Studio (see StudioServer.recordSimulationSampleReplay), unlike a
         // plain "Recreate from seed" reproduction (no `simulationId`), which the test right after this
         // one proves is deliberately left unrecorded.
-        it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+        it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/rounds", async () => {
             await openSampleSlot(createSeedAwareFakeGame(manifest));
             const projectRoot = (await get(`${baseUrl}/api/context`)).body as {projectRoot: string};
 
@@ -3646,7 +3646,7 @@ describe("StudioServer", () => {
             expect(body.status).toBe("completed");
             const descriptor = body.descriptor as {sessionId: string; totalBet: number; totalWin: number};
 
-            const {status: spinsStatus, body: spinsBody} = await get(`${baseUrl}/api/project/runtime/spins`);
+            const {status: spinsStatus, body: spinsBody} = await get(`${baseUrl}/api/project/rounds`);
             expect(spinsStatus).toBe(200);
             const entries = spinsBody as Array<{
                 sessionId: string;
@@ -3682,7 +3682,7 @@ describe("StudioServer", () => {
             const created = await post(`${baseUrl}/api/project/replays`, {round: 3, seed: "demo"});
             await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
 
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
         });
 
         it("delivers stateBefore/stateAfter through the HTTP job response end to end", async () => {
@@ -4536,7 +4536,7 @@ describe("StudioServer", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
-        it("records a Play tab round played against a resolved outcome-library project into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+        it("records a Play tab round played against a resolved outcome-library project into the shared history, immediately visible from GET /api/project/rounds", async () => {
             const bundleDir = await buildLibraryBundle();
             const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
             outcomeServer = createOutcomeSourceServer(bundleDir, loadGame);
@@ -4547,7 +4547,7 @@ describe("StudioServer", () => {
             const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
             await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
 
-            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            const {status, body} = await get(`${baseUrl}/api/project/rounds`);
             expect(status).toBe(200);
             const entries = body as Array<{
                 sessionId: string;
