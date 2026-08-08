@@ -321,9 +321,9 @@ Nothing is written until that confirmation — declining it, cancelling (**Ctrl+
 write itself is atomic (staged beside the destination, then renamed into place — see `writeFileAtomically`), so a
 failed or interrupted save can never leave a truncated or partially-edited file behind either.
 
-`--out <file>` is a **Save As**: the result is written there instead of overwriting `<blueprint>` (the destination
-question's own default becomes `--out`'s value, still editable like every other question), leaving the original
-file untouched.
+`--out <file>` is a **Save As**: the result is always written there instead of overwriting `<blueprint>`, leaving the
+original file untouched. The destination question still shows `--out`'s value as its own default and still asks, but
+unlike every other question here it isn't actually editable — whatever it's answered, the file is written to `--out`.
 
 A blueprint whose reel weighting is a "generated" `reelStripGeneration` (see [`pokie reel
 generate`](#pokie-reel-generate-blueprintjson) and `docs/reel-strip-generation.md`) has that field carried through

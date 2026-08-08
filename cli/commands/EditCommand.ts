@@ -171,7 +171,10 @@ export class EditCommand implements CliCommandHandling {
             }
 
             const {blueprint} = result;
-            const savePath = result.outDir as string; // always concrete -- see GameBlueprintWizardOptions.destination
+            // --out is a fixed Save As destination, not just the destination question's own default --
+            // it always wins over whatever the wizard's own (still-editable) prompt reports back, so a
+            // wizard-entered alternate path can never redirect an explicit --out write.
+            const savePath = out ?? (result.outDir as string); // always concrete -- see GameBlueprintWizardOptions.destination
 
             const issues = this.validator.validate(blueprint);
             const errors = issues.filter((issue) => issue.severity === "error");

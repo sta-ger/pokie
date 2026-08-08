@@ -190,6 +190,24 @@ describe("EditCommand", () => {
         expect(wizardFactory.calledWithOptions?.destination?.defaultPathFor("ignored")).toBe("copy.blueprint.json");
     });
 
+    it("writes only --out's own path even when the wizard reports a different destination back", async () => {
+        // The wizard's own destination question is still asked (and still shows --out's value as its
+        // default -- see the test above), but it's answerable like every other question -- a user could
+        // type over it. --out is a fixed Save As, not just an editable default, so the wizard reporting
+        // back some other path must never redirect the write away from it.
+        const wizardFactory = createStubWizardFactory({blueprint: editedBlueprint, outDir: "somewhere-else.blueprint.json"});
+        const prompt = createControllablePrompt("y");
+        const {command, writeFile} = createCommand(undefined, undefined, undefined, undefined, wizardFactory, () => prompt, () => true);
+
+        const exitCode = await command.run(["game.blueprint.json", "--out", "copy.blueprint.json"]);
+
+        expect(exitCode).toBe(0);
+        expect(writeFile).toHaveBeenCalledWith("copy.blueprint.json", `${JSON.stringify(editedBlueprint, null, 4)}\n`);
+        expect(writeFile).not.toHaveBeenCalledWith("somewhere-else.blueprint.json", expect.anything());
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Destination: copy.blueprint.json"));
+        expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("saved  copy.blueprint.json"));
+    });
+
     it("prints 'Edit cancelled.' and never writes anything when the wizard itself resolves null (Ctrl+C/EOF)", async () => {
         const wizardFactory = createStubWizardFactory(null);
         const prompt = createControllablePrompt("y");
