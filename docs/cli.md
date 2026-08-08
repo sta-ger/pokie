@@ -3340,8 +3340,8 @@ client, even for a load/validation failure.
   `"simulation-sample"`). Always `200`, possibly an empty array (nothing played yet, or the project was since
   switched) — never an error for "nothing to show". `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/deployment/targets` — every registered [External Adapter SDK](external-adapter-sdk.md)
-  target's `{id, version, requirements, capabilities}` (a registry seeded with exactly the SDK's own
-  local-filesystem example target — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
+  target's `{id, version, requirements, capabilities}` (empty until a project registers a real
+  `ExternalDeploymentTarget` — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
   active project."}` in Home mode.
 - `POST /api/project/deployment/runs` `{"targetId": string, "modes": [{"modeName": string, "libraryPath":
   string}], "publish"?: boolean}` — runs `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator)
