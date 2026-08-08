@@ -286,7 +286,11 @@ export function GameModelTab({
                     }
                     reelsSampleControls={{
                         onNewSample: handleNewSample,
-                        loading: state.status === "loading",
+                        // GameModelSections (and this control) only ever renders while `state.status ===
+                        // "loaded"` -- a New sample re-fetch flips `state` straight to "loading" and
+                        // unmounts this in favor of the page-level `LoadingState` above, so there's no
+                        // in-between render where this button's own spinner would ever show.
+                        loading: false,
                         onConvertToGeneratedReels: editable ? handleConvertToGeneratedReels : undefined,
                         convertDisabled: editState.status !== "viewing",
                     }}
