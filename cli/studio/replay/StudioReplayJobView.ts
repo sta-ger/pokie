@@ -9,6 +9,11 @@ export type StudioReplayJobView = {
     status: StudioReplayStatus;
     round: number;
     seed?: string;
+    // Present only for a job started from the Replay tab's "Recent Simulation" source -- see
+    // StudioReplayJobRecord.simulationId's own doc comment. Threaded through so "Run again with the
+    // same parameters" (ProjectDashboardPage's own onRetry) can preserve the original selection instead
+    // of silently downgrading a retried simulation sample into an untagged reproduction.
+    simulationId?: string;
     startedAt: string;
     completedRounds: number;
     durationMs: number;

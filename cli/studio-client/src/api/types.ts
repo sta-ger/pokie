@@ -693,6 +693,10 @@ export type StudioReplayJobView = {
     status: StudioReplayStatus;
     round: number;
     seed?: string;
+    // Present only for a job started from the Replay tab's "Recent Simulation" source -- the completed
+    // simulation report this round was selected from. See cli/studio/replay/StudioReplayJobRecord.ts's
+    // own doc comment.
+    simulationId?: string;
     startedAt: string;
     completedRounds: number;
     durationMs: number;
@@ -777,12 +781,13 @@ export type StudioRuntimeSessionView = {
     // Which of Studio's own tabs/routes produced this round -- "live"/"pre-generated" are the Runtime
     // tab's Session Tools, "play"/"play-outcome-source" are the Play tab (an ordinary session vs. a draw
     // against a resolved "outcomeLibrary" project), "outcome-source-sample" is the Outcome Source
-    // Analysis tab's own one-shot "Sample" draw.
-    studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample";
+    // Analysis tab's own one-shot "Sample" draw, "simulation-sample" is the Replay tab's "Recent
+    // Simulation" reproduction.
+    studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
     // The concrete action that produced this round, independent of studioSource -- "find-any-win"/
     // "find-symbol-win" are the Play tab's own scenario-search controls (every spin along the way is
     // recorded under the operation actually driving it, not demoted to a bare "spin").
-    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample";
+    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
     studioProjectRoot?: string;
     studioSeed?: string | number;
     debug?: {

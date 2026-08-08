@@ -76,6 +76,7 @@ import {isPathWithin} from "./isPathWithin.js";
 import {openInFileManager} from "../openInFileManager.js";
 import {validateOpenFolderRequest, OpenFolderRequestInput} from "./home/validateOpenFolderRequest.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
+import type {StudioReplayJobRecord} from "./replay/StudioReplayJobRecord.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
@@ -229,7 +230,11 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
         this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
-        this.replayService = options.replayService ?? new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion);
+        this.replayService =
+            options.replayService ??
+            new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
+                this.recordSimulationSampleReplay(record),
+            );
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
         this.runtimeManager =
             options.runtimeManager ??
@@ -1637,6 +1642,35 @@ export class StudioServer implements StudioServerHandling {
         this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed});
     }
 
+    // StudioReplayExecutionService's own onCompleted hook (see its constructor) -- fires for every
+    // completed replay job, but only ever records one when `record.simulationId` is set, i.e. this
+    // reproduction genuinely originated from the Replay tab's "Recent Simulation" source (handleStartReplay
+    // below only lets that field through once it's verified against a real completed simulation report for
+    // this project). Every field comes straight off the real ReplayDescriptor this exact reproduction just
+    // produced -- never recomputed, never fabricated for a session/game type that didn't produce one (e.g.
+    // `screen`/`debug.artifact` stay absent for a non-video-slot session, same as `credits` staying absent
+    // for this stateless one-shot reproduction, mirroring recordOutcomeSourceSample's own reasoning).
+    private recordSimulationSampleReplay(record: StudioReplayJobRecord): void {
+        if (record.simulationId === undefined || record.descriptor === undefined) {
+            return;
+        }
+        const {descriptor} = record;
+        const view: StudioRuntimeSessionView = {
+            sessionId: descriptor.sessionId,
+            game: descriptor.game,
+            bet: descriptor.totalBet,
+            win: descriptor.totalWin,
+            ...(descriptor.screen !== null ? {screen: descriptor.screen} : {}),
+            ...(descriptor.artifact !== undefined ? {debug: {artifact: descriptor.artifact}} : {}),
+        };
+        this.roundRecorder.record(view, {
+            source: "simulation-sample",
+            operation: "simulation-sample",
+            projectRoot: record.projectRoot,
+            seed: record.seed,
+        });
+    }
+
     private async handleValidateCertificationSourceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -1965,6 +1999,18 @@ export class StudioServer implements StudioServerHandling {
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
+        }
+
+        // A `simulationId` claims this reproduction is a genuine "Recent Simulation" sample (see
+        // recordSimulationSampleReplay) -- verified against a real, completed simulation report for this
+        // project before it's ever let through, so a bogus/stale/other-project id can never fabricate
+        // provenance for a round that's about to be recorded into the shared history as one.
+        if (validated.simulationId !== undefined) {
+            const simulationResult = this.simulationService.getReport(this.currentContext.projectRoot, validated.simulationId);
+            if (simulationResult.status !== "ok") {
+                this.sendJson(res, 400, {error: `Unknown or incomplete simulation "${validated.simulationId}" to sample from.`});
+                return;
+            }
         }
 
         const result = this.replayService.start(this.currentContext.projectRoot, validated);

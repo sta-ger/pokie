@@ -586,11 +586,11 @@ export type StartReplayResult =
 // returned here as a typed result) vs. "no active project" or any other failure (thrown as a plain
 // Error). The replay itself runs in the background (see StudioReplayExecutionService) — this call
 // always returns immediately with a "queued" job, never the finished result.
-export async function runReplay(fetchImpl: FetchLike, round: number, seed?: string): Promise<StartReplayResult> {
+export async function runReplay(fetchImpl: FetchLike, round: number, seed?: string, simulationId?: string): Promise<StartReplayResult> {
     const response = await fetchImpl("/api/project/replays", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(seed === undefined ? {round} : {round, seed}),
+        body: JSON.stringify({round, ...(seed !== undefined ? {seed} : {}), ...(simulationId !== undefined ? {simulationId} : {})}),
     });
 
     if (response.status === 409) {

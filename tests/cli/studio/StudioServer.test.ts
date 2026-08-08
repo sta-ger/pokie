@@ -3616,6 +3616,76 @@ describe("StudioServer", () => {
             expect(body.completedRounds).toBe(5);
         });
 
+        it("returns 400 for a simulationId that doesn't reference a completed simulation for this project", async () => {
+            await openSampleSlot(createSeedAwareFakeGame(manifest));
+
+            const {status, body} = await post(`${baseUrl}/api/project/replays`, {round: 3, seed: "demo", simulationId: "does-not-exist"});
+
+            expect(status).toBe(400);
+            expect(body).toEqual({error: 'Unknown or incomplete simulation "does-not-exist" to sample from.'});
+            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+        });
+
+        // Proves the Replay tab's "Recent Simulation" source -- picking a round from a completed
+        // simulation report and reproducing it -- reaches StudioRoundRecorder exactly like every other
+        // round-producing action in Studio (see StudioServer.recordSimulationSampleReplay), unlike a
+        // plain "Recreate from seed" reproduction (no `simulationId`), which the test right after this
+        // one proves is deliberately left unrecorded.
+        it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+            await openSampleSlot(createSeedAwareFakeGame(manifest));
+            const projectRoot = (await get(`${baseUrl}/api/context`)).body as {projectRoot: string};
+
+            const simCreated = await post(`${baseUrl}/api/project/simulations`, {rounds: 10, seed: "sim-seed"});
+            const simBody = simCreated.body as {id: string};
+            await pollUntilTerminal(`${baseUrl}/api/project/simulations/${simBody.id}`);
+
+            const replayCreated = await post(`${baseUrl}/api/project/replays`, {round: 3, seed: "sim-seed", simulationId: simBody.id});
+            expect(replayCreated.status).toBe(202);
+            const replayBody = replayCreated.body as {id: string};
+            const {status, body} = await pollUntilTerminal(`${baseUrl}/api/project/replays/${replayBody.id}`);
+            expect(status).toBe(200);
+            expect(body.status).toBe("completed");
+            const descriptor = body.descriptor as {sessionId: string; totalBet: number; totalWin: number};
+
+            const {status: spinsStatus, body: spinsBody} = await get(`${baseUrl}/api/project/runtime/spins`);
+            expect(spinsStatus).toBe(200);
+            const entries = spinsBody as Array<{
+                sessionId: string;
+                bet?: number;
+                win?: number;
+                debug?: {artifact?: unknown};
+                studioSource?: string;
+                studioOperation?: string;
+                studioProjectRoot?: string;
+                studioSeed?: string | number;
+                studioRound?: number;
+            }>;
+            expect(entries).toHaveLength(1);
+            expect(entries[0].sessionId).toBe(descriptor.sessionId);
+            expect(entries[0].bet).toBe(descriptor.totalBet);
+            expect(entries[0].win).toBe(descriptor.totalWin);
+            // createSeedAwareFakeGame has no getWinEvaluationResult(), so it isn't video-slot-shaped
+            // enough to build a real RoundArtifact from (see StudioReplayExecutionService.hasVideoSlotShape)
+            // -- `debug` must stay genuinely absent here, never fabricated, matching descriptor.artifact
+            // itself also being undefined for this exact fake game.
+            expect(descriptor).not.toHaveProperty("artifact");
+            expect(entries[0].debug).toBeUndefined();
+            expect(entries[0].studioSource).toBe("simulation-sample");
+            expect(entries[0].studioOperation).toBe("simulation-sample");
+            expect(entries[0].studioProjectRoot).toBe(projectRoot.projectRoot);
+            expect(entries[0].studioSeed).toBe("sim-seed");
+            expect(entries[0].studioRound).toBe(1);
+        });
+
+        it("never records a plain 'Recreate from seed' reproduction (no simulationId) into the shared history", async () => {
+            await openSampleSlot(createSeedAwareFakeGame(manifest));
+
+            const created = await post(`${baseUrl}/api/project/replays`, {round: 3, seed: "demo"});
+            await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
+
+            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+        });
+
         it("delivers stateBefore/stateAfter through the HTTP job response end to end", async () => {
             await openSampleSlot(createSeedAwareFakeGame(manifest));
 

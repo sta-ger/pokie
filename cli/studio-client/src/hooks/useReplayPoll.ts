@@ -66,13 +66,13 @@ export function useReplayPoll(onTerminal?: () => void) {
             });
     }
 
-    function run(round: number, seed: string | undefined): void {
+    function run(round: number, seed: string | undefined, simulationId?: string): void {
         if (!runGuard.begin()) {
             return;
         }
         setError(undefined);
         setProgress({status: "queued", completedRounds: 0, round, percent: 0, durationMs: 0});
-        runReplay(fetchImpl, round, seed)
+        runReplay(fetchImpl, round, seed, simulationId)
             .then((result) => {
                 if (cancelledRef.current) {
                     return;

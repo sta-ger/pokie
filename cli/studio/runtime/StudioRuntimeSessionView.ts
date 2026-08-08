@@ -48,8 +48,8 @@ export type StudioRuntimeSessionView = {
     // except a one-shot outcome-source sample without an explicit seed) -- never invented otherwise.
     studioRound?: number;
     studioRecordedAt?: string;
-    studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample";
-    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample";
+    studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
+    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
     studioProjectRoot?: string;
     studioSeed?: string | number;
     debug?: {

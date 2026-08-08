@@ -167,7 +167,7 @@ export function ReplayTab({
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
     error: string | undefined;
-    onRun: (round: number, seed: string | undefined, keepExpected?: boolean) => void;
+    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean) => void;
     onCancel: () => void;
     onRetry: () => void;
     listView: ReplayListView;
@@ -879,7 +879,12 @@ export function ReplayTab({
                                     <Button
                                         disabled={reproduceDisabled}
                                         onClick={() => {
-                                            onRun(reproduceTarget.round, reproduceTarget.seed, findMethod === "artifact" ? true : undefined);
+                                            onRun(
+                                                reproduceTarget.round,
+                                                reproduceTarget.seed,
+                                                findMethod === "simulation" ? selectedSimEntry?.id : undefined,
+                                                findMethod === "artifact" ? true : undefined,
+                                            );
                                             setJobLoaded(true);
                                         }}
                                     >

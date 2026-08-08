@@ -2,11 +2,13 @@ import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 // Every distinct place Studio can produce a genuinely played/drawn round -- the Runtime tab's Session
 // Tools (a real PokieDevServer, live or against a pre-generated outcome library), the Play tab (a real
-// in-process game session, or a real draw against a resolved "outcomeLibrary" project's own bundle), and
-// the Outcome Source Analysis tab's one-shot "Sample" draw. Kept a closed union (rather than a free-form
+// in-process game session, or a real draw against a resolved "outcomeLibrary" project's own bundle), the
+// Outcome Source Analysis tab's one-shot "Sample" draw, and the Replay tab's "Recent Simulation" source
+// (a real forward reproduction of a round selected from a completed simulation report -- see
+// StudioReplayExecutionService's own onCompleted hook). Kept a closed union (rather than a free-form
 // string) so a new producer is a compile-time-visible decision, never an implicit fourth thing that
 // happens to also write into the shared history.
-export type StudioRoundSource = "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample";
+export type StudioRoundSource = "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
 
 // The concrete action that produced a round, independent of *where* it came from (StudioRoundSource) --
 // "spin" covers both the Runtime tab's ordinary Session Tools spin and the Play tab's ordinary Spin/
@@ -14,8 +16,10 @@ export type StudioRoundSource = "live" | "pre-generated" | "play" | "play-outcom
 // (StudioPlayService.findAnyWin()/findSymbolWin()), which repeat real spin() calls until one matches --
 // every spin along the way, not just the final matching one, is recorded under the operation that's
 // actually driving it, never demoted to a bare "spin" once it's part of a search. "outcome-source-sample"
-// is the Outcome Source Analysis tab's own stateless single-draw route.
-export type StudioRoundOperation = "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample";
+// is the Outcome Source Analysis tab's own stateless single-draw route; "simulation-sample" is the
+// Replay tab's "Recent Simulation" reproduction -- one action, so (unlike "spin"/"find-any-win"/
+// "find-symbol-win") it never needs a second, more specific operation name of its own.
+export type StudioRoundOperation = "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
 
 // What a producer actually knows about a round beyond the StudioRuntimeSessionView itself -- `projectRoot`/
 // `seed` are only ever attached when the producer genuinely has them (a Play/Runtime session's own creation
@@ -29,11 +33,12 @@ export type StudioRoundProvenance = {
 };
 
 // The single place every round-producing action in Studio -- Runtime tab spins, Play tab spins/scenario
-// searches/outcome-source draws, and Outcome Source Analysis sample draws -- funnels through to become
-// part of one shared, bounded, most-recent-first history. Before this existed, StudioRuntimeManager kept
-// its own private "recentSpins" list that only ever saw Runtime tab traffic, so a round played anywhere
-// else in Studio (Play, Outcome Source Analysis) was invisible to the Replay tab's "Session Spin" find
-// method even though it was a perfectly real, capturable round. Every caller now shares one instance (see
+// searches/outcome-source draws, Outcome Source Analysis sample draws, and Replay's own "Recent
+// Simulation" reproductions -- funnels through to become part of one shared, bounded, most-recent-first
+// history. Before this existed, StudioRuntimeManager kept its own private "recentSpins" list that only
+// ever saw Runtime tab traffic, so a round played anywhere else in Studio (Play, Outcome Source Analysis)
+// was invisible to the Replay tab's "Session Spin" find method even though it was a perfectly real,
+// capturable round. Every caller now shares one instance (see
 // StudioServer's own construction) so "the last N rounds played in Studio, from any tab" is genuinely one
 // list, not three independently-bounded ones a caller would have to merge itself.
 //
@@ -56,8 +61,9 @@ export class StudioRoundRecorder {
     // replays the same underlying round rather than filing a new one -- the retry's own view is stamped
     // with the original entry's identity fields and the call returns without touching the list, exactly
     // as StudioRuntimeManager.recordRecentSpin() always has. A round made without a requestId (every Play
-    // tab round, every outcome-source-sample draw, and any Runtime tab spin made without one) can't be
-    // identified as a retry of anything, so it's always recorded as its own new entry.
+    // tab round, every outcome-source-sample draw, every simulation-sample reproduction, and any Runtime
+    // tab spin made without one) can't be identified as a retry of anything, so it's always recorded as
+    // its own new entry.
     public record(session: StudioRuntimeSessionView, provenance: StudioRoundProvenance): void {
         const requestId = session.studioRequestId;
         if (requestId !== undefined) {
