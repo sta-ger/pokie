@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
@@ -1467,12 +1467,14 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
         expect(within(inspect).queryByText("Additional round data")).not.toBeInTheDocument();
     }, 60000);
 
-    // P4-POLISH-12: a played round's own "line" win metadata (straight off LineWinComponent's own
-    // "definition" field, set server-side) drives the same WinOverlay/PaylineOverlay Replay's own
-    // RoundArtifactInspector renders -- and, since Runtime never fetches a blueprint alongside a round,
-    // the same PaytableView "unavailable" state -- proving Runtime inspection genuinely shares both
-    // overlay presentation and the honest paytable-unavailable diagnostic, not just the wins table.
-    it("shows the payline path traced from a line win's own metadata, and an explicit paytable-unavailable state, through the same shared WinOverlay/PaytableView Replay uses", async () => {
+    // P5-POLISH-11: a played round's own "line" win metadata (straight off LineWinComponent's own
+    // "definition" field, set server-side) drives the same canonical-player hover-list payline trace
+    // Replay's own RoundArtifactInspector renders through (CanonicalPlayerView, mounting
+    // cli/client/player's own renderWinHighlightsList directly) -- and, since Runtime never fetches a
+    // blueprint alongside a round, the same PaytableView "unavailable" state -- proving Runtime inspection
+    // genuinely shares both the win presentation and the honest paytable-unavailable diagnostic, not just
+    // the wins table.
+    it("shows the payline path traced from a line win's own metadata, and an explicit paytable-unavailable state, through the same shared canonical player/PaytableView Replay uses", async () => {
         const user = userEvent.setup();
         const winningWin = {
             type: "line",
@@ -1530,12 +1532,21 @@ describe("ProjectDashboardPage - Runtime session workspace", () => {
 
         const inspect = section("Inspect round");
         await within(inspect).findByText("Positions");
-        const screenTable = within(inspect).getByText("lemon").closest("table") as HTMLElement;
-        const cherryCells = within(screenTable).getAllByText("cherry").map((textNode) => textNode.closest("td"));
+        // Scoped to the canonical player grid specifically -- "cherry" also appears in the wins table's
+        // own Symbol column below, which must never be mistaken for a highlighted screen cell.
+        const grid = inspect.querySelector(".player-grid") as HTMLElement;
+        const cherryCells = within(grid).getAllByText("cherry") as HTMLElement[];
         expect(cherryCells).toHaveLength(2);
-        for (const cherryCell of cherryCells) {
-            expect(cherryCell).toHaveAttribute("data-payline", "true");
-        }
+
+        const winButton = within(inspect).getByRole("button", {name: "line: cherry, win: 12.5"});
+        fireEvent.mouseEnter(winButton);
+        // The win's own metadata.definition traces both reels' own row-0 cherry: green for the one that
+        // actually won (reel 0), grey for the one on the payline's own path that didn't (reel 1) -- the
+        // same renderWinHighlightsList "line" branch behavior RoundArtifactInspector.test.tsx exercises
+        // directly.
+        expect(cherryCells[0].style.backgroundColor).toBe("rgb(0, 255, 0)");
+        expect(cherryCells[1].style.backgroundColor).toBe("rgb(153, 153, 153)");
+
         expect(within(inspect).getByText(/Paytable unavailable/)).toBeInTheDocument();
     }, 60000);
 

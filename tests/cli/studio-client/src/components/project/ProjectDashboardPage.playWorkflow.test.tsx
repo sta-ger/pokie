@@ -121,8 +121,14 @@ describe("ProjectDashboardPage - Play", () => {
         expect(screen.getByText("seven")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
         // The same horizontal-scroll containment every other screen-rendering surface relies on -- proves
-        // this is the shared ScreenTable-based rendering, not a bespoke narrow-unfriendly table.
+        // this mounts the shared canonical player grid (CanonicalPlayerView), not a bespoke
+        // narrow-unfriendly table.
         expect(screen.getByText("cherry").closest(".mantine-ScrollArea-root")).not.toBeNull();
+        // A cell rendered through the canonical player's own renderReelsGrid is addressable by its own
+        // [reelIndex, rowIndex] data-cell id -- the literal DOM output of cli/client/player's own
+        // rendering, not a Mantine <Table> cell.
+        expect(screen.getByText("cherry")).toHaveAttribute("data-cell");
+        expect(screen.getByText("cherry").closest(".player-grid")).not.toBeNull();
     }, 30000);
 
     it("Reset discards the current session and creates a fresh one, clearing the previous round", async () => {
@@ -326,23 +332,46 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
         // both trees at once instead of proving each renders the fixture round independently.
         const direct = renderArtifactDirectly(artifact);
 
-        const playScreenTable = within(routed.container).getByText("lemon").closest("table") as HTMLElement;
-        const directScreenTable = within(direct.container).getByText("lemon").closest("table") as HTMLElement;
-        for (const table of [playScreenTable, directScreenTable]) {
-            const cherryCells = within(table).getAllByText("cherry").map((el) => el.closest("td"));
+        const playGrid = routed.container.querySelector(".player-grid") as HTMLElement;
+        const directGrid = direct.container.querySelector(".player-grid") as HTMLElement;
+        // ".player-grid" is the literal className cli/client/player's own renderReelsGrid stamps onto the
+        // <table> it creates (see renderPlayer.ts) -- its presence in both trees proves Play's own live
+        // Spin workflow and a direct RoundArtifactInspector render both mount that exact DOM function,
+        // never a page-local Mantine re-presentation of the same screen.
+        expect(playGrid).not.toBeNull();
+        expect(directGrid).not.toBeNull();
+
+        for (const {container, grid} of [
+            {container: routed.container, grid: playGrid},
+            {container: direct.container, grid: directGrid},
+        ]) {
+            // The persistent tint applyPersistentHighlights applies -- both matched cells, straight off
+            // this fixture's own already-computed winningPositions, no hover needed.
+            const cherryCells = within(grid).getAllByText("cherry");
             expect(cherryCells).toHaveLength(2);
             for (const cell of cherryCells) {
-                expect(cell).toHaveAttribute("data-winning", "true");
-                expect(cell).toHaveAttribute("data-payline", "true");
+                expect((cell as HTMLElement).style.backgroundColor).not.toBe("");
             }
-            expect(within(table).getByText("lemon").closest("td")).not.toHaveAttribute("data-winning");
+            const lemonCell = within(grid).getByText("lemon") as HTMLElement;
+            expect(lemonCell.style.backgroundColor).toBe("");
+
+            // Hovering the win's own hover-list entry (renderWinHighlightsList) traces its full
+            // configured payline: green for the two cells that actually won, grey for the third reel's
+            // own row-0 cell that's on the path but never won.
+            const winButton = within(container).getByRole("button", {name: "line: cherry, win: 12.5"});
+            fireEvent.mouseEnter(winButton);
+            for (const cell of cherryCells) {
+                expect((cell as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
+            }
+            expect(lemonCell.style.backgroundColor).toBe("rgb(153, 153, 153)");
+            fireEvent.mouseLeave(winButton);
         }
 
         // Same win detail: real symbol, real position count, the same "x stake" unit.
         expect(within(routed.container).getByText("2")).toBeInTheDocument();
         expect(within(direct.container).getByText("2")).toBeInTheDocument();
 
-        // Both renders' own data-winning/data-payline cells match exactly what the shared
+        // Both renders' own tinted/traced cells match exactly what the shared
         // deriveWinHighlightsFromRoundArtifactWins entrypoint derives for this fixture's own wins -- not
         // just "the same as each other", but the same as the one function every other RoundArtifact-
         // rendering surface (and, via its VideoSlotRoundResponse counterpart deriveWinHighlights, cli/client

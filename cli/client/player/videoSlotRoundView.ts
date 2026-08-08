@@ -202,10 +202,11 @@ function resolveRoundArtifactLineDefinition(win: GenericRoundArtifactWin, reelCo
 // WinHighlight contract renderPlayer.ts's own applyPersistentHighlights/renderWinHighlightsList already
 // render, so a game-specific VideoSlot(WithFreeGames) response and an arbitrary game's own RoundArtifact
 // converge on one shared presentation rather than each having its own renderer. This is what
-// cli/studio-client/src/components/common/WinOverlay.tsx (Studio's own single canonical "screen, with
-// wins" entrypoint -- Play, Replay, sampled rounds, and Outcome Library inspection all render through it)
-// calls to resolve a step's own highlighted/payline positions, in place of the two independent resolvers
-// (resolveWinningPositions/resolveLineDefinition) it used to carry -- see WinOverlay's own doc comment.
+// cli/studio-client/src/components/common/CanonicalPlayerView.tsx (Studio's own single canonical "screen,
+// with wins" entrypoint, mounted via GameScreenView -- Play, Replay, sampled rounds, and Outcome Library
+// inspection all render through it) calls to resolve a step's own highlighted/payline positions, before
+// mounting renderPlayer.ts's own DOM functions directly against the result -- see CanonicalPlayerView's
+// own doc comment.
 export function deriveWinHighlightsFromRoundArtifactWins(wins: readonly GenericRoundArtifactWin[], reelCount: number): WinHighlight[] {
     return wins.map((win) => {
         const definition = resolveRoundArtifactLineDefinition(win, reelCount);

@@ -10,21 +10,19 @@
 //     shape cli/client/main.ts and pokie-examples' own ui.ts already speak natively.
 //   - An arbitrary game's own RoundArtifact wins (deriveWinHighlightsFromRoundArtifactWins) -- the
 //     game-generic shape Studio's round-inspection surfaces (Play, Replay, sampled rounds, Outcome
-//     Library) work with. Studio's own cli/studio-client/src/components/common/WinOverlay.tsx (the
-//     single "screen, with wins" entrypoint every one of those surfaces renders through -- see its own
-//     doc comment) calls this exact adapter to resolve a step's highlighted/payline positions, the same
-//     function renderPlayer.ts's own applyPersistentHighlights/renderWinHighlightsList render from --
-//     never a second, independently-maintained derivation of "what's highlighted".
+//     Library) work with. Studio's own
+//     cli/studio-client/src/components/common/CanonicalPlayerView.tsx (the single "screen, with wins"
+//     entrypoint every one of those surfaces renders through, via GameScreenView -- see its own doc
+//     comment) calls this exact adapter and then mounts this module's own renderReelsGrid/
+//     applyPersistentHighlights/renderWinHighlightsList directly, the same functions this repo's own
+//     cli/client/main.ts and pokie-examples mount -- never a second, independently-rendered player.
 //
-// Studio still renders its own grid as a themed React/Mantine table (ScreenTable) rather than mounting
-// this module's own DOM functions directly -- the one place per-host rendering technology genuinely has
-// to differ, since cli/client's player is deliberately a dependency-free static asset (no React runtime)
-// while Studio is a themed admin app every other surface of it is built with. The presentation
-// *contract* -- which cells are highlighted, in what kind/color, and a line win's own full payline path
-// -- is the one shared implementation both render from, proven by
-// tests/cli/client/player/renderPlayer.test.ts's "canonical player fixture round parity" suite calling
-// the exact same deriveWinHighlightsFromRoundArtifactWins entrypoint
+// Studio mounts this module's own DOM functions directly, via refs (CanonicalPlayerView), rather than
+// re-implementing the same grid/highlight rendering as a themed React/Mantine table -- so the *rendering*
+// itself, not just the highlight derivation, is one shared implementation, proven by
+// tests/cli/client/player/renderPlayer.test.ts's "canonical player fixture round parity" suite and
 // tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx's own
-// "canonical player parity" suite exercises through Play's real session/spin workflow.
+// "canonical player parity" suite (through Play's real session/spin workflow) both asserting on the exact
+// same ".player-grid"/[data-cell] DOM output renderReelsGrid produces.
 export * from "./renderPlayer.js";
 export * from "./videoSlotRoundView.js";

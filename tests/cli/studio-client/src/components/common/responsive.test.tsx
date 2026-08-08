@@ -8,9 +8,9 @@ import {ErrorState} from "../../../../../../cli/studio-client/src/components/com
 import {LoadingState} from "../../../../../../cli/studio-client/src/components/common/LoadingState";
 import {PaytableView} from "../../../../../../cli/studio-client/src/components/common/PaytableView";
 import {QuickActions} from "../../../../../../cli/studio-client/src/components/common/QuickActions";
+import {CanonicalPlayerView} from "../../../../../../cli/studio-client/src/components/common/CanonicalPlayerView";
 import {ScreenTable} from "../../../../../../cli/studio-client/src/components/common/ScreenTable";
 import {SuccessResult} from "../../../../../../cli/studio-client/src/components/common/SuccessResult";
-import {WinOverlay} from "../../../../../../cli/studio-client/src/components/common/WinOverlay";
 
 const LONG_UNBROKEN_TEXT = "a".repeat(500);
 
@@ -27,14 +27,15 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         expect(cell.closest(".mantine-ScrollArea-root")).not.toBeNull();
     });
 
-    // P4-POLISH-12: WinOverlay (the composite GameScreenView delegates to) renders through ScreenTable
-    // the same as a bare ScreenTable does -- proving the payline/winning-position overlay machinery
+    // P5-POLISH-11: CanonicalPlayerView (the component GameScreenView delegates to, mounting
+    // cli/client/player's own DOM functions directly) stays inside the same scrollable container
+    // ScreenTable itself uses, and actually tints a winning cell -- proving the canonical player grid
     // never opts out of the same horizontal-scroll containment every other screen-rendering surface
     // relies on, even on an arbitrarily wide/narrow viewport.
-    it("WinOverlay (the shared payline/winning-position overlay) stays inside the same scrollable container ScreenTable itself uses", () => {
+    it("CanonicalPlayerView (the canonical player grid GameScreenView mounts) stays inside the same scrollable container ScreenTable itself uses", () => {
         renderWithMantine(
-            <WinOverlay
-                screen={[[LONG_UNBROKEN_TEXT, "B", "C"]]}
+            <CanonicalPlayerView
+                reelsSymbols={[[LONG_UNBROKEN_TEXT, "B", "C"]]}
                 wins={[
                     {
                         type: "line",
@@ -42,7 +43,6 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
                         symbolId: "cherry",
                         winAmount: 1,
                         winningPositions: [[0, 0]],
-                        multiplierBreakdown: [],
                         metadata: {definition: [0]},
                     },
                 ]}
@@ -50,8 +50,7 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         );
         const cell = screen.getByText(LONG_UNBROKEN_TEXT);
         expect(cell.closest(".mantine-ScrollArea-root")).not.toBeNull();
-        expect(cell.closest("td")).toHaveAttribute("data-winning", "true");
-        expect(cell.closest("td")).toHaveAttribute("data-payline", "true");
+        expect((cell as HTMLElement).style.backgroundColor).not.toBe("");
     });
 
     // PaytableView's own real-data table (a symbol column plus one column per match count) can grow

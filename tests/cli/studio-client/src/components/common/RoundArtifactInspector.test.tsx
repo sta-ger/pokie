@@ -37,21 +37,27 @@ function renderWithMantine(ui: React.ReactElement) {
 }
 
 describe("RoundArtifactInspector screen orientation", () => {
-    it("renders the round-level ScreenTable so reels are columns and visible rows read across all reels, using the same describeRoundArtifact view-model the Inspect step actually consumes", () => {
+    it("renders the round-level canonical player grid so cells are addressable by their own [reelIndex, rowIndex], using the same describeRoundArtifact view-model the Inspect step actually consumes", () => {
         const artifact = describeRoundArtifact(artifactFor());
-        const {getByText} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
 
-        // RoundArtifactInspector also renders its own provenance table, so scope the row/cell query to
-        // the specific <table> that owns a screen cell rather than the whole document.
-        const screenTable = getByText("R0P0").closest("table");
-        if (!screenTable) {
-            throw new Error("Expected the round-level ScreenTable to render an ancestor <table>.");
+        // screen[reelIndex][rowIndex] -- reel-major, the same orientation cli/client/player's own
+        // renderReelsGrid consumes directly (see its own cellId(), "rowIndex:reelIndex"), so this is a
+        // straight readout of the fixture's own screen, never a transposition RoundArtifactInspector (or
+        // describeRoundArtifact upstream of it) performs itself.
+        const grid = container.querySelector(".player-grid") as HTMLElement;
+        if (!grid) {
+            throw new Error("Expected the round-level canonical player grid to render.");
         }
-        const rows = within(screenTable).getAllByRole("row");
-        expect(rows).toHaveLength(3);
-        expect(within(rows[0]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["R0P0", "R1P0", "R2P0"]);
-        expect(within(rows[1]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["R0P1", "R1P1", "R2P1"]);
-        expect(within(rows[2]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["R0P2", "R1P2", "R2P2"]);
+        expect(within(grid).getByText("R0P0")).toHaveAttribute("data-cell", "0:0");
+        expect(within(grid).getByText("R1P0")).toHaveAttribute("data-cell", "0:1");
+        expect(within(grid).getByText("R2P0")).toHaveAttribute("data-cell", "0:2");
+        expect(within(grid).getByText("R0P1")).toHaveAttribute("data-cell", "1:0");
+        expect(within(grid).getByText("R1P1")).toHaveAttribute("data-cell", "1:1");
+        expect(within(grid).getByText("R2P1")).toHaveAttribute("data-cell", "1:2");
+        expect(within(grid).getByText("R0P2")).toHaveAttribute("data-cell", "2:0");
+        expect(within(grid).getByText("R1P2")).toHaveAttribute("data-cell", "2:1");
+        expect(within(grid).getByText("R2P2")).toHaveAttribute("data-cell", "2:2");
     });
 });
 
@@ -402,28 +408,31 @@ describe("Cross-surface round presentation parity", () => {
     });
 });
 
-// P4-POLISH-12: WinOverlay (composing WinningPositionsOverlay and PaylineOverlay onto GameScreenView's own
-// shared grid) and PaytableView are the shared common presentation contracts every round-inspection
-// surface renders a step's payline path and payout table through -- these prove both overlays trace the
-// right (and only the right) cells straight off a line win's own runtime-provided data, and that
-// PaytableView's own honest "unavailable" state (never a table re-derived from the round's own wins) shows
-// up identically wherever RoundArtifactInspector is the underlying renderer -- RoundArtifactInspector
-// directly (Replay, Outcome Source) and RoundSummary (Session Spin) alike.
+// P5-POLISH-11: GameScreenView now mounts cli/client/player's own canonical DOM functions directly (see
+// CanonicalPlayerView's own doc comment) -- the same renderReelsGrid/applyPersistentHighlights/
+// renderWinHighlightsList every other consumer of that module (cli/client/main.ts, pokie-examples) mounts,
+// not a separate ScreenTable/WinOverlay React re-presentation. A win's own actually-won cells get a
+// persistent tint (applyPersistentHighlights); a line win's own full configured payline path is only ever
+// traced on hover of its own hover-list entry (renderWinHighlightsList's "line" branch) -- these prove both
+// behaviors trace the right (and only the right) cells straight off a line win's own runtime-provided
+// data, and that PaytableView's own honest "unavailable" state (never a table re-derived from the round's
+// own wins) shows up identically wherever RoundArtifactInspector is the underlying renderer --
+// RoundArtifactInspector directly (Replay, Outcome Source) and RoundSummary (Session Spin) alike.
 describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArtifactInspector)", () => {
-    function cell(container: HTMLElement, text: string): HTMLElement {
-        const found = within(container).getByText(text);
-        const td = found.closest("td");
-        if (!td) {
-            throw new Error(`Expected "${text}" to render inside a <td>.`);
+    function grid(container: HTMLElement): HTMLElement {
+        const found = container.querySelector(".player-grid");
+        if (!found) {
+            throw new Error("Expected the canonical player grid to render.");
         }
-        return td;
+        return found as HTMLElement;
     }
 
-    it("traces a line win's own full payline definition (every reel, straight from its metadata) distinctly from the narrower subset of cells that actually won", () => {
+    it("traces a line win's own full payline definition (every reel, straight from its metadata) distinctly from the narrower subset of cells that actually won, on hover of the win's own hover-list entry", () => {
         // A 3-reel line win whose configured payline runs [row 0, row 0, row 0] across all three reels,
         // but only the first two reels actually matched (winningPositions stops short) -- e.g. a
-        // wild-assisted run broken by the third reel. The payline overlay must still trace all three
-        // reels (this win's own full configured path); the winning-position overlay must only mark the
+        // wild-assisted run broken by the third reel. Hovering the win's own hover-list entry must still
+        // trace all three reels (this win's own full configured path, green for the cells that actually
+        // won, grey for the rest of the path); the persistent tint (no hover needed) must only mark the
         // two that actually won.
         const artifact = describeRoundArtifact(
             artifactFor({
@@ -470,39 +479,55 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
             }),
         );
         const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
-        const screenTable = within(container).getByText("R0P2").closest("table");
-        if (!screenTable) {
-            throw new Error("Expected the round-level screen table to render an ancestor <table>.");
-        }
+        const screenGrid = grid(container);
 
-        // Both matched cells (reel 0 and reel 1, both "cherry") are on the payline's own path too --
-        // winning implies on-payline here.
-        const cherryCells = within(screenTable).getAllByText("cherry").map((textNode) => textNode.closest("td"));
+        // Both matched cells (reel 0 and reel 1, both "cherry") already carry a persistent tint before
+        // any hover -- the actual winning subset, never the win's own full configured path.
+        const cherryCells = within(screenGrid).getAllByText("cherry");
         expect(cherryCells).toHaveLength(2);
         for (const cherryCell of cherryCells) {
-            expect(cherryCell).toHaveAttribute("data-winning", "true");
-            expect(cherryCell).toHaveAttribute("data-payline", "true");
+            expect((cherryCell as HTMLElement).style.backgroundColor).not.toBe("");
         }
-        // The third reel's own row-0 cell is part of the full definition but never won -- traced, not
-        // highlighted.
-        expect(cell(screenTable, "lemon")).toHaveAttribute("data-payline", "true");
-        expect(cell(screenTable, "lemon")).not.toHaveAttribute("data-winning");
-        // A cell that isn't on the payline's own row at all (reel 0's own row 1) is neither.
-        expect(cell(screenTable, "R0P1")).not.toHaveAttribute("data-payline");
-        expect(cell(screenTable, "R0P1")).not.toHaveAttribute("data-winning");
+        const lemonCell = within(screenGrid).getByText("lemon") as HTMLElement;
+        expect(lemonCell.style.backgroundColor).toBe("");
+
+        const winButton = within(container).getByRole("button", {name: "line: cherry, win: 5"});
+        fireEvent.mouseEnter(winButton);
+
+        // On hover, the win's own full configured path traces across all three reels: green for the
+        // cells that actually won, grey for the rest of the path.
+        for (const cherryCell of cherryCells) {
+            expect((cherryCell as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
+        }
+        expect(lemonCell.style.backgroundColor).toBe("rgb(153, 153, 153)");
+        // A cell that isn't on the payline's own row at all (reel 0's own row 1) is untouched.
+        expect((within(screenGrid).getByText("R0P1") as HTMLElement).style.backgroundColor).toBe("");
+
+        fireEvent.mouseLeave(winButton);
+        // Restored to each cell's own persistent tint on mouseleave -- winning cells stay tinted, the
+        // traced-but-not-won lemon cell goes back to untinted.
+        for (const cherryCell of cherryCells) {
+            expect((cherryCell as HTMLElement).style.backgroundColor).not.toBe("");
+        }
+        expect(lemonCell.style.backgroundColor).toBe("");
     });
 
-    it("traces no payline path for a win type that never carries a line definition (ways/cluster/scatter), rather than fabricating one", () => {
-        const artifact = describeRoundArtifact(
-            stepWithWaysWin(),
-        );
+    it("highlights only a ways/cluster/scatter win's own winning positions on hover, never fabricating a payline trace across the rest of the screen", () => {
+        const artifact = describeRoundArtifact(stepWithWaysWin());
         const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
-        const screenTable = within(container).getByText("R0P2").closest("table");
-        if (!screenTable) {
-            throw new Error("Expected the round-level screen table to render an ancestor <table>.");
+        const screenGrid = grid(container);
+
+        const otherTexts = ["R0P1", "R0P2", "R1P0", "R1P1", "R1P2", "R2P0", "R2P1", "R2P2"];
+        for (const text of otherTexts) {
+            expect((within(screenGrid).getByText(text) as HTMLElement).style.backgroundColor).toBe("");
         }
-        for (const text of ["R0P0", "R0P1", "R0P2", "R1P0", "R1P1", "R1P2", "R2P0", "R2P1", "R2P2"]) {
-            expect(cell(screenTable, text)).not.toHaveAttribute("data-payline");
+
+        const winButton = within(container).getByRole("button", {name: "ways: cherry, win: 3"});
+        fireEvent.mouseEnter(winButton);
+
+        expect((within(screenGrid).getByText("R0P0") as HTMLElement).style.backgroundColor).not.toBe("");
+        for (const text of otherTexts) {
+            expect((within(screenGrid).getByText(text) as HTMLElement).style.backgroundColor).toBe("");
         }
     });
 
@@ -555,7 +580,7 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
         expect(within(lemonRow).getByText("—")).toBeTruthy();
     });
 
-    it("RoundSummary (Session Spin) shows the same payline overlay and paytable-unavailable state a direct RoundArtifactInspector render of the identical artifact shows", () => {
+    it("RoundSummary (Session Spin) shows the same win-hover payline trace and paytable-unavailable state a direct RoundArtifactInspector render of the identical artifact shows", () => {
         const artifact = winningArtifactWithDefinition();
 
         const direct = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} />);
@@ -572,11 +597,14 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
             />,
         );
 
-        for (const container of [direct.container, viaSummary.container]) {
-            const screenTable = within(container).getByText("R0P2").closest("table") as HTMLElement;
+        for (const {container} of [direct, viaSummary]) {
+            const screenGrid = container.querySelector(".player-grid") as HTMLElement;
+            const cherryCells = within(screenGrid).getAllByText("cherry");
+            const winButton = within(container).getByRole("button", {name: "line: cherry, win: 12.5"});
+            fireEvent.mouseEnter(winButton);
             // "cherry" wins at both reel 0 and reel 1 -- both on the payline's own traced path.
-            for (const cherryCell of within(screenTable).getAllByText("cherry")) {
-                expect(cherryCell.closest("td")).toHaveAttribute("data-payline", "true");
+            for (const cherryCell of cherryCells) {
+                expect((cherryCell as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
             }
             expect(within(container).getByText(/Paytable unavailable/)).toBeTruthy();
         }
@@ -636,13 +664,12 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
 // simultaneous wins of different types on the same screen -- e.g. a ways win alongside a scatter win --
 // each contributing its own positions to the same overlay).
 describe("GameScreenView win-position highlighting (via RoundArtifactInspector)", () => {
-    function cell(container: HTMLElement, text: string): HTMLElement {
-        const found = within(container).getByText(text);
-        const td = found.closest("td");
-        if (!td) {
-            throw new Error(`Expected "${text}" to render inside a <td>.`);
+    function grid(container: HTMLElement): HTMLElement {
+        const found = container.querySelector(".player-grid");
+        if (!found) {
+            throw new Error("Expected the canonical player grid to render.");
         }
-        return td;
+        return found as HTMLElement;
     }
 
     it("highlights every position across multiple simultaneous wins of different types on the same screen, and leaves non-winning cells alone", () => {
@@ -679,38 +706,37 @@ describe("GameScreenView win-position highlighting (via RoundArtifactInspector)"
         );
         const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
 
-        // Scoped to the screen table specifically -- "cherry"/"scatter" also appear in the wins table's
-        // own Symbol column below, which must never be mistaken for a highlighted screen cell.
-        const screenTable = within(container).getByText("R0P2").closest("table");
-        if (!screenTable) {
-            throw new Error("Expected the round-level screen table to render an ancestor <table>.");
-        }
+        // Scoped to the canonical player grid specifically -- "cherry"/"scatter" also appear in the wins
+        // table's own Symbol column below, which must never be mistaken for a highlighted screen cell.
+        const screenGrid = grid(container);
 
-        // The round-level screen table renders every winning cell across both wins (reel 0 row 0, reel 1
-        // row 0 from the ways win; reel 1 row 1, reel 2 row 1 from the scatter win) as highlighted --
-        // "cherry" appears at both [0,0] and [1,0] (both winning), so getAllByText covers that ambiguity.
-        const cherryCells = within(screenTable).getAllByText("cherry");
+        // The round-level grid tints every winning cell across both wins (reel 0 row 0, reel 1 row 0
+        // from the ways win; reel 1 row 1, reel 2 row 1 from the scatter win) with a persistent
+        // highlight -- "cherry" appears at both [0,0] and [1,0] (both winning), so getAllByText covers
+        // that ambiguity.
+        const cherryCells = within(screenGrid).getAllByText("cherry");
         expect(cherryCells).toHaveLength(2);
         for (const cherryCell of cherryCells) {
-            expect(cherryCell.closest("td")).toHaveAttribute("data-winning", "true");
+            expect((cherryCell as HTMLElement).style.backgroundColor).not.toBe("");
         }
-        const scatterCells = within(screenTable).getAllByText("scatter");
+        const scatterCells = within(screenGrid).getAllByText("scatter");
         expect(scatterCells).toHaveLength(2);
         for (const scatterCell of scatterCells) {
-            expect(scatterCell.closest("td")).toHaveAttribute("data-winning", "true");
+            expect((scatterCell as HTMLElement).style.backgroundColor).not.toBe("");
         }
         // ...while a cell no win actually landed on (wild at [0,1], every R#P2 filler cell) stays plain.
-        expect(cell(screenTable, "wild")).not.toHaveAttribute("data-winning");
-        expect(cell(screenTable, "R0P2")).not.toHaveAttribute("data-winning");
-        expect(cell(screenTable, "R1P2")).not.toHaveAttribute("data-winning");
-        expect(cell(screenTable, "R2P2")).not.toHaveAttribute("data-winning");
+        expect((within(screenGrid).getByText("wild") as HTMLElement).style.backgroundColor).toBe("");
+        expect((within(screenGrid).getByText("R0P2") as HTMLElement).style.backgroundColor).toBe("");
+        expect((within(screenGrid).getByText("R1P2") as HTMLElement).style.backgroundColor).toBe("");
+        expect((within(screenGrid).getByText("R2P2") as HTMLElement).style.backgroundColor).toBe("");
     });
 
     it("highlights nothing on a screen with no wins, rather than marking every cell winning by default", () => {
         const artifact = describeRoundArtifact(artifactFor());
         const {container} = renderWithMantine(<RoundArtifactInspector artifact={artifact} />);
+        const screenGrid = grid(container);
         for (const text of ["R0P0", "R0P1", "R0P2", "R1P0", "R1P1", "R1P2", "R2P0", "R2P1", "R2P2"]) {
-            expect(cell(container, text)).not.toHaveAttribute("data-winning");
+            expect((within(screenGrid).getByText(text) as HTMLElement).style.backgroundColor).toBe("");
         }
     });
 });
