@@ -11,6 +11,8 @@ import {
     OutcomeLibraryBundleOutcomeSource,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
+    PlayUntilAnyWinStrategy,
+    PlayUntilSymbolWinStrategy,
     PokieGame,
     PokieGameContext,
     PokieJsonRoundArtifactProjector,
@@ -28,6 +30,7 @@ import {
     TransactionalWalletAdapter,
     WeightedOutcomeRandomSource,
     type RoundArtifactJson,
+    type VideoSlotSessionHandling,
 } from "pokie";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
@@ -46,6 +49,13 @@ type ActiveRuntimeSession = {
     readonly kind: "runtime";
     readonly manifest: {id: string; name: string; version: string};
     readonly spinHandler: SpinCommandHandling;
+    // The exact same live object primed into spinHandler (see newSession()) -- spinHandler.handle() plays
+    // this same instance in place on every real spin (see SpinCommandHandler's own liveSessions cache), so
+    // reading it back here after a spin sees that spin's own just-computed state directly. This is what
+    // lets findAnyWin()/findSymbolWin() below drive the engine's own PlayUntilAnyWinStrategy/
+    // PlayUntilSymbolWinStrategy against a real session rather than re-deriving an equivalent check from
+    // the wire-shaped response.
+    readonly session: GameSessionHandling;
 };
 
 type ActiveOutcomeSourceSession = {
@@ -110,6 +120,11 @@ export class StudioPlayService {
     private readonly pokieVersion: string;
     private readonly resolveProject: ProjectResolving;
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    // Overridable only so a test can bound findAnyWin()/findSymbolWin()'s own search loop to a handful of
+    // attempts instead of genuinely waiting out 2000 real spins to exercise the "exhausted" path -- see
+    // spinUntilMatch()'s own doc comment for why the search itself is real spins, not something a smaller
+    // bound changes the nature of.
+    private readonly maxFindScenarioSpins: number;
 
     private active: ActiveSession | undefined;
     private currentSessionId: string | undefined;
@@ -120,12 +135,14 @@ export class StudioPlayService {
         pokieVersion = "unknown",
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        maxFindScenarioSpins = StudioPlayService.DEFAULT_MAX_FIND_SCENARIO_SPINS,
     ) {
         this.loadGame = loadGame;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.pokieVersion = pokieVersion;
         this.resolveProject = resolveProject;
         this.outcomeLibraryReader = outcomeLibraryReader;
+        this.maxFindScenarioSpins = maxFindScenarioSpins;
     }
 
     // Materializes/loads `projectRoot` fresh on every call -- never caches a previously loaded game across
@@ -192,11 +209,11 @@ export class StudioPlayService {
             return this.fail(error);
         }
 
-        this.active = {kind: "runtime", manifest, spinHandler};
+        this.active = {kind: "runtime", manifest, spinHandler, session};
         this.currentSessionId = sessionId;
 
         const credits = await wallet.getBalance(sessionId);
-        return {status: "ok", session: this.buildSessionView(sessionId, manifest, state, credits, undefined, state.initialPayload)};
+        return {status: "ok", session: this.buildSessionView(sessionId, manifest, state, credits, undefined, state.initialPayload, session)};
     }
 
     // sessionId is always checked against the one currently active session -- Play never keeps more than
@@ -229,7 +246,110 @@ export class StudioPlayService {
 
         return {
             status: "ok",
-            session: this.buildSessionView(sessionId, this.active.manifest, result.state, result.credits, result.win, result.state.roundPayload),
+            session: this.buildSessionView(
+                sessionId,
+                this.active.manifest,
+                result.state,
+                result.credits,
+                result.win,
+                result.state.roundPayload,
+                this.active.session,
+            ),
+        };
+    }
+
+    // PlayTab's "Find any win" scenario control -- repeats real, authoritative spin() calls (the exact
+    // same path a manual Spin click drives) until one actually wins, up to MAX_FIND_SCENARIO_SPINS
+    // attempts. Never computes or predicts a win itself: for a "runtime" session, whether to keep
+    // searching is decided by handing the engine's own PlayUntilAnyWinStrategy the same live
+    // GameSessionHandling spin() just played (see the class doc comment); for an "outcomeSource" session
+    // (no live GameSessionHandling to hand it -- see newOutcomeSourceSession()'s own doc comment), the
+    // equivalent real, already-drawn totalWin on that round's own artifact is read instead. Either way,
+    // every round along the way -- including the final matching one -- is a genuine settled spin, not a
+    // simulated/discarded trial: a search that runs out of attempts still leaves the session sitting on
+    // whatever real round it last actually played.
+    public async findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
+        return this.spinUntilMatch(
+            sessionId,
+            (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
+            (artifact) => artifact.totalWin > 0,
+        );
+    }
+
+    // PlayTab's "Find symbol win" scenario control -- same real, authoritative search loop as
+    // findAnyWin() above, but stops once a round's win actually involves `symbolId` specifically (the
+    // chooser's own selected symbol, propagated straight through from the request -- see
+    // validatePlayFindSymbolWinRequest.ts). Reuses the engine's own PlayUntilSymbolWinStrategy for a
+    // "runtime" session's default configuration (any line/scatter win of this symbol, wilds allowed) --
+    // the same primitive AggregateSimulationRunner's own configured play strategies already drive, just
+    // pointed at Play's own live session instead of a bulk simulation run. An "outcomeSource" session has
+    // no live GameSessionHandling to hand that strategy (see findAnyWin()'s own doc comment), so the
+    // equivalent check reads whether the round's own already-computed artifact carries a win for that
+    // exact symbolId, straight off RoundArtifactWin.symbolId -- never a second win-evaluation pass.
+    public async findSymbolWin(sessionId: string, symbolId: string): Promise<StudioPlaySpinResult> {
+        // PlayUntilSymbolWinStrategy reads isSymbolScatter()/getWinningLines()/getWinningScatters()
+        // unconditionally (see its own doc comment) -- calling it against a "runtime" session whose game
+        // doesn't actually implement VideoSlotSessionHandling would throw rather than report an honest
+        // result, the same reason getAvailableSymbolsIfSupported() feature-detects before ever reading
+        // getAvailableSymbols(). Checked up front, before ever spinning: a game this can't work for at all
+        // should never burn a real spin finding that out.
+        if (this.active !== undefined && this.active.kind === "runtime" && !this.supportsSymbolWinSearch(this.active.session)) {
+            return {status: "error", error: "This game doesn't report per-symbol win details, so Find symbol win isn't available for it."};
+        }
+        return this.spinUntilMatch(
+            sessionId,
+            (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
+            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId),
+        );
+    }
+
+    private supportsSymbolWinSearch(session: GameSessionHandling): boolean {
+        const candidate = session as Partial<VideoSlotSessionHandling<string>>;
+        return (
+            typeof candidate.isSymbolScatter === "function" &&
+            typeof candidate.getWinningLines === "function" &&
+            typeof candidate.getWinningScatters === "function" &&
+            typeof candidate.getSymbolsCombination === "function"
+        );
+    }
+
+    // Real spins are settled through the wallet on every attempt (see spin()'s own doc comment) -- a
+    // session with too little balance to keep playing surfaces as spin()'s own honest "blocked" outcome
+    // (session.canPlayNextGame() gating spinHandler.handle() exactly as it does for a manual Spin), ending
+    // the search with that same result rather than looping past it. Bounded by maxFindScenarioSpins so a
+    // symbol/condition rare or impossible to hit for this game can never hang the request indefinitely --
+    // exhausting the bound is reported as an honest "error" (the session itself is left sitting on
+    // whichever real round it last actually played, exactly as if that had been a plain Spin).
+    private static readonly DEFAULT_MAX_FIND_SCENARIO_SPINS = 2000;
+
+    private async spinUntilMatch(
+        sessionId: string,
+        matchesLiveSession: (session: GameSessionHandling) => boolean,
+        matchesArtifact: (artifact: RoundArtifactJson) => boolean,
+    ): Promise<StudioPlaySpinResult> {
+        for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
+            const active = this.active;
+            if (active === undefined || sessionId !== this.currentSessionId) {
+                return {status: "not-found"};
+            }
+
+            const round = await this.spin(sessionId);
+            if (round.status !== "ok") {
+                return round;
+            }
+
+            const matched =
+                active.kind === "runtime"
+                    ? matchesLiveSession(active.session)
+                    : round.session.debug?.artifact !== undefined && matchesArtifact(round.session.debug.artifact);
+            if (matched) {
+                return round;
+            }
+        }
+
+        return {
+            status: "error",
+            error: `No matching round was found within ${this.maxFindScenarioSpins} spins.`,
         };
     }
 
@@ -329,6 +449,7 @@ export class StudioPlayService {
         credits: number,
         win: number | undefined,
         serializedPayload: Record<string, unknown> | undefined,
+        session: GameSessionHandling,
     ): StudioRuntimeSessionView {
         const view = (
             serializedPayload !== undefined
@@ -343,6 +464,11 @@ export class StudioPlayService {
                 }
         ) as StudioRuntimeSessionView;
 
+        const availableSymbols = this.getAvailableSymbolsIfSupported(session);
+        if (availableSymbols !== undefined) {
+            view.availableSymbols = availableSymbols;
+        }
+
         const debugData =
             state.initialDebugPayload !== undefined || state.roundDebugPayload !== undefined
                 ? {...state.initialDebugPayload, ...state.roundDebugPayload}
@@ -355,6 +481,17 @@ export class StudioPlayService {
         };
 
         return view;
+    }
+
+    // Feature-detected the same way captureScreen.ts's own getSymbolsCombination() check is -- not every
+    // GameSessionHandling is a VideoSlotConfigDescribing (see the class doc comment's own "full capture"
+    // reasoning for why that's never assumed), so this reads the real, game-reported symbol list only when
+    // the session actually exposes one, rather than fabricating or omitting it silently either way.
+    private getAvailableSymbolsIfSupported(session: GameSessionHandling): string[] | undefined {
+        if (typeof (session as Partial<VideoSlotSessionHandling<string>>).getAvailableSymbols !== "function") {
+            return undefined;
+        }
+        return (session as VideoSlotSessionHandling<string>).getAvailableSymbols();
     }
 
     // Shared by every buildSessionView() call -- state.roundArtifact/roundArtifactUnavailableReason are

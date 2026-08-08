@@ -763,6 +763,9 @@ export type StudioRuntimeSessionView = {
     bet?: number;
     win?: number;
     screen?: unknown[][];
+    // The game's own real symbol list (VideoSlotConfigDescribing.getAvailableSymbols()), present whenever
+    // the underlying session reports one -- Play's own "Find symbol win" chooser is the one consumer today.
+    availableSymbols?: string[];
     sessionVersion?: number;
     studioRequestId?: string;
     studioRound?: number;

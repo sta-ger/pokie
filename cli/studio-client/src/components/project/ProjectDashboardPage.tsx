@@ -759,7 +759,14 @@ export function ProjectDashboardPage() {
                                 />
                             )}
                             {activeTab === "play" && (
-                                <PlayTab session={play.session} sessionId={play.sessionId} onNewSession={play.newSession} onSpin={play.spin} />
+                                <PlayTab
+                                    session={play.session}
+                                    sessionId={play.sessionId}
+                                    onNewSession={play.newSession}
+                                    onSpin={play.spin}
+                                    onFindAnyWin={play.findAnyWin}
+                                    onFindSymbolWin={play.findSymbolWin}
+                                />
                             )}
                             {activeTab === "simulation" && (
                                 <SimulationTab

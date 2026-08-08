@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -147,5 +147,83 @@ describe("ProjectDashboardPage - Play", () => {
 
         await waitFor(() => expect(screen.getByText(/No round played yet/)).toBeInTheDocument());
         expect(createCalls).toBe(2);
+    }, 30000);
+
+    // Find any win / Find symbol win drive Studio Play's own authoritative scenario controls -- a real
+    // spin (or a real, symbol-chooser-selected spin) run server-side through StudioPlayService, never a
+    // client-computed/simulated round. This exercises the request/response flow end to end: the button
+    // click reaches the right route and the returned round renders through the same RoundSummary chain a
+    // plain Spin does.
+    it("Find any win requests the scenario route and renders the round it returns", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/play/sessions/sess-1/find-any-win": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1015, bet: 5, win: 15, screen: [["cherry", "lemon"]]})},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "Find any win"}));
+
+        await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
+        expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/find-any-win")).toBe(true);
+    }, 30000);
+
+    it("shows a symbol chooser once the session reports available symbols, and Find symbol win propagates the chosen symbol", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({
+                ok: true,
+                status: 201,
+                body: {status: "ok", session: sessionFor({availableSymbols: ["cherry", "seven"]})},
+            }),
+            "/api/project/play/sessions/sess-1/find-symbol-win": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", session: sessionFor({credits: 1050, bet: 5, win: 50, screen: [["seven", "seven"]]})},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New session"}));
+
+        const chooser = await screen.findByRole("combobox", {name: "Symbol"});
+        await user.click(chooser);
+        // Mantine's own dropdown positioning never settles to visible under jsdom's layout-less
+        // environment (its Popover stays "display: none" even once opened -- a jsdom limitation, not a
+        // real hidden state), so the option is targeted directly with fireEvent rather than a visibility-
+        // checking userEvent.click; the option element itself is real and already in the DOM.
+        fireEvent.click(screen.getByRole("option", {name: "seven", hidden: true}));
+        await user.click(screen.getByRole("button", {name: "Find symbol win"}));
+
+        await waitFor(() => expect(screen.getByText(/You won 50\.00/)).toBeInTheDocument());
+        const findCall = calls.find((call) => call.url === "/api/project/play/sessions/sess-1/find-symbol-win");
+        expect(findCall?.init?.body).toBe(JSON.stringify({symbolId: "seven"}));
+    }, 30000);
+
+    it("Find symbol win is disabled until a symbol is chosen", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({
+                ok: true,
+                status: 201,
+                body: {status: "ok", session: sessionFor({availableSymbols: ["cherry", "seven"]})},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New session"}));
+
+        expect(await screen.findByRole("button", {name: "Find symbol win"})).toBeDisabled();
     }, 30000);
 });

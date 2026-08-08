@@ -1,5 +1,5 @@
 import {useCallback, useRef, useState} from "react";
-import {createPlaySession, spinPlaySession} from "../api/apiClient";
+import {createPlaySession, findAnyWinPlaySession, findSymbolWinPlaySession, spinPlaySession} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describePlaySessionResult, describePlaySpinResult, type PlaySessionResultView, type PlaySpinResultView} from "../domain/interpret/Runtime";
@@ -53,27 +53,58 @@ export function usePlaySession() {
         [fetchImpl],
     );
 
-    const spin = useCallback(() => {
-        if (sessionId === undefined || !spinGuard.begin()) {
-            return;
-        }
-        const requestId = ++requestIdRef.current;
-        setSession({status: "loading"});
-        spinPlaySession(fetchImpl, sessionId)
-            .then((result) => {
-                if (requestId !== requestIdRef.current) {
-                    return;
-                }
-                setSession(describePlaySpinResult(result));
-            })
-            .catch((error: unknown) => {
-                if (requestId === requestIdRef.current) {
-                    setSession({status: "error", message: errorMessage(error)});
-                }
-            })
-            .finally(() => spinGuard.end());
+    // Shared by spin()/findAnyWin()/findSymbolWin() below -- all three are the same "call an action
+    // against sessionId, describe whatever PlaySpinResultView comes back" shape, gated by the same
+    // spinGuard so a user can't fire two of Play's own scenario actions against the same session at once
+    // (see spinGuard's own declaration above).
+    const runSpinAction = useCallback(
+        (action: (sid: string) => Promise<Parameters<typeof describePlaySpinResult>[0]>) => {
+            if (sessionId === undefined || !spinGuard.begin()) {
+                return;
+            }
+            const requestId = ++requestIdRef.current;
+            setSession({status: "loading"});
+            action(sessionId)
+                .then((result) => {
+                    if (requestId !== requestIdRef.current) {
+                        return;
+                    }
+                    setSession(describePlaySpinResult(result));
+                })
+                .catch((error: unknown) => {
+                    if (requestId === requestIdRef.current) {
+                        setSession({status: "error", message: errorMessage(error)});
+                    }
+                })
+                .finally(() => spinGuard.end());
+        },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fetchImpl, sessionId]);
+        [fetchImpl, sessionId],
+    );
+
+    const spin = useCallback(() => {
+        runSpinAction((sid) => spinPlaySession(fetchImpl, sid));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [runSpinAction, fetchImpl]);
+
+    // Studio Play's "Find any win" scenario control -- repeats real, authoritative spins server-side (see
+    // StudioPlayService.findAnyWin()'s own doc comment) until one actually wins, then renders that round
+    // through the exact same RoundSummary chain a plain Spin does.
+    const findAnyWin = useCallback(() => {
+        runSpinAction((sid) => findAnyWinPlaySession(fetchImpl, sid));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [runSpinAction, fetchImpl]);
+
+    // Studio Play's "Find symbol win" scenario control -- same real, authoritative search as findAnyWin()
+    // above, but for a specific symbol (PlayTab's own chooser), propagated straight through to
+    // StudioPlayService.findSymbolWin().
+    const findSymbolWin = useCallback(
+        (symbolId: string) => {
+            runSpinAction((sid) => findSymbolWinPlaySession(fetchImpl, sid, symbolId));
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [runSpinAction, fetchImpl],
+    );
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
     // never show a trace of the previous one's session (same reasoning as useRuntimeManager's own
@@ -85,5 +116,5 @@ export function usePlaySession() {
         setSessionId(undefined);
     }, []);
 
-    return {session, sessionId, newSession, spin, resetForProjectSwitch};
+    return {session, sessionId, newSession, spin, findAnyWin, findSymbolWin, resetForProjectSwitch};
 }
