@@ -3,6 +3,7 @@ import {useCallback, useEffect, useState} from "react";
 import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
+import {setReelGenerationMode} from "../../domain/blueprintFormOps";
 import {describeValidation, type BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import type {BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import {errorMessage} from "../../domain/errorMessage";
@@ -75,19 +76,31 @@ export function GameModelTab({
     const [editState, setEditState] = useState<EditState>({status: "viewing"});
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     const [editError, setEditError] = useState<string>();
+    // Undefined keeps the Reels section's own default, reproducible "symbolWeights"/"default" sample
+    // (see buildGameModelReels' own SHARED_WEIGHTS_SAMPLE_SEED) -- only ever set by the "New sample"
+    // action below, and carried across an ordinary refresh() (a save, the Refresh button) so that action
+    // doesn't get silently reset out from under the user.
+    const [sharedWeightsSampleSeed, setSharedWeightsSampleSeed] = useState<number>();
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
 
     const refresh = useCallback(() => {
         setState({status: "loading"});
-        getGameModel(fetchImpl)
+        getGameModel(fetchImpl, sharedWeightsSampleSeed)
             .then((projection) => setState({status: "loaded", projection}))
             .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
-    }, [fetchImpl]);
+    }, [fetchImpl, sharedWeightsSampleSeed]);
 
     useEffect(() => {
         refresh();
     }, [refresh]);
+
+    // Re-rolls the Reels section's own dynamic inspection sample with a fresh, still-reproducible seed --
+    // setting the seed alone is enough to trigger a refetch, since `refresh` (and the effect above that
+    // calls it) both depend on it.
+    const handleNewSample = useCallback(() => {
+        setSharedWeightsSampleSeed(Math.floor(Math.random() * 1_000_000));
+    }, []);
 
     const isDirty = editState.status === "editing" && editor.state.revision !== editState.baselineRevision;
 
@@ -144,6 +157,42 @@ export function GameModelTab({
                 setValidationView({status: "idle"});
                 editor.loadFrom(result.blueprint);
                 setEditState({status: "editing", section, baselineRevision: revisionBeforeLoad + 1});
+            })
+            .catch((error: unknown) => {
+                setEditState({status: "viewing"});
+                setEditError(errorMessage(error));
+            })
+            .finally(() => loadGuard.end());
+    };
+
+    // The Reels section's own "Convert this sample to generated reels…" action -- takes exactly the
+    // per-reel strips View Mode is showing right now (the currently-loaded sample, `state.projection`'s
+    // own `reels`, not a fresh, possibly-different re-derivation) and seeds a reelStripGeneration draft
+    // with them as literal entries, then opens Edit Mode on "reels" so the user reviews/adjusts through
+    // the one existing Reel Strip Modeler entrypoint (see ReelGenerationModeSelector.tsx) and explicitly
+    // Saves -- this action alone never writes anything to disk.
+    const handleConvertToGeneratedReels = (): void => {
+        if (!editable || projectRoot === undefined || state.status !== "loaded" || state.projection.reels.status !== "available" || !loadGuard.begin()) {
+            return;
+        }
+        const strips = state.projection.reels.data.reels.map((reel) => ("positions" in reel ? reel.positions.map((position) => position.symbolId) : []));
+        setEditError(undefined);
+        setEditState({status: "loading", section: "reels"});
+        loadBlueprint(fetchImpl, projectRoot)
+            .then((result) => {
+                if (result.status === "load-error") {
+                    setEditState({status: "viewing"});
+                    setEditError(describePathActionError("This project's Blueprint source", result.error));
+                    return;
+                }
+                const revisionBeforeLoad = editor.state.revision;
+                setValidationView({status: "idle"});
+                editor.loadFrom(result.blueprint);
+                editor.mutate((blueprint) => {
+                    setReelGenerationMode(blueprint, "reelStripGeneration");
+                    blueprint.reelStripGeneration = strips.map((strip) => ({type: "literal", strip}));
+                });
+                setEditState({status: "editing", section: "reels", baselineRevision: revisionBeforeLoad + 1});
             })
             .catch((error: unknown) => {
                 setEditState({status: "viewing"});
@@ -235,6 +284,12 @@ export function GameModelTab({
                             }
                             : undefined
                     }
+                    reelsSampleControls={{
+                        onNewSample: handleNewSample,
+                        loading: state.status === "loading",
+                        onConvertToGeneratedReels: editable ? handleConvertToGeneratedReels : undefined,
+                        convertDisabled: editState.status !== "viewing",
+                    }}
                 />
             )}
             <QuickActions>

@@ -111,4 +111,16 @@ describe("buildGameModelProjection", () => {
         expect(projection.basics).toEqual({status: "available", data: {id: "a", name: "A", version: "1.0.0"}});
         expect(projection.layout).toEqual({status: "unavailable", reason: "no tracked source recorded"});
     });
+
+    it("threads a custom sharedWeightsSampleSeed through to the reels section's own dynamic inspection sample", () => {
+        const blueprint: GameBlueprint = {...BASE_BLUEPRINT, symbolWeights: {A: 1, B: 3}};
+        const defaultProjection = buildGameModelProjection(blueprint);
+        const rerolledProjection = buildGameModelProjection(blueprint, undefined, {sharedWeightsSampleSeed: 99});
+
+        if (defaultProjection.reels.status !== "available" || rerolledProjection.reels.status !== "available") {
+            throw new Error("expected an available reels section");
+        }
+        expect(rerolledProjection.reels.data.sharedWeightsSample!.seed).toEqual(99);
+        expect(rerolledProjection.reels.data).not.toEqual(defaultProjection.reels.data);
+    });
 });

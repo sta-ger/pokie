@@ -45,6 +45,22 @@ describe("buildProjectGameModel", () => {
         expect(projection.layout).toEqual({status: "available", data: {reels: 3, rows: 3, winModel: {type: "lines"}, paylineCount: 0}});
     });
 
+    it("threads an explicit sharedWeightsSampleSeed through to the reels section's own dynamic inspection sample for an opened blueprint project", async () => {
+        const loadBlueprint = (): StudioBlueprintLoadView => ({
+            status: "ok",
+            path: "/games/a/blueprint.json",
+            blueprintHash: "sha256:x",
+            blueprint: {manifest: GAME, reels: 2, rows: 1, symbols: ["A", "B"], paytable: {}, symbolWeights: {A: 1, B: 3}},
+        });
+
+        const projection = await buildProjectGameModel("/games/a/blueprint.json", undefined, true, readers({loadBlueprint}), 99);
+
+        if (projection.reels.status !== "available") {
+            throw new Error("expected an available reels section");
+        }
+        expect(projection.reels.data.sharedWeightsSample!.seed).toEqual(99);
+    });
+
     it("reports every section unavailable, with the load error as the reason, when the tracked Blueprint source fails to load", async () => {
         const loadBlueprint = (): StudioBlueprintLoadView => ({status: "load-error", error: "ENOENT: no such file or directory"});
 

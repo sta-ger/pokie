@@ -1,5 +1,5 @@
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
-import {buildGameModelReels} from "./buildGameModelReels.js";
+import {buildGameModelReels, type BuildGameModelReelsOptions} from "./buildGameModelReels.js";
 import type {
     GameModelBasics,
     GameModelLimits,
@@ -56,7 +56,11 @@ export type GameModelProjectionFallback = {
 // available/unavailable status rather than a caller having to guess "empty" from "not introspectable".
 // Pure and synchronous: resolving *which* blueprint (if any) applies to the current project is the
 // caller's own concern, not this function's.
-export function buildGameModelProjection(blueprint: GameBlueprint | undefined, fallback?: GameModelProjectionFallback): GameModelProjection {
+export function buildGameModelProjection(
+    blueprint: GameBlueprint | undefined,
+    fallback?: GameModelProjectionFallback,
+    reelsOptions?: BuildGameModelReelsOptions,
+): GameModelProjection {
     if (blueprint === undefined) {
         const reason = fallback?.reason ?? "This project's game model isn't available.";
         const basics: GameModelSection<GameModelBasics> = fallback?.manifest !== undefined ? available(fallback.manifest) : unavailable(reason);
@@ -89,7 +93,7 @@ export function buildGameModelProjection(blueprint: GameBlueprint | undefined, f
             paylineCount: winModel.type === "lines" ? (blueprint.paylines?.length ?? 0) : undefined,
         }),
         symbols: available(symbols),
-        reels: available(buildGameModelReels(blueprint)),
+        reels: available(buildGameModelReels(blueprint, reelsOptions)),
         paytable: available(flattenPaytable(blueprint.paytable)),
         betsAndModes: available({
             availableBets,

@@ -513,7 +513,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "GET" && url.pathname === "/api/project/gameModel") {
-            await this.handleGameModel(res);
+            await this.handleGameModel(res, url);
             return;
         }
 
@@ -1130,9 +1130,12 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, this.blueprintService.previewReelStripGeneration(validated.blueprint));
     }
 
-    // Same request shape as /validate (just "blueprint") -- reuses validateBlueprintValidationRequest
-    // rather than a near-duplicate validator. Backs the guided Design Game editor's own live Game Model
-    // preview (see StudioBlueprintService.previewGameModel's own doc comment).
+    // Same request shape as /validate (just "blueprint"), plus an optional "sharedWeightsSampleSeed" --
+    // reuses validateBlueprintValidationRequest rather than a near-duplicate validator for the required
+    // "blueprint" field; the seed is optional and purely re-rolls a "symbolWeights"/"default" blueprint's
+    // own dynamic inspection sample (see StudioBlueprintService.previewGameModel's own doc comment), so an
+    // absent/malformed value just falls back to the default sample rather than a 400. Backs the guided
+    // Design Game editor's own live Game Model preview, including its own "New sample" action.
     private async handleBlueprintGameModelPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -1143,7 +1146,8 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        this.sendJson(res, 200, this.blueprintService.previewGameModel(validated.blueprint));
+        const seed = (body as {sharedWeightsSampleSeed?: unknown} | null)?.sharedWeightsSampleSeed;
+        this.sendJson(res, 200, this.blueprintService.previewGameModel(validated.blueprint, typeof seed === "number" ? seed : undefined));
     }
 
     private async handleBlueprintParImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1267,19 +1271,30 @@ export class StudioServer implements StudioServerHandling {
     // tsPackage-default) this delegates to. Always 200: a project whose game model isn't available (a
     // tsPackage/wasm/outcomeLibrary project, or a Blueprint that fails to load) reports that truthfully
     // in the projection's own per-section `reason`, never as an HTTP error -- same "well-formed request,
-    // domain-level unavailability" reasoning as GET /api/project/validate.
-    private async handleGameModel(res: ServerResponse): Promise<void> {
+    // domain-level unavailability" reasoning as GET /api/project/validate. An optional
+    // "sharedWeightsSampleSeed" query param re-rolls a "symbolWeights"/"default" blueprint's own dynamic
+    // inspection sample (see buildProjectGameModel's own doc comment) for the Game Model Reels view's own
+    // "New sample" action -- a malformed/absent value just falls back to the default sample.
+    private async handleGameModel(res: ServerResponse, url: URL): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
         const projectRoot = this.currentContext.projectRoot;
         const resolved = await this.resolveOpenedProject(projectRoot);
-        const projection = await buildProjectGameModel(projectRoot, resolved, this.isOpenedBlueprintProject(projectRoot, resolved), {
-            loadBlueprint: (root) => this.blueprintService.load(root),
-            inspectPackage: (root) => this.gamePackageInspector.inspect(root),
-            readWasmManifest: readWasmComponentManifest,
-        });
+        const seedParam = url.searchParams.get("sharedWeightsSampleSeed");
+        const seed = seedParam !== null && Number.isFinite(Number(seedParam)) ? Number(seedParam) : undefined;
+        const projection = await buildProjectGameModel(
+            projectRoot,
+            resolved,
+            this.isOpenedBlueprintProject(projectRoot, resolved),
+            {
+                loadBlueprint: (root) => this.blueprintService.load(root),
+                inspectPackage: (root) => this.gamePackageInspector.inspect(root),
+                readWasmManifest: readWasmComponentManifest,
+            },
+            seed,
+        );
         this.sendJson(res, 200, projection);
     }
 

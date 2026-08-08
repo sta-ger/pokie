@@ -1,4 +1,5 @@
-import {Badge, Button, Group, Table, Tabs, Text} from "@mantine/core";
+import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
+import {useState} from "react";
 import type {
     GameModelBetsAndModes,
     GameModelGameWindow,
@@ -8,6 +9,7 @@ import type {
     GameModelReel,
     GameModelReelGenerationMode,
     GameModelReels,
+    GameModelReelWindowCell,
     GameModelResolvedReel,
     GameModelSection,
     GameModelSharedWeightsSample,
@@ -61,6 +63,21 @@ export type GameModelEditController = {
     mutate: BlueprintMutate;
     drafts: ReelStripGenerationDraftsRef;
     revision: number;
+};
+
+// The Reels section's own View Mode controls for a "symbolWeights"/"default" blueprint's dynamic
+// inspection sample (see GameModelSharedWeightsSample's own doc comment) -- undefined wherever
+// GameModelSections renders a projection with nothing to reroll/convert (GameModelPreviewPanel's own
+// live preview never wires up a conversion, since it has no saved project to write into). `onNewSample`
+// re-rolls the sample shown for every section on this projection with a fresh, still-reproducible seed;
+// `onConvertToGeneratedReels` (only ever wired up alongside a real `GameModelEditController`, see
+// GameModelTab.tsx) freezes exactly the strips currently shown into an editable reelStripGeneration draft
+// -- never invents a strip the view itself hasn't already shown.
+export type GameModelReelsSampleControls = {
+    onNewSample: () => void;
+    loading: boolean;
+    onConvertToGeneratedReels?: () => void;
+    convertDisabled?: boolean;
 };
 
 // The Edit/Save/Cancel control group a section's own PageSection legend shows -- every Edit disables the
@@ -241,26 +258,66 @@ function describeGameWindowCellColor(cell: {isWild: boolean; isScatter: boolean}
     return "gray";
 }
 
-// Game window: this project's own reel grid at stop position 0, [reelIndex][rowIndex] -- read straight
-// off GameModelGameWindow, never re-derived (see that type's own doc comment for which strip each column
-// actually comes from). Wild/scatter cells are highlighted as the window's own overlay.
-function GameWindowView({gameWindow}: {gameWindow: GameModelGameWindow}) {
-    if (gameWindow.reels === 0 || gameWindow.grid.every((column) => column.length === 0)) {
+// A reel is "resolved" (has its own real or sample positions to show) iff it carries `positions` --
+// mirrors the discriminant GameModelReel/GameModelUnresolvedReel actually use (see GameModelProjection.ts).
+function isResolvedReel(reel: GameModelReel): reel is GameModelResolvedReel {
+    return "positions" in reel;
+}
+
+// This reel's own window column starting at `stop`, wrapping circularly -- the exact same modulo
+// resolution ReelStrip.getSymbolAt uses server-side (see GameModelGameWindow's own doc comment), computed
+// here purely so the Game Window view can move its own stop client-side without a round trip for every
+// position: `positions` already carries every stop this reel could ever show (see GameModelReels.reels).
+function reelWindowColumn(reel: GameModelReel, stop: number, rows: number): GameModelReelWindowCell[] {
+    if (!isResolvedReel(reel) || reel.positions.length === 0 || rows <= 0) {
+        return [];
+    }
+    const length = reel.positions.length;
+    const normalizedStop = ((stop % length) + length) % length;
+    return Array.from({length: rows}, (_, rowOffset) => reel.positions[(normalizedStop + rowOffset) % length]);
+}
+
+// Game window: this project's own reel grid, [reelIndex][rowIndex], read at a user-movable stop position
+// -- computed from each reel's own full circular `positions` (see GameModelReels.reels) rather than the
+// projection's own gameWindow.grid, which is always fixed at stop 0. Every reel shares the same `stop`
+// (a single scrub control, not one per reel) purely so moving it reads as one coherent spin outcome to
+// inspect; each reel's own window still wraps independently around its own length via reelWindowColumn
+// above. Wild/scatter cells are highlighted as the window's own overlay.
+function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; reels: GameModelReel[]}) {
+    const [stop, setStop] = useState(0);
+    if (gameWindow.reels === 0 || reels.every((reel) => !isResolvedReel(reel) || reel.positions.length === 0)) {
         return <EmptyState message="No reels configured yet." />;
     }
+    const grid = reels.map((reel) => reelWindowColumn(reel, stop, gameWindow.rows));
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
-                {gameWindow.reels} reel column(s) × {gameWindow.rows} row(s) (row 0 on top), read at stop position
-                0 -- every reel wraps back to its own start once it runs past its own end. Wild/scatter symbols are
-                highlighted.
+                {gameWindow.reels} reel column(s) × {gameWindow.rows} row(s) (row 0 on top) -- every reel wraps back
+                to its own start once it runs past its own end. Move the stop position below to see every window
+                this configuration can show. Wild/scatter symbols are highlighted.
             </Text>
+            <Group gap="xs" mb="sm" wrap="nowrap">
+                <Button size="xs" variant="default" aria-label="Previous stop" onClick={() => setStop((current) => current - 1)}>
+                    ‹ Prev stop
+                </Button>
+                <NumberInput
+                    aria-label="Stop position"
+                    size="xs"
+                    step={1}
+                    value={stop}
+                    onChange={(value) => setStop(typeof value === "number" ? value : 0)}
+                    w={120}
+                />
+                <Button size="xs" variant="default" aria-label="Next stop" onClick={() => setStop((current) => current + 1)}>
+                    Next stop ›
+                </Button>
+            </Group>
             <Table.ScrollContainer minWidth={200}>
                 <Table withColumnBorders>
                     <Table.Tbody>
                         {Array.from({length: gameWindow.rows}, (_, rowIndex) => (
                             <Table.Tr key={rowIndex}>
-                                {gameWindow.grid.map((column, reelIndex) => {
+                                {grid.map((column, reelIndex) => {
                                     const cell = column[rowIndex];
                                     return (
                                         <Table.Td key={reelIndex} ta="center">
@@ -281,12 +338,6 @@ function GameWindowView({gameWindow}: {gameWindow: GameModelGameWindow}) {
             </Table.ScrollContainer>
         </div>
     );
-}
-
-// A reel is "resolved" (has its own real or sample positions to show) iff it carries `positions` --
-// mirrors the discriminant GameModelReel/GameModelUnresolvedReel actually use (see GameModelProjection.ts).
-function isResolvedReel(reel: GameModelReel): reel is GameModelResolvedReel {
-    return "positions" in reel;
 }
 
 function describeReelSource(source: GameModelResolvedReel["source"]): string {
@@ -444,8 +495,10 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
 // The Reels section's own content -- Game window / Full strips / Analysis, straight off whichever
 // GameModelReels this project's generation mode actually produced (see buildGameModelReels.ts). Never
 // shows a single strip as "the" strip for "symbolWeights"/"default" (see GameModelSharedWeightsSample's
-// own doc comment) -- an explicit note plus each view's own "sample" labeling makes that unmistakable.
-function ReelsSection({section}: {section: GameModelSection<GameModelReels>}) {
+// own doc comment) -- an explicit note plus each view's own "sample" labeling, a "New sample" reroll, and
+// (when `sampleControls` wires it up) an explicit "Convert to generated reels" action make that
+// unmistakable rather than ever presenting the sample as a fixed strip.
+function ReelsSection({section, sampleControls}: {section: GameModelSection<GameModelReels>; sampleControls?: GameModelReelsSampleControls}) {
     if (section.status === "unavailable") {
         return <UnavailableSection reason={section.reason} />;
     }
@@ -455,10 +508,30 @@ function ReelsSection({section}: {section: GameModelSection<GameModelReels>}) {
         <div>
             <Text size="sm">Generation mode: {describeReelGenerationMode(data.generationMode)}</Text>
             {hasNoFixedStrip && (
-                <Text size="sm" c="dimmed" mb="sm">
-                    This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each
-                    session, so the views below show one reproducible sample instead of a real strip.
-                </Text>
+                <div>
+                    <Text size="sm" c="dimmed" mb="xs">
+                        This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each
+                        session, so the views below show one reproducible, seeded sample instead of a real strip
+                        {data.sharedWeightsSample !== undefined ? ` (seed ${data.sharedWeightsSample.seed})` : ""}.
+                    </Text>
+                    {sampleControls && (
+                        <Group gap="xs" mb="sm">
+                            <Button size="xs" variant="default" loading={sampleControls.loading} onClick={sampleControls.onNewSample}>
+                                New sample
+                            </Button>
+                            {sampleControls.onConvertToGeneratedReels && (
+                                <Button
+                                    size="xs"
+                                    variant="default"
+                                    disabled={sampleControls.convertDisabled}
+                                    onClick={sampleControls.onConvertToGeneratedReels}
+                                >
+                                    Convert this sample to generated reels…
+                                </Button>
+                            )}
+                        </Group>
+                    )}
+                </div>
             )}
             <Tabs defaultValue="gameWindow" mt="sm">
                 <Tabs.List>
@@ -467,7 +540,7 @@ function ReelsSection({section}: {section: GameModelSection<GameModelReels>}) {
                     <Tabs.Tab value="analysis">Analysis</Tabs.Tab>
                 </Tabs.List>
                 <Tabs.Panel value="gameWindow" pt="sm">
-                    <GameWindowView gameWindow={data.gameWindow} />
+                    <GameWindowView gameWindow={data.gameWindow} reels={data.reels} />
                 </Tabs.Panel>
                 <Tabs.Panel value="fullStrips" pt="sm">
                     <FullStripsView reels={data.reels} />
@@ -588,7 +661,15 @@ function LimitsSection({section}: {section: GameModelSection<GameModelLimits>}) 
 // project's tracked source) and the guided Design Game editor's own live preview (BlueprintEditorPage's
 // GameModelPreviewPanel) -- every surface that shows a game model renders the exact same projection type
 // through this exact same component, never a second, independently-drifting rendering.
-export function GameModelSections({projection, edit}: {projection: GameModelProjection; edit?: GameModelEditController}) {
+export function GameModelSections({
+    projection,
+    edit,
+    reelsSampleControls,
+}: {
+    projection: GameModelProjection;
+    edit?: GameModelEditController;
+    reelsSampleControls?: GameModelReelsSampleControls;
+}) {
     const editingBasics = edit?.ready === true && edit.activeSection === "basics";
     const editingLayout = edit?.ready === true && edit.activeSection === "layout";
     const editingSymbols = edit?.ready === true && edit.activeSection === "symbols";
@@ -639,7 +720,7 @@ export function GameModelSections({projection, edit}: {projection: GameModelProj
                         <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} revision={edit.revision} />
                     </>
                 ) : (
-                    <ReelsSection section={projection.reels} />
+                    <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} />
                 )}
             </PageSection>
 

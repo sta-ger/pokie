@@ -474,9 +474,12 @@ export async function validateProject(fetchImpl: FetchLike): Promise<PokieGamePa
 // Backs the Project Workspace's own Game Model tab -- see buildProjectGameModel's own doc comment for
 // the resolved-project-type dispatch this reads (blueprint / outcomeLibrary+stakeAdapter / wasm /
 // tsPackage-default). Always resolves to a full GameModelProjection, never throws for a domain-level
-// "unavailable" section -- only a genuinely failed request throws.
-export async function getGameModel(fetchImpl: FetchLike): Promise<GameModelProjection> {
-    const response = await fetchImpl("/api/project/gameModel");
+// "unavailable" section -- only a genuinely failed request throws. `sharedWeightsSampleSeed` backs the
+// Game Model Reels view's own "New sample" action for a "symbolWeights"/"default" blueprint (see
+// GameModelSharedWeightsSample's own doc comment) -- omitted for the default, reproducible sample.
+export async function getGameModel(fetchImpl: FetchLike, sharedWeightsSampleSeed?: number): Promise<GameModelProjection> {
+    const query = sharedWeightsSampleSeed !== undefined ? `?sharedWeightsSampleSeed=${sharedWeightsSampleSeed}` : "";
+    const response = await fetchImpl(`/api/project/gameModel${query}`);
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to load the game model"));
     }
@@ -486,11 +489,12 @@ export async function getGameModel(fetchImpl: FetchLike): Promise<GameModelProje
 // The guided Design Game editor's own live Game Model preview -- see StudioBlueprintService.
 // previewGameModel()'s own doc comment. Never writes/reads anything on disk, and never throws for a
 // structurally incomplete draft -- that comes back as an ordinary "unavailable" projection instead.
-export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown): Promise<GameModelProjection> {
+// `sharedWeightsSampleSeed` -- see getGameModel's own doc comment above.
+export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown, sharedWeightsSampleSeed?: number): Promise<GameModelProjection> {
     const response = await fetchImpl("/api/home/blueprints/game-model-preview", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({blueprint}),
+        body: JSON.stringify({blueprint, sharedWeightsSampleSeed}),
     });
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to preview the game model"));

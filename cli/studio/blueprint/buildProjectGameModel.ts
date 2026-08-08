@@ -29,13 +29,19 @@ export async function buildProjectGameModel(
     resolved: PokieProject | undefined,
     isOpenedBlueprintProject: boolean,
     readers: GameModelSourceReaders,
+    // Only meaningful for a "symbolWeights"/"default" blueprint's own dynamic inspection sample -- see
+    // buildGameModelReels' own BuildGameModelReelsOptions doc comment. Threaded through from GET
+    // /api/project/gameModel's own "sharedWeightsSampleSeed" query param so the Game Model Reels view's
+    // own "New sample" action can re-roll a fresh, still-reproducible sample for a saved Blueprint
+    // Project without writing anything to disk.
+    sharedWeightsSampleSeed?: number,
 ): Promise<GameModelProjection> {
     if (isOpenedBlueprintProject) {
         const loaded = readers.loadBlueprint(projectRoot);
         if (loaded.status === "load-error") {
             return buildGameModelProjection(undefined, {reason: `This project's Blueprint source could not be loaded: ${loaded.error}`});
         }
-        return buildGameModelProjection(loaded.blueprint as GameBlueprint);
+        return buildGameModelProjection(loaded.blueprint as GameBlueprint, undefined, {sharedWeightsSampleSeed});
     }
 
     if (resolved !== undefined && (resolved.type === "outcomeLibrary" || resolved.type === "stakeAdapter")) {

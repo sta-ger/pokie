@@ -23,24 +23,36 @@ type PreviewState = {status: "idle"} | {status: "loading"} | {status: "error"; m
 export function GameModelPreviewPanel({blueprint}: {blueprint: unknown}) {
     const fetchImpl = useStudioApi();
     const [state, setState] = useState<PreviewState>({status: "idle"});
+    // Undefined keeps the Reels section's own default, reproducible "symbolWeights"/"default" sample --
+    // see GameModelTab's own `sharedWeightsSampleSeed` doc comment for why this is only ever set by the
+    // "New sample" action below.
+    const [sharedWeightsSampleSeed, setSharedWeightsSampleSeed] = useState<number>();
 
-    function handlePreview(): void {
+    function handlePreview(seed?: number): void {
         setState({status: "loading"});
-        previewGameModel(fetchImpl, blueprint)
+        previewGameModel(fetchImpl, blueprint, seed ?? sharedWeightsSampleSeed)
             .then((projection) => setState({status: "loaded", projection}))
             .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+    }
+
+    function handleNewSample(): void {
+        const seed = Math.floor(Math.random() * 1_000_000);
+        setSharedWeightsSampleSeed(seed);
+        handlePreview(seed);
     }
 
     return (
         <PageSection legend="Game Model preview">
             <QuickActions>
-                <Button onClick={handlePreview} loading={state.status === "loading"}>
+                <Button onClick={() => handlePreview()} loading={state.status === "loading"}>
                     Preview Game Model
                 </Button>
             </QuickActions>
             {state.status === "error" && <ErrorState message={`Couldn't preview the game model: ${state.message}`} />}
             {state.status === "loading" && <LoadingState label="Building preview…" />}
-            {state.status === "loaded" && <GameModelSections projection={state.projection} />}
+            {state.status === "loaded" && (
+                <GameModelSections projection={state.projection} reelsSampleControls={{onNewSample: handleNewSample, loading: false}} />
+            )}
         </PageSection>
     );
 }

@@ -130,9 +130,18 @@ function buildReelsFromGeneration(blueprint: GameBlueprint, wilds: string[], sca
 // A shared symbol-weights table (real blueprint.symbolWeights, or the engine's own built-in default
 // weighting) has no fixed strip -- every reel independently reshuffles the same pool via Math.random() on
 // every session (see this file's own doc comment). One reproducible sample strip per physical reel is
-// generated instead, each with its own seed (SHARED_WEIGHTS_SAMPLE_SEED + reelIndex) so the sample
-// reflects "independently shuffled" honestly rather than repeating one strip across every reel.
-function buildReelsFromSharedWeights(weights: Record<string, number>, reelsCount: number, wilds: string[], scatters: string[]): {sample: GameModelSharedWeightsSample; reels: GameModelReel[]} {
+// generated instead, each with its own seed (sampleSeed + reelIndex) so the sample reflects
+// "independently shuffled" honestly rather than repeating one strip across every reel. `sampleSeed`
+// defaults to SHARED_WEIGHTS_SAMPLE_SEED (see buildGameModelReels' own doc comment) but a caller may pass
+// a different one to re-roll a fresh, still-reproducible dynamic inspection sample (see the "New sample"
+// action in Studio's own Game Model Reels view) -- never a random, unreproducible one.
+function buildReelsFromSharedWeights(
+    weights: Record<string, number>,
+    reelsCount: number,
+    wilds: string[],
+    scatters: string[],
+    sampleSeed: number,
+): {sample: GameModelSharedWeightsSample; reels: GameModelReel[]} {
     const symbolIds = Object.keys(weights);
     const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
     const sampleLength = symbolIds.length === 0 ? 0 : Math.max(1, Math.round(totalWeight));
@@ -146,7 +155,7 @@ function buildReelsFromSharedWeights(weights: Record<string, number>, reelsCount
             reels.push({reelIndex, source: "sample", positions: [], analysis: ReelStripAnalyzer.analyze(new ReelStrip(["—"]))});
             continue;
         }
-        const seed = SHARED_WEIGHTS_SAMPLE_SEED + reelIndex;
+        const seed = sampleSeed + reelIndex;
         const result = generator.generateFromSymbolWeights({length: sampleLength, symbolWeights: weights, seed});
         conversion ??= result.symbolWeightsConversion;
         const strip = result.strip?.toArray() ?? [];
@@ -161,7 +170,7 @@ function buildReelsFromSharedWeights(weights: Record<string, number>, reelsCount
     return {
         sample: {
             weights,
-            seed: SHARED_WEIGHTS_SAMPLE_SEED,
+            seed: sampleSeed,
             sampleLength,
             conversion: conversion ?? {weights, counts: {}, targetProportions: {}, actualProportions: {}, deviations: {}},
         },
@@ -195,14 +204,25 @@ function stripsOf(reels: GameModelReel[]): string[][] {
 // blueprint.reelStrips are byte-for-byte the same reproducible sample the read-only projection already
 // showed, never a second, independently re-derived conversion. Only meaningful for a blueprint with no
 // reelStrips/reelStripGeneration of its own -- deciding whether this action even applies to a given
-// blueprint is the caller's own concern.
-export function convertSharedWeightsToReelStrips(blueprint: GameBlueprint): string[][] {
+// blueprint is the caller's own concern. `sampleSeed` defaults to the same SHARED_WEIGHTS_SAMPLE_SEED
+// buildGameModelReels itself defaults to -- pass whichever seed a previously shown "New sample" preview
+// actually used to convert exactly what was seen, never a silently different one.
+export function convertSharedWeightsToReelStrips(blueprint: GameBlueprint, sampleSeed: number = SHARED_WEIGHTS_SAMPLE_SEED): string[][] {
     const wilds = blueprint.wilds ?? [];
     const scatters = blueprint.scatters ?? [];
     const weights = blueprint.symbolWeights !== undefined ? blueprint.symbolWeights : defaultWeightsFor(blueprint.symbols, wilds, scatters);
-    const {reels} = buildReelsFromSharedWeights(weights, blueprint.reels, wilds, scatters);
+    const {reels} = buildReelsFromSharedWeights(weights, blueprint.reels, wilds, scatters, sampleSeed);
     return stripsOf(reels);
 }
+
+export type BuildGameModelReelsOptions = {
+    // Overrides SHARED_WEIGHTS_SAMPLE_SEED for a "symbolWeights"/"default" blueprint's own dynamic
+    // inspection sample -- ignored for "reelStrips"/"reelStripGeneration" (see GameModelReel's own doc
+    // comment for why only those two have no fixed strip to begin with). Lets a caller re-roll a fresh,
+    // still-reproducible sample (Studio's own "New sample" action) without ever inventing an unlabeled
+    // fixed strip in its place.
+    sharedWeightsSampleSeed?: number;
+};
 
 // The Game Model Reels view's own data: which of the four ways this blueprint configures its reels
 // (see GameModelReelGenerationMode), plus the truthful Game window / Full strips / Analysis data that
@@ -211,7 +231,7 @@ export function convertSharedWeightsToReelStrips(blueprint: GameBlueprint): stri
 // doc comment) get a reproducible, clearly-labeled sample instead. Nothing here re-implements reel-strip
 // generation, resolution, or analysis -- every number comes from resolveReelStripGeneration/
 // ReelStripGenerator/ReelStripAnalyzer, the exact same tools "pokie build" itself uses.
-export function buildGameModelReels(blueprint: GameBlueprint): GameModelReels {
+export function buildGameModelReels(blueprint: GameBlueprint, options?: BuildGameModelReelsOptions): GameModelReels {
     const wilds = blueprint.wilds ?? [];
     const scatters = blueprint.scatters ?? [];
     const generationMode = describeReelGenerationMode(blueprint);
@@ -227,7 +247,7 @@ export function buildGameModelReels(blueprint: GameBlueprint): GameModelReels {
     }
 
     const weights = blueprint.symbolWeights !== undefined ? blueprint.symbolWeights : defaultWeightsFor(blueprint.symbols, wilds, scatters);
-    const {sample, reels} = buildReelsFromSharedWeights(weights, blueprint.reels, wilds, scatters);
+    const {sample, reels} = buildReelsFromSharedWeights(weights, blueprint.reels, wilds, scatters, options?.sharedWeightsSampleSeed ?? SHARED_WEIGHTS_SAMPLE_SEED);
     return {
         generationMode,
         gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters),
