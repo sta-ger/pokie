@@ -7,12 +7,12 @@ import {Table} from "@mantine/core";
 // responsive-tables pass.
 //
 // `highlightedPositions` -- also [reel, row] pairs, same orientation -- is an optional overlay a caller
-// (WinningPositionsOverlay/WinOverlay) already resolved from a win's own winningPositions; this never
-// derives which positions won on its own, it only paints whichever cells it's told to. `paylinePositions`
-// is the same shape again, independently resolved by a caller (PaylineOverlay/WinOverlay) from a line
-// win's own full payline definition -- traced with its own marker (an inset outline) rather than the
-// winning-cell background, since a payline's full path and the subset of it that actually won are two
-// different things a cell can independently be part of, neither, or both.
+// (WinOverlay, via cli/client/player's own shared deriveWinHighlightsFromRoundArtifactWins) already
+// resolved from a win's own winningPositions; this never derives which positions won on its own, it only
+// paints whichever cells it's told to. `paylinePositions` is the same shape again, resolved by that same
+// shared call from a line win's own full payline definition -- traced with its own marker (an inset
+// outline) rather than the winning-cell background, since a payline's full path and the subset of it that
+// actually won are two different things a cell can independently be part of, neither, or both.
 export function ScreenTable({
     screen,
     highlightedPositions,

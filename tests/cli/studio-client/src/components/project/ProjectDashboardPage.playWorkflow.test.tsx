@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type {RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
 import {RoundArtifactInspector} from "../../../../../../cli/studio-client/src/components/common/RoundArtifactInspector";
 import {describeRoundArtifact} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
+import {deriveWinHighlightsFromRoundArtifactWins} from "../../../../../../cli/client/player/videoSlotRoundView";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
@@ -241,6 +242,15 @@ describe("ProjectDashboardPage - Play", () => {
 // artifact does, closing the gap RoundArtifactInspector.test.tsx's own "Cross-surface round presentation
 // parity" suite leaves open: that suite compares RoundSummary/RoundArtifactInspector as components, never
 // through Play's own real session/spin request flow.
+//
+// Also proves this DOM output isn't just visually similar to cli/client's own player, but reaches the
+// exact same shared presentation entrypoint: deriveWinHighlightsFromRoundArtifactWins (imported directly
+// below from cli/client/player, the same module cli/client/main.ts and pokie-examples import) is the one
+// function Studio's own WinOverlay calls to resolve which cells this fixture's own win highlights --
+// see the "matches the shared deriveWinHighlightsFromRoundArtifactWins entrypoint" assertion below, and
+// tests/cli/client/player/renderPlayer.test.ts's own "reaches the same shared presentation entrypoint as
+// Studio" describe block for the reverse direction (that same function, called with the equivalent
+// VideoSlotRoundResponse-derived data, from cli/client's own DOM-rendering test).
 describe("canonical player parity: Play renders the same fixture round Replay/Outcome Library render via RoundArtifactInspector", () => {
     const GAME = {id: "a", name: "A", version: "1.0.0"};
 
@@ -331,5 +341,14 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
         // Same win detail: real symbol, real position count, the same "x stake" unit.
         expect(within(routed.container).getByText("2")).toBeInTheDocument();
         expect(within(direct.container).getByText("2")).toBeInTheDocument();
+
+        // Both renders' own data-winning/data-payline cells match exactly what the shared
+        // deriveWinHighlightsFromRoundArtifactWins entrypoint derives for this fixture's own wins -- not
+        // just "the same as each other", but the same as the one function every other RoundArtifact-
+        // rendering surface (and, via its VideoSlotRoundResponse counterpart deriveWinHighlights, cli/client
+        // and pokie-examples) resolves highlights through.
+        const [expectedHighlight] = deriveWinHighlightsFromRoundArtifactWins(artifact.wins, artifact.screen.length);
+        expect(expectedHighlight.positions).toEqual([[0, 0], [1, 0]]);
+        expect(expectedHighlight.paylinePositions).toEqual([[0, 0], [1, 0], [2, 0]]);
     }, 30000);
 });

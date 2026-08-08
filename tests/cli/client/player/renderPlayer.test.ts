@@ -22,6 +22,7 @@ import {
     deriveLineDefinitions,
     derivePaytableView,
     deriveWinHighlights,
+    deriveWinHighlightsFromRoundArtifactWins,
     type VideoSlotRoundResponse,
     type WinHighlight,
 } from "../../../../cli/client/player/videoSlotRoundView.js";
@@ -79,7 +80,7 @@ describe("renderWinHighlightsList", () => {
                 label: "Line: 0, win: 10",
                 winAmount: 10,
                 positions: [[0, 0]],
-                line: {lineId: "0", definition: [0, 0], pattern: [1, 0], symbolsPositions: [0], winAmount: 10},
+                paylinePositions: [[0, 0], [1, 0]],
             },
         ];
         applyPersistentHighlights(grid, highlights);
@@ -242,11 +243,15 @@ describe("renderConnectionError / clearConnectionError", () => {
 // renderVideoSlotRound() and pokie-examples' src/ui/ui.ts's own renderRound() both make against this same
 // "./player" barrel -- proving those two consumers, plus this repo's own tests, all exercise one shared
 // canonical player rather than each having drifted onto its own copy. The Studio-side counterpart of this
-// same fixture round (same reels/win, expressed as a RoundArtifact) lives in
+// same fixture round (identical reels/win, expressed as a RoundArtifact) lives in
 // tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx's own
-// "canonical player parity" describe block -- deliberately not imported from here, since the two shapes
-// (this DTO vs. a RoundArtifact) and the two runtimes (jsdom-only vs. a full React/Testing Library tree)
-// are genuinely different, but they describe the identical round so a reader can compare them directly.
+// "canonical player parity" describe block -- a separate file/jsdom-vs-RTL runtime is unavoidable (Jest's
+// own "pokie" and "studio-client-workflows" projects use different tsconfigs/transforms), but the
+// "reaches the same shared presentation entrypoint" describe block right below this one closes that gap
+// from this side: it imports deriveWinHighlightsFromRoundArtifactWins -- the exact function Studio's own
+// WinOverlay calls -- directly into this jsdom-only file and proves it derives the identical highlight
+// this fixture's own VideoSlotRoundResponse-derived highlight is, then renders it through this same
+// module's own DOM functions, unmodified.
 describe("canonical player fixture round parity (dev client / pokie-examples)", () => {
     const FIXTURE_RESPONSE: VideoSlotRoundResponse = {
         reelsSymbols: [
@@ -338,5 +343,61 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
 
         // Navigation: this round's own line definitions are hover-browsable regardless of which won.
         expect(view.linesList.querySelector("button")?.textContent).toBe("Line: 0");
+    });
+});
+
+// Proves cli/client's own DOM player and Studio's own React player reach the same shared presentation
+// entrypoint for the identical fixture round above -- not just two adapters that happen to produce
+// similarly-shaped output, but the literal same deriveWinHighlightsFromRoundArtifactWins function Studio's
+// own cli/studio-client/src/components/common/WinOverlay.tsx calls, exercised here and rendered through
+// this module's own unmodified DOM functions.
+describe("canonical player fixture round parity: reaches the same shared presentation entrypoint as Studio", () => {
+    // The identical round above (cherry/cherry/lemon, line win amount 12.5, symbolsPositions [0, 1],
+    // definition [0, 0, 0]), expressed as a RoundArtifact's own wins -- the exact same shape
+    // ProjectDashboardPage.playWorkflow.test.tsx's own fixtureArtifact() constructs for Play's real
+    // session/spin workflow.
+    const ROUND_ARTIFACT_WINS = [
+        {
+            type: "line",
+            id: "0",
+            symbolId: "cherry",
+            winAmount: 12.5,
+            winningPositions: [[0, 0], [1, 0]],
+            metadata: {definition: [0, 0, 0]},
+        },
+    ];
+
+    it("derives the same highlight from a RoundArtifact win as from the equivalent VideoSlotRoundResponse, and renders it through the same DOM functions", () => {
+        const videoSlotHighlights = deriveWinHighlights({
+            reelsSymbols: [["cherry", "K", "Q"], ["cherry", "K", "Q"], ["lemon", "K", "Q"]],
+            winningLines: {"0": {definition: [0, 0, 0], pattern: [1, 1, 0], symbolsPositions: [0, 1], winAmount: 12.5}},
+        });
+        const roundArtifactHighlights = deriveWinHighlightsFromRoundArtifactWins(ROUND_ARTIFACT_WINS, 3);
+
+        // Same positions/paylinePositions/winAmount -- only `id`/`label` differ (a RoundArtifact win's own
+        // id/type-based label convention vs. VideoSlotRoundResponse's own lineId-based one), proving the
+        // shared entrypoint converges both DTOs onto the same highlight rather than each deriving its own.
+        expect(roundArtifactHighlights).toEqual([
+            expect.objectContaining({
+                kind: "line",
+                winAmount: 12.5,
+                positions: videoSlotHighlights[0].positions,
+                paylinePositions: videoSlotHighlights[0].paylinePositions,
+            }),
+        ]);
+
+        // Rendered through this module's own unmodified DOM functions -- the same functions
+        // cli/client/main.ts and pokie-examples call -- exactly as the VideoSlotRoundResponse-driven
+        // fixture round above is.
+        const gridContainer = document.createElement("div");
+        renderReelsGrid(gridContainer, [["cherry", "K", "Q"], ["cherry", "K", "Q"], ["lemon", "K", "Q"]]);
+        applyPersistentHighlights(gridContainer, roundArtifactHighlights);
+
+        const winningCellA = gridContainer.querySelector('[data-cell="0:0"]') as HTMLElement;
+        const winningCellB = gridContainer.querySelector('[data-cell="0:1"]') as HTMLElement;
+        const nonWinningCell = gridContainer.querySelector('[data-cell="0:2"]') as HTMLElement;
+        expect(winningCellA.style.backgroundColor).not.toBe("");
+        expect(winningCellB.style.backgroundColor).toBe(winningCellA.style.backgroundColor);
+        expect(nonWinningCell.style.backgroundColor).toBe("");
     });
 });
