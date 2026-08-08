@@ -128,11 +128,13 @@ async function fetchConfig(fetchImpl: FetchLike): Promise<{apiBaseUrl: string}> 
     return (await response.json()) as {apiBaseUrl: string};
 }
 
-// Studio's Play tab points this player at a specific session it already created/restored through its
-// own API by opening it with `?session=<id>` (see PlayTab.tsx's own doc comment) -- read once here and
+// A caller that already created/restored a session elsewhere (through this same runtime's own HTTP API)
+// can point this player at that exact session by opening it with `?session=<id>` -- read once here and
 // threaded into ensureSession() below, so this player restores that exact session instead of creating a
-// second, unrelated one of its own. Absent for every other caller (`pokie dev`/`pokie client`/Runtime's
-// own "Open Player", all opened with no query string at all), which keeps behaving exactly as before.
+// second, unrelated one of its own. Absent for every current caller (`pokie dev`/`pokie client`/Runtime's
+// own "Open Player", all opened with no query string at all), which keeps behaving exactly as before --
+// Studio's own "normal game mode" (the Play tab) never embeds this player at all any more; it drives a
+// session directly in Studio's own backend instead (see StudioPlayService's own doc comment).
 function readPreferredSessionId(): string | undefined {
     return new URLSearchParams(window.location.search).get("session") ?? undefined;
 }

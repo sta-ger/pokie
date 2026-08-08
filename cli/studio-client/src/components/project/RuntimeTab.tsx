@@ -387,8 +387,9 @@ export function RuntimeTab({
                 Starts a local `pokie serve`-equivalent HTTP server for this project, in-process -- never a subprocess --
                 so you can create sessions and spin against it the same way an external client would. This is Studio&apos;s
                 own HTTP API testing/diagnostics harness, not a place to just play the game -- use the Play tab for that,
-                which uses this same runtime. Create or restore a session, play rounds, inspect and retry/debug any of
-                them, any number of times -- there&apos;s no fixed order to work through.
+                which drives its own real session directly in Studio&apos;s backend, with no server of its own to start
+                here first. Create or restore a session, play rounds, inspect and retry/debug any of them, any number
+                of times -- there&apos;s no fixed order to work through.
             </Text>
 
             <PageSection legend="Server">
@@ -480,10 +481,10 @@ export function RuntimeTab({
                             </Button>
                         </QuickActions>
                         <Text size="sm" c="dimmed" mt={4}>
-                            &quot;Open Player&quot; opens the same canonical player <code>pokie dev</code>/<code>pokie client</code>/the Play tab
-                            serve, already pointed at this runtime instance — not a Studio-specific preview. &quot;Open API endpoint&quot; and
-                            &quot;Copy server URL&quot; are for talking to this runtime&apos;s raw HTTP API directly (curl, Postman, an external
-                            client under test).
+                            &quot;Open Player&quot; opens the same canonical player <code>pokie dev</code>/<code>pokie client</code> serve,
+                            already pointed at this runtime instance — not a Studio-specific preview, and not what the Play tab itself
+                            uses (see its own doc comment). &quot;Open API endpoint&quot; and &quot;Copy server URL&quot; are for talking to this
+                            runtime&apos;s raw HTTP API directly (curl, Postman, an external client under test).
                         </Text>
                     </div>
                 )}

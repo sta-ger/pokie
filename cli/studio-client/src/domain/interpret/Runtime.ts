@@ -1,4 +1,4 @@
-import type {RuntimeSessionResult, RuntimeSpinResult, StartRuntimeResult} from "../../api/apiClient";
+import type {PlaySessionResult, PlaySpinResult, RuntimeSessionResult, RuntimeSpinResult, StartRuntimeResult} from "../../api/apiClient";
 import type {StudioRuntimeSessionView, StudioRuntimeStateView} from "../../api/types";
 
 // Pure view-model transforms for the Runtime tab — same role as interpretSimulation.ts/
@@ -61,6 +61,44 @@ export function describeSpinResult(result: RuntimeSpinResult): RuntimeSpinResult
     }
     if (result.status === "not-running") {
         return {status: "not-running", message: "Runtime is not running — start it first."};
+    }
+    return result;
+}
+
+// Play's own counterpart to RuntimeSessionResultView/RuntimeSpinResultView above -- same "idle"/
+// "loading"/"error" scaffolding, but "no-active-project" (Play's only real precondition — see
+// StudioPlayService's own doc comment) in place of "not-running" (there is no server to be running or
+// not), and no "conflict" at all (spinPlaySession never sends an expectedVersion — see
+// StudioServer.sendPlayErrorResult's own doc comment).
+export type PlaySessionResultView =
+    | {status: "idle"}
+    | {status: "loading"}
+    | {status: "error"; message: string}
+    | {status: "no-active-project"; message: string}
+    | {status: "ok"; session: StudioRuntimeSessionView};
+
+export function describePlaySessionResult(result: PlaySessionResult): PlaySessionResultView {
+    if (result.status === "no-active-project") {
+        return {status: "no-active-project", message: "No active project — open a project first."};
+    }
+    return result;
+}
+
+export type PlaySpinResultView =
+    | {status: "idle"}
+    | {status: "loading"}
+    | {status: "error"; message: string}
+    | {status: "not-found"; message: string}
+    | {status: "blocked"; message: string}
+    | {status: "no-active-project"; message: string}
+    | {status: "ok"; session: StudioRuntimeSessionView};
+
+export function describePlaySpinResult(result: PlaySpinResult): PlaySpinResultView {
+    if (result.status === "not-found") {
+        return {status: "not-found", message: "Unknown session id."};
+    }
+    if (result.status === "no-active-project") {
+        return {status: "no-active-project", message: "No active project — open a project first."};
     }
     return result;
 }

@@ -11,6 +11,7 @@ import {StudioHomeService} from "./home/StudioHomeService.js";
 import {StudioNativePickerService} from "./home/StudioNativePickerService.js";
 import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
+import {StudioPlayService} from "./runtime/StudioPlayService.js";
 import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
@@ -101,6 +102,13 @@ export type StudioServerOptions = {
     // "defaults around this same `loadGame`" reasoning as simulationService/replayService above; no
     // `pokieVersion` needed, unlike homeService/blueprintService.
     runtimeManager?: StudioRuntimeManager;
+    // Owns the Project Dashboard's Play tab (POST /api/project/play/session,
+    // /api/project/play/sessions/:id/spin) — Studio's own "normal game mode" (see PlayTab's own doc
+    // comment), never the Runtime tab's PokieDevServer/PokieClientServer pair: a real session driven
+    // directly, in-process, with no OS port and nothing a browser could mistake for a product POKIE
+    // game server/RGS workflow. Same "defaults around this same `loadGame`" reasoning as
+    // simulationService/replayService/runtimeManager above.
+    playService?: StudioPlayService;
     // Drives the Project Dashboard's Deployment tab (GET /api/project/deployment/targets, POST
     // /api/project/deployment/runs) — built directly on top of the pokie package's own External
     // Adapter SDK (ExternalDeploymentService); no `loadGame`/`pokieVersion` needed, unlike

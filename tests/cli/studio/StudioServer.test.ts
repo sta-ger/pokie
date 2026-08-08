@@ -48,6 +48,7 @@ import {isLoopbackRequest} from "../../../cli/studio/isLoopbackRequest.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
+import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
@@ -4356,6 +4357,103 @@ describe("StudioServer", () => {
                     resolve();
                 });
             });
+        });
+    });
+
+    describe("Project Dashboard: Play (POST /api/project/play/session, /api/project/play/sessions/:id/spin)", () => {
+        let playStudioRoot: string;
+        let playServer: StudioServer | undefined;
+        const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+        function createPlayServer(initialContext: {mode: "home"} | {mode: "project"; projectRoot: string}): StudioServer {
+            return new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: playStudioRoot,
+                homeService: new StudioHomeService("1.0.0", undefined, () => Promise.resolve(createPlayableFakeGame(manifest))),
+                blueprintService: new StudioBlueprintService("1.0.0", playStudioRoot, new StudioHomeService("1.0.0")),
+                // Injected as a whole, already-constructed instance (its own fake loadGame) -- same
+                // reasoning as simulationService/replayService elsewhere in this file: what's under test
+                // here is StudioServer's own routing/wiring, not StudioPlayService's own domain logic
+                // (already covered by StudioPlayService.test.ts), so this never crosses the real
+                // materialization boundary against a nonexistent projectRoot.
+                playService: new StudioPlayService(() => Promise.resolve(createPlayableFakeGame(manifest))),
+                initialContext,
+            });
+        }
+
+        beforeEach(() => {
+            playStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-play-test-"));
+            writeStudioAssets(playStudioRoot);
+        });
+
+        afterEach(async () => {
+            await playServer?.stop();
+            fs.rmSync(playStudioRoot, {recursive: true, force: true});
+        });
+
+        it("returns 409 'No active project' for both Play routes in Home mode", async () => {
+            playServer = createPlayServer({mode: "home"});
+            const address = await playServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            expect((await post(`${baseUrl}/api/project/play/session`, {})).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/play/sessions/unknown/spin`, {})).status).toBe(409);
+        });
+
+        it("creates a real session directly (no host/port/server involved) and spins it, returning credits/win straight from the settled round", async () => {
+            playServer = createPlayServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await playServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(created.status).toBe(201);
+            const createdBody = created.body as {status: string; session: {sessionId: string; credits: number; win?: number}};
+            expect(createdBody.status).toBe("ok");
+            expect(createdBody.session.credits).toBe(1000);
+            expect(createdBody.session.win).toBeUndefined();
+            const sessionId = createdBody.session.sessionId;
+
+            const spun = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
+            expect(spun.status).toBe(200);
+            const spunBody = spun.body as {status: string; session: {credits: number; win: number}};
+            expect(spunBody.status).toBe("ok");
+            expect(spunBody.session.credits).toBe(999);
+            expect(spunBody.session.win).toBe(0);
+        });
+
+        it("spinning an unknown sessionId returns 404, never a runtime-shaped 'not running' error", async () => {
+            playServer = createPlayServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await playServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const response = await post(`${baseUrl}/api/project/play/sessions/does-not-exist/spin`, {});
+            expect(response.status).toBe(404);
+        });
+
+        it("rejects a malformed seed with a 400, never reaching the play service", async () => {
+            playServer = createPlayServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await playServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const response = await post(`${baseUrl}/api/project/play/session`, {seed: {nested: true}});
+            expect(response.status).toBe(400);
+        });
+
+        it("returns to 'No active project' for both Play routes once the project is closed", async () => {
+            playServer = createPlayServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await playServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const closed = await post(`${baseUrl}/api/projects/close`);
+            expect(closed.status).toBe(200);
+
+            expect((await post(`${baseUrl}/api/project/play/session`, {})).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {})).status).toBe(409);
         });
     });
 

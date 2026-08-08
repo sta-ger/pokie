@@ -5,6 +5,7 @@ import {
     cancelReplay,
     cancelSimulation,
     closeProject,
+    createPlaySession,
     createRuntimeSession,
     exportParSheet,
     FetchLike,
@@ -34,6 +35,7 @@ import {
     runReplay,
     saveBlueprint,
     saveManagedBlueprint,
+    spinPlaySession,
     spinRuntimeSession,
     startRuntime,
     startSimulation,
@@ -1215,6 +1217,87 @@ describe("studio-client apiClient", () => {
 
             expect(await spinRuntimeSession(conflictFetch, "session-1")).toEqual({status: "conflict", message: "Session version mismatch."});
             expect(await spinRuntimeSession(notRunningFetch, "session-1")).toEqual({status: "not-running"});
+        });
+    });
+
+    describe("createPlaySession", () => {
+        it("POSTs the seed and returns the ok session result", async () => {
+            const session = {sessionId: "session-1", game: {id: "a", name: "A", version: "0.1.0"}, credits: 1000};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok", session}}));
+
+            const result = await createPlaySession(fetchImpl, "demo");
+
+            expect(calls).toEqual([
+                {
+                    url: "/api/project/play/session",
+                    init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({seed: "demo"})},
+                },
+            ]);
+            expect(result).toEqual({status: "ok", session});
+        });
+
+        it("omits seed from the body when not given", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 201, body: {status: "ok", session: {}}}));
+
+            await createPlaySession(fetchImpl);
+
+            expect(calls[0].init?.body).toBe(JSON.stringify({}));
+        });
+
+        it("returns a typed no-active-project result (409) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            expect(await createPlaySession(fetchImpl)).toEqual({status: "no-active-project"});
+        });
+
+        it("returns a typed error result (200, status: failed) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "failed", error: "materialization failed"}}));
+
+            expect(await createPlaySession(fetchImpl)).toEqual({status: "error", message: "materialization failed"});
+        });
+    });
+
+    describe("spinPlaySession", () => {
+        it("POSTs with no body and returns the ok session result", async () => {
+            const session = {sessionId: "session-1", game: {id: "a", name: "A", version: "0.1.0"}, credits: 995, win: 0};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session}}));
+
+            const result = await spinPlaySession(fetchImpl, "session-1");
+
+            expect(calls).toEqual([{url: "/api/project/play/sessions/session-1/spin", init: {method: "POST"}}]);
+            expect(result).toEqual({status: "ok", session});
+        });
+
+        it("encodes the sessionId in the URL", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session: {}}}));
+
+            await spinPlaySession(fetchImpl, "a/b");
+
+            expect(calls).toEqual([{url: "/api/project/play/sessions/a%2Fb/spin", init: {method: "POST"}}]);
+        });
+
+        it("returns a typed not-found result (404) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 404, body: {error: 'Unknown sessionId "x".'}}));
+
+            expect(await spinPlaySession(fetchImpl, "x")).toEqual({status: "not-found"});
+        });
+
+        it("returns a typed blocked result (400) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 400, body: {error: "insufficient balance"}}));
+
+            expect(await spinPlaySession(fetchImpl, "session-1")).toEqual({status: "blocked", message: "insufficient balance"});
+        });
+
+        it("returns a typed no-active-project result (409) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {error: "No active project."}}));
+
+            expect(await spinPlaySession(fetchImpl, "session-1")).toEqual({status: "no-active-project"});
+        });
+
+        it("returns a typed error result (200, status: error) rather than throwing", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "error", error: "unexpected failure"}}));
+
+            expect(await spinPlaySession(fetchImpl, "session-1")).toEqual({status: "error", message: "unexpected failure"});
         });
     });
 });
