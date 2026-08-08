@@ -70,7 +70,7 @@ type FindFormValues = {round: number; seed: string};
 // what "load something" means differs by source (configure a round, paste/pick an artifact, pick a
 // spin, pick a simulation round).
 const SOURCE_EMPTY_PROMPT: Record<FindMethod, string> = {
-    seedRound: "Load a round above to reproduce it.",
+    seedRound: "Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.",
     artifact: "Paste a replay artifact, or pick one from Recent Replays above, to validate it.",
     spin: "Pick a spin above to view its details.",
     simulation: "Pick a simulation and round above to load it.",
@@ -1021,7 +1021,9 @@ export function ReplayTab({
                                     )}
                                 </div>
                             )}
-                            {jobLoaded && !active && !result && <EmptyState message="Reproduce a round to inspect it." />}
+                            {jobLoaded && !active && !result && (
+                                <EmptyState message={findMethod === "artifact" ? "Reproduce a round to inspect it." : "Run a round to inspect it."} />
+                            )}
                         </div>
                     )}
                 </div>

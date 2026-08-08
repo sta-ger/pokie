@@ -1114,7 +1114,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(within(recentReplaysSection).queryByText("That replay no longer exists.")).not.toBeInTheDocument();
         // Still on Recreate from seed with nothing loaded -- the failed fetch never marked anything loaded.
         expect(screen.getByRole("radio", {name: "Recreate from seed"})).toBeInTheDocument();
-        expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
+        expect(screen.getByText("Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.")).toBeInTheDocument();
     });
 
     // Switching source used to leave a stale `result` from a previous, different-method reproduction
@@ -1159,7 +1159,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         // Switching back to Recreate from seed starts fresh too -- nothing carried over either direction.
         await user.click(screen.getByRole("radio", {name: "Recreate from seed"}));
-        expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
+        expect(screen.getByText("Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     }, 60000);
 
