@@ -1,5 +1,4 @@
 import fs from "fs";
-import http from "http";
 import os from "os";
 import path from "path";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -58,15 +57,15 @@ function buildBlueprint(id: string): Record<string, unknown> {
     };
 }
 
-// The full 18-step Studio session the stabilization pass asks for, driven over real HTTP against one
+// The full 12-step Studio session the stabilization pass asks for, driven over real HTTP against one
 // running StudioServer instance for the whole test — no mocked loadGame/inspector/validator anywhere,
-// so Home → Build → Open → Inspect → Validate → Simulation → Reports → Replay → Runtime all exercise
+// so Home → Build → Open → Inspect → Validate → Simulation → Reports → Replay all exercise
 // the real collaborators (GamePackageGenerator, GamePackageInspector, PokieGamePackageValidator,
 // loadPokieGame) exactly as a real user session would, the same way BuildWorkflow.integration.test.ts
 // proves a `pokie build` output needs no separate compile step. Real StudioSimulationService/
 // StudioReplayExecutionService instances (rather than StudioServer's own defaults) are injected only so
-// step 18 can assert getActiveCount() after shutdown — everything else about them is unmodified.
-describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -> Home -> isolation -> shutdown", () => {
+// step 12 can assert getActiveCount() after shutdown — everything else about them is unmodified.
+describe("POKIE Studio full workflow (integration): Home -> Project -> Home -> isolation -> shutdown", () => {
     let studioRoot: string;
     let workDir: string;
     let server: StudioServer | undefined;
@@ -102,7 +101,7 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
         fs.rmSync(workDir, {recursive: true, force: true});
     });
 
-    it("runs the full 18-step session with no leftover jobs or open ports at the end", async () => {
+    it("runs the full 12-step session with no leftover jobs at the end", async () => {
         // 1. Launch Home.
         const home = await get(`${baseUrl}/api/context`);
         expect(home.body).toEqual({mode: "home"});
@@ -156,42 +155,12 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
         const replayCompleted = await pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`);
         expect(replayCompleted.body.status).toBe("completed");
 
-        // 9. Start Runtime.
-        const runtimeStarted = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
-        expect(runtimeStarted.status).toBe(201);
-        const runtimePort = (runtimeStarted.body as {port: number}).port;
-        expect(runtimePort).toBeGreaterThan(0);
-
-        // 10. Create session.
-        type SessionResponse = {status: string; session: {sessionId: string; sessionVersion?: number}};
-        const sessionCreated = await post(`${baseUrl}/api/project/runtime/sessions`, {});
-        expect(sessionCreated.status).toBe(201);
-        const sessionId = (sessionCreated.body as SessionResponse).session.sessionId;
-
-        // 11. Spin.
-        const spun = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
-        expect(spun.status).toBe(200);
-
-        // 12. Repeat the same requestId (idempotent).
-        const repeated = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
-        expect(repeated.body).toEqual(spun.body);
-
-        // 13. Spin with a stale expectedSessionVersion (409 conflict).
-        const stale = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {expectedSessionVersion: 999});
-        expect(stale.status).toBe(409);
-        expect((stale.body as {reason: string}).reason).toBe("conflict");
-
-        // 14. Stop Runtime.
-        const runtimeStopped = await post(`${baseUrl}/api/project/runtime/stop`);
-        expect(runtimeStopped.status).toBe(200);
-        expect(runtimeStopped.body).toEqual({status: "stopped"});
-
-        // 15. Return to Home.
+        // 9. Return to Home.
         const closed = await post(`${baseUrl}/api/projects/close`);
         expect(closed.status).toBe(200);
         expect((await get(`${baseUrl}/api/context`)).body).toEqual({mode: "home"});
 
-        // 16. Open a second, distinct project.
+        // 10. Open a second, distinct project.
         const secondBlueprintPath = path.join(workDir, "lucky-sevens.blueprint.json");
         const secondBlueprint = buildBlueprint("lucky-sevens");
         fs.writeFileSync(secondBlueprintPath, JSON.stringify(secondBlueprint));
@@ -206,26 +175,17 @@ describe("POKIE Studio full workflow (integration): Home -> Project -> Runtime -
         const secondOpened = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: secondProjectRoot});
         expect(secondOpened.status).toBe(200);
 
-        // 17. Verify isolation: the first project's reports/replays are unreachable from the second.
+        // 11. Verify isolation: the first project's reports/replays are unreachable from the second.
         expect((await get(`${baseUrl}/api/project/reports`)).body).toEqual([]);
         expect((await get(`${baseUrl}/api/project/reports/${simId}`)).status).toBe(404);
         expect((await get(`${baseUrl}/api/project/replays`)).body).toEqual([]);
         expect((await get(`${baseUrl}/api/project/replays/${replayId}`)).status).toBe(404);
 
-        // 18. Shutdown Studio with no leftover jobs/open ports.
+        // 12. Shutdown Studio with no leftover jobs.
         const serverToStop = server;
         server = undefined; // already being stopped — afterEach shouldn't stop it again
         await serverToStop?.stop();
         expect(simulationService.getActiveCount()).toBe(0);
         expect(replayService.getActiveCount()).toBe(0);
-
-        const probe = http.createServer();
-        await new Promise<void>((resolve, reject) => {
-            probe.once("error", reject);
-            probe.listen(runtimePort, "127.0.0.1", () => resolve());
-        });
-        await new Promise<void>((resolve) => {
-            probe.close(() => resolve());
-        });
     });
 });

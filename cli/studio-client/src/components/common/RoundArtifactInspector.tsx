@@ -85,7 +85,7 @@ export function RoundArtifactInspector({
     credits?: number;
     // The game's own payout table -- same story as `credits`: not part of RoundArtifact itself (see
     // PaytableView's own doc comment), only ever suppliable by a caller that has one independently. No
-    // current caller does (Runtime/Replay/Outcome Source never fetch a blueprint alongside a round), so
+    // current caller does (Play/Replay/Outcome Source never fetch a blueprint alongside a round), so
     // this is always undefined today and PaytableView renders its own explicit "unavailable" state --
     // this prop exists so a future caller that does have one doesn't need RoundArtifactInspector itself
     // to change.

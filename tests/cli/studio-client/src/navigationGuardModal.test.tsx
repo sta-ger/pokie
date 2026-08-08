@@ -142,7 +142,6 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
             "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-            "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});

@@ -83,28 +83,26 @@ export type StudioPlaySpinResult =
     | {status: "blocked"; error: string}
     | {status: "error"; error: string};
 
-// Play's own backend counterpart to StudioRuntimeManager -- but never a PokieDevServer/PokieClientServer,
-// never an OS port, never a SessionRepository/WalletPort a browser-based client could ever be pointed at
-// directly. Studio's "normal game mode" (see PlayTab's own doc comment) never needs the Runtime tab's own
-// HTTP API testing/diagnostics surface (raw JSON, requestId/expectedVersion overrides, a second "Open
-// Player" server) -- it only ever needs one thing: a real session it can spin and show the result of. This
-// class gives it exactly that, driving PokieGame.createSession()/SpinCommandHandler.handle() -- the exact
-// same primitives PokieDevServer itself drives -- directly, in-process, never through an HTTP request/
-// response cycle Studio's own browser would have to be given a host/port to reach.
+// Play's own backend -- Studio's only game mode (see PlayTab's own doc comment). Never a
+// PokieDevServer/PokieClientServer, never an OS port, never a SessionRepository/WalletPort a
+// browser-based client could ever be pointed at directly -- it only ever needs one thing: a real
+// session it can spin and show the result of. This class gives it exactly that, driving
+// PokieGame.createSession()/SpinCommandHandler.handle() -- the exact same primitives PokieDevServer
+// itself drives -- directly, in-process, never through an HTTP request/response cycle Studio's own
+// browser would have to be given a host/port to reach.
 //
-// Materialization crosses the same boundary StudioRuntimeManager.startInternal() does (see
-// resolveRuntimePackageRoot's own doc comment): a Blueprint project is materialized into a real, loadable
-// runtime *before* loadGame ever touches it, exactly like every other CLI runtime operation. What comes
-// back out — a live GameSessionHandling, settled through the same wallet/idempotency machinery
-// SpinCommandHandler always uses, capturing a real, hashable RoundArtifact (sessionCapturePolicyMode
-// "full", same as StudioRuntimeManager's own runtime) — is never reimplemented here; only the "no HTTP
-// server in between" wiring is new.
+// Materialization crosses the same boundary every other CLI runtime operation does (see
+// resolveRuntimePackageRoot's own doc comment): a Blueprint project is materialized into a real,
+// loadable runtime *before* loadGame ever touches it. What comes back out — a live GameSessionHandling,
+// settled through the same wallet/idempotency machinery SpinCommandHandler always uses, capturing a
+// real, hashable RoundArtifact (sessionCapturePolicyMode "full") — is never reimplemented here; only
+// the "no HTTP server in between" wiring is new.
 //
-// Holds at most one session at a time, the same "process-local, single active instance" shape
-// StudioRuntimeManager's own server has, but scoped to Studio's own in-process call, not an OS resource
-// that needs stopping — newSession() (Play's "New session"/"Reset" alike, see PlayTab's own doc comment)
-// simply discards whatever was active and builds a fresh one, and reset() (called on a project switch or
-// Studio shutdown) does the same without creating a replacement. Every store below (SessionRepository,
+// Holds at most one session at a time -- a process-local, single active instance scoped to Studio's own
+// in-process call, not an OS resource that needs stopping — newSession() (Play's "New session"/"Reset"
+// alike, see PlayTab's own doc comment) simply discards whatever was active and builds a fresh one, and
+// reset() (called on a project switch or Studio shutdown) does the same without creating a replacement.
+// Every store below (SessionRepository,
 // WalletPort, IdempotencyRepository) is a brand-new in-memory instance created fresh by newSession() --
 // never shared across sessions, never shared with any other SpinCommandHandler instance in this or any
 // other process -- so singleInstanceDeployment: true is genuinely safe here (see SpinCommandHandler's own
@@ -146,8 +144,8 @@ export class StudioPlayService {
     // The shared history every round-producing action across Studio records into -- see
     // StudioRoundRecorder's own doc comment. Defaults to a private instance so every existing standalone
     // caller/test keeps seeing only its own rounds, exactly as before this recording existed; StudioServer
-    // constructs one instance and shares it with StudioRuntimeManager (and its own outcome-source sample
-    // route) so a round played here is visible from anywhere else that reads this same recorder.
+    // constructs one instance and shares it (and its own outcome-source sample route) so a round played
+    // here is visible from anywhere else that reads this same recorder.
     private readonly roundRecorder: StudioRoundRecorder;
 
     private active: ActiveSession | undefined;
@@ -171,9 +169,9 @@ export class StudioPlayService {
         this.roundRecorder = roundRecorder;
     }
 
-    // Materializes/loads `projectRoot` fresh on every call -- never caches a previously loaded game across
-    // sessions, the same "always run what's actually on disk now" posture StudioRuntimeManager.start()
-    // itself takes for its own server. A Blueprint project's materialized temp directory is only ever
+    // Materializes/loads `projectRoot` fresh on every call -- never caches a previously loaded game
+    // across sessions, always running what's actually on disk now. A Blueprint project's materialized
+    // temp directory is only ever
     // needed for the synchronous loadGame() call itself (see resolveRuntimePackageRoot's own doc comment
     // on why a "tsPackage" project's own release() is already a no-op) -- released immediately afterward,
     // never held for this session's own lifetime.
@@ -349,8 +347,7 @@ export class StudioPlayService {
     }
 
     // Called on a project switch or Studio shutdown -- a genuinely different (or no longer active)
-    // project must never leave a previous project's session reachable, same reasoning as
-    // StudioRuntimeManager.stopForProjectSwitch()/stopForShutdown(). Nothing here holds an OS resource
+    // project must never leave a previous project's session reachable. Nothing here holds an OS resource
     // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
     // just discarding in-memory references, never an async teardown.
     public reset(): void {
@@ -475,12 +472,11 @@ export class StudioPlayService {
         return {status: "failed", error: error instanceof Error ? error.message : String(error)};
     }
 
-    // Builds the same StudioRuntimeSessionView shape StudioRuntimeManager.buildSessionView() builds from
-    // PokieDevServer's raw HTTP response -- but reading straight off the real, in-process PokieSessionState
-    // this call actually produced, never round-tripped through JSON/fetch first (there is no HTTP
-    // boundary here to cross). `debug` is always attached (never gated behind a debug-mode toggle the way
-    // StudioRuntimeManager's own is) -- Play's entire point is showing the real round it just played (see
-    // the class doc comment), never a version of it with the artifact withheld.
+    // Builds a StudioRuntimeSessionView straight off the real, in-process PokieSessionState this call
+    // actually produced -- never round-tripped through JSON/fetch first (there is no HTTP boundary here
+    // to cross). `debug` is always attached (never gated behind a debug-mode toggle) -- Play's entire
+    // point is showing the real round it just played (see the class doc comment), never a version of it
+    // with the artifact withheld.
     private buildSessionView(
         sessionId: string,
         manifest: {id: string; name: string; version: string},

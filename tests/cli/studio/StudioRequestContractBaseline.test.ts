@@ -4,8 +4,6 @@ import {validateOpenProjectRequest} from "../../../cli/studio/home/validateOpenP
 import {validateDeploymentRunRequest} from "../../../cli/studio/deployment/validateDeploymentRunRequest.js";
 import {validateStakeEngineExportRequest} from "../../../cli/studio/stakeengine/validateStakeEngineExportRequest.js";
 import {validateStakeEngineExportValidateRequest} from "../../../cli/studio/stakeengine/validateStakeEngineExportValidateRequest.js";
-import {validateRuntimeSpinRequest} from "../../../cli/studio/runtime/validateRuntimeSpinRequest.js";
-import {validateStartRuntimeRequest} from "../../../cli/studio/runtime/validateStartRuntimeRequest.js";
 import {validateOutcomeLibrarySelector} from "../../../cli/studio/outcomeLibrary/validateOutcomeLibrarySelector.js";
 import {validateCertificationSourceValidateRequest} from "../../../cli/studio/certification/validateCertificationSourceValidateRequest.js";
 import {validateCertificationBuildRequest} from "../../../cli/studio/certification/validateCertificationBuildRequest.js";
@@ -55,33 +53,6 @@ describe("Contract baseline: Design Game (Load / Save)", () => {
         expect(() => validateSaveBlueprintRequest({path: "x", blueprint: null})).not.toThrow();
     });
 
-});
-
-describe("Contract baseline: Runtime retry/debug", () => {
-    it("a spin request's requestId is an optional idempotency key, and expectedSessionVersion an optional optimistic-concurrency guard", () => {
-        expect(validateRuntimeSpinRequest({})).toEqual({requestId: undefined, expectedSessionVersion: undefined});
-        expect(validateRuntimeSpinRequest({requestId: "retry-1", expectedSessionVersion: 3})).toEqual({requestId: "retry-1", expectedSessionVersion: 3});
-        expect(() => validateRuntimeSpinRequest({requestId: 5})).toThrow('"requestId" must be a string when given.');
-        expect(() => validateRuntimeSpinRequest({expectedSessionVersion: 0})).toThrow('"expectedSessionVersion" must be a positive integer when given.');
-        expect(() => validateRuntimeSpinRequest({expectedSessionVersion: 1.5})).toThrow('"expectedSessionVersion" must be a positive integer when given.');
-    });
-
-    it("starting a runtime defaults debug to on (Studio's own full-inspection capture policy) and repositoryMode to 'memory'", () => {
-        expect(validateStartRuntimeRequest({})).toEqual({
-            host: undefined,
-            port: undefined,
-            debug: true,
-            seed: undefined,
-            repositoryMode: "memory",
-            preGeneratedLibrarySelector: undefined,
-            preGeneratedLibraryExpectedHash: undefined,
-        });
-        expect(validateStartRuntimeRequest({debug: false, repositoryMode: "file"})).toEqual(
-            expect.objectContaining({debug: false, repositoryMode: "file"}),
-        );
-        expect(() => validateStartRuntimeRequest({debug: "yes"})).toThrow('"debug" must be a boolean when given.');
-        expect(() => validateStartRuntimeRequest({repositoryMode: "disk"})).toThrow('"repositoryMode" must be "memory" or "file" when given.');
-    });
 });
 
 describe("Contract baseline: Deployment (target/registry/preflight/deploy) vs. Stake Engine Export", () => {

@@ -30,7 +30,7 @@ function okRunResponse() {
     };
 }
 
-// Mirrors useRuntimeManager's own resetForProjectSwitch test -- a genuinely different project must never
+// A genuinely different project must never
 // show a trace of the previous one's target selection, modes, or run result, and a run still in flight
 // from before the switch must be silently discarded once it resolves (there is nothing to cancel over
 // plain fetch; the DeploymentRunTracker's own revision bump is what makes the late response stale).

@@ -141,9 +141,6 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
             if (path === "/api/project/replays") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
             }
-            if (path === "/api/project/runtime") {
-                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
-            }
             if (path === "/api/project/deployment/targets") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
             }

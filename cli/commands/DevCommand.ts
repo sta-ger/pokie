@@ -126,10 +126,9 @@ export class DevCommand implements CliCommandHandling {
         const startedServers: Array<{stop(): Promise<void>}> = [];
         try {
             // "pokie dev" is a local inspection tool, not a production deployment -- it always requests
-            // "full" capture (a complete, inspectable RoundArtifact persisted every round), the same
-            // posture StudioRuntimeManager's own local runtime always requests, independent of any
-            // production/server default (see PokieDevServerOptions.sessionCapturePolicyMode's own doc
-            // comment). Plain PokieDevServer/ServeCommand construction elsewhere is unaffected -- this
+            // "full" capture (a complete, inspectable RoundArtifact persisted every round), independent
+            // of any production/server default (see PokieDevServerOptions.sessionCapturePolicyMode's own
+            // doc comment). Plain PokieDevServer/ServeCommand construction elsewhere is unaffected -- this
             // option is opt-in-only there, defaulting to "partial".
             const apiServer = this.createApiServer(game, {
                 host: options.host,

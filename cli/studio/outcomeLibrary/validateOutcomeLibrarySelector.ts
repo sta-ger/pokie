@@ -15,8 +15,8 @@ function isNonEmptyString(value: unknown): value is string {
 // Shared by every request that carries an outcome-library selector (select, compare's left/right) -- turns
 // a request body's own selector object into a trusted OutcomeLibrarySelector, throwing a plain, client-safe
 // Error (StudioServer maps this to 400) for anything malformed. Never checks that the path/directory
-// actually exists or contains a well-formed library -- that is StudioOutcomeLibraryService's own job (a
-// "load-error"/"invalid" result, not a 400).
+// actually exists or contains a well-formed library -- that is loadOutcomeLibraryFromSelector's own job (a
+// "load-error" result, not a 400).
 export function validateOutcomeLibrarySelector(input: OutcomeLibrarySelectorInput, field: string): OutcomeLibrarySelector {
     if (input.kind === "json") {
         if (!isNonEmptyString(input.path)) {

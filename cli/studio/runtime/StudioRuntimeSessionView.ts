@@ -1,19 +1,17 @@
 import type {RoundArtifactJson} from "pokie";
 
-// Studio's own session response DTO for the Runtime tab's Session Tools — built from
-// RuntimeSessionClient's raw PokieDevServer response by StudioRuntimeManager (see its own doc
-// comment): every public field PokieDevServer returned is spread through as-is (including any rich
-// serializer-specific fields — paytable, reelsSymbols, etc. — hence the index signature, same escape
-// hatch PokieDevSessionResponse itself uses), `sessionVersion` is hoisted to the top level
-// unconditionally (whenever the configured repository is versioned, regardless of debug mode — central
-// to demonstrating optimistic locking in the tab), and `debug` is attached only when the runtime was
-// started with debug mode on. Never the raw PokieSessionState/repository/wallet objects themselves —
-// only what PokieDevServer's own public+internal JSON already exposes over HTTP.
+// Studio's own session response DTO for a played/drawn round — built by StudioPlayService directly off
+// a real, in-process PokieSessionState (see its own buildSessionView() doc comment): every public field
+// the game's own serializer returned is spread through as-is (including any rich serializer-specific
+// fields — paytable, reelsSymbols, etc. — hence the index signature), `sessionVersion` is hoisted to the
+// top level unconditionally (whenever the configured repository is versioned), and `debug` is always
+// attached. Never the raw PokieSessionState/repository/wallet objects themselves — only their own
+// public+internal projection.
 export type StudioRuntimeSessionView = {
     sessionId: string;
     game: {id: string; name: string; version: string};
     // Absent only for a stateless one-shot draw with no session/wallet of its own at all (the Outcome
-    // Source Analysis tab's "Sample" route) -- every genuine session (Runtime tab, Play tab) always has a
+    // Source Analysis tab's "Sample" route) -- every genuine session (the Play tab) always has a
     // real credits figure, so this is never fabricated as 0 to fill the shape out where there truly isn't
     // one.
     credits?: number;
@@ -27,12 +25,10 @@ export type StudioRuntimeSessionView = {
     availableSymbols?: string[];
     sessionVersion?: number;
     // Studio's own bookkeeping, not part of the game/public wire contract at all -- the client-supplied
-    // requestId a spin was called with, recorded by StudioRuntimeManager.spin() directly from its own
-    // parameter (not read back out of `internal`), so it's present on every recorded recent spin
-    // regardless of debug mode. This is what lets "Debug this round"/the Session Spin find method locate
-    // one exact spin among several recent ones even when debug mode is off -- unlike `debug.requestId`
-    // below (the game server's own echoed value, only ever present alongside the rest of the debug
-    // bundle).
+    // requestId a spin was called with, recorded directly from that call's own parameter, so it's present
+    // on every recorded recent spin. This is what lets the Session Spin find method locate one exact spin
+    // among several recent ones -- unlike `debug.requestId` below (only ever present alongside the rest
+    // of the debug bundle).
     studioRequestId?: string;
     // Studio's own bookkeeping too, attached only by StudioRoundRecorder.record() -- so these are present
     // on every entry the shared recorder's `list()` returns, but absent from a plain createSession()/

@@ -13,7 +13,6 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-    "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
 };
 

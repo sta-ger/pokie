@@ -8,17 +8,15 @@ import {LoadingState} from "../common/LoadingState";
 import {QuickActions} from "../common/QuickActions";
 import {RoundSummary} from "../common/RoundSummary";
 
-// Studio's own "normal game mode" -- unlike Runtime (an HTTP API testing/diagnostics harness built
-// around a real PokieDevServer/PokieClientServer pair, its own host/port a browser client could be
-// pointed at), Play never starts a server, never shows a host/port/server URL, and is never represented
-// as a product POKIE game server/RGS workflow. "New session"/"Reset" both materialize/load the project
-// as needed and create a real session directly in Studio's own backend (StudioPlayService, see its own
-// doc comment) -- TS loads the normal runtime and the game's own live RNG plays for real, with no
-// separate session-storage/API setup for this tab to expose. Every spin's result renders through the
-// exact same RoundSummary/RoundArtifactInspector/GameScreenView chain the Runtime tab's own Session
-// Tools and the Replay tab's other sources already use, complete with a real, hashable RoundArtifact --
-// never a Play-local re-presentation of the same screen/win/feature data, and never an embedded copy of
-// the canonical player pointed at a live game server.
+// Studio's own -- and only -- game mode: Play never starts a server, never shows a host/port/server URL,
+// and is never represented as a product POKIE game server/RGS workflow. "New session"/"Reset" both
+// materialize/load the project as needed and create a real session directly in Studio's own backend
+// (StudioPlayService, see its own doc comment) -- TS loads the normal runtime and the game's own live RNG
+// plays for real, with no separate session-storage/API setup for this tab to expose. Every spin's result
+// renders through the exact same RoundSummary/RoundArtifactInspector/GameScreenView chain the Replay
+// tab's other sources already use, complete with a real, hashable RoundArtifact -- never a Play-local
+// re-presentation of the same screen/win/feature data, and never an embedded copy of the canonical
+// player pointed at a live game server.
 export function PlayTab({
     session,
     sessionId,
@@ -44,8 +42,8 @@ export function PlayTab({
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
-    // own `canPlayNextGame()`-blocked reason) -- run through the same classifier RuntimeTab's own Session
-    // Tools use, so a network hiccup, a materialization failure, or a plain "can't play right now" all
+    // own `canPlayNextGame()`-blocked reason) -- run through the shared describeRuntimeActionError
+    // classifier, so a network hiccup, a materialization failure, or a plain "can't play right now" all
     // read as subject-specific status + remediation copy instead of an internal message verbatim.
     let errorNotice: ReactNode;
     if (session.status === "error") {

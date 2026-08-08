@@ -35,7 +35,6 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
-import {useRuntimeManager} from "../../hooks/useRuntimeManager";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -49,7 +48,6 @@ import {OverviewTab} from "./OverviewTab";
 import {PlayTab} from "./PlayTab";
 import {ProvablyFairTab} from "./ProvablyFairTab";
 import {ReplayTab, type ExpectedReplayState} from "./ReplayTab";
-import {RuntimeTab} from "./RuntimeTab";
 import {SimulationTab, type ReportDetailState} from "./SimulationTab";
 
 export type ProjectTab =
@@ -58,12 +56,11 @@ export type ProjectTab =
     | "play"
     | "simulation"
     | "replay"
-    | "runtime"
     | "exportDeploy"
     | "certification"
     | "provablyFair";
 
-// Every runtime operation (Simulation/Replay/Runtime/Certification/Fairness/Build-Export/Analysis) needs
+// Every runtime operation (Simulation/Replay/Certification/Fairness/Build-Export/Analysis) needs
 // the loaded project to actually be runnable in-process. A "tsPackage" project carries
 // RUNTIME_EXECUTE_CAPABILITY itself; a "blueprint" project never does (see RUNTIME_EXECUTE_CAPABILITY's
 // own doc comment), but Studio always materializes it into a runnable tsPackage before loading it, so
@@ -81,7 +78,7 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // diagnostics folded into Overview itself (see OverviewTab), run on load and re-run on demand, not a
 // separate click-to-check tab. Every entry but Overview/Game Model carries `requiredCapabilities` --
 // what actually decides whether it's offered (see isTabSupported below), never just "the dashboard
-// loaded at all". Replay/Runtime/Certification/Fairness/Build-Export are tagged `section: "Advanced"`
+// loaded at all". Replay/Certification/Fairness/Build-Export are tagged `section: "Advanced"`
 // so NavTabs visually separates them from the primary Overview -> Play -> Simulation flow --
 // everything's still one click away, just not presented as equal-weight to it.
 //
@@ -91,13 +88,10 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // project type, not gated behind BLUEPRINT_BUILD_CAPABILITY/RUNTIME_EXECUTE_CAPABILITY the way the
 // runtime-operation tabs below are.
 //
-// "play"/PlayTab is Studio's own normal game mode -- materializes/starts (or attaches to) the runtime,
-// creates/restores a session, and renders the canonical player right here. It's deliberately ungrouped
-// (not "Advanced") alongside Overview/Simulation: playing the game is the primary thing a project
-// workspace is for. Runtime stays "Advanced" -- it's the HTTP API testing/diagnostics harness (raw
-// session JSON, manual requestId/version overrides, retry/debug) this project's runtime offers, not a
-// second gameplay surface; see PlayTab's and RuntimeTab's own doc comments for how the two divide the
-// work without duplicating it.
+// "play"/PlayTab is Studio's own -- and only -- game mode -- materializes/loads the project as needed
+// and creates a real session directly in Studio's own backend, no server/host/port/API to set up. It's
+// deliberately ungrouped (not "Advanced") alongside Overview/Simulation: playing the game is the primary
+// thing a project workspace is for.
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface -- the old
 // standalone Deployment/Stake Engine Export/Outcome Libraries workspaces (each its own Stepper-driven
@@ -113,7 +107,6 @@ const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "play", label: "Play", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "runtime", label: "Runtime", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "exportDeploy", label: "Build/Export", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "certification", label: "Certification", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
     {value: "provablyFair", label: "Fairness", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
@@ -555,32 +548,14 @@ export function ProjectDashboardPage() {
             });
     }, [fetchImpl]);
 
-    const runtime = useRuntimeManager();
     const play = usePlaySession(refreshRecentSpins);
     const deployment = useDeploymentManager();
 
     // Set by GameModelTab whenever its own in-progress section edit has unsaved changes (see its own
     // `onDirtyChange` doc comment) -- folded into `hasActiveOperation`'s own "confirm before Close
-    // project" gate below, the same way an active simulation/replay/deployment/runtime already is,
-    // rather than letting a Close silently discard an unsaved Game Model edit.
+    // project" gate below, the same way an active simulation/replay/deployment already is, rather than
+    // letting a Close silently discard an unsaved Game Model edit.
     const [gameModelDirty, setGameModelDirty] = useState(false);
-
-    // A successful Game Model section save (see GameModelTab's own `onBlueprintSaved`) means whatever
-    // this project's runtime was last materialized from (see materializeRuntimePackage.ts's own doc
-    // comment -- a "blueprint" project is always rematerialized fresh on every Play/Simulation/Replay/
-    // Runtime *start*, never cached across one) may now be stale. There's no server-side materialization
-    // cache to invalidate -- the next start already rematerializes from the freshly saved source on its
-    // own -- but a runtime that's already running was started from the old content and keeps serving it
-    // until stopped; stopping it here (only if one is actually running) is what makes "materialization is
-    // invalidated" true rather than merely eventually true the next time someone happens to restart it.
-    const handleGameModelSaved = useCallback(() => {
-        if (runtime.running) {
-            runtime.stop();
-        }
-        // Deliberately runtime.running/runtime.stop only, not the whole runtime object -- same
-        // convention this file's other runtime.*-consuming callbacks already follow.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [runtime.running, runtime.stop]);
 
     useEffect(() => {
         if (projectKey === undefined) {
@@ -620,8 +595,6 @@ export function ProjectDashboardPage() {
         refreshReports();
         refreshReplayList();
         refreshRecentSpins();
-        runtime.resetForProjectSwitch();
-        runtime.refresh();
         play.resetForProjectSwitch();
         deployment.resetForProjectSwitch();
         deployment.refreshTargets();
@@ -634,7 +607,6 @@ export function ProjectDashboardPage() {
     const hasActiveOperation =
         (simulation.job !== undefined && isSimulationActive(simulation.job)) ||
         (replay.job !== undefined && isReplayActive(replay.job)) ||
-        runtime.running ||
         deployment.runLoading;
 
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
@@ -676,7 +648,7 @@ export function ProjectDashboardPage() {
             return;
         }
         const reasons = [
-            hasActiveOperation ? "an active simulation, replay, deployment, or running runtime" : undefined,
+            hasActiveOperation ? "an active simulation, replay, or deployment" : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, doClose);
@@ -743,19 +715,18 @@ export function ProjectDashboardPage() {
                                 <OverviewTab header={header} validation={validation} onRevalidate={runValidate} />
                             )}
                             {activeTab === "gameModel" && (
-                            // Same reasoning as RuntimeTab's own key below -- GameModelTab owns all of
-                            // its own fetch state locally (no page-level hook), so a genuine project
-                            // switch needs a full remount, not just a re-render of a still-mounted
-                            // instance holding the previous project's own projection. `editable` is exactly
-                            // BLUEPRINT_BUILD_CAPABILITY -- a saved Blueprint Project Studio can load/save
-                            // in place (see buildProjectGameModel's own doc comment); a materialized
-                            // tsPackage never carries that capability, so it never offers Edit here.
+                            // GameModelTab owns all of its own fetch state locally (no page-level hook),
+                            // so a genuine project switch needs a full remount, not just a re-render of a
+                            // still-mounted instance holding the previous project's own projection.
+                            // `editable` is exactly BLUEPRINT_BUILD_CAPABILITY -- a saved Blueprint
+                            // Project Studio can load/save in place (see buildProjectGameModel's own doc
+                            // comment); a materialized tsPackage never carries that capability, so it
+                            // never offers Edit here.
                                 <GameModelTab
                                     key={projectKey ?? "no-project"}
                                     editable={header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
                                     projectRoot={projectKey}
                                     onDirtyChange={setGameModelDirty}
-                                    onBlueprintSaved={handleGameModelSaved}
                                 />
                             )}
                             {activeTab === "play" && (
@@ -831,45 +802,16 @@ export function ProjectDashboardPage() {
                                     currentGame={header.status === "loaded" ? {id: header.id, version: header.version} : undefined}
                                 />
                             )}
-                            {activeTab === "runtime" && (
-                                <RuntimeTab
-                                // Forces a full remount on a genuine project switch -- RuntimeTab stays
-                                // mounted across ProjectDashboardPage's own project-switch effect otherwise
-                                // (the page is deliberately designed not to remount itself, see its own doc
-                                // comment), which would leave activeStep/pendingAdvanceStepRef/manual spin
-                                // overrides from the previous project's session dangling. A key change is
-                                // React's own "reset every bit of local state" primitive -- simpler and more
-                                // complete than enumerating each piece of local state by hand.
-                                    key={projectKey ?? "no-project"}
-                                    state={runtime.state}
-                                    running={runtime.running}
-                                    session={runtime.session}
-                                    sessionId={runtime.sessionId}
-                                    lastSpin={runtime.lastSpin}
-                                    onRefresh={runtime.refresh}
-                                    onStart={runtime.start}
-                                    onStop={runtime.stop}
-                                    onRestart={runtime.restart}
-                                    onCreateSession={runtime.createSession}
-                                    onLoadSession={runtime.loadSession}
-                                    onSpin={runtime.spin}
-                                    onRepeatSpin={runtime.repeatSpin}
-                                    history={runtime.history}
-                                    recentSpins={recentSpinsView}
-                                    recentSpinsError={recentSpinsError}
-                                    onRefreshRecentSpins={refreshRecentSpins}
-                                />
-                            )}
                             {activeTab === "exportDeploy" && (
                                 <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
                             )}
                             {activeTab === "certification" && (
-                            // Same reasoning as RuntimeTab's own key above -- CertificationTab owns
+                            // Same reasoning as GameModelTab's own key above -- CertificationTab owns
                             // all of its own stepper state locally (no page-level hook).
                                 <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                             )}
                             {activeTab === "provablyFair" && (
-                            // Same reasoning as RuntimeTab's own key above -- ProvablyFairTab owns
+                            // Same reasoning as GameModelTab's own key above -- ProvablyFairTab owns
                             // all of its own stepper state locally (no page-level hook).
                                 <ProvablyFairTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                             )}

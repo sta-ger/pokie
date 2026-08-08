@@ -82,7 +82,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             createMaterializingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
         ),
         new StakeEngineCommand(version),
-        new StudioCommand(version, pokiePackageRoot, {studioRoot, clientRoot}),
+        new StudioCommand(version, pokiePackageRoot, {studioRoot}),
         new ValidateCommand(
             undefined,
             undefined,

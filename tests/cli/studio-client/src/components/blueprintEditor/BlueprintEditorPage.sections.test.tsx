@@ -86,9 +86,6 @@ function okValidateFetch(): FetchLike {
         if (["/api/project/reports", "/api/project/replays", "/api/project/deployment/targets"].includes(path) && method === "GET") {
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
         }
-        if (path === "/api/project/runtime") {
-            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "stopped"})});
-        }
         return Promise.reject(new Error(`no fake route for ${method} ${url}`));
     };
 }

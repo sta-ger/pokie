@@ -38,10 +38,9 @@ export type PokieDevServerOptions = {
     // of whether any request ever asks for it — a durable SessionRepository (FileSessionRepository, or a
     // caller-provided one) would otherwise always accumulate debug-only content on disk with no way to
     // opt out. Set this to false for a production deployment that wants `?debug=1` fully unavailable
-    // (never captured, so never anything to return) rather than merely untransmitted by default. Studio's
-    // own local runtime (see StudioRuntimeManager) leaves this tied to its own debug toggle, which
-    // defaults to true — a dev tool should default to full inspection, not the conservative production
-    // posture this option otherwise preserves.
+    // (never captured, so never anything to return) rather than merely untransmitted by default. Defaults
+    // to true (see PokieDevServer's own field default) — a dev tool should default to full inspection,
+    // not the conservative production posture this option otherwise preserves.
     captureDebugSessionData?: boolean;
     // Additive, opt-in-only, defaults to "partial" (preserving every prior release's own persisted-state
     // shape exactly): the versioned SessionCapturePolicy (see SessionCapturePolicy.ts) every played
@@ -50,9 +49,9 @@ export type PokieDevServerOptions = {
     // buildRoundArtifactFromSession) as `roundArtifact` on the persisted PokieSessionState — screen,
     // wins/positions, steps/feature events, provenance, and a debug summary (command, credits,
     // before/after state, plus the serializer's own debug payload when captureDebugSessionData is also
-    // true). Studio's own local runtime (see StudioRuntimeManager) always requests "full", independent of
-    // its own debug toggle — a dev tool should default to a fully inspectable recorded round, not the
-    // conservative "partial" posture this option otherwise preserves for production. A session whose
+    // true). `pokie dev`'s own local server always requests "full" (see DevCommand's own construction) —
+    // a dev tool should default to a fully inspectable recorded round, not the conservative "partial"
+    // posture this option otherwise preserves for production. A session whose
     // played type doesn't have the shape buildRoundArtifactFromSession requires still captures
     // everything else normally; it just gets `roundArtifactUnavailableReason` instead of a fabricated
     // `roundArtifact` — see PokieSessionState's own doc comment.

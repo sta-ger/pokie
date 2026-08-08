@@ -10,7 +10,7 @@ const preStyle: CSSProperties = {
     fontFamily: "var(--mantine-font-family-monospace)",
 };
 
-// Shared by the Runtime tab's public/debug JSON dumps and the Deployment tab's artifact content preview
+// Shared by the Play tab's own public/debug JSON dumps and the Deployment tab's artifact content preview
 // -- wraps long lines instead of forcing horizontal page scroll, and caps its own height (scrolling
 // vertically past that) so a huge JSON blob or artifact never pushes the rest of the page down.
 export function CodeBlock({children}: {children: string}) {

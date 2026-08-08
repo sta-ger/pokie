@@ -20,7 +20,7 @@ import {
 } from "../../../../client/player/videoSlotRoundView";
 
 // The one place Studio's round-inspection surfaces (Play, Replay -- recorded/recreated/simulation-
-// sampled rounds -- Runtime Session Tools, an Outcome Source draw) actually mount cli/client/player's
+// sampled rounds, Session Spin -- an Outcome Source draw) actually mount cli/client/player's
 // own DOM functions, via refs -- not a second, independently-maintained React/Mantine re-presentation of
 // the same screen/wins/paytable/bets/modes/features data (see this repo's own cli/client/main.ts and
 // pokie-examples' src/ui/ui.ts for the two other consumers of that exact same module -- see
