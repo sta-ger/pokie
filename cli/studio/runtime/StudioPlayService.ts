@@ -115,6 +115,15 @@ export type StudioPlaySpinResult =
 // doesn't recognize at all -- including one that doesn't exist on disk, same as before this resolution
 // step existed -- falls straight through to the ordinary materialize-and-load flow below, unaffected.
 export class StudioPlayService {
+    // Real spins are settled through the wallet on every attempt (see spin()'s own doc comment) -- a
+    // session with too little balance to keep playing surfaces as spin()'s own honest "blocked" outcome
+    // (session.canPlayNextGame() gating spinHandler.handle() exactly as it does for a manual Spin), ending
+    // the search with that same result rather than looping past it. Bounded by maxFindScenarioSpins so a
+    // symbol/condition rare or impossible to hit for this game can never hang the request indefinitely --
+    // exhausting the bound is reported as an honest "error" (the session itself is left sitting on
+    // whichever real round it last actually played, exactly as if that had been a plain Spin).
+    private static readonly DEFAULT_MAX_FIND_SCENARIO_SPINS = 2000;
+
     private readonly loadGame: typeof loadPokieGame;
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly pokieVersion: string;
@@ -268,7 +277,7 @@ export class StudioPlayService {
     // every round along the way -- including the final matching one -- is a genuine settled spin, not a
     // simulated/discarded trial: a search that runs out of attempts still leaves the session sitting on
     // whatever real round it last actually played.
-    public async findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
+    public findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
         return this.spinUntilMatch(
             sessionId,
             (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
@@ -286,7 +295,7 @@ export class StudioPlayService {
     // no live GameSessionHandling to hand that strategy (see findAnyWin()'s own doc comment), so the
     // equivalent check reads whether the round's own already-computed artifact carries a win for that
     // exact symbolId, straight off RoundArtifactWin.symbolId -- never a second win-evaluation pass.
-    public async findSymbolWin(sessionId: string, symbolId: string): Promise<StudioPlaySpinResult> {
+    public findSymbolWin(sessionId: string, symbolId: string): Promise<StudioPlaySpinResult> {
         // PlayUntilSymbolWinStrategy reads isSymbolScatter()/getWinningLines()/getWinningScatters()
         // unconditionally (see its own doc comment) -- calling it against a "runtime" session whose game
         // doesn't actually implement VideoSlotSessionHandling would throw rather than report an honest
@@ -294,13 +303,23 @@ export class StudioPlayService {
         // getAvailableSymbols(). Checked up front, before ever spinning: a game this can't work for at all
         // should never burn a real spin finding that out.
         if (this.active !== undefined && this.active.kind === "runtime" && !this.supportsSymbolWinSearch(this.active.session)) {
-            return {status: "error", error: "This game doesn't report per-symbol win details, so Find symbol win isn't available for it."};
+            return Promise.resolve({status: "error", error: "This game doesn't report per-symbol win details, so Find symbol win isn't available for it."});
         }
         return this.spinUntilMatch(
             sessionId,
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
             (artifact) => artifact.wins.some((win) => win.symbolId === symbolId),
         );
+    }
+
+    // Called on a project switch or Studio shutdown -- a genuinely different (or no longer active)
+    // project must never leave a previous project's session reachable, same reasoning as
+    // StudioRuntimeManager.stopForProjectSwitch()/stopForShutdown(). Nothing here holds an OS resource
+    // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
+    // just discarding in-memory references, never an async teardown.
+    public reset(): void {
+        this.active = undefined;
+        this.currentSessionId = undefined;
     }
 
     private supportsSymbolWinSearch(session: GameSessionHandling): boolean {
@@ -312,15 +331,6 @@ export class StudioPlayService {
             typeof candidate.getSymbolsCombination === "function"
         );
     }
-
-    // Real spins are settled through the wallet on every attempt (see spin()'s own doc comment) -- a
-    // session with too little balance to keep playing surfaces as spin()'s own honest "blocked" outcome
-    // (session.canPlayNextGame() gating spinHandler.handle() exactly as it does for a manual Spin), ending
-    // the search with that same result rather than looping past it. Bounded by maxFindScenarioSpins so a
-    // symbol/condition rare or impossible to hit for this game can never hang the request indefinitely --
-    // exhausting the bound is reported as an honest "error" (the session itself is left sitting on
-    // whichever real round it last actually played, exactly as if that had been a plain Spin).
-    private static readonly DEFAULT_MAX_FIND_SCENARIO_SPINS = 2000;
 
     private async spinUntilMatch(
         sessionId: string,
@@ -351,16 +361,6 @@ export class StudioPlayService {
             status: "error",
             error: `No matching round was found within ${this.maxFindScenarioSpins} spins.`,
         };
-    }
-
-    // Called on a project switch or Studio shutdown -- a genuinely different (or no longer active)
-    // project must never leave a previous project's session reachable, same reasoning as
-    // StudioRuntimeManager.stopForProjectSwitch()/stopForShutdown(). Nothing here holds an OS resource
-    // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
-    // just discarding in-memory references, never an async teardown.
-    public reset(): void {
-        this.active = undefined;
-        this.currentSessionId = undefined;
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to the materialize-and-load path above -- reached

@@ -4499,7 +4499,7 @@ describe("StudioServer", () => {
         function createScenarioServer(
             initialContext: {mode: "home"} | {mode: "project"; projectRoot: string},
             loadGame: () => Promise<PokieGame> = () => Promise.resolve(createWinsOnThirdRoundGame()),
-            maxFindScenarioSpins?: number,
+            maxFindScenarioSpins: number | undefined = undefined,
         ): StudioServer {
             return new StudioServer({
                 pokieVersion: "1.0.0",
