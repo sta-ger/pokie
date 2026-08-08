@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
@@ -44,7 +44,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await dirtyTheDesignDraft(user);
 
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         // The blocked transition hasn't been resolved yet -- still on Home, draft untouched.
@@ -59,7 +59,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await dirtyTheDesignDraft(user);
 
-        router.navigate("/project/overview");
+        await act(() => router.navigate("/project/overview"));
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page");
@@ -73,7 +73,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await dirtyTheDesignDraft(user);
 
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         await screen.findByText(CONFIRM_TEXT);
 
         await user.click(screen.getByRole("button", {name: "Stay"}));
@@ -94,7 +94,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         await dirtyTheDesignDraft(user);
 
-        router.navigate(-1);
+        await act(() => router.navigate(-1));
         await screen.findByText(CONFIRM_TEXT);
 
         await user.click(screen.getByRole("button", {name: "Leave"}));
@@ -106,7 +106,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // navigate() on top of it -- so exactly one history entry was consumed: we're now at the start of
         // the 2-entry history stack, and a single step *forward* lands straight back on Home instead of
         // a leftover duplicate entry sitting in between.
-        router.navigate(1);
+        await act(() => router.navigate(1));
         await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
     }, 60000);
 
