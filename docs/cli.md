@@ -2858,7 +2858,8 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
 
 - **Design Game** is the guided happy path: a **New Blueprint** dialog (Blank / Random / from an existing
   blueprint file) starts a draft, then the same Blueprint Editor used to configure, validate, and build it —
-  editing the exact same DTO `pokie build <project.json>` accepts (no separate Studio-only blueprint schema).
+  editing the exact same DTO [`pokie build <project> --target tsPackage`](#pokie-build-project) accepts (no
+  separate Studio-only blueprint schema).
   A **Form**/**JSON** toggle switches between the field-by-field editor (with add/remove/duplicate/reorder
   controls for every collection: symbols, bets, paylines, paytable rows, reel-strip symbols, symbol-weight rows,
   plus wild/scatter checkboxes and a reel-strips-vs-symbol-weights mode toggle) and a raw JSON textarea kept in
@@ -2867,11 +2868,12 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
   rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
   unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without touching disk.
   Load/Save-by-path and the raw JSON view are tucked behind a "Show advanced options" disclosure — the guided
-  flow itself never requires them. **Build** calls the same `buildGameBuildInfo()`/`GamePackageGenerating`
-  services `pokie build` itself uses, including the same safe-rebuild/conflict check (building into a directory
-  that already contains files a prior build didn't generate is refused with the same descriptive error `pokie
-  build` itself gives; re-building against a directory a build already succeeded against earlier in the session
-  asks for confirmation first), followed by an **Open in Studio** button on success — the bridge into the
+  flow itself never requires them. **Build** runs the exact same `tsPackage` conversion
+  [`pokie build <project> --target tsPackage`](#pokie-build-project) runs through `ArtifactBuilderRegistry` —
+  not a separate Studio-only pipeline — including the same safe-rebuild/conflict check (building into a
+  directory that already contains files a prior build didn't generate is refused with the same descriptive
+  error `pokie build` itself gives; re-building against a directory a build already succeeded against earlier
+  in the session asks for confirmation first), followed by an **Open in Studio** button on success — the bridge into the
   Project Dashboard. A **Reel Strip Modeler** mode (alongside Default/Reel strips/Symbol weights) edits a
   `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
   array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
@@ -3235,7 +3237,8 @@ client, even for a load/validation failure.
   "manifest", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
   `GET /api/project/validate`.
 - `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
-  via the same `GamePackageGenerating` service `pokie build` uses, including its missing-or-empty-directory check
+  via the exact same `tsPackage` `ArtifactBuilderRegistry` conversion `pokie build <project> --target tsPackage`
+  runs, including its missing-or-empty-directory check
   (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
   `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
   "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
