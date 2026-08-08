@@ -2927,8 +2927,8 @@ support it; see [`studio-frontend.md`](studio-frontend.md#ux--information-archit
 tab list). There is no standalone "Validate" tab any more — validation is automatic diagnostics folded into
 Overview itself, run on load and re-run on demand — and no standalone Deployment/Outcome Libraries/Stake Engine
 Export tabs either: those have been removed outright (not redirected), with every builder they used to own now
-one of **Build/Export**'s own cards. Overview also shows a status summary recommending the next action (fix
-validation issues → simulate → view report):
+one of **Build/Export**'s own cards. Overview is informational diagnostics only — it surfaces validation status
+alongside the rest of the project's state, with no wizard-like next-step recommendation or call to action:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, its `package.json` identity (name,
   version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints), and the same validation report

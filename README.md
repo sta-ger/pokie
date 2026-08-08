@@ -70,7 +70,8 @@ POKIE goes well beyond classic paylines:
   <packageRoot>` (experimental) serves a universal browser preview UI talking to a running `pokie serve`; `npx
   pokie dev <packageRoot>` (experimental) runs both together, opening a browser — all optionally as a JSON
   file/machine-readable output; `npx pokie` (or `npx pokie studio`) (experimental) launches **POKIE Studio**, a
-  local web app GUI for create/build/inspect/validate/sim/report/replay/serve, opening a browser.
+  local web app GUI for create/build/inspect/validate/sim/report/replay, opening a browser — its own Play tab
+  drives a real game session entirely in-process, never a server; use `pokie serve`/`pokie dev` directly for that.
 
 See [pokie-examples](https://github.com/sta-ger/pokie-examples) for a working demo of each of these (ways/
 megaways-style, cluster pays, sticky respin, growing grid, value-pay + multiplier wilds, mixed evaluators, and a
