@@ -1,19 +1,32 @@
 import {
     captureInitialPokieSessionState,
+    describeUnsupportedProjectOperation,
     GameSessionHandling,
     InMemoryIdempotencyRepository,
     InMemorySessionRepository,
     InMemoryWallet,
     isTransactionalWalletPort,
     loadPokieGame,
+    OUTCOME_SOURCE_SAMPLE_OPERATION,
+    OutcomeLibraryBundleOutcomeSource,
+    OutcomeLibraryBundleReader,
+    OutcomeLibraryBundleReading,
     PokieGame,
     PokieGameContext,
     PokieJsonRoundArtifactProjector,
+    PokieProject,
     PokieSessionState,
+    PreGeneratedOutcomeSourcing,
+    ProjectResolving,
+    ProjectTargetResolver,
     resolveGameSessionSerializer,
+    RoundArtifact,
+    SecureWeightedOutcomeRandomSource,
+    SeededWeightedOutcomeRandomSource,
     SpinCommandHandler,
     SpinCommandHandling,
     TransactionalWalletAdapter,
+    WeightedOutcomeRandomSource,
     type RoundArtifactJson,
 } from "pokie";
 import crypto from "crypto";
@@ -21,6 +34,29 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
+
+// The two shapes an active Play session can take, discriminated by "kind" -- a "runtime" session (a real
+// loaded PokieGame, spun through SpinCommandHandler) or an "outcomeSource" session (a resolved
+// "outcomeLibrary" project, drawn through its own real OutcomeLibraryBundleOutcomeSource; see
+// newOutcomeSourceSession's own doc comment for why "stakeAdapter" never reaches this shape at all).
+// `credits` is deliberately mutable only on the outcomeSource variant -- it's Studio's own running ledger
+// over real stake/win numbers (see buildOutcomeSourceSessionView), not a value the bundle itself reports,
+// so it has nowhere else to live between draws.
+type ActiveRuntimeSession = {
+    readonly kind: "runtime";
+    readonly manifest: {id: string; name: string; version: string};
+    readonly spinHandler: SpinCommandHandling;
+};
+
+type ActiveOutcomeSourceSession = {
+    readonly kind: "outcomeSource";
+    readonly manifest: {id: string; name: string; version: string};
+    readonly outcomeSource: PreGeneratedOutcomeSourcing;
+    readonly randomSource: WeightedOutcomeRandomSource;
+    credits: number;
+};
+
+type ActiveSession = ActiveRuntimeSession | ActiveOutcomeSourceSession;
 
 export type StudioPlaySpinResult =
     | {status: "ok"; session: StudioRuntimeSessionView}
@@ -54,23 +90,42 @@ export type StudioPlaySpinResult =
 // never shared across sessions, never shared with any other SpinCommandHandler instance in this or any
 // other process -- so singleInstanceDeployment: true is genuinely safe here (see SpinCommandHandler's own
 // "Multi-instance safety" doc comment), unlike a deployment that shares a durable store across processes.
+//
+// Not every project newSession() is given is a loadable package, though — a resolved "outcomeLibrary"
+// project has no `pokie.entry`/loadPokieGame contract at all (see ProjectCapabilities.ts), so before ever
+// materializing/loading anything, newSession() resolves `projectRoot` the same way ServeCommand's own
+// outcome-source routing does (see that class's own doc comment) and, for a resolved "outcomeLibrary"
+// project, plays it through its own real OutcomeLibraryBundleOutcomeSource adapter instead -- the exact
+// same selector class PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in production
+// -- never loadPokieGame, never a regenerated game-model draw (see newOutcomeSourceSession's own doc
+// comment). A resolved "stakeAdapter" project (or any other type the resolver hands back that isn't a
+// loadable package) has no draw contract of its own and reports the same structured
+// "outcomeSource.sample" capability diagnostic describeUnsupportedProjectOperation gives every other POKIE
+// surface, as an honest `{status: "failed"}` result, never a package-loading attempt. A path the resolver
+// doesn't recognize at all -- including one that doesn't exist on disk, same as before this resolution
+// step existed -- falls straight through to the ordinary materialize-and-load flow below, unaffected.
 export class StudioPlayService {
     private readonly loadGame: typeof loadPokieGame;
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly pokieVersion: string;
+    private readonly resolveProject: ProjectResolving;
+    private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
 
-    private manifest: {id: string; name: string; version: string} | undefined;
-    private spinHandler: SpinCommandHandling | undefined;
+    private active: ActiveSession | undefined;
     private currentSessionId: string | undefined;
 
     constructor(
         loadGame: typeof loadPokieGame = loadPokieGame,
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         pokieVersion = "unknown",
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
     ) {
         this.loadGame = loadGame;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.pokieVersion = pokieVersion;
+        this.resolveProject = resolveProject;
+        this.outcomeLibraryReader = outcomeLibraryReader;
     }
 
     // Materializes/loads `projectRoot` fresh on every call -- never caches a previously loaded game across
@@ -80,6 +135,17 @@ export class StudioPlayService {
     // on why a "tsPackage" project's own release() is already a no-op) -- released immediately afterward,
     // never held for this session's own lifetime.
     public async newSession(projectRoot: string, seed?: string | number): Promise<StudioPlaySessionResult> {
+        let project: PokieProject | undefined;
+        try {
+            project = await this.resolveProject.resolve(projectRoot);
+        } catch (error) {
+            return this.fail(error);
+        }
+
+        if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
+            return this.newOutcomeSourceSession(project, seed);
+        }
+
         let game: PokieGame;
         try {
             const resolution = await this.resolveRuntimePackageRoot(projectRoot);
@@ -126,8 +192,7 @@ export class StudioPlayService {
             return this.fail(error);
         }
 
-        this.manifest = manifest;
-        this.spinHandler = spinHandler;
+        this.active = {kind: "runtime", manifest, spinHandler};
         this.currentSessionId = sessionId;
 
         const credits = await wallet.getBalance(sessionId);
@@ -139,11 +204,15 @@ export class StudioPlayService {
     // since been replaced by a newer newSession() call (or never existed) is honestly "not-found," never
     // silently resurrected.
     public async spin(sessionId: string): Promise<StudioPlaySpinResult> {
-        if (this.spinHandler === undefined || this.manifest === undefined || sessionId !== this.currentSessionId) {
+        if (this.active === undefined || sessionId !== this.currentSessionId) {
             return {status: "not-found"};
         }
 
-        const result = await this.spinHandler.handle(sessionId);
+        if (this.active.kind === "outcomeSource") {
+            return this.spinOutcomeSource(sessionId, this.active);
+        }
+
+        const result = await this.active.spinHandler.handle(sessionId);
         if (result.status === "not-found") {
             return {status: "not-found"};
         }
@@ -160,7 +229,7 @@ export class StudioPlayService {
 
         return {
             status: "ok",
-            session: this.buildSessionView(sessionId, this.manifest, result.state, result.credits, result.win, result.state.roundPayload),
+            session: this.buildSessionView(sessionId, this.active.manifest, result.state, result.credits, result.win, result.state.roundPayload),
         };
     }
 
@@ -170,9 +239,77 @@ export class StudioPlayService {
     // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
     // just discarding in-memory references, never an async teardown.
     public reset(): void {
-        this.manifest = undefined;
-        this.spinHandler = undefined;
+        this.active = undefined;
         this.currentSessionId = undefined;
+    }
+
+    // The "outcomeLibrary"/"stakeAdapter" counterpart to the materialize-and-load path above -- reached
+    // only once newSession() has already resolved `project` to one of those two types (see this class's
+    // own doc comment). A resolved "stakeAdapter" project has no PreGeneratedOutcomeSourcing-style draw
+    // contract at all (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) -- describeUnsupportedProjectOperation
+    // catches that here, honestly, before ever reading a single file, the same structured diagnostic every
+    // other POKIE surface (ServeCommand, the Outcome Library sample route) already gives for it. A resolved
+    // "outcomeLibrary" project plays its manifest's own first mode (Play has no mode picker of its own,
+    // unlike the dedicated Outcome Library sample route) through a real OutcomeLibraryBundleOutcomeSource --
+    // the exact same selector class PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in
+    // production -- never loadPokieGame, never a regenerated game-model draw.
+    private async newOutcomeSourceSession(project: PokieProject, seed?: string | number): Promise<StudioPlaySessionResult> {
+        const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SAMPLE_OPERATION);
+        if (diagnostic !== undefined) {
+            return {status: "failed", error: diagnostic.message};
+        }
+
+        let bundleGame: {id: string; name: string; version: string};
+        let modeName: string;
+        try {
+            const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
+            if (manifest.modes.length === 0) {
+                return {status: "failed", error: `"${project.rootPath}" has no outcome-library modes to play.`};
+            }
+            bundleGame = manifest.game;
+            modeName = manifest.modes[0].modeName;
+        } catch (error) {
+            return this.fail(error);
+        }
+
+        const sessionId = crypto.randomUUID();
+        // A given seed drives one SeededWeightedOutcomeRandomSource shared by every draw made against this
+        // exact session -- the same "a given seed always plays out the same way" contract PlayTab's own doc
+        // comment promises for a live game's own createSession({seed}) context, just built out of a source
+        // that has no session-scoped RNG of its own to seed instead.
+        const randomSource: WeightedOutcomeRandomSource =
+            seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(String(seed));
+
+        this.active = {
+            kind: "outcomeSource",
+            manifest: bundleGame,
+            outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName),
+            randomSource,
+            credits: 0,
+        };
+        this.currentSessionId = sessionId;
+
+        return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, this.active, undefined)};
+    }
+
+    // Draws exactly one real outcome per call from the bundle's own mode this session was created against
+    // (see newOutcomeSourceSession) -- a bundle rewritten mid-draw surfaces as PreGeneratedOutcomeSourceConflictError
+    // (see OutcomeLibraryBundleOutcomeSource's own doc comment), reported the same honest "error" way any
+    // other draw failure is, never silently retried. `active.credits` is mutated in place: Studio's own
+    // running ledger over this draw's real stake/totalWin, the only place this bundle-backed session's
+    // "credits" figure lives at all (see the class doc comment).
+    private async spinOutcomeSource(sessionId: string, active: ActiveOutcomeSourceSession): Promise<StudioPlaySpinResult> {
+        let artifact: RoundArtifact;
+        try {
+            const selection = await active.outcomeSource.drawOutcome(active.randomSource);
+            artifact = selection.outcome.artifact;
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+
+        active.credits = active.credits - artifact.stake + artifact.totalWin;
+
+        return {status: "ok", session: this.buildOutcomeSourceSessionView(sessionId, active, artifact)};
     }
 
     private fail(error: unknown): StudioPlaySessionResult {
@@ -232,5 +369,33 @@ export class StudioPlayService {
             return {artifactUnavailableReason: state.roundArtifactUnavailableReason};
         }
         return {};
+    }
+
+    // Builds the outcome-source counterpart to buildSessionView() above -- `artifact` is undefined exactly
+    // once, for the view newOutcomeSourceSession() returns before any draw has happened yet (mirrors
+    // buildSessionView()'s own initial call, whose `win`/`screen` are equally absent before a first spin).
+    // Unlike buildSessionView(), there is never an `artifactUnavailableReason` case here: a drawn
+    // WeightedOutcome always carries a real RoundArtifact (see that type's own doc comment) -- so this
+    // never fabricates an artifact, and never has to explain a missing one either. `bet`/`win`/`screen` are
+    // read straight off that same real, already-hashed artifact -- never a second calculation path.
+    private buildOutcomeSourceSessionView(
+        sessionId: string,
+        active: ActiveOutcomeSourceSession,
+        artifact: RoundArtifact | undefined,
+    ): StudioRuntimeSessionView {
+        const view = {
+            sessionId,
+            game: active.manifest,
+            credits: active.credits,
+            ...(artifact !== undefined
+                ? {bet: artifact.stake, win: artifact.totalWin, screen: artifact.screen.map((row) => [...row])}
+                : {}),
+        } as StudioRuntimeSessionView;
+
+        if (artifact !== undefined) {
+            view.debug = {artifact: new PokieJsonRoundArtifactProjector().project(artifact)};
+        }
+
+        return view;
     }
 }

@@ -4457,6 +4457,102 @@ describe("StudioServer", () => {
         });
     });
 
+    // Proves P5-POLISH-10's own Outcome Source fix: a resolved "outcomeLibrary"/"stakeAdapter" project
+    // opened straight into Play (initialContext -- no runtime.execute capability, no `pokie.entry` package
+    // at all) is resolved through the same ProjectTargetResolver-backed routing ServeCommand/the Outcome
+    // Library sample route already use, never assumed to be a loadable package (asserted directly:
+    // `loadGame` is spied on throughout and must never be called).
+    describe("Project Dashboard: Play with a resolved Outcome Source project", () => {
+        let outcomeStudioRoot: string;
+        let outcomeServer: StudioServer | undefined;
+
+        beforeEach(() => {
+            outcomeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-play-outcome-source-test-"));
+            writeStudioAssets(outcomeStudioRoot);
+        });
+
+        afterEach(async () => {
+            await outcomeServer?.stop();
+            fs.rmSync(outcomeStudioRoot, {recursive: true, force: true});
+        });
+
+        async function buildLibraryBundle(): Promise<string> {
+            const bundleDir = path.join(outcomeStudioRoot, "library");
+            await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+            return bundleDir;
+        }
+
+        async function buildStakeExportDir(): Promise<string> {
+            const stakeDir = path.join(outcomeStudioRoot, "stake-export");
+            const modes: StakeEngineExportModeInput[] = [
+                {modeName: "base", cost: 1, library: buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1})},
+            ];
+            await new StakeEngineExporter("1.3.0").exportToDirectory(modes, stakeDir);
+            return stakeDir;
+        }
+
+        function createOutcomeSourceServer(projectRoot: string, loadGame: jest.Mock): StudioServer {
+            return new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: outcomeStudioRoot,
+                homeService: new StudioHomeService("1.3.0", undefined, loadGame),
+                blueprintService: new StudioBlueprintService("1.3.0", outcomeStudioRoot, new StudioHomeService("1.3.0")),
+                loadGame,
+                initialContext: {mode: "project", projectRoot},
+            });
+        }
+
+        it("plays a resolved native outcome-library project through its own real adapter, returning a real drawn round", async () => {
+            const bundleDir = await buildLibraryBundle();
+            const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
+            outcomeServer = createOutcomeSourceServer(bundleDir, loadGame);
+            const address = await outcomeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(created.status).toBe(201);
+            const createdBody = created.body as {status: string; session: {sessionId: string; game: {id: string}; win?: number}};
+            expect(createdBody.status).toBe("ok");
+            expect(createdBody.session.game.id).toBe("sample-slot");
+            expect(createdBody.session.win).toBeUndefined();
+            const sessionId = createdBody.session.sessionId;
+
+            const spun = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
+            expect(spun.status).toBe(200);
+            const spunBody = spun.body as {
+                status: string;
+                session: {win: number; bet: number; screen: unknown; debug?: {artifact?: unknown; artifactUnavailableReason?: string}};
+            };
+            expect(spunBody.status).toBe("ok");
+            expect(typeof spunBody.session.win).toBe("number");
+            expect(typeof spunBody.session.bet).toBe("number");
+            expect(spunBody.session.screen).toBeDefined();
+            expect(spunBody.session.debug?.artifact).toBeDefined();
+            expect(spunBody.session.debug?.artifactUnavailableReason).toBeUndefined();
+
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
+        it("reports the resolver-derived 'outcomeSource.sample' capability diagnostic for a resolved Stake Engine export, never loadPokieGame", async () => {
+            const stakeDir = await buildStakeExportDir();
+            const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
+            outcomeServer = createOutcomeSourceServer(stakeDir, loadGame);
+            const address = await outcomeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(created.status).toBe(200);
+            const createdBody = created.body as {status: string; error: string};
+            expect(createdBody.status).toBe("failed");
+            expect(createdBody.error).toContain("outcomeSource.sample");
+            expect(createdBody.error).toContain("stakeAdapter");
+
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+    });
+
     describe("Project Dashboard: Deployment (GET /api/project/deployment/targets, POST /api/project/deployment/runs)", () => {
         let deploymentStudioRoot: string;
         let deploymentProjectRoot: string;
