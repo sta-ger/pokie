@@ -23,8 +23,8 @@ function formatFieldValue(value: unknown): string {
 }
 
 // The shared "readable round" view for any surface that has a live StudioRuntimeSessionView to show --
-// currently Runtime's own Inspect panel, but common (not page-local) so any other surface that gains one
-// renders the same balance/bet/win/screen breakdown. Whenever this exact round's session captured a full
+// currently the Play tab, but common (not page-local) so any other surface that gains one renders the
+// same balance/bet/win/screen breakdown. Whenever this exact round's session captured a full
 // RoundArtifact (`debug.artifact` -- only present once debug mode is on and the session supports
 // building one, see StudioRuntimeSessionView's own doc comment), this delegates entirely to
 // RoundArtifactInspector -- the same screen/wins/positions/feature-event/state-snapshot presentation
@@ -127,7 +127,7 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                 </Text>
                 {debug === undefined ? (
                     <Text size="sm" c="dimmed">
-                        Debug mode is disabled for this runtime — restart it with debug mode on to see internal/debug data.
+                        No internal/debug data was captured for this round.
                     </Text>
                 ) : (
                     <CodeBlock>{JSON.stringify(debug, null, 2)}</CodeBlock>

@@ -2,7 +2,6 @@ import type {
     FairnessCommitment,
     GameModelProjection,
     GamePackageInspectionReport,
-    OutcomeLibrarySelector,
     OutcomeSourceSampleView,
     PokieGameManifest,
     PokieGamePackageValidationReport,
@@ -48,7 +47,6 @@ import type {
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioRuntimeSessionView,
-    StudioRuntimeStateView,
     StudioSimulationJobView,
     StudioSimulationReportDetail,
     StudioSimulationReportListEntry,
@@ -669,187 +667,16 @@ async function extractErrorMessage(
     }
 }
 
-export async function getRuntimeState(fetchImpl: FetchLike): Promise<StudioRuntimeStateView> {
-    const response = await fetchImpl("/api/project/runtime");
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to fetch runtime status"));
-    }
-    return (await response.json()) as StudioRuntimeStateView;
-}
-
 // Replay & Debug's "Session Spin" find method — Studio's own bounded (last 20) in-memory record of
-// recent spins (see StudioRuntimeManager.listRecentSpins()), most-recent-first. Always a 200 with
-// possibly an empty array (nothing spun yet, debug mode was off, or the runtime was since
-// stopped/restarted/the project switched) — never an error for "nothing to show".
+// recent spins (see StudioRoundRecorder.list()), most-recent-first. Always a 200 with possibly an empty
+// array (nothing spun yet, debug mode was off, or the project was since switched) — never an error for
+// "nothing to show".
 export async function listRecentSpins(fetchImpl: FetchLike): Promise<StudioRuntimeSessionView[]> {
-    const response = await fetchImpl("/api/project/runtime/spins");
+    const response = await fetchImpl("/api/project/rounds");
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to list recent spins"));
     }
     return (await response.json()) as StudioRuntimeSessionView[];
-}
-
-export type StartRuntimeOptions = {
-    host?: string;
-    port?: number;
-    debug?: boolean;
-    seed?: string | number;
-    repositoryMode?: "memory" | "file";
-    // The generated outcome library's own "Use in runtime" handoff -- the same OutcomeLibrarySelector
-    // shape Build/Export's generate step returns. Resolving it into an actual library is the server's
-    // job (StudioOutcomeLibraryService.resolveLibrary(), via StudioRuntimeManager); this is never
-    // resolved or interpreted client-side.
-    preGeneratedLibrarySelector?: OutcomeLibrarySelector;
-    // The hash already shown to the user for that library at generation time -- a snapshot-consistency
-    // check so a library that changed on disk since the handoff was offered is never silently started
-    // as-is.
-    preGeneratedLibraryExpectedHash?: string;
-};
-
-export type StartRuntimeResult = StudioRuntimeStateView | {status: "already-running"; state: StudioRuntimeStateView};
-
-// A 409 ("already running") is an expected domain outcome, not a failed request — handled the same
-// way startSimulation/runReplay/saveBlueprint handle their own 409s: parsed and returned as a typed
-// result, not thrown. Every other status (including the "failed" domain outcome, which rides on 200 —
-// see StudioRuntimeManager's own doc comment) is just returned as the parsed StudioRuntimeStateView.
-export async function startRuntime(fetchImpl: FetchLike, options: StartRuntimeOptions = {}): Promise<StartRuntimeResult> {
-    const response = await fetchImpl("/api/project/runtime/start", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(options),
-    });
-    if (response.status === 409) {
-        const body = (await response.json()) as {state: StudioRuntimeStateView};
-        return {status: "already-running", state: body.state};
-    }
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to start runtime"));
-    }
-    return (await response.json()) as StudioRuntimeStateView;
-}
-
-// Omitting `options` reuses the runtime's last successful start options (see
-// StudioRuntimeManager.restart()'s own doc comment) — never a conflict, unlike startRuntime, since
-// restarting while already running is exactly the point.
-export async function restartRuntime(fetchImpl: FetchLike, options?: StartRuntimeOptions): Promise<StudioRuntimeStateView> {
-    const response = await fetchImpl("/api/project/runtime/restart", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: options === undefined ? undefined : JSON.stringify(options),
-    });
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to restart runtime"));
-    }
-    return (await response.json()) as StudioRuntimeStateView;
-}
-
-// Idempotent on the server side — stopping an already-stopped runtime is never an error.
-export async function stopRuntime(fetchImpl: FetchLike): Promise<StudioRuntimeStateView> {
-    const response = await fetchImpl("/api/project/runtime/stop", {method: "POST"});
-    if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to stop runtime"));
-    }
-    return (await response.json()) as StudioRuntimeStateView;
-}
-
-export type RuntimeSessionResult =
-    | {status: "ok"; session: StudioRuntimeSessionView}
-    | {status: "error"; message: string}
-    | {status: "not-found"}
-    | {status: "not-running"};
-
-export type RuntimeSpinResult =
-    | {status: "ok"; session: StudioRuntimeSessionView}
-    | {status: "error"; message: string}
-    | {status: "not-found"}
-    | {status: "not-running"}
-    | {status: "blocked"; message: string}
-    | {status: "conflict"; message: string};
-
-// Every outcome a Session Tools call can produce is handled as a typed result, never thrown: unknown
-// session / insufficient balance / a stale expectedSessionVersion / the runtime not running are all
-// outcomes the Runtime tab needs to render as distinct states, not failures to alert on.
-async function readRuntimeSessionResult(response: {status: number; json(): Promise<unknown>}): Promise<RuntimeSessionResult> {
-    if (response.status === 404) {
-        return {status: "not-found"};
-    }
-    if (response.status === 409) {
-        // create/get never produce a version conflict (spin-only) — a 409 here only ever means the
-        // runtime isn't running.
-        return {status: "not-running"};
-    }
-    const body = (await response.json()) as {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; error: string};
-    if (body.status === "ok") {
-        return {status: "ok", session: body.session};
-    }
-    return {status: "error", message: body.error};
-}
-
-async function readRuntimeSpinResult(response: {status: number; json(): Promise<unknown>}): Promise<RuntimeSpinResult> {
-    if (response.status === 404) {
-        return {status: "not-found"};
-    }
-    if (response.status === 400) {
-        const body = (await response.json()) as {error: string};
-        return {status: "blocked", message: body.error};
-    }
-    if (response.status === 409) {
-        // "not-running" and "conflict" (a stale expectedSessionVersion) are both a 409 — `reason`
-        // disambiguates them (see StudioServer.sendRuntimeErrorResult's own doc comment) instead of
-        // pattern-matching `error`'s free-text message.
-        const body = (await response.json()) as {error: string; reason: "not-running" | "conflict"};
-        return body.reason === "conflict" ? {status: "conflict", message: body.error} : {status: "not-running"};
-    }
-    const body = (await response.json()) as {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; error: string};
-    if (body.status === "ok") {
-        return {status: "ok", session: body.session};
-    }
-    return {status: "error", message: body.error};
-}
-
-// "initialBalance" only matters when the runtime is running against a pre-generated outcome library --
-// a plain live session ignores it entirely (its own initial credits come from the game's own session
-// initialization) -- see StudioRuntimeManager.createSession()'s own doc comment.
-export async function createRuntimeSession(fetchImpl: FetchLike, seed?: string | number, initialBalance?: number): Promise<RuntimeSessionResult> {
-    const body: Record<string, unknown> = {};
-    if (seed !== undefined) {
-        body.seed = seed;
-    }
-    if (initialBalance !== undefined) {
-        body.initialBalance = initialBalance;
-    }
-    const response = await fetchImpl("/api/project/runtime/sessions", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body),
-    });
-    return readRuntimeSessionResult(response);
-}
-
-export async function getRuntimeSession(fetchImpl: FetchLike, sessionId: string): Promise<RuntimeSessionResult> {
-    const response = await fetchImpl(`/api/project/runtime/sessions/${encodeURIComponent(sessionId)}`);
-    return readRuntimeSessionResult(response);
-}
-
-export async function spinRuntimeSession(
-    fetchImpl: FetchLike,
-    sessionId: string,
-    requestId?: string,
-    expectedSessionVersion?: number,
-): Promise<RuntimeSpinResult> {
-    const body: Record<string, unknown> = {};
-    if (requestId !== undefined) {
-        body.requestId = requestId;
-    }
-    if (expectedSessionVersion !== undefined) {
-        body.expectedSessionVersion = expectedSessionVersion;
-    }
-    const response = await fetchImpl(`/api/project/runtime/sessions/${encodeURIComponent(sessionId)}/spins`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body),
-    });
-    return readRuntimeSpinResult(response);
 }
 
 export type PlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; message: string} | {status: "no-active-project"};
@@ -862,11 +689,9 @@ export type PlaySpinResult =
     | {status: "no-active-project"};
 
 // Play's own two calls -- POST /api/project/play/session, POST /api/project/play/sessions/:id/spin --
-// Studio's own API, never PokieDevServer's own HTTP contract the Runtime tab's session calls above talk
-// to (see StudioPlayService's own doc comment). Every outcome is a typed result, never thrown, same
-// "domain outcome, not a failed request" reasoning as readRuntimeSessionResult/readRuntimeSpinResult --
-// "no-active-project" is Play's own equivalent of those two's "not-running" (there is no server to be
-// running or not; the one precondition this route actually has is a project being open at all).
+// Studio's own API, never PokieDevServer's own HTTP contract (see StudioPlayService's own doc comment).
+// Every outcome is a typed result, never thrown -- "no-active-project" is the one precondition this
+// route actually has (a project being open at all).
 export async function createPlaySession(fetchImpl: FetchLike, seed?: string | number): Promise<PlaySessionResult> {
     const requestBody: Record<string, unknown> = {};
     if (seed !== undefined) {

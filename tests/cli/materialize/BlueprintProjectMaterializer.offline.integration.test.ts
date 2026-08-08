@@ -659,18 +659,15 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
             expect(dashboard.status).toBe("loaded");
             expect((dashboard.game as {id: string}).id).toBe("starter-slot");
 
-            const started = await postJson(`${server.baseUrl}/api/project/runtime/start`, {port: 0});
-            expect(started.status).toBe(201);
-
-            const created = await postJson(`${server.baseUrl}/api/project/runtime/sessions`, {});
+            // Play is Studio's only game mode -- a real session driven entirely in-process, with no
+            // separate server/host/port of its own (see StudioServer.ts's own doc comment on
+            // handlePlayNewSession/handlePlaySpin).
+            const created = await postJson(`${server.baseUrl}/api/project/play/session`, {});
             expect(created.status).toBe(201);
             const sessionId = (created.body.session as {sessionId: string}).sessionId;
 
-            const spun = await postJson(`${server.baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "offline-cli-e2e-spin"});
+            const spun = await postJson(`${server.baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
             expect(spun.status).toBe(200);
-
-            const stopped = await postJson(`${server.baseUrl}/api/project/runtime/stop`);
-            expect(stopped.status).toBe(200);
         } finally {
             await server.stop();
         }

@@ -230,12 +230,12 @@ export function useDeploymentManager() {
     }, [projectModesView, registryView]);
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
-    // never show a trace of the previous one's target selection, modes, or run result, same reasoning as
-    // useRuntimeManager's own resetForProjectSwitch(). Reuses invalidate() for the tracker-revision-bump/
-    // run-result-clearing part (a run still in flight from before the switch becomes stale and is safely
-    // ignored once it resolves, exactly like any other invalidation -- there is nothing to cancel over
-    // plain fetch), and additionally clears the target/modes/targets-list state invalidate() alone never
-    // touches, since those are select-target/configure inputs, not run outputs. Bumps
+    // never show a trace of the previous one's target selection, modes, or run result. Reuses
+    // invalidate() for the tracker-revision-bump/run-result-clearing part (a run still in flight from
+    // before the switch becomes stale and is safely ignored once it resolves, exactly like any other
+    // invalidation -- there is nothing to cancel over plain fetch), and additionally clears the
+    // target/modes/targets-list state invalidate() alone never touches, since those are
+    // select-target/configure inputs, not run outputs. Bumps
     // targetsRequestIdRef too, so a targets response still in flight from the *previous* project can
     // never land afterward and repopulate what this reset just cleared with another project's targets.
     // Updates selectedTargetRef synchronously (not just the `selectedTarget` state, which only takes

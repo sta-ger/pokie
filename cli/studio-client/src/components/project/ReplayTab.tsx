@@ -1,7 +1,6 @@
 import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useEffect, useState} from "react";
-import {useLocation} from "react-router-dom";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
@@ -192,18 +191,8 @@ export function ReplayTab({
 }) {
     const confirm = useConfirm();
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
-    // The landing side of the Runtime tab's "Debug this round in Replay & Debug" link
-    // (`navigate("/project/replay", {state: {findMethod: "spin", sessionId, requestId}})`) -- read once,
-    // at mount (this component remounts fresh on every tab switch, same as every other tab -- see
-    // ProjectDashboardPage's own doc comment), so it only ever affects the landing right after that
-    // navigation, never a later in-page interaction. `sessionId`/`requestId` (when both present) identify
-    // one *specific* round among possibly several recent spins -- see the auto-select effect below,
-    // which is what actually picks it out of `recentSpins` once that list is available.
-    const locationState = useLocation().state as {findMethod?: FindMethod; sessionId?: string; requestId?: string} | null;
-    const initialFindMethod = locationState?.findMethod ?? "seedRound";
-    const autoSelectSpin = locationState?.sessionId !== undefined && locationState?.requestId !== undefined ? {sessionId: locationState.sessionId, requestId: locationState.requestId} : undefined;
 
-    const [findMethod, setFindMethod] = useState<FindMethod>(initialFindMethod);
+    const [findMethod, setFindMethod] = useState<FindMethod>("seedRound");
     // Which source a load action last actually completed for -- the loaded card/action bar/result
     // section below is gated on this matching `findMethod`. `markLoaded` is the only way it changes
     // outside of `switchSource` resetting it.
@@ -221,14 +210,14 @@ export function ReplayTab({
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
     const [simRound, setSimRound] = useState(1);
-    // Recent spins can span several distinct Studio runtime sessions (a new session created after a
-    // restart, a restored session, etc.) all interleaved newest-first in one list -- this narrows that
+    // Recent spins can span several distinct Play sessions (a new session created by "New session"/
+    // "Reset", etc.) all interleaved newest-first in one list -- this narrows that
     // list down to one session at a time so picking a round from a specific session isn't a matter of
     // scanning past every other session's rounds first. "all" (the default) shows the unfiltered list,
     // same newest-first order recentSpins already arrives in.
     const [spinSessionFilter, setSpinSessionFilter] = useState<string>("all");
     // Resets the filter back to "all" the moment its selected session no longer appears in the list at
-    // all (e.g. its rounds aged out past StudioRuntimeManager.MAX_RECENT_SPINS) -- otherwise the picker
+    // all (e.g. its rounds aged out past StudioRoundRecorder.MAX_RECORDS) -- otherwise the picker
     // would be stuck silently showing an empty list with no way back to "all" other than knowing to
     // reopen this exact control and pick it by hand.
     useEffect(() => {
@@ -242,48 +231,6 @@ export function ReplayTab({
     // doc comment above.
     const active = jobLoaded && progress !== undefined && (progress.status === "queued" || progress.status === "running");
     const terminal = jobLoaded && progress !== undefined && !active;
-
-    // The Runtime tab's "Debug this round" handoff names one exact (sessionId, requestId) pair -- matched
-    // against each entry's own `studioRequestId` (Studio's own bookkeeping, recorded regardless of debug
-    // mode -- see StudioRuntimeSessionView's own doc comment -- unlike `debug.requestId`, which only
-    // exists alongside the rest of the debug bundle). Re-checked on every `recentSpins` change rather than
-    // only once, so landing here just before the page's own refresh (triggered by the spin that produced
-    // this round) lands is still recovered once that refresh's data arrives -- and it stops checking for
-    // good once a match is found, so it never overrides a selection the user made by hand afterward.
-    //
-    // recentSpins can genuinely not contain the exact round this handoff named -- e.g. it's bounded
-    // (StudioRuntimeManager.MAX_RECENT_SPINS) and a burst of later spins pushed it out. `spinNotFound`
-    // tracks that outcome so the Find controls can show an honest "no longer available" message instead
-    // of silently sitting on an empty/generic picker forever with no explanation -- but only once a fetch
-    // has actually *settled* into a real answer. While the list is still loading, or the fetch itself
-    // failed, there's no answer yet either way, so this must stay false: a "not found" verdict is only
-    // warranted after a successfully loaded list has been checked and genuinely doesn't contain the
-    // target.
-    const [spinNotFound, setSpinNotFound] = useState(false);
-    useEffect(() => {
-        if (!autoSelectSpin || selectedSpin !== undefined) {
-            return;
-        }
-        if (recentSpins.status === "loading" || recentSpinsError !== undefined) {
-            setSpinNotFound(false);
-            return;
-        }
-        if (recentSpins.status !== "loaded") {
-            setSpinNotFound(true);
-            return;
-        }
-        const match = recentSpins.entries.find(
-            (entry) => entry.sessionId === autoSelectSpin.sessionId && entry.studioRequestId === autoSelectSpin.requestId,
-        );
-        if (match) {
-            setSelectedSpin(match);
-            setLoadedForMethod("spin");
-            setSpinNotFound(false);
-        } else {
-            setSpinNotFound(true);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [recentSpins, recentSpinsError]);
 
     // Resets every per-source selection, plus the source-agnostic "expected artifact" the parent
     // owns, so a source switch can never leave a stale loaded card, in-flight reproduction, or result
@@ -491,13 +438,6 @@ export function ReplayTab({
 
             {findMethod === "spin" && (
                 <div>
-                    {spinNotFound && autoSelectSpin && selectedSpin === undefined && (
-                        <Alert color="yellow" variant="light" title="Round no longer available" mb="sm">
-                            The exact round handed off here (session {autoSelectSpin.sessionId}, request{" "}
-                            {autoSelectSpin.requestId}) isn&apos;t available in the recent spin history anymore. Pick
-                            a spin below instead, if it&apos;s still listed.
-                        </Alert>
-                    )}
                     <QuickActions>
                         <Button variant="default" size="xs" onClick={onRefreshRecentSpins}>
                             Refresh
@@ -506,7 +446,7 @@ export function ReplayTab({
                     {recentSpins.status === "loading" && recentSpinsError === undefined && <LoadingState label="Loading recent spins…" />}
                     {recentSpinsError && <ErrorState message={describeReplayActionError("The spin list", recentSpinsError)} />}
                     {recentSpins.status === "empty" && (
-                        <EmptyState message="No spins recorded yet in this Studio session — start the runtime and spin a session first." />
+                        <EmptyState message="No spins recorded yet in this Studio session — play a round in the Play tab first." />
                     )}
                     {recentSpins.status === "loaded" && (
                         <div>
@@ -541,7 +481,7 @@ export function ReplayTab({
                                             // StudioRuntimeSessionView's own doc comment) makes this key stable across
                                             // a refresh, unlike the array index it replaces: a duplicate (sessionId,
                                             // studioRequestId) pair (an idempotency-protected retry) is deduplicated
-                                            // into the *same* round by StudioRuntimeManager.recordRecentSpin() before
+                                            // into the *same* round by StudioRoundRecorder.record() before
                                             // it ever reaches this list, so (sessionId, studioRound) alone is already
                                             // unique here -- never conflated with a legitimate round from a different
                                             // session, since the pairing always includes sessionId. Falling back to
@@ -673,7 +613,7 @@ export function ReplayTab({
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source. */}
                             {selectedSpin.debug?.artifact ? (
                                 // A complete RoundArtifact was captured for this exact spin (see
-                                // StudioRuntimeManager.buildSessionView/buildPreGeneratedSessionView) -- the same
+                                // StudioPlayService.buildSessionView) -- the same
                                 // inspector Replay Artifact/Recreate from seed/Recent Simulation results already use,
                                 // so a recorded spin is inspected the identical way rather than through a bespoke
                                 // raw-JSON view. `credits` is passed through separately since it's a wallet/session
@@ -943,7 +883,7 @@ export function ReplayTab({
                                 asked for vs. the round the session actually reached, the seed used, when it ran, and
                                 whether it was ever checked against a known-good prior result. Shown once for
                                 every source here rather than duplicated per-branch below (RoundArtifactInspector
-                                itself is shared with Runtime/Deployment and has no notion of a "replay session"
+                                itself is shared with Play/Deployment and has no notion of a "replay session"
                                 to show this for). */}
                             {jobLoaded && !active && result && (
                                 <Table withRowBorders={false} mb="sm">

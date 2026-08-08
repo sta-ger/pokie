@@ -7,10 +7,9 @@ import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 
 export type PlaySessionView = PlaySessionResultView | PlaySpinResultView;
 
-// Owns the Play tab's own state -- a page-level hook (survives tab switches, same reasoning as
-// useRuntimeManager), but never shares any of it: Play's own backend (StudioPlayService, see its own
-// doc comment) is a genuinely separate, server-less path from the Runtime tab's PokieDevServer-backed
-// one, so there's no host/port/baseUrl/repositoryMode/debug-toggle state to own here, only a session.
+// Owns the Play tab's own state -- a page-level hook (survives tab switches), server-less: Play's own
+// backend (StudioPlayService, see its own doc comment) is a genuinely separate, in-process path, so
+// there's no host/port/baseUrl/repositoryMode/debug-toggle state to own here, only a session.
 // "New session" and "Reset" are the exact same action from this hook's own point of view -- both just
 // call newSession() again, discarding whatever was active (see StudioPlayService.newSession()'s own doc
 // comment) -- PlayTab is what gives the two calls their own distinct labels/affordances.
@@ -18,16 +17,15 @@ export type PlaySessionView = PlaySessionResultView | PlaySpinResultView;
 // rounds pass through the same shared StudioRoundRecorder every other Studio tab's rounds do (see
 // StudioPlayService's own doc comment), so a caller wired to it (ProjectDashboardPage, passing its own
 // refreshRecentSpins) sees a Play round in the Replay tab's "Session Spin" list without the user having to
-// remember to click that list's own Refresh button -- the same "refresh automatically after every real
-// spin" contract the Runtime tab's RuntimeTab already gives its own onRefreshRecentSpins.
+// remember to click that list's own Refresh button.
 export function usePlaySession(onRoundRecorded?: () => void) {
     const fetchImpl = useStudioApi();
     const [session, setSession] = useState<PlaySessionView>({status: "idle"});
     const [sessionId, setSessionId] = useState<string>();
 
-    // Same monotonic-requestId staleness guard useRuntimeManager's own session state uses, one level
-    // simpler: Play has only ever one in-flight-mutation slot (newSession/spin), never a separate
-    // state/session pair to guard against each other.
+    // Same monotonic-requestId staleness guard pattern used throughout Studio's own page-level hooks,
+    // one level simpler here: Play has only ever one in-flight-mutation slot (newSession/spin), never a
+    // separate state/session pair to guard against each other.
     const requestIdRef = useRef(0);
     const newSessionGuard = useDoubleSubmitGuard();
     const spinGuard = useDoubleSubmitGuard();
@@ -117,9 +115,9 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     );
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
-    // never show a trace of the previous one's session (same reasoning as useRuntimeManager's own
-    // resetForProjectSwitch()). Bumps the request id first, so a newSession()/spin() call still in
-    // flight from before the switch can never land afterward and repopulate what's being cleared here.
+    // never show a trace of the previous one's session. Bumps the request id first, so a newSession()/
+    // spin() call still in flight from before the switch can never land afterward and repopulate what's
+    // being cleared here.
     const resetForProjectSwitch = useCallback(() => {
         requestIdRef.current++;
         setSession({status: "idle"});

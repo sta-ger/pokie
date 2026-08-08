@@ -94,8 +94,7 @@ export function useSimulationPoll() {
     }
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
-    // never show a trace of the previous one's simulation, same reasoning/convention as
-    // useRuntimeManager's own resetForProjectSwitch(). Clears `currentJobId` first (so a poll response
+    // never show a trace of the previous one's simulation. Clears `currentJobId` first (so a poll response
     // already in flight from the old project, once it lands, fails the `currentJobId.current !== id`
     // check inside `poll()` and is discarded rather than repopulating what's being cleared here), then
     // cancels the pending recursive-poll timer outright (otherwise one more, now-pointless request for

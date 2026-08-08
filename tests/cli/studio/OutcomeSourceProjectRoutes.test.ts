@@ -127,13 +127,13 @@ describe("StudioServer outcome-source project routes", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
-        it("records a sample draw into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+        it("records a sample draw into the shared history, immediately visible from GET /api/project/rounds", async () => {
             const bundleDir = await buildNativeLibraryDir();
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
 
             await post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base", seed: "studio-sample-seed"});
 
-            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            const {status, body} = await get(`${baseUrl}/api/project/rounds`);
             expect(status).toBe(200);
             const entries = body as Array<{
                 studioSource?: string;

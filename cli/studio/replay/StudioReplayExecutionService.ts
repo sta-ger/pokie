@@ -55,7 +55,7 @@ export class StudioReplayExecutionService {
     // Fired exactly once per job, right after a reproduction genuinely completes (never for a
     // failed/cancelled one) -- StudioServer's only hook for recording a "Recent Simulation" selection
     // (see StudioReplayJobRecord.simulationId) into the shared StudioRoundRecorder the moment it's real,
-    // rather than reactively (e.g. from a status poll), so GET /api/project/runtime/spins reflects it as
+    // rather than reactively (e.g. from a status poll), so GET /api/project/rounds reflects it as
     // soon as the job that produced it is done. A no-op default keeps every other caller (every test
     // that constructs this service directly) unaffected.
     private readonly onCompleted: (record: StudioReplayJobRecord) => void;

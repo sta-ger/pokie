@@ -11,7 +11,6 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-    "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
 };
 
@@ -290,43 +289,5 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
-    });
-
-    it("stops an already-running runtime after a successful section save -- its materialization is invalidated, not silently left stale", async () => {
-        const user = userEvent.setup();
-        let runtimeStatus: "running" | "stopped" = "running";
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/project/runtime": () =>
-                runtimeStatus === "running"
-                    ? {
-                        ok: true,
-                        status: 200,
-                        body: {status: "running", host: "127.0.0.1", port: 4000, baseUrl: "http://127.0.0.1:4000", playerUrl: "http://127.0.0.1:4000/player", debug: false, repositoryMode: "memory", startedAt: "2026-01-01T00:00:00.000Z"},
-                    }
-                    : {ok: true, status: 200, body: {status: "stopped"}},
-            "/api/project/runtime/stop": () => {
-                runtimeStatus = "stopped";
-                return {ok: true, status: 200, body: {status: "stopped"}};
-            },
-            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
-            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
-            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
-        });
-
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
-        await goToGameModelTab(user);
-
-        const symbols = sectionFieldset("Symbols");
-        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
-        await within(symbols).findByLabelText("New symbol id");
-        await user.type(within(symbols).getByLabelText("New symbol id"), "B");
-        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
-
-        await user.click(within(symbols).getByRole("button", {name: "Save"}));
-        await within(symbols).findByRole("button", {name: "Edit"});
-
-        await waitFor(() => expect(calls.some((call) => call.url === "/api/project/runtime/stop" && call.init?.method === "POST")).toBe(true));
     });
 });

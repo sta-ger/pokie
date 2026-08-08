@@ -32,7 +32,7 @@ import {
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import fs from "fs";
-import http, {IncomingMessage} from "http";
+import type {IncomingMessage} from "http";
 import os from "os";
 import path from "path";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
@@ -385,7 +385,6 @@ describe("StudioServer", () => {
             mode: "home",
             activeSimulationCount: 0,
             activeReplayCount: 0,
-            runtimeStatus: "stopped",
             recentProjectStoragePath: "in-memory (no persistent path)",
         });
         expect((body as {projectRoot?: string}).projectRoot).toBeUndefined();
@@ -3623,7 +3622,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(400);
             expect(body).toEqual({error: 'Unknown or incomplete simulation "does-not-exist" to sample from.'});
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
         });
 
         // Proves the Replay tab's "Recent Simulation" source -- picking a round from a completed
@@ -3631,7 +3630,7 @@ describe("StudioServer", () => {
         // round-producing action in Studio (see StudioServer.recordSimulationSampleReplay), unlike a
         // plain "Recreate from seed" reproduction (no `simulationId`), which the test right after this
         // one proves is deliberately left unrecorded.
-        it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+        it("records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/rounds", async () => {
             await openSampleSlot(createSeedAwareFakeGame(manifest));
             const projectRoot = (await get(`${baseUrl}/api/context`)).body as {projectRoot: string};
 
@@ -3647,7 +3646,7 @@ describe("StudioServer", () => {
             expect(body.status).toBe("completed");
             const descriptor = body.descriptor as {sessionId: string; totalBet: number; totalWin: number};
 
-            const {status: spinsStatus, body: spinsBody} = await get(`${baseUrl}/api/project/runtime/spins`);
+            const {status: spinsStatus, body: spinsBody} = await get(`${baseUrl}/api/project/rounds`);
             expect(spinsStatus).toBe(200);
             const entries = spinsBody as Array<{
                 sessionId: string;
@@ -3683,7 +3682,7 @@ describe("StudioServer", () => {
             const created = await post(`${baseUrl}/api/project/replays`, {round: 3, seed: "demo"});
             await pollUntilTerminal(`${baseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
 
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
         });
 
         it("delivers stateBefore/stateAfter through the HTTP job response end to end", async () => {
@@ -4210,226 +4209,6 @@ describe("StudioServer", () => {
         });
     });
 
-    describe("Project Dashboard: Runtime with the real fixture game package", () => {
-        let runtimeStudioRoot: string;
-        let runtimeServer: StudioServer | undefined;
-        const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
-
-        function createRuntimeServer(initialContext: {mode: "home"} | {mode: "project"; projectRoot: string}): StudioServer {
-            return new StudioServer({
-                pokieVersion: "1.0.0",
-                host: "127.0.0.1",
-                port: 0,
-                studioRoot: runtimeStudioRoot,
-                homeService: new StudioHomeService("1.0.0"),
-                blueprintService: new StudioBlueprintService("1.0.0", runtimeStudioRoot, new StudioHomeService("1.0.0")),
-                initialContext,
-            });
-        }
-
-        beforeEach(() => {
-            runtimeStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-runtime-fixture-test-"));
-            writeStudioAssets(runtimeStudioRoot);
-        });
-
-        afterEach(async () => {
-            await runtimeServer?.stop();
-            fs.rmSync(runtimeStudioRoot, {recursive: true, force: true});
-        });
-
-        it("returns 409 'No active project' for every runtime route in Home mode", async () => {
-            runtimeServer = createRuntimeServer({mode: "home"});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-
-            expect((await get(`${baseUrl}/api/project/runtime`)).status).toBe(409);
-            expect((await post(`${baseUrl}/api/project/runtime/start`, {})).status).toBe(409);
-            expect((await post(`${baseUrl}/api/project/runtime/stop`)).status).toBe(409);
-            expect((await post(`${baseUrl}/api/project/runtime/restart`, {})).status).toBe(409);
-            expect((await post(`${baseUrl}/api/project/runtime/sessions`, {})).status).toBe(409);
-            expect((await get(`${baseUrl}/api/project/runtime/sessions/unknown`)).status).toBe(409);
-            expect((await post(`${baseUrl}/api/project/runtime/sessions/unknown/spins`, {})).status).toBe(409);
-        });
-
-        it("reports stopped initially, then running after start on an automatic port, rejects a second start, and stops idempotently", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-
-            expect((await get(`${baseUrl}/api/project/runtime`)).body).toEqual({status: "stopped"});
-
-            const started = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
-            expect(started.status).toBe(201);
-            expect((started.body as {status: string}).status).toBe("running");
-            const runtimePort = (started.body as {port: number}).port;
-            expect(runtimePort).toBeGreaterThan(0);
-
-            expect((await get(`${baseUrl}/api/project/runtime`)).body).toMatchObject({status: "running", port: runtimePort});
-
-            const again = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
-            expect(again.status).toBe(409);
-
-            const stopped = await post(`${baseUrl}/api/project/runtime/stop`);
-            expect(stopped.status).toBe(200);
-            expect(stopped.body).toEqual({status: "stopped"});
-
-            const stoppedAgain = await post(`${baseUrl}/api/project/runtime/stop`);
-            expect(stoppedAgain.status).toBe(200);
-            expect(stoppedAgain.body).toEqual({status: "stopped"});
-        });
-
-        it("creates a session, spins it with debug on, replays a requestId idempotently, and rejects a stale expectedSessionVersion", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: true});
-
-            type SessionResponse = {status: string; session: {sessionId: string; sessionVersion?: number; debug?: unknown}};
-
-            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
-            expect(created.status).toBe(201);
-            const createdBody = created.body as SessionResponse;
-            expect(createdBody.status).toBe("ok");
-            const sessionId = createdBody.session.sessionId;
-            expect(typeof createdBody.session.sessionVersion).toBe("number");
-            expect(createdBody.session.debug).toBeDefined();
-
-            const fetched = await get(`${baseUrl}/api/project/runtime/sessions/${sessionId}`);
-            expect(fetched.status).toBe(200);
-
-            const spun = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
-            expect(spun.status).toBe(200);
-            expect((spun.body as SessionResponse).session.debug).toBeDefined();
-
-            const replay = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
-            expect(replay.body).toEqual(spun.body);
-
-            const stale = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {expectedSessionVersion: 999});
-            expect(stale.status).toBe(409);
-            expect(typeof (stale.body as {error: string}).error).toBe("string");
-            expect((stale.body as {reason: string}).reason).toBe("conflict");
-
-            const unknown = await get(`${baseUrl}/api/project/runtime/sessions/does-not-exist`);
-            expect(unknown.status).toBe(404);
-
-            await post(`${baseUrl}/api/project/runtime/stop`);
-            const notRunning = await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {});
-            expect(notRunning.status).toBe(409);
-            expect((notRunning.body as {reason: string}).reason).toBe("not-running");
-        });
-
-        it("returns 409 'No active project' for GET /api/project/runtime/spins in Home mode", async () => {
-            runtimeServer = createRuntimeServer({mode: "home"});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).status).toBe(409);
-        });
-
-        it("lists recent spins most-recent-first, starting empty, and clears on project switch", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: true});
-
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
-
-            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
-            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
-
-            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-1"});
-            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-2"});
-
-            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
-            expect(status).toBe(200);
-            const entries = body as Array<{sessionId: string; debug?: {requestId?: string}}>;
-            expect(entries).toHaveLength(2);
-            expect(entries[0].debug?.requestId).toBe("req-2");
-            expect(entries[1].debug?.requestId).toBe("req-1");
-
-            await post(`${baseUrl}/api/projects/close`);
-            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: fixtureRoot});
-
-            expect((await get(`${baseUrl}/api/project/runtime/spins`)).body).toEqual([]);
-        });
-
-        it("omits the debug bundle (but still reports sessionVersion) when the runtime was started without debug mode", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: false});
-
-            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
-            const createdBody = created.body as {status: string; session: {sessionVersion?: number; debug?: unknown}};
-
-            expect(typeof createdBody.session.sessionVersion).toBe("number");
-            expect(createdBody.session.debug).toBeUndefined();
-        });
-
-        it("lists recentSpins with studioRequestId even when the runtime was started without debug mode", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0, debug: false});
-
-            const created = await post(`${baseUrl}/api/project/runtime/sessions`, {});
-            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
-
-            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-no-debug-1"});
-            await post(`${baseUrl}/api/project/runtime/sessions/${sessionId}/spins`, {requestId: "req-no-debug-2"});
-
-            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
-            expect(status).toBe(200);
-            const entries = body as Array<{sessionId: string; studioRequestId?: string; debug?: unknown}>;
-            expect(entries).toHaveLength(2);
-            // Studio's own bookkeeping (the client's own requestId), present regardless of debug mode --
-            // unlike debug.requestId (see the debug:true test above), which requires the debug bundle.
-            expect(entries[0].studioRequestId).toBe("req-no-debug-2");
-            expect(entries[1].studioRequestId).toBe("req-no-debug-1");
-            expect(entries[0].debug).toBeUndefined();
-            expect(entries[1].debug).toBeUndefined();
-        });
-
-        it("stops an active runtime when the project is switched away and back", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-            await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
-            expect((await get(`${baseUrl}/api/project/runtime`)).body).toMatchObject({status: "running"});
-
-            await post(`${baseUrl}/api/projects/close`);
-            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: fixtureRoot});
-
-            expect((await get(`${baseUrl}/api/project/runtime`)).body).toEqual({status: "stopped"});
-        });
-
-        it("stops an active runtime — releasing its port — when Studio itself shuts down", async () => {
-            runtimeServer = createRuntimeServer({mode: "project", projectRoot: fixtureRoot});
-            const address = await runtimeServer.start();
-            const baseUrl = `http://${address.host}:${address.port}`;
-            const started = await post(`${baseUrl}/api/project/runtime/start`, {port: 0});
-            const runtimePort = (started.body as {port: number}).port;
-
-            const serverToStop = runtimeServer;
-            runtimeServer = undefined; // already stopped — afterEach shouldn't stop it again
-            await serverToStop.stop();
-
-            // The runtime's own port is free again — binding a fresh listener on it succeeds.
-            const probe = http.createServer();
-            await new Promise<void>((resolve, reject) => {
-                probe.once("error", reject);
-                probe.listen(runtimePort, "127.0.0.1", () => {
-                    resolve();
-                });
-            });
-            await new Promise<void>((resolve) => {
-                probe.close(() => {
-                    resolve();
-                });
-            });
-        });
-    });
-
     describe("Project Dashboard: Play (POST /api/project/play/session, /api/project/play/sessions/:id/spin)", () => {
         let playStudioRoot: string;
         let playServer: StudioServer | undefined;
@@ -4757,7 +4536,7 @@ describe("StudioServer", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
-        it("records a Play tab round played against a resolved outcome-library project into the shared history, immediately visible from GET /api/project/runtime/spins", async () => {
+        it("records a Play tab round played against a resolved outcome-library project into the shared history, immediately visible from GET /api/project/rounds", async () => {
             const bundleDir = await buildLibraryBundle();
             const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
             outcomeServer = createOutcomeSourceServer(bundleDir, loadGame);
@@ -4768,7 +4547,7 @@ describe("StudioServer", () => {
             const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
             await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
 
-            const {status, body} = await get(`${baseUrl}/api/project/runtime/spins`);
+            const {status, body} = await get(`${baseUrl}/api/project/rounds`);
             expect(status).toBe(200);
             const entries = body as Array<{
                 sessionId: string;

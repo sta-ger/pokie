@@ -8,7 +8,7 @@
 export const SESSION_CAPTURE_POLICY_VERSION = 1;
 
 export type SessionCaptureMode =
-    // Studio/dev's own posture (see StudioRuntimeManager): every played round also builds and persists
+    // Studio/dev's own posture (see PokieDevServerOptions.sessionCapturePolicyMode): every played round also builds and persists
     // a complete RoundArtifact (see buildRoundArtifactFromSession) straight off the runtime-produced
     // session/win-evaluation state — screen, wins/positions, steps/feature events, provenance, and a
     // debug summary (command, credits, before/after state, and, when captureDebugPayloads is also true,

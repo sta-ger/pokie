@@ -2799,8 +2799,10 @@ automatically once a custom signal handler is registered.
 frontend) that hosts a GUI for the commands above. The Home nav below already covers `create`/`init`/`build`/
 opening a project; the Project Dashboard (see its own section) covers `inspect`/`validate`/`sim`/`report`/`replay`.
 Like `pokie serve`/`pokie dev`, this is a **local/dev tool, not a casino backend or RGS** — no real-money wallet,
-no authentication, and no operator/integration logic of any kind; its Runtime tab is the same local/dev reference
-server `pokie serve` is (see its own section above for what that does and doesn't provide).
+no authentication, and no operator/integration logic of any kind. Studio's own Play tab drives a real game
+session entirely in-process (never a server, never a host/port a browser could be pointed at) — to actually
+stand up an HTTP server for external clients to hit, use [`pokie serve`](#pokie-serve-packageroot-experimental)
+or [`pokie dev`](#pokie-dev-packageroot-experimental) directly.
 
 The frontend itself is a React + Mantine single-page app built with Vite (`cli/studio-client/`); its API/
 behavior is exactly what's documented below, unchanged from the sections that follow. See
@@ -2945,8 +2947,8 @@ Opening or creating a project — or launching Studio directly with `pokie .`/`p
 — switches Studio into the **Project** mode/route, identified by that project's `projectRoot`, and shows the
 **Project Dashboard**.
 
-The Dashboard has ten tabs today, switched client-side with no full page reload — **Overview**, **Validate**,
-and **Simulation & Reports** first (the primary flow, in that order), then **Replay**, **Runtime**,
+The Dashboard has several tabs today, switched client-side with no full page reload — **Overview**, **Validate**,
+and **Simulation & Reports** first (the primary flow, in that order), then **Replay**,
 **Deployment**, **Outcome Libraries**, **Certification**, **Provably Fair**, and **Stake
 Engine Export** grouped as "Advanced" in the navigation (still one click away, just visually secondary — see
 [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current tab list).
@@ -2960,7 +2962,6 @@ report):
   suggestions — the exact same report [`pokie validate`](#pokie-validate-packageroot) produces.
 - **Simulation & Reports** — see its own section below (still named "Simulation"/"Reports" there).
 - **Replay** — see its own section below.
-- **Runtime** — see its own section below.
 - **Deployment** — see its own section below.
 - **Outcome Libraries**, **Certification**, **Provably Fair**, and **Stake Engine
   Export** are thin GUI wrappers over the exact same backend building blocks their CLI counterparts use —
@@ -3077,11 +3078,12 @@ The source choice offers four methods:
   reported back as non-fatal warnings rather than blocking outright — round/seed alone are enough to attempt a
   reproduction. Or pick one directly from a **Recent Replays** list to both load it and mark it as the "expected"
   side for comparison.
-- **Session Spin** — pick a round from the Runtime tab's recent-spins list (see [Runtime](#runtime) below),
-  optionally filtered down to one session; this is a live spin's own already-recorded result, so there's nothing to
-  reproduce — picking one loads straight into its own inspect view, with no Reproduce action at all. Following the
-  Runtime tab's "Debug this round in Replay & Debug" link lands here with the exact (session, request) pair
-  pre-selected.
+- **Session Spin** — pick a round from a shared, project-scoped recent-spins list (`GET /api/project/rounds`
+  — see the API section below), optionally filtered down to one session; every real round played anywhere in
+  Studio (a Play tab spin/scenario search, an Outcome Source Analysis sample draw, a Replay tab "Recent Simulation"
+  reproduction) is recorded into this one list, most-recent-first, capped at the 20 most recent, cleared on project
+  switch. This is an already-recorded result, so there's nothing to reproduce — picking one loads straight into its
+  own inspect view, with no Reproduce action at all.
 - **Recent Simulation** — pick a completed simulation report, then a round number within it, and **Load** stages
   that round to reproduce with the simulation's own seed.
 
@@ -3111,8 +3113,9 @@ only the *scheduling* differs. Studio bounds `round` to an explicit safety ceili
 project's one-active-replay-at-a-time slot.
 
 The result view shows, for **Session Spin**: a read-only table (game, session id, this session's own round number,
-request id, recorded-at timestamp, source — live spin vs. pre-generated outcome library — credits, bet, win), the
-spin's own **screen** grid, and an Advanced disclosure with debug data/raw before-after state/the full session JSON.
+request id, recorded-at timestamp, source — Play tab spin vs. an outcome-library draw vs. an Outcome Source
+Analysis sample vs. a Recent Simulation reproduction — credits, bet, win), the spin's own **screen** grid, and an
+Advanced disclosure with debug data/raw before-after state/the full session JSON.
 For every other method, once a round has actually been reproduced, a video-slot round's full `RoundArtifactJson`
 (see [Round Artifacts](round-artifacts.md)) renders through the same `RoundArtifactInspector` component every
 other artifact-viewing tab uses, plus — whenever an "expected" artifact is loaded (a pasted/picked Replay Artifact)
@@ -3140,70 +3143,6 @@ replays per project (oldest evicted first) — a queued/running job is never evi
 in-memory limit, same as Reports: restarting Studio clears it, and a replay from one project becomes unreachable (a
 `404`, indistinguishable from an unknown id) once Studio switches to a different project. Stopping Studio itself
 (`Ctrl+C`) cancels every still-active replay the same way it cancels every still-active simulation.
-
-#### Runtime
-
-The **Runtime** tab starts, stops, and restarts an in-process, [`pokie serve`](#pokie-serve-packageroot-experimental)-
-equivalent HTTP server for the active project, then lets you create/load a session and spin against it — the same
-`PokieDevServer`/`SessionRepository`/`WalletPort`/network serializers/idempotency repository/optimistic-locking
-machinery `pokie serve`/`pokie dev` themselves use, driven directly, in-process. **`pokie serve`/`pokie dev` are
-never spawned as a subprocess, and none of their logic is reimplemented** — a `StudioRuntimeManager`
-(`cli/studio/runtime/StudioRuntimeManager.ts`) owns at most one running server for the current project, and Session
-Tools talk to that running server through a small typed HTTP client
-(`cli/studio/runtime/RuntimeSessionClient.ts`) exactly the way any external client would — Studio's own domain
-layer never reimplements `PokieDevServer`'s HTTP contract.
-
-**Server controls** — **Host**/**Port** (blank port lets the OS assign a free one, same as `pokie serve --port 0`),
-**Debug mode**, **Session storage** (`memory`, the default and same as `pokie serve`'s own out-of-box behavior, or
-`file`, backed by a `FileSessionRepository` under a Studio-managed temp directory that survives a Stop→Start or
-Restart within the same project session), and an optional default **Seed** applied to Create Session when its own
-seed field is left blank — then **Start**/**Stop**/**Restart** buttons. A status badge always shows one of the five
-lifecycle states — **stopped**, **starting**, **running**, **stopping**, **failed** — plus, once running, the bound
-host/port/base URL and an **Open runtime endpoint in a new tab** link (`<baseUrl>/health`). Starting while already
-running is refused with a `409` naming the currently running state rather than silently restarting; starting a
-second time after a genuine failure (an invalid project package, or a port already in use) is always safe to retry.
-Stopping an already-stopped runtime, and stopping one that was never started, are both a no-op, never an error; the
-**Stop** button itself asks for confirmation first. Switching to a different project (or back to Home) always stops
-any active runtime first, and also cancels any active Simulation/Replay job for the project being left (see above)
-— nothing from a project you've switched away from keeps running unseen.
-
-**Debug mode is a start-time toggle on the runtime server itself**, not a raw `?debug=1` exposed per request to the
-browser: `sessionVersion` is always shown regardless (central to demonstrating optimistic locking below), but the
-rest of the internal/debug bundle (`stateBefore`/`stateAfter`/`debugData`/`requestId`) is only ever attached to
-Studio's own response — and only ever shown in the tab's **Debug response** panel — when the runtime was started
-with debug mode on; otherwise that panel shows an explicit "Debug disabled" placeholder. Restart with debug mode on
-to inspect it.
-
-**Session Tools**: **Create Session** (with an optional seed override) or **Load Session** by an existing session
-id (restoring it exactly as `GET /sessions/:sessionId` would) both show the session id, its `sessionVersion` (when
-the configured repository is versioned), credits, bet, win, and — for a game with a screen — a rendered grid. A
-**Spin** form takes an optional **Request id** (repeating the same one returns the exact same result instead of
-spinning again — the tab's own **Repeat Same Request** button resends the last spin's exact `requestId`/
-`expectedSessionVersion`, a quick way to see idempotent replay in action) and an optional **Expected session
-version** — a stale value is rejected as an HTTP `409` conflict immediately, before anything spins (see
-[Optimistic locking](#optimistic-locking-session-versioning) above for the underlying
-`expectedSessionVersion` mechanism this field drives). The **Public response** panel always shows the exact JSON a
-plain client of the runtime server would see; the **Debug response** panel shows the rest of `internal` when debug
-mode is on. Every outcome is a distinct, clearly labeled state — an unknown session id, insufficient balance/
-`canPlayNextGame()` blocked, a stale-version conflict, and the runtime simply not running yet — never a generic
-error. A **Request/Response History** list (page-session only, capped at 20 entries, never persisted) records every
-Server-control/Session-tools action taken.
-
-Every successful spin (regardless of debug mode) is also recorded into a separate, project-scoped **recent
-spins** list (`StudioRuntimeManager`, `GET /api/project/runtime/spins` — see below), most-recent-first, capped at
-the 20 most recent (`MAX_RECENT_SPINS`), cleared on stop/restart/project switch. Each entry carries a
-session-local, strictly increasing `studioRound` (not a global round number) and a `studioRequestId`; retrying the
-exact same `(sessionId, requestId)` pair (e.g. via **Repeat Same Request**) is recognized as the same round and
-deduplicated rather than recorded as a new one, so idempotent retries never inflate the list or shift its round
-numbers. The Debug step itself shows a **"Round history for this session"** list — this same recent-spins list,
-filtered to the current session — alongside a **Debug this round in Replay & Debug** button that names the last
-spin made (its `sessionId`/`requestId`) when handing off. The full, unfiltered list (spanning every session) is
-also what the [Replay](#replay) tab's own "Session Spin" Find method reads (filterable there to one session at a
-time), and what that handoff button's target round is matched against once Replay loads.
-
-None of this ever returns a stack trace, a `SessionRepository`/`WalletPort` instance, or a raw runtime session
-object through Studio's own API — `StudioRuntimeManager` only ever forwards the same plain JSON `RuntimeSessionClient`
-already got back from the real running server.
 
 #### Deployment
 
@@ -3245,7 +3184,7 @@ client, even for a load/validation failure.
 - `GET /api/health` — `200 {"status": "ok"}`, always, once Studio is up.
 - `GET /api/context` — the current mode: `{"mode": "home"}` or `{"mode": "project", "projectRoot": "..."}`.
 - `GET /api/studio/diagnostics` — safe, plain diagnostic data, in either mode: `{"studioVersion", "nodeVersion",
-  "mode", "projectRoot"?, "activeSimulationCount", "activeReplayCount", "runtimeStatus", "recentProjectStoragePath",
+  "mode", "projectRoot"?, "activeSimulationCount", "activeReplayCount", "recentProjectStoragePath",
   "uptimeSeconds"}`. Every field is a primitive already safe to expose — never a stack trace, an environment
   variable, a token, or a service instance; `recentProjectStoragePath` is always the literal
   `"in-memory (no persistent path)"`, since recent projects are never actually persisted to disk (see
@@ -3422,51 +3361,12 @@ client, even for a load/validation failure.
   — a structurally invalid `artifact` is reported back as non-fatal `artifactWarnings`, never a failure by itself,
   since `round`/`seed` alone are enough to attempt a reproduction. `400 {"error": "..."}` for an invalid
   `round`/`seed`; `409 {"error": "No active project."}` in Home mode.
-- `GET /api/project/runtime/spins` — the active project's recent-spins list (see [Runtime](#runtime) above),
-  most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound` (session-local round index),
-  `studioRequestId`, `studioRecordedAt`, `studioSource` (`"live"` or `"pre-generated"`). Always `200`, possibly an
-  empty array (nothing spun yet, or the runtime was since stopped/restarted/the project switched) — never an error
-  for "nothing to show". `409 {"error": "No active project."}` in Home mode.
-- `GET /api/project/runtime` — the active project's runtime lifecycle state: `{"status": "stopped"}` /
-  `{"status": "starting"}` / `{"status": "running", "host", "port", "baseUrl", "debug", "repositoryMode", "startedAt"}`
-  / `{"status": "stopping"}` / `{"status": "failed", "error"}`. `409 {"error": "No active project."}` in Home mode.
-- `POST /api/project/runtime/start` `{"host"?: string, "port"?: number, "debug"?: boolean, "seed"?: string|number,
-  "repositoryMode"?: "memory"|"file"}` — starts a `PokieDevServer` for the active project directly, in-process
-  (never a subprocess); `"port"` omitted or `0` lets the OS assign a free port, same as `pokie serve --port 0`;
-  `"repositoryMode"` defaults to `"memory"`. `201` with the resulting `{"status": "running", ...}` state on success;
-  `200 {"status": "failed", "error": "..."}` for a safe domain-level failure (an invalid project package, or the
-  port already in use — never a stack trace); `409 {"error": "Runtime is already running.", "state": {...}}` if a
-  runtime is already `"running"`/`"starting"` for this project — refuses to silently restart it. `400 {"error":
-  "..."}` for a malformed request. `409 {"error": "No active project."}` in Home mode.
-- `POST /api/project/runtime/stop` — idempotent: always `200 {"status": "stopped"}`, whether or not a runtime was
-  actually running. `409 {"error": "No active project."}` in Home mode.
-- `POST /api/project/runtime/restart` — same request shape as `start`, but every field is optional even as a whole:
-  omit the body entirely to reuse the last successful start's own options; never a `409` conflict (restarting while
-  already running is the point). Same `201`/`200`-with-`"failed"` response shape as `start`. `409 {"error": "No
-  active project."}` in Home mode.
-- `POST /api/project/runtime/sessions` `{"seed"?: string|number}` — creates a session against the running runtime
-  server via `RuntimeSessionClient` (the same request an external client would make to
-  [`POST /sessions`](#post-sessions)), overriding `start`'s own default seed when given. `201 {"status": "ok",
-  "session": {...}}` on success — `session` always includes `sessionVersion` when the configured repository is
-  versioned, and a `debug` field (the rest of `internal`) only when the runtime was started with debug mode on (see
-  [Runtime](#runtime) above). `409 {"error": "Runtime is not running. Start it first."}` if the runtime isn't
-  `"running"`; `200 {"status": "error", "error": "..."}` for a safe, unexpected failure. `409 {"error": "No active
-  project."}` in Home mode.
-- `GET /api/project/runtime/sessions/:sessionId` — restores a session's current state via
-  [`GET /sessions/:sessionId`](#get-sessionssessionid) against the running runtime server. Same `{"status": "ok",
-  "session": {...}}` shape as create. `404 {"error": "Unknown sessionId \"...\"."}` for an unknown id; `409
-  {"error": "Runtime is not running. Start it first."}` if the runtime isn't running; `200 {"status": "error",
-  "error": "..."}` for a safe, unexpected failure. `409 {"error": "No active project."}` in Home mode.
-- `POST /api/project/runtime/sessions/:sessionId/spins` `{"requestId"?: string, "expectedSessionVersion"?: number}`
-  — spins via [`POST /sessions/:sessionId/spin`](#post-sessionssessionidspin) against the running runtime server,
-  forwarding both fields as-is (see [Optimistic locking](#optimistic-locking-session-versioning) above for what
-  `expectedSessionVersion` does). Same `{"status": "ok", "session": {...}}` shape as create/get. `404 {"error":
-  "Unknown sessionId \"...\"."}` for an unknown id; `400 {"error": "..."}` if `canPlayNextGame()` blocks the spin;
-  `409 {"error": "...", "reason": "not-running"}` if the runtime isn't running, or `409 {"error": "...", "reason":
-  "conflict"}` for a stale `expectedSessionVersion`/a storage-level version conflict — `reason` disambiguates the
-  two 409 cases (both a genuine HTTP conflict, deliberately, per the task this feature was built for) without
-  parsing `error`'s free-text message; `200 {"status": "error", "error": "..."}` for a safe, unexpected failure.
-  `409 {"error": "No active project."}` in Home mode.
+- `GET /api/project/rounds` — the active project's shared, cross-tab recent-spins list (see
+  [Session Spin](#replay) above), most-recent-first: `StudioRuntimeSessionView[]`, each including `studioRound`
+  (session-local round index), `studioRequestId` (when the producer supplied one), `studioRecordedAt`,
+  `studioSource` (which tab/route produced it — `"play"`, `"play-outcome-source"`, `"outcome-source-sample"`, or
+  `"simulation-sample"`). Always `200`, possibly an empty array (nothing played yet, or the project was since
+  switched) — never an error for "nothing to show". `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/deployment/targets` — every registered [External Adapter SDK](external-adapter-sdk.md)
   target's `{id, version, requirements, capabilities}` (a registry seeded with exactly the SDK's own
   local-filesystem example target — see the Deployment tab's own section above). `409 {"error": "No active
@@ -3532,8 +3432,10 @@ today, built on the same [game package](game-packages.md) primitives (`loadPokie
 `PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) already covers most of
 these workflows with a real GUI, not just the CLI: Create/Init, build/validate,
 Outcome Libraries, PAR Sheet import/export, Certification/Evidence Bundle, Provably Fair, Stake Engine
-export/import, Deployment, Runtime, Replay, and Simulation all have a working Studio surface — see each tab
-under [`ProjectDashboardPage`](studio-frontend.md). The generic `StudioToolHandling` extension seam
+export/import, Deployment, Replay, and Simulation all have a working Studio surface — see each tab
+under [`ProjectDashboardPage`](studio-frontend.md). `pokie serve`/`pokie dev` have no Studio GUI counterpart —
+Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to stand up an
+HTTP server. The generic `StudioToolHandling` extension seam
 (`cli/studio/StudioToolHandling.ts`) is unused dead code today — every Studio surface above is wired as its own
 bespoke route on `StudioServer`, not through that seam — kept only as a documented possible future refactor, not
 a gap in coverage.

@@ -630,7 +630,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     // type) -- "Open as Project" navigates Studio straight into it, the same one explicit Home -> Project
     // transition every other "Open in Studio"/"Open as Project" action in Studio already uses (see
     // useOpenProject's own doc comment). This is this card's own "run/inspect follow-up": once open, the
-    // new project's own Play/Runtime/Replay/Validate tabs are immediately reachable.
+    // new project's own Play/Replay/Validate tabs are immediately reachable.
     function handleOpenArtifactAsProject(projectRoot: string): void {
         setArtifactActionError(undefined);
         openAndNavigate(projectRoot).catch((error: unknown) => setArtifactActionError(errorMessage(error)));

@@ -43,8 +43,7 @@ const PROJECT_ROUTES = {
     }),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
-    "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
-    "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+    "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
 };
 
@@ -118,7 +117,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 9 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
+    it("lists exactly the 8 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -132,7 +131,6 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
             "Play",
             "Simulation",
             "Replay",
-            "Runtime",
             "Build/Export",
             "Certification",
             "Fairness",
@@ -234,8 +232,8 @@ describe("New Blueprint action surface baseline", () => {
     });
 });
 
-// The remaining describe blocks extend this baseline to the 4 "Advanced"-grouped Project Dashboard tabs
-// that still mount their own workflow (Replay/Runtime/Certification/Provably Fair), which the Stepper
+// The remaining describe blocks extend this baseline to the 3 "Advanced"-grouped Project Dashboard tabs
+// that still mount their own workflow (Replay/Certification/Provably Fair), which the Stepper
 // audit table in docs/studio-frontend.md already classifies workflow-by-workflow but never pinned as
 // executable fixtures. Deployment/Outcome Libraries/Stake Engine Export used to be three more of these --
 // each now redirects straight into Build/Export instead (see the deep-link test above), so they have no
@@ -276,38 +274,6 @@ describe("Advanced tab Stepper inventory baseline", () => {
         // of a loaded card/action bar/result view.
         expect(screen.getByText("Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
-    });
-
-    // Runtime's old Create/restore -> Play -> Inspect -> Continue -> Debug Stepper forced a fixed order
-    // and gated Play/Continue behind a session existing -- but a real Runtime session is used cyclically
-    // (spin, inspect, spin again, pick an older round from history, retry or debug it, spin some more),
-    // never a one-way pipeline -- see RuntimeTab.tsx's own doc comment for why it's now a workspace of
-    // always-mounted panels (each degrading to an explanatory EmptyState instead of being gated away)
-    // instead of a Stepper, the same "no forced order" reasoning the Replay redesign above already
-    // established for that tab.
-    it("Runtime: Server, Current session, Inspect round, Round history, Retry & Debug -- a cyclic workspace, not a gated Stepper", async () => {
-        const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/runtime"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        expect(screen.queryByRole("button", {name: stepperStep("Create or restore session", "Start playing")})).not.toBeInTheDocument();
-
-        const panels = [
-            screen.getByRole("group", {name: "Server"}),
-            screen.getByRole("group", {name: "Current session"}),
-            screen.getByRole("group", {name: "Inspect round"}),
-            screen.getByRole("group", {name: "Round history for this session"}),
-            screen.getByRole("group", {name: "Retry & Debug"}),
-        ];
-        expectStepsInOrder(panels);
-
-        // Every panel is visible immediately -- with no session yet, and the runtime not even started,
-        // none of them are hidden behind a prior step the way the old Stepper's Play/Continue/Inspect
-        // were; each just explains what's missing instead.
-        expect(within(panels[1]).getByText("Start the runtime server above first.")).toBeInTheDocument();
-        expect(within(panels[2]).getByText(/Spin a round, or pick one from round history below/)).toBeInTheDocument();
-        expect(within(panels[3]).getByText("Create or restore a session first.")).toBeInTheDocument();
-        expect(within(panels[4]).getAllByText("Create or restore a session first.").length).toBeGreaterThan(0);
     });
 
     it("Certification: Select/configure, Validate, Build bundle, Inspect, Export, in that order", async () => {
@@ -391,12 +357,11 @@ describe("Advanced tab path-field & disabled-action baseline", () => {
     // above), so there is nothing left of them to pin.
 });
 
-// Was "raw-error surface baseline" -- pinned the pre-[P2-POLISH-25] behavior where these three fetch
-// failures rendered the server's own raw message verbatim, with no remediation copy added. All three are
-// now translated (Deployment/Export & Deploy's targetsError via domain/projectActionError.ts, Runtime's
-// state.message via domain/runtimeActionError.ts, Replay's listError via domain/replayActionError.ts --
-// see docs/studio-phase2-workflow-audit-matrix.md) -- this now pins the corrected behavior instead, same
-// role reversed.
+// Was "raw-error surface baseline" -- pinned the pre-[P2-POLISH-25] behavior where these fetch
+// failures rendered the server's own raw message verbatim, with no remediation copy added. Both are
+// now translated (Deployment/Export & Deploy's targetsError via domain/projectActionError.ts, Replay's
+// listError via domain/replayActionError.ts -- see docs/studio-phase2-workflow-audit-matrix.md) -- this
+// now pins the corrected behavior instead, same role reversed.
 describe("Advanced tab subject-specific recovery copy baseline", () => {
     it("Build/Export: a failed targets fetch shows a subject-specific recovery message, never the raw server text", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
@@ -414,23 +379,6 @@ describe("Advanced tab subject-specific recovery copy baseline", () => {
             ),
         ).toBe(true);
         expect(alerts.every((alert) => alert.textContent !== "deployment targets registry unavailable")).toBe(true);
-    });
-
-    it("Runtime: a failed status fetch shows a subject-specific recovery message, never the raw server text", async () => {
-        const {fetchImpl} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/runtime": () => ({ok: false, status: 500, body: {error: "runtime status endpoint unreachable"}}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/runtime"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(
-            alerts.some(
-                (alert) => alert.textContent === "The runtime server couldn't be completed. Try again, and check the Studio server logs if the problem persists.",
-            ),
-        ).toBe(true);
-        expect(alerts.every((alert) => alert.textContent !== "runtime status endpoint unreachable")).toBe(true);
     });
 
     it("Replay: a failed Recent Replays fetch shows a subject-specific recovery message, never the raw server text", async () => {
@@ -451,7 +399,7 @@ describe("Advanced tab subject-specific recovery copy baseline", () => {
     });
 });
 
-// [P2-POLISH-04]: unlike Runtime/Replay/Deployment's targets fetch above (none of which take a user-typed
+// [P2-POLISH-04]: unlike Replay/Deployment's targets fetch above (none of which take a user-typed
 // path -- see docs/studio-phase2-inventory.md's "Raw-error surfaces" per-section notes), every scoped
 // path-based action below now turns its raw backend failure into inline, subject-specific status +
 // remediation copy via `domain/pathActionError.ts`'s `describePathActionError` -- the raw server text is
@@ -557,27 +505,6 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
 
-});
-
-describe("Advanced tab inferable-empty-input baseline", () => {
-    it("Runtime: a blank Host/Port/Default seed on Start is silently omitted from the request body, not sent as empty strings or rejected", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...PROJECT_ROUTES,
-            "/api/project/runtime/start": () => ({ok: true, status: 200, body: {status: "running", baseUrl: "http://127.0.0.1:4000"}}),
-        });
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/runtime"]});
-        await screen.findByRole("heading", {name: "My Slot"});
-
-        await user.click(screen.getByRole("button", {name: "Start"}));
-
-        await waitFor(() => expect(calls.some((call) => call.url === "/api/project/runtime/start")).toBe(true));
-        const startCall = calls.find((call) => call.url === "/api/project/runtime/start");
-        // "debug: true" is the Start form's own default -- Studio is a local dev/inspection tool, so a
-        // session started from here captures full round detail unless the user opts out (see
-        // RuntimeTab's own initialValues and validateStartRuntimeRequest's matching default).
-        expect(JSON.parse(startCall?.init?.body ?? "{}")).toEqual({debug: true, repositoryMode: "memory"});
-    });
 });
 
 // The remaining describe blocks extend this baseline to Home's own 2 tabs (Design Game, Projects --

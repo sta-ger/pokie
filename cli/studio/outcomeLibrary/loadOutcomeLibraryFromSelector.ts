@@ -14,12 +14,11 @@ export type LoadedOutcomeLibrary =
     | {readonly status: "load-error"; readonly error: string};
 
 // The one place an OutcomeLibrarySelector is actually resolved down to a genuine WeightedOutcomeLibrary --
-// shared by StudioOutcomeLibraryService (Select/Compare/the Runtime tab's pre-generated handoff) and
-// StudioDeploymentService (each deployment mode's own library), so a "json"/"bundle"/"stakeengine" source
-// is only ever read one way, not two slowly-diverging copies of the same three branches. Never validates
-// the result's own shape as a genuine WeightedOutcomeLibrary -- that's each caller's own job (see
-// StudioOutcomeLibraryService.resolveLibrary's own WeightedOutcomeLibraryValidator pass, and
-// StudioDeploymentService's own reliance on ExternalDeploymentService's pipeline for the same check).
+// shared by StudioDeploymentService (each deployment mode's own library) and StudioStakeEngineExportService
+// (each export mode's own library), so a "json"/"bundle"/"stakeengine" source is only ever read one way,
+// not several slowly-diverging copies of the same three branches. Never validates the result's own shape
+// as a genuine WeightedOutcomeLibrary -- that's each caller's own job (see StudioDeploymentService's own
+// reliance on ExternalDeploymentService's pipeline for that check).
 export async function loadOutcomeLibraryFromSelector(
     projectRoot: string,
     selector: OutcomeLibrarySelector,

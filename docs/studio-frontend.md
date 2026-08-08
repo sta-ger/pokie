@@ -93,7 +93,7 @@ tabs never loses in-progress work):
   directly (skips the guided editor), and the raw (non-`guided`) Blueprint Editor.
 
 **Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Play, Simulation**
-(the primary flow, in that order), then a visually separated **Advanced** group — Replay, Runtime,
+(the primary flow, in that order), then a visually separated **Advanced** group — Replay,
 Build/Export, Certification, Fairness (`NavTabItem`'s optional `section` field drives the grouping in
 `NavTabs`; see `ALL_PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact, current tab list). There is
 no standalone "Validate" tab any more (validation is now automatic diagnostics folded into Overview), and
@@ -146,7 +146,7 @@ cli/studio-client/
                                                 # useOpenProject (see UX/Information architecture above)
     hooks/                # useOpenProject, useDesignNavigationGuard (centralized dirty-navigation guard,
                            # see UX/Information architecture above), useConfirm, useBlueprintEditor,
-                           # useProjectContext, useSimulationPoll, useReplayPoll, useRuntimeManager,
+                           # useProjectContext, useSimulationPoll, useReplayPoll, usePlaySession,
                            # useDeploymentManager
     components/
       layout/             # AppShellLayout (shell + optional breadcrumbs), NavTabs (supports an optional
@@ -168,7 +168,7 @@ cli/studio-client/
                            # the Reel Strip Modeler (ReelStripGenerationEditor.tsx), Load/Save/Validate/
                            # Build panels
       project/            # ProjectDashboardPage (Overview/Play/Simulation primary,
-                           # Replay/Runtime/Build-Export/Certification/Fairness grouped as "Advanced")
+                           # Replay/Build-Export/Certification/Fairness grouped as "Advanced")
                            # + the tab components
 ```
 
@@ -314,7 +314,6 @@ stale "Kept as Stepper" disposition.
 |---|---|---|---|
 | Replay | `project/ReplayTab.tsx` | Nonlinear | **Changed.** The prior `Stepper` forced every source (fresh seed/round, pasted artifact, live spin, simulation round) through the same Find → Load → Reproduce → Inspect → Export sequence, even though the sources don't share one order at all (Session Spin has nothing to reproduce; Replay Artifact adds a validate-then-optionally-reproduce gate the others don't have). Replaced with a source choice (`SegmentedControl`) plus, once loaded, an inline loaded card/action bar/result view -- no page to click "continue" to. Switching source resets every per-source selection and any loaded/reproduced state (see `ReplayTab.tsx`'s own doc comment and `ProjectDashboardPage.replayWorkflow.test.tsx`'s source-switch coverage). |
 | Certification | `project/CertificationTab.tsx` | Partially linear | Kept as `Stepper`. Forward-gated (`validateReachable`/`buildReachable`/`inspectReachable`) with no backward lock. |
-| Runtime | `project/RuntimeTab.tsx` | Nonlinear | **Changed.** The prior `Stepper` forced Create/restore → Play → Inspect → Continue → Debug into one order, even though a real session is used cyclically (spin, inspect, spin again, pick an older round from history, retry or debug it, spin some more) with no inherent sequence. Replaced with always-mounted panels (Server, Current session, Inspect round, Round history for this session, Retry & Debug) that each degrade to an explanatory `EmptyState`/`RecoveryNotice` instead of being gated away; a selected round (auto-set from the round just played, or picked from round history) drives Inspect/Retry/Debug alike, and every create/load/spin/refresh/restart path clears it so it can never point at stale data (see `RuntimeTab.tsx`'s own doc comment and `ProjectDashboardPage.runtimeWorkflow.test.tsx`). |
 | Provably Fair | `project/ProvablyFairTab.tsx` | Partially linear | Kept as `Stepper`. "Verify" is always reachable regardless of prior state -- gating only applies to the two steps that need a prior result to show. |
 | Simulation | `project/SimulationTab.tsx` | Partially linear | Kept as `Stepper`. Auto-advances when a running job goes terminal; the pattern Replay's own auto-advance explicitly mirrors. |
 | PAR Sheet Import/Export | `blueprintEditor/ParSheetImportExportPanel.tsx` | Partially linear | Kept as `Stepper`. Forward-gated; final step never disabled. |

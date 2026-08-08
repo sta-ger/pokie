@@ -16,8 +16,7 @@ const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: numb
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
     "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
-    "/api/project/runtime": () => ({ok: true, status: 200, body: {status: "stopped"}}),
-    "/api/project/runtime/spins": () => ({ok: true, status: 200, body: []}),
+    "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
 };
 
 function sessionFor(overrides: Partial<StudioRuntimeSessionView> = {}): StudioRuntimeSessionView {

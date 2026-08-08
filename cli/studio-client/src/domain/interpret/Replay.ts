@@ -510,7 +510,7 @@ export function describeReplayList(entries: StudioReplayListEntry[]): ReplayList
 // instead would incorrectly collapse those into one entry even though each is its own genuinely
 // distinct replay session -- id is the one field this list actually carries that uniquely names a
 // single request the way (sessionId, studioRequestId) does for the Session Spin list in
-// StudioRuntimeManager.recordRecentSpin().
+// StudioRoundRecorder.record().
 function replayListEntryIdentityKey(entry: StudioReplayListEntry): string {
     return entry.id;
 }

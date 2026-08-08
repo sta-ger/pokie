@@ -59,15 +59,11 @@ const packagingTestMatch = ["<rootDir>/tests/packaging/npmPackSmoke.test.ts"];
 const studioClientWorkflowsTestMatch = [
     "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
-    "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.runtimeWorkflow.test.tsx",
     // Measured (via `npm run test:report`) at ~17s of real per-suite runtime -- over the fast lane's
-    // ~11s ceiling documented above -- once its "Last round shows a round played from Runtime" test
-    // started chaining five sequential findBy/waitFor assertions (see that test's own comment). It sat
-    // in studio-client-components anyway on the assumption that check:release's coverage-instrumented
-    // 5-project lane was the heaviest load it would ever see; check:full's own (uninstrumented,
-    // 3-project) `npm test` step proved that wrong by timing this file's "Show advanced details" wait
-    // out at 30000ms. Moved here alongside its sibling runtimeWorkflow file for the same
-    // contention-isolation reason, rather than raising that wait's timeout a second time.
+    // ~11s ceiling documented above. It sat in studio-client-components anyway on the assumption that
+    // check:release's coverage-instrumented 5-project lane was the heaviest load it would ever see;
+    // check:full's own (uninstrumented, 3-project) `npm test` step proved that wrong by timing this
+    // file's "Show advanced details" wait out at 30000ms.
     "<rootDir>/tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/hooks/useSimulationPoll.test.tsx",
     "<rootDir>/tests/cli/studio-client/src/hooks/useReplayPoll.test.tsx",
@@ -89,7 +85,6 @@ const studioClientWorkflowsTestMatch = [
 const studioClientWorkflowsTestPathIgnorePatterns = [
     "/components/project/ProjectDashboardPage\\.simulationWorkflow\\.test\\.tsx$",
     "/components/project/ProjectDashboardPage\\.replayWorkflow\\.test\\.tsx$",
-    "/components/project/ProjectDashboardPage\\.runtimeWorkflow\\.test\\.tsx$",
     "/components/project/ProjectDashboardPage\\.playWorkflow\\.test\\.tsx$",
     "/hooks/useSimulationPoll\\.test\\.tsx$",
     "/hooks/useReplayPoll\\.test\\.tsx$",

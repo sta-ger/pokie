@@ -2,8 +2,8 @@ import type {RoundArtifactWin} from "../../api/types";
 import {CanonicalPlayerView} from "./CanonicalPlayerView";
 
 // The shared "screen, with whatever won on it highlighted" presentation every round-inspection surface
-// (Play, Replay -- recorded/recreated/simulation-sampled rounds -- Runtime Session Tools, an Outcome
-// Source draw) renders a round's screen through -- a thin public alias for CanonicalPlayerView, kept
+// (Play, Replay -- recorded/recreated/simulation-sampled rounds, Session Spin -- an Outcome Source draw)
+// renders a round's screen through -- a thin public alias for CanonicalPlayerView, kept
 // under its own established name since every existing caller already imports "GameScreenView" for exactly
 // this "screen, with wins" contract. CanonicalPlayerView itself mounts cli/client/player's own DOM
 // functions directly (see its own doc comment) -- the identical grid/highlight/hover-list rendering

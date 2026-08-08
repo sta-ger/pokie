@@ -39,8 +39,8 @@ type EditState =
 // read-only rendering of GET /api/project/gameModel's own resolved-project-type-aware projection (see
 // buildProjectGameModel's own doc comment for exactly what's available per project type). Fetches on its
 // own (mounted fresh per project via ProjectDashboardPage's `key={projectKey}`, same convention as
-// RuntimeTab/CertificationTab) rather than threading yet another piece of state through the page, since
-// nothing else on the page needs this projection.
+// CertificationTab) rather than threading yet another piece of state through the page, since nothing
+// else on the page needs this projection.
 //
 // For an editable Blueprint Project (`editable` -- see BLUEPRINT_BUILD_CAPABILITY's own doc comment,
 // exactly the projects `buildProjectGameModel` reads a real tracked source for), this is *also* Edit

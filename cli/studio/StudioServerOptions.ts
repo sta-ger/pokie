@@ -13,7 +13,6 @@ import {StudioOutcomeLibraryGenerateService} from "./outcomeLibrary/StudioOutcom
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import {StudioPlayService} from "./runtime/StudioPlayService.js";
 import {StudioRoundRecorder} from "./runtime/StudioRoundRecorder.js";
-import {StudioRuntimeManager} from "./runtime/StudioRuntimeManager.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
 import {StudioStakeEngineExportService} from "./stakeengine/StudioStakeEngineExportService.js";
 import type {StudioContext} from "./StudioContext.js";
@@ -31,12 +30,6 @@ export type StudioServerOptions = {
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — same
     // "computed once by cli/pokie.ts, passed in" pattern as PokieClientServer's clientRoot.
     studioRoot: string;
-    // Where the compiled cli/client assets live (dist/cli/client at runtime) -- passed straight through
-    // to runtimeManager's default StudioRuntimeManager, so the Runtime tab's "Open Player" server is the
-    // exact same clientRoot ClientCommand/DevCommand are given (see StudioRuntimeManager's own doc
-    // comment). Defaults to "" (never resolved here -- see those commands' own comments on why); a
-    // caller supplying their own `runtimeManager` never needs this at all.
-    clientRoot?: string;
     initialContext?: StudioContext;
     // Drives every Home nav flow (POST/GET /api/home/*: recent projects, create, init, build
     // preview/build, open) — see StudioHomeService. Required rather than defaulted: a default
@@ -73,10 +66,10 @@ export type StudioServerOptions = {
     blueprintService: StudioBlueprintService;
     loadGame?: typeof loadPokieGame;
     // Crosses from "the projectRoot a direct `pokie <path>`/`pokie studio <path>` launch was given" to "a
-    // real, loadable runtime" before the background Project Dashboard load (and runtimeManager's own Play
+    // real, loadable runtime" before the background Project Dashboard load (and playService's own
     // runtime) ever touch loadGame -- see StudioServer's own field doc comment. Defaults to a real
     // materializing resolver (operation STUDIO_OPERATION), same "always default to the real thing, only
-    // tests override" shape as runtimeManager above; overridable in tests so no real
+    // tests override" shape as playService below; overridable in tests so no real
     // BlueprintProjectMaterializer/npm install ever runs.
     resolveRuntimePackageRoot?: RuntimePackageResolving;
     // Provenance (GET /api/project/inspect) and contract/validation (GET /api/project/validate) for
@@ -98,26 +91,20 @@ export type StudioServerOptions = {
     // Runs replays for the Project Dashboard's Replay tab (POST/GET/DELETE /api/project/replays*) —
     // same "defaults around this same `loadGame`" reasoning as simulationService above.
     replayService?: StudioReplayExecutionService;
-    // The one shared history every round-producing action across Studio (Runtime tab spins, Play tab
-    // spins/scenario searches/outcome-source draws, Outcome Source Analysis's own "Sample" draw) records
+    // The one shared history every round-producing action across Studio (Play tab spins/scenario
+    // searches/outcome-source draws, Outcome Source Analysis's own "Sample" draw) records
     // into -- see StudioRoundRecorder's own doc comment. Defaults to a fresh instance shared by the
-    // default runtimeManager/playService below (and this class's own outcome-source sample route) so a
+    // default playService below (and this class's own outcome-source sample route) so a
     // round played anywhere in Studio is visible from the Replay tab's "Session Spin" find method,
-    // regardless of which tab actually produced it. A caller supplying its own runtimeManager/playService
-    // is responsible for giving both the *same* recorder instance if it wants their rounds unified too --
-    // this option exists mainly so a test can hand all three the one instance it wants to assert against.
+    // regardless of which tab actually produced it. A caller supplying its own playService
+    // is responsible for giving it the *same* recorder instance if it wants its rounds unified too --
+    // this option exists mainly so a test can hand both the one instance it wants to assert against.
     roundRecorder?: StudioRoundRecorder;
-    // Owns the Project Dashboard's Runtime tab (GET/POST /api/project/runtime*) — a process-local
-    // in-process `pokie serve`-equivalent server for the active project, plus its Session Tools. Same
-    // "defaults around this same `loadGame`" reasoning as simulationService/replayService above; no
-    // `pokieVersion` needed, unlike homeService/blueprintService.
-    runtimeManager?: StudioRuntimeManager;
     // Owns the Project Dashboard's Play tab (POST /api/project/play/session,
     // /api/project/play/sessions/:id/spin) — Studio's own "normal game mode" (see PlayTab's own doc
-    // comment), never the Runtime tab's PokieDevServer/PokieClientServer pair: a real session driven
-    // directly, in-process, with no OS port and nothing a browser could mistake for a product POKIE
-    // game server/RGS workflow. Same "defaults around this same `loadGame`" reasoning as
-    // simulationService/replayService/runtimeManager above.
+    // comment): a real session driven directly, in-process, with no OS port and nothing a browser could
+    // mistake for a product POKIE game server/RGS workflow. Same "defaults around this same `loadGame`"
+    // reasoning as simulationService/replayService above.
     playService?: StudioPlayService;
     // Drives the Project Dashboard's Deployment tab (GET /api/project/deployment/targets, POST
     // /api/project/deployment/runs) — built directly on top of the pokie package's own External

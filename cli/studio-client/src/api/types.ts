@@ -723,38 +723,11 @@ export type StudioReplayListEntry = {
     error?: string;
 };
 
-// GET/POST /api/project/runtime*'s own DTO — see cli/studio/runtime/StudioRuntimeStateView.ts's own
-// doc comment. "starting"/"stopping" are only ever observed transiently (a concurrent GET racing an
-// in-flight start/stop), never held between two separate calls.
-export type StudioRuntimeStateView =
-    | {status: "stopped"}
-    | {status: "starting"}
-    | {
-          status: "running";
-          host: string;
-          port: number;
-          baseUrl: string;
-          // The same canonical player `pokie dev`/`pokie client` open, reachable for this runtime
-          // instance -- see cli/studio/runtime/StudioRuntimeStateView.ts's own doc comment. Backs the
-          // Runtime tab's "Open Player" link.
-          playerUrl: string;
-          debug: boolean;
-          repositoryMode: "memory" | "file";
-          startedAt: string;
-          // Present exactly when this runtime was started against a pre-generated outcome library (the
-          // Outcome Libraries tab's own "Use in runtime" handoff) -- confirmation that the handoff
-          // actually took effect, not something the user has to configure themselves.
-          preGenerated?: {libraryId: string; hash: string};
-      }
-    | {status: "stopping"}
-    | {status: "failed"; error: string};
-
-// The Runtime tab's Session Tools (and Play tab, and Outcome Source Analysis "Sample") response DTO —
-// see cli/studio/runtime/StudioRuntimeSessionView.ts's own doc comment. `sessionVersion` is present
-// whenever the runtime's configured repository is versioned, regardless of debug mode; `studioRequestId`
-// is Studio's own bookkeeping (the client's requestId for this spin), present whenever one was supplied,
-// regardless of debug mode; `debug` is only present when the runtime was started with debug mode on (the
-// Play tab and Outcome Source Analysis always attach it). `studioRound`/`studioRecordedAt`/`studioSource`/
+// Play tab (and Outcome Source Analysis "Sample") response DTO — see
+// cli/studio/runtime/StudioRuntimeSessionView.ts's own doc comment. `sessionVersion` is present
+// whenever the underlying session repository is versioned; `studioRequestId` is Studio's own bookkeeping
+// (the client's requestId for this spin), present whenever one was supplied; `debug` is always attached
+// (Play and Outcome Source Analysis never withhold it). `studioRound`/`studioRecordedAt`/`studioSource`/
 // `studioOperation` are present only on a round the shared StudioRoundRecorder actually recorded (every
 // spin/draw across every tab — see that class's own doc comment) — never on a plain create/get-session
 // response — and together give each recorded round its own unambiguous, session-scoped identity:
@@ -778,11 +751,12 @@ export type StudioRuntimeSessionView = {
     studioRequestId?: string;
     studioRound?: number;
     studioRecordedAt?: string;
-    // Which of Studio's own tabs/routes produced this round -- "live"/"pre-generated" are the Runtime
-    // tab's Session Tools, "play"/"play-outcome-source" are the Play tab (an ordinary session vs. a draw
-    // against a resolved "outcomeLibrary" project), "outcome-source-sample" is the Outcome Source
-    // Analysis tab's own one-shot "Sample" draw, "simulation-sample" is the Replay tab's "Recent
-    // Simulation" reproduction.
+    // Which of Studio's own tabs/routes produced this round -- "play"/"play-outcome-source" are the Play
+    // tab (an ordinary session vs. a draw against a resolved "outcomeLibrary" project),
+    // "outcome-source-sample" is the Outcome Source Analysis tab's own one-shot "Sample" draw,
+    // "simulation-sample" is the Replay tab's "Recent Simulation" reproduction. "live"/"pre-generated"
+    // are vestigial -- no longer producible now that the Runtime tab is gone -- kept in the union only
+    // so Replay's own display mapping (describeStudioRoundSource) stays exhaustive.
     studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
     // The concrete action that produced this round, independent of studioSource -- "find-any-win"/
     // "find-symbol-win" are the Play tab's own scenario-search controls (every spin along the way is
@@ -924,8 +898,8 @@ export type OutcomeLibraryGeneratorDiagnostics = {
 };
 
 // POST /api/project/outcome-libraries/generate's own DTO — see
-// cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.ts's own doc comment. `selector` chains
-// straight into the Runtime tab's pre-generated handoff.
+// cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.ts's own doc comment. `selector` is a
+// ready-to-use reference to the bundle mode this run just wrote.
 export type StudioOutcomeLibraryGenerateResultView =
     | {
           status: "ok";
