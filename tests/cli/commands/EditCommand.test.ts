@@ -251,6 +251,19 @@ describe("EditCommand", () => {
         expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('symbols: ["A","K"] -> ["A","K","Q"]'));
     });
 
+    it("writes nothing when the user cancels (Ctrl+C/EOF) at the confirmation itself", async () => {
+        const wizardFactory = createStubWizardFactory({blueprint: editedBlueprint, outDir: "game.blueprint.json"});
+        const prompt = createControllablePrompt(null);
+        const {command, writeFile} = createCommand(undefined, undefined, undefined, undefined, wizardFactory, () => prompt, () => true);
+
+        const exitCode = await command.run(["game.blueprint.json"]);
+
+        expect(exitCode).toBe(1);
+        expect(logSpy).toHaveBeenCalledWith("\nEdit cancelled.");
+        expect(writeFile).not.toHaveBeenCalled();
+        expect(prompt.closed).toBe(true);
+    });
+
     it("writes the edited blueprint atomically to the resolved destination once confirmed", async () => {
         const wizardFactory = createStubWizardFactory({blueprint: editedBlueprint, outDir: "game.blueprint.json"});
         const prompt = createControllablePrompt("y");
