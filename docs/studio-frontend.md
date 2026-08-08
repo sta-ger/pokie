@@ -96,8 +96,8 @@ tabs never loses in-progress work):
   back that surface is gone too — Design Game's own JSON mode and Load/Save-by-path (behind its "Show advanced
   options" disclosure) already cover the same ground.
 
-**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Play, Simulation**
-(the primary flow, in that order), then a visually separated **Advanced** group — Replay,
+**Project Dashboard (`/project/:tab`)** — grouped instead of flat: **Overview, Game Model, Play,
+Simulation** (the primary flow, in that order), then a visually separated **Advanced** group — Replay,
 Build/Export, Certification, Fairness (`NavTabItem`'s optional `section` field drives the grouping in
 `NavTabs`; see `ALL_PROJECT_TABS` in `ProjectDashboardPage.tsx` for the exact, current tab list). There is
 no standalone "Validate" tab any more (validation is now automatic diagnostics folded into Overview), and
