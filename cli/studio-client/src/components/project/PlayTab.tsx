@@ -1,4 +1,4 @@
-import {Button, Text, TextInput} from "@mantine/core";
+import {Button, Select, Text, TextInput} from "@mantine/core";
 import {ReactNode, useState} from "react";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
@@ -24,14 +24,23 @@ export function PlayTab({
     sessionId,
     onNewSession,
     onSpin,
+    onFindAnyWin,
+    onFindSymbolWin,
 }: {
     session: PlaySessionView;
     sessionId: string | undefined;
     onNewSession: (seed?: string) => void;
     onSpin: () => void;
+    onFindAnyWin: () => void;
+    onFindSymbolWin: (symbolId: string) => void;
 }) {
     const [seed, setSeed] = useState("");
+    const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
     const loading = session.status === "loading";
+    // The game's own real symbol list -- present on session/spin/find-scenario responses alike (see
+    // StudioPlayService.buildSessionView()'s own doc comment) -- undefined until the first "ok" response,
+    // never a placeholder/invented list in the meantime.
+    const availableSymbols = session.status === "ok" ? session.session.availableSymbols : undefined;
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
@@ -86,11 +95,35 @@ export function PlayTab({
                 <Button loading={loading} onClick={onSpin}>
                     Spin
                 </Button>
+                <Button variant="default" loading={loading} onClick={onFindAnyWin}>
+                    Find any win
+                </Button>
+                <Button
+                    variant="default"
+                    loading={loading}
+                    disabled={!selectedSymbol}
+                    onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
+                >
+                    Find symbol win
+                </Button>
                 <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined)}>
                     Reset
                 </Button>
             </QuickActions>
             {seedField}
+            {availableSymbols !== undefined && availableSymbols.length > 0 && (
+                <Select
+                    aria-label="Symbol"
+                    label="Symbol"
+                    description="The symbol Find symbol win searches for -- a real spin's own already-computed win, never predicted."
+                    placeholder="Choose a symbol"
+                    data={availableSymbols}
+                    value={selectedSymbol}
+                    onChange={setSelectedSymbol}
+                    mb="sm"
+                    style={{maxWidth: 240}}
+                />
+            )}
 
             {errorNotice}
 

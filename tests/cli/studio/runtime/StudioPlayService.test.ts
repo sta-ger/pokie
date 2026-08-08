@@ -68,6 +68,48 @@ function fakeLoadVideoSlotGame(): (packageRoot: string) => Promise<PokieGame> {
     return () => Promise.resolve(createFakeVideoSlotGame());
 }
 
+// A controllable VideoSlotSessionHandling-shaped fake for findAnyWin()/findSymbolWin() -- unlike
+// createFakeVideoSlotSession above (always wins the exact same way), each play() here consults
+// `winningSymbolAtAttempt` for *this* attempt's own outcome, so a test can make the search take an exact
+// number of real spins, or never win at all, without depending on the real win-evaluation engine's own
+// paytable/line-matching odds. getWinningLines()/getWinningScatters()/isSymbolScatter() are exactly what
+// PlayUntilSymbolWinStrategy itself reads (see its own doc comment) -- getWinEvaluationResult() (what
+// buildRoundArtifactFromSession itself reads) is kept independently truthful to the same outcome.
+function createControllableVideoSlotSession(winningSymbolAtAttempt: (attempt: number) => string | undefined): {
+    session: GameSessionHandling & VideoSlotSessionHandling<string>;
+    getAttempts: () => number;
+} {
+    let credits = 100000;
+    const bet = 5;
+    let attempts = 0;
+    let currentWinningSymbol: string | undefined;
+
+    const session = {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        getAvailableSymbols: () => ["A", "K", "Q", "J"],
+        canPlayNextGame: () => credits >= bet,
+        isSymbolScatter: () => false,
+        play: () => {
+            attempts += 1;
+            currentWinningSymbol = winningSymbolAtAttempt(attempts);
+            credits = credits - bet + (currentWinningSymbol !== undefined ? 2 : 0);
+        },
+        getWinAmount: () => (currentWinningSymbol !== undefined ? 2 : 0),
+        getSymbolsCombination: () => ({toMatrix: () => [[currentWinningSymbol ?? "none"]]}),
+        getWinEvaluationResult: () => (currentWinningSymbol !== undefined ? winEvaluationResultWithWin() : new WinEvaluationResult<string>()),
+        getWinningLines: () => (currentWinningSymbol !== undefined ? {"1": {getSymbolId: () => currentWinningSymbol}} : {}),
+        getWinningScatters: () => ({}),
+    } as unknown as GameSessionHandling & VideoSlotSessionHandling<string>;
+
+    return {session, getAttempts: () => attempts};
+}
+
 // No getSymbolsCombination()/getWinEvaluationResult() at all -- plain GameSessionHandling, so a "full"
 // capture can't build a RoundArtifact and must report roundArtifactUnavailableReason instead.
 function createFakeNonVideoSlotGame(): PokieGame {
@@ -339,5 +381,192 @@ describe("StudioPlayService", () => {
         } finally {
             fs.rmSync(stakeRoot, {recursive: true, force: true});
         }
+    });
+
+    describe("findAnyWin / findSymbolWin", () => {
+        it("findAnyWin returns the very first round when it already wins, driving the engine's own PlayUntilAnyWinStrategy against the live session", async () => {
+            const {session} = createControllableVideoSlotSession(() => "A");
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findAnyWin(created.session.sessionId);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.session.win).toBeGreaterThan(0);
+        });
+
+        it("findAnyWin repeats real, authoritative spins -- never a client-side calculation -- until one actually wins", async () => {
+            const {session, getAttempts} = createControllableVideoSlotSession((attempt) => (attempt >= 4 ? "A" : undefined));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findAnyWin(created.session.sessionId);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.session.win).toBeGreaterThan(0);
+            // Proves the search actually played 4 real, settled rounds to get there, not a single check --
+            // each of the first 3 genuinely lost (see winningSymbolAtAttempt above).
+            expect(getAttempts()).toBe(4);
+        });
+
+        it("findSymbolWin propagates the chooser's own selected symbol into the search -- a round winning a different symbol never matches", async () => {
+            const {session} = createControllableVideoSlotSession(() => "A");
+            // maxFindScenarioSpins is overridden to a small bound (the 6th constructor argument) so this
+            // exercises the real "search exhausted" path without waiting out thousands of real spins.
+            const service = new StudioPlayService(
+                () => Promise.resolve({getManifest: () => manifest, createSession: () => session}),
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                5,
+            );
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const matchingSymbol = await service.findSymbolWin(created.session.sessionId, "A");
+            expect(matchingSymbol.status).toBe("ok");
+
+            const created2 = await service.newSession("/fake/project");
+            if (created2.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            const differentSymbol = await service.findSymbolWin(created2.session.sessionId, "Q");
+            expect(differentSymbol).toEqual({status: "error", error: "No matching round was found within 5 spins."});
+        });
+
+        it("findSymbolWin stops on the first real spin that actually wins the requested symbol, not just any win", async () => {
+            const {session, getAttempts} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "K" : undefined));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findSymbolWin(created.session.sessionId, "K");
+
+            expect(result.status).toBe("ok");
+            expect(getAttempts()).toBe(3);
+        });
+
+        it("findSymbolWin reports an honest 'error' for a non-video-slot game, never throwing, and never burning a spin first", async () => {
+            const loadGame = jest.fn(() => Promise.resolve(createFakeNonVideoSlotGame()));
+            const service = new StudioPlayService(loadGame);
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findSymbolWin(created.session.sessionId, "A");
+
+            expect(result).toEqual({status: "error", error: "This game doesn't report per-symbol win details, so Find symbol win isn't available for it."});
+
+            // Proves it never burned a real spin trying: the session's credits are exactly what a plain
+            // spin() from this same starting point produces, not one round further along.
+            const spun = await service.spin(created.session.sessionId);
+            if (spun.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(spun.session.credits).toBe(999);
+        });
+
+        it("findAnyWin reports 'not-found' against a sessionId from before the most recent newSession() call", async () => {
+            const service = new StudioPlayService(fakeLoadVideoSlotGame());
+            const first = await service.newSession("/fake/project");
+            if (first.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            await service.newSession("/fake/project");
+            const result = await service.findAnyWin(first.session.sessionId);
+
+            expect(result).toEqual({status: "not-found"});
+        });
+
+        describe("against a resolved native outcome-library project (no live GameSessionHandling)", () => {
+            let bundleRoot: string;
+
+            beforeEach(() => {
+                bundleRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-find-scenario-test-"));
+            });
+
+            afterEach(() => {
+                fs.rmSync(bundleRoot, {recursive: true, force: true});
+            });
+
+            async function buildLibraryBundle(): Promise<string> {
+                const bundleDir = path.join(bundleRoot, "library");
+                await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+                return bundleDir;
+            }
+
+            it("finds a real winning draw by reading the already-drawn artifact's own totalWin, never a live session/strategy object", async () => {
+                const bundleDir = await buildLibraryBundle();
+                const service = new StudioPlayService();
+                const created = await service.newSession(bundleDir, "studio-play-find-seed");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                const result = await service.findAnyWin(created.session.sessionId);
+
+                expect(result.status).toBe("ok");
+                if (result.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                expect(result.session.win).toBeGreaterThan(0);
+                expect(result.session.debug?.artifact?.totalWin).toBeGreaterThan(0);
+            });
+
+            it("reaches the identical winning round for the same seed -- deterministic search, same reproducibility a single seeded draw promises", async () => {
+                const bundleDir = await buildLibraryBundle();
+                const first = new StudioPlayService();
+                const second = new StudioPlayService();
+
+                const firstCreated = await first.newSession(bundleDir, "reproducible-find-seed");
+                const secondCreated = await second.newSession(bundleDir, "reproducible-find-seed");
+                if (firstCreated.status !== "ok" || secondCreated.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                const firstFound = await first.findAnyWin(firstCreated.session.sessionId);
+                const secondFound = await second.findAnyWin(secondCreated.session.sessionId);
+                if (firstFound.status !== "ok" || secondFound.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                expect(firstFound.session.debug?.artifact).toEqual(secondFound.session.debug?.artifact);
+            });
+
+            it("findSymbolWin against a symbol that never wins in the bundle reports an honest 'error' once the bound is exhausted, never hanging", async () => {
+                const bundleDir = await buildLibraryBundle();
+                // maxFindScenarioSpins overridden to a small bound (6th constructor argument) -- the
+                // bundle's own winning outcomes all carry symbolId "A" (see OutcomeLibraryBundleTestFixtures),
+                // so "no-such-symbol" can never match.
+                const service = new StudioPlayService(undefined, undefined, undefined, undefined, undefined, 5);
+                const created = await service.newSession(bundleDir, "studio-play-find-seed");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                const result = await service.findSymbolWin(created.session.sessionId, "no-such-symbol");
+
+                expect(result).toEqual({status: "error", error: "No matching round was found within 5 spins."});
+            });
+        });
     });
 });

@@ -5,7 +5,6 @@ import {
     type LineDefinitionView,
     type PaytableView,
     type WinHighlight,
-    type WinHighlightKind,
 } from "./videoSlotRoundView.js";
 
 // Thin DOM-manipulation layer, deliberately not unit-tested -- same rationale as cli/client/dom.ts's
@@ -85,31 +84,36 @@ function addHoverRow(listEl: HTMLElement, label: string, onEnter: () => void, on
 }
 
 // The hover-to-highlight win list: a winning line highlights its own winning cells green and every
-// other cell on its own definition grey (the pattern-based behavior only a line has); every other win
-// kind highlights all of its own cells in one uniform color. Both restore every touched cell back to
-// its persistent tint (`baseColor`, set by applyPersistentHighlights) on mouseleave. Mirrors
-// pokie-examples' own drawWinningLinesList/addHighlightButton.
+// other cell on its own configured payline grey (the "trace the whole line" behavior only a line with a
+// known full path has -- see WinHighlight.paylinePositions); every other win kind (or a line whose full
+// path isn't known -- see videoSlotRoundView.ts's own resolveRoundArtifactLineDefinition) highlights all
+// of its own winning cells in one uniform color. Both restore every touched cell back to its persistent
+// tint (`baseColor`, set by applyPersistentHighlights) on mouseleave. Mirrors pokie-examples' own
+// drawWinningLinesList/addHighlightButton. Reads only positions/paylinePositions -- the same generic
+// WinHighlight contract videoSlotRoundView.ts's own deriveWinHighlights (VideoSlot response) and
+// deriveWinHighlightsFromRoundArtifactWins (any other game's RoundArtifact, via Studio's own WinOverlay)
+// both produce, so this one function renders either without knowing which DTO a highlight came from.
 export function renderWinHighlightsList(listEl: HTMLElement, gridEl: HTMLElement, highlights: WinHighlight[]): void {
     clearChildren(listEl);
 
     highlights.forEach((highlight) => {
-        if (highlight.kind === "line" && highlight.line) {
-            const line = highlight.line;
+        if (highlight.kind === "line" && highlight.paylinePositions) {
+            const paylinePositions = highlight.paylinePositions;
+            const winningPositions = new Set(highlight.positions.map(([reelIndex, rowIndex]) => cellId(reelIndex, rowIndex)));
             addHoverRow(
                 listEl,
                 highlight.label,
                 () => {
-                    line.definition.forEach((rowIndex, reelIndex) => {
+                    paylinePositions.forEach(([reelIndex, rowIndex]) => {
                         const cell = getCell(gridEl, reelIndex, rowIndex);
                         if (!cell) {
                             return;
                         }
-                        const isWinning = line.symbolsPositions.includes(reelIndex) && !!line.pattern[reelIndex];
-                        cell.style.backgroundColor = isWinning ? "#00FF00" : "#999999";
+                        cell.style.backgroundColor = winningPositions.has(cellId(reelIndex, rowIndex)) ? "#00FF00" : "#999999";
                     });
                 },
                 () => {
-                    line.definition.forEach((rowIndex, reelIndex) => {
+                    paylinePositions.forEach(([reelIndex, rowIndex]) => {
                         const cell = getCell(gridEl, reelIndex, rowIndex);
                         if (cell) {
                             cell.style.backgroundColor = cell.baseColor;
@@ -120,7 +124,7 @@ export function renderWinHighlightsList(listEl: HTMLElement, gridEl: HTMLElement
             return;
         }
 
-        const hoverColor = highlightHoverColor(highlight.kind as Exclude<WinHighlightKind, "line">);
+        const hoverColor = highlightHoverColor(highlight.kind);
         addHoverRow(
             listEl,
             highlight.label,

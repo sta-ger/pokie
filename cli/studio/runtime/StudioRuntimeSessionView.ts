@@ -16,6 +16,11 @@ export type StudioRuntimeSessionView = {
     bet?: number;
     win?: number;
     screen?: unknown[][];
+    // Every symbol id this session's own game reports via VideoSlotConfigDescribing.getAvailableSymbols()
+    // -- present only where the underlying session actually is one (see StudioPlayService.buildSessionView()'s
+    // own doc comment), and only ever the real, game-reported list, never inferred from a screen/round that
+    // happens to have been seen so far. Play's own "Find symbol win" chooser is the one consumer today.
+    availableSymbols?: string[];
     sessionVersion?: number;
     // Studio's own bookkeeping, not part of the game/public wire contract at all -- the client-supplied
     // requestId a spin was called with, recorded by StudioRuntimeManager.spin() directly from its own

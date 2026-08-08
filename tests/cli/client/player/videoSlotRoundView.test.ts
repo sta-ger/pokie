@@ -7,6 +7,7 @@ import {
     derivePaytableView,
     deriveTotalWin,
     deriveWinHighlights,
+    deriveWinHighlightsFromRoundArtifactWins,
     isVideoSlotRoundResponse,
 } from "../../../../cli/client/player/videoSlotRoundView.js";
 
@@ -53,13 +54,11 @@ describe("deriveWinHighlights", () => {
                     [0, 0],
                     [1, 1],
                 ],
-                line: {
-                    lineId: "1",
-                    definition: [0, 1, 2],
-                    pattern: [1, 1, 0],
-                    symbolsPositions: [0, 1],
-                    winAmount: 15,
-                },
+                paylinePositions: [
+                    [0, 0],
+                    [1, 1],
+                    [2, 2],
+                ],
             },
         ]);
     });
@@ -101,6 +100,61 @@ describe("deriveWinHighlights", () => {
         });
 
         expect(highlights.map((h) => h.kind)).toEqual(["line", "scatter", "way"]);
+    });
+});
+
+// deriveWinHighlightsFromRoundArtifactWins is the RoundArtifact-shaped counterpart to deriveWinHighlights
+// above -- both produce the exact same WinHighlight contract, so Studio's own
+// cli/studio-client/src/components/common/WinOverlay.tsx (an arbitrary game's own RoundArtifact wins) and
+// this repo's/pokie-examples' own VideoSlotRoundResponse-derived rendering share one presentation instead
+// of each deriving "what's highlighted" independently.
+describe("deriveWinHighlightsFromRoundArtifactWins", () => {
+    it("carries a line win's own winningPositions through unchanged, and traces its full payline from metadata.definition", () => {
+        const highlights = deriveWinHighlightsFromRoundArtifactWins(
+            [
+                {
+                    type: "line",
+                    id: "w1",
+                    symbolId: "cherry",
+                    winAmount: 12.5,
+                    winningPositions: [[0, 0], [1, 0]],
+                    metadata: {definition: [0, 0, 0]},
+                },
+            ],
+            3,
+        );
+
+        expect(highlights).toEqual([
+            {
+                id: "line:w1",
+                kind: "line",
+                label: "line: cherry, win: 12.5",
+                winAmount: 12.5,
+                positions: [[0, 0], [1, 0]],
+                paylinePositions: [[0, 0], [1, 0], [2, 0]],
+            },
+        ]);
+    });
+
+    it("traces no payline path for a win whose metadata carries no usable definition -- ways/cluster/scatter/value, or a malformed/mis-sized one", () => {
+        const [highlight] = deriveWinHighlightsFromRoundArtifactWins(
+            [{type: "ways", id: "w1", symbolId: "cherry", winAmount: 3, winningPositions: [[0, 0]], metadata: {}}],
+            3,
+        );
+
+        expect(highlight.paylinePositions).toBeUndefined();
+        expect(highlight.positions).toEqual([[0, 0]]);
+    });
+
+    it("never recomputes a win: positions are the win's own winningPositions, deep-copied, not re-derived", () => {
+        const winningPositions = [[0, 0]];
+        const [highlight] = deriveWinHighlightsFromRoundArtifactWins(
+            [{type: "scatter", id: "w1", symbolId: "S", winAmount: 5, winningPositions, metadata: {}}],
+            3,
+        );
+
+        expect(highlight.positions).toEqual(winningPositions);
+        expect(highlight.positions).not.toBe(winningPositions);
     });
 });
 

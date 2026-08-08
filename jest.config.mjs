@@ -114,6 +114,12 @@ const studioClientComponentsTransform = {
 
 const studioClientComponentsModuleNameMapper = {
     "\\.css$": "<rootDir>/tests/cli/studio-client/src/styleMock.js",
+    // Studio's common components now import cli/client/player directly (CanonicalPlayerView --
+    // see its own doc comment) -- that module's own internal imports use real ".js" extensions
+    // (NodeNext-style, same convention as "pokie"/"pokie-examples" resolve via their own
+    // sourceTestModuleNameMapper/pokieExamplesModuleNameMapper above), so this project needs the
+    // same stripping to resolve them under ts-jest.
+    "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };
 
 // Transpile-only (isolatedModules) transform: the flag lives in tsconfig.test.json's

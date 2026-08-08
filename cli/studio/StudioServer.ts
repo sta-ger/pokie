@@ -84,6 +84,7 @@ import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} fro
 import {validateRuntimeSessionRequest, RuntimeSessionRequestInput} from "./runtime/validateRuntimeSessionRequest.js";
 import {validateRuntimeSpinRequest, RuntimeSpinRequestInput} from "./runtime/validateRuntimeSpinRequest.js";
 import {validatePlaySessionRequest, PlaySessionRequestInput} from "./runtime/validatePlaySessionRequest.js";
+import {validatePlayFindSymbolWinRequest, PlayFindSymbolWinRequestInput} from "./runtime/validatePlayFindSymbolWinRequest.js";
 import {validateStartRuntimeRequest, StartRuntimeRequestInput, ValidatedStartRuntimeRequest} from "./runtime/validateStartRuntimeRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
@@ -637,6 +638,18 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const playFindAnyWinSessionId = this.matchPlayFindAnyWinRoute(url.pathname);
+        if (playFindAnyWinSessionId !== undefined && method === "POST") {
+            await this.handlePlayFindAnyWin(res, playFindAnyWinSessionId);
+            return;
+        }
+
+        const playFindSymbolWinSessionId = this.matchPlayFindSymbolWinRoute(url.pathname);
+        if (playFindSymbolWinSessionId !== undefined && method === "POST") {
+            await this.handlePlayFindSymbolWin(req, res, playFindSymbolWinSessionId);
+            return;
+        }
+
         if (method === "GET" && url.pathname === "/api/project/deployment/targets") {
             this.handleListDeploymentTargets(res);
             return;
@@ -832,6 +845,36 @@ export class StudioServer implements StudioServerHandling {
             segments[2] === "play" &&
             segments[3] === "sessions" &&
             segments[5] === "spin"
+        ) {
+            return decodeURIComponent(segments[4]);
+        }
+        return undefined;
+    }
+
+    private matchPlayFindAnyWinRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (
+            segments.length === 6 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "play" &&
+            segments[3] === "sessions" &&
+            segments[5] === "find-any-win"
+        ) {
+            return decodeURIComponent(segments[4]);
+        }
+        return undefined;
+    }
+
+    private matchPlayFindSymbolWinRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (
+            segments.length === 6 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "play" &&
+            segments[3] === "sessions" &&
+            segments[5] === "find-symbol-win"
         ) {
             return decodeURIComponent(segments[4]);
         }
@@ -2170,6 +2213,51 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const result = await this.playService.spin(sessionId);
+        if (result.status === "ok") {
+            this.sendJson(res, 200, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendPlayErrorResult(res, sessionId, result);
+    }
+
+    // PlayTab's "Find any win" scenario control -- POST /api/project/play/sessions/:id/find-any-win, no
+    // body. Same response shape/error handling as handlePlaySpin above (StudioPlayService.findAnyWin()
+    // returns the exact same StudioPlaySpinResult spin() does -- see its own doc comment), just repeating
+    // real spins server-side instead of stopping after exactly one.
+    private async handlePlayFindAnyWin(res: ServerResponse, sessionId: string): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const result = await this.playService.findAnyWin(sessionId);
+        if (result.status === "ok") {
+            this.sendJson(res, 200, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendPlayErrorResult(res, sessionId, result);
+    }
+
+    // PlayTab's "Find symbol win" scenario control -- POST /api/project/play/sessions/:id/find-symbol-win,
+    // body `{symbolId}` -- the chooser's own currently-selected symbol, propagated straight through to
+    // StudioPlayService.findSymbolWin() (see its own doc comment). Same response shape as
+    // handlePlayFindAnyWin above otherwise.
+    private async handlePlayFindSymbolWin(req: IncomingMessage, res: ServerResponse, sessionId: string): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validatePlayFindSymbolWinRequest((body ?? {}) as PlayFindSymbolWinRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.playService.findSymbolWin(sessionId, validated.symbolId);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;

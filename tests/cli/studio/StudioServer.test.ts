@@ -4457,6 +4457,158 @@ describe("StudioServer", () => {
         });
     });
 
+    // P5-POLISH-11's own scenario controls -- POST .../find-any-win, POST .../find-symbol-win. Routing-
+    // level only (400/404/409, request/response shape, selected-symbol propagation): the underlying search
+    // semantics (repeated real spins, PlayUntilAnyWinStrategy/PlayUntilSymbolWinStrategy, deterministic
+    // seed reproducibility) are already covered in depth by StudioPlayService.test.ts.
+    describe("Project Dashboard: Play scenario controls (POST /api/project/play/sessions/:id/find-any-win, /find-symbol-win)", () => {
+        let scenarioStudioRoot: string;
+        let scenarioServer: StudioServer | undefined;
+        const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+        // Wins on round 3 exactly, so findAnyWin has a real, small, deterministic number of real spins to
+        // run through rather than either winning trivially on the first attempt or exhausting a large bound.
+        function createWinsOnThirdRoundGame(): PokieGame {
+            return {
+                getManifest: () => manifest,
+                createSession: () => {
+                    let credits = 1000;
+                    const bet = 1;
+                    let round = 0;
+                    let winAmount = 0;
+                    return {
+                        getCreditsAmount: () => credits,
+                        setCreditsAmount: (value: number) => {
+                            credits = value;
+                        },
+                        getBet: () => bet,
+                        setBet: () => undefined,
+                        getAvailableBets: () => [bet],
+                        canPlayNextGame: () => true,
+                        play: () => {
+                            round++;
+                            winAmount = round === 3 ? 10 : 0;
+                            credits = credits - bet + winAmount;
+                        },
+                        getWinAmount: () => winAmount,
+                    } as unknown as GameSessionHandling;
+                },
+            };
+        }
+
+        function createScenarioServer(
+            initialContext: {mode: "home"} | {mode: "project"; projectRoot: string},
+            loadGame: () => Promise<PokieGame> = () => Promise.resolve(createWinsOnThirdRoundGame()),
+            maxFindScenarioSpins: number | undefined = undefined,
+        ): StudioServer {
+            return new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: scenarioStudioRoot,
+                homeService: new StudioHomeService("1.0.0", undefined, () => Promise.resolve(createWinsOnThirdRoundGame())),
+                blueprintService: new StudioBlueprintService("1.0.0", scenarioStudioRoot, new StudioHomeService("1.0.0")),
+                playService: new StudioPlayService(loadGame, undefined, undefined, undefined, undefined, maxFindScenarioSpins),
+                initialContext,
+            });
+        }
+
+        beforeEach(() => {
+            scenarioStudioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-play-scenario-test-"));
+            writeStudioAssets(scenarioStudioRoot);
+        });
+
+        afterEach(async () => {
+            await scenarioServer?.stop();
+            fs.rmSync(scenarioStudioRoot, {recursive: true, force: true});
+        });
+
+        it("returns 409 'No active project' for both scenario routes in Home mode", async () => {
+            scenarioServer = createScenarioServer({mode: "home"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            expect((await post(`${baseUrl}/api/project/play/sessions/unknown/find-any-win`, {})).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/play/sessions/unknown/find-symbol-win`, {symbolId: "A"})).status).toBe(409);
+        });
+
+        it("find-any-win runs real spins server-side until one actually wins, returning that settled round", async () => {
+            scenarioServer = createScenarioServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const found = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-any-win`, {});
+
+            expect(found.status).toBe(200);
+            const foundBody = found.body as {status: string; session: {win: number; credits: number}};
+            expect(foundBody.status).toBe("ok");
+            expect(foundBody.session.win).toBe(10);
+            // 3 real spins settled: 2 losses (-1 each) then a 10-credit win (-1 + 10).
+            expect(foundBody.session.credits).toBe(1000 - 1 - 1 - 1 + 10);
+        });
+
+        it("find-symbol-win rejects a missing symbolId with 400, never reaching the play service", async () => {
+            scenarioServer = createScenarioServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const response = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-symbol-win`, {});
+
+            expect(response.status).toBe(400);
+        });
+
+        it("find-symbol-win propagates the given symbolId through to the play service, reporting an honest error for a non-video-slot game rather than a 500", async () => {
+            scenarioServer = createScenarioServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const response = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-symbol-win`, {symbolId: "A"});
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({
+                status: "error",
+                error: "This game doesn't report per-symbol win details, so Find symbol win isn't available for it.",
+            });
+        });
+
+        it("find-any-win against an unknown sessionId returns 404, never a 500", async () => {
+            scenarioServer = createScenarioServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const response = await post(`${baseUrl}/api/project/play/sessions/does-not-exist/find-any-win`, {});
+
+            expect(response.status).toBe(404);
+        });
+
+        it("find-any-win reports an honest 'error' (never hangs) once a small maxFindScenarioSpins bound is exhausted", async () => {
+            scenarioServer = createScenarioServer(
+                {mode: "project", projectRoot: "/tmp/sample-slot"},
+                () => Promise.resolve(createPlayableFakeGame(manifest)),
+                3,
+            );
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const found = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-any-win`, {});
+
+            expect(found.status).toBe(200);
+            expect(found.body).toEqual({status: "error", error: "No matching round was found within 3 spins."});
+        });
+    });
+
     // Proves P5-POLISH-10's own Outcome Source fix: a resolved "outcomeLibrary"/"stakeAdapter" project
     // opened straight into Play (initialContext -- no runtime.execute capability, no `pokie.entry` package
     // at all) is resolved through the same ProjectTargetResolver-backed routing ServeCommand/the Outcome
