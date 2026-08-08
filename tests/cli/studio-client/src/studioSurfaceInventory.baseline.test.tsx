@@ -274,7 +274,7 @@ describe("Advanced tab Stepper inventory baseline", () => {
         expect(screen.getByRole("radio", {name: "Recreate from seed"})).toBeChecked();
         // Nothing loaded yet under the default source -- the source-specific empty prompt shows instead
         // of a loaded card/action bar/result view.
-        expect(screen.getByText("Load a round above to reproduce it.")).toBeInTheDocument();
+        expect(screen.getByText("Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
     });
 
