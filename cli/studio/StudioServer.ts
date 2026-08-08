@@ -1803,7 +1803,8 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.simulationService.start(this.currentContext.projectRoot, validated);
+        const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
+        const result = this.simulationService.start(this.currentContext.projectRoot, validated, outcomeSourceProject);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
                 error: "A simulation is already running for this project.",
@@ -1920,7 +1921,8 @@ export class StudioServer implements StudioServerHandling {
             }
         }
 
-        const result = this.replayService.start(this.currentContext.projectRoot, validated);
+        const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
+        const result = this.replayService.start(this.currentContext.projectRoot, validated, outcomeSourceProject);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
                 error: "A replay is already running for this project.",

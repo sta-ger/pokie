@@ -20,7 +20,11 @@ import {
     BLUEPRINT_BUILD_CAPABILITY,
     describeCapability,
     describeValidationSummary,
+    OUTCOME_LIBRARY_READ_CAPABILITY,
+    OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    PROJECT_TYPE_LABEL,
     RUNTIME_EXECUTE_CAPABILITY,
+    STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectHeaderView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
@@ -67,6 +71,29 @@ export type ProjectTab =
 // BLUEPRINT_BUILD_CAPABILITY is an equally sufficient signal here -- either one unlocks this whole group.
 const RUNTIME_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [BLUEPRINT_BUILD_CAPABILITY, RUNTIME_EXECUTE_CAPABILITY];
 
+// Play/Simulation/Replay each reach a resolved "outcomeLibrary" project through its own real OutcomeSource
+// adapters (StudioPlayService/StudioSimulationService/StudioReplayExecutionService), never loadPokieGame --
+// see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment. Added to (never replacing) RUNTIME_CAPABLE_CAPABILITIES
+// so a runtime-executable project keeps reaching these sections exactly as before.
+const OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, OUTCOME_SOURCE_SAMPLE_CAPABILITY];
+
+// What Build/Export needs to be reachable at all -- either runtime-executable (able to generate/build/export
+// its own outputs) or already *is* a canonical outcome-source project ExportDeployTargets.ts's own capability-
+// driven cards already know how to read from (OUTCOME_LIBRARY_READ_CAPABILITY: republish/export an existing
+// native library; STAKE_ADAPTER_EXCHANGE_CAPABILITY: republish an existing Stake Engine export) -- see that
+// module's own canReachCanonicalOutcomeLibrary/describeExportDeployTargetCards.
+const BUILD_EXPORT_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
+    ...RUNTIME_CAPABLE_CAPABILITIES,
+    OUTCOME_LIBRARY_READ_CAPABILITY,
+    STAKE_ADAPTER_EXCHANGE_CAPABILITY,
+];
+
+// Certification builds/verifies an evidence bundle on top of an already-computed native outcome library --
+// what CERTIFICATION_BUILD_OPERATION/CERTIFICATION_VERIFY_OPERATION require (OUTCOME_LIBRARY_READ_CAPABILITY),
+// same reasoning as Build/Export's own outcome-library card. Never offered for a "stakeAdapter" export, which
+// has no PreGeneratedOutcomeSourcing-style draw contract of its own to sample from.
+const CERTIFICATION_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, OUTCOME_LIBRARY_READ_CAPABILITY];
+
 type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
     // undefined -- always reachable once a project is loaded (Overview). A non-empty list -- reachable
     // only once the loaded project's own resolved capabilities include at least one of them.
@@ -91,7 +118,9 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // "play"/PlayTab is Studio's own -- and only -- game mode -- materializes/loads the project as needed
 // and creates a real session directly in Studio's own backend, no server/host/port/API to set up. It's
 // deliberately ungrouped (not "Advanced") alongside Overview/Simulation: playing the game is the primary
-// thing a project workspace is for.
+// thing a project workspace is for. Also reachable for a resolved "outcomeLibrary" project (see
+// OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES) -- StudioPlayService already plays it through its own real
+// OutcomeLibraryBundleOutcomeSource adapter.
 //
 // "exportDeploy"/ExportDeployTab (labeled "Build/Export") is the sole Studio build surface -- the old
 // standalone Deployment/Stake Engine Export/Outcome Libraries workspaces (each its own Stepper-driven
@@ -100,15 +129,22 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // library/inspect/compare tools, which have no Build/Export equivalent yet -- only generating a fresh
 // library does. A deep link to one of the old routes now simply falls back to Overview (see
 // isProjectTab/activeTab below) like any other unrecognized tab value, rather than being kept alive
-// merely for pre-release compatibility.
+// merely for pre-release compatibility. Also reachable for a resolved "outcomeLibrary"/"stakeAdapter"
+// project (see BUILD_EXPORT_CAPABLE_CAPABILITIES) -- neither can generate a fresh library, but each can
+// still republish/export the canonical outcome source it already is.
+//
+// "overview" carries no `requiredCapabilities` -- it's always reachable once a project is loaded, but its
+// own *content* still varies by resolved type (OverviewTab for a "loaded" project; OutcomeSourceOverview's
+// own canonical reader/analysis/draw for an "outcome-source" one) -- see the render tree below, never a
+// second, capability-gated tab of its own.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "overview", label: "Overview"},
     {value: "gameModel", label: "Game Model"},
-    {value: "play", label: "Play", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "simulation", label: "Simulation", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "exportDeploy", label: "Build/Export", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
-    {value: "certification", label: "Certification", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "play", label: "Play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "simulation", label: "Simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "exportDeploy", label: "Build/Export", section: "Advanced", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
+    {value: "certification", label: "Certification", section: "Advanced", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
     {value: "provablyFair", label: "Fairness", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
 ];
 
@@ -117,14 +153,20 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
 }
 
 // Whether `tab` is actually reachable for the loaded project. A tab with no `requiredCapabilities`
-// (Overview) is always supported; everything else needs the project to be "loaded" (a "loading"/"error"/
-// "empty" header has no capabilities to check at all) and to carry at least one of the capabilities it
-// lists.
+// (Overview) is always supported; everything else needs the project to be resolved -- "loaded" or
+// "outcome-source" alike, the only two ProjectHeaderView statuses that carry a `capabilities` array at
+// all ("loading"/"error"/"empty" have none to check) -- and to carry at least one of the capabilities
+// it lists. Treating "outcome-source" the same as "loaded" here is what makes a resolved "outcomeLibrary"/
+// "stakeAdapter" project reach the same capability-gated tab set every other project type does, rather
+// than a special-cased page of its own.
 function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): boolean {
     if (tab.requiredCapabilities === undefined) {
         return true;
     }
-    return header.status === "loaded" && tab.requiredCapabilities.some((capability) => header.capabilities.includes(capability));
+    return (
+        (header.status === "loaded" || header.status === "outcome-source") &&
+        tab.requiredCapabilities.some((capability) => header.capabilities.includes(capability))
+    );
 }
 
 // The nav items NavTabs actually renders -- filtered solely by isTabSupported above (a project that
@@ -142,6 +184,20 @@ function visibleProjectTabs(header: ProjectHeaderView): NavTabItem<ProjectTab>[]
 function describeUnsupportedTabMessage(tab: ProjectTabDescriptor): string {
     const need = (tab.requiredCapabilities ?? []).map(describeCapability).join(" or ");
     return `"${tab.label}" isn't available for this project -- it requires: ${need}.`;
+}
+
+// The page title/breadcrumb label -- a "loaded" project shows its own game identity (id/name/version
+// live on the header itself); an "outcome-source" project has no such identity of its own (see
+// ProjectHeaderView's own doc comment on why), so this falls back to its resolved ProjectType's own
+// label (e.g. "Outcome library", "Stake Engine export") instead of a generic "Project" placeholder.
+function describeProjectName(header: ProjectHeaderView): string {
+    if (header.status === "loaded") {
+        return header.name;
+    }
+    if (header.status === "outcome-source") {
+        return PROJECT_TYPE_LABEL[header.type];
+    }
+    return "Project";
 }
 
 // Mirrors the old app's own showProjectDashboard: every tab's data-loading hook lives here, at the page
@@ -167,7 +223,13 @@ export function ProjectDashboardPage() {
     );
 
     const header = useProjectContext();
-    const projectKey = header.status === "loaded" || header.status === "error" ? header.projectRoot : undefined;
+    const projectKey =
+        header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
+    // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
+    // own content needs "this project's resolved capabilities" without caring whether it's a "loaded"
+    // (game-backed) or "outcome-source" (canonical-reader-backed) resolution (see GameModelTab's
+    // `editable`/ExportDeployTab's `capabilities` props below).
+    const headerCapabilities = header.status === "loaded" || header.status === "outcome-source" ? header.capabilities : [];
 
     // Replacing the whole state on every attempt (not just a summary + a separate loading bool) is what
     // makes a failed re-validation correctly clear a stale successful result instead of silently leaving
@@ -616,7 +678,7 @@ export function ProjectDashboardPage() {
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
     // own hooks/fetches.
     const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
-    const projectName = header.status === "loaded" ? header.name : "Project";
+    const projectName = describeProjectName(header);
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
     // Moves focus into the active tab's content whenever the section changes, keeping keyboard/screen-
@@ -678,7 +740,7 @@ export function ProjectDashboardPage() {
             onHomeClick={handleClose}
         >
             <div>
-                <Title order={2}>{header.status === "loaded" ? header.name : "Project"}</Title>
+                <Title order={2}>{describeProjectName(header)}</Title>
                 <Text c="dimmed">{header.projectRoot}</Text>
                 <Button variant="default" size="xs" mt="xs" onClick={handleClose} loading={closeGuard.isBlocked()}>
                     Close project
@@ -700,19 +762,16 @@ export function ProjectDashboardPage() {
                     <ErrorState message={header.message} detail={header.errorDetail} />
                 </div>
             )}
-            {header.status === "outcome-source" && (
-                <div style={{marginTop: "1rem"}}>
-                    <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
-                </div>
-            )}
-
-            {(header.status === "loaded" || header.status === "error") && (
+            {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source") && (
                 <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
                     {!activeTabSupported && activeTabDescriptor !== undefined && <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />}
                     {activeTabSupported && (
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
                                 <OverviewTab header={header} validation={validation} onRevalidate={runValidate} />
+                            )}
+                            {activeTab === "overview" && header.status === "outcome-source" && (
+                                <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
                             )}
                             {activeTab === "gameModel" && (
                             // GameModelTab owns all of its own fetch state locally (no page-level hook),
@@ -724,7 +783,7 @@ export function ProjectDashboardPage() {
                             // never offers Edit here.
                                 <GameModelTab
                                     key={projectKey ?? "no-project"}
-                                    editable={header.status === "loaded" && header.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
+                                    editable={headerCapabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
                                     projectRoot={projectKey}
                                     onDirtyChange={setGameModelDirty}
                                 />
@@ -803,7 +862,7 @@ export function ProjectDashboardPage() {
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab capabilities={header.status === "loaded" ? header.capabilities : []} deployment={deployment} />
+                                <ExportDeployTab capabilities={headerCapabilities} deployment={deployment} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns

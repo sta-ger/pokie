@@ -6,22 +6,25 @@ import type {OutcomeSourceSampleView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {describeRoundArtifact} from "../../domain/interpret/Replay";
-import type {ProjectHeaderView} from "../../domain/interpret/ProjectDashboard";
+import {OUTCOME_SOURCE_SAMPLE_CAPABILITY, type ProjectHeaderView} from "../../domain/interpret/ProjectDashboard";
 import {ErrorState} from "../common/ErrorState";
 import {RoundArtifactInspector} from "../common/RoundArtifactInspector";
 
 type OutcomeSourceHeader = Extract<ProjectHeaderView, {status: "outcome-source"}>;
 
-// The Project Dashboard's dedicated view for a resolved "outcomeLibrary"/"stakeAdapter" project (see
-// ProjectDashboard.ts's own "outcome-source" ProjectHeaderView variant) -- rendered directly by
-// ProjectDashboardPage instead of through the ordinary capability-gated tab set, since neither project
-// type ever gains RUNTIME_EXECUTE_CAPABILITY/BLUEPRINT_BUILD_CAPABILITY (none of Simulation/Replay/
-// Runtime/Build-Export/etc. apply here at all). Shows the canonical reader's own descriptor/limitations
-// and, per mode, its own precomputed exact analysis (never a re-derived/regenerated game-model
-// calculation -- see CanonicalOutcomeSourceDescriptor's own doc comment). Only an "outcomeLibrary"
-// project offers "Draw an outcome" -- see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment for why a
-// "stakeAdapter" export has no draw contract of its own; the route itself still enforces this (the
-// structured diagnostic is rendered if the button is ever reached for a type that doesn't support it).
+// The Project Dashboard's own Overview tab body for a resolved "outcomeLibrary"/"stakeAdapter" project
+// (see ProjectDashboard.ts's own "outcome-source" ProjectHeaderView variant) -- mounted by
+// ProjectDashboardPage as that tab's content exactly the way OverviewTab is for a "loaded" project,
+// through the same capability-gated nav (Play/Simulation/Replay/Build-Export/Certification each reach
+// this project type too, whenever its own resolved capabilities actually grant them -- see
+// OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES/BUILD_EXPORT_CAPABLE_CAPABILITIES/
+// CERTIFICATION_CAPABLE_CAPABILITIES in ProjectDashboardPage.tsx), never a special-cased page swap that
+// bypasses it. Shows the canonical reader's own descriptor/limitations and, per mode, its own
+// precomputed exact analysis (never a re-derived/regenerated game-model calculation -- see
+// CanonicalOutcomeSourceDescriptor's own doc comment). Only an "outcomeLibrary" project offers "Draw an
+// outcome" -- see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment for why a "stakeAdapter" export has
+// no draw contract of its own; the route itself still enforces this (the structured diagnostic is
+// rendered if the button is ever reached for a type that doesn't support it).
 // "onRoundRecorded", when given, fires after every successful draw -- a sample draw passes through the
 // same shared StudioRoundRecorder every other Studio tab's rounds do (see StudioServer's own outcome-
 // source sample route), so a caller wired to it (ProjectDashboardPage, passing its own
@@ -36,7 +39,7 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
 
     const {report} = header;
     const hasErrors = report.issues.some((issue) => issue.severity === "error");
-    const canSample = header.capabilities.includes("outcomeSource.sample");
+    const canSample = header.capabilities.includes(OUTCOME_SOURCE_SAMPLE_CAPABILITY);
 
     const onDraw = (modeName: string) => {
         setDrawing(true);

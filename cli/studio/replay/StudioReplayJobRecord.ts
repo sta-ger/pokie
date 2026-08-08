@@ -1,4 +1,4 @@
-import type {ReplayDescriptor} from "pokie";
+import type {PokieProject, ReplayDescriptor} from "pokie";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 
 // The internal, mutable job record StudioReplayExecutionService/StudioReplayRepository hold —
@@ -30,4 +30,8 @@ export type StudioReplayJobRecord = {
     descriptor?: ReplayDescriptor;
     error?: string;
     abortController: AbortController;
+    // The already-resolved "outcomeLibrary"/"stakeAdapter" project this job replays, when start() was
+    // given one -- see StudioReplayExecutionService.start()'s own doc comment. Undefined for an ordinary
+    // "tsPackage"/"blueprint" replay, which run() drives through loadGame/GameSessionHandling.play() instead.
+    outcomeSourceProject?: PokieProject;
 };

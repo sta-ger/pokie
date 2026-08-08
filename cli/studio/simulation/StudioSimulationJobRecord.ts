@@ -1,4 +1,4 @@
-import type {SimulationReport} from "pokie";
+import type {PokieProject, SimulationReport} from "pokie";
 import type {StudioSimulationStatisticsView} from "./StudioSimulationJobView.js";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 
@@ -26,4 +26,8 @@ export type StudioSimulationJobRecord = {
     statistics?: StudioSimulationStatisticsView;
     error?: string;
     abortController: AbortController;
+    // The already-resolved "outcomeLibrary"/"stakeAdapter" project this job samples, when start() was
+    // given one -- see StudioSimulationService.start()'s own doc comment. Undefined for an ordinary
+    // "tsPackage"/"blueprint" simulation, which run() drives through ParallelSimulationRunner instead.
+    outcomeSourceProject?: PokieProject;
 };
