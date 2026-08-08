@@ -2004,9 +2004,9 @@ describe("CLI command validation contract (frozen, side-effect-free)", () => {
 // ever inspects `args[0]`/`args.includes(...)` the same shallow way each command's own run() does to
 // pick a subcommand, and is used purely to bucket test-fixture cases for the coverage assertions
 // below, never to assert behavior itself): a subcommand-style command (certification/fairness/
-// outcomelibrary/par/stakeengine) always has its verb literal as `args[0]`; "build"/"create" each have
-// one or more sentinel verbs recognized by a flag rather than a positional ("random" for build,
-// "--blank"/"--random" for create); every other command has exactly one verb (`undefined`).
+// outcomelibrary/par/stakeengine) always has its verb literal as `args[0]`; "create" has one or more
+// sentinel verbs recognized by a flag rather than a positional ("--blank"/"--random"); every other
+// command has exactly one verb (`undefined`).
 function deriveVerbForCase(commandName: string, args: string[]): string | undefined {
     const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === commandName);
     if (!descriptor) {
@@ -2015,9 +2015,6 @@ function deriveVerbForCase(commandName: string, args: string[]): string | undefi
     const verbLiterals = descriptor.verbs.map((verb) => verb.verb).filter((verb): verb is string => verb !== undefined);
     if (verbLiterals.length === 0) {
         return undefined;
-    }
-    if (verbLiterals.includes("random") && args[0] === "random") {
-        return "random";
     }
     if (verbLiterals.includes("--random") && args.includes("--random")) {
         return "--random";
@@ -2367,7 +2364,7 @@ describe("CLI help coverage (recursively walks the real registered Commander tre
 
     // One discovered node per real Commander Command in the tree -- the top-level command itself
     // (`path: []`) plus every nested subcommand, found by walking `.commands` (exactly what Commander
-    // itself dispatches through, e.g. "certification build", "build random") -- never a hand-maintained
+    // itself dispatches through, e.g. "certification build", "stakeengine export") -- never a hand-maintained
     // verb list. `path` is the argv Commander needs, relative to the command's own args (dispatch.ts
     // already consumes the top-level command name itself).
     type CommanderNode = {path: string[]; command: Command};

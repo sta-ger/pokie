@@ -2849,90 +2849,60 @@ POKIE Studio listening on http://127.0.0.1:3200
 
 A browser tab opens automatically (same best-effort `open`/`start`/`xdg-open` mechanism as `pokie dev`, and the
 same `--no-open` escape hatch) showing the **Home** view — this being a run from outside any game package; the
-same command inside one opens that project's dashboard instead. Its navigation groups the flows below into 3
-task-oriented tabs rather than one-tab-per-flow — **Design & Build** (Blueprint Editor + Reel Strip Modeler,
-the default tab), **Open Project** (Recent Projects + Open Existing Project), and **Advanced Tools** (Create
-Project, Initialize Project, Build from Blueprint) — see
-[`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the grouping and why. The
-underlying flows, services, and API calls below are unchanged:
+same command inside one opens that project's dashboard instead. Home is task-oriented, with exactly 2 tabs —
+**Design Game** (`/home/design`, the default) and **Projects** (`/home/projects`) — see
+[`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the full layout/navigation detail.
+There is no separate scaffolding/init/build-from-existing-blueprint-file surface any more: those flows now live
+only in the CLI (`pokie init [directory]` for a prepared, immediately valid package; `pokie create [name]` for an
+editable Blueprint Project) — Home never shells out to them, it simply doesn't duplicate them.
 
-- **Recent Projects** — every project created/opened this session (most-recently-started first), each showing its
-  name, path, and last-opened time. A project whose directory/`package.json` can no longer be found is flagged
-  **missing** (its Open button disabled) rather than silently dropped from the list — it's still there to explain
-  history, and reappears as normal if the directory comes back. In-memory only: resets when Studio is restarted.
-- **Create Project** — destination directory, package name, and optional game id/name/version overrides, calling
-  the same `GamePackageCreating` service `pokie create` uses (the overrides are new: `GamePackageCreating.create()`
-  now accepts an optional third `{id?, name?, version?}` argument on top of what it would otherwise derive from the
-  package name — `pokie create` itself is unaffected, still calling the plain 2-argument form). Shows the created
-  files and an **Open in Studio** button on success.
-- **Initialize Project** — an existing directory, calling the same `GamePackageScaffolding` service `pokie init`
-  uses. Shows created/updated/skipped files (a missing `package.json` is reported as a clear error, exactly as
-  `pokie init` itself reports it) and an **Open in Studio** button on success.
-- **Build from Blueprint** — a blueprint JSON path and optional output directory, with two actions: **Preview**
-  (`GameBlueprintValidating` + a pure `buildGameBuildInfo()` call — validation summary, game metadata, blueprint
-  hash, and expected generated files, without writing anything, same as `pokie build --dry-run`) and **Build**
-  (the same `GamePackageGenerating` service `pokie build` uses, including its safe-rebuild/conflict check — building
-  into a directory that already contains files a prior build didn't generate is refused with the same descriptive
-  error `pokie build` itself gives). Shows warnings, generated files, and build-info on success, plus an
-  **Open in Studio** button.
-- **Open Existing Project** — an absolute or relative path, loaded with `loadPokieGame`, the same package loader
-  every other command uses; switches to the **Project** view on success. This is also what each of Create/Init/
-  Build's own "Open in Studio" buttons calls, against the path they just produced — Create/Init/Build never
-  transition Studio into Project mode themselves.
-- **Blueprint Editor** — creates or edits a `GameBlueprint` through a GUI instead of hand-written JSON, editing the
-  exact same DTO `pokie build <config.json>` accepts (no separate Studio-only blueprint schema, and the
-  vertical-slice scope is unchanged: manifest, reels/rows, symbols, paylines, paytable, reel strips/symbol weights,
-  available bets). **New Blueprint** starts from a minimal starter object; **Load** reads an existing blueprint JSON
-  from a path the user types. A **Form**/**JSON** toggle switches between the field-by-field editor (with
-  add/remove/duplicate/reorder controls for every collection: symbols, bets, paylines, paytable rows, reel-strip
-  symbols, symbol-weight rows, plus wild/scatter checkboxes and a reel-strips-vs-symbol-weights mode toggle) and a
-  raw JSON textarea kept in sync with it — a Form edit always re-derives the JSON text, a syntactically valid JSON
-  edit always re-derives the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-
-  good state untouched rather than clearing the editor; any top-level field the Form doesn't know about survives
-  every round trip unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without
-  touching disk. **Save** writes the blueprint as formatted JSON with a stable field order and a trailing newline
-  (so re-saving unchanged content is byte-identical) to a path the user types — refusing to overwrite a file that
-  already exists unless the request explicitly confirms it (`{"status": "conflict"}`, `409`; see the API section);
-  the UI's own **Overwrite** button asks for a confirmation naming the path before resending that request.
-  **Build Preview**/**Build Package** call the same `buildGameBuildInfo()`/`GamePackageGenerating` services the
-  path-based Build tab and `pokie build` itself use, including the same safe-rebuild/conflict check, followed by an
-  **Open in Studio** button on a successful build — the same Home → Project transition as every other flow here.
-  Re-clicking **Build**/**Build Package** against the same output directory a build already succeeded against
-  earlier in the session asks for confirmation first (a first build against a given directory never does).
-  Load/Save/Build never resolve a path against Studio's own internal asset directory (`studioRoot`) — only an
-  explicitly user-given path is ever read or written.
-- **Reel Strip Modeler** — a fourth "Reel generation" mode (alongside Default/Reel strips/Symbol weights) for editing
-  a `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation) array:
-  each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel strips mode) and
-  **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights table, a locked-positions
-  table, and its `constraints` array edited as raw JSON — there are seven constraint types with quite different
-  fields, so this reuses the same JSON-editing affordance the whole-blueprint JSON view already has instead of one
-  bespoke widget per type). Switching a reel between Literal/Generated, or a generated reel's own source between
-  counts/weights, never discards what was already entered on the side being left — the previous configuration is
-  restored, not reset to defaults, the next time the toggle comes back around. A generated reel's own **Length**
-  can be set automatically to the sum of its currently active counts/weights (**Auto length**); its `constraints`
-  can be started from a handful of built-in **presets** (still just plain `ReelStripConstraintSpec` objects appended
-  to the same JSON array — no separate preset vocabulary `pokie reel generate` wouldn't already understand); and a
-  reel's own draft can be replaced wholesale with another already-configured reel's own entry (**Copy from reel**),
-  as a starting point to tweak from — still just an ordinary draft edit, requiring the usual explicit Apply to
-  commit it. **Resolve reels** calls `POST
-  /api/home/blueprints/reel-strip-generation-preview` (see the API section), which runs the exact same
-  `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer` `pokie build` itself uses — never a
-  reimplementation — and shows every reel's exact resulting symbol sequence, symbol-count analysis, and (for a
-  generated reel whose constraints can't be satisfied) every generation attempt's own diagnostics/violations, the
-  same information a real `pokie build` failure would report, without writing anything; a blueprint-level problem
-  unrelated to reelStripGeneration itself never blocks this preview, only hides the (unrelated) affected reel if any.
-  Any further edit clears a previously shown preview outright (it described the blueprint as it was *before* that
-  edit), and a "Resolve reels" response that arrives after the blueprint has since changed is silently discarded
-  rather than shown. **Save** always writes the *authored* `reelStripGeneration` array
-  (counts/weights/seed/constraints), never a resolved/materialized strip — identical to how `pokie build` itself
-  keeps `blueprintHash` keyed on the authored blueprint.
+- **Design Game** is the guided happy path: a **New Blueprint** dialog (Blank / Random / from an existing
+  blueprint file) starts a draft, then the same Blueprint Editor used to configure, validate, and build it —
+  editing the exact same DTO `pokie build <project.json>` accepts (no separate Studio-only blueprint schema).
+  A **Form**/**JSON** toggle switches between the field-by-field editor (with add/remove/duplicate/reorder
+  controls for every collection: symbols, bets, paylines, paytable rows, reel-strip symbols, symbol-weight rows,
+  plus wild/scatter checkboxes and a reel-strips-vs-symbol-weights mode toggle) and a raw JSON textarea kept in
+  sync with it — a Form edit always re-derives the JSON text, a syntactically valid JSON edit always re-derives
+  the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-good state untouched
+  rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
+  unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without touching disk.
+  Load/Save-by-path and the raw JSON view are tucked behind a "Show advanced options" disclosure — the guided
+  flow itself never requires them. **Build** calls the same `buildGameBuildInfo()`/`GamePackageGenerating`
+  services `pokie build` itself uses, including the same safe-rebuild/conflict check (building into a directory
+  that already contains files a prior build didn't generate is refused with the same descriptive error `pokie
+  build` itself gives; re-building against a directory a build already succeeded against earlier in the session
+  asks for confirmation first), followed by an **Open in Studio** button on success — the bridge into the
+  Project Dashboard. A **Reel Strip Modeler** mode (alongside Default/Reel strips/Symbol weights) edits a
+  `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
+  array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
+  strips mode) and **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights
+  table, a locked-positions table, and its `constraints` array edited as raw JSON — there are seven constraint
+  types with quite different fields, so this reuses the same JSON-editing affordance the whole-blueprint JSON
+  view already has instead of one bespoke widget per type). Switching a reel between Literal/Generated, or a
+  generated reel's own source between counts/weights, never discards what was already entered on the side being
+  left. A generated reel's own **Length** can be set automatically to the sum of its currently active
+  counts/weights (**Auto length**); its `constraints` can be started from a handful of built-in **presets**
+  (still just plain `ReelStripConstraintSpec` objects appended to the same JSON array); and a reel's own draft
+  can be replaced wholesale with another already-configured reel's own entry (**Copy from reel**). **Resolve
+  reels** calls `POST /api/home/blueprints/reel-strip-generation-preview` (see the API section), which runs the
+  exact same `resolveReelStripGeneration`/`ReelStripGenerator`/`ReelStripAnalyzer` `pokie build` itself uses —
+  never a reimplementation — and shows every reel's exact resulting symbol sequence, symbol-count analysis, and
+  (for a generated reel whose constraints can't be satisfied) every generation attempt's own diagnostics/
+  violations, without writing anything. **Save** always writes the *authored* `reelStripGeneration` array
+  (counts/weights/seed/constraints), never a resolved/materialized strip.
+- **Projects** lists every already-known project — managed (created/opened this Studio session, in-memory only,
+  reset on restart) and registered (persisted across restarts via `StudioProjectRegistrationService`) — each
+  showing its name, path, and last-opened time; a project whose directory/`package.json` can no longer be found
+  is flagged **missing** rather than silently dropped. **Open** loads it with `loadPokieGame`, the same package
+  loader every other command uses, and switches to the **Project** dashboard on success. **Import Project**
+  previews/validates a target path before ever registering it — a detected PAR sheet routes into Design Game's
+  own PAR Sheet Import/Export panel instead of being registered as a package, since there's no "open" story for
+  a PAR sheet the way there is for a runnable one.
 
 None of these ever shell out to `pokie create`/`init`/`build` as a subprocess, or duplicate their logic — see
-`StudioHomeService` (`cli/studio/home/StudioHomeService.ts`) for Create/Init/Build(path)/Open, and
-`StudioBlueprintService` (`cli/studio/blueprint/StudioBlueprintService.ts`) for the Blueprint Editor — both drive
-the same underlying services directly, and share one place (`StudioHomeService.rememberRecentProject`) for
-recent-projects bookkeeping across all six flows.
+`StudioBlueprintService` (`cli/studio/blueprint/StudioBlueprintService.ts`) for the Blueprint Editor and
+`StudioHomeService` (`cli/studio/home/StudioHomeService.ts`) for Open/recent-projects bookkeeping — both drive
+the same underlying services directly.
 
 A **Documentation** section links into this repository's docs.
 
@@ -2947,32 +2917,40 @@ Opening or creating a project — or launching Studio directly with `pokie .`/`p
 — switches Studio into the **Project** mode/route, identified by that project's `projectRoot`, and shows the
 **Project Dashboard**.
 
-The Dashboard has several tabs today, switched client-side with no full page reload — **Overview**, **Validate**,
-and **Simulation & Reports** first (the primary flow, in that order), then **Replay**,
-**Deployment**, **Outcome Libraries**, **Certification**, **Provably Fair**, and **Stake
-Engine Export** grouped as "Advanced" in the navigation (still one click away, just visually secondary — see
-[`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current tab list).
-Overview also shows a status summary recommending the next action (validate → fix issues → simulate → view
-report):
+The Dashboard has several tabs today, switched client-side with no full page reload — **Overview**, **Game
+Model**, **Play**, and **Simulation** first (the primary flow, in that order), then **Replay**,
+**Build/Export**, **Certification**, and **Fairness** grouped as "Advanced" in the navigation (still one click
+away, just visually secondary — a tab is only offered at all once the loaded project's own resolved capabilities
+support it; see [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the exact, current
+tab list). There is no standalone "Validate" tab any more — validation is automatic diagnostics folded into
+Overview itself, run on load and re-run on demand — and no standalone Deployment/Outcome Libraries/Stake Engine
+Export tabs either: those have been removed outright (not redirected), with every builder they used to own now
+one of **Build/Export**'s own cards. Overview also shows a status summary recommending the next action (fix
+validation issues → simulate → view report):
 
-- **Overview** shows the game's name/id/version, the absolute `projectRoot`, and its `package.json` identity
-  (name, version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints). An **Inspect** quick
-  action re-runs this (handy after rebuilding without restarting Studio).
-- **Validate** shows the result of its own "Run Validate" button: valid/invalid, errors, warnings, and
-  suggestions — the exact same report [`pokie validate`](#pokie-validate-packageroot) produces.
-- **Simulation & Reports** — see its own section below (still named "Simulation"/"Reports" there).
+- **Overview** shows the game's name/id/version, the absolute `projectRoot`, its `package.json` identity (name,
+  version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints), and the same validation report
+  [`pokie validate`](#pokie-validate-packageroot) produces (errors, warnings, suggestions), refreshed
+  automatically and re-runnable on demand. An **Inspect** quick action re-runs the inspection (handy after
+  rebuilding without restarting Studio).
+- **Game Model** is a read-only, resolved-project-type-aware projection of the game (manifest, reels/rows,
+  symbols, paylines, paytable, reel strips/symbol weights, available bets) via `GET /api/project/gameModel` — for
+  a project with an editable source blueprint, each section also offers **Edit** straight from this view (scoped
+  to one section at a time), reusing the exact same Blueprint Editor components Design Game's guided flow uses.
+- **Play** is Studio's own — and only — game mode: **New session**/**Reset** create a real session directly in
+  Studio's own backend (never a server, never a host/port a browser could be pointed at — to stand up an actual
+  HTTP server, use [`pokie serve`](#pokie-serve-packageroot-experimental)/[`pokie dev`](#pokie-dev-packageroot-experimental)
+  instead) and spin it for real, with every round rendering through the same `RoundArtifactInspector` the Replay
+  tab uses. Also reachable for a resolved outcome-library project, sampled through its own outcome-source draw.
+- **Simulation** — see its own section below.
 - **Replay** — see its own section below.
-- **Deployment** — see its own section below.
-- **Outcome Libraries**, **Certification**, **Provably Fair**, and **Stake Engine
-  Export** are thin GUI wrappers over the exact same backend building blocks their CLI counterparts use —
-  [`pokie outcomelibrary`](#pokie-outcomelibrary-build-configjson),
-  [`pokie certification`](#pokie-certification-build-bundledir-configjson),
-  [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite), and
-  [`pokie stakeengine export`](#pokie-stakeengine-export-configjson) respectively — with no dedicated
-  walkthrough of their own in this file yet; see each linked CLI section (or
-  [`outcome-library-bundle.md`](outcome-library-bundle.md)/[`certification-evidence-bundle.md`](certification-evidence-bundle.md)/
-  [`provably-fair.md`](provably-fair.md)/[`stake-engine-export.md`](stake-engine-export.md)) for the underlying
-  workflow each tab drives through the Studio API.
+- **Build/Export** — see its own section below.
+- **Certification** and **Fairness** are thin GUI wrappers over the exact same backend building blocks their CLI
+  counterparts use — [`pokie certification`](#pokie-certification-build-bundledir-configjson) and
+  [`pokie fairness`](#pokie-fairness-seed-commit-serverseedtxt---out-file---overwrite) respectively — with no
+  dedicated walkthrough of their own in this file yet; see each linked CLI section (or
+  [`certification-evidence-bundle.md`](certification-evidence-bundle.md)/[`provably-fair.md`](provably-fair.md))
+  for the underlying workflow each tab drives through the Studio API.
 
 Every quick action calls `GamePackageInspecting`/`PokieGamePackageValidating`/the simulation services directly (the
 same services `pokie inspect`/`pokie validate`/`pokie sim` use) — Studio never spawns a CLI command as a
@@ -2982,13 +2960,13 @@ The Dashboard itself has four states, all handled explicitly by the frontend:
 
 - **empty** — Studio is in Home mode; there's no project to show a dashboard for.
 - **loading** — only right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`); the entry
-  module hasn't finished loading yet. Create/Open both already have the manifest in hand by the time they switch
-  Studio into Project mode, so they go straight to **loaded**.
+  module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the manifest in
+  hand by the time they switch Studio into Project mode, so they go straight to **loaded**.
 - **loaded** — the game's manifest (id/name/version) loaded successfully.
 - **error** — loading the entry module failed (missing build output, a package that doesn't satisfy the
-  `PokieGame` contract, a corrupt/missing `package.json`, an entry module that throws on import, ...). The
-  Overview/Validation tabs stay usable even here — Inspect only reads `package.json`/`build-info.json` (no entry
-  module needed), and Validate is exactly how to see the concrete reason loading failed.
+  `PokieGame` contract, a corrupt/missing `package.json`, an entry module that throws on import, ...). Overview
+  stays usable even here — Inspect only reads `package.json`/`build-info.json` (no entry module needed), and its
+  folded-in validation diagnostics are exactly how to see the concrete reason loading failed.
 
 #### Simulation
 
@@ -3144,36 +3122,52 @@ in-memory limit, same as Reports: restarting Studio clears it, and a replay from
 `404`, indistinguishable from an unknown id) once Studio switches to a different project. Stopping Studio itself
 (`Ctrl+C`) cancels every still-active replay the same way it cancels every still-active simulation.
 
-#### Deployment
+#### Build/Export
 
-The **Deployment** tab is a GUI over the `pokie` package's own [External Adapter SDK](external-adapter-sdk.md) —
-`StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundArtifact`,
-generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight to
-`ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio only owns two things on top of
-that: which target(s) are available (a registry seeded with exactly the SDK's own local-filesystem example target,
-`createLocalJsonExternalDeploymentTarget` — Studio ships no private RGS integration, same as the SDK itself), and
-turning the tab's own form into the SDK's input shapes.
+**Build/Export** (`ExportDeployTab.tsx`) is the sole Studio build surface — the old standalone Deployment/Stake
+Engine Export/Outcome Libraries workspaces (each its own Stepper-driven flow) have been removed outright, not
+redirected; every builder they used to own is one of this tab's own cards, grouped by kind (`ExportDeployTargets.ts`):
 
-**Registered Targets** lists every available target's `id`, `version`, `requirements`
-(`minPokieVersion`/`symbolAlphabet`/`requiresHomogeneousProvenance`, whichever are set), and `capabilities` — click
-one to select it. The **Deploy** form then asks for one or more **modes**, each a **mode name** and a **library
-JSON path** (a `WeightedOutcomeLibrary` file, resolved relative to the active project's own root — the same
-"a path, never an inline blob" convention every other Project Dashboard feature follows; refused with `400` if it
-resolves outside the project root). **Add mode** appends another mode row for a multi-mode deployment (only
-accepted by a target that declares the `multiMode` capability — see the SDK's own compatibility rules).
+- **Outcome libraries** — generates or selects the canonical `WeightedOutcomeLibrary` every other card below reads
+  from (a build step in its own right, not a delivery target), the same underlying operation as
+  [`pokie outcomelibrary build`](#pokie-outcomelibrary-build-configjson).
+- **Static export** — writes a standalone, self-contained bundle to disk (e.g. a Stake Engine export via
+  [`StakeEngineExporter`](stake-engine-export.md)) — nothing is registered, nothing runs a delivery step.
+- **Build artifact** — runs the project through `pokie`'s own `ArtifactBuilderRegistry`, the exact same
+  `pokie build <project> --target <target>` conversions the CLI itself offers, only ever listing a target the
+  project's own resolved type actually supports.
+- **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-adapter-sdk.md):
+  `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundArtifact`,
+  generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
+  to `ExternalDeploymentService.deploy()`, the SDK's own single orchestrator. Studio only owns two things on top
+  of that: which target(s) are available (a registry seeded with exactly the SDK's own local-filesystem example
+  target, `createLocalJsonExternalDeploymentTarget` — Studio ships no private RGS integration, same as the SDK
+  itself, and is deliberately never listed as a real deployable target — register a real one to replace this
+  group's placeholder), and turning the card's own form into the SDK's input shapes. Selecting a registered
+  target shows its `id`, `version`, `requirements` (`minPokieVersion`/`symbolAlphabet`/
+  `requiresHomogeneousProvenance`, whichever are set), and `capabilities`; the deploy form then asks for one or
+  more **modes**, each a **mode name** and a **library JSON path** (a `WeightedOutcomeLibrary` file, resolved
+  relative to the active project's own root — the same "a path, never an inline blob" convention every other
+  Project Dashboard feature follows; refused with `400` if it resolves outside the project root); **Add mode**
+  appends another mode row for a multi-mode deployment (only accepted by a target that declares the `multiMode`
+  capability). **Check & Preview** and **Publish** are not two different pipelines — both call the exact same
+  `ExternalDeploymentService.deploy()`, against the exact same target, differing in exactly one thing: Preview
+  strips the target's own `runtimeAdapter` first, so the SDK's own existing "only call `runtimeAdapter.deliver()`
+  when the target declares one" behavior means nothing is ever written anywhere; Publish keeps it (behind a
+  confirmation prompt, since it writes files). Either way, the response is rendered **stage by stage** — target
+  descriptor, compatibility, round projection, artifact generation, artifact validation, target diagnostic, and
+  delivery — each shown as ok/error/skipped, with every stage's own `ValidationIssue`s listed underneath it; a
+  stage is "skipped" exactly when `ExternalDeploymentService` itself never ran it (an earlier stage already
+  failed), never inferred any other way by the client. **Generated artifacts** lists every file the run produced;
+  clicking one shows its own textual content (already returned as part of the run's own response — no second
+  request) — so a preview's own output can be read in full *before* anything is ever published.
 
-**Check & Preview** and **Deploy** are not two different pipelines — both call the exact same
-`ExternalDeploymentService.deploy()`, against the exact same target, differing in exactly one thing: Preview
-strips the target's own `runtimeAdapter` first, so the SDK's own existing "only call `runtimeAdapter.deliver()`
-when the target declares one" behavior means nothing is ever written anywhere; Deploy keeps it (behind a
-confirmation prompt, since it writes files). Either way, the response is rendered **stage by stage** — target
-descriptor, compatibility, round projection, artifact generation, artifact validation, target diagnostic, and
-delivery — each shown as ok/error/skipped, with every stage's own `ValidationIssue`s listed underneath it; a stage
-is "skipped" exactly when `ExternalDeploymentService` itself never ran it (an earlier stage already failed), never
-inferred any other way by the client. **Generated artifacts** lists every file the run produced; clicking one
-shows its own textual content (already returned as part of the run's own response — no second request, and no
-byte ever passes through the client uninspectable) — so a preview's own output can be read in full *before*
-anything is ever published.
+Build/Export is deliberately a single-mode, zero-configuration surface run against the project's own first
+current build mode (or `"base"` when none is known) — a project that genuinely needs a multi-mode bundle has no
+separate dedicated workflow to fall back to yet. Outcome Libraries' own select-an-existing-library/inspect/
+compare tooling has no Build/Export equivalent yet either — only generating a fresh library does; a deep link to
+one of the old removed routes (`/project/deployment`, `/project/stakeEngineExport`, `/project/outcomeLibraries`)
+now simply falls back to Overview, like any other unrecognized tab.
 
 ### API
 
@@ -3193,38 +3187,15 @@ client, even for a load/validation failure.
   missing}[]`, most-recently-started first. `missing` is `true` when the project's directory/`package.json` can no
   longer be found on disk — the entry itself is never dropped just because of that (see
   `StudioHomeService.listRecentProjects()`).
-- `POST /api/home/projects/create` `{"destinationDir": string, "name": string, "gameId"?: string, "gameName"?:
-  string, "version"?: string}` — creates a project via the same `GamePackageCreating` service `pokie create` uses.
-  `400 {"error": "..."}` for a malformed request (missing `destinationDir`/`name`, or an empty optional override);
-  otherwise always `200`/`201` with a `StudioScaffoldResultView`: `{"status": "ok", "projectRoot", "manifest",
-  "createdFiles", "updatedFiles", "skippedFiles"}` or `{"status": "error", "error": "..."}` for a domain-level
-  failure (e.g. the destination already exists) — a well-formed request that fails at the domain level is not a
-  failed HTTP request, so this is never a 4xx. Never switches Studio to Project mode itself — see
-  `POST /api/home/projects/open` below.
-- `POST /api/home/projects/init` `{"directory": string}` — initializes an existing npm project via the same
-  `GamePackageScaffolding` service `pokie init` uses. Same request-validation-vs-domain-result split as `create`
-  above; the same `StudioScaffoldResultView` shape (a missing `package.json` is `{"status": "error", "error":
-  "..."}`, the same clear message `pokie init` itself gives).
-- `POST /api/home/projects/build/preview` `{"blueprintPath": string, "outDir"?: string}` — validates the blueprint
-  and previews what a build would generate, without writing anything: `{"status": "load-error", "error": "..."}`
-  (the file doesn't exist/isn't valid JSON) / `{"status": "invalid", "errors": [...], "warnings": [...]}` /
-  `{"status": "ok", "warnings": [...], "manifest", "reels", "rows", "symbolsCount", "blueprintHash",
-  "expectedFiles"}`. Always `200` for a well-formed request, same reasoning as `GET /api/project/validate`.
-- `POST /api/home/projects/build` — same request shape as the preview; on top of `load-error`/`invalid`, generates
-  the package via the same `GamePackageGenerating` service `pokie build` uses, including its missing-or-empty-
-  directory check: `{"status": "error", "error": "..."}` (e.g. `"... already exists and is not empty ..."` —
-  refusing to build into a destination that already has content) or `{"status": "ok", "projectRoot", "manifest",
-  "createdFiles", "buildInfo", "warnings"}` on success (`201`) — `buildInfo` is computed purely for this response,
-  never persisted into the built package itself.
-- `GET /api/home/fs/browse?path=<optional>` — backs the "Browse" action on every filesystem-path input in Home's
-  project-creation forms (Create/Init/Build from Blueprint). Lists `path`'s immediate children (defaulting to the
-  directory Studio itself was started in when `path` is omitted): always `200` with `{"status": "ok",
-  "resolvedPath", "displayPath", "parentPath"?, "entries": [{"name", "isDirectory"}]}` (directories sorted before
-  files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when `resolvedPath` falls strictly inside
-  Studio's own working directory, and Studio's own absolute working-directory path (never a bare `"."`) otherwise,
-  including when `resolvedPath` *is* that root) or `{"status": "error", "error": "...", "resolvedPath"}` for a
-  nonexistent/unreadable/non-directory path — never a 4xx, same reasoning as `POST /api/home/projects/create`
-  below.
+- `GET /api/home/fs/browse?path=<optional>` — backs the "Browse" action on every filesystem-path input in Home
+  (e.g. Import Project, the New Blueprint dialog's Load-existing option). Lists `path`'s immediate children
+  (defaulting to the directory Studio itself was started in when `path` is omitted): always `200` with
+  `{"status": "ok", "resolvedPath", "displayPath", "parentPath"?, "entries": [{"name", "isDirectory"}]}`
+  (directories sorted before files, dotfiles hidden; `displayPath` is relative — `"./games/foo"` — when
+  `resolvedPath` falls strictly inside Studio's own working directory, and Studio's own absolute
+  working-directory path (never a bare `"."`) otherwise, including when `resolvedPath` *is* that root) or
+  `{"status": "error", "error": "...", "resolvedPath"}` for a nonexistent/unreadable/non-directory path — never a
+  4xx, same reasoning as `POST /api/home/projects/open` below.
 - `POST /api/home/blueprints/validate` `{"blueprint": <any JSON value>}` — runs `GameBlueprintValidator` against
   `blueprint` as given (no file is read or written): `400 {"error": "..."}` only if `blueprint` itself is missing
   from the request body; otherwise always `200` with `{"status": "ok", "warnings": [...]}` or `{"status": "invalid",
@@ -3258,10 +3229,10 @@ client, even for a load/validation failure.
   violations, the same information a `pokie build` failure would print, without failing the request as a whole
   (every other reel's result is still returned).
 - `POST /api/home/blueprints/build-preview` `{"blueprint": <any JSON value>, "outDir"?: string, "sourcePath"?:
-  string}` — the same preview `POST /api/home/projects/build/preview` gives, except the blueprint is taken directly
-  from the request body instead of loaded from a path (so it never needs to be saved first): `200 {"status":
-  "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...], "manifest", "reels",
-  "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`. Never writes anything.
+  string}` — validates the blueprint and previews what a build would generate, without writing anything: `200
+  {"status": "invalid", "errors": [...], "warnings": [...]}` or `200 {"status": "ok", "warnings": [...],
+  "manifest", "reels", "rows", "symbolsCount", "blueprintHash", "expectedFiles"}`, same reasoning as
+  `GET /api/project/validate`.
 - `POST /api/home/blueprints/build` — same request shape as the preview; on top of `invalid`, generates the package
   via the same `GamePackageGenerating` service `pokie build` uses, including its missing-or-empty-directory check
   (an `outDir` resolving inside Studio's own internal directory is also refused, the same way as `save` above):
@@ -3369,8 +3340,8 @@ client, even for a load/validation failure.
   switched) — never an error for "nothing to show". `409 {"error": "No active project."}` in Home mode.
 - `GET /api/project/deployment/targets` — every registered [External Adapter SDK](external-adapter-sdk.md)
   target's `{id, version, requirements, capabilities}` (a registry seeded with exactly the SDK's own
-  local-filesystem example target — see the Deployment tab's own section above). `409 {"error": "No active
-  project."}` in Home mode.
+  local-filesystem example target — see Build/Export's own "Remote deployment" card above). `409 {"error": "No
+  active project."}` in Home mode.
 - `POST /api/project/deployment/runs` `{"targetId": string, "modes": [{"modeName": string, "libraryPath":
   string}], "publish"?: boolean}` — runs `ExternalDeploymentService.deploy()` (the SDK's own single orchestrator)
   for `targetId` against the given modes, each `libraryPath` a `WeightedOutcomeLibrary` JSON file resolved
@@ -3425,17 +3396,20 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 18 top-level commands this file documents (`build`/`create`/`init`/`inspect`/`validate`/`sim`/`report`/
-`diff`/`replay`/`serve`/`client`/`dev`/`par import|export`/`stakeengine export|import|analyze|diff`/`outcomelibrary
-build|validate`/`certification build|verify`/`fairness seed-commit|commit|reveal|verify`/`studio`) are shipped
-today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`,
-`PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) already covers most of
-these workflows with a real GUI, not just the CLI: Create/Init, build/validate,
-Outcome Libraries, PAR Sheet import/export, Certification/Evidence Bundle, Provably Fair, Stake Engine
-export/import, Deployment, Replay, and Simulation all have a working Studio surface — see each tab
-under [`ProjectDashboardPage`](studio-frontend.md). `pokie serve`/`pokie dev` have no Studio GUI counterpart —
-Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to stand up an
-HTTP server. The generic `StudioToolHandling` extension seam
+All 22 top-level commands this file documents (`build`/`create`/`init`/`edit`/`name`/`inspect`/`validate`/`sim`/
+`report`/`diff`/`replay`/`serve`/`client`/`dev`/`par import|export`/`reel generate`/
+`stakeengine export|import|analyze|diff`/`outcomelibrary build|validate`/
+`outcomesource inspect|sample|diff`/`certification build|verify`/`fairness seed-commit|commit|reveal|verify`/
+`studio`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
+`isPokieGame`, `PokieGameContractValidationRule`). [POKIE Studio](#pokie--pokie-studio-experimental) already
+covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
+tab, including PAR Sheet import/export and reel strip generation), and, once a project is open, inspection/
+validation (Overview), the Game Model view, Play, Simulation, Replay, Build/Export (outcome library generation,
+static export, build artifacts, and remote deployment via the External Adapter SDK), Certification/Evidence
+Bundle, and Fairness all have a working Studio surface — see [`HomePage`/`ProjectDashboardPage`](studio-frontend.md)
+for each tab. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
+counterpart — Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to
+stand up an HTTP server. The generic `StudioToolHandling` extension seam
 (`cli/studio/StudioToolHandling.ts`) is unused dead code today — every Studio surface above is wired as its own
 bespoke route on `StudioServer`, not through that seam — kept only as a documented possible future refactor, not
 a gap in coverage.

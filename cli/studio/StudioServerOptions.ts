@@ -106,10 +106,11 @@ export type StudioServerOptions = {
     // mistake for a product POKIE game server/RGS workflow. Same "defaults around this same `loadGame`"
     // reasoning as simulationService/replayService above.
     playService?: StudioPlayService;
-    // Drives the Project Dashboard's Deployment tab (GET /api/project/deployment/targets, POST
-    // /api/project/deployment/runs) — built directly on top of the pokie package's own External
-    // Adapter SDK (ExternalDeploymentService); no `loadGame`/`pokieVersion` needed, unlike
-    // simulationService/replayService/homeService, since it never touches a game package itself.
+    // Drives the Project Dashboard's Build/Export tab's own Remote deployment card (GET
+    // /api/project/deployment/targets, POST /api/project/deployment/runs) — built directly on top of
+    // the pokie package's own External Adapter SDK (ExternalDeploymentService); no
+    // `loadGame`/`pokieVersion` needed, unlike simulationService/replayService/homeService, since it
+    // never touches a game package itself.
     deploymentService?: StudioDeploymentService;
     // Drives the Project Dashboard's Build/Export tab's own Outcome libraries card (POST
     // /api/project/outcome-libraries/generate/estimate, /generate, GET /registry) -- built on the exact
