@@ -9,7 +9,11 @@ implements ReelsSymbolsSequencesGenerating<T> {
     // SeededRandomNumberGenerator here makes every shuffle() call below deterministic, so the same
     // seed always produces the same default reel-strip content -- see VideoSlotConfig's own
     // constructor, which accepts an instance of this class to swap in.
-    constructor(private readonly rng?: RandomNumberGenerating) {}
+    private readonly rng?: RandomNumberGenerating;
+
+    constructor(rng?: RandomNumberGenerating) {
+        this.rng = rng;
+    }
 
     public generate(
         reelsNumber: number,

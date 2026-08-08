@@ -16,6 +16,15 @@ export class SeededRandomNumberGenerator implements RandomNumberGenerating {
         this.state = (typeof seed === "number" ? seed : SeededRandomNumberGenerator.hashSeed(seed)) >>> 0;
     }
 
+    private static hashSeed(seed: string): number {
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < seed.length; i++) {
+            hash ^= seed.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193);
+        }
+        return hash >>> 0;
+    }
+
     public getRandomInt(min: number, max: number): number {
         return min + Math.floor(this.nextFloat() * (max - min));
     }
@@ -26,14 +35,5 @@ export class SeededRandomNumberGenerator implements RandomNumberGenerating {
         t = Math.imul(t ^ (t >>> 15), t | 1);
         t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    }
-
-    private static hashSeed(seed: string): number {
-        let hash = 0x811c9dc5;
-        for (let i = 0; i < seed.length; i++) {
-            hash ^= seed.charCodeAt(i);
-            hash = Math.imul(hash, 0x01000193);
-        }
-        return hash >>> 0;
     }
 }
