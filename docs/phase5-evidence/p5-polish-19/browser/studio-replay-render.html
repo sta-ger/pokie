@@ -1,0 +1,691 @@
+<!-- Real ReplayTab render of docs/phase5-evidence/p5-polish-19/parity/after-fix-studio-replay-job.json, reached via the real "Recreate from seed" -> Load -> Run again flow -->
+<style data-mantine-styles="true">
+
+
+
+</style><style data-mantine-styles="classes">@media (max-width: 35.99375em) {.mantine-visible-from-xs {display: none !important;}}@media (min-width: 36em) {.mantine-hidden-from-xs {display: none !important;}}@media (max-width: 47.99375em) {.mantine-visible-from-sm {display: none !important;}}@media (min-width: 48em) {.mantine-hidden-from-sm {display: none !important;}}@media (max-width: 61.99375em) {.mantine-visible-from-md {display: none !important;}}@media (min-width: 62em) {.mantine-hidden-from-md {display: none !important;}}@media (max-width: 74.99375em) {.mantine-visible-from-lg {display: none !important;}}@media (min-width: 75em) {.mantine-hidden-from-lg {display: none !important;}}@media (max-width: 87.99375em) {.mantine-visible-from-xl {display: none !important;}}@media (min-width: 88em) {.mantine-hidden-from-xl {display: none !important;}}</style><div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.</p><div style="--sc-shadow: var(--mantine-shadow-xs);" class="m_cf365364 mantine-SegmentedControl-root" data-with-items-borders="true" aria-label="Find method" role="radiogroup" data-initialized="true"><span style="--transition-duration: var(--sc-transition-duration); transform: translateY(0px) translateX(0px); width: 0px; height: 0px;" class="m_9e182ccd mantine-SegmentedControl-indicator m_96b553a6 mantine-FloatingIndicator-root"></span><div class="m_69686b9b mantine-SegmentedControl-control" data-active="true"><input class="m_1714d588 mantine-SegmentedControl-input" id="mantine-jckl57lry-seedRound" data-focus-ring="auto" type="radio" value="seedRound" checked="" name="mantine-jckl57lry"><label class="m_1738fcb2 mantine-SegmentedControl-label" data-active="true" for="mantine-jckl57lry-seedRound"><span class="m_78882f40 mantine-SegmentedControl-innerLabel">Recreate from seed</span></label></div><div class="m_69686b9b mantine-SegmentedControl-control"><input class="m_1714d588 mantine-SegmentedControl-input" id="mantine-jckl57lry-artifact" data-focus-ring="auto" type="radio" value="artifact" name="mantine-jckl57lry"><label class="m_1738fcb2 mantine-SegmentedControl-label" for="mantine-jckl57lry-artifact"><span class="m_78882f40 mantine-SegmentedControl-innerLabel">Replay Artifact</span></label></div><div class="m_69686b9b mantine-SegmentedControl-control"><input class="m_1714d588 mantine-SegmentedControl-input" id="mantine-jckl57lry-spin" data-focus-ring="auto" type="radio" value="spin" name="mantine-jckl57lry"><label class="m_1738fcb2 mantine-SegmentedControl-label" for="mantine-jckl57lry-spin"><span class="m_78882f40 mantine-SegmentedControl-innerLabel">Session Spin</span></label></div><div class="m_69686b9b mantine-SegmentedControl-control"><input class="m_1714d588 mantine-SegmentedControl-input" id="mantine-jckl57lry-simulation" data-focus-ring="auto" type="radio" value="simulation" name="mantine-jckl57lry"><label class="m_1738fcb2 mantine-SegmentedControl-label" for="mantine-jckl57lry-simulation"><span class="m_78882f40 mantine-SegmentedControl-innerLabel">Recent Simulation</span></label></div></div><form><div style="--group-gap: var(--mantine-spacing-sm); --group-align: flex-end; --group-justify: flex-start; --group-wrap: wrap;" class="m_4081bf90 mantine-Group-root"><div class="m_e2f5cd4e m_46b77525 mantine-InputWrapper-root mantine-NumberInput-root" data-size="sm"><label style="--input-label-size: var(--mantine-font-size-sm);" class="m_8fdc1311 mantine-InputWrapper-label mantine-NumberInput-label" data-size="sm" data-required="true" for="mantine-5z524xx48" id="mantine-5z524xx48-label">Target round number in a new replay session<span class="m_78a94662 mantine-InputWrapper-required mantine-NumberInput-required" aria-hidden="true"> *</span></label><p style="--input-description-size: calc(var(--mantine-font-size-sm) - calc(0.125rem * var(--mantine-scale)));" class="m_fe47ce59 mantine-InputWrapper-description mantine-NumberInput-description" data-size="sm" id="mantine-5z524xx48-description">Reproducing plays a brand-new session forward from round 1 up to this round -- it doesn't look up an existing recorded round.</p><div style="--input-margin-top: calc(var(--mantine-spacing-xs) / 2); --input-height: var(--input-height-sm); --input-fz: var(--mantine-font-size-sm); --input-right-section-width: var(--ni-right-section-width-sm);" class="m_6c018570 mantine-Input-wrapper mantine-NumberInput-wrapper" data-variant="default" data-size="sm" data-with-right-section="true"><input inputmode="decimal" class="m_8fb7ebe7 mantine-Input-input mantine-NumberInput-input" data-variant="default" data-path="round" required="" aria-describedby="mantine-5z524xx48-description" id="mantine-5z524xx48" type="text" value="1"><div data-position="right" class="m_82577fc2 mantine-Input-section mantine-NumberInput-section"><div class="m_95e17d22 mantine-NumberInput-controls" style="--ni-chevron-size: var(--ni-chevron-size-sm);"><button class="mantine-focus-auto m_80b4b171 mantine-NumberInput-control m_87cf2631 mantine-UnstyledButton-root" data-direction="up" type="button" tabindex="-1" aria-hidden="true"><svg style="transform: rotate(180deg);" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.13523 6.15803C3.3241 5.95657 3.64052 5.94637 3.84197 6.13523L7.5 9.56464L11.158 6.13523C11.3595 5.94637 11.6759 5.95657 11.8648 6.15803C12.0536 6.35949 12.0434 6.67591 11.842 6.86477L7.84197 10.6148C7.64964 10.7951 7.35036 10.7951 7.15803 10.6148L3.15803 6.86477C2.95657 6.67591 2.94637 6.35949 3.13523 6.15803Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg></button><button class="mantine-focus-auto m_80b4b171 mantine-NumberInput-control m_87cf2631 mantine-UnstyledButton-root" data-direction="down" type="button" tabindex="-1" aria-hidden="true" disabled=""><svg viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.13523 6.15803C3.3241 5.95657 3.64052 5.94637 3.84197 6.13523L7.5 9.56464L11.158 6.13523C11.3595 5.94637 11.6759 5.95657 11.8648 6.15803C12.0536 6.35949 12.0434 6.67591 11.842 6.86477L7.84197 10.6148C7.64964 10.7951 7.35036 10.7951 7.15803 10.6148L3.15803 6.86477C2.95657 6.67591 2.94637 6.35949 3.13523 6.15803Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg></button></div></div></div></div><div class="m_46b77525 mantine-InputWrapper-root mantine-TextInput-root" data-size="sm"><label style="--input-label-size: var(--mantine-font-size-sm);" class="m_8fdc1311 mantine-InputWrapper-label mantine-TextInput-label" data-size="sm" for="mantine-5psp4mcne" id="mantine-5psp4mcne-label">Seed (optional)</label><div style="--input-height: var(--input-height-sm); --input-fz: var(--mantine-font-size-sm);" class="m_6c018570 mantine-Input-wrapper mantine-TextInput-wrapper" data-variant="default" data-size="sm"><input class="m_8fb7ebe7 mantine-Input-input mantine-TextInput-input" data-variant="default" data-path="seed" id="mantine-5psp4mcne" value="fixture-round"></div></div><button style="--button-color: var(--mantine-color-white);" class="mantine-focus-auto mantine-active m_77c9d27d mantine-Button-root m_87cf2631 mantine-UnstyledButton-root" type="submit"><span class="m_80f1301b mantine-Button-inner"><span class="m_811560b9 mantine-Button-label">Load</span></span></button></div></form><div><fieldset class="m_84c9523a m_e9408a47 mantine-Fieldset-root" data-variant="default"><legend class="m_90794832 mantine-Fieldset-legend">Loaded replay</legend><table style="--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));" class="m_b23fa0ef mantine-Table-table"><tbody class="m_b2404537 mantine-Table-tbody"><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Source</th><td class="m_4e7aa4ef mantine-Table-td">Recreated -- recreate from seed</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Identities</th><td style="overflow-wrap: anywhere;" class="m_4e7aa4ef mantine-Table-td">replay session 5bbeb0fd-6756-4bed-8a1c-a115fbd2e8a3, replay job 4096854b-1bf4-4680-a399-1e96250bb50b</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Seed</th><td style="overflow-wrap: anywhere;" class="m_4e7aa4ef mantine-Table-td">fixture-round</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Version / hash</th><td style="overflow-wrap: anywhere;" class="m_4e7aa4ef mantine-Table-td">fixture-slot v0.1.0, hash sha256:51ab4fda54b9b86f265711e0666b53f88d841054a5df7aa948f01201d4bf1cba</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Timestamp</th><td class="m_4e7aa4ef mantine-Table-td">8/8/2026, 10:22:24 PM</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Completeness</th><td class="m_4e7aa4ef mantine-Table-td">Full -- round artifact captured (screen, wins, steps, debug).</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Inspectable</th><td class="m_4e7aa4ef mantine-Table-td"><div style="--badge-height: var(--badge-height-xs); --badge-padding-x: var(--badge-padding-x-xs); --badge-fz: var(--badge-fz-xs); --badge-bg: var(--mantine-color-teal-light); --badge-color: var(--mantine-color-teal-light-color); --badge-bd: calc(0.0625rem * var(--mantine-scale)) solid transparent;" class="m_347db0ec mantine-Badge-root" data-variant="light" data-size="xs"><span class="m_5add502a mantine-Badge-label">Available</span></div>This round's data is loaded and ready to inspect.</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Reproducible</th><td class="m_4e7aa4ef mantine-Table-td"><div style="--badge-height: var(--badge-height-xs); --badge-padding-x: var(--badge-padding-x-xs); --badge-fz: var(--badge-fz-xs); --badge-bg: var(--mantine-color-teal-light); --badge-color: var(--mantine-color-teal-light-color); --badge-bd: calc(0.0625rem * var(--mantine-scale)) solid transparent;" class="m_347db0ec mantine-Badge-root" data-variant="light" data-size="xs"><span class="m_5add502a mantine-Badge-label">Available</span></div>Ready -- plays a fresh session forward from round 1 using the configured seed.</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Comparable</th><td class="m_4e7aa4ef mantine-Table-td"><div style="--badge-height: var(--badge-height-xs); --badge-padding-x: var(--badge-padding-x-xs); --badge-fz: var(--badge-fz-xs); --badge-bg: var(--mantine-color-gray-light); --badge-color: var(--mantine-color-gray-light-color); --badge-bd: calc(0.0625rem * var(--mantine-scale)) solid transparent;" class="m_347db0ec mantine-Badge-root" data-variant="light" data-size="xs"><span class="m_5add502a mantine-Badge-label">Unavailable</span></div>A fresh forward replay with no prior recorded result to compare against.</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Exportable</th><td class="m_4e7aa4ef mantine-Table-td"><div style="--badge-height: var(--badge-height-xs); --badge-padding-x: var(--badge-padding-x-xs); --badge-fz: var(--badge-fz-xs); --badge-bg: var(--mantine-color-teal-light); --badge-color: var(--mantine-color-teal-light-color); --badge-bd: calc(0.0625rem * var(--mantine-scale)) solid transparent;" class="m_347db0ec mantine-Badge-root" data-variant="light" data-size="xs"><span class="m_5add502a mantine-Badge-label">Available</span></div>Ready to download as JSON.</td></tr></tbody></table></fieldset><div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">Round 1, seed fixture-round.</p><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">Reproducing will create a new replay session and play it forward from round 1 through round 1, using seed "fixture-round", to reach round 1.</p></div><div><div style="--group-gap: var(--mantine-spacing-sm); --group-align: flex-end; --group-justify: flex-start; --group-wrap: wrap;" class="m_4081bf90 mantine-Group-root"><button style="--button-bg: var(--mantine-color-default); --button-hover: var(--mantine-color-default-hover); --button-color: var(--mantine-color-default-color); --button-bd: calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border);" class="mantine-focus-auto mantine-active m_77c9d27d mantine-Button-root m_87cf2631 mantine-UnstyledButton-root" data-variant="default" type="button"><span class="m_80f1301b mantine-Button-inner"><span class="m_811560b9 mantine-Button-label">Run again with the same parameters</span></span></button></div><div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">completed — 1/1 rounds</p><div class="m_db6d6462 mantine-Progress-root"><div style="--progress-section-size: 100%; --progress-section-color: var(--mantine-color-blue-filled);" class="m_2242eb65 mantine-Progress-section" role="progressbar" aria-valuemax="100" aria-valuemin="0" aria-valuenow="100" aria-valuetext="100%"></div></div></div><table style="--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));" class="m_b23fa0ef mantine-Table-table"><tbody class="m_b2404537 mantine-Table-tbody"><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Replay session</th><td style="overflow-wrap: anywhere;" class="m_4e7aa4ef mantine-Table-td">5bbeb0fd-6756-4bed-8a1c-a115fbd2e8a3</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Replay job</th><td style="overflow-wrap: anywhere;" class="m_4e7aa4ef mantine-Table-td">4096854b-1bf4-4680-a399-1e96250bb50b</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Requested round</th><td class="m_4e7aa4ef mantine-Table-td">1</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Actual round reached</th><td class="m_4e7aa4ef mantine-Table-td">1</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Seed</th><td class="m_4e7aa4ef mantine-Table-td">fixture-round</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Run at</th><td class="m_4e7aa4ef mantine-Table-td">8/8/2026, 10:22:24 PM</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Reproducibility</th><td class="m_4e7aa4ef mantine-Table-td">Not verified -- a fresh forward replay with no prior recorded result to compare against.</td></tr></tbody></table><div><table style="--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));" class="m_b23fa0ef mantine-Table-table"><tbody class="m_b2404537 mantine-Table-tbody"><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Game</th><td style="overflow-wrap: anywhere;" class="m_4e7aa4ef mantine-Table-td">Fixture Slot (id: "fixture-slot", v0.1.0)</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Pokie version</th><td class="m_4e7aa4ef mantine-Table-td">1.3.0</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Bet mode</th><td class="m_4e7aa4ef mantine-Table-td">base</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Stake</th><td class="m_4e7aa4ef mantine-Table-td">1.00</td></tr><tr class="m_4e7aa4fd mantine-Table-tr"><th class="m_4e7aa4f3 mantine-Table-th">Total win</th><td class="m_4e7aa4ef mantine-Table-td">5.00 (5.00x)</td></tr></tbody></table><div><div style="--table-min-width: calc(12.5rem * var(--mantine-scale)); --sa-corner-width: 0px; --sa-corner-height: 0px;" class="m_a100c15 mantine-TableScrollContainer-scrollContainer m_d57069b5 mantine-ScrollArea-root"><div style="overflow-x: scroll; overflow-y: scroll;" class="m_c0783ff9 mantine-ScrollArea-viewport" data-offset-scrollbars="x" data-scrollbars="xy" data-scrollarea-viewport="true"><div class="m_b1336c6 mantine-ScrollArea-content"><div class="m_62259741 mantine-TableScrollContainer-scrollContainerInner"><div><table class="player-grid"><tr><td class="player-reel"><div data-cell="0:0" class="player-cell" style="background-color: rgb(221, 255, 221);">A</div><div data-cell="1:0" class="player-cell">C</div><div data-cell="2:0" class="player-cell">A</div></td><td class="player-reel"><div data-cell="0:1" class="player-cell" style="background-color: rgb(221, 255, 221);">A</div><div data-cell="1:1" class="player-cell">A</div><div data-cell="2:1" class="player-cell">C</div></td><td class="player-reel"><div data-cell="0:2" class="player-cell" style="background-color: rgb(221, 255, 221);">A</div><div data-cell="1:2" class="player-cell">A</div><div data-cell="2:2" class="player-cell">A</div></td></tr></table></div></div></div></div></div><div><div><div class="player-highlight-item"><button type="button" class="player-highlight-button">line: A, win: 5</button></div></div></div></div><fieldset class="m_84c9523a m_e9408a47 mantine-Fieldset-root" data-variant="default"><legend class="m_90794832 mantine-Fieldset-legend">Round detail</legend><div style="--table-min-width: calc(31.25rem * var(--mantine-scale)); --sa-corner-width: 0px; --sa-corner-height: 0px;" class="m_a100c15 mantine-TableScrollContainer-scrollContainer m_d57069b5 mantine-ScrollArea-root"><div style="overflow-x: scroll; overflow-y: scroll;" class="m_c0783ff9 mantine-ScrollArea-viewport" data-offset-scrollbars="x" data-scrollbars="xy" data-scrollarea-viewport="true"><div class="m_b1336c6 mantine-ScrollArea-content"><div class="m_62259741 mantine-TableScrollContainer-scrollContainerInner"><table style="--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));" class="m_b23fa0ef mantine-Table-table"><thead class="m_b242d975 mantine-Table-thead"><tr class="m_4e7aa4fd mantine-Table-tr" data-with-row-border="true"><th class="m_4e7aa4f3 mantine-Table-th">Type</th><th class="m_4e7aa4f3 mantine-Table-th">Symbol</th><th class="m_4e7aa4f3 mantine-Table-th">Amount</th><th class="m_4e7aa4f3 mantine-Table-th">Positions</th><th class="m_4e7aa4f3 mantine-Table-th">Multiplier</th></tr></thead><tbody class="m_b2404537 mantine-Table-tbody"><tr class="m_4e7aa4fd mantine-Table-tr" data-with-row-border="true"><td class="m_4e7aa4ef mantine-Table-td">line</td><td class="m_4e7aa4ef mantine-Table-td">A</td><td class="m_4e7aa4ef mantine-Table-td">5.00 (5.00x stake)</td><td class="m_4e7aa4ef mantine-Table-td">3</td><td class="m_4e7aa4ef mantine-Table-td">not applicable — no multiplier applied to this win</td></tr></tbody></table></div></div></div></div></fieldset><fieldset class="m_84c9523a m_e9408a47 mantine-Fieldset-root" data-variant="default"><legend class="m_90794832 mantine-Fieldset-legend">Paytable</legend><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.</p></fieldset><fieldset class="m_84c9523a m_e9408a47 mantine-Fieldset-root" data-variant="default"><legend class="m_90794832 mantine-Fieldset-legend">State before / after</legend><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">Snapshot captured for this round — see Advanced details for the full before/after state.</p></fieldset><div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm);" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm"><button class="mantine-focus-auto m_849cf0da m_b6d8b162 mantine-Text-root mantine-Anchor-root" data-underline="hover" type="button" aria-expanded="false" aria-controls="_r_82_">Show advanced details (raw JSON, debug data)</button></p><fieldset class="m_84c9523a m_e9408a47 mantine-Fieldset-root" data-variant="default" id="_r_82_" hidden=""><legend class="m_90794832 mantine-Fieldset-legend">Advanced details</legend><div><div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm); font-weight: 600;" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">State before</p><div style="display: flex; overflow: hidden; max-height: calc(25rem * var(--mantine-scale));" class=""><div style="display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 0; min-height: 0;" class=""><div style="--sa-corner-width: 0px; --sa-corner-height: 0px;" class="m_d57069b5 mantine-ScrollArea-root" data-autosize="true"><div style="overflow-x: scroll; overflow-y: scroll;" class="m_c0783ff9 mantine-ScrollArea-viewport" data-scrollbars="xy" data-scrollarea-viewport="true"><div class="m_b1336c6 mantine-ScrollArea-content"><pre style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0px; font-family: var(--mantine-font-family-monospace);">{
+  "context": {
+    "seed": "fixture-round"
+  },
+  "bet": 1,
+  "win": 0,
+  "screen": [
+    [
+      "B",
+      "C",
+      "C"
+    ],
+    [
+      "C",
+      "B",
+      "B"
+    ],
+    [
+      "C",
+      "C",
+      "C"
+    ]
+  ],
+  "initialPayload": {
+    "credits": 9007199254740991,
+    "bet": 1,
+    "availableBets": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      10,
+      20,
+      30,
+      40,
+      50,
+      100
+    ],
+    "reelsSymbols": [
+      [
+        "B",
+        "C",
+        "C"
+      ],
+      [
+        "C",
+        "B",
+        "B"
+      ],
+      [
+        "C",
+        "C",
+        "C"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {}
+    },
+    "availableSymbols": [
+      "A",
+      "B",
+      "C"
+    ],
+    "reelsNumber": 3,
+    "reelsSymbolsNumber": 3,
+    "paytable": {
+      "1": {
+        "A": {
+          "3": 5
+        },
+        "B": {
+          "3": 3
+        },
+        "C": {
+          "3": 1
+        }
+      },
+      "2": {
+        "A": {
+          "3": 10
+        },
+        "B": {
+          "3": 6
+        },
+        "C": {
+          "3": 2
+        }
+      },
+      "3": {
+        "A": {
+          "3": 15
+        },
+        "B": {
+          "3": 9
+        },
+        "C": {
+          "3": 3
+        }
+      },
+      "4": {
+        "A": {
+          "3": 20
+        },
+        "B": {
+          "3": 12
+        },
+        "C": {
+          "3": 4
+        }
+      },
+      "5": {
+        "A": {
+          "3": 25
+        },
+        "B": {
+          "3": 15
+        },
+        "C": {
+          "3": 5
+        }
+      },
+      "10": {
+        "A": {
+          "3": 50
+        },
+        "B": {
+          "3": 30
+        },
+        "C": {
+          "3": 10
+        }
+      },
+      "20": {
+        "A": {
+          "3": 100
+        },
+        "B": {
+          "3": 60
+        },
+        "C": {
+          "3": 20
+        }
+      },
+      "30": {
+        "A": {
+          "3": 150
+        },
+        "B": {
+          "3": 90
+        },
+        "C": {
+          "3": 30
+        }
+      },
+      "40": {
+        "A": {
+          "3": 200
+        },
+        "B": {
+          "3": 120
+        },
+        "C": {
+          "3": 40
+        }
+      },
+      "50": {
+        "A": {
+          "3": 250
+        },
+        "B": {
+          "3": 150
+        },
+        "C": {
+          "3": 50
+        }
+      },
+      "100": {
+        "A": {
+          "3": 500
+        },
+        "B": {
+          "3": 300
+        },
+        "C": {
+          "3": 100
+        }
+      }
+    },
+    "linesDefinitions": {
+      "0": [
+        1,
+        1,
+        1
+      ],
+      "1": [
+        0,
+        0,
+        0
+      ],
+      "2": [
+        2,
+        2,
+        2
+      ]
+    }
+  }
+}</pre></div></div><div data-orientation="horizontal" data-state="hidden" class="m_c44ba933 mantine-ScrollArea-scrollbar" style="position: absolute; --sa-thumb-width: 18px;" data-mantine-scrollbar="true"></div><div data-state="hidden" class="m_c44ba933 mantine-ScrollArea-scrollbar" data-orientation="vertical" style="position: absolute; --sa-thumb-height: 18px;" data-mantine-scrollbar="true"></div></div></div></div></div><div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm); font-weight: 600;" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">State after</p><div style="display: flex; overflow: hidden; max-height: calc(25rem * var(--mantine-scale));" class=""><div style="display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 0; min-height: 0;" class=""><div style="--sa-corner-width: 0px; --sa-corner-height: 0px;" class="m_d57069b5 mantine-ScrollArea-root" data-autosize="true"><div style="overflow-x: scroll; overflow-y: scroll;" class="m_c0783ff9 mantine-ScrollArea-viewport" data-scrollbars="xy" data-scrollarea-viewport="true"><div class="m_b1336c6 mantine-ScrollArea-content"><pre style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0px; font-family: var(--mantine-font-family-monospace);">{
+  "context": {
+    "seed": "fixture-round"
+  },
+  "bet": 1,
+  "win": 5,
+  "screen": [
+    [
+      "A",
+      "C",
+      "A"
+    ],
+    [
+      "A",
+      "A",
+      "C"
+    ],
+    [
+      "A",
+      "A",
+      "A"
+    ]
+  ],
+  "capturePolicy": {
+    "version": 1,
+    "mode": "partial",
+    "captureDebugPayloads": true
+  },
+  "initialPayload": {
+    "credits": 9007199254740991,
+    "bet": 1,
+    "availableBets": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      10,
+      20,
+      30,
+      40,
+      50,
+      100
+    ],
+    "reelsSymbols": [
+      [
+        "B",
+        "C",
+        "C"
+      ],
+      [
+        "C",
+        "B",
+        "B"
+      ],
+      [
+        "C",
+        "C",
+        "C"
+      ]
+    ],
+    "totalWin": 0,
+    "winningPositions": [],
+    "winEvaluationResult": {
+      "totalWin": 0,
+      "winningPositions": [],
+      "lineWins": [],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {}
+    },
+    "availableSymbols": [
+      "A",
+      "B",
+      "C"
+    ],
+    "reelsNumber": 3,
+    "reelsSymbolsNumber": 3,
+    "paytable": {
+      "1": {
+        "A": {
+          "3": 5
+        },
+        "B": {
+          "3": 3
+        },
+        "C": {
+          "3": 1
+        }
+      },
+      "2": {
+        "A": {
+          "3": 10
+        },
+        "B": {
+          "3": 6
+        },
+        "C": {
+          "3": 2
+        }
+      },
+      "3": {
+        "A": {
+          "3": 15
+        },
+        "B": {
+          "3": 9
+        },
+        "C": {
+          "3": 3
+        }
+      },
+      "4": {
+        "A": {
+          "3": 20
+        },
+        "B": {
+          "3": 12
+        },
+        "C": {
+          "3": 4
+        }
+      },
+      "5": {
+        "A": {
+          "3": 25
+        },
+        "B": {
+          "3": 15
+        },
+        "C": {
+          "3": 5
+        }
+      },
+      "10": {
+        "A": {
+          "3": 50
+        },
+        "B": {
+          "3": 30
+        },
+        "C": {
+          "3": 10
+        }
+      },
+      "20": {
+        "A": {
+          "3": 100
+        },
+        "B": {
+          "3": 60
+        },
+        "C": {
+          "3": 20
+        }
+      },
+      "30": {
+        "A": {
+          "3": 150
+        },
+        "B": {
+          "3": 90
+        },
+        "C": {
+          "3": 30
+        }
+      },
+      "40": {
+        "A": {
+          "3": 200
+        },
+        "B": {
+          "3": 120
+        },
+        "C": {
+          "3": 40
+        }
+      },
+      "50": {
+        "A": {
+          "3": 250
+        },
+        "B": {
+          "3": 150
+        },
+        "C": {
+          "3": 50
+        }
+      },
+      "100": {
+        "A": {
+          "3": 500
+        },
+        "B": {
+          "3": 300
+        },
+        "C": {
+          "3": 100
+        }
+      }
+    },
+    "linesDefinitions": {
+      "0": [
+        1,
+        1,
+        1
+      ],
+      "1": [
+        0,
+        0,
+        0
+      ],
+      "2": [
+        2,
+        2,
+        2
+      ]
+    }
+  },
+  "roundPayload": {
+    "credits": 9007199254740996,
+    "bet": 1,
+    "reelsSymbols": [
+      [
+        "A",
+        "C",
+        "A"
+      ],
+      [
+        "A",
+        "A",
+        "C"
+      ],
+      [
+        "A",
+        "A",
+        "A"
+      ]
+    ],
+    "totalWin": 5,
+    "winningPositions": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        2,
+        0
+      ]
+    ],
+    "winEvaluationResult": {
+      "totalWin": 5,
+      "winningPositions": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ],
+      "lineWins": [
+        {
+          "definition": [
+            0,
+            0,
+            0
+          ],
+          "pattern": [
+            1,
+            1,
+            1
+          ],
+          "symbolId": "A",
+          "lineId": "1",
+          "symbolsPositions": [
+            0,
+            1,
+            2
+          ],
+          "wildSymbolsPositions": [],
+          "winAmount": 5
+        }
+      ],
+      "scatterWins": [],
+      "clusterWins": [],
+      "valueWins": [],
+      "waysWins": [],
+      "metadata": {
+        "aggregationPolicy": "error-if-incompatible",
+        "evaluators": [
+          "line",
+          "scatter"
+        ]
+      }
+    },
+    "winningLines": {
+      "1": {
+        "definition": [
+          0,
+          0,
+          0
+        ],
+        "pattern": [
+          1,
+          1,
+          1
+        ],
+        "symbolId": "A",
+        "lineId": "1",
+        "symbolsPositions": [
+          0,
+          1,
+          2
+        ],
+        "wildSymbolsPositions": [],
+        "winAmount": 5
+      }
+    }
+  }
+}</pre></div></div><div data-orientation="horizontal" data-state="hidden" class="m_c44ba933 mantine-ScrollArea-scrollbar" style="position: absolute; --sa-thumb-width: 18px;" data-mantine-scrollbar="true"></div><div data-state="hidden" class="m_c44ba933 mantine-ScrollArea-scrollbar" data-orientation="vertical" style="position: absolute; --sa-thumb-height: 18px;" data-mantine-scrollbar="true"></div></div></div></div></div></div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm); font-weight: 600;" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm">Full artifact</p><div style="display: flex; overflow: hidden; max-height: calc(25rem * var(--mantine-scale));" class=""><div style="display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 0; min-height: 0;" class=""><div style="--sa-corner-width: 0px; --sa-corner-height: 0px;" class="m_d57069b5 mantine-ScrollArea-root" data-autosize="true"><div style="overflow-x: scroll; overflow-y: scroll;" class="m_c0783ff9 mantine-ScrollArea-viewport" data-scrollbars="xy" data-scrollarea-viewport="true"><div class="m_b1336c6 mantine-ScrollArea-content"><pre style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0px; font-family: var(--mantine-font-family-monospace);">{
+  "betMode": "base",
+  "payoutMultiplier": 5,
+  "provenance": {
+    "game": {
+      "id": "fixture-slot",
+      "name": "Fixture Slot",
+      "version": "0.1.0"
+    },
+    "pokieVersion": "1.3.0"
+  },
+  "roundId": "replay:fixture-round:1",
+  "schemaVersion": 1,
+  "screen": [
+    [
+      "A",
+      "C",
+      "A"
+    ],
+    [
+      "A",
+      "A",
+      "C"
+    ],
+    [
+      "A",
+      "A",
+      "A"
+    ]
+  ],
+  "stake": 1,
+  "steps": [
+    {
+      "index": 0,
+      "screen": [
+        [
+          "A",
+          "C",
+          "A"
+        ],
+        [
+          "A",
+          "A",
+          "C"
+        ],
+        [
+          "A",
+          "A",
+          "A"
+        ]
+      ],
+      "totalWin": 5,
+      "wins": [
+        {
+          "id": "1",
+          "metadata": {
+            "definition": [
+              0,
+              0,
+              0
+            ],
+            "pattern": [
+              1,
+              1,
+              1
+            ],
+            "symbolsPositions": [
+              0,
+              1,
+              2
+            ],
+            "wildSymbolsPositions": []
+          },
+          "multiplierBreakdown": [],
+          "symbolId": "A",
+          "type": "line",
+          "winAmount": 5,
+          "winningPositions": [
+            [
+              0,
+              0
+            ],
+            [
+              1,
+              0
+            ],
+            [
+              2,
+              0
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "totalWin": 5,
+  "wins": [
+    {
+      "id": "1",
+      "metadata": {
+        "definition": [
+          0,
+          0,
+          0
+        ],
+        "pattern": [
+          1,
+          1,
+          1
+        ],
+        "symbolsPositions": [
+          0,
+          1,
+          2
+        ],
+        "wildSymbolsPositions": []
+      },
+      "multiplierBreakdown": [],
+      "symbolId": "A",
+      "type": "line",
+      "winAmount": 5,
+      "winningPositions": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          2,
+          0
+        ]
+      ]
+    }
+  ],
+  "hash": "sha256:51ab4fda54b9b86f265711e0666b53f88d841054a5df7aa948f01201d4bf1cba"
+}</pre></div></div><div data-orientation="horizontal" data-state="hidden" class="m_c44ba933 mantine-ScrollArea-scrollbar" style="position: absolute; --sa-thumb-width: 18px;" data-mantine-scrollbar="true"></div><div data-state="hidden" class="m_c44ba933 mantine-ScrollArea-scrollbar" data-orientation="vertical" style="position: absolute; --sa-thumb-height: 18px;" data-mantine-scrollbar="true"></div></div></div></div></fieldset></div></div></div></div><div style="--group-gap: var(--mantine-spacing-sm); --group-align: flex-end; --group-justify: flex-start; --group-wrap: wrap;" class="m_4081bf90 mantine-Group-root"><a class="mantine-focus-auto m_849cf0da m_b6d8b162 mantine-Text-root mantine-Anchor-root" data-underline="hover" href="/api/project/replays/4096854b-1bf4-4680-a399-1e96250bb50b/download" download="">Download JSON</a></div><fieldset class="m_84c9523a m_e9408a47 mantine-Fieldset-root" data-variant="default"><legend class="m_90794832 mantine-Fieldset-legend">Recent replays</legend><div style="--group-gap: var(--mantine-spacing-sm); --group-align: flex-end; --group-justify: flex-start; --group-wrap: wrap;" class="m_4081bf90 mantine-Group-root"><button style="--button-height: var(--button-height-xs); --button-padding-x: var(--button-padding-x-xs); --button-fz: var(--mantine-font-size-xs); --button-bg: var(--mantine-color-default); --button-hover: var(--mantine-color-default-hover); --button-color: var(--mantine-color-default-color); --button-bd: calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border);" class="mantine-focus-auto mantine-active m_77c9d27d mantine-Button-root m_87cf2631 mantine-UnstyledButton-root" data-variant="default" data-size="xs" type="button"><span class="m_80f1301b mantine-Button-inner"><span class="m_811560b9 mantine-Button-label">Refresh</span></span></button></div><p style="--text-fz: var(--mantine-font-size-sm); --text-lh: var(--mantine-line-height-sm); overflow-wrap: anywhere;" class="mantine-focus-auto m_b6d8b162 mantine-Text-root" data-size="sm" role="status" aria-live="polite">No replays run yet.</p></fieldset></div>

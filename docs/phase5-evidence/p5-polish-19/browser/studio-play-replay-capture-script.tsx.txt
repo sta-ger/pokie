@@ -1,0 +1,108 @@
+import {MantineProvider} from "@mantine/core";
+import {render, screen} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import fs from "fs";
+import path from "path";
+import type {StudioReplayJobView, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
+import {describeReplayProgress, describeReplayResult} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
+import {PlayTab} from "../../../../../../cli/studio-client/src/components/project/PlayTab";
+import type {PlaySessionView} from "../../../../../../cli/studio-client/src/hooks/usePlaySession";
+import {ReplayTab} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
+
+// P5-POLISH-19 (second correction round) player-parity browser evidence: unlike this round's own prior
+// `browser/parity-render-capture-script.tsx.txt` (which mounted only `cli/client/player` directly --
+// review correctly rejected that as not proving Studio's own Play/Replay entry points render anything),
+// this script mounts the real `PlayTab`/`ReplayTab` presentation components themselves -- through
+// `RoundSummary`/`RoundArtifactInspector`/`GameScreenView`/`CanonicalPlayerView`, the exact same chain a
+// real Studio session renders through -- against the after-fix `fixture-slot` round's own live-captured
+// Studio Play/Replay responses (`docs/phase5-evidence/p5-polish-19/parity/after-fix-studio-play-spin.json`
+// / `after-fix-studio-replay-job.json`, both already linked from the "Player parity" table). Not a
+// permanent test (writes into docs/, which a real CI/regression run shouldn't do as a side effect --
+// `PlayTab.test.tsx`/`ReplayTab.test.tsx` beside the components under test are the permanent regression
+// coverage for this exact rendering claim); run once from here, its output copied to
+// `docs/phase5-evidence/p5-polish-19/browser/`, then this file removed -- same convention
+// `parity-render-capture-script.tsx.txt`'s own doc comment documents for its own capture.
+describe("P5-POLISH-19 Studio Play/Replay browser-rendering evidence (after-fix fixture-slot round)", () => {
+    const parityDir = path.join(__dirname, "../../../../../../docs/phase5-evidence/p5-polish-19/parity");
+    const browserDir = path.join(__dirname, "../../../../../../docs/phase5-evidence/p5-polish-19/browser");
+
+    it("renders the real captured after-fix Studio Play round through the actual PlayTab entry point", () => {
+        const captured = JSON.parse(fs.readFileSync(path.join(parityDir, "after-fix-studio-play-spin.json"), "utf-8")) as {
+            status: "ok";
+            session: StudioRuntimeSessionView;
+        };
+        const session: PlaySessionView = {status: "ok", session: captured.session};
+
+        const {container} = render(
+            <MantineProvider>
+                <PlayTab
+                    session={session}
+                    sessionId={captured.session.sessionId}
+                    onNewSession={() => undefined}
+                    onSpin={() => undefined}
+                    onFindAnyWin={() => undefined}
+                    onFindSymbolWin={() => undefined}
+                />
+            </MantineProvider>,
+        );
+
+        expect(screen.queryByText(/No round played yet/i)).toBeNull();
+        expect(container.querySelectorAll("[data-cell]")).toHaveLength(9);
+
+        fs.writeFileSync(
+            path.join(browserDir, "studio-play-render.html"),
+            `<!-- Real PlayTab render of docs/phase5-evidence/p5-polish-19/parity/after-fix-studio-play-spin.json -->\n${container.innerHTML}`,
+        );
+    });
+
+    it("renders the real captured after-fix Studio Replay round through the actual ReplayTab entry point", async () => {
+        const user = userEvent.setup();
+        const job = JSON.parse(fs.readFileSync(path.join(parityDir, "after-fix-studio-replay-job.json"), "utf-8")) as StudioReplayJobView;
+        const progress = describeReplayProgress(job);
+        const result = describeReplayResult(job);
+
+        const {container} = render(
+            <MantineProvider>
+                <ReplayTab
+                    progress={progress}
+                    result={result}
+                    error={undefined}
+                    onRun={() => undefined}
+                    onCancel={() => undefined}
+                    onRetry={() => undefined}
+                    listView={{status: "empty"}}
+                    listError={undefined}
+                    onRefreshList={() => undefined}
+                    onInspectStored={() => Promise.resolve()}
+                    onCompareStored={() => undefined}
+                    expected={{status: "empty"}}
+                    onLoadExpectedFromPaste={() => undefined}
+                    onClearExpected={() => undefined}
+                    comparison={undefined}
+                    recentSpins={{status: "empty"}}
+                    recentSpinsError={undefined}
+                    onRefreshRecentSpins={() => undefined}
+                    recentRuns={{status: "empty"}}
+                    recentRunsError={undefined}
+                    onRefreshRecentRuns={() => undefined}
+                    currentGame={job.descriptor?.game}
+                />
+            </MantineProvider>,
+        );
+
+        await user.clear(screen.getByLabelText(/Target round number in a new replay session/i));
+        await user.type(screen.getByLabelText(/Target round number in a new replay session/i), String(job.round));
+        await user.type(screen.getByLabelText(/^Seed \(optional\)$/i), job.seed ?? "");
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(await screen.findByRole("button", {name: "Run again"}));
+
+        expect(await screen.findByText("line")).toBeInTheDocument();
+        expect(container.querySelectorAll("[data-cell]")).toHaveLength(9);
+
+        fs.writeFileSync(
+            path.join(browserDir, "studio-replay-render.html"),
+            `<!-- Real ReplayTab render of docs/phase5-evidence/p5-polish-19/parity/after-fix-studio-replay-job.json, ` +
+                `reached via the real "Recreate from seed" -> Load -> Run again flow -->\n${container.innerHTML}`,
+        );
+    });
+});

@@ -29,6 +29,24 @@ them against each other before rendering. This pass also corrects this document'
 every after-fix artifact carries identical `paytable`/`winningLines` fields — `pokie replay`'s own descriptor
 never did (see "Player parity" below).
 
+**Third review-correction pass** (this commit, built atop this round's own landed
+`b03ee44593cd3a183788edc68d7081e07d6183e4`): review found the "rendered, not just JSON" browser evidence still
+didn't prove what it claimed — `browser/parity-render-capture-script.tsx.txt` mounts `cli/client/player`
+directly, never Studio's own `cli/studio-client` Play/Replay entry points (`PlayTab.tsx`/`ReplayTab.tsx`/
+`CanonicalPlayerView.tsx`), so it was evidence the shared rendering module works, not evidence Studio's own UI
+actually reaches it. Fixed this pass — see "Studio Play/Replay browser rendering" below, which mounts the real
+`PlayTab`/`ReplayTab` components (through their real data adapters, unmodified) against this same round's
+already-captured `parity/after-fix-studio-play-spin.json`/`after-fix-studio-replay-job.json`. Writing that
+evidence surfaced a real product bug along the way — `PlayTab.tsx`'s own "has a round been played" gate read a
+`session.screen` field no current `GameSessionSerializer` (video-slot or otherwise) ever actually publishes on
+the wire (a video slot's own public payload calls it `reelsSymbols`, present even before the first spin — see
+`VideoSlotSessionSerializer.getInitialData()`), so Play never showed a played round for any real game; every
+prior workflow test missed this because each hand-injects a `screen` field into its own fake fetch response
+instead of using a real, unmodified capture. Fixed in `cli/studio-client/src/components/project/PlayTab.tsx`
+(the gate now keys off `debug.artifact`/`debug.artifactUnavailableReason`, the one pair Studio's own "full"
+capture always attaches to a genuinely spun round, regardless of the underlying game's serializer shape) — see
+"Studio Play/Replay browser rendering" below for the regression tests that catch this on the real capture.
+
 ## Method
 
 Same sandbox, same constraints `pokie-phase5-inventory.md`'s own "Method" section and
@@ -277,6 +295,56 @@ This closes the gap the prior round's own "rendering-layer-only" argument left o
 own review found in the first pass (a stale browser artifact plus a literal-only examples fixture): all four
 surfaces are now verified end-to-end for one real, identical, winning round, with real rendered/DOM evidence —
 not shared-code-alone assertions, and not hand-typed literals standing in for the real captures.
+
+### Studio Play/Replay browser rendering, through the real entry points
+
+The **Rendered, not just JSON** evidence above proves `cli/client/player` itself draws this round correctly. It
+does not, on its own, prove Studio's own `PlayTab`/`ReplayTab` pages actually reach that module — this section
+closes that specific gap, mounting the real Studio components rather than the shared player module in
+isolation.
+
+- **Permanent regression tests**, in the same `tests/cli/studio-client/src/` mirror-of-`src/` layout every
+  other studio-client-components test already uses (a colocated `cli/studio-client/src/**/*.test.tsx`
+  placement was tried first and reverted -- `cli/studio-client/tsconfig.json`'s own `include: ["src"]` would
+  sweep a colocated test straight into `npm run typecheck-studio-client`'s program, which has no jest-dom
+  ambient types configured, breaking the real production `build-studio-client` typecheck; the `tests/` mirror
+  is what root `tsconfig.typecheck.json` already excludes both `cli/studio-client` and
+  `tests/cli/studio-client` to keep separate):
+  [`tests/cli/studio-client/src/components/project/PlayTab.test.tsx`](../../../tests/cli/studio-client/src/components/project/PlayTab.test.tsx)
+  and
+  [`tests/cli/studio-client/src/components/project/ReplayTab.test.tsx`](../../../tests/cli/studio-client/src/components/project/ReplayTab.test.tsx).
+  Each loads this round's own already-captured, unmodified fixture JSON
+  (`parity/after-fix-studio-play-spin.json` / `parity/after-fix-studio-replay-job.json`) and mounts the real
+  component: `PlayTab` directly with a `PlaySessionView`, `ReplayTab` driven through its own real "Recreate from
+  seed" → Load → Run again user flow (`@testing-library/user-event`), with the job's own real API response fed
+  through the real `describeReplayProgress`/`describeReplayResult` view-model transforms
+  (`domain/interpret/Replay.ts`) rather than hand-typed literals. Both assert the real rendered DOM: a 3×3
+  `[data-cell]` grid, the top-row line-1 win highlighted at `[[0,0],[1,0],[2,0]]` with a real non-empty
+  `backgroundColor` (and an adjacent cell explicitly left unhighlighted), and the round's actual A/5 win detail
+  (`RoundWinsTable`'s own row: type `line`, symbol `A`, amount `5.00 (5.00x stake)`) — the real rendered proof of
+  this round's A-symbol payout, since `RoundArtifact` never carries the game's static paytable itself and both
+  panels honestly render `PaytableView`'s "Paytable unavailable" state rather than fabricate one (see
+  `PaytableView.tsx`'s own doc comment) — asserted explicitly in both tests rather than left unstated. Both
+  **pass** — [`parity/after-fix-studio-browser-tests.txt`](parity/after-fix-studio-browser-tests.txt).
+- **Rendered HTML output**, generated by actually running the components above and serializing the resulting
+  DOM: [`browser/studio-play-render.html`](browser/studio-play-render.html) /
+  [`browser/studio-replay-render.html`](browser/studio-replay-render.html), reproducible via
+  [`browser/studio-play-replay-capture-script.tsx.txt`](browser/studio-play-replay-capture-script.tsx.txt) (same
+  "captured once, output committed, script kept as its own record" convention as
+  `parity-render-capture-script.tsx.txt` above — not a permanent test, since writing into `docs/` isn't a
+  regression-suite side effect; the two files above are the permanent coverage for this same claim).
+
+Writing this evidence surfaced a real bug, not just a documentation gap: `PlayTab.tsx`'s own "has a round been
+played" gate used to read `session.session.screen`, a field that's never actually present on a real Studio Play
+response for **any** current game (a video slot's own public payload calls it `reelsSymbols`, not `screen`, and
+that field is already present before the very first spin too — see `VideoSlotSessionSerializer.getInitialData()`
+merging its own `getRoundData()` in). Every existing Play workflow test predates this file and missed it because
+each one hand-injects a `screen` field into its own fake fetch response (see e.g.
+`ProjectDashboardPage.playWorkflow.test.tsx`'s own `sessionFor()` helper) rather than a real, unmodified server
+capture — so Play silently never showed a played round's result for any real game until this pass's fix (now
+keys off `debug.artifact`/`debug.artifactUnavailableReason` instead — see `PlayTab.tsx`'s own updated doc
+comment on `playedRound`). `PlayTab.test.tsx` above fails on the pre-fix gate and passes only with the fix in
+place, so it doubles as this bug's regression test.
 
 ## Owner steps (unchanged from `pokie-phase5-inventory.md`)
 

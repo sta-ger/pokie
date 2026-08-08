@@ -85,7 +85,19 @@ export function PlayTab({
         );
     }
 
-    const playedRound = session.status === "ok" && session.session.screen !== undefined ? session.session : undefined;
+    // "Has an actual round been played yet" can't be read off `session.screen` -- no current
+    // GameSessionSerializer (video-slot or otherwise) ever publishes a field literally named "screen" (a
+    // video slot's own public payload calls it "reelsSymbols", and that field is already present on the
+    // very first, pre-spin session view too -- see VideoSlotSessionSerializer.getInitialData(), which
+    // merges its own getRoundData() in). `debug.artifact`/`debug.artifactUnavailableReason` are the one
+    // pair StudioPlayService only ever attaches from a real spin's capture (never from session creation --
+    // see StudioPlayService.projectRoundArtifact()'s own doc comment), and Play always requests "full"
+    // capture, so exactly one of the two is present on every spun round regardless of the underlying
+    // game's serializer shape.
+    const playedRound =
+        session.status === "ok" && (session.session.debug?.artifact !== undefined || session.session.debug?.artifactUnavailableReason !== undefined)
+            ? session.session
+            : undefined;
 
     return (
         <div>

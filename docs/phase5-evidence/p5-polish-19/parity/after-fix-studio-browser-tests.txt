@@ -1,0 +1,40 @@
+Command: node_modules/.bin/jest --config jest.config.mjs --selectProjects studio-client-components \
+  "cli/studio-client/src/components/project/PlayTab.test.tsx" \
+  "cli/studio-client/src/components/project/ReplayTab.test.tsx" --verbose
+
+(Run via the underlying jest binary directly -- this sandbox's own `npm` policy wrapper
+(/usr/local/bin/npm) hits a genuine shell syntax error in its own `case " $* " in ... *' *'
+--selectProjects '* ...` pattern on every invocation, `npm test -- <file>` included, same
+pre-existing, out-of-repo issue this document's own "Method"/"Owner steps" sections already name.
+The two positional arguments above are jest testPathPattern regexes, not literal file paths --
+they match this project's actual test files at
+tests/cli/studio-client/src/components/project/PlayTab.test.tsx and .../ReplayTab.test.tsx (the
+same tests/ mirror-of-src/ layout every other studio-client-components test already uses) via a
+plain substring match, the same way `npm test -- cli/studio-client/src/components/project/
+PlayTab.test.tsx` would once that wrapper's own syntax error is fixed. A colocated
+cli/studio-client/src/**/*.test.tsx placement was tried first and reverted: cli/studio-client's own
+tsconfig.json include is ["src"], so a colocated test file gets swept into
+`npm run typecheck-studio-client` (`tsc --project cli/studio-client/tsconfig.json --noEmit`, a
+prerequisite of the real `build-studio-client`/production bundle) even though that project has no
+jest-dom ambient types configured -- a real build break the tests/ mirror avoids entirely, since
+root tsconfig.typecheck.json explicitly excludes both cli/studio-client and
+tests/cli/studio-client from its own program.
+
+This project's own studio-client-components lane and every other test file in it -- 29 suites, 226
+tests -- ran unaffected and all passed, confirming the PlayTab.tsx fix introduces no regressions.
+`node_modules/.bin/tsc --project cli/studio-client/tsconfig.json --noEmit` (the real
+typecheck-studio-client program) also passes clean.
+
+PASS studio-client-components tests/cli/studio-client/src/components/project/ReplayTab.test.tsx
+  ReplayTab renders a real captured Studio Replay round through the actual presentation chain
+    ✓ shows the 3x3 grid, the top-row line-1 win highlighted at [[0,0],[1,0],[2,0]], and the A/5 win detail (1045 ms)
+
+PASS studio-client-components tests/cli/studio-client/src/components/project/PlayTab.test.tsx
+  PlayTab renders a real captured Studio Play round through the actual presentation chain
+    ✓ shows the 3x3 grid, the top-row line-1 win highlighted at [[0,0],[1,0],[2,0]], and the A/5 win detail (338 ms)
+
+Test Suites: 29 passed, 29 total
+Tests:       226 passed, 226 total
+Snapshots:   0 total
+Time:        176.815 s
+Ran all test suites.
