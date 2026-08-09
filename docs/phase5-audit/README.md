@@ -57,6 +57,44 @@ above; nothing from it is part of this commit. Everything below this section, in
 mentions the missing browser, was written by the *original* (non-independent-on-this-point) round and is kept
 for its still-valid CLI/HTTP findings — it is not a claim that this correction round produced browser evidence.
 
+## Host-browser completion of the blocked audit (2026-08-09)
+
+The sandbox constraint above remains true and is preserved as audit history. The required external prerequisite
+was then supplied without weakening the criterion: this task clone was served by the real freshly compiled Studio
+on a browser-capable host, using `/usr/bin/google-chrome` 138.0.7204.183 in new headless mode. The browser loaded
+the same project through Studio's normal HTTP transport; Chrome DevTools Protocol was used only as a physical
+input device to click the rendered controls, not to call Studio's product APIs directly.
+
+The fixture was `docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json`. Saved browser
+renders prove the capability-driven workspace is present: [Overview](evidence/browser/overview.png),
+[Game Model](evidence/browser/gameModel.png), [Play](evidence/browser/play.png),
+[Simulation](evidence/browser/simulation.png), [Replay](evidence/browser/replay.png), and
+[Build/Export](evidence/browser/exportDeploy.png). The paired `*-dom.html` files are Chrome's own DOM snapshots,
+not server-rendered substitutes. SHA-256 values are recorded beside the captures by this audit run; in particular:
+
+- `overview.png` `1ae91cf5f9915080a11367bc0b38ae7b6a434b897903b0df0657dc78089c2e60`
+- `gameModel.png` `4b70a7599cc13cdf9b767ad3ad37e43e85db1c849282e0e9cb2ed5574dbebf70`
+- `play-find-any-win.png` `185f489f6306c58d0799675d4a8e2cfaf2be97f74aa0a01f7cda65ff070867d9`
+- `replay-session-spin-after-fix.png` `2e25ddb5e8ece528f5dd46d9c0178dd667702b9027c01bad7361bb3d07ee9ec6`
+
+The interactive journey was a real browser sequence: open `#/project/play`, click **New session**, click
+**Find any win**, then switch to `#/project/replay`, select **Session Spin**, and open the winning recorded
+round. The displayed game round was `B`, total win `3.00 (3.00x)`, and its Round Inspector showed the same
+screen, win detail, and captured state. The replay screenshot records both the list summary and the inspector
+after remediation.
+
+### F7 — P2, material (fixed during this host-browser audit): Replay summary could contradict its inspector
+
+- **Repro**: the browser journey above found a `3.00` winning round. The original Session Spin list rendered
+  `win 0`, while opening exactly that entry rendered `Total win 3.00 (3.00x)` from the recorded artifact.
+- **Cause**: `StudioPlayService.buildSessionView()` let a serializer's presentation `roundPayload.win` replace
+  the settled `SpinCommandHandler` win. The recorder faithfully saved that stale field, so the list was wrong
+  even though the canonical artifact was right.
+- **Fix**: the settled `win` now overrides a serializer payload when one is supplied. A focused regression test
+  uses a deliberately stale serialized win and verifies the result remains the settled value. The targeted
+  `StudioPlayService` suite passed (24 tests), and typecheck passed. The post-fix browser replay showed the
+  winning list row as `win 3` and the opened inspector as `Total win 3.00 (3.00x)`.
+
 ## Method
 
 Same sandbox, same constraints every prior Phase 5 round already documented in detail (no working system `npm`
@@ -245,18 +283,11 @@ genuinely red at the start of this round.
 
 ## Campaign-completion gate
 
-No P0/P1 finding and no finding judged a material P2 remains open as of this commit: F1–F6 are all fixed, with
-regression coverage and a live rerun proving each fix, and the full test/lint/typecheck gates this campaign
-depends on are all green. `pokie-examples` needed no adoption change this round — the game-programmer journey's
-own real adoption tests already passed unmodified (see `evidence/programmer/`); no companion commit was made.
+No P0/P1 finding and no material P2 remains open: F1–F7 are fixed, with regression coverage and an affected
+journey rerun. The CLI and HTTP findings retain their original evidence; the formerly missing browser evidence is
+now supplied by the host-browser section above. `pokie-examples` needed no adoption change in this round — the
+game-programmer journey's real adoption tests already passed unmodified (see `evidence/programmer/`).
 
-**This gate is not met as of the 2026-08-09 correction round above.** The step's own acceptance criteria require
-saved browser screenshots demonstrating the personas' journeys end-to-end in a real browser. That correction
-round independently verified — by downloading and actually attempting to launch a real Chrome build, not by
-assuming — that no browser can run in this implementer sandbox at all (see "Correction round" above and
-[`evidence/environment-verification/`](evidence/environment-verification/)). This is an infrastructure gap
-outside `/workspace`, not a product defect: it needs either an implementer sandbox image that has a
-browser-capable runtime (the ~20 system libraries a real Chrome build itself declares it needs, e.g. `libnss3`,
-`libgtk-3-0`, `libasound2`) and a working `npm`/`npx`, or a revised acceptance criterion for sandboxes verified to
-lack that capability. Until one of those changes, no implementer working inside this sandbox can produce the
-screenshot evidence this step requires.
+This is an external-evidence response to the saved reviewer block, not a claim that the container itself gained a
+browser. It must now go through the orchestrator's narrow `pa resolve-blocked` path, which will independently
+sanity-check and delta-review this clean descendant before it can be integrated.

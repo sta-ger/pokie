@@ -68,6 +68,32 @@ function fakeLoadVideoSlotGame(): (packageRoot: string) => Promise<PokieGame> {
     return () => Promise.resolve(createFakeVideoSlotGame());
 }
 
+// The serializer's public payload is allowed to be presentation-oriented and therefore can contain a
+// stale `win`. Studio must keep the settled result from SpinCommandHandler as the round summary's
+// authoritative win; otherwise Session Spin can contradict the RoundArtifact it opens.
+function fakeLoadGameWithStaleSerializedWin(): (packageRoot: string) => Promise<PokieGame> {
+    return () =>
+        Promise.resolve({
+            getManifest: () => manifest,
+            createSession: () => {
+                const session = createFakeVideoSlotSession(undefined);
+                return {...session, getWinAmount: () => 7};
+            },
+            getSessionSerializer: () => ({
+                getInitialData: (session: GameSessionHandling) => ({
+                    availableBets: session.getAvailableBets(),
+                    credits: session.getCreditsAmount(),
+                    bet: session.getBet(),
+                }),
+                getRoundData: (session: GameSessionHandling) => ({
+                    credits: session.getCreditsAmount(),
+                    bet: session.getBet(),
+                    win: 0,
+                }),
+            }),
+        });
+}
+
 // A controllable VideoSlotSessionHandling-shaped fake for findAnyWin()/findSymbolWin() -- unlike
 // createFakeVideoSlotSession above (always wins the exact same way), each play() here consults
 // `winningSymbolAtAttempt` for *this* attempt's own outcome, so a test can make the search take an exact
@@ -189,6 +215,22 @@ describe("StudioPlayService", () => {
         expect(typeof result.session.win).toBe("number");
         expect(result.session.debug?.artifact).toBeDefined();
         expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
+    });
+
+    it("keeps the settled win when a serializer's round payload carries a stale win", async () => {
+        const service = new StudioPlayService(fakeLoadGameWithStaleSerializedWin());
+        const created = await service.newSession("/fake/project");
+        if (created.status !== "ok") {
+            throw new Error("expected ok");
+        }
+
+        const result = await service.spin(created.session.sessionId);
+
+        expect(result).toMatchObject({status: "ok"});
+        if (result.status !== "ok") {
+            throw new Error("expected ok");
+        }
+        expect(result.session.win).toBe(7);
     });
 
     it("reports an honest artifactUnavailableReason instead of a fabricated artifact for a non-video-slot game", async () => {

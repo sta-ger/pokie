@@ -488,7 +488,11 @@ export class StudioPlayService {
     ): StudioRuntimeSessionView {
         const view = (
             serializedPayload !== undefined
-                ? {...serializedPayload, sessionId, game: manifest, credits}
+                // A serializer owns its presentation fields, but SpinCommandHandler's settled `win`
+                // is the authoritative amount for this particular round.  Some serializers expose
+                // a stale or intentionally partial `win` field; letting it overwrite `handled.win`
+                // made Replay's Session Spin list disagree with the recorded RoundArtifact.
+                ? {...serializedPayload, sessionId, game: manifest, credits, ...(win !== undefined ? {win} : {})}
                 : {
                     sessionId,
                     game: manifest,
