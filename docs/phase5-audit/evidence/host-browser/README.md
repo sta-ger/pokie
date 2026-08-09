@@ -33,10 +33,18 @@ are ordinary Chrome pixel screenshots, not jsdom output:
 | `05-integration-build-export.png` | Build/Export is one project workspace section; there is no standalone deployment route. | `745eacb1524815621d1fd48cb0d90e19863b7ff5837913f608e1f5b279697405` |
 
 The audit also opened the rendered **Projects** page and used the normal Location/Detect import form with the
-Blueprint fixture path. That form did not advance after its synthetic text-entry event, so it is recorded as an
-inconclusive browser interaction rather than being claimed as a successful import. The existing CLI/API persona
-transcripts remain the evidence for malformed input and package/outcome imports; this file only claims the
-host-browser actions explicitly listed above.
+Blueprint fixture path. A first unscoped synthetic input attempt did not advance and was not counted. The
+subsequent action used the Location control associated with its rendered label, dispatched native browser input
+and change events, clicked **Detect**, and then clicked the rendered **Register** control. Studio detected the
+Blueprint and registered `after-fix-fixture-blueprint` in **Your projects**:
+
+| Evidence | Observation | SHA-256 |
+| --- | --- | --- |
+| `06-project-import-blueprint.png` | Projects → Detect → Register, with the registered Blueprint table row. | `e43137cf90052c76cf2e887aaed8ea6053bb4786ee002c4ce6e96e30c2b423f3` |
+| `07-qa-malformed-import.png` | Projects → Detect on `/definitely/not/a/pokie/project`; user-facing “doesn't exist” and unrecognized-project diagnostics. | `8d4a4c1716691f41bd9c32f1821b1713c865745849d9a0cde2e561f633870892` |
+
+The existing CLI/API persona transcripts remain the evidence for package/outcome imports and developer CLI
+workflows; this file only claims the host-browser actions explicitly listed above.
 
 ## Audit consequence
 
