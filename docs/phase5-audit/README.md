@@ -585,3 +585,62 @@ real, separate, unresolved product defect and this document's claim that P5-POLI
 does not hold until it gets its own implementation and independent review. This round's own scope was narrowly
 the reviewer's stated concern: that the Build/Export journey's *saved evidence*, in the directory the audit
 actually publishes, must show an executed action and its real result, not just an opened tab.
+
+## Correction round 6 (2026-08-09): the file-vs-folder import defect is fixed and tested; the evidence rerun still needs an external browser host
+
+"Correction round 4" found that Import Project's `Location` field falsely tells a user a valid Blueprint (or PAR
+workbook, or WASM) file "is a file, not a folder" and to pick a folder instead, even though Detect/Register goes
+on to recognize and register it correctly. Root cause: `ProjectsPanel.tsx` hard-coded the shared `PathInput`
+control's `kind` to `"directory"`, so both its live resolved-path hint (`GET /api/home/fs/browse`) and its Browse
+action validated/offered only folders, even though the server-side `ProjectTargetResolver` this same field feeds
+has always accepted a package directory *or* a single project file.
+
+**Fix.** `PathBrowseKind`/`StudioFsBrowseView`'s own `kind` gained a third value, `"any"`, meaning "a file or a
+directory, never a type mismatch" — threaded end-to-end rather than papered over at the UI layer alone:
+
+- `StudioFsBrowseService.browse` (`cli/studio/home/StudioFsBrowseService.ts`) only rejects a resolved path as the
+  wrong "type" when `kind` is `"file"` or `"directory"`; `"any"` accepts either, and its `"ok"` result now also
+  reports `isDirectory` so a caller can tell the two apart without a second round trip. `StudioServer`'s
+  `GET /api/home/fs/browse` route (and `browseFilesystem`/`StudioFsBrowseView` on the client) accept and forward
+  `kind=any` the same way they already forwarded `kind=file`.
+- `PathBrowseModal`'s fallback "Server filesystem browser" now lists files (not just subfolders) and offers
+  "Select this folder" for the current location for `kind="any"`, exactly like it already did for `"file"` and
+  `"directory"` respectively, instead of behaving like a directory-only picker.
+- `PathInput` skips the native OS folder/file dialog entirely for `kind="any"` and always opens the fallback
+  modal: `StudioNativePickerService` only ever asks the OS for a *folder* dialog or a *file* dialog, never a
+  combined one, so there is no truthful native call an "any" field could make — the honestly-labelled fallback
+  modal is the one control that already supports picking either.
+- `resolveBrowseStartLocation` starts Browse from a resolved file's own containing directory for `kind="any"`
+  (same as `"file"`) only once the resolved hint's new `isDirectory` flag confirms it actually landed on a file;
+  a resolved directory value starts Browse there directly, same as `"directory"`.
+- `ProjectsPanel.tsx`'s Import Project `Location` field now passes `kind="any"` instead of `kind="directory"`, so
+  its hint and Browse control are truthful for the complete set of things Detect/Register actually accepts.
+
+**Regression coverage.** `tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx` gained two new
+cases: one types a Blueprint file path and asserts the hint reads `"Resolves to: ..."` (never the old "is a file,
+not a folder" text) while the request carries `kind=any`, then completes Detect/Register; the other does the same
+for a package directory path, asserting no "is a directory, not a file" text and the same `kind=any` request, then
+completes Detect/Register. Both, plus the full existing `ProjectsPanel.test.tsx`/`PathInput.test.tsx`/
+`PathBrowseModal.test.tsx`/`resolveBrowseStartLocation.test.ts`/`StudioFsBrowseService.test.ts` suites (60 tests
+total across the five files), pass. `tsc --noEmit` is clean for both the server-side project
+(`tsconfig.typecheck.json`) and `cli/studio-client` (`cli/studio-client/tsconfig.json`).
+
+**What this round could not do.** Producing a genuine replacement
+[`02-mathematician-project-import.png`](evidence/host-browser/complete/02-mathematician-project-import.png)/
+[`.txt`](evidence/host-browser/complete/02-mathematician-project-import.txt) requires re-running
+[`scripts/phase5-host-browser-audit.mjs`](../../scripts/phase5-host-browser-audit.mjs) against a live Studio
+server through a real browser, the same external, browser-capable host every prior "Host-browser
+completion"/"Final external Chrome audit"/"Correction round 3"/"Correction round 4" round used. This round
+independently re-verified the same sandbox constraint "Correction round 3" documented, rather than assuming it
+still held: no `google-chrome`/`chromium`/`chromium-browser`/`google-chrome-stable` binary exists anywhere in this
+container (a full-filesystem search for any Chromium-family or headless-shell binary finds nothing), no `curl` (or
+equivalent) is installed to probe it, nothing listens on the CDP discovery endpoint
+(`http://127.0.0.1:9222/json/version`), no `playwright` package is installed (`require('playwright')` fails with
+`Cannot find module`), no `P5_STUDIO_URL`/`P5_DEVTOOLS_URL`/other host-browser environment variable is set, and
+`/usr/local/bin/npm` still fails with the same shell syntax error. The existing
+`evidence/host-browser/complete/02-mathematician-project-import.png`/`.txt` are therefore left unchanged and are
+now known-stale relative to this fix — they still show the old, now-fixed diagnostic — rather than replaced with
+fabricated browser output. This P2 has real implementation and regression-test coverage as of this round, but,
+consistent with how "Correction round 3" treated the equivalent Build/Export gap before "Correction round 4"'s
+real rerun landed, the hard gate's own evidence-rerun requirement is not yet satisfied until an external
+browser-capable host re-runs the import journey and its capture replaces the stale pair above.

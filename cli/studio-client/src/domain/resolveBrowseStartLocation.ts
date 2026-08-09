@@ -17,9 +17,12 @@ export type BrowseStartLocationParams = {
     // `currentValue` is checked as a file, not a directory, for a `kind: "file"` field (e.g. a Blueprint
     // path). A file has nothing to browse *into*, so a resolved file hint's own containing directory
     // (StudioFsBrowseService.browse's `parentPath`) is what's actually returned as the start location,
-    // never the file path itself. Omitted (every directory field), the resolved value's `resolvedPath`
-    // is used as-is, same as before this param existed.
-    kind?: "directory" | "file";
+    // never the file path itself. `kind: "any"` follows the same "start from a file's own containing
+    // directory" rule, but only once the resolved hint's own `isDirectory` says it actually landed on a
+    // file -- the current value of an "any" field just as often resolves to a directory (a package import),
+    // whose own `resolvedPath` is already the browsable location. Omitted (every directory field), the
+    // resolved value's `resolvedPath` is used as-is, same as before this param existed.
+    kind?: "directory" | "file" | "any";
 };
 
 // The one shared "where should Browse start looking" policy every PathInput uses, in precedence order:
@@ -34,7 +37,8 @@ export async function resolveBrowseStartLocation(params: BrowseStartLocationPara
     if (trimmedCurrentValue.length > 0) {
         const hint = await browseFilesystem(params.fetchImpl, trimmedCurrentValue, params.relevantDirectory, params.kind);
         if (hint.status === "ok") {
-            return params.kind === "file" ? (hint.parentPath ?? hint.resolvedPath) : hint.resolvedPath;
+            const startFromParent = params.kind === "file" || (params.kind === "any" && !hint.isDirectory);
+            return startFromParent ? (hint.parentPath ?? hint.resolvedPath) : hint.resolvedPath;
         }
     }
 

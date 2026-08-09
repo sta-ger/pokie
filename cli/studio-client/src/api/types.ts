@@ -271,7 +271,7 @@ export type StudioFsEntry = {name: string; isDirectory: boolean};
 export type StudioFsBrowseErrorReason = "absent" | "type" | "permission" | "unresolved" | "symlink-escape" | "other";
 
 export type StudioFsBrowseView =
-    | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]}
+    | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]; isDirectory: boolean}
     | {status: "error"; error: string; resolvedPath: string; reason: StudioFsBrowseErrorReason};
 
 // GET /api/home/fs/native-browse/availability's own DTO — see

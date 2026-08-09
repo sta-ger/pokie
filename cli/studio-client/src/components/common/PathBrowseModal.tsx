@@ -8,7 +8,10 @@ import {errorMessage} from "../../domain/errorMessage";
 import {ErrorState} from "./ErrorState";
 import {LoadingState} from "./LoadingState";
 
-export type PathBrowseKind = "directory" | "file";
+// "any" accepts either a file or a directory -- Import Project's own Location field is the one caller
+// that needs it, since it genuinely takes both a package directory and a single project file (a
+// Blueprint JSON, a PAR workbook, ...).
+export type PathBrowseKind = "directory" | "file" | "any";
 
 type PathBrowseModalProps = {
     opened: boolean;
@@ -114,7 +117,7 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
                                     </UnstyledButton>
                                 )}
                                 {view.data.entries
-                                    .filter((entry) => entry.isDirectory || kind === "file")
+                                    .filter((entry) => entry.isDirectory || kind !== "directory")
                                     .map((entry) => (
                                         <UnstyledButton
                                             key={entry.name}
@@ -150,7 +153,7 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
                     <Button variant="default" onClick={onClose}>
                         Cancel
                     </Button>
-                    {kind === "directory" && view.status === "loaded" && view.data.status === "ok" && (
+                    {kind !== "file" && view.status === "loaded" && view.data.status === "ok" && (
                         <Button onClick={() => handleSelect(view.data.status === "ok" ? view.data.displayPath : "")}>Select this folder</Button>
                     )}
                 </Group>

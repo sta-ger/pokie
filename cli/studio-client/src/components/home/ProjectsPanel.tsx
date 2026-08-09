@@ -290,7 +290,7 @@ export function ProjectsPanel() {
                     <PathInput
                         label="Location"
                         placeholder="./my-game"
-                        kind="directory"
+                        kind="any"
                         browseTitle="Browse for a project to import"
                         browseId="import-project-location"
                         value={location}
