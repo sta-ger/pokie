@@ -1,0 +1,72 @@
+POKIE Studio
+Design Game
+Projects
+Projects
+
+Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.
+
+Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.
+
+Your projects
+
+No projects yet -- import or design one below.
+
+Import Project
+
+Point at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.
+
+Location
+Browse…
+Detect
+Documentation
+Docs index
+Getting started
+CLI reference
+Server filesystem browser
+
+Browse for a project to import — showing files on the machine running Studio's server, not this browser's device.
+
+Current location: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/docs/phase5-evidence/p5-polish-19/parity
+
+.. (up)
+
+after-fix-cli-replay-run1.json
+
+after-fix-cli-replay-run2.json
+
+after-fix-fixture-blueprint.json
+
+after-fix-fixture-slot-generated-index.js
+
+after-fix-npm-start-session.json
+
+after-fix-npm-start-spin.json
+
+after-fix-pokie-examples-ui-tests.txt
+
+after-fix-studio-browser-tests.txt
+
+after-fix-studio-play-session.json
+
+after-fix-studio-play-spin.json
+
+after-fix-studio-replay-job.json
+
+after-fix-unit-determinism-tests.txt
+
+after-fix-workflow-determinism-tests.txt
+
+before-fix-cli-replay-round1-standalone.json
+
+before-fix-cli-replay-run1.json
+
+before-fix-cli-replay-run2.json
+
+before-fix-npm-start-spin.json
+
+before-fix-pokie-examples-ui-tests.txt
+
+before-fix-studio-play-and-replay.json
+
+Cancel
+Select this folder

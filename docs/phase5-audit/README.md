@@ -215,6 +215,28 @@ prior round says it used, applied this time to all five personas' full journeys 
 far. This is recorded honestly as still open, for the orchestrator to route to an environment that actually
 has a browser, rather than re-asserted as done.
 
+## Post-fix Import Project host-browser rerun (2026-08-09): F8 — P2, material, still blocking
+
+Correction commit `fb1e22e` was rerun in a **fresh Studio registry** on a browser-capable host. The browser
+used the rendered **Projects → Import Project → Browse** controls to walk the visible server filesystem and
+select `after-fix-fixture-blueprint.json` itself (not its containing directory). The saved
+[`01-file-picker-blueprint-file.txt`](evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/01-file-picker-blueprint-file.txt),
+[`03-file-detected-blueprint.txt`](evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/03-file-detected-blueprint.txt), and
+[`04-file-import-registered.txt`](evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/04-file-import-registered.txt)
+prove the file was selectable, detected as **Blueprint**, and registered successfully; no folder-only
+diagnostic appeared. The same real UI then typed and detected the existing `/tmp/p5-build-export.loJC0L/package`
+directory as **Package**, registered it, and opened it into a populated Project Dashboard containing
+**Build/Export** ([`08-directory-package-opened.txt`](evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/08-directory-package-opened.txt)).
+
+However, the Blueprint's post-registration row has only **Remove**, whereas the Package row has **Open**. The
+browser action transcript records `Blueprint registry Open action present=false`; the screenshot/text evidence
+is [`05-blueprint-home-post-import`](evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/05-blueprint-home-post-import.png).
+This means the new file flow succeeds but cannot complete the required public Studio workflow of opening the
+imported Blueprint to verify its type, loaded state, and capability navigation. This is a material P2 product
+workflow defect (not an audit-context defect); it must enter a further correction/review/rerun cycle. The final
+hard gate remains fail-closed. Failed harness-start attempts are retained in the sibling
+`import-rerun-fb1e22e*` evidence directories; `rerun6-clean` is the authoritative clean-browser result.
+
 ## Method
 
 Same sandbox, same constraints every prior Phase 5 round already documented in detail (no working system `npm`

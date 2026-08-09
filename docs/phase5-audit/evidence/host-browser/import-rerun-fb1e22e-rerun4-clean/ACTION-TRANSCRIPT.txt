@@ -1,0 +1,4 @@
+[2026-08-09T21:29:25.568Z] NAVIGATE http://127.0.0.1:4113/#/home/projects
+[2026-08-09T21:29:25.575Z] FAILED Error: Rendered control "Browse…" not found: []
+    at click (file:///tmp/p5-import-rerun.mjs:31:533)
+    at async main (file:///tmp/p5-import-rerun.mjs:34:5)

@@ -1,0 +1,20 @@
+[2026-08-09T21:27:35.807Z] NAVIGATE http://127.0.0.1:4112/#/home/projects
+[2026-08-09T21:27:35.817Z] CLICK "Browse…" via rendered BUTTON
+[2026-08-09T21:27:36.351Z] CLICK ".. (up)" via rendered BUTTON
+[2026-08-09T21:27:36.898Z] CLICK "Work" via rendered BUTTON
+[2026-08-09T21:27:37.421Z] CLICK "sta-ger" via rendered BUTTON
+[2026-08-09T21:27:37.942Z] CLICK "agents" via rendered BUTTON
+[2026-08-09T21:27:38.488Z] CLICK "worktrees" via rendered BUTTON
+[2026-08-09T21:27:39.008Z] CLICK "pokie-phase-5-polishing" via rendered BUTTON
+[2026-08-09T21:27:39.523Z] CLICK "task_P5-POLISH-20-20260809031218" via rendered BUTTON
+[2026-08-09T21:27:40.037Z] CLICK "docs" via rendered BUTTON
+[2026-08-09T21:27:40.553Z] CLICK "phase5-evidence" via rendered BUTTON
+[2026-08-09T21:27:41.075Z] CLICK "p5-polish-19" via rendered BUTTON
+[2026-08-09T21:27:41.599Z] CLICK "parity" via rendered BUTTON
+[2026-08-09T21:27:42.344Z] CAPTURE 01-file-picker-blueprint-file.png and 01-file-picker-blueprint-file.txt
+[2026-08-09T21:27:42.360Z] CLICK "after-fix-fixture-blueprint.json" via rendered BUTTON
+[2026-08-09T21:27:43.124Z] CAPTURE 02-file-selected-before-detect.png and 02-file-selected-before-detect.txt
+[2026-08-09T21:27:43.149Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T21:28:03.808Z] FAILED Error: Timed out waiting for Blueprint detection
+    at wait (file:///tmp/p5-import-rerun.mjs:29:174)
+    at async main (file:///tmp/p5-import-rerun.mjs:42:28)

@@ -1,0 +1,31 @@
+[2026-08-09T21:31:07.258Z] NAVIGATE http://127.0.0.1:4114/#/home/projects
+[2026-08-09T21:31:07.289Z] CLICK "Browse…" via rendered BUTTON
+[2026-08-09T21:31:07.803Z] CLICK ".. (up)" via rendered BUTTON
+[2026-08-09T21:31:08.342Z] CLICK "Work" via rendered BUTTON
+[2026-08-09T21:31:08.866Z] CLICK "sta-ger" via rendered BUTTON
+[2026-08-09T21:31:09.391Z] CLICK "agents" via rendered BUTTON
+[2026-08-09T21:31:09.928Z] CLICK "worktrees" via rendered BUTTON
+[2026-08-09T21:31:10.450Z] CLICK "pokie-phase-5-polishing" via rendered BUTTON
+[2026-08-09T21:31:10.975Z] CLICK "task_P5-POLISH-20-20260809031218" via rendered BUTTON
+[2026-08-09T21:31:11.510Z] CLICK "docs" via rendered BUTTON
+[2026-08-09T21:31:12.054Z] CLICK "phase5-evidence" via rendered BUTTON
+[2026-08-09T21:31:12.578Z] CLICK "p5-polish-19" via rendered BUTTON
+[2026-08-09T21:31:13.099Z] CLICK "parity" via rendered BUTTON
+[2026-08-09T21:31:13.820Z] CAPTURE 01-file-picker-blueprint-file.png and 01-file-picker-blueprint-file.txt
+[2026-08-09T21:31:13.837Z] CLICK "after-fix-fixture-blueprint.json" via rendered BUTTON
+[2026-08-09T21:31:14.548Z] CAPTURE 02-file-selected-before-detect.png and 02-file-selected-before-detect.txt
+[2026-08-09T21:31:14.557Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T21:31:15.301Z] CAPTURE 03-file-detected-blueprint.png and 03-file-detected-blueprint.txt
+[2026-08-09T21:31:15.308Z] CLICK "Register" via rendered BUTTON
+[2026-08-09T21:31:16.046Z] CAPTURE 04-file-import-registered.png and 04-file-import-registered.txt
+[2026-08-09T21:31:16.264Z] CAPTURE 05-blueprint-home-post-import.png and 05-blueprint-home-post-import.txt
+[2026-08-09T21:31:16.267Z] OBSERVE Blueprint registry Open action present=false
+[2026-08-09T21:31:16.277Z] INPUT Location="/tmp/p5-build-export.loJC0L/package" through native input/change events
+[2026-08-09T21:31:16.753Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T21:31:17.508Z] CAPTURE 06-directory-detected.png and 06-directory-detected.txt
+[2026-08-09T21:31:17.518Z] CLICK "Register" via rendered BUTTON
+[2026-08-09T21:31:18.283Z] CAPTURE 07-directory-import-registered.png and 07-directory-import-registered.txt
+[2026-08-09T21:31:18.297Z] CLICK "Open" via rendered BUTTON
+[2026-08-09T21:31:18.930Z] CAPTURE 08-directory-package-opened.png and 08-directory-package-opened.txt
+[2026-08-09T21:31:18.932Z] FAILED Error: P2: Blueprint file import succeeds but its rendered registry row has no Open action, so the required Home -> opened Blueprint Studio workflow remains unavailable
+    at main (file:///tmp/p5-import-rerun.mjs:56:34)
