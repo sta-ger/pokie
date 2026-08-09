@@ -1,0 +1,2 @@
+ENOENT: no such file or directory, open '/nonexistent/lib'
+EXIT:1

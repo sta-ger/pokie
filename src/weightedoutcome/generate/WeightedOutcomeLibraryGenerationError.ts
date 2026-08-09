@@ -16,6 +16,12 @@
 //     computeExactEnumerationSourceId) doesn't match this run's own game/config/reel-layout identity even
 //     when progressTotal happens to coincide -- either way, it did not come from this same game/config's own
 //     cancelled sweep.
+//   - "weighted-outcome-library-generation-memory-exceeded": the accumulation phase's own heap usage crossed
+//     its safety limit before finishing (see accumulateUniqueGridWeights/GenerateExactWeightedOutcomeLibraryOptions.
+//     heapUsedLimitBytes) -- this game's reel/row layout evidently doesn't keep the distinct-grid count small
+//     relative to the raw outcome-space size, so an exact sweep cannot safely complete in this process's
+//     available memory. Not resumable (unlike a cancellation): the same memory ceiling would just be hit again
+//     immediately on retry -- the caller needs a bounded-coverage sample instead.
 export class WeightedOutcomeLibraryGenerationError extends Error {
     private readonly code: string;
 

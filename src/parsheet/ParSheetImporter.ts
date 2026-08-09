@@ -90,7 +90,7 @@ export class ParSheetImporter implements ParSheetImporting {
     }
 
     public async importFromFile(filePath: string): Promise<ParSheetImportResult> {
-        const workbook = await this.readWorkbook(filePath);
+        const workbook = await this.readWorkbookOrThrow(filePath);
         const issues: ValidationIssue[] = [];
 
         const sheetsByName = new Map(workbook.worksheets.map((worksheet): [string, ExcelJS.Worksheet] => [worksheet.name, worksheet]));
@@ -194,6 +194,22 @@ export class ParSheetImporter implements ParSheetImporting {
         issues.push(...this.validator.validate(blueprint));
 
         return {blueprint, provenance, issues};
+    }
+
+    // Wraps whatever readWorkbook throws (ExcelJS's own raw errors -- e.g. "Can't find end of central
+    // directory: is this a zip file?" for a non-.xlsx/corrupt file, complete with a jszip documentation
+    // URL that has nothing to do with POKIE) in the same "Could not read/parse ..." convention every
+    // other file-loading entry point in this codebase already uses (see loadGameBlueprint,
+    // readPokiePackageConfig) -- so a bad input file always surfaces a clean, POKIE-authored message,
+    // never a third-party library's own internals verbatim.
+    private async readWorkbookOrThrow(filePath: string): Promise<ExcelJS.Workbook> {
+        try {
+            return await this.readWorkbook(filePath);
+        } catch (error) {
+            throw new Error(
+                `Could not read "${filePath}" as a PAR sheet XLSX workbook: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
     }
 
     // Judges the "Meta" sheet's parsed provenance against the blueprint ParSheetImporter just

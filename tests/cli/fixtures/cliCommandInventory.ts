@@ -495,12 +495,17 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         description:
             'Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares, via the ' +
             "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
-            'by default, only pinning the result back in as a literal strip with --apply ("pokie reel generate ' +
-            '<blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]").',
+            "by default, only pinning the result back in as a literal strip with --apply, or fully collapsing the " +
+            'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left -- required by ' +
+            '"pokie par export" and any other tool that only understands literal reels) with --materialize ' +
+            '("pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] ' +
+            '[--out <file>] [--format json]").',
         verbs: [
             {
                 verb: "generate",
-                usage: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+                usage:
+                    "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] " +
+                    "[--out <file>] [--format json]",
                 positionals: ["blueprint.json"],
                 options: [
                     // defaultValue "2": with no --reel, every "generated" reel is targeted in ascending order (the
@@ -1884,7 +1889,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "missing/unknown subcommand",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+        expectedError: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -1892,7 +1897,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "generate missing <blueprint.json>",
         args: ["generate"],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+        expectedError: "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -1901,7 +1906,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--reel", "-1"],
         expectedExitCode: 1,
         expectedError:
-            "--reel must be a non-negative integer. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+            "--reel must be a non-negative integer. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -1910,7 +1915,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--seed", "notanumber"],
         expectedExitCode: 1,
         expectedError:
-            "--seed requires an integer value. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+            "--seed requires an integer value. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -1919,7 +1924,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format only supports "json". Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]',
+            '--format only supports "json". Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]',
     },
     {
         // Placed before every other "reel generate" case so it wins the default (omitted) evidence for
@@ -2742,7 +2747,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--reel"],
         expectedExitCode: 1,
         expectedError:
-            "--reel must be a non-negative integer. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+            "--reel must be a non-negative integer. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -2751,7 +2756,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--seed"],
         expectedExitCode: 1,
         expectedError:
-            "--seed requires an integer value. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+            "--seed requires an integer value. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -2760,7 +2765,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--apply", "--out"],
         expectedExitCode: 1,
         expectedError:
-            "--out requires a file path. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+            "--out requires a file path. Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
     {
         command: "reel",
@@ -2769,7 +2774,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "game.json", "--format"],
         expectedExitCode: 1,
         expectedError:
-            "--format only supports \"json\". Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]",
+            "--format only supports \"json\". Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]",
     },
 
     // --- replay: missing-value cases ---

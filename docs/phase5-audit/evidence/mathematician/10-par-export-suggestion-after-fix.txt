@@ -1,0 +1,4 @@
+Could not export "mathgame.json" to "mathgame-fail2.par.xlsx" (1 error(s)):
+  - parsheet-unsupported-reel-source: The blueprint uses "reelStripGeneration", which "pokie par export" cannot represent.
+    suggestion: Materialize the blueprint into a literal "reelStrips" array first -- run "pokie reel generate <blueprint.json> --materialize" (or, programmatically, resolveReelStripGeneration + materializeReelStrips, or by hand) -- then export that.
+EXIT:1

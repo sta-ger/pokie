@@ -154,6 +154,47 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         );
     });
 
+    // heapUsedLimitBytes/getHeapUsedBytes are consulted at accumulateUniqueGridWeights's own YIELD_EVERY
+    // cadence (5000 raw combinations) -- fixture-slot's own exact space is far too small (6) to ever reach
+    // that boundary, so these two tests use a bounded-coverage sample sized past it instead (sampling with
+    // replacement works from any reel-size product, however small) purely to prove the options are threaded
+    // through the real public API, not to re-test the guard's own internal behavior (see
+    // accumulateUniqueGridWeights.test.ts for that).
+    it("threads a custom heapUsedLimitBytes/getHeapUsedBytes through generateExactWeightedOutcomeLibrary and fails closed once crossed", async () => {
+        const options = {
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            maxOutcomeSpaceSize: BigInt(3),
+            bounded: {sampleSize: BigInt(6000), seed: "heap-guard"},
+            heapUsedLimitBytes: 1_000,
+            getHeapUsedBytes: () => 2_000,
+        };
+
+        await expect(generateExactWeightedOutcomeLibrary(options)).rejects.toMatchObject({name: "WeightedOutcomeLibraryGenerationError"});
+
+        try {
+            await generateExactWeightedOutcomeLibrary({...options, game: buildFixtureGame()});
+            throw new Error("expected generation to reject");
+        } catch (error) {
+            expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-memory-exceeded");
+        }
+    });
+
+    it("stays unaffected by a custom heapUsedLimitBytes/getHeapUsedBytes pair that never crosses the limit", async () => {
+        const result = await generateExactWeightedOutcomeLibrary({
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            maxOutcomeSpaceSize: BigInt(3),
+            bounded: {sampleSize: BigInt(6000), seed: "heap-guard-ok"},
+            heapUsedLimitBytes: 1_000_000_000,
+            getHeapUsedBytes: () => 10,
+        });
+
+        expect(result.diagnostics.sampledRawCount).toBe(6000);
+    });
+
     // A signal test double whose own "aborted" getter flips to true only after "count" reads -- lets a test
     // cancel a sweep after a specific number of raw tuples were already processed, without depending on
     // accumulateUniqueGridWeights's own YIELD_EVERY progress cadence (far coarser than this fixture's total

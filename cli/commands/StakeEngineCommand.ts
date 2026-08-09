@@ -334,7 +334,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                         cost: entry.cost,
                         library:
                             entry.libraryPath !== undefined
-                                ? (this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary)
+                                ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
                                 : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
                     })),
                 ),
@@ -596,8 +596,22 @@ export class StakeEngineCommand implements CliCommandHandling {
         }
     }
 
+    // Wraps whatever the injected loadJson throws (a raw Node `fs`/`JSON.parse` error for the default
+    // implementation -- e.g. a bare "ENOENT: no such file or directory, open '...'" with no "Could not
+    // read/parse ..." framing and no CONFIG_HINT, unlike every other error loadDescriptor's own checks
+    // below already produce) in the same clean, POKIE-authored convention loadGameBlueprint/DiffCommand/
+    // ParSheetImporter already use, so a missing/corrupt file -- the single most likely real mistake here
+    // -- never leaks a raw runtime error straight to the user (real finding, P5-POLISH-20 audit).
+    private loadJsonChecked(filePath: string, description: string): unknown {
+        try {
+            return this.loadJson(filePath);
+        } catch (error) {
+            throw new Error(`Could not read ${description} at "${filePath}": ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
     private loadDescriptor(configPath: string): ExportDescriptor {
-        const parsed = this.loadJson(configPath);
+        const parsed = this.loadJsonChecked(configPath, "Stake Engine export config");
         if (typeof parsed !== "object" || parsed === null || !Array.isArray((parsed as {modes?: unknown}).modes)) {
             throw new Error(`"${configPath}" is not a valid Stake Engine export config. ${CONFIG_HINT}`);
         }

@@ -263,4 +263,9 @@ actually running the current tree rather than trusting its own tests/comments, p
 [`phase5-evidence/p5-polish-19/README.md`](phase5-evidence/p5-polish-19/README.md) for later, end-to-end
 real-user-journey evidence (Blueprint create/edit/play/find/replay/sim/build, a programmer's init/npm start/npm
 build/sim/build, Outcome Library and Stake Engine imports, direct Blueprint Overview, and player-rendering parity
-across examples/package/Studio).
+across examples/package/Studio), and [`phase5-audit/README.md`](phase5-audit/README.md) for an independent,
+new-user audit across five personas (slot mathematician/designer, backend developer, game programmer,
+QA/debugger, integration engineer) that found and fixed real gaps in `pokie par export`/`import`'s own error
+messaging and `pokie stakeengine export`'s file-load error handling, on top of verifying and completing three
+real fixes (a `pokie reel generate --materialize` PAR-export path, a corrupt-PAR-file error message, and a
+weighted-outcome-library heap-usage safety net) already in progress when this round began.

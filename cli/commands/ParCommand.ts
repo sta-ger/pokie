@@ -218,6 +218,9 @@ export class ParCommand implements CliCommandHandling {
             console.error(`Could not export "${blueprintPath}" to "${outPath}" (${errors.length} error(s)):`);
             for (const issue of errors) {
                 console.error(`  - ${issue.code}: ${issue.message}`);
+                if (issue.suggestion) {
+                    console.error(`    suggestion: ${issue.suggestion}`);
+                }
             }
             return 1;
         }
@@ -225,6 +228,9 @@ export class ParCommand implements CliCommandHandling {
         console.log(`Exported "${blueprintPath}" to "${outPath}".`);
         for (const issue of warnings) {
             console.log(`  warning  ${issue.code}: ${issue.message}`);
+            if (issue.suggestion) {
+                console.log(`    suggestion: ${issue.suggestion}`);
+            }
         }
 
         return 0;
@@ -240,12 +246,18 @@ export class ParCommand implements CliCommandHandling {
             console.log(`\nWarnings (${warnings.length}):`);
             for (const issue of warnings) {
                 console.log(`  - ${issue.code}: ${issue.message}`);
+                if (issue.suggestion) {
+                    console.log(`    suggestion: ${issue.suggestion}`);
+                }
             }
         }
         if (errors.length > 0) {
             console.log(`\nErrors (${errors.length}):`);
             for (const issue of errors) {
                 console.log(`  - ${issue.code}: ${issue.message}`);
+                if (issue.suggestion) {
+                    console.log(`    suggestion: ${issue.suggestion}`);
+                }
             }
         }
     }

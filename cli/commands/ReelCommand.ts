@@ -3,6 +3,7 @@ import fs from "fs";
 import {
     GameBlueprint,
     loadGameBlueprint,
+    materializeReelStrips,
     ReelStripGenerationSpec,
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
@@ -12,7 +13,8 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-const USAGE = "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]";
+const USAGE =
+    "Usage: pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]";
 
 type ReelGenerateFormat = "summary" | "json";
 
@@ -20,6 +22,7 @@ type ReelGenerateOptions = {
     reel?: number;
     seed?: number;
     apply: boolean;
+    materialize: boolean;
     out?: string;
     format: ReelGenerateFormat;
 };
@@ -59,8 +62,11 @@ export class ReelCommand implements CliCommandHandling {
         return (
             'Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares, via the ' +
             "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
-            'by default, only pinning the result back in as a literal strip with --apply ("pokie reel generate ' +
-            '<blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]").'
+            "by default, only pinning the result back in as a literal strip with --apply, or fully collapsing the " +
+            'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left -- required by ' +
+            '"pokie par export" and any other tool that only understands literal reels) with --materialize ' +
+            '("pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] ' +
+            '[--out <file>] [--format json]").'
         );
     }
 
@@ -129,6 +135,11 @@ export class ReelCommand implements CliCommandHandling {
                 return Number(value);
             })
             .option("--apply", "pin the generated strip(s) into reelStripGeneration as literal (default: preview only)")
+            .option(
+                "--materialize",
+                'resolve the whole blueprint and collapse it to a plain top-level "reelStrips" array, dropping ' +
+                    '"reelStripGeneration" entirely (incompatible with --reel/--apply)',
+            )
             .option("--out <file>", "write the applied blueprint to a different path (default: overwrite <blueprint.json>)")
             .option(
                 "--format <value>",
@@ -141,23 +152,40 @@ export class ReelCommand implements CliCommandHandling {
                 },
                 "summary" as ReelGenerateFormat,
             )
-            .action(async (blueprintPath: string, excess: string[], options: {reel?: number; seed?: number; apply?: boolean; out?: string; format: ReelGenerateFormat}) => {
-                if (excess.length > 0) {
-                    throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
-                }
-                exitCodeRef.value = await this.executeGenerate(blueprintPath, {
-                    reel: options.reel,
-                    seed: options.seed,
-                    apply: options.apply ?? false,
-                    out: options.out,
-                    format: options.format,
-                });
-            });
+            .action(
+                async (
+                    blueprintPath: string,
+                    excess: string[],
+                    options: {reel?: number; seed?: number; apply?: boolean; materialize?: boolean; out?: string; format: ReelGenerateFormat},
+                ) => {
+                    if (excess.length > 0) {
+                        throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
+                    }
+                    exitCodeRef.value = await this.executeGenerate(blueprintPath, {
+                        reel: options.reel,
+                        seed: options.seed,
+                        apply: options.apply ?? false,
+                        materialize: options.materialize ?? false,
+                        out: options.out,
+                        format: options.format,
+                    });
+                },
+            );
 
         return parent;
     }
 
     private async executeGenerate(blueprintPath: string, options: ReelGenerateOptions): Promise<number> {
+        if (options.materialize) {
+            if (options.reel !== undefined || options.seed !== undefined || options.apply) {
+                throw new Error(
+                    "--materialize cannot be combined with --reel/--seed/--apply -- it always resolves the whole blueprint " +
+                        `using each reel's own declared seed. ${USAGE}`,
+                );
+            }
+            return this.executeMaterialize(blueprintPath, options.out, options.format);
+        }
+
         const blueprint = this.loadBlueprint(blueprintPath) as GameBlueprint;
         const specs = blueprint.reelStripGeneration;
         if (!Array.isArray(specs) || specs.length === 0) {
@@ -192,6 +220,47 @@ export class ReelCommand implements CliCommandHandling {
         }
 
         return failed ? 1 : 0;
+    }
+
+    // Resolves every "generated" entry using its own declared seed (never --reel/--seed-scoped, unlike
+    // --apply) and collapses the result into a plain top-level "reelStrips" array with "reelStripGeneration"
+    // removed entirely -- the same materialization "pokie build"/GamePackageGenerator perform internally
+    // when compiling a runtime module, exposed here as its own persisted output. This is the only
+    // supported way to turn a --random/--blank-created (or reel-generate --apply'd) blueprint into one
+    // "pokie par export" -- which only ever understands literal reelStrips, see ParSheetExporter's own
+    // "parsheet-unsupported-reel-source" -- can actually export.
+    private async executeMaterialize(blueprintPath: string, out: string | undefined, format: ReelGenerateFormat): Promise<number> {
+        const blueprint = this.loadBlueprint(blueprintPath) as GameBlueprint;
+        const resolution = this.resolveGeneration(blueprint);
+
+        if (!resolution.success) {
+            if (format === "json") {
+                console.log(JSON.stringify({blueprintPath, materialized: false, reels: resolution.reels}, null, 4));
+            } else {
+                console.log(`Reel strip generation for "${blueprintPath}"`);
+                for (const outcome of resolution.reels) {
+                    console.log(`  reel ${outcome.reelIndex}  FAILED after ${outcome.attemptsUsed} attempt(s) (seed ${outcome.seed})`);
+                    for (const violation of outcome.diagnostics[outcome.diagnostics.length - 1]?.violations ?? []) {
+                        console.log(`    - ${violation.constraintId}: ${violation.message}`);
+                    }
+                }
+                console.log("\nNo changes written -- fix the failing reel(s) above and re-run.");
+            }
+            return 1;
+        }
+
+        const materialized = materializeReelStrips(blueprint, resolution.reelStripGeneration);
+        const outPath = out ?? blueprintPath;
+        await this.writeFile(outPath, `${JSON.stringify(materialized, null, 4)}\n`);
+        const reelCount = materialized.reelStrips?.length ?? 0;
+
+        if (format === "json") {
+            console.log(JSON.stringify({blueprintPath, materialized: true, out: outPath, reelCount}, null, 4));
+        } else {
+            console.log(`Reel strip generation for "${blueprintPath}"`);
+            console.log(`Materialized ${reelCount} reel(s) into "${outPath}" -- "reelStripGeneration" removed, "reelStrips" is now literal.`);
+        }
+        return 0;
     }
 
     private resolveTargetIndices(blueprintPath: string, specs: ReelStripGenerationSpec[], reel: number | undefined): number[] {

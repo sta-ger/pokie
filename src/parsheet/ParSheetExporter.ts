@@ -173,8 +173,9 @@ export class ParSheetExporter implements ParSheetExporting {
                         reelStrips: alsoHasReelStrips,
                     },
                     suggestion:
-                        'Materialize the blueprint into a literal "reelStrips" array first (e.g. via resolveReelStripGeneration + ' +
-                        'materializeReelStrips, or by hand), then export that.',
+                        'Materialize the blueprint into a literal "reelStrips" array first -- run "pokie reel generate ' +
+                        '<blueprint.json> --materialize" (or, programmatically, resolveReelStripGeneration + ' +
+                        "materializeReelStrips, or by hand) -- then export that.",
                 },
             ];
         }

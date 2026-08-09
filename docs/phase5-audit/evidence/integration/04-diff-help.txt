@@ -1,0 +1,17 @@
+Usage: diff [options] <leftReportJson> <rightReportJson> [excess...]
+
+Compare two pokie sim JSON reports (see pokie sim --out) and highlight what
+changed.
+
+Arguments:
+  leftReportJson     a pokie sim JSON report (see "pokie sim --out")
+  rightReportJson    a pokie sim JSON report (see "pokie sim --out")
+  excess             rejected if present -- this command takes no further
+                     positionals
+
+Options:
+  --format <format>  only "json" is supported (default: a human-readable
+                     summary)
+  --out <file>       write the diff JSON to this path
+  -h, --help         Display help for this command.
+
