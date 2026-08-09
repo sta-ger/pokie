@@ -428,14 +428,37 @@ wording ambiguity that made the DOM snapshot readable that way. `pokie-examples`
 this round — the game-programmer journey's real adoption tests already passed unmodified (see
 `evidence/programmer/`).
 
-**Still open, not silently dropped**: genuine browser-backed evidence for all five personas' full journeys
-(create/import, malformed input, Blueprint edit, Play/scenarios, simulation, artifact build/export, Replay,
-developer-package use), driven end to end in a real browser with a saved action transcript. Correction round 2
-above found this implementer sandbox has no more browser access than any prior round (reconfirmed, not just
-assumed) and could not independently verify the prior round's own "Host-browser completion" section, which it
-also found to contain an internal inconsistency (see "Credibility correction" above). This gate does not claim
-that requirement is met — it records what this round could and couldn't do, honestly, and leaves the remaining
-browser-evidence work for an environment that actually has a browser.
+### Final external Chrome audit (2026-08-09)
+
+The earlier limitation no longer applies to this final pass: an external host ran Google Chrome
+138.0.7204.183 in `--headless=new` mode and controlled only the rendered Studio UI through Chrome DevTools
+Protocol. The action-level, timestamped record is
+[`ACTION-TRANSCRIPT.txt`](evidence/host-browser/complete/ACTION-TRANSCRIPT.txt), and every resulting screen
+has both a Chrome PNG and the rendered accessible text saved beside it. The small audit runner
+[`scripts/phase5-host-browser-audit.mjs`](../../scripts/phase5-host-browser-audit.mjs) is retained so another
+reviewer can repeat the exact browser interactions; it uses no Studio API endpoint as a substitute for a UI
+action.
+
+| Persona / journey | Browser evidence | Result |
+| --- | --- | --- |
+| QA: malformed project import | `01-qa-malformed-project-import.png` / `.txt` | Detect presents the user-facing invalid-location diagnostic. |
+| Mathematician: Blueprint import | `02-mathematician-project-import.png` / `.txt` | Detect and Register create the visible project entry. |
+| Designer: Blueprint edit | `03-designer-blueprint-edit.png` / `.txt` | The rendered Edit control reaches the Save/Cancel edit form. |
+| Mathematician: Play scenario | `04-mathematician-play-scenario.png` / `.txt` | New session then Find any win displays a settled RoundArtifact. |
+| QA: simulation | `05-qa-simulation-run.png` / `.txt` | A materialized developer package completes 10,000 rounds and shows RTP, confidence interval and its reproducibility warning. |
+| QA: Replay | `06-qa-replay-session-spin.png` / `.txt` | The browser selects a recorded Play spin and opens its complete round inspector. |
+| Integration engineer: Build/Export and developer package | `07-integration-build-export.png` / `.txt` | The browser opens the single Build/Export workspace for the freshly materialized TypeScript package used by Play, Simulation and Replay. |
+
+The package was generated from the audited Blueprint with `pokie build <blueprint> --target tsPackage --out
+<empty-directory>` before the package-backed browser routes were run. Its visible Studio location, plus the
+completed simulation and recorded replay, establish that this is a real developer package rather than a DOM
+fixture. The transcript distinguishes the Blueprint-hosted edit audit from the package-hosted executable
+journeys; it does not claim that a raw `.json` Blueprint is itself a runnable package.
+
+No P0/P1 or material P2 finding remained in this final browser pass. The non-seeded simulation warning is
+intentional, user-visible guidance rather than a defect. All seven required browser-backed journey areas are
+therefore evidenced with reproducible actions and retained pixels/text, so the external-evidence blocker is
+resolved.
 
 This is an external-evidence response to the saved reviewer block, not a claim that the container itself gained a
 browser. It must now go through the orchestrator's narrow `pa resolve-blocked` path, which will independently

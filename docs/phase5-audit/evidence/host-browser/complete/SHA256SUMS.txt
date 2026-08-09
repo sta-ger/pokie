@@ -1,0 +1,15 @@
+47fe381ed72e623247fe55c910ed027dffd20e6295e45b8029ff79c0d2d49313  docs/phase5-audit/evidence/host-browser/complete/01-qa-malformed-project-import.png
+0de9a52b0e6d4021366cb8068d25f28505f69e94a8939ecf56aab7716c0db4a5  docs/phase5-audit/evidence/host-browser/complete/01-qa-malformed-project-import.txt
+f49da20cf047a4aaf064e3bbead535ba27ea3733ff2d5b7f5c53f1ab236bb391  docs/phase5-audit/evidence/host-browser/complete/02-mathematician-project-import.png
+ec35e7bc3bad50abb9f69beb8809a3e26c80529f4abaeb2fe4f2ddcb6fcae2ac  docs/phase5-audit/evidence/host-browser/complete/02-mathematician-project-import.txt
+2c49512766a8ddbeaf3dff50988e9e6a0c8a28d994e1163141cad493d1e1bdb3  docs/phase5-audit/evidence/host-browser/complete/03-designer-blueprint-edit.png
+daca3c11f36bd5c4236123ddb102c662b38cb4220bf070e4963beee23e8ef539  docs/phase5-audit/evidence/host-browser/complete/03-designer-blueprint-edit.txt
+d0a7fbb88e17de6d6dedbf4e6cd9c7ba5ba2d38cc2c372ade6fd3d49c27e3301  docs/phase5-audit/evidence/host-browser/complete/04-mathematician-play-scenario.png
+e98ca84838fdc187900e8625c6320409e8c262e4a7a9dbd3b093248f2441af94  docs/phase5-audit/evidence/host-browser/complete/04-mathematician-play-scenario.txt
+ea4844256a75e2ecadd0fdd9a91a916f177f4c05e60bc75a902d7dd5b5008335  docs/phase5-audit/evidence/host-browser/complete/05-qa-simulation-run.png
+eccdc84fcf628d310de7ba6fa31a8b47b6ad04435def717b072208df5d86a0a2  docs/phase5-audit/evidence/host-browser/complete/05-qa-simulation-run.txt
+2f900545f6b2978fe55eae7a3dc7f5d9a715eb04ef99bc76ed68e1a8bb009fa6  docs/phase5-audit/evidence/host-browser/complete/06-qa-replay-session-spin.png
+b22e7bddb91692254af1807aa838356eadfb54962d3adaa50ed7c640491769af  docs/phase5-audit/evidence/host-browser/complete/06-qa-replay-session-spin.txt
+af5fcadc73916491d34c99612926c7151ff54ccba81715a68ce6044da1bbfb32  docs/phase5-audit/evidence/host-browser/complete/07-integration-build-export.png
+1434272d62188acec2d9882e520fb001375002eba9d898f221d19edf34c32ce9  docs/phase5-audit/evidence/host-browser/complete/07-integration-build-export.txt
+97570929a9688f9cedc6096bc5afdbdfd5e0da8258602e643245eeea958c81c2  docs/phase5-audit/evidence/host-browser/complete/ACTION-TRANSCRIPT.txt

@@ -1,0 +1,91 @@
+POKIE Studio
+/
+Fixture Slot
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Fixture Slot
+
+/tmp/p5-package-TEyjKN
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Refresh
+All sessions
+cdeea8da-5388-44cb-b499-1b9d572b126b
+Round 2 in session cdeea8da-5388-44cb-b499-1b9d572b126b — credits 999, win 1, 8/9/2026, 6:54:36 PM
+Round 1 in session cdeea8da-5388-44cb-b499-1b9d572b126b — credits 999, win 0, 8/9/2026, 6:54:36 PM
+Loaded replay
+Source	Recorded -- Play tab spin
+Identities	session cdeea8da-5388-44cb-b499-1b9d572b126b, round 2
+Seed	(no seed was given for this session)
+Version / hash	fixture-slot v0.1.0
+Timestamp	8/9/2026, 6:54:36 PM
+Completeness	Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.
+Inspectable	
+AVAILABLE
+This round's data is loaded and ready to inspect.
+Reproducible	
+UNAVAILABLE
+This is a live spin's actual recorded result -- there's nothing to reproduce it against.
+Comparable	
+UNAVAILABLE
+A fresh forward replay with no prior recorded result to compare against.
+Exportable	
+AVAILABLE
+Ready to download as JSON.
+Game	Fixture Slot (id: "fixture-slot", v0.1.0)
+Pokie version	1.3.0
+Config hash	sha256:463a0d115a873efc6bec4867c1bb8be295a17a43df01fa10db844275c1cd9819
+Bet mode	base
+Stake	1.00
+Total win	1.00 (1.00x)
+Credits	999
+C
+C
+A
+	
+C
+C
+C
+	
+A
+C
+A
+line: C, win: 1
+Round detail
+Type	Symbol	Amount	Positions	Multiplier
+line	C	1.00 (1.00x stake)	3	not applicable — no multiplier applied to this win
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+Snapshot captured for this round — see Advanced details for the full before/after state.
+
+Show advanced details (raw JSON, debug data)
+
+Download JSON
+Recent replays
+Refresh
+
+No replays run yet.

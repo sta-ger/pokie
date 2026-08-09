@@ -1,0 +1,30 @@
+[2026-08-09T16:54:28.151Z] START Chrome CDP audit against http://127.0.0.1:4100
+[2026-08-09T16:54:28.152Z] NAVIGATE /home/projects
+[2026-08-09T16:54:29.087Z] INPUT Location="/definitely/not/a/pokie/project" through native input/change events
+[2026-08-09T16:54:29.350Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T16:54:30.232Z] CAPTURE 01-qa-malformed-project-import.png and 01-qa-malformed-project-import.txt
+[2026-08-09T16:54:30.233Z] NAVIGATE /home/projects
+[2026-08-09T16:54:31.164Z] INPUT Location="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json" through native input/change events
+[2026-08-09T16:54:31.439Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T16:54:32.124Z] CLICK "Register" via rendered BUTTON
+[2026-08-09T16:54:33.034Z] CAPTURE 02-mathematician-project-import.png and 02-mathematician-project-import.txt
+[2026-08-09T16:54:33.034Z] SWITCH to Studio instance with the audited Blueprint already open: http://127.0.0.1:4101
+[2026-08-09T16:54:33.034Z] NAVIGATE /project/gameModel
+[2026-08-09T16:54:33.980Z] CLICK "Edit" via rendered BUTTON
+[2026-08-09T16:54:34.965Z] CAPTURE 03-designer-blueprint-edit.png and 03-designer-blueprint-edit.txt
+[2026-08-09T16:54:34.965Z] SWITCH to fresh materialized developer package: http://127.0.0.1:4102
+[2026-08-09T16:54:34.965Z] NAVIGATE /project/play
+[2026-08-09T16:54:35.913Z] CLICK "New session" via rendered BUTTON
+[2026-08-09T16:54:36.586Z] CLICK "Find any win" via rendered BUTTON
+[2026-08-09T16:54:37.417Z] CAPTURE 04-mathematician-play-scenario.png and 04-mathematician-play-scenario.txt
+[2026-08-09T16:54:37.417Z] NAVIGATE /project/simulation
+[2026-08-09T16:54:38.361Z] CLICK "Run Simulation" via rendered BUTTON
+[2026-08-09T16:54:39.142Z] CAPTURE 05-qa-simulation-run.png and 05-qa-simulation-run.txt
+[2026-08-09T16:54:39.142Z] NAVIGATE /project/replay
+[2026-08-09T16:54:40.088Z] SELECT "Session Spin" through rendered replay-source control
+[2026-08-09T16:54:40.520Z] CLICK "Refresh" via rendered BUTTON
+[2026-08-09T16:54:41.237Z] CLICK rendered recorded Session Spin
+[2026-08-09T16:54:42.113Z] CAPTURE 06-qa-replay-session-spin.png and 06-qa-replay-session-spin.txt
+[2026-08-09T16:54:42.113Z] NAVIGATE /project/exportDeploy
+[2026-08-09T16:54:43.515Z] CAPTURE 07-integration-build-export.png and 07-integration-build-export.txt
+[2026-08-09T16:54:43.516Z] COMPLETE all recorded browser actions

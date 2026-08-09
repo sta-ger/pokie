@@ -1,0 +1,36 @@
+POKIE Studio
+Design Game
+Projects
+Projects
+
+Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.
+
+Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.
+
+Your projects
+Name	Type	Origin	Last opened	Actions
+after-fix-fixture-blueprint
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json
+
+	Blueprint	
+Registered
+	8/9/2026, 6:53:50 PM	
+Remove
+Import Project
+
+Point at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.
+
+Location
+Browse…
+
+"/definitely/not/a/pokie/project" doesn't exist.
+
+Check the path, or use Browse to pick an existing location.
+
+Detect
+"/definitely/not/a/pokie/project" doesn't look like any POKIE project type POKIE recognizes.
+Documentation
+Docs index
+Getting started
+CLI reference

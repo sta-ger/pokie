@@ -1,0 +1,56 @@
+POKIE Studio
+/
+Fixture Slot
+/
+
+Simulation
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Fixture Slot
+
+/tmp/p5-package-TEyjKN
+
+Close project
+Configure
+Set rounds
+Run
+Watch progress
+3
+Review
+See results
+4
+Export
+Download report
+RTP	100.75%
+Hit frequency	29.81%
+Volatility	1.88
+Max win	11.00
+Duration	0.3s
+Convergence	RTP 95% CI: 97.07% – 104.43%
+
+Warnings
+
+No seed was provided — this run is not reproducible.
+
+Recommendation: Run with --seed <seed> (e.g. --seed demo) to make this simulation reproducible.
+
+Open full report
+Compare with another run
+Repeat simulation
+Recent runs
+Refresh
+
+fixture-slot v0.1.0 — 10000/10000 rounds, RTP 100.75%, 8/9/2026, 6:54:38 PM (has warnings)
+
+Open
+Run again
