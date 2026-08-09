@@ -1,0 +1,20 @@
+Running one project: pokie-examples
+PASS pokie-examples ../pokie-examples/tests/ui.test.ts
+  pokie-examples' ui.ts adoption of pokie/client/player
+    ✓ renders the grid through the shared player's own renderReelsGrid, not a bespoke table (107 ms)
+    ✓ renders a winning payline via the shared player's win-highlight list (56 ms)
+    ✓ renders multiple win kinds (line + scatter) from the same round together (40 ms)
+    ✓ lets a player pick one of the session's own available bets, and re-spins staked at it (35 ms)
+    ✓ lets a player pick one of the session's own available bet modes, and re-spins with it (39 ms)
+    ✓ keeps the reels grid's own narrow-viewport styling (21 ms)
+    ✓ shows a retryable error when a round fails, and retrying re-spins successfully (30 ms)
+    ✓ falls back to the last-known-good initial round when reconnecting after a failure (29 ms)
+  P5-POLISH-19: examples surface renders the identical fixture round captured from CLI replay / npm start / Studio Play / Studio Replay
+    ✓ agrees with the CLI replay, Studio Play, and Studio Replay captures of this same fixture round before any rendering happens (2 ms)
+    ✓ renders the same orientation, payline, winning positions, and paytable every other surface captured for this fixture round (27 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        2.766 s, estimated 3 s
+Ran all test suites matching /tests\/ui.test.ts/i.

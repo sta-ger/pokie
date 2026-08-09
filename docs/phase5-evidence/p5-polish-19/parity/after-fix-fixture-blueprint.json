@@ -1,0 +1,25 @@
+{
+    "manifest": {
+        "id": "fixture-slot",
+        "name": "Fixture Slot",
+        "version": "0.1.0"
+    },
+    "reels": 3,
+    "rows": 3,
+    "symbols": [
+        "A",
+        "B",
+        "C"
+    ],
+    "paytable": {
+        "A": {
+            "3": 5
+        },
+        "B": {
+            "3": 3
+        },
+        "C": {
+            "3": 1
+        }
+    }
+}

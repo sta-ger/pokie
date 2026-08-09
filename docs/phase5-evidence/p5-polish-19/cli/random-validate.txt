@@ -1,0 +1,4 @@
+Validating "Golden Comet" (id: "golden-comet", v0.1.0) at "/tmp/p5-19-evidence/random/pkg"
+  valid           yes
+
+No issues found.

@@ -1,0 +1,4 @@
+Built an outcome library bundle from "bundle-config.json" to "./bundle":
+  wrote  index_base.json
+  wrote  outcomes_base.jsonl
+  wrote  manifest.json

@@ -4,11 +4,25 @@ import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 // sequence of draws. Useful for replaying/debugging a specific round, regression tests, and
 // certification-style test suites that need a controlled, repeatable stream of outcomes. Not
 // cryptographically secure and not a substitute for SecureRandomNumberGenerator in production.
+//
+// Accepts a string seed (e.g. PokieGameContext.seed, which is string | number — see
+// GamePackageGenerator/GamePackageCreator's generated createSession()) as well as a number: a string
+// is folded down to mulberry32's own 32-bit state via FNV-1a first, so the same string always yields
+// the same starting state.
 export class SeededRandomNumberGenerator implements RandomNumberGenerating {
     private state: number;
 
-    constructor(seed: number) {
-        this.state = seed >>> 0;
+    constructor(seed: string | number) {
+        this.state = (typeof seed === "number" ? seed : SeededRandomNumberGenerator.hashSeed(seed)) >>> 0;
+    }
+
+    private static hashSeed(seed: string): number {
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < seed.length; i++) {
+            hash ^= seed.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193);
+        }
+        return hash >>> 0;
     }
 
     public getRandomInt(min: number, max: number): number {

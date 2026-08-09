@@ -139,7 +139,7 @@ describe("GamePackageGenerator", () => {
         const source = fs.readFileSync(path.join(result.projectRoot, "src", "index.ts"), "utf-8");
         const distIndexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
 
-        expect(source).toContain('import type {GameBlueprint} from "pokie";');
+        expect(source).toContain('import type {GameBlueprint, PokieGameContext} from "pokie";');
         expect(source).toContain("const blueprint: GameBlueprint = ");
         expect(source).toContain("module.exports = {");
         // Both files embed the exact same blueprint data and manifest -- a real "npm run build" of

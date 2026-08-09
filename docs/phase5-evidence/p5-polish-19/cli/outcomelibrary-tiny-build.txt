@@ -1,0 +1,21 @@
+  warning  blueprint-paytable-frequent-low-match: "paytable.A" pays on just 2 matching symbols; for a non-scatter symbol that's very frequent (most line-pay symbols start at 3-of-a-kind) and will inflate hit frequency and RTP.
+  warning  blueprint-paytable-frequent-low-match: "paytable.B" pays on just 2 matching symbols; for a non-scatter symbol that's very frequent (most line-pay symbols start at 3-of-a-kind) and will inflate hit frequency and RTP.
+  warning  blueprint-weighting-dominant-symbol: "A" makes up 50% of "reelStrips" — it will dominate the reels and crowd out other symbols.
+  warning  blueprint-weighting-dominant-symbol: "B" makes up 50% of "reelStrips" — it will dominate the reels and crowd out other symbols.
+  warning  blueprint-weighting-pay-mismatch: "A" pays more than "B" (5x vs 2x at a full line) but isn't rarer in "reelStrips" (weight 3 vs 3) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+Build summary:
+  package root     /tmp/p5-19-evidence/tiny/pkg
+  game             Tiny Outcome Demo (id: "tiny-outcome-demo", v0.1.0)
+  blueprint hash   sha256:15eff78d54d496c7b0d3edb0a202e17d8e821dba221ff4718c7412e6063d3349
+  source           /tmp/p5-19-evidence/tiny/blueprint.json
+
+Game package "Tiny Outcome Demo" (id: "tiny-outcome-demo") built in "/tmp/p5-19-evidence/tiny/pkg".
+
+Next:
+  cd /tmp/p5-19-evidence/tiny/pkg && npm install
+  pokie inspect /tmp/p5-19-evidence/tiny/pkg
+  pokie validate /tmp/p5-19-evidence/tiny/pkg
+  pokie sim /tmp/p5-19-evidence/tiny/pkg --rounds 10000 --seed demo --out sim.json
+  pokie report sim.json
+  pokie replay /tmp/p5-19-evidence/tiny/pkg --seed demo --round 1
+  pokie dev /tmp/p5-19-evidence/tiny/pkg

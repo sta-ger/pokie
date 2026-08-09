@@ -1,0 +1,15 @@
+Simulated "Demo Programmer Game" (id: "demo-programmer-game", v0.1.0)
+  rounds          500
+  seed            demo-sim
+  workers         1
+  total bet       500.00
+  total win       119.00
+  rtp             23.80%
+  hit frequency   17.40%
+  average payout  0.24
+  max win         5.00
+  volatility      0.60
+  max win freq.   17.4000%
+  duration        58ms (8621 spins/s)
+
+Report written to "/workspace/docs/phase5-evidence/p5-polish-19/cli/prog-sim-report.json".

@@ -1,0 +1,327 @@
+Running one project: pokie-integration
+PASS pokie-integration tests/cli/studio/StudioServer.test.ts (11.114 s)
+  StudioServer
+    ○ skipped responds ok on GET /api/health
+    ○ skipped defaults to home mode on GET /api/context
+    ○ skipped reports safe diagnostics on GET /api/studio/diagnostics in home mode
+    ○ skipped serves index.html for GET /
+    ○ skipped returns 404 for a file that doesn't exist
+    ○ skipped returns 404 for an unknown API route
+    ○ skipped starts with an empty recent-projects list
+    ○ skipped opens a valid project via the injected loadGame and switches to project mode
+    ○ skipped returns 400 for a projectRoot that fails to load
+    ○ skipped closes a project back to home mode
+    Home Open Project runtime package materialization boundary
+      ○ skipped loads the dashboard from the materialized runtime path instead of the raw blueprint path Home was given
+      ○ skipped returns the structured capability diagnostic, not a raw loader error, for a resolved target the studio operation can't run
+    Home Open Project runtime package materialization (real BlueprintProjectMaterializer, offline)
+      ○ skipped materializes a genuinely loadable runtime through Home Open Project using the fully default production resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open
+      ○ skipped recovers from a failed staged install through Home Open Project: the failure surfaces as a 400 domain error carrying the raw npm diagnostic as a separate 'detail' field (same convention as every other Home Open Project failure), a retry succeeds, and a later Open reuses the cache without a second install
+    Home nav: GET /api/home/fs/browse
+      ○ skipped lists the studio root's own children when no path is given
+      ○ skipped resolves a relative path against the studio root
+      ○ skipped reports a nonexistent path as a 200 domain-level error, not a 4xx/5xx
+      ○ skipped reports a path that resolves to a file, not a directory, as an error
+      ○ skipped resolves a relative path against an explicit `base` instead of the studio root -- a project-scoped path field's own root
+    Home nav: GET /api/home/fs/default-location
+      ○ skipped returns the platform Documents/Home default when no name is given
+      ○ skipped uses the Documents/POKIE/<name> policy when a name is given
+      ○ skipped reports unavailable when the resolver can't determine a base directory
+    Home nav: native browse (GET .../native-browse/availability, POST .../native-browse)
+      ○ skipped reports availability from the injected StudioNativePickerService
+      ○ skipped returns the selected path on POST /api/home/fs/native-browse
+      ○ skipped rejects a request with an invalid kind as a 400
+      ○ skipped reports the native picker unavailable to a remote caller, without ever consulting the injected picker service, even when the server has a graphical display
+      ○ skipped never invokes the injected picker service's pick() for a remote caller's POST /api/home/fs/native-browse, even with a well-formed request
+      ○ skipped still consults the injected picker service for a confirmed-local caller
+    Home nav: open output folder (POST /api/home/fs/open-folder)
+      ○ skipped rejects a body with no path field
+      ○ skipped opens an existing directory via the injected openFolder and reports ok
+      ○ skipped reports an error, without invoking openFolder, for a path that doesn't exist
+      ○ skipped reports an error, without invoking openFolder, for a path that is a file, not a directory
+      ○ skipped reports unavailable and never invokes openFolder for a remote caller, even with an existing directory
+    isLoopbackRequest
+      ○ skipped treats 127.0.0.1 as a confirmed-local caller
+      ○ skipped treats ::1 as a confirmed-local caller
+      ○ skipped treats ::ffff:127.0.0.1 as a confirmed-local caller
+      ○ skipped treats 203.0.113.5 as a remote caller
+      ○ skipped treats ::ffff:203.0.113.5 as a remote caller
+      ○ skipped treats 172.17.0.2 as a remote caller
+      ○ skipped treats undefined as a remote caller
+    Home nav: recent-projects dedup/missing (through the injected homeService)
+      ○ skipped never lists another project's recent entries as duplicates when the same canonical path is opened twice
+      ○ skipped flags a recent project as missing (without dropping it) once its directory disappears
+    Home nav: Projects registry (GET .../registry, POST .../preview, /register, /remove)
+      ○ skipped starts with an empty registry
+      ○ skipped previews a recognized target without registering it
+      ○ skipped previews a PAR workbook target as its own recognized type -- routing it is left to the caller
+      ○ skipped reports unrecognized rather than erroring for a path that resolves to no known project type
+      ○ skipped rejects a preview request with no location field
+      ○ skipped registers a recognized target as origin external and makes it show up in the list
+      ○ skipped returns unrecognized (200) rather than erroring when registering a path with no known project type
+      ○ skipped removes a registered entry
+    Home nav: Blueprint editor endpoints (real collaborators against real temp directories)
+      POST /api/home/blueprints/validate
+        ○ skipped rejects a body with no blueprint field
+        ○ skipped returns ok with no warnings for a clean blueprint
+        ○ skipped returns ok with warnings for a valid-but-unusual blueprint
+        ○ skipped returns invalid with structural errors for a broken blueprint
+        ○ skipped never reflects a previous call's own blueprint -- each request is judged strictly on its own body
+      POST /api/home/blueprints/load
+        ○ skipped rejects a body with no path field
+        ○ skipped loads and returns the parsed blueprint
+        ○ skipped returns a safe load-error for a missing file
+        ○ skipped returns a safe load-error for a path inside Studio's own internal directory
+      POST /api/home/blueprints/check-source
+        ○ skipped rejects a body with no path field
+        ○ skipped rejects a body with no blueprintHash field
+        ○ skipped reports 'unchanged' when the on-disk content's hash matches the given hash
+        ○ skipped reports 'changed' with the fresh blueprint/hash once the on-disk content no longer matches the given hash
+        ○ skipped returns a safe load-error for a missing file
+        ○ skipped returns a safe load-error for a path inside Studio's own internal directory
+      POST /api/home/blueprints/random
+        ○ skipped rejects a non-integer seed
+        ○ skipped rejects an unknown preset
+        ○ skipped generates a valid blueprint with no body
+        ○ skipped reproduces the exact same blueprint for the same seed and preset
+      POST /api/home/blueprints/save
+        ○ skipped rejects a body with no path field
+        ○ skipped rejects a body with no blueprint field
+        ○ skipped writes a new file with a stable field order and a trailing newline
+        ○ skipped returns 409 conflict and writes nothing when the file already exists and overwrite isn't set
+        ○ skipped overwrites the file once overwrite:true is sent, and re-saving unchanged content is byte-identical
+      POST /api/home/blueprints/save-managed
+        ○ skipped rejects a body with no blueprint field
+        ○ skipped writes to a path chosen from the blueprint's own manifest.id and registers it as a managed project
+        ○ skipped a later save through the ordinary save endpoint re-uses the already-established path and stays a single registry entry
+        ○ skipped does not overwrite an existing managed blueprint.json for the same id on a first save, and registers the new destination instead
+        ○ skipped records sourceWorkbookPath on the response and on the registered managed project's own entry when a PAR Apply is behind this first Save
+        ○ skipped rejects a non-string sourceWorkbookPath
+      POST /api/home/blueprints/reel-strip-generation-preview
+        ○ skipped rejects a body with no blueprint field
+        ○ skipped returns ok with an empty reels list when the blueprint has no reelStripGeneration
+        ○ skipped surfaces a structurally broken blueprint's errors but still resolves an unrelated, well-formed reelStripGeneration
+        ○ skipped resolves a mix of literal and generated reels without writing anything
+      POST /api/home/blueprints/par-import
+        ○ skipped rejects a body with no path field
+        ○ skipped reads and maps a valid PAR sheet
+        ○ skipped returns a safe load-error for a missing file
+        ○ skipped returns a safe load-error for a path inside Studio's own internal directory
+      POST /api/home/blueprints/par-export
+        ○ skipped rejects a body with no path field
+        ○ skipped rejects a body with no blueprint field
+        ○ skipped writes a new PAR sheet file
+        ○ skipped returns 409 conflict and writes nothing when the file already exists and overwrite isn't set
+        ○ skipped returns invalid and writes nothing for a blueprint whose reel source PAR export can't represent
+        ○ skipped returns a safe error for a path inside Studio's own internal directory
+      POST /api/home/blueprints/build-preview
+        ○ skipped returns an ok preview without writing anything
+        ○ skipped returns invalid for a structurally broken blueprint
+      POST /api/home/blueprints/build
+        ○ skipped builds a real package via the real GamePackageGenerator and records it as recent
+        ○ skipped rejects building an invalid blueprint and writes nothing
+        ○ skipped refuses to rebuild the same outDir twice -- there is no rebuild/merge recognition
+        ○ skipped refuses to build into a directory that already has content, whatever put it there
+        ○ skipped opens a just-built project via the Home Open action, transitioning Studio's context in place (Home -> Project)
+    Project Dashboard: GET /api/project/context
+      ○ skipped reports "empty" when Studio is in home mode
+      ○ skipped reports "loaded" with the game manifest right after opening a project
+      ○ skipped stays "empty" after creating a project that is not (yet) opened
+      ○ skipped reports "loaded" with the scaffolded manifest once the newly created project is explicitly opened
+      ○ skipped reports "empty" again after closing a project
+    Project Dashboard: GET /api/project/inspect
+      ○ skipped returns 409 when there is no active project
+      ○ skipped forwards a package's inspection report as-is
+      ○ skipped forwards a missing/corrupt package.json inspection failure without a stack trace
+    Project Dashboard: GET /api/project/validate
+      ○ skipped returns 409 when there is no active project
+      ○ skipped forwards a fully valid validation report
+      ○ skipped forwards a validation report with errors
+      ○ skipped forwards a validation report with only warnings (still valid)
+      ○ skipped keeps Studio responsive after a validation error
+    starting directly into project mode (pokie . / pokie <path>)
+      ○ skipped reports "loading" immediately, then "loaded" once the background load settles
+      ○ skipped reports "error" when the entry module fails to load on startup
+    GET /api/project/inspect with the real GamePackageInspector (fixtures on disk)
+      ○ skipped reports a real, safe error for a corrupt package.json — never a stack trace
+      ○ skipped reports a real, safe error for a missing package.json
+    GET /api/project/inspect and /api/project/validate for a resolved 'blueprint' project (real fixtures on disk)
+      ✓ inspects a valid blueprint's own manifest fields, never probing <blueprint.json>/package.json (87 ms)
+      ✓ reports a safe load-error (never an ENOTDIR) when inspecting a corrupt blueprint file (35 ms)
+      ✓ validates a clean blueprint via GameBlueprintValidator with no errors/warnings (18 ms)
+      ✓ reports GameBlueprintValidator's own structural errors for a broken blueprint, never PokieGamePackageValidator's package.json-oriented errors (16 ms)
+      ✓ reports a safe load-error (never an ENOTDIR) when validating a corrupt blueprint file (14 ms)
+    GET /api/project/inspect and /api/project/validate for resolved 'outcomeLibrary'/'stakeAdapter' projects (real fixtures on disk)
+      a resolved native outcome-library bundle
+        ✓ inspects it as valid through OutcomeSourceProjectAnalyzer, never probing package.json (42 ms)
+        ✓ validates it with no errors/warnings through OutcomeSourceProjectAnalyzer, never PokieGamePackageValidator (31 ms)
+        ✓ reports the bundle validator's own structural error (never an ENOTDIR/package.json error) for a bundle missing a mode's own index file (19 ms)
+      a resolved Stake Engine export directory
+        ✓ inspects it as valid through OutcomeSourceProjectAnalyzer, never probing package.json (36 ms)
+        ✓ validates it with no errors/warnings through OutcomeSourceProjectAnalyzer, never PokieGamePackageValidator (18 ms)
+    Project Dashboard: GET /api/project/gameModel
+      ○ skipped returns 409 when there is no active project
+    GET /api/project/gameModel for a resolved 'blueprint' project (real fixtures on disk)
+      ✓ projects the tracked Blueprint source's full game model, never probing <blueprint.json>/package.json (44 ms)
+      ✓ reports a safe unavailable reason (never an ENOTDIR) for a corrupt blueprint file (16 ms)
+      ✓ re-rolls the reels section's own dynamic inspection sample via ?sharedWeightsSampleSeed, for the Game Model Reels view's own "New sample" action (25 ms)
+    GET /api/project/gameModel for a resolved 'tsPackage' project (real fixtures on disk)
+      ○ skipped exposes only package.json's own name/version/description, never inventing symbols/reels/paytable
+    GET /api/project/gameModel for a resolved 'wasm' project (real fixtures on disk)
+      ○ skipped exposes only the WASM component's own manifest identity, never inventing symbols/reels/paytable
+    GET /api/project/gameModel for resolved 'outcomeLibrary'/'stakeAdapter' projects (real fixtures on disk)
+      ✓ never invents a game model for a resolved native outcome-library bundle (14 ms)
+    Project Dashboard: Simulation (POST/GET/DELETE /api/project/simulations)
+      ○ skipped returns 409 for POST when there is no active project
+      ○ skipped rejects an invalid rounds with 400 and never creates a job
+      ○ skipped rejects a non-integer rounds with 400
+      ○ skipped rejects an empty seed with 400
+      ○ skipped starts a simulation, completes it, and returns a full SimulationReport
+      ○ skipped defaults workers to 1 and reports it on the created job/report
+      ○ skipped rejects an invalid workers value with 400
+      ○ skipped returns 404 for GET of an unknown simulation id
+      ○ skipped returns 404 for DELETE of an unknown simulation id
+      ○ skipped produces a base/freeGames breakdown when the session implements StakeAmountDetermining
+      ○ skipped has no breakdown when the session doesn't implement StakeAmountDetermining
+      ○ skipped fails the job with a safe error message when the simulation's own load of the game throws
+      ○ skipped rejects a second POST for the same project with 409 while one is already queued/running
+    Project Dashboard: Simulation cancellation (controlled chunk pacing)
+      ○ skipped cancels a running simulation via DELETE, stopping further progress
+      ○ skipped stopping the Studio server during an active simulation resolves cleanly and cancels the job
+    project switch cancels the old project's active jobs
+      ○ skipped POST /api/projects/close cancels the old project's active simulation and replay
+    Project Dashboard: Reports (GET /api/project/reports*)
+      ○ skipped returns 409 for GET /api/project/reports when there is no active project
+      ○ skipped returns an empty list when the project has no completed simulations yet
+      ○ skipped lists a completed simulation with the required summary fields
+      ○ skipped never lists a failed simulation (no report to summarize)
+      ○ skipped returns the full SimulationReport (plus statistics) for a completed job
+      ○ skipped returns identical statistics whether the report is fetched right after completion or later, as if historical
+      ○ skipped returns 404 for an unknown report id
+      ○ skipped returns 409 for a failed simulation (no report available)
+      ○ skipped returns 404 (not a leak) for a report id that belongs to a different project
+      download (GET /api/project/reports/:id/download)
+        ○ skipped returns 400 for a missing/invalid format
+        ○ skipped returns 404 for an unknown report id
+        ○ skipped returns 409 for a simulation with no report
+        ○ skipped downloads a JSON artifact with correct headers and a parseable body
+        ○ skipped downloads a Markdown artifact with correct headers and the key metrics
+        ○ skipped downloads a full HTML document with correct headers
+    Project Dashboard: Reports edge cases (custom report shapes)
+      ○ skipped lists and downloads an old-shape report (missing breakdown/warnings/recommendations/reproducibility) without error
+      ○ skipped returns a safe 500 (no stack trace) when the renderer throws on a malformed report
+    Project Dashboard: Replay (POST/GET/DELETE /api/project/replays*)
+      ○ skipped returns 409 for POST when there is no active project
+      ○ skipped returns 409 for GET (list) when there is no active project
+      ○ skipped rejects an invalid round with 400 and never creates a job
+      ○ skipped rejects a round above the safety limit with 400
+      ○ skipped rejects an empty seed with 400
+      ○ skipped returns 202 with a queued job immediately, before the replay itself has run
+      ○ skipped runs a replay to completion and returns the full descriptor
+      ○ skipped returns 400 for a simulationId that doesn't reference a completed simulation for this project
+      ○ skipped records a round selected from a completed simulation into the shared history, immediately visible from GET /api/project/rounds
+      ○ skipped never records a plain 'Recreate from seed' reproduction (no simulationId) into the shared history
+      ○ skipped delivers stateBefore/stateAfter through the HTTP job response end to end
+      ○ skipped produces the exact same descriptor for the same seed/round (reproducibility)
+      ○ skipped still succeeds for a game that ignores the seed entirely
+      ○ skipped records screen: null for a session without getSymbolsCombination()
+      ○ skipped fails the job with a safe message (no stack trace) when loading the game fails
+      ○ skipped rejects a second POST for the same project with 409 while one is already queued/running
+      ○ skipped returns 404 for GET of an unknown replay id
+      ○ skipped returns 404 for DELETE of an unknown replay id
+      ○ skipped lists a project's replays with the required summary fields
+      ○ skipped returns an empty list when the project has no replays yet
+      ○ skipped downloads a JSON artifact with correct headers and a parseable, matching body once completed
+      ○ skipped returns 409 (not-ready) when downloading a replay that hasn't completed yet
+      ○ skipped returns 409 (not-ready) when downloading a failed replay
+      ○ skipped returns 404 when downloading an unknown replay id
+      ○ skipped returns 404 (not a leak) for a replay id that belongs to a different project
+      ○ skipped makes a saved replay unreachable after switching to a different project, even by its own id
+    Project Dashboard: POST /api/project/replays/inspect-artifact
+      ○ skipped returns 409 when there is no active project
+      ○ skipped validates the outer round/seed and returns no warnings for a well-formed nested artifact
+      ○ skipped accepts a body without a seed or a nested artifact
+      ○ skipped rejects an invalid outer round with 400 (the malformed-artifact case for round/seed)
+      ○ skipped rejects a request body that isn't a JSON object
+      ○ skipped returns 200 with non-empty artifactWarnings for a structurally invalid nested artifact (malformed artifact, non-fatal)
+    Project Dashboard: Replay cancellation (controlled chunk pacing)
+      ○ skipped cancels a running replay via DELETE, stopping further progress
+      ○ skipped stopping the Studio server during an active replay resolves cleanly and cancels the job
+      ○ skipped keeps serving GET /api/health, /api/project/inspect and /api/project/validate while a replay is running
+    Project Dashboard: Replay with the real fixture game package
+      ○ skipped runs a replay against a real fixture game and produces a reproducible descriptor
+    Project Dashboard: Play (POST /api/project/play/session, /api/project/play/sessions/:id/spin)
+      ○ skipped returns 409 'No active project' for both Play routes in Home mode
+      ○ skipped creates a real session directly (no host/port/server involved) and spins it, returning credits/win straight from the settled round
+      ○ skipped spinning an unknown sessionId returns 404, never a runtime-shaped 'not running' error
+      ○ skipped rejects a malformed seed with a 400, never reaching the play service
+      ○ skipped returns to 'No active project' for both Play routes once the project is closed
+    Project Dashboard: Play scenario controls (POST /api/project/play/sessions/:id/find-any-win, /find-symbol-win)
+      ○ skipped returns 409 'No active project' for both scenario routes in Home mode
+      ○ skipped find-any-win runs real spins server-side until one actually wins, returning that settled round
+      ○ skipped find-symbol-win rejects a missing symbolId with 400, never reaching the play service
+      ○ skipped find-symbol-win propagates the given symbolId through to the play service, reporting an honest error for a non-video-slot game rather than a 500
+      ○ skipped find-any-win against an unknown sessionId returns 404, never a 500
+      ○ skipped find-any-win reports an honest 'error' (never hangs) once a small maxFindScenarioSpins bound is exhausted
+    Project Dashboard: Play with a resolved Outcome Source project
+      ○ skipped plays a resolved native outcome-library project through its own real adapter, returning a real drawn round
+      ○ skipped records a Play tab round played against a resolved outcome-library project into the shared history, immediately visible from GET /api/project/rounds
+      ○ skipped reports the resolver-derived 'outcomeSource.sample' capability diagnostic for a resolved Stake Engine export, never loadPokieGame
+    Project Dashboard: Deployment (GET /api/project/deployment/targets, POST /api/project/deployment/runs)
+      ○ skipped returns 409 for GET targets, GET build-modes, and POST runs when there is no active project
+      ○ skipped returns the current build's own modes from GET /api/project/deployment/build-modes
+      ○ skipped returns unavailable from GET /api/project/deployment/build-modes when the project has no current build
+      ○ skipped lists exactly the local example target with its requirements/capabilities
+      ○ skipped rejects a malformed run request body with 400 and never touches the SDK
+      ○ skipped returns 404 for an unknown targetId, without ever reading a library file
+      ○ skipped returns 400, in domain language, when a mode isn't part of the active project's own current build — even for a request that never went through the Configure UI
+      ○ skipped deploys a mode that is part of the active project's own current build
+      ○ skipped returns 400, in domain language, when the active project has no inspectable current build at all — never reaching library loading
+      ○ skipped returns 400, in domain language, when a bundle librarySelector's modeName differs from its own deployment row's mode — never reaching library loading
+      ○ skipped returns 400 when a mode's library file doesn't exist
+      ○ skipped returns 400 when a mode's library path escapes the project root
+      ○ skipped returns 400 when a mode's library file is not valid JSON
+      ○ skipped previews a valid deployment (publish: false) without writing any files, and shows generated artifact content
+      ○ skipped deploys a valid deployment (publish: true), delivers it, and writes the generated files to disk
+      ○ skipped reports a genuinely incompatible library via compatibilityIssues (200, structured), without generating or writing anything
+      ○ skipped surfaces a structurally malformed generation result as an artifactValidation ERROR stage with full diagnostics, never hidden as skipped
+    Project Dashboard: Certification (POST /api/project/certification/validate-source, /build)
+      ○ skipped returns 409 for both routes when there is no active project
+      ○ skipped rejects malformed request bodies with 400 for both routes
+      ○ skipped validates a real source bundle deeply, then builds a certification bundle from it
+      ○ skipped returns an error view (no manifest) when a requested mode isn't in the source bundle
+      ○ skipped returns a load-error view (never a 400) for a bundleDir that resolves outside the project root
+    Project Dashboard: Provably Fair (POST /api/project/fairness/configure, /generate, /verify)
+      ○ skipped returns 409 for all three routes when there is no active project
+      ○ skipped rejects malformed request bodies with 400 for all three routes
+      ○ skipped runs the full configure -> generate -> verify flow against a real bundle
+      ○ skipped reports a mismatch error for a tampered proof, never a thrown error
+      ○ skipped reports a build-error (never a 500) when the revealed serverSeed doesn't match the commitment
+      ○ skipped returns a load-error view (never a 400) for a bundleDir that resolves outside the project root
+    Project Dashboard: Stake Engine Export (POST /api/project/stakeengine/validate, /export)
+      ○ skipped returns 409 for both routes when there is no active project
+      ○ skipped rejects malformed request bodies with 400 for both routes
+      ○ skipped validates a real library deeply, then exports it and returns its manifest/files
+      ○ skipped returns a conflict (409) for a pre-existing non-empty outDir belonging to something else, and never writes to it
+      ○ skipped still refuses (as load-error, never writing) an unrelated directory even when overwrite:true is explicitly requested
+      ○ skipped resubmitting with overwrite:true replaces a directory recognized as a prior export's own output
+      ○ skipped returns an invalid view (never a 500) for an unsupported cost/outcome combination
+      ○ skipped returns a load-error view (never a 400) for a libraryPath that resolves outside the project root
+    Project Dashboard: Build/Export artifacts (GET /api/project/artifacts/targets, POST /api/project/artifacts/preview, POST /api/project/artifacts/build)
+      ○ skipped returns 409 for every route when there is no active project
+      ○ skipped rejects a malformed preview or build request with 400
+      ○ skipped lists every ArtifactBuilderRegistry target, marking only tsPackage supported for a blueprint project
+      ○ skipped builds a tsPackage from a blueprint project to the default sibling destination, agreeing with BuildCommand's own default
+      ○ skipped reports 'unsupported' (never a 500) for a target this project's own type doesn't grant
+      ○ skipped returns a conflict (409) for a pre-existing non-empty destination and never writes to it
+      ○ skipped builds to an explicit outDir when given
+      ○ skipped previews a tsPackage build against the same default sibling destination build() itself would use, without writing anything
+      ○ skipped previews an explicit outDir when given
+      ○ skipped reports 'unsupported' (never a 500) for a preview target this project's own type doesn't grant
+      ○ skipped previews a conflict (409) for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it
+
+Test Suites: 1 passed, 1 total
+Tests:       251 skipped, 14 passed, 265 total
+Snapshots:   0 total
+Time:        11.648 s
+Ran all test suites matching /StudioServer/i with tests matching "ENOTDIR|resolved 'blueprint'|resolved 'outcomeLibrary'".

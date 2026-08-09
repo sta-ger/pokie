@@ -1,0 +1,47 @@
+{
+    "game": {
+        "id": "demo-programmer-game",
+        "name": "Demo Programmer Game",
+        "version": "0.1.0"
+    },
+    "requestedRounds": 500,
+    "rounds": 500,
+    "seed": "demo-sim",
+    "totalBet": 500,
+    "totalWin": 119,
+    "rtp": 0.2380000000000001,
+    "hitFrequency": 0.174,
+    "maxWin": 5,
+    "durationMs": 58,
+    "spinsPerSecond": 8621,
+    "workers": 1,
+    "averageBet": 1,
+    "averagePayout": 0.238,
+    "volatility": 0.601128937915985,
+    "payoutHistogram": {
+        "0": 413,
+        "1-9": 87
+    },
+    "maxWinFrequency": 0.174,
+    "stopReason": "maxRounds",
+    "reproducibility": {
+        "game": {
+            "id": "demo-programmer-game",
+            "name": "Demo Programmer Game",
+            "version": "0.1.0"
+        },
+        "seed": "demo-sim",
+        "requestedRounds": 500,
+        "actualRounds": 500,
+        "command": "pokie sim /tmp/p5-19-evidence/prog-pkg --rounds 500 --seed demo-sim",
+        "workerSeedStrategy": "identity (single worker uses the original seed unchanged)"
+    },
+    "warnings": [
+        "Requested rounds (500) is low — RTP/hit-frequency estimates may be noisy."
+    ],
+    "recommendations": [
+        "Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates.",
+        "Use \"pokie diff\" to compare this report against a previous run after changing the game's math.",
+        "Save this report as JSON via --out to keep a record you can diff or replay against later."
+    ]
+}

@@ -1,0 +1,10 @@
+Running one project: pokie
+PASS pokie tests/session/videoslot/combinations/SeededRandomNumberGenerator.test.ts
+PASS pokie tests/session/videoslot/combinations/DefaultSymbolsSequence.test.ts
+PASS pokie tests/session/videoslot/combinations/ReelsSymbolsSequencesGenerator.test.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       38 passed, 38 total
+Snapshots:   0 total
+Time:        2.944 s
+Ran all test suites matching /DefaultSymbolsSequence.test.ts|SeededRandomNumberGenerator.test.ts|ReelsSymbolsSequencesGenerator.test.ts/i.

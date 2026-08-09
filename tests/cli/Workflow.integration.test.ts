@@ -1,4 +1,6 @@
 import {
+    GameBlueprint,
+    GamePackageGenerator,
     loadPokieGame,
     PokieDevServer,
     PokieDevServerHandling,
@@ -92,5 +94,81 @@ describe("CLI workflow (integration, real commands chained against one fixture g
         } finally {
             await server!.stop();
         }
+    });
+});
+
+function buildDeterminismBlueprint(): GameBlueprint {
+    return {
+        manifest: {id: "seed-determinism-slot", name: "Seed Determinism Slot", version: "1.0.0"},
+        reels: 5,
+        rows: 3,
+        symbols: ["A", "B", "C", "D", "E"],
+        paytable: {A: {3: 5}, B: {3: 3}, C: {3: 2}},
+    };
+}
+
+// Regression coverage for the fix in src/generated/renderBuiltGameModule.ts: before that fix, a
+// "pokie build"-generated package's createSession() ignored the context it was given entirely (see
+// PokieGame.createSession's own PokieGameContext param), so replaying the same (seed, round) against
+// the same package -- exactly what "pokie replay" does -- produced a different screen every time.
+// GamePackageGenerator is the exact same generator "pokie build"/BlueprintProjectMaterializer use (see
+// GamePackageGenerator.test.ts and BlueprintProjectMaterializer.ts's own doc comment), so this fixture
+// is a real generated package, not a hand-threaded stand-in like tests/cli/fixtures/playable-game.
+describe("generated tsPackage round reproducibility (regression: context.seed threading)", () => {
+    let outDir: string;
+    let projectRoot: string;
+
+    beforeAll(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-determinism-test-"));
+        const generator = new GamePackageGenerator("1.3.0");
+        const result = generator.generate(buildDeterminismBlueprint(), outDir);
+        projectRoot = result.projectRoot;
+    });
+
+    afterAll(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+    });
+
+    it("replays the exact same screen for the same (seed, round) across independently loaded sessions", async () => {
+        const firstFile = path.join(outDir, "first.json");
+        const secondFile = path.join(outDir, "second.json");
+
+        await new ReplayCommand().run([projectRoot, "--seed", "fixture-seed", "--round", "5", "--out", firstFile]);
+        await new ReplayCommand().run([projectRoot, "--seed", "fixture-seed", "--round", "5", "--out", secondFile]);
+
+        const first = JSON.parse(fs.readFileSync(firstFile, "utf-8")) as ReplayDescriptor;
+        const second = JSON.parse(fs.readFileSync(secondFile, "utf-8")) as ReplayDescriptor;
+
+        expect(first.screen).not.toBeNull();
+        expect(first.screen).toEqual(second.screen);
+        expect(first.totalWin).toEqual(second.totalWin);
+        expect(first.totalBet).toEqual(second.totalBet);
+    });
+
+    it("replays a different screen for a different seed at the same round (not just always identical)", async () => {
+        const firstFile = path.join(outDir, "seed-a.json");
+        const secondFile = path.join(outDir, "seed-b.json");
+
+        await new ReplayCommand().run([projectRoot, "--seed", "fixture-seed-a", "--round", "5", "--out", firstFile]);
+        await new ReplayCommand().run([projectRoot, "--seed", "fixture-seed-b", "--round", "5", "--out", secondFile]);
+
+        const first = JSON.parse(fs.readFileSync(firstFile, "utf-8")) as ReplayDescriptor;
+        const second = JSON.parse(fs.readFileSync(secondFile, "utf-8")) as ReplayDescriptor;
+
+        expect(first.screen).not.toEqual(second.screen);
+    });
+
+    it("advances the deterministic draw sequence with round index, instead of replaying the same draw regardless of round", async () => {
+        const roundOneFile = path.join(outDir, "round-1.json");
+        const roundFiveFile = path.join(outDir, "round-5.json");
+
+        await new ReplayCommand().run([projectRoot, "--seed", "fixture-seed", "--round", "1", "--out", roundOneFile]);
+        await new ReplayCommand().run([projectRoot, "--seed", "fixture-seed", "--round", "5", "--out", roundFiveFile]);
+
+        const roundOne = JSON.parse(fs.readFileSync(roundOneFile, "utf-8")) as ReplayDescriptor;
+        const roundFive = JSON.parse(fs.readFileSync(roundFiveFile, "utf-8")) as ReplayDescriptor;
+
+        expect(roundOne.screen).not.toBeNull();
+        expect(roundOne.screen).not.toEqual(roundFive.screen);
     });
 });

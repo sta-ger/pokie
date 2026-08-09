@@ -1,0 +1,10 @@
+Analyzing "./stake-export"
+
+Mode "base" (cost 1, 9 outcome(s), total weight 9):
+  rtp                 1.5555555555555556
+  hitFrequency        0.4444444444444444
+  standardDeviation   2.006163342807532
+  maxRatio            5 (probability 0.2222222222222222)
+  event "finalWin"   occurrenceFrequency 1, avgPerOutcome 1
+  event "reveal"   occurrenceFrequency 1, avgPerOutcome 1
+  event "win"   occurrenceFrequency 0.4444444444444444, avgPerOutcome 0.4444444444444444

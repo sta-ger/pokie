@@ -1,0 +1,5 @@
+Exported "stakeengine-config-2.json" to "./stake-export":
+  wrote  lookup_base.csv
+  wrote  books_base.jsonl.zst
+  wrote  index.json
+  wrote  pokie-manifest.json

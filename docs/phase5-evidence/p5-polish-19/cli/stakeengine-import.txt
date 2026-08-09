@@ -1,0 +1,5 @@
+Imported "./stake-export" to "./stake-import-back":
+  wrote  config.json
+  wrote  libraries/base.json
+  wrote  source-provenance.json
+  info  stakeengine-import-library-hash-differs-from-manifest: mode "base": the reconstructed library's hash is expected to differ from pokie-manifest.json's recorded libraryHash (sha256:4d9c30be7c0042181336c01266a330bea7cda324f7437aad85ad48e737fb8373) — roundId, the real win breakdown, and provenance.pokieVersion are not recoverable from the Stake export and are substituted (see docs/stake-engine-import.md).

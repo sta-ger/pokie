@@ -106,6 +106,7 @@ describe("ProjectDashboardPage - Play", () => {
                         bet: 5,
                         win: 15,
                         screen: [["cherry", "lemon"], ["bar", "seven"]],
+                        debug: {artifactUnavailableReason: "no round artifact in this fixture"},
                     }),
                 },
             }),
@@ -142,7 +143,17 @@ describe("ProjectDashboardPage - Play", () => {
             "/api/project/play/sessions/sess-1/spin": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "ok", session: sessionFor({sessionId: "sess-1", credits: 995, bet: 5, win: 0, screen: [["a"]]})},
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        sessionId: "sess-1",
+                        credits: 995,
+                        bet: 5,
+                        win: 0,
+                        screen: [["a"]],
+                        debug: {artifactUnavailableReason: "no round artifact in this fixture"},
+                    }),
+                },
             }),
         });
 
@@ -171,7 +182,16 @@ describe("ProjectDashboardPage - Play", () => {
             "/api/project/play/sessions/sess-1/find-any-win": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "ok", session: sessionFor({credits: 1015, bet: 5, win: 15, screen: [["cherry", "lemon"]]})},
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        credits: 1015,
+                        bet: 5,
+                        win: 15,
+                        screen: [["cherry", "lemon"]],
+                        debug: {artifactUnavailableReason: "no round artifact in this fixture"},
+                    }),
+                },
             }),
         });
 
@@ -196,7 +216,16 @@ describe("ProjectDashboardPage - Play", () => {
             "/api/project/play/sessions/sess-1/find-symbol-win": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "ok", session: sessionFor({credits: 1050, bet: 5, win: 50, screen: [["seven", "seven"]]})},
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        credits: 1050,
+                        bet: 5,
+                        win: 50,
+                        screen: [["seven", "seven"]],
+                        debug: {artifactUnavailableReason: "no round artifact in this fixture"},
+                    }),
+                },
             }),
         });
 

@@ -1,0 +1,98 @@
+/**
+ * @jest-environment jsdom
+ */
+import fs from "fs";
+import path from "path";
+import {applyPersistentHighlights, renderPaytable, renderReelsGrid} from "../../../../cli/client/player/renderPlayer.js";
+import {deriveWinHighlights, derivePaytableView, isVideoSlotRoundResponse} from "../../../../cli/client/player/videoSlotRoundView.js";
+
+// P5-POLISH-19 player-parity evidence (correction round): the real after-fix "fixture-slot" round
+// (seed: "fixture-round", round: 1) is rendered here through the exact "pokie/client/player" module
+// cli/client/main.ts (served by "pokie serve"/"pokie dev"/Studio's Play iframe) and
+// CanonicalPlayerView.tsx (Studio's own Play/Replay/Session-Spin panels) import unmodified -- proving
+// both surfaces would render this one real round identically, since they share the literal same
+// rendering code, not independent reimplementations. The captured payload combines the real session
+// creation response (static config: paytable/linesDefinitions/availableBets) with the real spin
+// response (this round's own result) from
+// docs/phase5-evidence/p5-polish-19/parity/after-fix-npm-start-session.json /
+// after-fix-npm-start-spin.json -- both captured live from "pokie dev . --no-open" (see
+// docs/phase5-evidence/p5-polish-19/cli/prog-npm-start.txt for that same server's own npm-start
+// evidence). Not a permanent test (depends on fixture files this repo doesn't otherwise keep as test
+// fixtures); run once from tests/cli/client/player/__p5polish19FixtureCapture__.test.ts, output copied
+// to docs/phase5-evidence/p5-polish-19/browser/, then removed.
+//
+// Supersedes this file's own prior-round version, which rendered "npm-start-spin.json" -- the
+// original (pre-parity-fix) 5-reel-x-3-row fixture, no longer present under parity/. Review correctly
+// rejected that as stale, non-after-fix evidence; this version renders the same after-fix
+// (seed: "fixture-round", round: 1) round every other surface in "Player parity" below was captured
+// against.
+describe("P5-POLISH-19 player-parity rendering evidence (after-fix fixture-slot round)", () => {
+    it("renders the real captured after-fix fixture-slot round identically to what Studio Play/Replay and examples would draw", () => {
+        const parityDir = path.join(__dirname, "../../../../docs/phase5-evidence/p5-polish-19/parity");
+        const session = JSON.parse(fs.readFileSync(path.join(parityDir, "after-fix-npm-start-session.json"), "utf-8")) as Record<
+            string,
+            unknown
+        >;
+        const spin = JSON.parse(fs.readFileSync(path.join(parityDir, "after-fix-npm-start-spin.json"), "utf-8")) as Record<
+            string,
+            unknown
+        >;
+        // The real client's own contract (see videoSlotRoundView.ts's own doc comment): only session
+        // creation returns static config (paytable/availableBets/linesDefinitions); each spin response
+        // carries only that round's own result. A real player retains the session's static fields and
+        // merges them with each round's result -- exactly what this reproduces from the two real,
+        // separately-captured responses.
+        const response = {...session, ...spin};
+
+        expect(isVideoSlotRoundResponse(response)).toBe(true);
+        if (!isVideoSlotRoundResponse(response)) {
+            throw new Error("fixture is not a VideoSlotRoundResponse");
+        }
+
+        const grid = document.createElement("div");
+        const paytableHead = document.createElement("tr");
+        const paytableBody = document.createElement("tbody");
+        document.body.appendChild(grid);
+
+        renderReelsGrid(grid, response.reelsSymbols);
+        const highlights = deriveWinHighlights(response);
+        applyPersistentHighlights(grid, highlights);
+        renderPaytable(paytableHead, paytableBody, derivePaytableView(response.paytable));
+
+        // Orientation: 3 reels x 3 rows, symbols exactly as captured live from the after-fix package's
+        // own "npm start" server.
+        const cells = Array.from(grid.querySelectorAll<HTMLElement>("[data-cell]"));
+        expect(cells).toHaveLength(9);
+        expect(response.reelsSymbols).toEqual([
+            ["A", "C", "A"],
+            ["A", "A", "C"],
+            ["A", "A", "A"],
+        ]);
+
+        // Win positions: the real line-1 (top row) win at every reel, row 0 -- rendered with a real
+        // persistent highlight color, not left at the base "no highlight" state. Identical to the
+        // CLI-replay/Studio-Play/Studio-Replay captures of this same (seed: "fixture-round", round: 1).
+        expect(response.winningPositions).toEqual([
+            [0, 0],
+            [1, 0],
+            [2, 0],
+        ]);
+        for (const [reelIndex, rowIndex] of response.winningPositions) {
+            const cell = grid.querySelector<HTMLElement>(`[data-cell="${rowIndex}:${reelIndex}"]`);
+            expect(cell?.style.backgroundColor).not.toBe("");
+        }
+        const unwonCell = grid.querySelector<HTMLElement>('[data-cell="1:0"]');
+        expect(unwonCell?.style.backgroundColor).toBe("");
+
+        // Paytable: the real fixture's A payout for a 3-of-a-kind at bet 1.
+        expect(response.totalWin).toBe(5);
+        expect(paytableBody.textContent).toContain("A");
+        expect(paytableBody.textContent).toContain("5");
+
+        document.body.innerHTML = `<pre>GRID:\n${grid.outerHTML}\n\nPAYTABLE HEAD:\n${paytableHead.outerHTML}\n\nPAYTABLE BODY:\n${paytableBody.outerHTML}</pre>`;
+        fs.writeFileSync(
+            path.join(__dirname, "../../../../docs/phase5-evidence/p5-polish-19/browser/player-parity-render.html"),
+            document.documentElement.outerHTML,
+        );
+    });
+});

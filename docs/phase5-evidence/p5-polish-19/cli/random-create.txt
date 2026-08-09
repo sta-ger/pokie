@@ -1,0 +1,10 @@
+Generated random game "Golden Comet" (id: "golden-comet") from seed 777.
+Reproduce this exact game with: pokie create --random --seed 777 --preset default
+Provenance: generator 1.1.0, strategy "default-line-pay".
+  created  blueprint.json
+
+Game blueprint "Golden Comet" (id: "golden-comet") created at "blueprint.json".
+
+Build it:
+  pokie build blueprint.json --target tsPackage --out <dir> --dry-run
+  pokie build blueprint.json --target tsPackage --out <dir>

@@ -1,0 +1,17 @@
+Running one project: pokie-examples
+PASS pokie-examples ../pokie-examples/tests/ui.test.ts (8.595 s)
+  pokie-examples' ui.ts adoption of pokie/client/player
+    ✓ renders the grid through the shared player's own renderReelsGrid, not a bespoke table (124 ms)
+    ✓ renders a winning payline via the shared player's win-highlight list (53 ms)
+    ✓ renders multiple win kinds (line + scatter) from the same round together (43 ms)
+    ✓ lets a player pick one of the session's own available bets, and re-spins staked at it (35 ms)
+    ✓ lets a player pick one of the session's own available bet modes, and re-spins with it (34 ms)
+    ✓ keeps the reels grid's own narrow-viewport styling (28 ms)
+    ✓ shows a retryable error when a round fails, and retrying re-spins successfully (30 ms)
+    ✓ falls back to the last-known-good initial round when reconnecting after a failure (28 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       8 passed, 8 total
+Snapshots:   0 total
+Time:        9.45 s
+Ran all test suites.
