@@ -1,30 +1,34 @@
-[2026-08-09T16:54:28.151Z] START Chrome CDP audit against http://127.0.0.1:4100
-[2026-08-09T16:54:28.152Z] NAVIGATE /home/projects
-[2026-08-09T16:54:29.087Z] INPUT Location="/definitely/not/a/pokie/project" through native input/change events
-[2026-08-09T16:54:29.350Z] CLICK "Detect" via rendered BUTTON
-[2026-08-09T16:54:30.232Z] CAPTURE 01-qa-malformed-project-import.png and 01-qa-malformed-project-import.txt
-[2026-08-09T16:54:30.233Z] NAVIGATE /home/projects
-[2026-08-09T16:54:31.164Z] INPUT Location="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json" through native input/change events
-[2026-08-09T16:54:31.439Z] CLICK "Detect" via rendered BUTTON
-[2026-08-09T16:54:32.124Z] CLICK "Register" via rendered BUTTON
-[2026-08-09T16:54:33.034Z] CAPTURE 02-mathematician-project-import.png and 02-mathematician-project-import.txt
-[2026-08-09T16:54:33.034Z] SWITCH to Studio instance with the audited Blueprint already open: http://127.0.0.1:4101
-[2026-08-09T16:54:33.034Z] NAVIGATE /project/gameModel
-[2026-08-09T16:54:33.980Z] CLICK "Edit" via rendered BUTTON
-[2026-08-09T16:54:34.965Z] CAPTURE 03-designer-blueprint-edit.png and 03-designer-blueprint-edit.txt
-[2026-08-09T16:54:34.965Z] SWITCH to fresh materialized developer package: http://127.0.0.1:4102
-[2026-08-09T16:54:34.965Z] NAVIGATE /project/play
-[2026-08-09T16:54:35.913Z] CLICK "New session" via rendered BUTTON
-[2026-08-09T16:54:36.586Z] CLICK "Find any win" via rendered BUTTON
-[2026-08-09T16:54:37.417Z] CAPTURE 04-mathematician-play-scenario.png and 04-mathematician-play-scenario.txt
-[2026-08-09T16:54:37.417Z] NAVIGATE /project/simulation
-[2026-08-09T16:54:38.361Z] CLICK "Run Simulation" via rendered BUTTON
-[2026-08-09T16:54:39.142Z] CAPTURE 05-qa-simulation-run.png and 05-qa-simulation-run.txt
-[2026-08-09T16:54:39.142Z] NAVIGATE /project/replay
-[2026-08-09T16:54:40.088Z] SELECT "Session Spin" through rendered replay-source control
-[2026-08-09T16:54:40.520Z] CLICK "Refresh" via rendered BUTTON
-[2026-08-09T16:54:41.237Z] CLICK rendered recorded Session Spin
-[2026-08-09T16:54:42.113Z] CAPTURE 06-qa-replay-session-spin.png and 06-qa-replay-session-spin.txt
-[2026-08-09T16:54:42.113Z] NAVIGATE /project/exportDeploy
-[2026-08-09T16:54:43.515Z] CAPTURE 07-integration-build-export.png and 07-integration-build-export.txt
-[2026-08-09T16:54:43.516Z] COMPLETE all recorded browser actions
+[2026-08-09T20:41:09.791Z] START Chrome CDP audit against http://127.0.0.1:4100
+[2026-08-09T20:41:09.791Z] NAVIGATE /home/projects
+[2026-08-09T20:41:10.771Z] INPUT Location="/definitely/not/a/pokie/project" through native input/change events
+[2026-08-09T20:41:11.041Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T20:41:11.975Z] CAPTURE 01-qa-malformed-project-import.png and 01-qa-malformed-project-import.txt
+[2026-08-09T20:41:11.975Z] NAVIGATE /home/projects
+[2026-08-09T20:41:12.896Z] INPUT Location="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json" through native input/change events
+[2026-08-09T20:41:13.169Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T20:41:13.846Z] CLICK "Register" via rendered BUTTON
+[2026-08-09T20:41:14.755Z] CAPTURE 02-mathematician-project-import.png and 02-mathematician-project-import.txt
+[2026-08-09T20:41:14.755Z] SWITCH to Studio instance with the audited Blueprint already open: http://127.0.0.1:4101
+[2026-08-09T20:41:14.755Z] NAVIGATE /project/gameModel
+[2026-08-09T20:41:15.716Z] CLICK "Edit" via rendered BUTTON
+[2026-08-09T20:41:16.701Z] CAPTURE 03-designer-blueprint-edit.png and 03-designer-blueprint-edit.txt
+[2026-08-09T20:41:16.701Z] SWITCH to fresh materialized developer package: http://127.0.0.1:4102
+[2026-08-09T20:41:16.701Z] NAVIGATE /project/play
+[2026-08-09T20:41:17.654Z] CLICK "New session" via rendered BUTTON
+[2026-08-09T20:41:18.362Z] CLICK "Find any win" via rendered BUTTON
+[2026-08-09T20:41:19.320Z] CAPTURE 04-mathematician-play-scenario.png and 04-mathematician-play-scenario.txt
+[2026-08-09T20:41:19.320Z] NAVIGATE /project/simulation
+[2026-08-09T20:41:20.271Z] CLICK "Run Simulation" via rendered BUTTON
+[2026-08-09T20:41:21.468Z] CAPTURE 05-qa-simulation-run.png and 05-qa-simulation-run.txt
+[2026-08-09T20:41:21.468Z] NAVIGATE /project/replay
+[2026-08-09T20:41:22.424Z] SELECT "Session Spin" through rendered replay-source control
+[2026-08-09T20:41:22.859Z] CLICK "Refresh" via rendered BUTTON
+[2026-08-09T20:41:23.574Z] CLICK rendered recorded Session Spin
+[2026-08-09T20:41:24.449Z] CAPTURE 06-qa-replay-session-spin.png and 06-qa-replay-session-spin.txt
+[2026-08-09T20:41:24.449Z] NAVIGATE /project/exportDeploy
+[2026-08-09T20:41:25.393Z] CLICK "Generate outcome library (base)" via rendered BUTTON
+[2026-08-09T20:41:32.399Z] RESULT rendered outcome library generation succeeded
+[2026-08-09T20:41:32.420Z] CLICK "Run Stake Engine Export (base)" via rendered BUTTON
+[2026-08-09T20:41:37.011Z] RESULT rendered Stake Engine export completed
+[2026-08-09T20:41:37.369Z] CAPTURE 07-integration-build-export.png and 07-integration-build-export.txt
+[2026-08-09T20:41:37.370Z] COMPLETE all recorded browser actions

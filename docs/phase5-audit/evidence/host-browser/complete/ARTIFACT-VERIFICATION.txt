@@ -1,0 +1,36 @@
+P5-POLISH-20 Build/Export artifact verification
+Run: 2026-08-09T20:41Z
+
+The browser workflow (ACTION-TRANSCRIPT.txt) clicked the rendered controls:
+  Generate outcome library (base)
+  Run Stake Engine Export (base)
+
+The rendered Build/Export result (07-integration-build-export.txt) reported:
+  Generated 11,638 outcomes for mode "base" (RTP 100.00%) into outcomelibrary.
+  Exported 4 file(s) to /tmp/p5-build-export.loJC0L/package/stakeengine.
+
+Disk verification after the rendered success, against that exact output path:
+
+outcomelibrary/manifest.json
+  generatedBy: pokie outcomelibrary build
+  game: fixture-slot / Fixture Slot / 0.1.0
+  mode: base
+  outcomeCount: 11638
+  totalWeight: 91125
+  files: index_base.json, outcomes_base.jsonl, manifest.json
+
+stakeengine/pokie-manifest.json
+  generatedBy: pokie stakeengine export
+  game: fixture-slot / Fixture Slot / 0.1.0
+  mode: base
+  outcomeCount: 11638
+  files: lookup_base.csv, books_base.jsonl.zst, index.json, pokie-manifest.json
+
+SHA-256:
+  860626d1425ea6ca0eea2f3841e25c236facfcc2623ca321932b7aeb02e0c0b6  outcomelibrary/index_base.json
+  2c412a59a0116355d4107f60bc91a78bb976d75e3bd81168d9013b66570581e0  outcomelibrary/manifest.json
+  20973635dd9c0c84813ab42ff6bb0f4472a4aec81dc622d33f6449ca7c09954a  outcomelibrary/outcomes_base.jsonl
+  dfe062f9975a75e15d7400b2bd5fedf7d5bf5a1e26fd1bb43fa07a6312729d36  stakeengine/books_base.jsonl.zst
+  57e19f4de9b88cc3e45e7a5a2f11e0940b465ff9e09a5e1553d58b384807a5d5  stakeengine/index.json
+  3654a811422f92d01e75eb5537335efc68430bdd71bd4e7fec6c113a2d2f9a8e  stakeengine/lookup_base.csv
+  9cb058145fef51005e84896465bc404a7b50177d97672b397c131856367fae42  stakeengine/pokie-manifest.json

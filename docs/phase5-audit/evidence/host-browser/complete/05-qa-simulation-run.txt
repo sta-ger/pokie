@@ -18,7 +18,7 @@ Certification
 Fairness
 Fixture Slot
 
-/tmp/p5-package-TEyjKN
+/tmp/p5-build-export.loJC0L/package
 
 Close project
 Configure
@@ -31,12 +31,12 @@ See results
 4
 Export
 Download report
-RTP	100.75%
-Hit frequency	29.81%
-Volatility	1.88
-Max win	11.00
+RTP	100.34%
+Hit frequency	29.50%
+Volatility	1.92
+Max win	13.00
 Duration	0.3s
-Convergence	RTP 95% CI: 97.07% – 104.43%
+Convergence	RTP 95% CI: 96.57% – 104.11%
 
 Warnings
 
@@ -50,7 +50,7 @@ Repeat simulation
 Recent runs
 Refresh
 
-fixture-slot v0.1.0 — 10000/10000 rounds, RTP 100.75%, 8/9/2026, 6:54:38 PM (has warnings)
+fixture-slot v0.1.0 — 10000/10000 rounds, RTP 100.34%, 8/9/2026, 10:41:20 PM (has warnings)
 
 Open
 Run again

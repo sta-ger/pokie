@@ -447,7 +447,7 @@ action.
 | Mathematician: Play scenario | `04-mathematician-play-scenario.png` / `.txt` | New session then Find any win displays a settled RoundArtifact. |
 | QA: simulation | `05-qa-simulation-run.png` / `.txt` | A materialized developer package completes 10,000 rounds and shows RTP, confidence interval and its reproducibility warning. |
 | QA: Replay | `06-qa-replay-session-spin.png` / `.txt` | The browser selects a recorded Play spin and opens its complete round inspector. |
-| Integration engineer: Build/Export and developer package | `07-integration-build-export.png` / `.txt` | **Stale — see "Correction round 3" below.** This capture only opened the Build/Export tab; no Generate/Export control was clicked. |
+| Integration engineer: Build/Export and developer package | `07-integration-build-export.png` / `.txt` | **Updated by "Correction round 5" below.** The rendered "Generate outcome library (base)" and "Run Stake Engine Export (base)" controls were both clicked; the capture shows `Generated 11,638 outcomes for mode "base" (RTP 100.00%) into outcomelibrary.` and `Exported 4 file(s) to .../stakeengine.`. |
 
 The package was generated from the audited Blueprint with `pokie build <blueprint> --target tsPackage --out
 <empty-directory>` before the package-backed browser routes were run. Its visible Studio location, plus the
@@ -455,9 +455,11 @@ completed simulation and recorded replay, establish that this is a real develope
 fixture. The transcript distinguishes the Blueprint-hosted edit audit from the package-hosted executable
 journeys; it does not claim that a raw `.json` Blueprint is itself a runnable package.
 
-No P0/P1 or material P2 finding remained in areas 1–6 of this browser pass. **Area 7 (Build/Export) is not yet
-evidenced as an executed action — see "Correction round 3" immediately below — so the claim that all seven
-required browser-backed journey areas are evidenced with reproducible actions does not currently hold.**
+No P0/P1 or material P2 finding remained in areas 1–6 of this browser pass. Area 7 (Build/Export) went through
+two more correction rounds below ("Correction round 3" diagnosed a stale capture and a script bug; "Correction
+round 4" produced a real replacement rerun; "Correction round 5" promoted that rerun into this table's own
+`evidence/host-browser/complete/` files) before all seven areas were evidenced with reproducible, executed
+actions in the location this section's own links point at.
 
 This is an external-evidence response to the saved reviewer block, not a claim that the container itself gained a
 browser. It must now go through the orchestrator's narrow `pa resolve-blocked` path, which will independently
@@ -551,3 +553,35 @@ Detect/Register accepts both shapes. Correction work must make the import path c
 truthful for the complete authoritative ProjectType set, with regression coverage for a Blueprint file and a
 directory project, then rerun this real Studio import journey. This finding must receive implementation and
 independent review before this hard gate can complete.
+
+## Correction round 5 (2026-08-09): the real Build/Export rerun is now the evidence this step's own links point at
+
+This step's reviewer (reviewing `b0bac119`, before "Correction round 3" and "Correction round 4" above existed on
+this branch) correctly flagged that the audit evidence a reader actually lands on —
+[`evidence/host-browser/complete/`](evidence/host-browser/complete/) — still only showed the Build/Export tab
+being opened, with no Generate/Export control clicked. That was accurate: "Correction round 4"'s real rerun with
+genuine `Generated 11,638 outcomes`/`Exported 4 file(s)` results was written to a sibling
+`evidence/host-browser/recovery-20260809-rerun1/` directory and never copied into `complete/`, so the directory
+this step's own table above and every external evidence link resolves to was still the stale `b0bac119` capture.
+
+This round copies the complete, verified `recovery-20260809-rerun1` capture set — all seven numbered
+screenshots/text pairs, `ACTION-TRANSCRIPT.txt`, and `ARTIFACT-VERIFICATION.txt` — into
+[`evidence/host-browser/complete/`](evidence/host-browser/complete/), replacing the stale `b0bac119` files, and
+regenerates that directory's `SHA256SUMS.txt` against the new contents. No new browser session was run for this
+round; this is a promotion of the already-real, already-independently-verified "Correction round 4" rerun into the
+location the reviewer (and every other link in this document) actually checks, not a fresh capture. The
+`complete/ACTION-TRANSCRIPT.txt` Build/Export tail now reads `CLICK "Generate outcome library (base)" via
+rendered BUTTON`, `RESULT rendered outcome library generation succeeded`, `CLICK "Run Stake Engine Export (base)"
+via rendered BUTTON`, `RESULT rendered Stake Engine export completed`, matching `07-integration-build-export.txt`'s
+`Generated 11,638 outcomes for mode "base" (RTP 100.00%) into outcomelibrary.` and `Exported 4 file(s) to
+.../stakeengine.` text, with the on-disk artifact/hash cross-check preserved in `complete/ARTIFACT-VERIFICATION.txt`.
+
+`evidence/host-browser/recovery-20260809-rerun1/` and `evidence/host-browser/recovery-20260809/` (the earlier
+failed attempt) are left in place as the historical record of how this evidence was actually produced; they are
+no longer the canonical copy.
+
+This round did not touch the file-vs-folder import-wording defect "Correction round 4" found — that P2 remains a
+real, separate, unresolved product defect and this document's claim that P5-POLISH-20 is fully unblocked still
+does not hold until it gets its own implementation and independent review. This round's own scope was narrowly
+the reviewer's stated concern: that the Build/Export journey's *saved evidence*, in the directory the audit
+actually publishes, must show an executed action and its real result, not just an opened tab.

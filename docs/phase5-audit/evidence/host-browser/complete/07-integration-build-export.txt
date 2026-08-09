@@ -18,7 +18,7 @@ Certification
 Fairness
 Fixture Slot
 
-/tmp/p5-package-TEyjKN
+/tmp/p5-build-export.loJC0L/package
 
 Close project
 
@@ -50,9 +50,13 @@ Prerequisites
 
 A built, runnable package for this project
 
-Compatibility: Read by Deployment and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.
+Compatibility: Read by every remote deployment target and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.
 
 Generate outcome library (base)
+
+Generated 11,638 outcomes for mode "base" (RTP 100.00%) into outcomelibrary. 
+Open output folder
+
 Static export
 
 Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.
@@ -91,7 +95,8 @@ Compatibility: A deliberately separate, sibling pipeline to the External Adapter
 
 Run Stake Engine Export (base)
 
-Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.
+Exported 4 file(s) to /tmp/p5-build-export.loJC0L/package/stakeengine. 
+Open output folder
 
 Build artifact
 
