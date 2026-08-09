@@ -15,11 +15,54 @@ as a genuinely new user — nothing in this round's own journeys below re-runs a
 every command was typed from `--help` output and the CLI's own error messages, the way a first-time user
 actually would, deliberately trying to break input at each step rather than only proving the happy path.
 
+## Correction round (2026-08-09): why this audit still has no browser screenshots
+
+This step's reviewer correctly flagged that the round below has no saved browser screenshots, and asked for a
+distinct reviewer to redo the audit browser-backed. A second, distinct implementer picked this correction up and,
+rather than repeating the prior round's brief unsubstantiated claim ("no Chromium/Puppeteer/Playwright and no root
+access to install one"), verified it directly with reproducible commands — see
+[`evidence/environment-verification/`](evidence/environment-verification/):
+
+1. **No browser binary exists anywhere in the container**
+   ([`00-no-browser-binary-anywhere.txt`](evidence/environment-verification/00-no-browser-binary-anywhere.txt)):
+   a filesystem-wide search for Chrome/Chromium/Firefox/WebKit binaries returns nothing, and `which` finds none.
+2. **A real headless-Chrome build was actually downloaded and launched, not just assumed missing**
+   ([`01-real-chrome-for-testing-fails-to-launch.txt`](evidence/environment-verification/01-real-chrome-for-testing-fails-to-launch.txt)):
+   this sandbox does have outbound network access, so this round fetched the official
+   `chrome-headless-shell-linux64.zip` (Chrome for Testing 153.0.7998.0) directly via Node's built-in `fetch`,
+   unzipped it with a from-scratch ~50-line `fs`+`zlib` ZIP reader (no `unzip`/`npm`/`npx` available to do this for
+   us), and ran the real extracted binary. It fails immediately: `error while loading shared libraries:
+   libglib-2.0.so.0: cannot open shared object file: No such file or directory` — the very first of the ~20
+   system libraries (`libnss3`, `libgtk-3-0`, `libatk1.0-0`, `libasound2`, `libx11-6`, ... — see the binary's own
+   `deb.deps` manifest in that same file) the binary's own packaging declares it needs, none of which this
+   container has.
+3. **There is no way to install those libraries or a browser**
+   ([`02-no-root-cannot-install-deps.txt`](evidence/environment-verification/02-no-root-cannot-install-deps.txt)):
+   `apt-get install` fails with `Permission denied` on the dpkg lock — this sandbox runs as uid 1000 (`node`),
+   not root, and `dpkg -l` confirms none of the ~20 declared dependencies are present under any name.
+4. **npm itself cannot run at all, and `npx` is explicitly disabled**
+   ([`03-npm-broken-npx-disabled.txt`](evidence/environment-verification/03-npm-broken-npx-disabled.txt)):
+   `/usr/local/bin/npm` has a genuine shell syntax bug in its own policy wrapper (confirmed with `sh -n`, not
+   inferred), so even `npm run typecheck` — the one check this correction's own `targeted_tests.existing_checks`
+   names — cannot run through `npm` and had to be invoked as `node node_modules/.bin/tsc --noEmit -p
+   tsconfig.typecheck.json` directly instead (clean, 0 errors). `npx` prints its own explicit
+   `"POKIE correction policy: npx is disabled"` message. Neither path can install Playwright/Puppeteer even if the
+   missing system libraries were somehow available.
+
+**Conclusion**: launching a real browser to capture pixel screenshots is not achievable by an implementer inside
+this sandbox — this is an infrastructure constraint (missing OS packages, no root, a broken `npm` wrapper, a
+disabled `npx`), not a product defect and not something fixable from within `/workspace`. The scratch download
+used to produce this proof (the ~120 MB zip and its extracted binary) was deleted after capturing the transcripts
+above; nothing from it is part of this commit. Everything below this section, including every "Method" note that
+mentions the missing browser, was written by the *original* (non-independent-on-this-point) round and is kept
+for its still-valid CLI/HTTP findings — it is not a claim that this correction round produced browser evidence.
+
 ## Method
 
 Same sandbox, same constraints every prior Phase 5 round already documented in detail (no working system `npm`
-— `/usr/local/bin/npm` fails with a `dash` syntax error unrelated to POKIE; no Chromium/Puppeteer/Playwright and
-no root access to install one). Every command below runs the real, freshly built `dist/cli/pokie.js` directly
+— `/usr/local/bin/npm` fails with a `dash` syntax error unrelated to POKIE, now independently reproduced above;
+no Chromium/Puppeteer/Playwright and no root access to install one, now independently verified above by actually
+downloading and launching a real browser rather than assuming). Every command below runs the real, freshly built `dist/cli/pokie.js` directly
 (`node node_modules/.bin/tsc --project tsconfig.prod.json` then `--project tsconfig.cli.json`, the same two
 steps `npm run build-esm`/`build-cli` invoke); Studio journeys drive a real `pokie studio --no-open` HTTP server
 via real Node `fetch()` calls from a separate script, never jsdom, never a stubbed transport. Raw transcripts for
@@ -206,3 +249,14 @@ No P0/P1 finding and no finding judged a material P2 remains open as of this com
 regression coverage and a live rerun proving each fix, and the full test/lint/typecheck gates this campaign
 depends on are all green. `pokie-examples` needed no adoption change this round — the game-programmer journey's
 own real adoption tests already passed unmodified (see `evidence/programmer/`); no companion commit was made.
+
+**This gate is not met as of the 2026-08-09 correction round above.** The step's own acceptance criteria require
+saved browser screenshots demonstrating the personas' journeys end-to-end in a real browser. That correction
+round independently verified — by downloading and actually attempting to launch a real Chrome build, not by
+assuming — that no browser can run in this implementer sandbox at all (see "Correction round" above and
+[`evidence/environment-verification/`](evidence/environment-verification/)). This is an infrastructure gap
+outside `/workspace`, not a product defect: it needs either an implementer sandbox image that has a
+browser-capable runtime (the ~20 system libraries a real Chrome build itself declares it needs, e.g. `libnss3`,
+`libgtk-3-0`, `libasound2`) and a working `npm`/`npx`, or a revised acceptance criterion for sandboxes verified to
+lack that capability. Until one of those changes, no implementer working inside this sandbox can produce the
+screenshot evidence this step requires.
