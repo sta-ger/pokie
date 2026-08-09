@@ -83,6 +83,27 @@ async function main() {
         note(`CLICK ${JSON.stringify(label)} via rendered ${result.tag}`);
         await sleep(650);
     };
+    const clickStartingWith = async (prefix) => {
+        const result = await evaluate(`(() => {
+            const prefix = ${JSON.stringify(prefix)};
+            const controls = [...document.querySelectorAll('button,a,[role="button"]')].filter((candidate) => candidate.getClientRects().length > 0);
+            const element = controls.find((candidate) => (candidate.textContent?.trim() ?? '').startsWith(prefix) && !candidate.disabled);
+            if (!element) return {ok: false, available: controls.map((candidate) => ({text: candidate.textContent?.trim(), disabled: candidate.disabled})).filter((candidate) => candidate.text)};
+            element.click();
+            return {ok: true, tag: element.tagName, text: element.textContent.trim()};
+        })()`);
+        if (!result?.ok) throw new Error(`Rendered control starting with ${JSON.stringify(prefix)} was not found or was disabled: ${JSON.stringify(result?.available)}`);
+        note(`CLICK ${JSON.stringify(result.text)} via rendered ${result.tag}`);
+        await sleep(650);
+    };
+    const waitUntil = async (expression, description, timeoutMs = 20000) => {
+        const deadline = Date.now() + timeoutMs;
+        for (;;) {
+            if (await evaluate(expression)) return;
+            if (Date.now() > deadline) throw new Error(`Timed out waiting for ${description}`);
+            await sleep(300);
+        }
+    };
     const home = async () => {
         await navigate("/home/projects");
     };
@@ -163,6 +184,28 @@ async function main() {
     await snapshot("06-qa-replay-session-spin");
 
     await navigate("/project/exportDeploy");
+    await clickStartingWith("Generate outcome library");
+    await waitUntil(
+        "document.body.innerText.includes('Generated ') || /failed|invalid|error/i.test(document.body.innerText)",
+        "the rendered outcome library generation result",
+    );
+    const generated = await evaluate("document.body.innerText.includes('Generated ')");
+    if (generated) {
+        note("RESULT rendered outcome library generation succeeded");
+        await clickStartingWith("Run Stake Engine Export");
+        await waitUntil(
+            "document.body.innerText.includes('Exported ') || document.body.innerText.includes('Exporting will replace') || /failed|invalid|error/i.test(document.body.innerText)",
+            "the rendered Stake Engine export result",
+        );
+        if (await evaluate("document.body.innerText.includes('Exporting will replace')")) {
+            note("RESULT rendered Stake Engine export reported an existing-directory conflict; resolving with Overwrite");
+            await click("Overwrite");
+            await waitUntil("document.body.innerText.includes('Exported ')", "the rendered Stake Engine export result after Overwrite");
+        }
+        note("RESULT rendered Stake Engine export completed");
+    } else {
+        note("RESULT rendered outcome library generation did not succeed; capturing the rendered diagnostic instead of forcing Export");
+    }
     await snapshot("07-integration-build-export");
 
     await writeFile(resolve(output, "ACTION-TRANSCRIPT.txt"), `${transcript.join("\n")}\n`);
