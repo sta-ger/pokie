@@ -46,6 +46,15 @@ Blueprint and registered `after-fix-fixture-blueprint` in **Your projects**:
 The existing CLI/API persona transcripts remain the evidence for package/outcome imports and developer CLI
 workflows; this file only claims the host-browser actions explicitly listed above.
 
+The host browser also opened **Game Model**, clicked the first section's rendered **Edit** action and verified
+the section changed to its Save/Cancel form, then navigated to **Simulation** and clicked **Run Simulation**.
+These actions exercised the rendered Studio controls rather than invoking a backend operation directly:
+
+| Evidence | Observation | SHA-256 |
+| --- | --- | --- |
+| `08-blueprint-edit-mode.png` | Editable Blueprint's Game basics section in actual Edit mode, with Save and Cancel controls. | `e6e3cac85da969ad1695ca4deb6be127528284ae519d4d19fb8ce23f02da6391` |
+| `09-simulation-run.png` | Simulation route after the rendered Run Simulation action. | `fa872021c450364b1963fc62196371ef3d057451f2834530c896fba2cc6a7631` |
+
 ## Audit consequence
 
 The player-to-recorder-to-Replay journey is reproducible in the real browser and the screenshots are retained
