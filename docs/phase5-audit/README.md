@@ -666,3 +666,50 @@ fabricated browser output. This P2 has real implementation and regression-test c
 consistent with how "Correction round 3" treated the equivalent Build/Export gap before "Correction round 4"'s
 real rerun landed, the hard gate's own evidence-rerun requirement is not yet satisfied until an external
 browser-capable host re-runs the import journey and its capture replaces the stale pair above.
+
+## Correction round 7 (2026-08-09): a registered Blueprint row now exposes Open, matching the Package flow — F9
+
+"Post-fix Import Project host-browser rerun" above (labeled "F8" there, but distinct from the already-taken F8
+above — referred to as **F9** from here on to avoid the collision) found that a successfully registered
+Blueprint's row in Projects had only **Remove**; the Package row from the same rerun had **Open**. The
+`ACTION-TRANSCRIPT.txt` linked there records `Blueprint registry Open action present=false`.
+
+**Root cause.** `ProjectsPanel.tsx` gated the Open action (both the row's name-as-link and its own Actions-column
+button) behind a single `OPENABLE_TYPE = "tsPackage"` constant, with a doc comment asserting `"blueprint"` was
+"a real, correctly-detected project, just not one there's a 'run it in Studio' flow for yet." That was already
+false on the server: `StudioHomeService.openProject` → `loadProjectDashboardContext` →
+`createMaterializingRuntimePackageResolver` has always materialized a resolved `"blueprint"` project into a real,
+built-and-installed runtime (the same path a bare `pokie <blueprint.json>` launch uses) before handing it to
+`loadGame`, landing on the exact same `"loaded"` `ProjectDashboardContext` — and therefore the same Overview/Game
+Model Project Dashboard — a `"tsPackage"` reaches. `apiClient.ts`'s own `ProjectOpenError` doc comment already
+anticipated this ("Thrown by openProject on a failed Home Open Project (e.g. a Blueprint whose materialization
+'npm install' failed)"), confirming the server-side contract was always meant to cover Blueprint; only the
+Projects UI's own gate never opened up to match it.
+
+**Fix.** `cli/studio-client/src/components/home/ProjectsPanel.tsx`: `OPENABLE_TYPE` (a single `StudioProjectType`)
+became `OPENABLE_TYPES` (a `Set` containing `"tsPackage"` and `"blueprint"`), used everywhere the old constant
+gated the name-link and the Actions-column Open button — no other product code changed, since the existing
+`useOpenProject`/`openProject`/`navigate("/project")` flow already worked for a blueprint location once reached.
+A failed Open's error subject also now reads "The blueprint file ..." (not "The project directory ...") for a
+`"blueprint"` entry, matching `describePathActionError`'s own doc-comment example and avoiding a directory-typed
+message for what is always a single file.
+
+**Regression coverage.** `tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx` gained
+`"registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package"`:
+Detect → Register a Blueprint file exactly as the existing Blueprint-import test does, then click the newly
+visible **Open** button on that row, assert `POST /api/home/projects/open` was called with the Blueprint's own
+`location` as `projectRoot`, and assert the resulting page shows the opened project's name as a heading plus
+**Overview** and **Game Model** entries in the Sections nav — the same landing `HomePage.test.tsx`'s own
+already-passing Package-Open test asserts. Ran live: the full `studio-client-components` Jest project (29 suites,
+229 tests, including this new case and every pre-existing `ProjectsPanel.test.tsx`/`HomePage.test.tsx` case) —
+**229/229 pass**. `tsc --noEmit -p cli/studio-client/tsconfig.json` and `eslint` on both changed files are clean.
+
+**What this round could not do.** Re-run the host-browser Import Project journey: this sandbox still has no
+browser (same constraints "Correction round 6" reconfirmed — no Chromium-family binary, no CDP endpoint, no
+Playwright, `/usr/local/bin/npm` still broken). `evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/`'s
+`05-blueprint-home-post-import.png`/`.txt` and `ACTION-TRANSCRIPT.txt`'s `Blueprint registry Open action
+present=false` line are therefore left unchanged and are now known-stale relative to this fix, exactly as
+"Correction round 6" left its own then-stale import screenshot pending a real rerun. F9 has real implementation
+and regression-test coverage as of this round; the hard gate's own evidence-rerun requirement for it is not yet
+satisfied until an external browser-capable host re-runs the Import Project journey (Detect → Register a
+Blueprint → Open) and its capture replaces the stale evidence above.
