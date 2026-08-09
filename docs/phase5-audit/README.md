@@ -95,6 +95,126 @@ after remediation.
   `StudioPlayService` suite passed (24 tests), and typecheck passed. The post-fix browser replay showed the
   winning list row as `win 3` and the opened inspector as `Total win 3.00 (3.00x)`.
 
+## Correction round 2 (2026-08-09): the `exportDeploy-dom.html` finding, and a credibility correction on the section above
+
+This step's reviewer read the section above's own `exportDeploy-dom.html` and flagged two problems: (1) that
+snapshot visibly contains the words "Deployment" and "Stake Engine Export" as if a legacy standalone
+Deployment/Stake Engine Export product surface were still live -- a "material contradiction of the completed
+P5-POLISH-04 contract" -- and (2) the "Host-browser completion" section above asserts an independent
+host-browser audit but saves no transcript establishing it actually happened. A third, distinct implementer
+picked up this correction and investigated both, rather than either re-asserting the prior round's claims or
+discarding them unread.
+
+### The `exportDeploy-dom.html` finding: investigated and resolved as a wording ambiguity, not a resurrected legacy UI
+
+`git show 3ba9748` (`[P5-POLISH-04] remove pre-release deployment/export/outcome-library workspaces and
+obsolete routes`) deleted `DeploymentTab.tsx`, `StakeEngineExportTab.tsx`, and `OutcomeLibrariesTab.tsx`
+outright, and removed `ProjectDashboardPage.tsx`'s legacy-route migration mechanism so the old
+`/project/deployment`, `/project/stakeEngineExport`, and `/project/outcomeLibraries` routes fall back to
+Overview like any other unrecognized tab. This round re-verified that still holds against the current
+worktree, not just against that old commit:
+
+- `ProjectDashboardPage.tsx`'s own nav array (`ALL_PROJECT_TABS`) has exactly one Build/Export entry
+  (`{value: "exportDeploy", label: "Build/Export", ...}`) and no `"deployment"`/`"stakeEngineExport"` entry at
+  all -- confirmed by `grep -n 'exportDeploy\|"deployment"\|"stakeEngineExport"' cli/studio-client/src/components/project/ProjectDashboardPage.tsx`.
+  `tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx`'s own
+  `"falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and
+  /project/outcomeLibraries routes, never mounting their own old workflows"` case already covers this and
+  passed live this round (see below).
+- `cli/studio-client/src/components/project/ExportDeployTab.tsx` is the *only* file in the tree implementing
+  the words "Deployment" or "Stake Engine Export" as rendered UI (`grep -rl "ExportDeployTab"
+  cli/studio-client/src` finds no sibling standalone-tab component) -- one consolidated tab, not two legacy
+  ones sitting side by side.
+
+So the DOM snapshot's text was real, but the reviewer's inference from it wasn't: "Deployment" and "Stake
+Engine Export" in `exportDeploy-dom.html` are card/section labels *inside* that single Build/Export tab (a
+"Static export" card literally named "Stake Engine Export", and a "Remote deployment" group whose own cards
+read `External Adapter: <id>`) -- exactly `ExportDeployTab.tsx`'s own documented design (see its top-of-file
+doc comment: "the sole Studio Build/Export surface"), not evidence of a resurrected standalone page. The
+acceptance criterion "Standalone Deployment and Stake Engine Export user-facing surfaces are absent" was
+already true before this round; this round adds the code-level proof the prior round's audit never cited.
+
+That said, the flagged snapshot text did contain one genuine, narrow wording defect worth fixing: the
+Outcome-library card's own `compatibility` prose (`ExportDeployTargets.ts`) read *"Read by Deployment and
+Stake Engine Export alike"* -- a bare, capitalized "Deployment" with no "Remote" qualifier, the one place on
+this whole page that could plausibly be misread (as this reviewer did) as naming a separate "Deployment"
+product rather than this tab's own "Remote deployment" group. Every other reference in this file already says
+"remote deployment" (the `GROUP_LABELS.remoteDeployment.legend` and the `REMOTE_DEPLOYMENT_PLACEHOLDER_CARD`
+label both do). **Fixed**: `ExportDeployTargets.ts`'s `OUTCOME_LIBRARY_CARD.compatibility` now reads *"Read by
+every remote deployment target and Stake Engine Export alike"*, consistent with the rest of the page.
+
+A new regression test, `tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts`'s own
+`"never describes any card's own prose with a bare 'Deployment'"`, scans every card's own label/adapter/
+purpose/destination/writePublishBehavior/compatibility/capabilities/limits/prerequisites text for a
+standalone `Deployment` not preceded by "remote "/"Remote " (word-boundary matched, so it correctly leaves
+identifiers like `ExternalDeploymentTarget`/`ExternalDeploymentCompatibilityValidator` alone) -- this can't
+regress silently again. Both `tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts` (10/10)
+and `tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx` (14/14,
+including the removed-routes case above) passed live against the fix under the `studio-client-components`
+Jest project. `tsc --noEmit -p tsconfig.typecheck.json` stayed clean.
+
+**Rerun of the affected journey**: this sandbox still has no browser (reconfirmed below), so this round
+re-rendered the real `ExportDeployTab` component through the same `renderRoutedApp` harness
+`ProjectDashboardPage.exportDeploy.test.tsx` already uses (real React + React Router + the real Mantine
+component tree, over jsdom rather than a browser's own layout/paint engine) and saved the resulting DOM to
+[`evidence/browser/exportDeploy-after-fix-jsdom.html`](evidence/browser/exportDeploy-after-fix-jsdom.html).
+It shows the corrected compatibility text and zero remaining bare `Deployment` occurrences (`grep -c
+'\bDeployment\b' exportDeploy-after-fix-jsdom.html` → `0`). This is explicitly *not* a browser screenshot --
+jsdom implements the DOM API, not layout, paint, or a real rendering pipeline -- and is labeled as such in the
+file's own leading HTML comment; it is offered as the most rigorous, reproducible-from-this-sandbox evidence
+available that the fix took effect, not as a substitute for the pixel-level browser evidence the instruction
+actually asked for.
+
+### Credibility correction: the "Host-browser completion" section above cannot be verified or reproduced by this round, and contains an internal inconsistency
+
+This round could not independently confirm the claim, made by the section above, that a browser-capable host
+outside this sandbox was used. Re-running this same round's own environment checks
+(`evidence/environment-verification/`) against this worktree reconfirms every constraint that section itself
+already documented: no Chrome/Chromium/Firefox binary anywhere in the container, no root to install one, a
+broken `/usr/local/bin/npm`, and `npx` explicitly disabled -- and this round additionally confirmed no
+Playwright/Puppeteer browser cache exists at either tool's default cache path
+(`~/.cache/ms-playwright`, `~/.cache/puppeteer`) and no Docker socket or remote-debugging endpoint is reachable
+from this container. Nothing in *this* implementer's own sandbox could have produced the PNGs under
+`evidence/browser/`, one way or another -- consistent with, but not proof against, the prior round's claim
+that a *different*, host-side process produced them.
+
+Auditing those saved files directly for internal consistency, this round found one concrete problem:
+`evidence/browser/replay.png` and `evidence/browser/replay-after-play.png` are **byte-identical**
+(`cmp replay.png replay-after-play.png` reports no difference; both SHA-256
+`5c95b195c72d0394f3881928ba1a2751f8f2f4109ce45909a17634effeb170e7`), even though the section above's own
+narrative describes them as two different capture points in one journey -- `replay.png` implicitly the
+Replay tab on its own, `replay-after-play.png` explicitly *after* the "New session" / "Find any win" play
+sequence that section describes. Two genuinely different points in a stateful journey producing an identical
+file is not what a real two-step browser capture would produce; at minimum it means one of those two named
+files was saved from the wrong capture (or the same capture twice), which this round cannot resolve without
+being able to re-run the browser sequence itself.
+
+This round is not asserting the "Host-browser completion" section's screenshots are fabricated -- that would
+be an equally unverifiable claim in the other direction, and `overview.png`/`gameModel.png`/`play.png`/
+`play-find-any-win.png`/`simulation.png`/`exportDeploy.png`/`replay-session-spin-after-fix.png` are all
+mutually distinct (`sha256sum evidence/browser/*.png`, no other collisions) and each `*-dom.html`'s own
+`<title>` matches its claimed tab (`Fixture Slot · <Tab> · POKIE Studio`), which is at least consistent with
+real per-tab captures. But given a confirmed internal inconsistency in the one pair this round could actually
+check, and given this round -- like every implementer round before it -- has no way to independently
+reproduce or verify a claim that depended on tooling outside `/workspace`, the honest position is: **treat the
+"Host-browser completion" section's screenshots as unverified, not as confirmed proof that the required
+five-persona browser journeys (create/import, malformed input, Blueprint edit, Play/scenarios, simulation,
+artifact build/export, Replay, developer-package use) were actually driven end to end in a real browser.**
+The screenshots that do exist cover at most six single-tab snapshots of one Blueprint fixture plus one Play/
+Replay sequence -- not create/import, not malformed-input handling, not a developer-package journey, and not
+most of what the instruction asked a distinct reviewer to substantiate.
+
+**What this round could not do, and why**: reproduce or extend that browser evidence itself. This round is
+bound by the same sandbox as every prior one (reconfirmed above) -- no browser binary exists anywhere in this
+container, there is no root to install the ~20 system libraries a real headless-Chrome build declares as
+dependencies, and neither `npm` nor `npx` can install Playwright/Puppeteer even if those libraries were
+somehow available. Producing genuine pixel-level browser evidence for the remaining required journeys is not
+achievable by an implementer inside this sandbox; it requires the same external, browser-capable host the
+prior round says it used, applied this time to all five personas' full journeys with a saved action transcript
+(not just final-state screenshots), not only the one Blueprint fixture and Play/Replay sequence captured so
+far. This is recorded honestly as still open, for the orchestrator to route to an environment that actually
+has a browser, rather than re-asserted as done.
+
 ## Method
 
 Same sandbox, same constraints every prior Phase 5 round already documented in detail (no working system `npm`
@@ -252,6 +372,17 @@ that only checks product behavior and not whether its own regression suite still
 kind of gap through — `npm test`/`check:fast` (the gate every later step in this campaign depends on) was
 genuinely red at the start of this round.
 
+### F8 — P3, non-material (fixed in the correction round): Build/Export's own outcome-library card used a bare "Deployment" that read as a resurrected legacy surface
+
+Covered in full under "Correction round 2" above. `cli/studio-client/src/domain/interpret/ExportDeployTargets.ts`'s
+`OUTCOME_LIBRARY_CARD.compatibility` said *"Read by Deployment and Stake Engine Export alike"* -- the one place
+on the consolidated Build/Export tab that named "Deployment" without the "Remote" qualifier every other
+reference on the same page already uses, which is what led this step's own reviewer to (incorrectly, but
+understandably from the snapshot text alone) flag it as evidence of a resurrected standalone Deployment
+surface. Verified this is not a resurrected surface (no such route/component exists; see "Correction round 2"
+for the full code-level proof) and fixed the wording to *"Read by every remote deployment target and Stake
+Engine Export alike"*, with a new regression test guarding against a bare "Deployment" recurring on this page.
+
 ### Explicitly not findings
 
 - The sandbox's own broken `/usr/local/bin/npm` and missing Chromium — reconfirmed present, unrelated to
@@ -280,13 +411,31 @@ genuinely red at the start of this round.
 - The mathematician journey's `par export`/`par import` steps and the integration engineer journey's
   `stakeengine export` step were both re-run live against a freshly rebuilt `dist/` after every fix landed (not
   just re-asserted via unit tests) — see the `-after-fix` files linked in F1/F2 above.
+- (Correction round 2, F8) `tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts` (10/10)
+  and `tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx` (14/14) ran
+  live against the wording fix under the `studio-client-components` Jest project; `tsc --noEmit -p
+  tsconfig.typecheck.json` stayed clean; the affected Build/Export tab was re-rendered through jsdom and saved
+  to [`evidence/browser/exportDeploy-after-fix-jsdom.html`](evidence/browser/exportDeploy-after-fix-jsdom.html)
+  — see "Correction round 2" above for why this is jsdom evidence, not a browser screenshot.
 
 ## Campaign-completion gate
 
-No P0/P1 finding and no material P2 remains open: F1–F7 are fixed, with regression coverage and an affected
-journey rerun. The CLI and HTTP findings retain their original evidence; the formerly missing browser evidence is
-now supplied by the host-browser section above. `pokie-examples` needed no adoption change in this round — the
-game-programmer journey's real adoption tests already passed unmodified (see `evidence/programmer/`).
+F1–F6 and F8 are fixed, with regression coverage and an affected journey rerun each; no P0/P1 finding and no
+material P2 remains open in the CLI/HTTP surface this campaign has been able to exercise directly. F8
+(Correction round 2) resolves the reviewer's "material contradiction of P5-POLISH-04" concern: investigated and
+confirmed no standalone Deployment/Stake Engine Export surface exists in the product, and fixed the one genuine
+wording ambiguity that made the DOM snapshot readable that way. `pokie-examples` needed no adoption change in
+this round — the game-programmer journey's real adoption tests already passed unmodified (see
+`evidence/programmer/`).
+
+**Still open, not silently dropped**: genuine browser-backed evidence for all five personas' full journeys
+(create/import, malformed input, Blueprint edit, Play/scenarios, simulation, artifact build/export, Replay,
+developer-package use), driven end to end in a real browser with a saved action transcript. Correction round 2
+above found this implementer sandbox has no more browser access than any prior round (reconfirmed, not just
+assumed) and could not independently verify the prior round's own "Host-browser completion" section, which it
+also found to contain an internal inconsistency (see "Credibility correction" above). This gate does not claim
+that requirement is met — it records what this round could and couldn't do, honestly, and leaves the remaining
+browser-evidence work for an environment that actually has a browser.
 
 This is an external-evidence response to the saved reviewer block, not a claim that the container itself gained a
 browser. It must now go through the orchestrator's narrow `pa resolve-blocked` path, which will independently
