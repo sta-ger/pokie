@@ -447,7 +447,7 @@ action.
 | Mathematician: Play scenario | `04-mathematician-play-scenario.png` / `.txt` | New session then Find any win displays a settled RoundArtifact. |
 | QA: simulation | `05-qa-simulation-run.png` / `.txt` | A materialized developer package completes 10,000 rounds and shows RTP, confidence interval and its reproducibility warning. |
 | QA: Replay | `06-qa-replay-session-spin.png` / `.txt` | The browser selects a recorded Play spin and opens its complete round inspector. |
-| Integration engineer: Build/Export and developer package | `07-integration-build-export.png` / `.txt` | The browser opens the single Build/Export workspace for the freshly materialized TypeScript package used by Play, Simulation and Replay. |
+| Integration engineer: Build/Export and developer package | `07-integration-build-export.png` / `.txt` | **Stale — see "Correction round 3" below.** This capture only opened the Build/Export tab; no Generate/Export control was clicked. |
 
 The package was generated from the audited Blueprint with `pokie build <blueprint> --target tsPackage --out
 <empty-directory>` before the package-backed browser routes were run. Its visible Studio location, plus the
@@ -455,11 +455,62 @@ completed simulation and recorded replay, establish that this is a real develope
 fixture. The transcript distinguishes the Blueprint-hosted edit audit from the package-hosted executable
 journeys; it does not claim that a raw `.json` Blueprint is itself a runnable package.
 
-No P0/P1 or material P2 finding remained in this final browser pass. The non-seeded simulation warning is
-intentional, user-visible guidance rather than a defect. All seven required browser-backed journey areas are
-therefore evidenced with reproducible actions and retained pixels/text, so the external-evidence blocker is
-resolved.
+No P0/P1 or material P2 finding remained in areas 1–6 of this browser pass. **Area 7 (Build/Export) is not yet
+evidenced as an executed action — see "Correction round 3" immediately below — so the claim that all seven
+required browser-backed journey areas are evidenced with reproducible actions does not currently hold.**
 
 This is an external-evidence response to the saved reviewer block, not a claim that the container itself gained a
 browser. It must now go through the orchestrator's narrow `pa resolve-blocked` path, which will independently
 sanity-check and delta-review this clean descendant before it can be integrated.
+
+## Correction round 3 (2026-08-09): the Build/Export evidence is stale, and a real script bug behind it
+
+This step's reviewer (reviewing `b0bac119`) correctly flagged that `ACTION-TRANSCRIPT.txt` and
+`07-integration-build-export.txt` only show the Build/Export tab being opened — no Generate/Export control is
+ever clicked, and the captured text is the untouched tab (`"Nothing in this group yet."` under its "Build
+artifact" group, which is unrelated to the "Generate outcome library"/"Run Stake Engine Export" cards this
+step actually needs). A prior correction (`db5ba42`) added the missing clicks to
+[`scripts/phase5-host-browser-audit.mjs`](../../scripts/phase5-host-browser-audit.mjs) — it now clicks the
+rendered "Generate outcome library" control and, if that succeeds, the rendered "Run Stake Engine Export"
+control (resolving an Overwrite conflict if the export directory already exists) — but that correction could
+not itself produce replacement evidence: its own commit message states this sandbox still has no
+Chrome/CDP/Studio server reachable. **The `07-integration-build-export.png`/`.txt` and the Build/Export tail
+of `ACTION-TRANSCRIPT.txt` under [`evidence/host-browser/complete/`](evidence/host-browser/complete/) are
+therefore stale** — they were captured by an *older* version of the script that only navigated to the tab, one
+commit before the click logic existed. Timestamps confirm this: every capture in that transcript's Build/Export
+entry runs `NAVIGATE /project/exportDeploy` directly into `CAPTURE`, with no intervening `CLICK`.
+
+This round re-verified the sandbox constraint independently rather than assuming the prior finding still held:
+`which google-chrome chromium chromium-browser` finds nothing, no binary under that name exists anywhere in the
+container, `curl`/an equivalent isn't installed either, `GET http://127.0.0.1:9222/json/version` (the CDP
+discovery endpoint the runner's own `connect()` calls) has nothing listening, `/usr/local/bin/npm` still fails
+with the same `dash` syntax error, and no `P5_STUDIO_URL`/`P5_DEVTOOLS_URL`/other host-browser environment
+variable is set pointing this sandbox at an external Chrome instance. Producing the real replacement
+`07-integration-build-export.png`/`.txt` and a Build/Export-inclusive `ACTION-TRANSCRIPT.txt` is therefore still
+not achievable from inside this sandbox — it requires the same external, browser-capable host every prior
+"Host-browser completion"/"Final external Chrome audit" round used, rerun against the now-fixed script.
+
+While reading the click logic for correctness (the one thing verifiable without a live browser — by reading
+`cli/studio-client/src/components/project/ExportDeployTab.tsx` and its `ExportDeployTargets.ts`/
+`useDeploymentManager.ts` dependencies directly), this round found a real bug in `db5ba42`'s own result
+detection and **fixed it**: `waitUntil` polled for `document.body.innerText` to contain `'Generated '`/`'Exported
+'` or to match `/failed|invalid|error/i`, but several of `ExportDeployTab.tsx`'s own realistic failure paths
+(e.g. `describePathActionError`'s "...could not be found.", "...isn't readable.", "...points to the wrong kind
+of item.", "...could not be completed." copies, reached when generation/export fails for a reason other than
+schema validation) render none of those words — the poll would then run the full 20s timeout and throw,
+aborting the whole audit run instead of falling back to capturing the rendered diagnostic the way this step's
+own acceptance criteria allows. **Fixed**: the wait now also resolves as soon as the rendered
+`[role="alert"]` count (what `ErrorState`/`RecoveryNotice` — POKIE's own shared error/conflict components —
+actually render, per their own doc comments) increases past its pre-click count, independent of the message
+text. This was verified by reading the component source, not by running the script (no browser to run it
+against); it cannot be exercised end-to-end until the external host-browser rerun happens.
+
+**What still needs to happen, and by whom**: an external, browser-capable host (the same one every prior
+"Host-browser" round in this file used) needs to re-run `scripts/phase5-host-browser-audit.mjs` against a
+freshly materialized developer package, producing a genuine replacement `07-integration-build-export.png`/
+`.txt` (showing either the "Generated ... into ..."/"Exported ... file(s) to ..." success text, or a real
+rendered diagnostic if generation/export legitimately fails for this fixture) and a `ACTION-TRANSCRIPT.txt`
+whose Build/Export tail actually contains `CLICK "Generate outcome library ..."` (and, if reached, `CLICK "Run
+Stake Engine Export ..."`) entries. This round could not do that itself and is not asserting it did — recorded
+honestly as still open, the same way "Correction round 2"'s own credibility section above handled an
+unverifiable claim, rather than re-asserted as done.

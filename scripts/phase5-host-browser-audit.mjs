@@ -184,17 +184,20 @@ async function main() {
     await snapshot("06-qa-replay-session-spin");
 
     await navigate("/project/exportDeploy");
+    const countAlerts = () => evaluate("document.querySelectorAll('[role=\"alert\"]').length");
+    const alertsBeforeGenerate = await countAlerts();
     await clickStartingWith("Generate outcome library");
     await waitUntil(
-        "document.body.innerText.includes('Generated ') || /failed|invalid|error/i.test(document.body.innerText)",
+        `document.body.innerText.includes('Generated ') || document.querySelectorAll('[role="alert"]').length > ${alertsBeforeGenerate}`,
         "the rendered outcome library generation result",
     );
     const generated = await evaluate("document.body.innerText.includes('Generated ')");
     if (generated) {
         note("RESULT rendered outcome library generation succeeded");
+        const alertsBeforeExport = await countAlerts();
         await clickStartingWith("Run Stake Engine Export");
         await waitUntil(
-            "document.body.innerText.includes('Exported ') || document.body.innerText.includes('Exporting will replace') || /failed|invalid|error/i.test(document.body.innerText)",
+            `document.body.innerText.includes('Exported ') || document.querySelectorAll('[role="alert"]').length > ${alertsBeforeExport}`,
             "the rendered Stake Engine export result",
         );
         if (await evaluate("document.body.innerText.includes('Exporting will replace')")) {
