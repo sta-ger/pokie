@@ -6,9 +6,11 @@
  * accessible page text so the audit can be independently repeated.
  */
 import {mkdir, writeFile} from "node:fs/promises";
-import {resolve} from "node:path";
+import {dirname, resolve} from "node:path";
+import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const studio = process.env.P5_STUDIO_URL ?? "http://127.0.0.1:4100";
 const projectStudio = process.env.P5_PROJECT_STUDIO_URL ?? studio;
 const packageStudio = process.env.P5_PACKAGE_STUDIO_URL ?? projectStudio;
@@ -147,7 +149,11 @@ async function main() {
     await snapshot("01-qa-malformed-project-import");
 
     await home();
-    await setLocation(resolve("docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json"));
+    // This fixture must resolve from the audit script's own repository, not the
+    // caller's cwd. Host-run audits are intentionally launched from arbitrary
+    // working directories, and a cwd-relative path can silently turn this
+    // required Blueprint import into an unrecognized/missing project context.
+    await setLocation(resolve(repositoryRoot, "docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json"));
     await click("Detect");
     await click("Register");
     await snapshot("02-mathematician-project-import");
@@ -167,6 +173,11 @@ async function main() {
 
     await navigate("/project/simulation");
     await click("Run Simulation");
+    await waitUntil(
+        "document.body.innerText.includes('Open full report') || document.body.innerText.includes('Simulation failed') || document.body.innerText.includes('Simulation cancelled')",
+        "the rendered simulation to reach a terminal state",
+        60000,
+    );
     await snapshot("05-qa-simulation-run");
 
     await navigate("/project/replay");

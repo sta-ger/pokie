@@ -1,0 +1,11 @@
+[2026-08-09T20:39:12.047Z] START Chrome CDP audit against http://127.0.0.1:4100
+[2026-08-09T20:39:12.047Z] NAVIGATE /home/projects
+[2026-08-09T20:39:13.004Z] INPUT Location="/definitely/not/a/pokie/project" through native input/change events
+[2026-08-09T20:39:13.267Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T20:39:14.177Z] CAPTURE 01-qa-malformed-project-import.png and 01-qa-malformed-project-import.txt
+[2026-08-09T20:39:14.177Z] NAVIGATE /home/projects
+[2026-08-09T20:39:15.106Z] INPUT Location="/home/stager/Work/sta-ger/agents/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json" through native input/change events
+[2026-08-09T20:39:15.381Z] CLICK "Detect" via rendered BUTTON
+[2026-08-09T20:39:16.043Z] FAILED Error: Rendered control "Register" was not found: ["POKIE Studio","Design Game","Projects","Remove","Browse…","Detect","Docs index","Getting started","CLI reference"]
+    at click (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/scripts/phase5-host-browser-audit.mjs:82:32)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/scripts/phase5-host-browser-audit.mjs:152:5)

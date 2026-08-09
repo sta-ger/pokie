@@ -514,3 +514,40 @@ whose Build/Export tail actually contains `CLICK "Generate outcome library ..."`
 Stake Engine Export ..."`) entries. This round could not do that itself and is not asserting it did — recorded
 honestly as still open, the same way "Correction round 2"'s own credibility section above handled an
 unverifiable claim, rather than re-asserted as done.
+
+## Correction round 4 (2026-08-09): real host-browser rerun, context diagnosis, and a new P2 finding
+
+The missing Build/Export control was an **audit-context defect, not a product capability defect**. The
+authoritative Project model grants `blueprint` the `blueprint.build` capability and grants `tsPackage` the
+`runtime.execute` capability; either makes Build/Export reachable. A real Studio observation during this
+rerun confirmed the editable source as `blueprint` with `["blueprint.build"]`, and the freshly materialized
+developer package as `tsPackage` with `["runtime.execute"]`. Their rendered Studio navigation both contains
+`Overview`, `Game Model`, `Play`, `Simulation`, `Replay`, `Build/Export`, `Certification`, and `Fairness`.
+
+The harness had been resolving its audited Blueprint fixture relative to the process cwd. On the actual host
+the caller cwd was not the task clone, so it supplied an absent path; that is why the intended build-capable
+context was not established. `scripts/phase5-host-browser-audit.mjs` now resolves the fixture from its own
+repository directory and waits for the Simulation's rendered terminal state before requesting the replay
+source. The failed first host attempt is preserved in `evidence/host-browser/recovery-20260809/`; the complete
+rerun is preserved separately so it does not overwrite historical evidence.
+
+The real UI rerun is in
+[`evidence/host-browser/recovery-20260809-rerun1/`](evidence/host-browser/recovery-20260809-rerun1/): its
+timestamped [`ACTION-TRANSCRIPT.txt`](evidence/host-browser/recovery-20260809-rerun1/ACTION-TRANSCRIPT.txt)
+records Detect/Register of the Blueprint, edit, Play, completed Simulation, Session Spin Replay, then clicks on
+the visible `Generate outcome library (base)` and `Run Stake Engine Export (base)` controls. The resulting
+[`07-integration-build-export.png`](evidence/host-browser/recovery-20260809-rerun1/07-integration-build-export.png)
+and text capture show `Generated 11,638 outcomes` and `Exported 4 file(s)`. The generated Outcome Library and
+Stake Engine export were then checked on disk: their manifests agree on `fixture-slot`, `base`, and 11,638
+outcomes; file sets and SHA-256 values are recorded in
+[`ARTIFACT-VERIFICATION.txt`](evidence/host-browser/recovery-20260809-rerun1/ARTIFACT-VERIFICATION.txt).
+
+This rerun also found a new **material P2 product defect**, so P5-POLISH-20 remains blocked. The successful
+Blueprint Detect/Register evidence still renders `"...blueprint.json" is a file, not a folder. Point this at a
+folder instead.` That is false and confusing because Project import deliberately accepts file projects
+(Blueprint, PAR workbook, and WASM) as well as directory projects. Root cause: `ProjectsPanel.tsx` configures
+the Import Project `PathInput` with `kind="directory"`, while the server-side ProjectTargetResolver used by
+Detect/Register accepts both shapes. Correction work must make the import path control and Browse workflow
+truthful for the complete authoritative ProjectType set, with regression coverage for a Blueprint file and a
+directory project, then rerun this real Studio import journey. This finding must receive implementation and
+independent review before this hard gate can complete.
