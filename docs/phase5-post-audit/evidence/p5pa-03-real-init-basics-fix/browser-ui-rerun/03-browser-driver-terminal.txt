@@ -1,0 +1,7 @@
+[2026-08-10T13:13:41.065Z] START fresh Chrome session against public Studio URL http://127.0.0.1:4103
+[2026-08-10T13:13:41.077Z] NAVIGATE public Studio root URL
+[2026-08-10T13:13:41.808Z] CAPTURE 03-project-dashboard.png and 03-project-dashboard-visible-text.txt
+[2026-08-10T13:13:41.849Z] CLICK "Game Model" at rendered BUTTON coordinates (130, 137)
+[2026-08-10T13:13:42.560Z] OBSERVE rendered Game Model basics show Id: (none) and Name: (none), not storefront-widgets
+[2026-08-10T13:13:42.936Z] CAPTURE 04-game-model-no-false-package-name-projection.png and 04-game-model-no-false-package-name-projection-visible-text.txt
+[2026-08-10T13:13:42.936Z] COMPLETE P5PA-03 real init package → Studio → Game Model browser audit

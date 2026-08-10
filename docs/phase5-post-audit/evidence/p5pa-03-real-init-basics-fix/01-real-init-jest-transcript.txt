@@ -1,0 +1,207 @@
+Running one project: pokie
+  console.log
+    
+    === CASE A: real "pokie init" run, dir=/tmp/p5pa03-init-a-6T7OPa ===
+
+      at scratch-p5pa03-evidence.test.ts:23:17
+
+  console.log
+      created  package.json
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  tsconfig.json
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  README.md
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  src/index.ts
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+    
+    Game package "Sample Init Slot" (id: "sample-init-slot") scaffolded in "/tmp/p5pa03-init-a-6T7OPa".
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:225:21)
+
+  console.log
+    Next: run "npm install" then "npm run build" in "/tmp/p5pa03-init-a-6T7OPa" to finish preparing it.
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:226:21)
+
+  console.log
+    InitCommand.run exit code: 0
+
+      at scratch-p5pa03-evidence.test.ts:36:17
+
+  console.log
+    Real package.json written to disk:
+    {
+        "name": "sample-init-slot",
+        "version": "0.1.0",
+        "main": "./dist/index.js",
+        "exports": "./dist/index.js",
+        "scripts": {
+            "build": "tsc",
+            "start": "pokie dev .",
+            "server": "pokie serve .",
+            "client": "pokie client ."
+        },
+        "dependencies": {
+            "pokie": "^1.3.0"
+        },
+        "devDependencies": {
+            "typescript": "^5.0.4"
+        },
+        "pokie": {
+            "entry": "./dist/index.js"
+        }
+    }
+
+      at scratch-p5pa03-evidence.test.ts:41:17
+
+  console.log
+    Real src/index.ts (first 40 lines):
+    import {
+        PokieGame,
+        PokieGameContext,
+        ReelsSymbolsSequencesGenerator,
+        SeededRandomNumberGenerator,
+        SymbolsCombinationsGenerator,
+        VideoSlotConfig,
+        VideoSlotSession,
+        VideoSlotSessionSerializer,
+    } from "pokie";
+    
+    const manifest = {
+        "id": "sample-init-slot",
+        "name": "Sample Init Slot",
+        "version": "0.1.0"
+    };
+    
+    const game: PokieGame = {
+        getManifest() {
+            return manifest;
+        },
+        createSession(context?: PokieGameContext) {
+            const seedRng = context && context.seed !== undefined ? new SeededRandomNumberGenerator(context.seed) : undefined;
+            // VideoSlotConfig's own default reel-strip content (this scaffold sets no symbols/reelStrips of
+            // its own -- a developer hand-edits those in) is otherwise shuffled with unseeded Math.random()
+            // at construction time; passing a seeded ReelsSymbolsSequencesGenerator here makes it
+            // deterministic too, not just the stop-position draws below.
+            const config = new VideoSlotConfig(undefined, seedRng ? new ReelsSymbolsSequencesGenerator(seedRng) : undefined);
+            const combinationsGenerator = context && context.seed !== undefined
+                ? new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context.seed))
+                : new SymbolsCombinationsGenerator(config);
+            return new VideoSlotSession(config, combinationsGenerator);
+        },
+        getSessionSerializer() {
+            return new VideoSlotSessionSerializer();
+        },
+    };
+    
+    // "export =" (not "export default"): compiled with this package's own tsconfig.json
+    // (module: CommonJS, esModuleInterop: true), "export default" would emit "exports.default = game"
+
+      at scratch-p5pa03-evidence.test.ts:46:17
+
+  console.log
+    Real GamePackageInspector.inspect(dir): {"packageRoot":"/tmp/p5pa03-init-a-6T7OPa","valid":true,"packageJson":{"name":"sample-init-slot","version":"0.1.0"}}
+
+      at scratch-p5pa03-evidence.test.ts:55:17
+
+  console.log
+    Real buildProjectGameModel(...).basics (AFTER fix): {"status":"available","data":{"id":"sample-init-slot","version":"0.1.0"}}
+
+      at scratch-p5pa03-evidence.test.ts:60:17
+
+  console.log
+    
+    === CASE B: real "pokie init" run, dir=/tmp/cosmic-riches-VtAKKA ===
+
+      at scratch-p5pa03-evidence.test.ts:75:17
+
+  console.log
+      created  package.json
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  tsconfig.json
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  README.md
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  src/index.ts
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+    
+    Game package "Cosmic Riches Vtakka" (id: "cosmic-riches-vtakka") scaffolded in "/tmp/cosmic-riches-VtAKKA".
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:225:21)
+
+  console.log
+    Next: run "npm install" then "npm run build" in "/tmp/cosmic-riches-VtAKKA" to finish preparing it.
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:226:21)
+
+  console.log
+    Real package.json written to disk:
+    {
+        "name": "cosmic-riches-vtakka",
+        "version": "0.1.0",
+        "main": "./dist/index.js",
+        "exports": "./dist/index.js",
+        "scripts": {
+            "build": "tsc",
+            "start": "pokie dev .",
+            "server": "pokie serve .",
+            "client": "pokie client ."
+        },
+        "dependencies": {
+            "pokie": "^1.3.0"
+        },
+        "devDependencies": {
+            "typescript": "^5.0.4"
+        },
+        "pokie": {
+            "entry": "./dist/index.js"
+        }
+    }
+
+      at scratch-p5pa03-evidence.test.ts:82:17
+
+  console.log
+    Real GamePackageInspector.inspect(dir): {"packageRoot":"/tmp/cosmic-riches-VtAKKA","valid":true,"packageJson":{"name":"cosmic-riches-vtakka","version":"0.1.0"}}
+
+      at scratch-p5pa03-evidence.test.ts:86:17
+
+  console.log
+    Real buildProjectGameModel(...).basics (AFTER fix): {"status":"available","data":{"id":"cosmic-riches-vtakka","version":"0.1.0"}}
+
+      at scratch-p5pa03-evidence.test.ts:89:17
+
+PASS pokie ./scratch-p5pa03-evidence.test.ts
+  P5PA-03 evidence: real `pokie init` package -> real GamePackageInspector -> real buildProjectGameModel
+    ✓ case A: --package-name and --game-name deliberately differ (the divergence the fix must not conflate) (69 ms)
+    ✓ case B: no overrides (directory-derived default) -- id/name happen to coincide by slug, but only id is ever surfaced (19 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Time:        1.939 s, estimated 2 s
+Ran all test suites matching /scratch-p5pa03-evidence/i.
