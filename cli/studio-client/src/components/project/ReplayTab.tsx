@@ -653,12 +653,36 @@ export function ReplayTab({
                                 // so a recorded spin is inspected the identical way rather than through a bespoke
                                 // raw-JSON view. `credits` is passed through separately since it's a wallet/session
                                 // concept RoundArtifact itself never carries.
-                                <RoundArtifactInspector
-                                    artifact={describeRoundArtifact(selectedSpin.debug.artifact)}
-                                    stateBefore={selectedSpin.debug.stateBefore}
-                                    stateAfter={selectedSpin.debug.stateAfter}
-                                    credits={selectedSpin.credits}
-                                />
+                                <div>
+                                    {(selectedSpin.studioSource || selectedSpin.studioOperation) && (
+                                        // RoundArtifactInspector below shows the artifact's own provenance, but
+                                        // never which Studio tab/action recorded it -- an artifact-backed round
+                                        // found via Play tab's Find any win/Find symbol win/Find free games would
+                                        // otherwise show no visible trace of that at all.
+                                        <Table withRowBorders={false} mb="sm">
+                                            <Table.Tbody>
+                                                {selectedSpin.studioSource && (
+                                                    <Table.Tr>
+                                                        <Table.Th>Source</Table.Th>
+                                                        <Table.Td>{describeStudioRoundSource(selectedSpin.studioSource)}</Table.Td>
+                                                    </Table.Tr>
+                                                )}
+                                                {selectedSpin.studioOperation && (
+                                                    <Table.Tr>
+                                                        <Table.Th>Operation</Table.Th>
+                                                        <Table.Td>{describeStudioRoundOperation(selectedSpin.studioOperation)}</Table.Td>
+                                                    </Table.Tr>
+                                                )}
+                                            </Table.Tbody>
+                                        </Table>
+                                    )}
+                                    <RoundArtifactInspector
+                                        artifact={describeRoundArtifact(selectedSpin.debug.artifact)}
+                                        stateBefore={selectedSpin.debug.stateBefore}
+                                        stateAfter={selectedSpin.debug.stateAfter}
+                                        credits={selectedSpin.credits}
+                                    />
+                                </div>
                             ) : (
                                 <div>
                                     {selectedSpin.debug?.artifactUnavailableReason && (

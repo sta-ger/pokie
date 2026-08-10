@@ -733,7 +733,7 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
         completeness = "Minimal -- no screen or debug data was captured for this spin.";
     }
     return {
-        source: `Recorded -- ${describeStudioRoundSourceForCard(spin.studioSource)}`,
+        source: `Recorded -- ${describeStudioRoundSourceForCard(spin.studioSource, spin.studioOperation)}`,
         identities: identityParts.join(", "),
         seed: spin.studioSeed !== undefined ? String(spin.studioSeed) : "(no seed was given for this session)",
         versionHash: `${spin.game.id} v${spin.game.version}`,
@@ -747,15 +747,24 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
 // (rather than reusing describeStudioRoundSource below directly) so the pre-existing, already-established
 // "Recorded -- live spin"/"Recorded -- pre-generated spin" phrasing for the Runtime tab's two sources
 // never changes, while the newer Play/Outcome-Source-Analysis sources still get an honest phrase of their
-// own instead of silently falling back to "live spin".
-function describeStudioRoundSourceForCard(source: StudioRuntimeSessionView["studioSource"]): string {
+// own instead of silently falling back to "live spin". For the Play tab's own two sources ("play"/
+// "play-outcome-source"), the scenario-search operation (find-any-win/find-symbol-win/find-free-games)
+// is folded in too -- otherwise every Play tab round, however it was found, reads as an indistinguishable
+// "Play tab spin" here even though the Session Spin detail table below already names the operation
+// honestly (see describeStudioRoundOperation).
+function describeStudioRoundSourceForCard(
+    source: StudioRuntimeSessionView["studioSource"],
+    operation?: StudioRuntimeSessionView["studioOperation"],
+): string {
     switch (source) {
         case "pre-generated":
             return "pre-generated spin";
         case "play":
-            return "Play tab spin";
+            return operation && operation !== "spin" ? `Play tab -- ${describeStudioRoundOperation(operation).toLowerCase()}` : "Play tab spin";
         case "play-outcome-source":
-            return "Play tab outcome-library draw";
+            return operation && operation !== "spin"
+                ? `Play tab outcome-library draw -- ${describeStudioRoundOperation(operation).toLowerCase()}`
+                : "Play tab outcome-library draw";
         case "outcome-source-sample":
             return "Outcome Source Analysis sample";
         case "simulation-sample":

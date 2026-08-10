@@ -839,6 +839,18 @@ describe("describeLoadedReplay", () => {
         expect(card.source).toBe("Recorded -- Recent Simulation reproduction");
     });
 
+    it("names a Play tab find-free-games round distinctly from an ordinary Play tab spin, never collapsed to the generic phrase", () => {
+        const spinCard = describeLoadedReplay({source: "spin", spin: createSpin({studioSource: "play", studioOperation: "spin"}), canExport: true});
+        expect(spinCard.source).toBe("Recorded -- Play tab spin");
+
+        const findFreeGamesCard = describeLoadedReplay({
+            source: "spin",
+            spin: createSpin({studioSource: "play", studioOperation: "find-free-games"}),
+            canExport: true,
+        });
+        expect(findFreeGamesCard.source).toBe("Recorded -- Play tab -- find free games");
+    });
+
     it("reports spin completeness from whether a debug bundle was captured", () => {
         const noDebug = describeLoadedReplay({source: "spin", spin: createSpin(), canExport: true});
         expect(noDebug.completeness).toContain("Minimal");
