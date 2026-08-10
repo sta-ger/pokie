@@ -1,0 +1,7 @@
+[2026-08-10T12:06:44.596Z] START real Chrome session against fresh Studio http://127.0.0.1:4212; phase=reload
+[2026-08-10T12:06:44.611Z] NAVIGATE visible Studio Projects page
+[2026-08-10T12:06:45.368Z] CLICK persisted project Open at rendered coordinates (1311, 292)
+[2026-08-10T12:06:48.530Z] CLICK Game Model after Studio restart at rendered coordinates (130, 137)
+[2026-08-10T12:06:49.517Z] CAPTURE 03-after-studio-restart-project-reload.png and 03-after-studio-restart-project-reload.txt
+[2026-08-10T12:06:49.517Z] COMPLETE project reload: saved free-games award remains 12 after a fresh Studio process and browser session.
+BROWSER_RELOAD_EXIT=0

@@ -1,0 +1,16 @@
+[2026-08-10T12:04:48.157Z] START real Chrome session against fresh Studio http://127.0.0.1:4212; phase=save
+[2026-08-10T12:04:48.172Z] NAVIGATE visible Studio Projects page
+[2026-08-10T12:04:48.788Z] CLICK input "Location" at rendered coordinates (403, 398)
+[2026-08-10T12:04:49.311Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-02-20260810131718/docs/phase5-post-audit/evidence/p5pa-02-real-browser-persistence/blueprint-game-model-fixture.json" through browser keyboard
+[2026-08-10T12:04:49.654Z] CLICK Detect at rendered coordinates (339, 482)
+[2026-08-10T12:04:50.200Z] CLICK Register at rendered coordinates (346, 675)
+[2026-08-10T12:04:50.759Z] CLICK Open at rendered coordinates (1311, 292)
+[2026-08-10T12:04:53.971Z] CLICK Game Model at rendered coordinates (130, 137)
+[2026-08-10T12:04:54.924Z] CAPTURE 01-initial-game-model-limits.png and 01-initial-game-model-limits.txt
+[2026-08-10T12:04:54.953Z] CLICK Mechanics Edit at rendered coordinates (404, 1481)
+[2026-08-10T12:04:55.491Z] CLICK input "3x free games awarded" at rendered coordinates (915, 1672)
+[2026-08-10T12:04:56.024Z] INPUT "3x free games awarded"="12" through browser keyboard
+[2026-08-10T12:04:56.439Z] CLICK Mechanics Save at rendered coordinates (407, 1481)
+[2026-08-10T12:04:57.409Z] CAPTURE 02-after-save-game-model.png and 02-after-save-game-model.txt
+[2026-08-10T12:04:57.409Z] COMPLETE visible UI edit and Save; the host should now restart Studio before invoking this script's reload mode.
+BROWSER_SAVE_EXIT=0

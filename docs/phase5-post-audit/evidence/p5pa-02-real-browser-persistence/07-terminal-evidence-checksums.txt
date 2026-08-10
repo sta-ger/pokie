@@ -1,0 +1,12 @@
+52e0f1d9daa240e991af4cf8ab2a98af5fe84a2c
+?? docs/phase5-post-audit/evidence/p5pa-02-real-browser-persistence/
+dc694236bb24305d7e38eab73cf1f461c93a07ec1352b8659fdc144522663c70  01-initial-game-model-limits.png
+cfa5aeb2826efc1b491883798cc0dc876724c151e75512b55f7a8e07140e6883  02-after-save-game-model.png
+cfa5aeb2826efc1b491883798cc0dc876724c151e75512b55f7a8e07140e6883  03-after-studio-restart-project-reload.png
+aa1ef1b3b5a82d14637a8eca5e5d3af12461e64f6b3a7f489482dbe4b70d5b62  blueprint-game-model-fixture.json
+01-initial-game-model-limits.txt:108:Awards: 3x → 10 free games
+01-initial-game-model-limits.txt:112:Derived from Bets & Modes' own Available bets above -- edit there to change it.
+03-after-studio-restart-project-reload.txt:108:Awards: 3x → 12 free games
+03-after-studio-restart-project-reload.txt:112:Derived from Bets & Modes' own Available bets above -- edit there to change it.
+02-after-save-game-model.txt:108:Awards: 3x → 12 free games
+02-after-save-game-model.txt:112:Derived from Bets & Modes' own Available bets above -- edit there to change it.

@@ -1,0 +1,5 @@
+[2026-08-10T12:05:45.974Z] START real Chrome session against fresh Studio http://127.0.0.1:4212; phase=reload
+[2026-08-10T12:05:45.993Z] NAVIGATE visible Studio Projects page
+[2026-08-10T12:06:16.648Z] FAILED Error: Timed out waiting for persisted registered project row
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-02-20260810131718/docs/phase5-post-audit/evidence/p5pa-02-real-browser-persistence/browser-ui-rerun.mjs:66:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-02-20260810131718/docs/phase5-post-audit/evidence/p5pa-02-real-browser-persistence/browser-ui-rerun.mjs:122:9)
