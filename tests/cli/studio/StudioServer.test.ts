@@ -2702,7 +2702,7 @@ describe("StudioServer", () => {
             fs.rmSync(packageStudioRoot, {recursive: true, force: true});
         });
 
-        it("exposes only package.json's own name/version/description, never inventing symbols/reels/paytable", async () => {
+        it("exposes only package.json's own version/description, never its \"name\" as identity, and never invents symbols/reels/paytable", async () => {
             const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-gamemodel-package-work-test-"));
             try {
                 fs.writeFileSync(
@@ -2726,9 +2726,15 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/gameModel`);
 
                 expect(status).toBe(200);
+                // package.json's "name" is an npm package identifier, not necessarily the game's own id or
+                // display name (pokie init lets --package-name and --game-id diverge freely), so it must never
+                // be asserted as basics.data.name/id -- only surfaced, transparently, inside each unavailable
+                // section's own reason string.
+                const basics = (body as {basics: {status: string; data?: {name?: string}}}).basics;
+                expect(basics.data?.name).toBeUndefined();
                 expect(body).toMatchObject({
-                    basics: {status: "available", data: {name: "a-package", version: "1.0.0", description: "A game"}},
-                    symbols: {status: "unavailable"},
+                    basics: {status: "available", data: {version: "1.0.0", description: "A game"}},
+                    symbols: {status: "unavailable", reason: expect.stringContaining("a-package")},
                     reels: {status: "unavailable"},
                     paytable: {status: "unavailable"},
                 });
