@@ -268,4 +268,9 @@ new-user audit across five personas (slot mathematician/designer, backend develo
 QA/debugger, integration engineer) that found and fixed real gaps in `pokie par export`/`import`'s own error
 messaging and `pokie stakeengine export`'s file-load error handling, on top of verifying and completing three
 real fixes (a `pokie reel generate --materialize` PAR-export path, a corrupt-PAR-file error message, and a
-weighted-outcome-library heap-usage safety net) already in progress when this round began.
+weighted-outcome-library heap-usage safety net) already in progress when this round began, and
+[`phase5-post-audit/README.md`](phase5-post-audit/README.md) for the first step of a distinct, later campaign
+that begins only once Phase 5 is already published — a frozen baseline plus a source-backed audit matrix
+re-verifying five named Phase 5 concerns against current `develop` (two now fixed, one still open as a P2, one
+already closed with real browser evidence, one an intentional documented v2 limitation) and a bounded
+architectural marker sweep, without reopening or changing any Phase 5 product behavior.

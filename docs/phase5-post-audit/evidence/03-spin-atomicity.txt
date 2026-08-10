@@ -1,0 +1,46 @@
+=== Concern 5: cross-store atomicity in SpinCommandHandler (deferred to v2 per v1.3-closeout-report.md) ===
+1:import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
+2-
+--
+4-// state (reconstructing a live session on a cache miss, e.g. after a restart), gate on
+5:// canPlayNextGame(), run play(), settle the wallet as two separate transactions (a stake debit and
+6-// a win credit), and persist the new state together with the idempotency result as one committed
+--
+25-//
+26:// Every wallet transaction for an attempt gets its own id, `{roundId}:{attemptId}:debit`/`:credit`
+27-// — `roundId` is the requestId (or a fresh id when none was given), stable across every retry of
+28-// that same logical request, for traceability back to the logical command; `attemptId` is freshly
+29:// minted every time this method actually runs, so it's what makes each attempt's wallet transaction
+30-// ids unique — a retried command (same requestId, hence same roundId) that follows a
+31:// compensated/reversed prior attempt always gets brand-new transaction ids rather than reusing the
+32-// reversed ones. (TransactionalWalletAdapter/InMemoryWallet also tolerate reusing a reversed id —
+--
+37-// state, or persisting the idempotency result — this handler *attempts* to undo whatever it already
+38:// did for this attempt: every wallet transaction already applied is individually reversed by its own
+39:// transactionId, any already-persisted session state is restored to what it was before this attempt,
+40-// and the live session is evicted from the cache (see reverseApplied()/restoreSessionState()). This
+41:// is a **best-effort, process-local compensation**, not a strict cross-store transaction guarantee —
+42-// it only helps the retry that follows a failure this same process caught and ran a catch block for:
+--
+62-// responsible for providing it itself, typically by implementing WalletPort/SessionRepository/
+63:// IdempotencyRepository (or a subset sharing state) over one transactional store and committing the
+64-// relevant writes together at that layer; this handler's own compensation is a correctness
+--
+80-// precondition checked up front in handleSerialized(), before canPlayNextGame()/play()/any wallet
+81:// transaction, distinct from (and checked before) the storage-level conflict above.
+82-//
+83:// Reconciliation/retry recovery: every requestId-bearing attempt's own progress through the mutating
+84:// phase below is additionally checkpointed to `operationLog` (see SpinOperationCheckpoint) — started,
+85-// debited, settled, session-saved, committed, or (when this handler's own in-process compensation fully
+--
+87-// on process-crash/compensation-failure risk, and this package's own v1.3 gap-audit note on why full
+88:// atomicity is a v2 concern — but it closes the one genuinely dangerous consequence of that gap: on a
+89-// retried requestId whose idempotency result is missing, handleSerialized() now consults this attempt's
+--
+100-// handler's own per-session enqueue() queue is enough on its own ("structural ownership" — see
+101:// SpinReconciliationService's own doc comment), and it genuinely is *sufficient* against races with
+102-// itself — but sessionRepository/wallet/idempotencyRepository/operationLog can just as easily be shared
+--
+108-// *different* instance is still actively mid-flight on. Without an explicit opt-in, every one of this
+109:// handler's own reconciliation paths defers to SpinReconciliationService's own conservative default
+110-// (manual-recovery-required for anything it can't independently prove safe via

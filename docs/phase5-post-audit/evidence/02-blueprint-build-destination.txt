@@ -1,0 +1,95 @@
+=== Concern 3: Blueprint Design build-preview/build destination default ===
+--- previewBuildDestination.ts (used by both preview and real build) ---
+import {BUILT_PACKAGE_FILES} from "pokie";
+import fs from "fs";
+import path from "path";
+
+// What a build preview needs to say about *where* a build would land and what's already there —
+// computed read-only (never creates/modifies anything), mirroring the exact destination-resolution
+// rules GamePackageGenerator itself applies, so a preview's answer never disagrees with what an
+// actual build would do.
+export type BuildDestinationPreview = {
+    readonly projectRoot: string;
+    // True once the destination directory exists and already has at least one entry in it -- the
+    // signal an editor should surface before building, since GamePackageGenerator only ever writes
+    // into a missing or empty directory (see its own doc comment) -- a destination with content
+    // already in it means the real build will refuse to run at all, not merge/overwrite in place.
+    readonly destinationHasContent: boolean;
+    readonly createFiles: string[];
+    // Always empty: a build only ever creates a brand-new set of files into an empty/missing
+    // directory, never updates an existing one in place -- kept as an explicit field (rather than
+    // omitted) so a preview never has to be read as silently assuming otherwise.
+    readonly updateFiles: string[];
+    readonly deleteFiles: string[];
+};
+
+export function previewBuildDestination(manifestId: string, cwd: string, outDir: string | undefined): BuildDestinationPreview {
+    const projectRoot = outDir !== undefined ? path.resolve(cwd, outDir) : path.join(cwd, manifestId);
+    const destinationHasContent = fs.existsSync(projectRoot) && fs.statSync(projectRoot).isDirectory() && fs.readdirSync(projectRoot).length > 0;
+
+    return {
+        projectRoot,
+        destinationHasContent,
+        createFiles: [...BUILT_PACKAGE_FILES].sort(),
+        updateFiles: [],
+        deleteFiles: [],
+    };
+}
+
+--- StudioBlueprintService.previewBuild (build-preview endpoint) — no studioRoot guard, defaults to process.cwd() ---
+    // --dry-run: validate, then compute the same blueprintHash/expected-files preview
+    // buildGameBuildInfo() already produces, purely in memory.
+    public previewBuild(blueprint: unknown, outDir?: string, sourcePath?: string): StudioBuildPreviewView {
+        const validated = this.validate(blueprint);
+        if (validated.status === "invalid") {
+            return validated;
+        }
+
+        const b = blueprint as GameBlueprint;
+        const buildInfo = buildGameBuildInfo(b, this.pokieVersion, sourcePath);
+        return {
+            status: "ok",
+            warnings: validated.warnings,
+            manifest: b.manifest,
+            reels: b.reels,
+            rows: b.rows,
+            symbolsCount: b.symbols.length,
+            blueprintHash: buildInfo.blueprintHash,
+            expectedFiles: buildInfo.files ?? [],
+            ...previewBuildDestination(b.manifest.id, process.cwd(), outDir),
+        };
+    }
+
+--- StudioBlueprintService.build (real build endpoint) — studioRoot guard ONLY applies when outDir is explicit ---
+    public async build(blueprint: unknown, outDir?: string, sourcePath?: string): Promise<StudioBuildResult> {
+        const validated = this.validate(blueprint);
+        if (validated.status === "invalid") {
+            return validated;
+        }
+
+        if (outDir !== undefined) {
+            const resolvedOutDir = path.resolve(process.cwd(), outDir);
+            if (isPathWithin(this.studioRoot, resolvedOutDir)) {
+                return {status: "error", error: outsideStudioRootMessage(outDir)};
+            }
+        }
+
+        let generated;
+        try {
+            generated = this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir);
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+
+
+--- isPathWithin semantics ---
+import path from "path";
+
+// True when `candidate` is `root` itself or a descendant of it. Shared containment check: originally
+// inlined in StudioServer.resolveStaticFilePath (guarding the studio-client static asset root), reused
+// by the blueprint load/save/build-outDir path guards (see cli/studio/blueprint/StudioBlueprintService)
+// to keep a user-supplied blueprint path from resolving into Studio's own internal directories.
+export function isPathWithin(root: string, candidate: string): boolean {
+    const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+    return candidate === root || candidate.startsWith(rootWithSep);
+}
