@@ -767,9 +767,9 @@ export type StudioRuntimeSessionView = {
     // so Replay's own display mapping (describeStudioRoundSource) stays exhaustive.
     studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
     // The concrete action that produced this round, independent of studioSource -- "find-any-win"/
-    // "find-symbol-win" are the Play tab's own scenario-search controls (every spin along the way is
-    // recorded under the operation actually driving it, not demoted to a bare "spin").
-    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
+    // "find-symbol-win"/"find-free-games" are the Play tab's own scenario-search controls (every spin
+    // along the way is recorded under the operation actually driving it, not demoted to a bare "spin").
+    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "find-free-games" | "outcome-source-sample" | "simulation-sample";
     studioProjectRoot?: string;
     studioSeed?: string | number;
     // The real outcome-library mode this round was drawn against -- present only for an outcome-library-

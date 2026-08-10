@@ -790,8 +790,8 @@ export function describeStudioRoundSource(source: StudioRuntimeSessionView["stud
 }
 
 // The concrete action within a tab that produced a recorded round -- see StudioRoundRecorder's own doc
-// comment for the full story on why a Play tab round found via "Find any win"/"Find symbol win" is never
-// relabeled as a bare "spin".
+// comment for the full story on why a Play tab round found via "Find any win"/"Find symbol win"/
+// "Find free games" is never relabeled as a bare "spin".
 export function describeStudioRoundOperation(operation: StudioRuntimeSessionView["studioOperation"]): string {
     switch (operation) {
         case "spin":
@@ -800,6 +800,8 @@ export function describeStudioRoundOperation(operation: StudioRuntimeSessionView
             return "Find any win";
         case "find-symbol-win":
             return "Find symbol win";
+        case "find-free-games":
+            return "Find free games";
         case "outcome-source-sample":
             return "Sample";
         case "simulation-sample":

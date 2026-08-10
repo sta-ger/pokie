@@ -110,7 +110,7 @@ linked from each subsection below.
 | 1 | Blueprint Game Model editor | `P5PA-02` | **CONFIRMED P2** |
 | 2 | TypeScript package Game Model introspection | `P5PA-03` | **INTENTIONAL SUPPORTED LIMITATION** |
 | 3 | Multi-mode Outcome Library selection/provenance | `P5PA-04` | **CONFIRMED P2** (fixed) |
-| 4 | Player custom scenario/Replay | `P5PA-05` | **FALSE POSITIVE** (fixed) |
+| 4 | Player custom scenario/Replay | `P5PA-05` | **CONFIRMED P2** (fixed) |
 | 5 | `pokie init` portability | `P5PA-06` | **CONFIRMED P3** |
 
 ### #1 — Blueprint Game Model editor (`P5PA-02`): CONFIRMED P2
@@ -214,7 +214,23 @@ validator rather than the reader — flagged in the evidence file as the one pla
 reasonably want defense-in-depth, but not a defect. No prior doc makes any claim about this concern; it is a
 fresh area, not a re-verification.
 
-### #4 — Player custom scenario/Replay (`P5PA-05`): FALSE POSITIVE (fixed)
+### #4 — Player custom scenario/Replay (`P5PA-05`): CONFIRMED P2 (original classification, corrected below)
+
+**Correction (`P5PA-05`'s own remediation, see the section near the bottom of this file):** this round's own
+original read below only checked whether Studio's Play offered a *forced-outcome* API (it correctly doesn't,
+and shouldn't) -- it never checked whether Studio Play reaches every real, generic "custom scenario"
+`pokie-examples`' own real user workflow already reaches through this same library's own public,
+shared `PlayStrategy` machinery. It doesn't: `pokie-examples`' "Free games" custom scenario is built from
+`new PlayFreeGamesStrategy()` (`src/simulation/playstrategy/PlayFreeGamesStrategy.ts`), a real, generic,
+already-exported class this same repo ships for exactly this purpose -- applicable to any Blueprint game
+with free-games mechanics, not a `pokie-examples`-only helper -- yet Studio Play (`PlayTab.tsx`/
+`StudioPlayService.ts`) never wired it in: only `PlayUntilAnyWinStrategy` ("Find any win") and
+`PlayUntilSymbolWinStrategy` ("Find symbol win") were reachable, added in `[P5-POLISH-11]` after
+`[P5-POLISH-10]`'s own standalone-session transition (neither the old embedded-iframe Play nor current Play
+ever offered a free-games scenario). Reclassified **CONFIRMED P2** and fixed; the original text below is
+kept as an honest record of what this round's own predecessor actually checked (correctly, for the
+forced-outcome/determinism concerns it checked) and did not check (a real parity gap against the shared
+`PlayStrategy` library this product itself ships and `pokie-examples` already exercises).
 
 There is no dedicated "custom scenario"/forced-outcome API in this product (Studio's Play "Find any win"/"Find
 symbol win" is a real, bounded spin-and-check search — `StudioPlayService.findAnyWin`/`spinUntilMatch`,
@@ -488,3 +504,78 @@ confirmed to read the server's real `report.modes` (never a free-text field or a
 reading the rendered-control source directly and by exercising it through `studio-client-components`/
 `studio-client-workflows`' own React Testing Library suites (a real jsdom DOM, real user-event interactions,
 `fetch` mocked only at the HTTP boundary).
+
+## `P5PA-05` remediation: Studio Play gains a real "Find free games" scenario control, the one canonical shared abstraction it was missing
+
+§3 #4 above (`P5PA-01`'s own freeze) classified this concern **FALSE POSITIVE**, on the correct-but-too-narrow
+premise that Studio has no dedicated forced-outcome API (true, and not this step's concern) and that a
+determinism bug found and fixed under `[P5-POLISH-19]` was the only real defect this concern's framing could
+point to (also true, and also not reopened here). This step's own instruction asked for actual user-visible
+Player workflows to be traced across every supported product surface — `pokie-examples`, a generated/package
+`npm start`, Studio Play, and `pokie dev`/`pokie client` — for Spin, Find any win, Find symbol win, and custom
+scenario specifically, not an internal Strategy API alone. Doing that surfaced what the prior round's
+narrower framing missed: `pokie-examples`' own real, user-facing "custom scenario" workflow (its per-game
+dropdown, e.g. `slot-with-free-games`'s "Free games"/"Last free game with free bank"/"Last free game without
+free bank") is built from `PlayFreeGamesStrategy` — a real, generic, already-public class this same repo
+ships from `src/simulation/playstrategy/PlayFreeGamesStrategy.ts`, applicable to any
+`VideoSlotWithFreeGamesSessionHandling`-shaped session, not a `pokie-examples`-only helper — yet Studio Play
+(the product's own primary in-app Player surface) never wired it in anywhere: only Find any win
+(`PlayUntilAnyWinStrategy`) and Find symbol win (`PlayUntilSymbolWinStrategy`) were reachable. A generated
+package's `npm start`/`pokie dev`/`pokie client` were independently confirmed, by source read and full
+`git log -S` history, never to have offered any scenario control at all (a real, honestly-scoped minimal Spin
+preview, not a regression). Reclassified **CONFIRMED P2** and fixed, per that same instruction's own
+"restore a missing custom scenario only through the canonical shared scenario/player abstraction" framing.
+
+**The fix**: `StudioPlayService.findFreeGames(sessionId)` — built on the exact same real-spin-search loop
+(`spinUntilMatch()`) `findAnyWin()`/`findSymbolWin()` already share, never a parallel player, iframe/server
+runtime, or client-side game calculation. For a "runtime" session it hands the engine's own
+`new PlayFreeGamesStrategy()` the live session, exactly as `findAnyWin()` hands it `PlayUntilAnyWinStrategy`;
+for an "outcomeSource" session (a resolved outcome-library draw, no live `GameSessionHandling`) it reads the
+already-computed `"freeGamesTriggered"` feature event straight off that round's own real
+`RoundArtifact.featureEvents` — the exact event `buildRoundArtifactFromSession` derives from a live session's
+`getWonFreeGamesNumber()` — never a second free-games determination. A game whose session doesn't report
+free-games state is told so honestly before ever spinning, the same feature-detection convention
+`findSymbolWin()` already uses for a non-video-slot game. `StudioServer.ts` gained
+`POST /api/project/play/sessions/:id/find-free-games`, routed/handled identically to the two existing
+scenario routes; `apiClient.ts`/`usePlaySession.ts`/`PlayTab.tsx`/`ProjectDashboardPage.tsx` gained the
+matching request helper, hook callback, and an always-visible "Find free games" button (honest per-game error
+on click when unsupported, never a client-side prediction of which games qualify).
+`StudioRoundRecorder`/`StudioRuntimeSessionView`/`api/types.ts`/`domain/interpret/Replay.ts` gained
+`"find-free-games"` as a real `StudioRoundOperation`, recorded through the one shared `StudioRoundRecorder`
+history every other Play action already funnels through (no new call site) and labeled `"Find free games"` by
+Replay's own `describeStudioRoundOperation` — never demoted to a bare `"spin"`, the same guarantee Find any
+win/Find symbol win already had.
+
+Verified with real, unmocked reproductions (no Chromium/Chrome binary, no host-browser bridge, not root —
+reproduced fresh this round, the same constraint this campaign's own `P5PA-04` round already documented for
+this exact sandbox; the fallback is this campaign's own documented `jest-environment-jsdom` real-component-tree
+capture plus a real, unmocked Node.js HTTP server, never a hand-typed fixture): `StudioPlayService.findFreeGames()`
+exercised directly against both a controllable live session (search genuinely repeats real settled spins) and a
+real free-games-bearing outcome-library bundle built with the real `OutcomeLibraryBundleWriter`; a real
+`StudioServer` (no mocks) driven end to end with real HTTP requests, including a dedicated test proving a
+`find-free-games` round is immediately visible from `GET /api/project/rounds` — the exact route Replay's
+"Session Spin" list reads — tagged with the real `"find-free-games"` operation and carrying the real
+`"freeGamesTriggered"` feature event on its own `RoundArtifact`; and a real, unmocked capture of the actual
+production component tree (`HomePage → ProjectDashboardPage → PlayTab → RoundSummary →
+RoundArtifactInspector → FeatureStateView`) in which a real click on the real "Find free games" button reaches
+the real route and the real `"freeGamesTriggered"` feature event genuinely renders in the DOM. Full transcripts,
+source citations, and analysis:
+[`evidence/p5pa-05-play-find-free-games-fix/README.md`](evidence/p5pa-05-play-find-free-games-fix/README.md).
+
+Regression coverage: new `findFreeGames` cases in `tests/cli/studio/runtime/StudioPlayService.test.ts` (live
+session + outcome-library session + unsupported-game honesty + search-exhausted honesty), new HTTP-routing and
+shared-recorder-propagation cases in `tests/cli/studio/StudioServer.test.ts`, a new DOM-level case in
+`tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx`, a new
+`describeStudioRoundOperation` case in `tests/cli/studio-client/src/domain/interpret/Replay.test.ts`, and the
+required prop update in `tests/cli/studio-client/src/components/project/PlayTab.test.tsx`. Ran the full `pokie`
+Jest project (351 suites / 5576 tests, up from the 351/5570 baseline this step started from — 6 new tests in
+that project's own files) and the full `StudioServer.test.ts` file (271 tests, up from 267 — 4 new): all pass
+except two pre-existing failures in
+`StudioServer.test.ts`'s own "Home Open Project ... offline" suite, independently re-confirmed pre-existing
+(not caused by this step) by stashing this step's entire diff and re-running the identical file, which fails
+identically — this sandbox's own already-documented broken `npm` wrapper, not a `pokie init`/materializer
+defect.
+
+Out of scope, left as-is: `pokie-examples` itself needed no change (already correct); the generated-package
+`npm start`/`pokie dev`/`pokie client` minimal Spin-only player is a real, honestly-scoped preview surface, not
+a parity gap.

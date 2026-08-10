@@ -944,6 +944,10 @@ describe("describeStudioRoundOperation", () => {
         expect(describeStudioRoundOperation("simulation-sample")).toBe("Simulation sample");
     });
 
+    it("names a find-free-games operation truthfully, never demoted to a bare Spin", () => {
+        expect(describeStudioRoundOperation("find-free-games")).toBe("Find free games");
+    });
+
     it("falls back to Unknown only for a genuinely unrecognized operation", () => {
         expect(describeStudioRoundOperation(undefined)).toBe("Unknown");
     });

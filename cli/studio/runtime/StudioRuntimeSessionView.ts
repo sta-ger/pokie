@@ -39,7 +39,7 @@ export type StudioRuntimeSessionView = {
     // when Studio recorded it (no producer returns a timestamp of its own). `studioSource` names which of
     // Studio's own tabs/routes actually produced this round (see StudioRoundSource); `studioOperation`
     // names the concrete action within that tab (see StudioRoundOperation) -- e.g. a Play tab round can be
-    // an ordinary "spin" or one found by "find-any-win"/"find-symbol-win". `studioProjectRoot`/
+    // an ordinary "spin" or one found by "find-any-win"/"find-symbol-win"/"find-free-games". `studioProjectRoot`/
     // `studioSeed` are attached only when the producer genuinely had them at record time (every producer
     // except a one-shot outcome-source sample without an explicit seed) -- never invented otherwise.
     // `studioModeName` is the real outcome-library mode this round was drawn against (see
@@ -48,7 +48,7 @@ export type StudioRuntimeSessionView = {
     studioRound?: number;
     studioRecordedAt?: string;
     studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
-    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
+    studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "find-free-games" | "outcome-source-sample" | "simulation-sample";
     studioProjectRoot?: string;
     studioSeed?: string | number;
     studioModeName?: string;

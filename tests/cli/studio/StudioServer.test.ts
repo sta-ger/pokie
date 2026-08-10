@@ -4312,11 +4312,13 @@ describe("StudioServer", () => {
         });
     });
 
-    // P5-POLISH-11's own scenario controls -- POST .../find-any-win, POST .../find-symbol-win. Routing-
-    // level only (400/404/409, request/response shape, selected-symbol propagation): the underlying search
-    // semantics (repeated real spins, PlayUntilAnyWinStrategy/PlayUntilSymbolWinStrategy, deterministic
-    // seed reproducibility) are already covered in depth by StudioPlayService.test.ts.
-    describe("Project Dashboard: Play scenario controls (POST /api/project/play/sessions/:id/find-any-win, /find-symbol-win)", () => {
+    // P5-POLISH-11's own scenario controls -- POST .../find-any-win, POST .../find-symbol-win -- plus
+    // find-free-games (the canonical shared "custom scenario" abstraction, see
+    // StudioPlayService.findFreeGames()'s own doc comment). Routing-level only (400/404/409,
+    // request/response shape, selected-symbol propagation): the underlying search semantics (repeated real
+    // spins, PlayUntilAnyWinStrategy/PlayUntilSymbolWinStrategy/PlayFreeGamesStrategy, deterministic seed
+    // reproducibility) are already covered in depth by StudioPlayService.test.ts.
+    describe("Project Dashboard: Play scenario controls (POST /api/project/play/sessions/:id/find-any-win, /find-symbol-win, /find-free-games)", () => {
         let scenarioStudioRoot: string;
         let scenarioServer: StudioServer | undefined;
         const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
@@ -4351,6 +4353,45 @@ describe("StudioServer", () => {
             };
         }
 
+        // Triggers free games on round 3 exactly -- same reasoning as createWinsOnThirdRoundGame above,
+        // but VideoSlotSessionHandling-shaped (getSymbolsCombination/getWinEvaluationResult, so "full"
+        // capture can actually build a RoundArtifact) and reporting a real getWonFreeGamesNumber()/
+        // getFreeGamesNum()/getFreeGamesSum()/getFreeGamesBank() (GameWithFreeGamesSessionHandling) so
+        // StudioPlayService.findFreeGames()'s own feature-detection recognizes it as free-games-capable.
+        function createTriggersFreeGamesOnThirdRoundGame(): PokieGame {
+            return {
+                getManifest: () => manifest,
+                createSession: () => {
+                    let credits = 1000;
+                    const bet = 1;
+                    let round = 0;
+                    let wonFreeGames = 0;
+                    return {
+                        getCreditsAmount: () => credits,
+                        setCreditsAmount: (value: number) => {
+                            credits = value;
+                        },
+                        getBet: () => bet,
+                        setBet: () => undefined,
+                        getAvailableBets: () => [bet],
+                        canPlayNextGame: () => true,
+                        play: () => {
+                            round++;
+                            wonFreeGames = round === 3 ? 3 : 0;
+                            credits -= bet;
+                        },
+                        getWinAmount: () => 0,
+                        getSymbolsCombination: () => ({toMatrix: () => [[wonFreeGames > 0 ? "Scatter" : "A"]]}),
+                        getWinEvaluationResult: () => new WinEvaluationResult<string>(),
+                        getWonFreeGamesNumber: () => wonFreeGames,
+                        getFreeGamesNum: () => 0,
+                        getFreeGamesSum: () => 0,
+                        getFreeGamesBank: () => 0,
+                    } as unknown as GameSessionHandling;
+                },
+            };
+        }
+
         function createScenarioServer(
             initialContext: {mode: "home"} | {mode: "project"; projectRoot: string},
             loadGame: () => Promise<PokieGame> = () => Promise.resolve(createWinsOnThirdRoundGame()),
@@ -4378,13 +4419,14 @@ describe("StudioServer", () => {
             fs.rmSync(scenarioStudioRoot, {recursive: true, force: true});
         });
 
-        it("returns 409 'No active project' for both scenario routes in Home mode", async () => {
+        it("returns 409 'No active project' for all three scenario routes in Home mode", async () => {
             scenarioServer = createScenarioServer({mode: "home"});
             const address = await scenarioServer.start();
             const baseUrl = `http://${address.host}:${address.port}`;
 
             expect((await post(`${baseUrl}/api/project/play/sessions/unknown/find-any-win`, {})).status).toBe(409);
             expect((await post(`${baseUrl}/api/project/play/sessions/unknown/find-symbol-win`, {symbolId: "A"})).status).toBe(409);
+            expect((await post(`${baseUrl}/api/project/play/sessions/unknown/find-free-games`, {})).status).toBe(409);
         });
 
         it("find-any-win runs real spins server-side until one actually wins, returning that settled round", async () => {
@@ -4461,6 +4503,99 @@ describe("StudioServer", () => {
 
             expect(found.status).toBe(200);
             expect(found.body).toEqual({status: "error", error: "No matching round was found within 3 spins."});
+        });
+
+        it("find-free-games runs real spins server-side until one actually triggers free games, returning that settled round", async () => {
+            scenarioServer = createScenarioServer(
+                {mode: "project", projectRoot: "/tmp/sample-slot"},
+                () => Promise.resolve(createTriggersFreeGamesOnThirdRoundGame()),
+            );
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const found = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-free-games`, {});
+
+            expect(found.status).toBe(200);
+            const foundBody = found.body as {
+                status: string;
+                session: {credits: number; debug?: {artifact?: {featureEvents?: {type: string}[]}}};
+            };
+            expect(foundBody.status).toBe("ok");
+            expect(foundBody.session.debug?.artifact?.featureEvents?.some((event) => event.type === "freeGamesTriggered")).toBe(true);
+            // 3 real spins settled, each costing the bet -- proves this ran genuine spins, not a single check.
+            expect(foundBody.session.credits).toBe(1000 - 1 - 1 - 1);
+        });
+
+        it("records a find-free-games round into the shared history, immediately visible from GET /api/project/rounds, tagged with the real 'find-free-games' operation", async () => {
+            // Built directly (not via createScenarioServer, which injects its own standalone
+            // StudioPlayService so maxFindScenarioSpins can be overridden per-test -- its recorder is
+            // never the one GET /api/project/rounds reads from). Omitting `playService` here lets
+            // StudioServer construct its own playService wired to its own shared `roundRecorder` (see
+            // StudioServer's own constructor doc comment), the same wiring a real `pokie studio` process
+            // uses -- and the same pattern createOutcomeSourceServer below already relies on for its own
+            // "records a Play tab round..." test.
+            const loadGame = () => Promise.resolve(createTriggersFreeGamesOnThirdRoundGame());
+            scenarioServer = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: scenarioStudioRoot,
+                homeService: new StudioHomeService("1.0.0", undefined, loadGame),
+                blueprintService: new StudioBlueprintService("1.0.0", scenarioStudioRoot, new StudioHomeService("1.0.0")),
+                loadGame,
+                initialContext: {mode: "project", projectRoot: "/tmp/sample-slot"},
+            });
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const found = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-free-games`, {});
+            expect(found.status).toBe(200);
+            expect((found.body as {status: string}).status).toBe("ok");
+
+            // The exact same shared StudioRoundRecorder Replay's "Session Spin" list reads from -- proves
+            // this real, settled round (produced by a real RoundArtifact, per the previous test) is
+            // immediately visible there too, tagged with the real "find-free-games" operation, never
+            // demoted to a bare "spin". Every real spin along the 3-round search is recorded (see
+            // StudioRoundRecorder's own doc comment), most-recent-first -- entries[0] is the winning round.
+            const {status, body} = await get(`${baseUrl}/api/project/rounds`);
+            expect(status).toBe(200);
+            const entries = body as Array<{sessionId: string; studioOperation?: string; debug?: {artifact?: {featureEvents?: {type: string}[]}}}>;
+            expect(entries).toHaveLength(3);
+            expect(entries.every((entry) => entry.sessionId === sessionId && entry.studioOperation === "find-free-games")).toBe(true);
+            expect(entries[0].debug?.artifact?.featureEvents?.some((event) => event.type === "freeGamesTriggered")).toBe(true);
+        });
+
+        it("find-free-games rejects with an honest 'error' for a game that doesn't support free games, never a 500", async () => {
+            scenarioServer = createScenarioServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+
+            const response = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/find-free-games`, {});
+
+            expect(response.status).toBe(200);
+            expect(response.body).toEqual({
+                status: "error",
+                error: "This game doesn't support free games, so Find free games isn't available for it.",
+            });
+        });
+
+        it("find-free-games against an unknown sessionId returns 404, never a 500", async () => {
+            scenarioServer = createScenarioServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await scenarioServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const response = await post(`${baseUrl}/api/project/play/sessions/does-not-exist/find-free-games`, {});
+
+            expect(response.status).toBe(404);
         });
     });
 

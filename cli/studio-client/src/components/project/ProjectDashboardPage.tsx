@@ -802,6 +802,7 @@ export function ProjectDashboardPage() {
                                     onSpin={play.spin}
                                     onFindAnyWin={play.findAnyWin}
                                     onFindSymbolWin={play.findSymbolWin}
+                                    onFindFreeGames={play.findFreeGames}
                                     availableModes={outcomeLibraryModes}
                                 />
                             )}

@@ -47,6 +47,7 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
                     onSpin={() => undefined}
                     onFindAnyWin={() => undefined}
                     onFindSymbolWin={() => undefined}
+                    onFindFreeGames={() => undefined}
                 />
             </MantineProvider>,
         );

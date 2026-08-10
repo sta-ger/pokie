@@ -1,5 +1,8 @@
 import {
+    buildRoundArtifact,
     GameSessionHandling,
+    GameWithFreeGamesSessionHandling,
+    OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
@@ -16,7 +19,10 @@ import os from "os";
 import path from "path";
 import {StudioPlayService} from "../../../../cli/studio/runtime/StudioPlayService.js";
 import {StudioRoundRecorder} from "../../../../cli/studio/runtime/StudioRoundRecorder.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {
+    buildOutcomeLibraryBundleModeInput,
+    outcomeLibraryBundleTestProvenance,
+} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
@@ -135,6 +141,73 @@ function createControllableVideoSlotSession(winningSymbolAtAttempt: (attempt: nu
     } as unknown as GameSessionHandling & VideoSlotSessionHandling<string>;
 
     return {session, getAttempts: () => attempts};
+}
+
+// A controllable GameWithFreeGamesSessionHandling-shaped fake for findFreeGames() -- each play() consults
+// `wonFreeGamesAtAttempt` for *this* attempt's own outcome, the same per-attempt control
+// createControllableVideoSlotSession above gives findAnyWin()/findSymbolWin(). getFreeGamesNum()/
+// getFreeGamesSum()/getFreeGamesBank() are never actually read by the default (lastFreeGame: false)
+// PlayFreeGamesStrategy findFreeGames() drives, but are implemented anyway so this fake genuinely
+// satisfies the full feature-detected contract, not just the one method that call path happens to touch.
+function createControllableFreeGamesSession(wonFreeGamesAtAttempt: (attempt: number) => number): {
+    session: GameSessionHandling & VideoSlotSessionHandling<string> & GameWithFreeGamesSessionHandling;
+    getAttempts: () => number;
+} {
+    let credits = 100000;
+    const bet = 5;
+    let attempts = 0;
+    let currentWonFreeGames = 0;
+
+    const session = {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        canPlayNextGame: () => credits >= bet,
+        play: () => {
+            attempts += 1;
+            currentWonFreeGames = wonFreeGamesAtAttempt(attempts);
+            credits -= bet;
+        },
+        getWinAmount: () => 0,
+        getSymbolsCombination: () => ({toMatrix: () => [[currentWonFreeGames > 0 ? "Scatter" : "A"]]}),
+        getWinEvaluationResult: () => new WinEvaluationResult<string>(),
+        getWonFreeGamesNumber: () => currentWonFreeGames,
+        getFreeGamesNum: () => 0,
+        getFreeGamesSum: () => 0,
+        getFreeGamesBank: () => 0,
+    } as unknown as GameSessionHandling & VideoSlotSessionHandling<string> & GameWithFreeGamesSessionHandling;
+
+    return {session, getAttempts: () => attempts};
+}
+
+// An outcome-library mode whose every drawn outcome's own RoundArtifact already carries a real
+// "freeGamesTriggered" feature event -- the exact event buildRoundArtifactFromSession derives from a live
+// session's own getWonFreeGamesNumber() (see that function's own doc comment), here built directly since
+// an outcome-library draw has no live session to derive it from. Every outcome matches, so a search against
+// this mode always finds one on the very first draw -- deterministic, no reliance on weighted-draw luck.
+function buildFreeGamesLibraryModeInput(modeName: string, libraryId: string): OutcomeLibraryBundleModeInput<string> {
+    return {
+        modeName,
+        libraryId,
+        outcomes: [
+            {
+                id: "0",
+                weight: 1,
+                artifact: buildRoundArtifact({
+                    roundId: `${libraryId}-0`,
+                    provenance: outcomeLibraryBundleTestProvenance,
+                    betMode: "base",
+                    stake: 1,
+                    steps: [{screen: [["A"]], winEvaluationResult: new WinEvaluationResult<string>()}],
+                    featureEvents: [{type: "freeGamesTriggered", data: {count: 3}}],
+                }),
+            },
+        ],
+    };
 }
 
 // No getSymbolsCombination()/getWinEvaluationResult() at all -- plain GameSessionHandling, so a "full"
@@ -499,7 +572,7 @@ describe("StudioPlayService", () => {
         }
     });
 
-    describe("findAnyWin / findSymbolWin", () => {
+    describe("findAnyWin / findSymbolWin / findFreeGames", () => {
         it("findAnyWin returns the very first round when it already wins, driving the engine's own PlayUntilAnyWinStrategy against the live session", async () => {
             const {session} = createControllableVideoSlotSession(() => "A");
             const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
@@ -613,6 +686,64 @@ describe("StudioPlayService", () => {
             expect(result).toEqual({status: "not-found"});
         });
 
+        it("findFreeGames returns the very first round when it already triggers free games, driving the engine's own PlayFreeGamesStrategy against the live session", async () => {
+            const {session} = createControllableFreeGamesSession(() => 3);
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findFreeGames(created.session.sessionId);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.session.debug?.artifact?.featureEvents).toEqual([{type: "freeGamesTriggered", data: {count: 3}}]);
+        });
+
+        it("findFreeGames repeats real, authoritative spins -- never a client-side calculation -- until one actually triggers free games", async () => {
+            const {session, getAttempts} = createControllableFreeGamesSession((attempt) => (attempt >= 4 ? 3 : 0));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findFreeGames(created.session.sessionId);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.session.debug?.artifact?.featureEvents?.some((event) => event.type === "freeGamesTriggered")).toBe(true);
+            // Proves the search actually played 4 real, settled rounds to get there, not a single check --
+            // each of the first 3 genuinely didn't trigger free games (see wonFreeGamesAtAttempt above).
+            expect(getAttempts()).toBe(4);
+        });
+
+        it("findFreeGames reports an honest 'error' for a game that doesn't support free games, never throwing, and never burning a spin first", async () => {
+            const loadGame = jest.fn(() => Promise.resolve(createFakeVideoSlotGame()));
+            const service = new StudioPlayService(loadGame);
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") {
+                throw new Error("expected ok");
+            }
+
+            const result = await service.findFreeGames(created.session.sessionId);
+
+            expect(result).toEqual({status: "error", error: "This game doesn't support free games, so Find free games isn't available for it."});
+
+            // Proves it never burned a real spin trying: the session's credits are exactly what a plain
+            // spin() from this same starting point produces, not one round further along.
+            const spun = await service.spin(created.session.sessionId);
+            if (spun.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(spun.session.credits).toBe(995);
+        });
+
         describe("against a resolved native outcome-library project (no live GameSessionHandling)", () => {
             let bundleRoot: string;
 
@@ -680,6 +811,40 @@ describe("StudioPlayService", () => {
                 }
 
                 const result = await service.findSymbolWin(created.session.sessionId, "no-such-symbol");
+
+                expect(result).toEqual({status: "error", error: "No matching round was found within 5 spins."});
+            });
+
+            it("findFreeGames finds a real drawn round by reading the already-drawn artifact's own featureEvents, never a live session/strategy object", async () => {
+                const bundleDir = path.join(bundleRoot, "free-games-library");
+                await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildFreeGamesLibraryModeInput("base", "fg-lib")], bundleDir);
+                const service = new StudioPlayService();
+                const created = await service.newSession(bundleDir, "studio-play-find-free-games-seed");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                const result = await service.findFreeGames(created.session.sessionId);
+
+                expect(result.status).toBe("ok");
+                if (result.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                expect(result.session.debug?.artifact?.featureEvents?.some((event) => event.type === "freeGamesTriggered")).toBe(true);
+            });
+
+            it("findFreeGames against a bundle whose outcomes never trigger free games reports an honest 'error' once the bound is exhausted, never hanging", async () => {
+                const bundleDir = await buildLibraryBundle();
+                // maxFindScenarioSpins overridden to a small bound (6th constructor argument) -- this
+                // bundle's own outcomes (see OutcomeLibraryBundleTestFixtures) never carry a
+                // "freeGamesTriggered" feature event, so a search against it can never match.
+                const service = new StudioPlayService(undefined, undefined, undefined, undefined, undefined, 5);
+                const created = await service.newSession(bundleDir, "studio-play-find-seed");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                const result = await service.findFreeGames(created.session.sessionId);
 
                 expect(result).toEqual({status: "error", error: "No matching round was found within 5 spins."});
             });
