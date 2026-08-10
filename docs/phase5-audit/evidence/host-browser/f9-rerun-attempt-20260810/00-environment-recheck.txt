@@ -1,0 +1,53 @@
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"
+2026-08-10T05:47:09Z
+
+$ node --version
+v24.18.0
+
+$ cat /etc/os-release | head -2
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian GNU/Linux"
+
+# 1. No browser binary anywhere on the filesystem (fresh full search, not a re-cite of prior evidence)
+$ which google-chrome chromium chromium-browser google-chrome-stable
+(no output — none found)
+
+$ timeout 60 find / -xdev \( -iname "*chromium*" -o -iname "*chrome*" -o -iname "*firefox*" -o -iname "*webkit*" \) -type f 2>/dev/null | grep -v -E "^/workspace|^/proc"
+(no output — none found; exit 0)
+
+# 2. No CDP endpoint listening on any of the ports this repo's own audit script or documentation reference
+$ for p in 9222 9223 4100 3000; do node -e "probe 127.0.0.1:$p"; done
+9222 closed
+9223 closed
+4100 closed
+3000 closed
+
+# 3. No host-browser wiring supplied via environment (the exact variables scripts/phase5-host-browser-audit.mjs reads)
+$ env | grep -i P5_
+(no output — P5_STUDIO_URL / P5_PROJECT_STUDIO_URL / P5_PACKAGE_STUDIO_URL / P5_DEVTOOLS_URL / P5_AUDIT_OUTPUT are all unset)
+
+# 4. No Playwright/Puppeteer available to drive a headless build even if one could be installed
+$ node -e "try{require('playwright'); console.log('playwright ok')}catch(e){console.log('no playwright: '+e.message)}"
+no playwright: Cannot find module 'playwright'
+Require stack:
+- /workspace/[eval]
+
+# 5. No unzip/wget/curl/python3 to fetch and stand up a browser build manually
+$ which wget unzip python3 curl
+(no output — none found)
+
+# 6. Not root, no working package manager, npx explicitly disabled — same three independent blockers "Correction round" first documented, reconfirmed here rather than assumed
+$ apt-get install -y libglib2.0-0
+E: Could not open lock file /var/lib/dpkg/lock-frontend - open (13: Permission denied)
+E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), are you root?
+
+$ sh -n /usr/local/bin/npm
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+
+$ npx --version
+POKIE correction policy: npx is disabled; use npm test -- saved-file
+
+# 7. Outbound network egress itself is fine — ruling out "no network" as an alternate excuse; the blocker is strictly
+#    the missing browser binary/shared libraries/root/package manager inside this container, not connectivity
+$ node -e "fetch('https://www.google.com', {method:'HEAD'}).then(r=>console.log('net ok', r.status)).catch(e=>console.log('net fail: '+e.message))"
+net ok 200

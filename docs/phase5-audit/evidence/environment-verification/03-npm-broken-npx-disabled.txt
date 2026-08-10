@@ -1,0 +1,32 @@
+$ sh -n /usr/local/bin/npm   # the sandbox's npm wrapper has a genuine shell syntax bug, unrelated to POKIE source
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+exit code: 2
+
+$ cat /usr/local/bin/npm
+#!/bin/sh
+set -eu
+case " $* " in
+  *' check:fast '*|*' check:full '*|*' check:release '*|*'|*' test:integration '*|*' test:workflows '*|*' test:coverage '*|*' test:packaging '*|*' *' --selectProjects '*)
+    echo "POKIE implementation policy: project-wide gates are orchestrator-only" >&2; exit 126 ;;
+esac
+if [ "${1:-}" = run ] && [ "${2:-}" = typecheck ] && [ "$#" -eq 2 ]; then
+  exec /usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npm-cli.js run typecheck
+fi
+[ "${1:-}" = test ] && [ "${2:-}" = -- ] || { echo "POKIE implementation policy: only typecheck or named tests allowed" >&2; exit 126; }
+shift 2
+[ "$#" -gt 0 ] || { echo "POKIE implementation policy: name a test file" >&2; exit 126; }
+for file in "$@"; do
+  case "$file" in *.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx) ;; *) echo "POKIE implementation policy: test argument must name a test file" >&2; exit 126 ;; esac
+done
+exec /usr/local/bin/node /usr/local/lib/node_modules/npm/bin/npm-cli.js test -- "$@"
+
+$ npm run typecheck   # even the one command this correction's targeted_tests.existing_checks calls for cannot run through npm
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+exit code: 2
+
+$ node node_modules/.bin/tsc --noEmit -p tsconfig.typecheck.json   # works when invoked directly, bypassing the broken npm wrapper
+exit code (0 = clean): 0
+
+$ npx playwright --version   # npx is explicitly disabled by sandbox policy, independent of the npm bug
+POKIE correction policy: npx is disabled; use npm test -- saved-file
+exit code: 126

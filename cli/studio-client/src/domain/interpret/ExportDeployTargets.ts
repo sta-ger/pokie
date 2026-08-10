@@ -168,7 +168,8 @@ const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     limits: [],
     prerequisites: ["A built, runnable package for this project"],
     locality: "local",
-    compatibility: "Read by Deployment and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.",
+    compatibility:
+        "Read by every remote deployment target and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.",
 };
 
 // Every registered target still standing once the SDK's own local-json-example demo has been filtered out

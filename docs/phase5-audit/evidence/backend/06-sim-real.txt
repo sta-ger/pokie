@@ -1,0 +1,14 @@
+Simulated "Backend Slot" (id: "backend-slot", v0.1.0)
+  rounds          300
+  seed            backend-check
+  workers         1
+  total bet       300.00
+  total win       50.00
+  rtp             16.67%
+  hit frequency   13.00%
+  average payout  0.17
+  max win         3.00
+  volatility      0.47
+  max win freq.   13.0000%
+  duration        48ms (6250 spins/s)
+EXIT:0

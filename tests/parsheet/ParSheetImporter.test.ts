@@ -542,4 +542,11 @@ describe("ParSheetImporter", () => {
             ]);
         });
     });
+
+    it("wraps a corrupt/non-xlsx file's raw ExcelJS error in a clean, POKIE-authored message instead of leaking it verbatim", async () => {
+        fs.writeFileSync(filePath, "not a real xlsx file at all", "utf-8");
+        const importer = new ParSheetImporter();
+
+        await expect(importer.importFromFile(filePath)).rejects.toThrow(`Could not read "${filePath}" as a PAR sheet XLSX workbook:`);
+    });
 });

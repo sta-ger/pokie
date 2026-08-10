@@ -159,6 +159,17 @@ describe("ParCommand", () => {
 
             await expect(command.run(["import", "game.xlsx", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
+
+        // Same real finding as the "export" describe block below: an issue's suggestion must survive to
+        // stdout, on the import path too, not just the export path.
+        it("prints an issue's suggestion beneath it when the importer reports an error with one", async () => {
+            const issues: ValidationIssue[] = [{code: "parsheet-missing-sheet", severity: "error", message: "bad", suggestion: "add the Meta sheet"}];
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues}), createStubExporter([]));
+
+            await command.run(["import", "game.xlsx"]);
+
+            expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("suggestion: add the Meta sheet");
+        });
     });
 
     describe("export", () => {
@@ -202,6 +213,33 @@ describe("ParCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("Exported");
             expect(printed).toContain("heads up");
+        });
+
+        // Real finding (P5-POLISH-20 audit): ParSheetExporter attaches an actionable `suggestion` to
+        // both of its own reel-source errors (e.g. "run pokie reel generate --materialize" for
+        // "parsheet-unsupported-reel-source") but ParCommand used to print only `code`/`message`,
+        // silently dropping it -- unlike ValidateCommand's own errors/warnings/suggestions convention.
+        // A real user hitting exactly this error never saw the fix it names.
+        it("prints an issue's suggestion beneath it when the exporter reports an error with one", async () => {
+            const exporter = createStubExporter([
+                {code: "parsheet-unsupported-reel-source", severity: "error", message: "bad source", suggestion: "run pokie reel generate --materialize"},
+            ]);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
+
+            await command.run(["export", "game.json"]);
+
+            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("suggestion: run pokie reel generate --materialize");
+        });
+
+        it("prints a warning's suggestion beneath it when the exporter reports one", async () => {
+            const exporter = createStubExporter([
+                {code: "blueprint-symbol-missing-payout", severity: "warning", message: "heads up", suggestion: "add a payout for it"},
+            ]);
+            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
+
+            await command.run(["export", "game.json"]);
+
+            expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("suggestion: add a payout for it");
         });
 
         it("throws a descriptive error when no blueprint path is given", async () => {

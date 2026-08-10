@@ -1,0 +1,22 @@
+Usage: stakeengine export [options] <config.json> [excess...]
+
+Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static
+file format.
+
+Arguments:
+  config.json  <config.json> lists one WeightedOutcomeLibrary source per Stake
+               mode, either a plain JSON file — {"modes": [{"modeName": "base",
+               "cost": 1, "libraryPath": "./libraries/base.json"}, ...]} — or a
+               canonical outcome-library bundle (see
+               docs/outcome-library-bundle.md) — {"modeName": "base", "cost": 1,
+               "bundleDir": "./bundle", "bundleModeName": "base"}
+               ("bundleModeName" defaults to "modeName" when omitted); exactly
+               one of "libraryPath"/"bundleDir" is required per mode — see
+               docs/stake-engine-export.md for the format.
+  excess       rejected if present -- this verb takes no further positionals
+
+Options:
+  --out <dir>  output directory (default: a "stakeengine" sibling of
+               <config.json>)
+  -h, --help   Display help for this command.
+

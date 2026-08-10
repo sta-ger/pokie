@@ -1,0 +1,4 @@
+[2026-08-09T21:30:13.589Z] NAVIGATE http://127.0.0.1:4113/#/home/projects
+[2026-08-09T21:30:33.740Z] FAILED Error: Timed out waiting for the rendered Projects page
+    at wait (file:///tmp/p5-import-rerun.mjs:29:174)
+    at async main (file:///tmp/p5-import-rerun.mjs:33:136)

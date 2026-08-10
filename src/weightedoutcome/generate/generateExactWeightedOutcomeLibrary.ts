@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import v8 from "v8";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
 import type {RoundArtifactProvenance} from "../../artifact/RoundArtifactProvenance.js";
@@ -23,6 +24,20 @@ import {WeightedOutcomeLibraryGenerationError} from "./WeightedOutcomeLibraryGen
 // either raises maxOutcomeSpaceSize explicitly or opts into "bounded" -- chosen as a size any single Node
 // process can sweep (with dedup) in well under a minute for a typical grid, not a hard platform limit.
 export const DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE = BigInt(20_000_000);
+
+// A wide/many-reel grid can have so little raw-combination duplication that the distinct-grid count
+// accumulateUniqueGridWeights retains approaches maxOutcomeSpaceSize itself -- i.e. staying under
+// maxOutcomeSpaceSize does NOT, on its own, bound memory the way the comment above assumes for "a typical
+// grid". Rather than trying to predict that in advance (accurately requires the reel/symbol distribution
+// this function doesn't have until it has already swept), this is a runtime safety net: an 85%-of-heap-limit
+// ceiling any generate run defaults to, so a run that is genuinely going to exhaust memory fails closed with
+// a clean, actionable WeightedOutcomeLibraryGenerationError (see accumulateUniqueGridWeights) instead of an
+// uncatchable V8 "JavaScript heap out of memory" process abort.
+const HEAP_SAFETY_FRACTION = 0.85;
+
+function defaultHeapUsedLimitBytes(): number {
+    return v8.getHeapStatistics().heap_size_limit * HEAP_SAFETY_FRACTION;
+}
 
 export type BoundedCoverageGenerationOptions = {
     // How many independent reel-stop draws to sample (with replacement) through the real calculation path.
@@ -65,6 +80,13 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly onProgress?: (processedRawIndex: bigint, progressTotal: bigint) => void;
     readonly artifactValidator?: ValidationRule<RoundArtifact>;
     readonly now?: () => Date;
+    // Runtime memory safety net for the accumulation phase (see accumulateUniqueGridWeights and
+    // HEAP_SAFETY_FRACTION above) -- both default to real values (an 85%-of-heap-limit ceiling, real
+    // process.memoryUsage().heapUsed), so every caller gets this protection with no extra wiring. Pass
+    // heapUsedLimitBytes: Infinity to disable it explicitly (e.g. a caller that already runs generation in
+    // its own dedicated, resource-limited worker/process and wants that to be the only guard).
+    readonly heapUsedLimitBytes?: number;
+    readonly getHeapUsedBytes?: () => number;
 };
 
 export type GenerateExactWeightedOutcomeLibraryResult = {
@@ -216,6 +238,8 @@ export async function *streamExactWeightedOutcomes(
         initialGrids: prepared.initialGrids,
         initialProcessedRawCount: prepared.initialProcessedRawCount,
         sourceEnumerationId: prepared.sourceEnumerationId,
+        heapUsedLimitBytes: options.heapUsedLimitBytes ?? defaultHeapUsedLimitBytes(),
+        getHeapUsedBytes: options.getHeapUsedBytes ?? (() => process.memoryUsage().heapUsed),
     });
 
     const provenance: RoundArtifactProvenance = {

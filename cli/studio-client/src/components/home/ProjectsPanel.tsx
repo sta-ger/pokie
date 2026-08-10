@@ -36,11 +36,14 @@ type ImportView =
     | {status: "registering"; result: RecognizedPreview}
     | {status: "registered"; name: string};
 
-// The only ProjectType Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext)
-// can actually load into the Project Dashboard -- every other recognized type (blueprint/outcomeLibrary/
-// stakeAdapter/wasm/parWorkbook) is a real, correctly-detected project, just not one there's a "run it in
-// Studio" flow for yet, so the list shows its type/capabilities but no Open action.
-const OPENABLE_TYPE: StudioProjectType = "tsPackage";
+// The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
+// actually load into the Project Dashboard. "tsPackage" passes straight through; "blueprint" is
+// materialized into a real runtime first (see createMaterializingRuntimePackageResolver's own doc
+// comment) -- both land on the exact same Overview/Game Model workspace, so both get the same Open
+// action here. Every other recognized type (outcomeLibrary/stakeAdapter/wasm/parWorkbook) is a real,
+// correctly-detected project, just not one there's a "run it in Studio" flow for yet, so the list shows
+// its type/capabilities but no Open action.
+const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>(["tsPackage", "blueprint"]);
 
 const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",
@@ -118,11 +121,12 @@ export function ProjectsPanel() {
             return;
         }
         setOpeningLocation(entry.location);
+        const subject = entry.type === "blueprint" ? "The blueprint file" : "The project directory";
         openAndNavigate(entry.location)
             .catch((error: unknown) =>
                 setListView({
                     status: "error",
-                    message: describePathActionError("The project directory", errorMessage(error)),
+                    message: describePathActionError(subject, errorMessage(error)),
                     detail: error instanceof ProjectOpenError ? error.detail : undefined,
                 }),
             )
@@ -178,7 +182,7 @@ export function ProjectsPanel() {
         if (entry.status === "missing") {
             return <Text c="dimmed">{entry.name} (missing)</Text>;
         }
-        if (entry.type === OPENABLE_TYPE) {
+        if (OPENABLE_TYPES.has(entry.type)) {
             return (
                 <Anchor component="button" type="button" onClick={() => handleOpen(entry)}>
                     {entry.name}
@@ -253,7 +257,7 @@ export function ProjectsPanel() {
                                         <Table.Td>{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
                                         <Table.Td>
                                             <QuickActions>
-                                                {entry.status === "ok" && entry.type === OPENABLE_TYPE && (
+                                                {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
                                                     <Button
                                                         variant="default"
                                                         size="xs"
@@ -290,7 +294,7 @@ export function ProjectsPanel() {
                     <PathInput
                         label="Location"
                         placeholder="./my-game"
-                        kind="directory"
+                        kind="any"
                         browseTitle="Browse for a project to import"
                         browseId="import-project-location"
                         value={location}

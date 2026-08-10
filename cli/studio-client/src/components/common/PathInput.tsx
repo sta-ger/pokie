@@ -71,6 +71,12 @@ const PATH_ISSUE_COPY: Record<StudioFsBrowseErrorReason, (path: string, kind: Pa
 
 const NETWORK_PATH_ISSUE: PathIssue = {status: "Couldn't check this location.", remediation: "Confirm POKIE Studio's server is reachable, then try again."};
 
+const DEFAULT_BROWSE_TITLE: Record<PathBrowseKind, string> = {
+    file: "Browse for a file",
+    any: "Browse for a file or folder",
+    directory: "Browse for a directory",
+};
+
 function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: string, kind: PathBrowseKind): PathIssue {
     return reason === "network" ? NETWORK_PATH_ISSUE : PATH_ISSUE_COPY[reason](path, kind);
 }
@@ -80,9 +86,13 @@ function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: 
 // opaque. Browse itself tries a real, system-native OS dialog first (see StudioNativePickerService) --
 // the only way to get an actual filesystem path back, since a browser deliberately never exposes one --
 // and only opens PathBrowseModal's honestly-labelled "Server filesystem browser" once the native dialog
-// is confirmed unavailable (a headless/remote Studio server) or itself fails. A Cancel from either picker
-// leaves the field untouched. The chosen start location (see resolveBrowseStartLocation.ts) is reused as
-// the fallback modal's own initial location too, so falling back never loses that precedence.
+// is confirmed unavailable (a headless/remote Studio server) or itself fails. `kind: "any"` skips the
+// native dialog entirely and always goes straight to that fallback modal instead -- StudioNativePickerService
+// only ever asks the OS for a folder dialog or a file dialog, never both at once, so there's no truthful
+// native call this kind could make; the fallback modal, unlike the native dialog, already lets a "any"
+// field select either. A Cancel from either picker leaves the field untouched. The chosen start location
+// (see resolveBrowseStartLocation.ts) is reused as the fallback modal's own initial location too, so
+// falling back never loses that precedence.
 export function PathInput({
     kind = "directory",
     browseTitle,
@@ -151,17 +161,19 @@ export function PathInput({
         setBrowsing(true);
         try {
             const startLocation = await resolveBrowseStartLocation({fetchImpl, currentValue, browseId, relevantDirectory, defaultLocationName, kind});
-            const availability = await checkNativePickerAvailability(fetchImpl);
-            if (availability.status === "available") {
-                const result = await pickNativePath(fetchImpl, {kind, startPath: startLocation, fileFilters});
-                if (result.status === "selected") {
-                    rememberAndSelect(result.path);
-                    return;
+            if (kind !== "any") {
+                const availability = await checkNativePickerAvailability(fetchImpl);
+                if (availability.status === "available") {
+                    const result = await pickNativePath(fetchImpl, {kind, startPath: startLocation, fileFilters});
+                    if (result.status === "selected") {
+                        rememberAndSelect(result.path);
+                        return;
+                    }
+                    if (result.status === "cancelled") {
+                        return;
+                    }
+                    // "unavailable"/"error" falls through to the fallback modal below.
                 }
-                if (result.status === "cancelled") {
-                    return;
-                }
-                // "unavailable"/"error" falls through to the fallback modal below.
             }
             setModalInitialPath(startLocation ?? currentValue);
             setModalOpened(true);
@@ -227,7 +239,7 @@ export function PathInput({
                 onSelect={rememberAndSelect}
                 kind={kind}
                 initialPath={modalInitialPath}
-                title={browseTitle ?? (kind === "file" ? "Browse for a file" : "Browse for a directory")}
+                title={browseTitle ?? DEFAULT_BROWSE_TITLE[kind]}
             />
         </Stack>
     );

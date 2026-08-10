@@ -1,0 +1,3 @@
+Could not export "mathgame.json" to "mathgame-fail.par.xlsx" (1 error(s)):
+  - parsheet-unsupported-reel-source: The blueprint uses "reelStripGeneration", which "pokie par export" cannot represent.
+EXIT:1

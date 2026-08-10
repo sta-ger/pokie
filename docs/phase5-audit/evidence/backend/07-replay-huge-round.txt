@@ -1,0 +1,42 @@
+{
+    "sessionId": "cdb3b829-ad94-428a-97b5-17fd8f507655",
+    "game": {
+        "id": "backend-slot",
+        "name": "Backend Slot",
+        "version": "0.1.0"
+    },
+    "seed": "backend-check",
+    "round": 999999,
+    "totalBet": 999999,
+    "totalWin": 197550,
+    "screen": [
+        [
+            "10",
+            "Q",
+            "9"
+        ],
+        [
+            "9",
+            "K",
+            "9"
+        ],
+        [
+            "10",
+            "Q",
+            "J"
+        ],
+        [
+            "A",
+            "W",
+            "K"
+        ],
+        [
+            "Q",
+            "J",
+            "9"
+        ]
+    ],
+    "timestamp": 1786262927477,
+    "durationMs": 24722
+}
+EXIT:0

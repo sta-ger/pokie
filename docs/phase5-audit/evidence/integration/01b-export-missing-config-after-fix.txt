@@ -1,0 +1,2 @@
+Could not read Stake Engine export config at "/nonexistent/config.json": ENOENT: no such file or directory, open '/nonexistent/config.json'
+EXIT:1

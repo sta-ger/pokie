@@ -81,4 +81,23 @@ describe("describeExportDeployTargetCards", () => {
         expect(cards.map((card) => card.kind).sort()).toEqual(["remoteDeployment", "staticExport"].sort());
         expect(cards.some((card) => card.kind === "outcomeLibrary")).toBe(false);
     });
+
+    // Regression for a P5-POLISH-20 audit finding: the outcome-library card's own "compatibility" prose used
+    // to read "Read by Deployment and Stake Engine Export alike", a bare "Deployment" that -- taken out of
+    // context in a saved DOM snapshot -- looked like a reference to the pre-P5-POLISH-04 standalone
+    // Deployment tab (deleted; see ProjectDashboardPage's own doc comment on "exportDeploy"/ExportDeployTab
+    // being the sole Studio build surface) rather than this single tab's own "Remote deployment" group. Every
+    // card's own user-facing prose must consistently say "remote deployment", never a bare "Deployment", so
+    // this shell can never again read as if a separate Deployment surface still exists.
+    it("never describes any card's own prose with a bare 'Deployment' -- only ever 'remote deployment', matching the Remote deployment group's own name", () => {
+        const remoteTarget = target({id: "acme-rgs-v2"});
+        const cards = describeExportDeployTargetCards([remoteTarget], ["runtime.execute"]);
+        expect(cards.length).toBeGreaterThan(0);
+        const bareDeploymentPattern = /(?<!remote )(?<!Remote )\bDeployment\b/;
+        for (const card of cards) {
+            for (const field of [card.label, card.adapter, card.purpose, card.destination, card.writePublishBehavior, card.compatibility, ...card.capabilities, ...card.limits, ...card.prerequisites]) {
+                expect(field).not.toMatch(bareDeploymentPattern);
+            }
+        }
+    });
 });

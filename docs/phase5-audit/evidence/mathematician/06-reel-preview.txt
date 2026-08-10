@@ -1,0 +1,12 @@
+Reel strip generation for "mathgame.json"
+  reel 0  seed 1272831698  attempts 1  length 28
+    7 Q J A K J A Q J Q A Q 7 K 7 7 8 K K Q A A K 8 K A A 10
+  reel 1  seed 825024350  attempts 1  length 28
+    7 7 A K A Q K J K 8 Q A K 7 K 8 Q J A 10 A K Q A J Q A 7
+  reel 2  seed 733336573  attempts 1  length 28
+    K J A A J 7 Q K A 8 A Q A A J 7 Q 10 8 Q K A 7 K K K 7 Q
+  reel 3  seed 99067111  attempts 1  length 28
+    8 8 A 7 Q K A A K 7 Q A J K A K K 7 Q 7 Q A A J Q K 10 J
+
+Dry run -- no files written. Re-run with --apply to pin these strips into reelStripGeneration.
+EXIT:0

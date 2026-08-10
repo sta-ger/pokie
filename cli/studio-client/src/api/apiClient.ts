@@ -81,9 +81,9 @@ export async function listRecentProjects(fetchImpl: FetchLike): Promise<StudioHo
 // `path` relative to it instead of Studio's own server root -- see StudioFsBrowseService.browse's own
 // doc comment for why a project-scoped field (Certification's bundle directory, an Outcome Libraries
 // selector, ...) needs this to show a truthful hint at all. `kind`, when "file", validates/resolves
-// `path` as a file instead of a directory -- omitted (every navigation call, e.g. PathBrowseModal's own
-// directory listing), it stays "directory", the same contract this always had.
-export async function browseFilesystem(fetchImpl: FetchLike, path?: string, base?: string, kind?: "directory" | "file"): Promise<StudioFsBrowseView> {
+// `path` as a file instead of a directory; "any" accepts either -- omitted (every navigation call, e.g.
+// PathBrowseModal's own directory listing), it stays "directory", the same contract this always had.
+export async function browseFilesystem(fetchImpl: FetchLike, path?: string, base?: string, kind?: "directory" | "file" | "any"): Promise<StudioFsBrowseView> {
     const params = new URLSearchParams();
     if (path && path.trim().length > 0) {
         params.set("path", path);
@@ -91,7 +91,7 @@ export async function browseFilesystem(fetchImpl: FetchLike, path?: string, base
     if (base && base.trim().length > 0) {
         params.set("base", base);
     }
-    if (kind === "file") {
+    if (kind === "file" || kind === "any") {
         params.set("kind", kind);
     }
     // Checked via the serialized string, not `params.size` -- jsdom's URLSearchParams polyfill (used by

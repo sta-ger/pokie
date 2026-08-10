@@ -1,0 +1,35 @@
+Usage: init [options] [directory] [excess...]
+
+Turn the current or given [directory] into a prepared, immediately valid POKIE
+game package in place, with no game-id subdirectory: merges/patches
+package.json, and writes tsconfig.json, README.md and a real, hand-editable
+src/index.ts wherever they're missing, then (unless --no-prepare) installs
+dependencies and builds and verifies dist/index.js -- entirely
+non-interactively, with --package-name/--game-id/--game-name/--version to
+override its directory-derived defaults. Never asks reel/paytable/mechanics
+questions; for those, design a Blueprint Project with "pokie create" and build
+it with "pokie build" instead.
+
+Arguments:
+  directory              directory to initialize in place (default: the current
+                         directory)
+  excess                 rejected if present -- this command takes no further
+                         positionals
+
+Options:
+  --package-name <name>  override the package.json "name" (default: derived from
+                         the directory)
+  --game-id <id>         override the game manifest id (default: derived from
+                         the directory)
+  --game-name <name>     override the game manifest name (default: derived from
+                         the directory)
+  --version <version>    override the initial package/game version (default:
+                         "0.1.0")
+  --yes                  confirm merging into a non-empty directory that doesn't
+                         look like a POKIE package yet
+  --no-install           skip "npm install" (still builds/verifies unless
+                         --no-prepare is also given)
+  --no-prepare           scaffold files only -- skip installing dependencies,
+                         building, and verifying
+  -h, --help             Display help for this command.
+

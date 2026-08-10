@@ -1,0 +1,90 @@
+POKIE Studio
+/
+Fixture Slot
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Fixture Slot
+
+/tmp/p5-build-export.loJC0L/package
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Refresh
+All sessions
+6fe2fe79-7cc2-460c-ae00-a9d62a981d9d
+Round 1 in session 6fe2fe79-7cc2-460c-ae00-a9d62a981d9d — credits 1002, win 3, 8/9/2026, 10:41:18 PM
+Loaded replay
+Source	Recorded -- Play tab spin
+Identities	session 6fe2fe79-7cc2-460c-ae00-a9d62a981d9d, round 1
+Seed	(no seed was given for this session)
+Version / hash	fixture-slot v0.1.0
+Timestamp	8/9/2026, 10:41:18 PM
+Completeness	Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.
+Inspectable	
+AVAILABLE
+This round's data is loaded and ready to inspect.
+Reproducible	
+UNAVAILABLE
+This is a live spin's actual recorded result -- there's nothing to reproduce it against.
+Comparable	
+UNAVAILABLE
+A fresh forward replay with no prior recorded result to compare against.
+Exportable	
+AVAILABLE
+Ready to download as JSON.
+Game	Fixture Slot (id: "fixture-slot", v0.1.0)
+Pokie version	1.3.0
+Config hash	sha256:463a0d115a873efc6bec4867c1bb8be295a17a43df01fa10db844275c1cd9819
+Bet mode	base
+Stake	1.00
+Total win	3.00 (3.00x)
+Credits	1002
+A
+B
+A
+	
+B
+B
+B
+	
+C
+B
+B
+line: B, win: 3
+Round detail
+Type	Symbol	Amount	Positions	Multiplier
+line	B	3.00 (3.00x stake)	3	not applicable — no multiplier applied to this win
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+Snapshot captured for this round — see Advanced details for the full before/after state.
+
+Show advanced details (raw JSON, debug data)
+
+Download JSON
+Recent replays
+Refresh
+
+No replays run yet.

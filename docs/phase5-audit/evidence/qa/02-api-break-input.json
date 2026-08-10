@@ -1,0 +1,27 @@
+[
+  [
+    "open nonexistent path",
+    400,
+    "{\"error\":\"\\\"projectRoot\\\" is required.\"}"
+  ],
+  [
+    "open empty body",
+    400,
+    "{\"error\":\"\\\"projectRoot\\\" is required.\"}"
+  ],
+  [
+    "open malformed json",
+    400,
+    "{\"error\":\"\\\"projectRoot\\\" is required.\"}"
+  ],
+  [
+    "random blueprint object seed",
+    400,
+    "{\"error\":\"\\\"seed\\\" must be an integer when given.\"}"
+  ],
+  [
+    "validate garbage blueprint",
+    200,
+    "{\"status\":\"invalid\",\"errors\":[{\"code\":\"blueprint-manifest-missing\",\"severity\":\"error\",\"message\":\"\\\"manifest\\\" must be an object with non-empty \\\"id\\\"/\\\"name\\\"/\\\"version\\\" strings.\"},{\"code\":\"blueprint-reels-invalid\",\"severity\":\"error\",\"message\":\"\\\"reels\\\" must be a positive integer.\",\"path\":\"reels\"},{\"code\":\"blueprint-rows-invalid\",\"severity\":\"error\",\"message\":\"\\\"rows\\\" must be a positive integer.\",\"path\":\"rows\"},{\"code\":\"blueprint-symbols-invalid\",\"severity\":\"error\",\"message\":\"\\\"symbols\\\" must be a non-empty array of non-empty strings.\"},{\"code\":\"blueprint-paytable-missing\",\"severity\":\"error\",\"message\":\"\\\"paytable\\\" must be an object mapping symbol ids to {matchCount: betMultiplier}.\"}],\"warnings\":[]}"
+  ]
+]

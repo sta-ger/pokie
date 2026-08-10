@@ -1,0 +1,2 @@
+Could not read "/nonexistent/pkg/package.json": ENOENT: no such file or directory, open '/nonexistent/pkg/package.json'
+EXIT:1

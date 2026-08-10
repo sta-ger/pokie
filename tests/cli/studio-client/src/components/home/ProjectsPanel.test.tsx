@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -119,6 +119,175 @@ describe("ProjectsPanel: Import Project", () => {
 
         expect(await screen.findByText('"/tmp/nothing" doesn\'t look like any POKIE project type POKIE recognizes.')).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
+    });
+
+    it("accepts a Blueprint file path with no folder-only warning, requesting kind=any (not directory-only) for its resolved-path hint", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/games/blueprint.json", displayPath: "./blueprint.json", entries: [], isDirectory: false},
+            }),
+            "/api/home/projects/registry/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "recognized", location: "/games/blueprint.json", type: "blueprint", capabilities: [], suggestedName: "blueprint"},
+            }),
+            "/api/home/projects/registry/register": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location: "/games/blueprint.json",
+                        name: "blueprint",
+                        type: "blueprint",
+                        capabilities: [],
+                        origin: "external",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                },
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/blueprint.json");
+
+        expect(await screen.findByText("Resolves to: /games/blueprint.json")).toBeInTheDocument();
+        expect(screen.queryByText(/is a file, not a folder/)).not.toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fgames%2Fblueprint.json&kind=any")).toBe(true);
+
+        await user.click(screen.getByRole("button", {name: "Detect"}));
+
+        expect(await screen.findByText(/Detected a Blueprint at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Register"}));
+
+        expect(await screen.findByText('Registered "blueprint" -- it now shows up in Your projects above.')).toBeInTheDocument();
+    });
+
+    it("registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/games/blueprint.json", displayPath: "./blueprint.json", entries: [], isDirectory: false},
+            }),
+            "/api/home/projects/registry/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "recognized", location: "/games/blueprint.json", type: "blueprint", capabilities: [], suggestedName: "blueprint"},
+            }),
+            "/api/home/projects/registry/register": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location: "/games/blueprint.json",
+                        name: "blueprint",
+                        type: "blueprint",
+                        capabilities: [],
+                        origin: "external",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                },
+            }),
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: "/games/blueprint.json"}, manifest: {id: "blueprint", name: "blueprint", version: "0.1.0"}},
+            }),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "loaded", projectRoot: "/games/blueprint.json", game: {id: "blueprint", name: "blueprint", version: "0.1.0"}},
+            }),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/blueprint.json", valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/blueprint.json");
+        await user.click(screen.getByRole("button", {name: "Detect"}));
+
+        expect(await screen.findByText(/Detected a Blueprint at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Register"}));
+        expect(await screen.findByText('Registered "blueprint" -- it now shows up in Your projects above.')).toBeInTheDocument();
+
+        // The freshly registered Blueprint row gets the same Open action a Package row does -- not just
+        // Remove (StudioHomeService.openProject materializes a "blueprint" location into a real runtime
+        // before loading it, so it reaches the exact same Project Dashboard a Package does).
+        await user.click(screen.getByRole("button", {name: "Open"}));
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/open",
+                    init: expect.objectContaining({body: JSON.stringify({projectRoot: "/games/blueprint.json"})}),
+                }),
+            ),
+        );
+        expect(await screen.findByRole("heading", {name: "blueprint"})).toBeInTheDocument();
+        expect(within(screen.getByRole("navigation", {name: "Sections"})).getByRole("button", {name: "Overview"})).toBeInTheDocument();
+        expect(within(screen.getByRole("navigation", {name: "Sections"})).getByRole("button", {name: "Game Model"})).toBeInTheDocument();
+    });
+
+    it("accepts a package directory path with no file-only warning, requesting kind=any for its resolved-path hint", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/games/a", displayPath: "./a", entries: [{name: "package.json", isDirectory: false}], isDirectory: true},
+            }),
+            "/api/home/projects/registry/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "recognized", location: "/games/a", type: "tsPackage", capabilities: ["multiMode"], suggestedName: "a"},
+            }),
+            "/api/home/projects/registry/register": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location: "/games/a",
+                        name: "a",
+                        type: "tsPackage",
+                        capabilities: ["multiMode"],
+                        origin: "external",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                },
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
+
+        expect(await screen.findByText("Resolves to: /games/a")).toBeInTheDocument();
+        expect(screen.queryByText(/is a directory, not a file/)).not.toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/browse?path=%2Fgames%2Fa&kind=any")).toBe(true);
+
+        await user.click(screen.getByRole("button", {name: "Detect"}));
+
+        expect(await screen.findByText(/Detected a Package at/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Register"}));
+
+        expect(await screen.findByText('Registered "a" -- it now shows up in Your projects above.')).toBeInTheDocument();
     });
 
     it("removes a registered entry after confirming, without deleting anything on disk", async () => {

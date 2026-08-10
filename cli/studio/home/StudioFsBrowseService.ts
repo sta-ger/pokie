@@ -18,7 +18,7 @@ export type StudioFsBrowseErrorReason = "absent" | "type" | "permission" | "unre
 // disk, not a failed request. `reason` classifies that same message so a caller (PathInput's hint) can
 // key its own tone/remediation copy off a stable value instead of pattern-matching `error` text.
 export type StudioFsBrowseView =
-    | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]}
+    | {status: "ok"; resolvedPath: string; displayPath: string; parentPath?: string; entries: StudioFsEntry[]; isDirectory: boolean}
     | {status: "error"; error: string; resolvedPath: string; reason: StudioFsBrowseErrorReason};
 
 // Lists a directory's immediate children so the browser can offer a navigable folder/file picker
@@ -61,11 +61,13 @@ export class StudioFsBrowseService {
     // readdir is attempted (a file has no children to list), so a `kind: "file"` call's own "ok" always
     // comes back with an empty `entries`, but still carries `parentPath` (the file's own containing
     // directory) so a caller wanting a browsable *location* for a file value -- see
-    // resolveBrowseStartLocation's own doc comment -- doesn't have to derive it itself. Defaults to
-    // "directory" (every existing caller -- PathBrowseModal's own directory-listing navigation, and any
-    // caller that omits it entirely) so directory browsing/listing is completely unaffected by this
-    // parameter's existence.
-    public browse(requestedPath: string | undefined, base?: string, kind: "directory" | "file" = "directory"): StudioFsBrowseView {
+    // resolveBrowseStartLocation's own doc comment -- doesn't have to derive it itself. `kind: "any"`
+    // accepts either a file or a directory -- never a "type" error -- for a field like Import Project's
+    // own Location, which genuinely takes both a package directory and a single project file (a Blueprint
+    // JSON, a PAR workbook, ...). Defaults to "directory" (every existing caller -- PathBrowseModal's own
+    // directory-listing navigation, and any caller that omits it entirely) so directory browsing/listing
+    // is completely unaffected by this parameter's existence.
+    public browse(requestedPath: string | undefined, base?: string, kind: "directory" | "file" | "any" = "directory"): StudioFsBrowseView {
         const explicitBase = base !== undefined && base.trim().length > 0;
         const resolveBase = explicitBase ? path.resolve(base) : this.root;
         const resolvedPath = path.resolve(resolveBase, requestedPath && requestedPath.trim().length > 0 ? requestedPath : ".");
@@ -76,11 +78,10 @@ export class StudioFsBrowseService {
         } catch (error) {
             return {status: "error", ...this.describeError(error, resolvedPath), resolvedPath};
         }
-        if (kind === "file") {
-            if (stats.isDirectory()) {
-                return {status: "error", error: `"${resolvedPath}" is a directory, not a file.`, resolvedPath, reason: "type"};
-            }
-        } else if (!stats.isDirectory()) {
+        if (kind === "file" && stats.isDirectory()) {
+            return {status: "error", error: `"${resolvedPath}" is a directory, not a file.`, resolvedPath, reason: "type"};
+        }
+        if (kind === "directory" && !stats.isDirectory()) {
             return {status: "error", error: `"${resolvedPath}" is not a directory.`, resolvedPath, reason: "type"};
         }
         // The lexical isPathWithin check gates this: a ".." or absolute `requestedPath` that already,
@@ -90,9 +91,16 @@ export class StudioFsBrowseService {
             return {status: "error", error: `"${resolvedPath}" resolves, through a symlink, outside "${resolveBase}".`, resolvedPath, reason: "symlink-escape"};
         }
 
-        if (kind === "file") {
+        if (!stats.isDirectory()) {
             const parentPath = path.dirname(resolvedPath);
-            return {status: "ok", resolvedPath, displayPath: this.displayPath(resolvedPath, resolveBase), parentPath: parentPath === resolvedPath ? undefined : parentPath, entries: []};
+            return {
+                status: "ok",
+                resolvedPath,
+                displayPath: this.displayPath(resolvedPath, resolveBase),
+                parentPath: parentPath === resolvedPath ? undefined : parentPath,
+                entries: [],
+                isDirectory: false,
+            };
         }
 
         let names: string[];
@@ -110,6 +118,7 @@ export class StudioFsBrowseService {
             displayPath: this.displayPath(resolvedPath, resolveBase),
             parentPath: parentPath === resolvedPath ? undefined : parentPath,
             entries,
+            isDirectory: true,
         };
     }
 

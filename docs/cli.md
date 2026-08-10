@@ -894,10 +894,10 @@ through the same [`ReelStripGenerator`](reel-strip-generation.md) `pokie build` 
 `counts`/`weights`/locked positions/`maximumConsecutiveOccurrences`/adjacency/sequence/circular-distance
 constraints/`seed` a reel's own `reelStripGeneration[i]` entry already declares (by hand, via POKIE Studio's
 Blueprint editor, or via [`pokie create --random`](#pokie-create-name---random)'s own per-reel generation) is
-exactly what this command runs, previews, and — only with `--apply` — pins back in.
+exactly what this command runs, previews, and — only with `--apply`/`--materialize` — pins back in.
 
 ```
-pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply] [--out <file>] [--format json]
+pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] [--out <file>] [--format json]
 ```
 
 By default this is a **dry run**: it prints every targeted reel's generated strip (and, when the blueprint already
@@ -910,9 +910,19 @@ has a `reelStrips` entry at that index, how many positions differ from it) and w
 - `--apply` — pin each successfully generated reel's resulting strip into `reelStripGeneration[i]` as
   `{type: "literal", strip}`, replacing that entry outright. Every other reel (untargeted, or already `"literal"`)
   is left completely unchanged. Nothing is written at all unless **every** targeted reel generates successfully —
-  see below.
+  see below. `reelStripGeneration` stays present (now all-`"literal"`), so a blueprint that started this way still
+  can't be read by a tool that only understands plain `reelStrips` — see `--materialize` for that.
+- `--materialize` — resolve **every** `"generated"` entry (always the whole blueprint, using each reel's own
+  declared `seed` — incompatible with `--reel`/`--seed`/`--apply`) and collapse the result into a plain top-level
+  `reelStrips` array with `reelStripGeneration` removed entirely. This is the same materialization `pokie build`
+  performs internally when compiling a runtime module, exposed here as its own persisted output — it's the
+  documented fix for [`pokie par export`](#pokie-par-import-inputxlsx--pokie-par-export-configjson)'s
+  `parsheet-unsupported-reel-source` error,
+  since a PAR sheet workbook can only ever represent literal reels: a blueprint fresh out of
+  [`pokie create --random`](#pokie-create-name---random) or `--blank` (see [`pokie create [name]`](#pokie-create-name))
+  (or already `--apply`'d) still can't be exported until it's been through `--materialize`.
 - `--out <file>` — write the resulting blueprint to a different path instead of overwriting `<blueprint.json>` in
-  place (only meaningful together with `--apply`).
+  place (only meaningful together with `--apply`/`--materialize`).
 - `--format json` — print the full per-reel result (`success`, `attemptsUsed`, `diagnostics`, `strip`) as JSON
   instead of the human-readable summary.
 
@@ -920,11 +930,13 @@ This command only ever reads and writes the given Blueprint Project file — it 
 
 **When generation fails** — a targeted reel's constraints can't be satisfied within its own `maxAttempts` — this
 command reports it exactly like `pokie build` does: the failing reel's index, seed, attempt count, and the closest
-attempt's constraint violations. No file is written at all in that case, even with `--apply` — every targeted reel
-must succeed for any of them to be written, so a broken reel never silently strands the blueprint half-updated.
+attempt's constraint violations. No file is written at all in that case, even with `--apply`/`--materialize` —
+every targeted reel must succeed for any of them to be written, so a broken reel never silently strands the
+blueprint half-updated.
 
 ```
 pokie reel generate game.blueprint.json --reel 2 --seed 4242 --apply
+pokie reel generate game.blueprint.json --materialize --out game.materialized.json
 ```
 
 See [`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json)

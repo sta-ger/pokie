@@ -1,0 +1,3 @@
+Could not export "mathgame-empty-reel.json" to "empty-reel.par.xlsx" (1 error(s)):
+  - blueprint-reelstrip-invalid: "reelStrips[0]" must be a non-empty array of known symbol ids.
+EXIT:1

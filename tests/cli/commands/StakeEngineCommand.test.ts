@@ -216,6 +216,34 @@ describe("StakeEngineCommand", () => {
             await expect(command.run(["export", CONFIG_PATH, "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
         });
 
+        // Real finding (P5-POLISH-20 audit): loadJson's default implementation raises a raw Node `fs`/
+        // `JSON.parse` error (e.g. a bare "ENOENT: ..." with no "Could not read ..." framing and no
+        // CONFIG_HINT) for a missing/corrupt config or library file -- the single most likely real
+        // mistake here -- unlike every sibling malformed-descriptor error already covered above/below,
+        // and unlike loadGameBlueprint/DiffCommand/ParSheetImporter's own established convention.
+        it("wraps a config file load failure in a clean, POKIE-authored message instead of leaking it verbatim", async () => {
+            const loadJson = (): unknown => {
+                throw new Error("ENOENT: no such file or directory, open '/project/stake-config.json'");
+            };
+            const command = new StakeEngineCommand("1.3.0", createStubExporter(successResult), undefined, loadJson);
+
+            await expect(command.run(["export", CONFIG_PATH])).rejects.toThrow(
+                `Could not read Stake Engine export config at "${CONFIG_PATH}": ENOENT: no such file or directory, open '/project/stake-config.json'`,
+            );
+        });
+
+        it("wraps a libraryPath load failure in a clean, POKIE-authored message naming the mode, instead of leaking it verbatim", async () => {
+            const loadJson = (filePath: string): unknown => {
+                if (filePath === CONFIG_PATH) return descriptor;
+                throw new Error("ENOENT: no such file or directory, open '/project/libraries/base.json'");
+            };
+            const command = new StakeEngineCommand("1.3.0", createStubExporter(successResult), undefined, loadJson);
+
+            await expect(command.run(["export", CONFIG_PATH])).rejects.toThrow(
+                'Could not read mode "base"\'s outcome library at "/project/libraries/base.json": ENOENT: no such file or directory, open \'/project/libraries/base.json\'',
+            );
+        });
+
         it("throws a descriptive error when the descriptor JSON has no modes array", async () => {
             const loadJson = createStubJsonStore({[CONFIG_PATH]: {}});
             const command = new StakeEngineCommand("1.3.0", createStubExporter(successResult), undefined, loadJson);

@@ -220,6 +220,85 @@ describe("ReelCommand", () => {
         expect(printed).toMatch(/position\(s\) differ from the current reelStrips\[1\]/);
     });
 
+    describe("--materialize", () => {
+        it("resolves the whole blueprint and writes a plain reelStrips array with reelStripGeneration removed", async () => {
+            const writeFile = jest.fn();
+            const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);
+
+            const exitCode = await command.run(["generate", "game.json", "--materialize"]);
+
+            expect(exitCode).toBe(0);
+            expect(writeFile).toHaveBeenCalledTimes(1);
+            const [path, contents] = writeFile.mock.calls[0];
+            expect(path).toBe("game.json");
+            const written = JSON.parse(contents as string) as GameBlueprint;
+            expect(written.reelStripGeneration).toBeUndefined();
+            expect(written.reelStrips).toHaveLength(3);
+            expect(written.reelStrips?.[0]).toEqual(["A", "B", "A"]);
+            expect(written.reelStrips?.[1]).toHaveLength(4);
+            expect(written.reelStrips?.[2]).toHaveLength(4);
+        });
+
+        it("--materialize --out <file> writes to the given path instead of overwriting the input", async () => {
+            const writeFile = jest.fn();
+            const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);
+
+            await command.run(["generate", "game.json", "--materialize", "--out", "custom.json"]);
+
+            expect(writeFile).toHaveBeenCalledTimes(1);
+            expect(writeFile.mock.calls[0][0]).toBe("custom.json");
+        });
+
+        it("is a no-op copy for a blueprint with no reelStripGeneration at all", async () => {
+            const writeFile = jest.fn();
+            const command = new ReelCommand(loaderFor(noReelStripGenerationBlueprint), writeFile);
+
+            const exitCode = await command.run(["generate", "game.json", "--materialize", "--format", "json"]);
+
+            expect(exitCode).toBe(0);
+            const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
+            expect(parsed.materialized).toBe(true);
+            expect(parsed.reelCount).toBe(0);
+        });
+
+        it("does not write anything and returns 1 when a reel's constraints are unsatisfiable", async () => {
+            const writeFile = jest.fn();
+            const command = new ReelCommand(loaderFor(impossibleBlueprint), writeFile);
+
+            const exitCode = await command.run(["generate", "game.json", "--materialize", "--format", "json"]);
+
+            expect(exitCode).toBe(1);
+            expect(writeFile).not.toHaveBeenCalled();
+            const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
+            expect(parsed.materialized).toBe(false);
+            expect(parsed.reels[0].success).toBe(false);
+        });
+
+        it("rejects --materialize combined with --reel", async () => {
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+
+            await expect(command.run(["generate", "game.json", "--materialize", "--reel", "1"])).rejects.toThrow(
+                /--materialize cannot be combined with --reel\/--seed\/--apply/,
+            );
+        });
+
+        it("rejects --materialize combined with --seed", async () => {
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+
+            await expect(command.run(["generate", "game.json", "--materialize", "--seed", "1"])).rejects.toThrow(
+                /--materialize cannot be combined with --reel\/--seed\/--apply/,
+            );
+        });
+
+        it("rejects --materialize combined with --apply", async () => {
+            const command = new ReelCommand(loaderFor(baseBlueprint));
+
+            await expect(command.run(["generate", "game.json", "--materialize", "--apply"])).rejects.toThrow(
+                /--materialize cannot be combined with --reel\/--seed\/--apply/,
+            );
+        });
+    });
+
     describe("atomic --apply writes (default writeFile)", () => {
         let tempDir: string;
         let blueprintPath: string;

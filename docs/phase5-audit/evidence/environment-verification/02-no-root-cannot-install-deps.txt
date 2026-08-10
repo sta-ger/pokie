@@ -1,0 +1,10 @@
+$ apt-get install -y libglib2.0-0 libnss3 libgtk-3-0 libasound2   # attempt to install the missing deps chrome-headless-shell itself declared it needs
+E: Could not open lock file /var/lib/dpkg/lock-frontend - open (13: Permission denied)
+E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), are you root?
+exit code: 100
+
+$ id
+uid=1000(node) gid=1000(node) groups=1000(node)
+
+$ dpkg -l | grep -iE "glib|nss3|gtk-3|atk|asound|libx11|cairo|pango"   # confirm none of chrome's declared deps are installed
+(no matches — none of these packages are installed)

@@ -1,0 +1,2 @@
+--rounds must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]
+EXIT:1

@@ -1,0 +1,6 @@
+Could not install this Blueprint's runtime dependencies in "/tmp/pokie-materialize-cache/4431eeabb0b27231776b6caefd8b1bb5ba9eb805101104d1e8ebae6e2ef64a09.staging-83a006e429137404". This is usually a local npm or network problem, not a problem with the Blueprint itself -- see this error's own "details" for the exact npm output.
+
+npm output:
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+
+EXIT:1

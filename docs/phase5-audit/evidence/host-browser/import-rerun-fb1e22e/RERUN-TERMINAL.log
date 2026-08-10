@@ -1,0 +1,5 @@
+[2026-08-09T21:25:52.240Z] NAVIGATE http://127.0.0.1:4112/#/home/projects
+[2026-08-09T21:25:52.261Z] CLICK "Browse…" via rendered BUTTON
+[2026-08-09T21:25:52.775Z] FAILED Error: Rendered control "docs" not found: ["POKIE Studio","Design Game","Projects","Remove","Browse…","Detect","Docs index","Getting started","CLI reference",".. (up)","lmms","ViberDownloads","invoice_1_7_2025.pdf","Pasted image (2).png","Pasted image (3).png","Pasted image.png","Cancel","Select this folder"]
+    at click (file:///tmp/p5-import-rerun.mjs:31:533)
+    at async main (file:///tmp/p5-import-rerun.mjs:35:83)
