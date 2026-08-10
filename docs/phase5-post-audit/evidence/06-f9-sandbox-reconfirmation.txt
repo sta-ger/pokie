@@ -1,0 +1,25 @@
+=== Fresh P5PA-01 reconfirmation of host-browser availability in THIS implementer sandbox, 2026-08-10T10:28:07Z ===
+--- chromium-family binary search ---
+(no chromium-family binary on PATH)
+/workspace/node_modules/electron-to-chromium/chromium-versions.json
+/workspace/node_modules/electron-to-chromium/full-chromium-versions.json
+/workspace/node_modules/electron-to-chromium/chromium-versions.js
+/workspace/node_modules/electron-to-chromium/full-chromium-versions.js
+/workspace/docs/phase5-audit/evidence/environment-verification/01-real-chrome-for-testing-fails-to-launch.txt
+/workspace/node_modules/vite/bin/openChrome.js
+(above: empty means no chromium-family binary found under a bounded filesystem scan)
+--- P5_*/host-browser env vars ---
+(none set)
+--- puppeteer/playwright in node_modules ---
+(none installed)
+--- npx ---
+POKIE correction policy: npx is disabled; use npm test -- saved-file
+--- npm ---
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+--- root/apt-get ---
+uid=1000(node) gid=1000(node) groups=1000(node)
+NOTE: This is only a simulation!
+      apt-get needs root privileges for real execution.
+      Keep also in mind that locking is deactivated,
+      so don't depend on the relevance to the real current situation!
+Reading package lists...

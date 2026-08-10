@@ -1,0 +1,26 @@
+=== Concern 1: src/index.ts public barrel — supportsBetModeSelecting ===
+--- grep current src/index.ts ---
+475:export * from "./session/videoslot/betmode/supportsBetModeSelecting.js";
+
+--- last commit that touched this export in the barrel ---
+8b05f8d537108772352042ca7a1a43925ac6e885 2026-08-07 13:56:44 +0000 [P5-POLISH-02] make pokie build a universal project-to-artifact pipeline
+
+=== Concern 2: 'pokie build random' smoke-simulation regression ===
+--- grep for runSmokeSimulation anywhere in the tree (expect: no hits) ---
+(no matches)
+
+--- BuildCommand.ts's own comment confirming 'random' verb removal ---
+98-
+99-    // The exact Commander tree run() itself parses argv with -- see getCommanderCommand()'s own use for
+100:    // --help coverage. A single default action (no subcommands): "build" no longer has a "random" verb --
+101-    // first-class random generation lives on "pokie create --random" instead (see CreateCommand), which
+102-    // writes a Blueprint Project this command can then build like any other.
+
+--- CreateCommand.ts's own comment confirming --random never builds/smoke-simulates ---
+
+    // --random: a data-driven GameBlueprint (see RandomGameBlueprintGenerator) generated on the fly and
+    // written straight to disk -- never builds or smoke-simulates a package itself; "pokie build
+    // <file> --target tsPackage" is the one place any written blueprint (random or hand-authored)
+
+--- commit that resolved both concerns together (per pokie-phase5-inventory.md's own owner-step routing to P5-POLISH-02) ---
+8b05f8d537108772352042ca7a1a43925ac6e885 2026-08-07 13:56:44 +0000 [P5-POLISH-02] make pokie build a universal project-to-artifact pipeline

@@ -1,0 +1,10 @@
+=== Architectural sweep: bounded TODO/FIXME/HACK/XXX + stub scan ===
+--- product repo: src/project, cli, cli/studio, cli/studio-client ---
+hits:
+0
+not-implemented stub hits:
+0
+
+--- companion repo: /pokie-examples src, tests ---
+hits:
+0

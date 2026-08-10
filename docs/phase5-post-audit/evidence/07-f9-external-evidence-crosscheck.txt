@@ -1,0 +1,31 @@
+=== Cross-check: docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/ integrity + provenance vs current product HEAD ===
+--- checksum verification (sha256sum -c) ---
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/01-blueprint-detected.png: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/01-blueprint-detected.txt: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/02-blueprint-registered-open-available.png: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/02-blueprint-registered-open-available.txt: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/03-blueprint-workspace-overview.png: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/03-blueprint-workspace-overview.txt: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/04-blueprint-workspace-game-model.png: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/04-blueprint-workspace-game-model.txt: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/ACTION-TRANSCRIPT.txt: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/BUILD-TERMINAL.log: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/ENVIRONMENT.txt: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/RERUN-TERMINAL.log: OK
+docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/STUDIO-TERMINAL.log: OK
+
+--- commit the evidence's own ENVIRONMENT.txt cites as the build's source commit ---
+Candidate commit before evidence commit:
+cc0785f5bc1b654bdf749e46e8d22fe4baaa8d55
+
+--- is that commit an ancestor of this step's own product HEAD (33360978190b55ad6dbd46dba10070b26f3fdb83)? ---
+YES: ancestor
+
+--- is the F9 fix commit (02991fb, ProjectsPanel Open action) still present in current source? ---
+02991fb09a78510734060fc948022d4863766b68 [P5-POLISH-20] give a registered Blueprint row the same Open action a Package row has 2026-08-09 21:48:40 +0000
+4:import {listProjectRegistry, previewProjectImport, ProjectOpenError, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
+12:import {useOpenProject} from "../../hooks/useOpenProject";
+22:    // `detail` -- present only when the failure was a Home Open Project that carried the server's own raw
+23:    // npm diagnostic (see apiClient's ProjectOpenError); absent for every other listView failure.
+39:// The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
+42:// comment) -- both land on the exact same Overview/Game Model workspace, so both get the same Open

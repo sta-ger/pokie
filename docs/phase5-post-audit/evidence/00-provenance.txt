@@ -1,0 +1,15 @@
+=== Product repo (/workspace) provenance ===
+branch: task/P5PA-01-20260810121210
+HEAD: 33360978190b55ad6dbd46dba10070b26f3fdb83
+33360978190b55ad6dbd46dba10070b26f3fdb83 2026-08-10 11:29:50 +0200 merge task task/P5-POLISH-20-20260809031218 (implementation bd1eef46153d)
+status:
+(clean if empty above)
+
+=== Companion repo (/pokie-examples) provenance ===
+branch: develop
+HEAD: 0d068cafbf541a66b86ae5abe128e510291bacfa
+0d068cafbf541a66b86ae5abe128e510291bacfa 2026-08-08 22:46:58 +0000 [P5-POLISH-19] tie examples parity test to the real captured fixture JSON, not literals
+status:
+(clean if empty above)
+* develop 0d068ca [origin/develop: ahead 7] [P5-POLISH-19] tie examples parity test to the real captured fixture JSON, not literals
+  main    530c2c7 [origin/main] Merge develop into main
