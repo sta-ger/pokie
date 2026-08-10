@@ -716,6 +716,9 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     if (spin.studioRequestId) {
         identityParts.push(`request ${spin.studioRequestId}`);
     }
+    if (spin.studioModeName) {
+        identityParts.push(`mode ${spin.studioModeName}`);
+    }
     const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
     let completeness: string;
     if (spin.debug?.artifact !== undefined) {

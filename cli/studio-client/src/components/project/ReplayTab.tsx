@@ -645,7 +645,7 @@ export function ReplayTab({
                     {findMethod === "spin" && selectedSpin && (
                         <div>
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
-                                its Identities/Timestamp rows already name the session/round/request/recorded-at/source. */}
+                                its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
                             {selectedSpin.debug?.artifact ? (
                                 // A complete RoundArtifact was captured for this exact spin (see
                                 // StudioPlayService.buildSessionView) -- the same
