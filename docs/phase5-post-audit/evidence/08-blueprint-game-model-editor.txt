@@ -1,0 +1,139 @@
+P5PA-01 correction round — Concern: Blueprint Game Model editor (P5PA-02 scope)
+Gathered against product HEAD 0494a779c0a011d302a352b18b273ebb27cb876d, working tree clean before and
+after (git status --short empty in both cases).
+
+SOURCE READ (structural)
+=========================
+Surfaces read in full: cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.tsx,
+BlueprintJsonPanel.tsx; cli/studio-client/src/components/project/GameModelTab.tsx, GameModelSections.tsx;
+cli/studio-client/src/hooks/useBlueprintEditor.ts; cli/studio-client/src/domain/blueprintEditorState.ts;
+cli/studio/blueprint/serializeGameBlueprint.ts, StudioBlueprintService.ts.
+
+BlueprintEditorPage.tsx:966-974 renders the Form/JSON toggle as a Mantine SegmentedControl:
+
+    <SegmentedControl
+        value={mode}
+        onChange={(value) => setMode(value as BlueprintMode)}
+        ...
+
+BlueprintEditorPage.tsx:991 renders the two modes as mutually exclusive:
+
+    {mode === "form" ? (
+        formModeContent
+    ) : (
+        <BlueprintJsonPanel .../>
+    )}
+
+BlueprintJsonPanel.tsx (full file, 20 lines):
+
+    import {Button, Textarea} from "@mantine/core";
+    import {useRef} from "react";
+    import {ErrorState} from "../common/ErrorState";
+    import {QuickActions} from "../common/QuickActions";
+
+    export function BlueprintJsonPanel({jsonText, jsonError, onApply}: {jsonText: string; jsonError?: string; onApply: (text: string) => void}) {
+        const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+        return (
+            <div>
+                <Textarea ref={textareaRef} label="Blueprint JSON" rows={24} defaultValue={jsonText} spellCheck={false} style={{fontFamily: "monospace"}} />
+                <QuickActions>
+                    <Button variant="default" onClick={() => onApply(textareaRef.current?.value ?? "")}>
+                        Apply JSON
+                    </Button>
+                </QuickActions>
+                {jsonError && <ErrorState message={jsonError} />}
+            </div>
+        );
+    }
+
+The <Textarea> is uncontrolled (defaultValue, not value) and read only via textareaRef when "Apply JSON"
+is clicked. Typing updates only the DOM node; it never reaches editor.state until Apply is clicked.
+
+Dirty-tracking (BlueprintEditorPage.tsx:240-268) is entirely revision-based: cleanRevisionRef holds the
+last "safe" revision, and `dirty = editor.state.revision !== cleanRevisionRef.current` (line ~279).
+editor.state.revision only advances on a *committed* mutation — a Form field edit (mutate), New, Load, or
+a successful "Apply JSON" (comment at line 369: "A form edit, New, Load, and a successful JSON Apply all
+bump `revision`"). Raw, unapplied JSON-textarea keystrokes never bump revision, so none of the editor's
+unsaved-work protections (isDirty flag, navigation blocker, beforeunload guard) ever see them.
+
+Switching `mode` away from "json" unmounts BlueprintJsonPanel (React discards the DOM node, including any
+uncommitted keystrokes, permanently) with no guard/dirty-check/confirm on SegmentedControl's onChange.
+
+Contrast: GameModelTab.tsx / GameModelSections.tsx's per-section Form editors and the round-trip
+serialization (serializeGameBlueprint.ts:18-21 preserves unrecognized keys; blueprintEditorState.ts
+withFieldUpdate mutates only known fields) all work as documented — this is not a general round-trip
+problem, it is specific to the uncontrolled JSON textarea's interaction with the mode toggle.
+
+No doc comment anywhere in BlueprintEditorPage.tsx, BlueprintJsonPanel.tsx, docs/studio-frontend.md, or
+docs/studio-phase2-inventory.md acknowledges this as deliberate.
+
+REAL WORKFLOW EXERCISED (behavioral)
+=====================================
+Driven via the project's own renderRoutedApp test harness (real React + real Mantine + jsdom, unmocked
+production components HomePage -> BlueprintEditorPage), the same harness
+tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx already
+uses. Reproduction script and ad-hoc jest config were written under /tmp only, run once against
+/workspace's real node_modules/ts-jest/source, then deleted; git -C /workspace status --short was clean
+before and after.
+
+Command:
+    node node_modules/.bin/jest --config /tmp/pokie-repro/jest.config.cjs --runInBand
+
+Verbatim relevant output:
+
+  console.log
+    ORIGINAL JSON TEXTAREA VALUE:
+    {
+        "manifest": { "id": "", "name": "", "version": "0.1.0" },
+        "reels": 5, "rows": 3, "symbols": [], "paytable": {}, "availableBets": [1]
+    }
+
+  console.log
+    TEXTAREA AFTER TYPING (NOT APPLIED):
+    {
+        "manifest": { "id": "unsaved-work-in-progress", "name": "A user's un-applied draft", "version": "9.9.9" },
+        "reels": 7, "rows": 4, "symbols": [{"id": "X"}], "paytable": {}, "availableBets": [1,2,3]
+    }
+
+  console.log
+    FORM 'Game id' FIELD AFTER SWITCHING BACK: ""
+
+  console.log
+    TEXTAREA AFTER RETURNING TO JSON MODE:
+    {
+        "manifest": { "id": "", "name": "", "version": "0.1.0" },
+        "reels": 5, "rows": 3, "symbols": [], "paytable": {}, "availableBets": [1]
+    }
+
+PASS ../tmp/pokie-repro/JsonModeSwitchDataLoss.test.tsx (6.427 s)
+  REPRO: BlueprintEditorPage JSON-mode unapplied-edit loss on mode switch
+    ✓ silently discards unapplied JSON-textarea edits when the user switches back to Form mode (4336 ms)
+Test Suites: 1 passed, 1 total
+Tests: 1 passed, 1 total
+
+The test also asserted, and confirmed, that at the moment of loss (right after fireEvent.change but before
+switching mode) neither screen.queryByText(/unsaved/i) nor screen.queryByRole("dialog") match anything —
+i.e. no warning of any kind is shown before the loss occurs.
+
+Fixture: none needed — reproduced from the editor's own built-in "New Blueprint" starter content
+(STARTER_BLUEPRINT, cli/studio-client/src/domain/blueprintEditorState.ts:25-32), the default content
+/home/design loads.
+
+CLASSIFICATION: CONFIRMED P2
+=============================
+Real, reproduced, zero-warning loss of in-progress (never-applied) work when a user types in the JSON
+textarea and then switches the mode toggle (or navigates away) without clicking "Apply JSON". Kept at P2,
+not P0/P1: it does not corrupt or clobber anything already saved to disk, requires a specific interaction
+(type in JSON mode, then switch away without applying), and every other editing surface in this same
+editor (Form fields, GameModelTab's per-section editors) captures edits immediately and is unaffected.
+Not P3: it is real, non-cosmetic loss of a user's hand-typed work with no warning at all, in a surface
+explicitly meant for raw Blueprint JSON editing.
+
+WHAT COULD NOT BE VERIFIED
+============================
+No real browser is available in this sandbox (same constraint as every prior Phase 5 / P5PA round, see
+evidence/06-f9-sandbox-reconfirmation.txt) — no Chromium/pixel capture of this interaction exists. The
+jsdom reproduction above is real, executed, unmocked application code (the same evidentiary tier
+pokie-phase5-inventory.md §5 and this document's own protocol accept when no browser host is available),
+not a pixel/browser capture.

@@ -1,0 +1,101 @@
+P5PA-01 correction round — Concern: TypeScript package Game Model introspection (P5PA-03 scope)
+Gathered against product HEAD 0494a779c0a011d302a352b18b273ebb27cb876d, working tree clean before and
+after (git status --short empty; scratch build artifacts confined to /tmp).
+
+SOURCE READ (structural)
+=========================
+src/generated/GamePackageInspector.ts (full file, 37 lines) — reads only package.json:
+
+    // Reads what's already on disk -- package.json -- to answer "what is this package" without loading/
+    // running the game at all (unlike PokieGamePackageValidator, which requires the entry module).
+    // Read-only: never writes.
+    export class GamePackageInspector implements GamePackageInspecting {
+        public inspect(packageRoot: string): GamePackageInspectionReport {
+            ...
+            return {
+                packageRoot,
+                valid: true,
+                packageJson: {name: packageJson.name, version: packageJson.version, description: packageJson.description},
+            };
+        }
+    }
+
+cli/commands/InspectCommand.ts — thin CLI wrapper (`pokie inspect <packageRoot>`); its own description:
+"Print a package's package.json (name, version, description) without running it."
+
+cli/studio/blueprint/buildProjectGameModel.ts:9-26 doc comment (verbatim), describing the exact, deliberate
+four-way dispatch GET /api/project/gameModel uses:
+
+    // ... "blueprint" reads the full tracked source via StudioBlueprintService; "outcomeLibrary"/
+    // "stakeAdapter" never derive a game model at all (a pre-generated outcome source is drawn from, not
+    // modeled -- see OutcomeSourceProjectReport's own doc comment); "wasm" exposes only its own manifest
+    // identity (POKIE has no WASM execution backend to introspect anything beyond that -- see
+    // PokieWasmComponentManifest's own doc comment); everything else ("tsPackage", the default) exposes
+    // only package.json's own name/version/description, since GamePackageInspector reads nothing deeper.
+    // Every branch's `reason` is plain language a caller (GameModelTab.tsx) shows verbatim, never a guess
+    // the UI has to construct itself.
+
+For the tsPackage branch, every downstream GameModelProjection section (layout, symbols, reels, paytable,
+betsAndModes, mechanics, limits — src/project/buildGameModelProjection.ts:59-77,
+src/project/GameModelProjection.ts:1-119) is marked "unavailable" with reason:
+"This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own
+Blueprint source to see the full game model."
+
+src/gamepackage/PokieGameManifest.ts:1-7 — even *running* a package (loadPokieGame(...).getManifest())
+exposes only {id, name, version, description?, author?}; no path exists, even at runtime, to recover
+paytable/reels/bet-modes/features from hand-written TS logic.
+
+Tested and documented, not an oversight: tests/cli/studio/blueprint/buildProjectGameModel.test.ts:120-130
+asserts "exposes only package.json's own fields for a tsPackage project"; docs/cli.md:2060-2079 documents
+`pokie inspect`'s package.json-only behavior to end users; GameModelTab.tsx:38-44 documents the same UI
+contract.
+
+REAL WORKFLOW EXERCISED (behavioral)
+=====================================
+npm is broken in this sandbox (same dash-syntax-error defect pokie-phase5-inventory.md's "Method" section
+already documents); no ts-node/dist existed, so this round invoked node_modules/.bin/jest directly with an
+ad-hoc --config (rootDir /workspace, roots /tmp) to run a throwaway ts-jest script — nothing under
+/workspace was modified.
+
+1. Loaded the real checked-in fixture examples/blueprints/sample-slot.blueprint.json via loadGameBlueprint.
+2. Called the real GamePackageGenerator("1.3.0").generate(...) (the same class `pokie build <blueprint>
+   --target tsPackage` uses) to produce a real tsPackage under /tmp. Generated src/index.ts genuinely
+   embeds the full paytable/reels/symbols/bets verbatim (verified by reading the file — 6408 bytes, real
+   paytable/symbols literals present).
+3. Called the real GamePackageInspector.inspect(packageRoot):
+     {"packageRoot": "...", "valid": true, "packageJson": {"name": "sample-slot", "version": "0.1.0",
+      "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."}}
+4. Called the real buildProjectGameModel(packageRoot, undefined, false, {inspectPackage: <real inspector>, ...}):
+   `basics` available (package.json fields only); every other section (layout, symbols, reels, paytable,
+   betsAndModes, mechanics, limits) returned "unavailable" with the reason string above — even though the
+   real paytable/reels/symbols data is sitting right there in src/index.ts.
+5. Ran the real InspectCommand.run([packageRoot]) (actual Commander parsing, actual CLI class):
+     exit code 0
+     stdout:
+       Inspecting package at "..."
+         package.json     name: "sample-slot", version: "0.1.0"
+   Matches docs/cli.md's documented example exactly.
+
+CLASSIFICATION: INTENTIONAL SUPPORTED LIMITATION
+===================================================
+Current behavior (tsPackage introspection limited to package.json's name/version/description) is a
+deliberate, documented design boundary — stated in buildProjectGameModel.ts's own doc comment, verified by
+a dedicated existing test, and documented to end users in docs/cli.md and the Studio UI's own reason
+strings. No TODO/FIXME/"unsupported" throw exists anywhere in this path; the absence is handled gracefully
+everywhere (a clean per-section "unavailable" status with a human-readable reason), never a crash or a
+silent, undocumented omission.
+
+PRIOR-DOC CROSS-CHECK
+=======================
+docs/phase5-post-audit/README.md's original five-item matrix, docs/pokie-phase5-inventory.md,
+docs/phase5-audit/, docs/v1.3-closeout-report.md, docs/game-packages.md, and docs/cli.md were all searched;
+none of them treat "deeper TS-source introspection" as a promised-but-missing capability or a bug. This is
+a fresh area for this campaign, not a re-verification of a prior claim.
+
+WHAT COULD NOT BE VERIFIED
+============================
+No real Studio HTTP server + browser exercise of GET /api/project/gameModel or GameModelTab.tsx's
+rendering (same sandbox constraint as every prior Phase 5/P5PA round — no Chromium binary, no
+Playwright/Puppeteer, npm broken). The server-side function (buildProjectGameModel) and the CLI command
+were instead exercised directly and unmocked, which is the load-bearing logic; the HTTP/React layers above
+it are thin pass-throughs already covered by existing test suites that were read but not re-run this round.

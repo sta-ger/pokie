@@ -1,0 +1,144 @@
+P5PA-01 correction round — Concern: pokie init portability (P5PA-06 scope)
+Gathered against product HEAD 0494a779c0a011d302a352b18b273ebb27cb876d, working tree clean at end
+(git status --short empty). Note: this round's own investigation transiently built into /workspace/dist
+before switching to a /tmp-only build; dist/ is git-ignored (.gitignore:3) so git status stayed clean
+throughout and the directory does not exist afterward — flagged here transparently rather than omitted,
+consistent with this document's own "no product source changed" requirement (nothing tracked was touched).
+
+SOURCE READ (structural)
+=========================
+Files read in full: cli/commands/InitCommand.ts, cli/scaffold/GamePackageMerger.ts,
+cli/scaffold/GamePackageMerging.ts, cli/scaffold/GamePackageMergeConflictError.ts,
+cli/scaffold/deriveManifestDefaults.ts, cli/scaffold/renderEntryModule.ts,
+cli/prepare/PackageCommandRunner.ts, tests/cli/commands/InitCommand.test.ts,
+tests/cli/InitCommandWorkflow.integration.test.ts.
+
+Path handling: every actual filesystem call in the init/prepare path uses path.resolve/path.join —
+confirmed by grepping every fs.writeFileSync/readFileSync/existsSync/mkdirSync/readdirSync call in
+cli/scaffold/*, cli/prepare/*, cli/commands/InitCommand.ts. InitCommand.ts:195 (path.resolve(parsed.
+directory)) and GamePackageMerger.ts:46,76,85-92 are the load-bearing lines. No raw "/"/"\\" string
+concatenation is used for any real fs operation anywhere in this call path.
+
+One cosmetic exception (error-text only, never an fs call): cli/scaffold/GamePackageMergeConflictError.ts:23
+
+    super(
+        `"${projectRoot}/package.json" already has POKIE-required field(s) set to a conflicting value:\n${details}\n` +
+            `package.json was left untouched. Update or remove the conflicting field(s) above so they match the ` +
+            `required value, then re-run "pokie init ${projectRoot}".`,
+    );
+
+This builds a forward-slash path purely for a human-facing Error.message; the real read/patch path is
+computed separately and correctly via path.join in GamePackageMerger.ts:46. On a real Windows OS,
+projectRoot would already be backslash-separated (e.g. C:\Users\dev\proj), so this one message would
+render a mixed-separator string ("C:\Users\dev\proj/package.json"). This never affects behavior — no wrong
+file is touched, no data loss — and only surfaces in the GamePackageMergeConflictError path (a pre-existing
+package.json with a conflicting POKIE-owned field: main/exports/scripts.build/pokie.entry).
+tests/cli/commands/InitCommand.test.ts:322-337 and tests/cli/scaffold/GamePackageMerger.test.ts do not
+assert this message's exact text — genuinely untested and previously undocumented anywhere in this repo's
+own docs (searched docs/*.md for any "Windows is not officially supported" style disclaimer — none found).
+
+Child-process invocation (no shell-injection risk): cli/prepare/PackageCommandRunner.ts:8,18-21
+(runPackageCommand) uses execFile/execFileAsync with args as an array and cwd as an option, never a shell
+(`shell: true` nowhere in the file). Grep across all of cli/ confirms this discipline is consistent
+everywhere a child process is spawned (openInFileManager.ts, PlatformDirectoryEnvironment.ts,
+StudioNativePickerService.ts all use execFile/execFileSync too — no exec() or spawn(..., {shell:true})
+anywhere in the CLI).
+
+No external template files to go missing (by design): renderTsconfig, renderPackageReadme,
+renderEntryModule are in-code string-generating functions, not disk reads — the only fs.readFileSync in
+GamePackageMerger.ts reads a pre-existing package.json, never a template.
+
+Validation/idempotency: defaultDirectoryNeedsConfirmation (InitCommand.ts:34-52) correctly gates
+non-empty/foreign directories behind --yes while allowing empty dirs and prior partial runs (detected via
+the pokie.entry marker, InitCommand.ts:62-65) to proceed without it.
+
+REAL WORKFLOW EXERCISED (behavioral) — all run under /tmp, real freshly-built dist/cli/pokie.js
+====================================================================================================
+Built the CLI directly with `node node_modules/.bin/tsc` (npm broken in this sandbox — same "Method"
+precedent as pokie-phase5-inventory.md/phase5-evidence/p5-polish-19).
+
+1. Space-containing path, scaffold-only (--no-prepare):
+     $ node .../pokie.js init "my game with spaces/pkg dir" --no-prepare
+       created  package.json / tsconfig.json / README.md / src/index.ts
+     Game package "Pkg Dir" (id: "pkg-dir") scaffolded in ".../my game with spaces/pkg dir".
+     EXIT:0
+
+2. Space-containing path, full prepare (real npm install) — reproduces the already-documented sandbox
+   defect exactly:
+     $ node .../pokie.js init "space full/pkg full"
+       created  package.json / tsconfig.json / README.md / src/index.ts
+     "npm install" failed in ".../space full/pkg full": Command failed: npm install
+     /usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+     EXIT:1
+
+3. Deeply nested relative path (./a/b/c/d/e/f/deep pkg, recursive creation) — EXIT:0, all 4 files created.
+
+4. Relative ../../ traversal from a subdirectory — resolved correctly to the intended ancestor, EXIT:0.
+
+5. Trailing slash (trailing-slash-dir/) — EXIT:0, files created correctly, no "//" artifacts.
+
+6. Existing non-empty directory, unrelated content, no --yes:
+     "..../existing-nonempty" already has files in it and doesn't look like a POKIE package yet.
+     Re-run with --yes to merge POKIE's package files into it -- existing files are only ever added to, never overwritten.
+     EXIT:1
+   With --yes: EXIT:0, pre-existing random-file.txt preserved untouched.
+
+7. Shell-metacharacter game-id (--game-id 'foo; rm -rf / #') — scaffolded safely, id embedded verbatim as
+   a JSON string via renderEntryModule.ts:15's JSON.stringify, no shell execution, EXIT:0.
+
+8. Backtick/template-literal/quote game-id (command-injection probe into generated TS source) —
+   JSON.stringify correctly escaped it to a plain string literal; no code execution occurred.
+
+9. Empty --game-id "" — falls back correctly to the package-name-derived id (empty-id-test).
+
+10. Default "." from within a subdirectory — resolved against process.cwd() correctly.
+
+11. Unicode directory name (游戏 pkg 名前) — scaffolded successfully; slugifyPackageName
+    (GamePackageMerger.ts:29-36) correctly stripped to a valid ASCII npm name ("pkg"), EXIT:0.
+
+12. Real unit test suite (tests/cli/commands/InitCommand.test.ts, via node node_modules/.bin/jest
+    --runTestsByPath): 27/27 passed, covering the space-directory case, --yes guard, --no-install/
+    --no-prepare, retry-after-failure, and error propagation.
+
+13. Real integration test (tests/cli/InitCommandWorkflow.integration.test.ts, real offline npm install via
+    localPokieDependencyRunner) failed at the identical point, with the identical message, as the manual
+    repro above:
+      GamePackagePreparationError: "npm install" failed in "/tmp/pokie init workflow SkvvyO/sample slot":
+      Error: Command failed: npm install
+      /usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+    Strong independent corroboration the failure is entirely the sandbox's own broken npm wrapper
+    (/usr/local/bin/npm is a bash-only `case`-syntax script that a POSIX dash /bin/sh chokes on — visible
+    directly via `cat /usr/local/bin/npm`), not anything in InitCommand/GamePackageMerger/
+    PackageCommandRunner.
+
+CLASSIFICATION: CONFIRMED P3
+===============================
+One genuine, narrow, newly-found issue: a mixed-path-separator cosmetic bug in a single error message
+(GamePackageMergeConflictError.ts:23), only reachable via a rare conflicting-package.json-field path, never
+affecting which file is read/written, and previously untested/undocumented. Kept at P3 (not P2): purely
+cosmetic text in a message a human reads to manually resolve a conflict, no functional or security
+consequence. Everything else exercised (path handling, spawn safety, validation, scaffolding idempotency)
+is working as designed — no defect found.
+
+The separately-documented "npm install fails" behavior (items 2 and 13 above) is NOT a new finding — it is
+the same pre-existing, already-correctly-scoped sandbox environment defect pokie-phase5-inventory.md §3
+already names explicitly ("This is this sandbox's own environment defect ... not a `pokie init` defect").
+This round independently re-confirmed, via a real integration test, that it is not caused by POKIE code.
+It is not entered into the audit matrix as its own item.
+
+PRIOR-DOC CROSS-CHECK
+=======================
+pokie-phase5-inventory.md §3, docs/phase5-audit/evidence/backend/01-init-bad-gameid.txt, 02-init.txt,
+docs/phase5-evidence/cli/init.txt, docs/phase5-evidence/p5-polish-19/cli/init-real-attempt.txt all show the
+identical "/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting \")\")" failure against
+space-containing paths — reproduced exactly here, confirming it is correctly scoped as a sandbox defect in
+those docs. No prior doc mentions the GamePackageMergeConflictError.ts:23 mixed-separator message — new,
+minor observation this round.
+
+WHAT COULD NOT BE VERIFIED
+============================
+Actual Windows OS behavior — this sandbox is Linux-only; the mixed-separator error-message rendering is
+inferred from Node path semantics and the raw source, not observed on real Windows. Everything else
+(execFile safety, path.join/resolve usage, JSON escaping) is platform-agnostic by construction and does not
+require Windows to verify. `npm install` was not run to full completion (network/registry step) due to the
+sandbox's own broken npm wrapper — out of scope, independently reconfirmed rather than assumed.

@@ -7,9 +7,26 @@ step of a new, distinct campaign (**P**hase **5** **P**ost-**A**udit) that begin
 already published and complete — it does **not** reopen, replan, or add scope to Phase 5. Per this step's own
 instruction, it does three things and nothing else: (1) freezes exact orchestrator/product provenance, (2)
 defines a reusable audit protocol and evidence convention for this new campaign, and (3) opens a source-backed
-audit matrix for five concerns already *named* in Phase 5's own record plus one bounded architectural sweep —
-every entry below was freshly re-verified against current `develop`, not copied from an older report. **No
-product source changed in this step** (see "Boundary" at the end).
+audit matrix for the exact five concerns this campaign's own next five steps carry — one entry each for
+`P5PA-02` (Blueprint Game Model editor), `P5PA-03` (TypeScript package Game Model introspection), `P5PA-04`
+(multi-mode Outcome Library selection/provenance), `P5PA-05` (Player custom scenario/Replay), and `P5PA-06`
+(`pokie init` portability) — plus one bounded architectural sweep. Every entry below was freshly
+re-verified against current `develop`, not copied from an older report. **No product source changed in this
+step** (see "Boundary" at the end).
+
+**Correction round (same day, this document's second freeze):** the round frozen at
+`0494a779c0a011d302a352b18b273ebb27cb876d` audited five concerns (a stale barrel, a `build random`
+regression, a Blueprint build-destination default, browser evidence, and spin atomicity) that turned out
+not to be the five concerns `P5PA-02` through `P5PA-06` actually name — a reviewer correction. This round
+replaces §3's matrix, its five subsections, and the "Boundary" close-out with fresh, freshly re-verified
+entries for the correct five concerns, named above; §1, §2, and §4 (provenance, protocol, architectural
+sweep) are unchanged and still hold. No product source changed in this round either.
+`evidence/01-barrel-and-build-random.txt`, `02-blueprint-build-destination.txt`, `03-spin-atomicity.txt`,
+`05-blueprint-build-destination-workflow.txt`, `06-f9-sandbox-reconfirmation.txt`, and
+`07-f9-external-evidence-crosscheck.txt` are real transcripts from that superseded first-freeze matrix; they
+are kept, unedited, as an honest record of what this round's own predecessor actually ran, but are no longer
+linked from §3 below since the concerns they document are not `P5PA-02`–`P5PA-06`. `00-provenance.txt` and
+`04-architectural-sweep.txt` remain current and linked from §1/§4 respectively.
 
 ## 1. Provenance: product and companion, locked
 
@@ -76,123 +93,167 @@ the same convention `docs/phase5-audit/evidence/` and `docs/pokie-phase5-invento
   with a real command each time rather than citing a prior round's conclusion, then state plainly what could not
   be done and why — never a screenshot or transcript that implies success.
 
-## 3. Audit matrix — five named concerns (fresh re-verification against current `develop`)
+## 3. Audit matrix — the five `P5PA-02`–`P5PA-06` concerns (fresh re-verification against current `develop`)
 
-The five concerns audited this round are the ones Phase 5's own record names explicitly and had not yet closed
-the loop on as of the freeze point above — three from `pokie-phase5-inventory.md`'s "Real finding" sections
-(also called out by name in `docs/README.md`'s own Phase 5 summary), one from `docs/phase5-audit/README.md`'s
-multi-round host-browser rerun chain, and one from `docs/v1.3-closeout-report.md`'s "Deferred to v2.0" list. This
-step's own instruction did not re-enumerate them verbatim, so this selection is this round's own source-backed
-synthesis of "named concerns" already on record, not a fabricated list — flagged here explicitly so a later
-reviewer can redirect this matrix if a different five were intended.
+The five concerns audited this round are the exact five this campaign's own next five steps carry — not a
+synthesis of Phase 5's own record (that was this document's first-freeze mistake, corrected here): `P5PA-02`
+(Blueprint Game Model editor), `P5PA-03` (TypeScript package Game Model introspection), `P5PA-04` (multi-mode
+Outcome Library selection/provenance), `P5PA-05` (Player custom scenario/Replay), and `P5PA-06` (`pokie init`
+portability). Each was independently, freshly investigated this round: current source read end-to-end for the
+concern's own surface, cross-checked against every prior doc that might already have an opinion on it, and,
+wherever the concern is behavioral rather than purely structural, actually exercised with a real, unmocked
+reproduction (never a hand-typed/imagined fixture) — full transcripts are in the numbered `evidence/` files
+linked from each subsection below.
 
-| # | Concern | Source | Classification |
+| # | Concern | Step | Classification |
 | --- | --- | --- | --- |
-| 1 | Stale `src/index.ts` public API barrel (`supportsBetModeSelecting` missing) | `pokie-phase5-inventory.md` §2 | **FALSE POSITIVE** (fixed) |
-| 2 | `pokie build random` smoke-simulation `Cannot find module 'pokie'` failure | `pokie-phase5-inventory.md` §3 | **FALSE POSITIVE** (obsolete) |
-| 3 | Blueprint Design build destination defaults to Studio's own launch `cwd`, unguarded | `pokie-phase5-inventory.md` §4 | **CONFIRMED P2** (still present) |
-| 4 | Pixel/visual (Chromium-rendered) Studio browser evidence | `pokie-phase5-inventory.md` §5 / `phase5-audit/README.md` | **FALSE POSITIVE** (the gap the finding described — no real external-host browser evidence for the F9 journey — no longer matches current reality) |
-| 5 | Cross-store atomicity in `SpinCommandHandler` | `v1.3-closeout-report.md` "Deferred to v2.0" | **INTENTIONAL SUPPORTED LIMITATION** |
+| 1 | Blueprint Game Model editor | `P5PA-02` | **CONFIRMED P2** |
+| 2 | TypeScript package Game Model introspection | `P5PA-03` | **INTENTIONAL SUPPORTED LIMITATION** |
+| 3 | Multi-mode Outcome Library selection/provenance | `P5PA-04` | **INTENTIONAL SUPPORTED LIMITATION** |
+| 4 | Player custom scenario/Replay | `P5PA-05` | **FALSE POSITIVE** (fixed) |
+| 5 | `pokie init` portability | `P5PA-06` | **CONFIRMED P3** |
 
-### #1 — Stale public barrel: FALSE POSITIVE (fixed)
+### #1 — Blueprint Game Model editor (`P5PA-02`): CONFIRMED P2
 
-Current `src/index.ts:475` reads `export * from "./session/videoslot/betmode/supportsBetModeSelecting.js";` — the
-export the original finding said was missing is present. `git log -1 -S"supportsBetModeSelecting" -- src/index.ts`
-shows the barrel was last touched by `8b05f8d` `[P5-POLISH-02] make pokie build a universal project-to-artifact
-pipeline` (2026-08-07), the exact step `pokie-phase5-inventory.md`'s own "Owner steps" routed this finding to
-(inferred there, confirmed here). No further action needed. See
-[`evidence/01-barrel-and-build-random.txt`](evidence/01-barrel-and-build-random.txt).
+The Studio Blueprint editor's "JSON" mode (`BlueprintEditorPage.tsx` / `BlueprintJsonPanel.tsx`) renders its
+`Textarea` **uncontrolled** (`defaultValue={jsonText}`, read only via a `ref` when "Apply JSON" is clicked,
+`BlueprintJsonPanel.tsx:11`), while the Form/JSON mode toggle is a plain `SegmentedControl`
+(`BlueprintEditorPage.tsx:966-974`) with no dirty-check or confirm on its `onChange`
+(`BlueprintEditorPage.tsx:991` renders the two modes as mutually exclusive — switching away unmounts the JSON
+panel outright). The editor's otherwise-thorough unsaved-work protections (`isDirty`, the navigation blocker,
+the `beforeunload` guard) are all keyed off `editor.state.revision`, which only advances on a *committed*
+mutation — a Form field edit, New, Load, or a successful "Apply JSON" (`BlueprintEditorPage.tsx:369`) — never
+on raw, unapplied JSON-textarea keystrokes. The result: a user who types a replacement blueprint into the JSON
+textarea and then switches back to Form mode (or navigates away) without clicking "Apply JSON" loses that work
+completely, with **zero warning of any kind**.
 
-### #2 — `pokie build random` smoke-sim regression: FALSE POSITIVE (obsolete)
+This was reproduced for real, not just inferred from source: the actual production component tree
+(`HomePage` → `BlueprintEditorPage`) was mounted via this project's own `renderRoutedApp` test harness (real
+React + real Mantine + jsdom, unmocked — the same harness
+`tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx` already uses).
+A real `fireEvent.change` typed a fully-formed replacement blueprint (`"unsaved-work-in-progress"`) into the
+JSON textarea; switching the mode toggle back to Form showed the Form's `Game id` field still empty, and
+switching back to JSON showed the *original* starter JSON — the typed draft was gone, and at the moment of loss
+neither `screen.queryByText(/unsaved/i)` nor `screen.queryByRole("dialog")` matched anything. Full script and
+verbatim output: [`evidence/08-blueprint-game-model-editor.txt`](evidence/08-blueprint-game-model-editor.txt).
 
-`runSmokeSimulation` no longer exists anywhere in the tree (`grep -rn runSmokeSimulation` across every `.ts` file:
-zero matches). `cli/commands/BuildCommand.ts`'s own comment states plainly: `"build" no longer has a "random"
-verb -- first-class random generation lives on "pokie create --random" instead`. `cli/commands/CreateCommand.ts`'s
-own comment on `--random` confirms it "writes straight to disk -- never builds or smoke-simulates a package
-itself." The architecture changed since the original finding: random generation and building are now two fully
-separate, explicit commands (`pokie create --random` then `pokie build <file> --target tsPackage`), so the
-specific defect class the old finding described — an automatic post-generation smoke sim assuming an uninstalled
-dependency — has no code path left to occupy. Same commit, `8b05f8d`, made this change (also the one
-`pokie-phase5-inventory.md` explicitly routed this finding to). See
-[`evidence/01-barrel-and-build-random.txt`](evidence/01-barrel-and-build-random.txt).
+Kept at **P2**, not P0/P1: nothing already saved to disk is corrupted or clobbered, only in-progress,
+never-applied browser-tab state; it requires a specific interaction (type in JSON mode, then switch away
+without applying) that every other editing surface in this same editor (Form fields, `GameModelTab.tsx`'s
+per-section editors) does not share, since those capture edits immediately. Not P3: it is real, non-cosmetic
+loss of a user's hand-typed work with no warning at all, in a surface explicitly meant for raw Blueprint JSON
+editing. No prior doc names this defect — it is a new finding, not a re-verification. Recorded here as the
+still-open item for a future P5PA remediation step (e.g. make the `Textarea` controlled and gate the mode
+switch/navigation on its own dirty state, the same way Form edits are already gated).
 
-### #3 — Blueprint Design build destination default: CONFIRMED P2 (still present, real re-read of the current guard)
+### #2 — TypeScript package Game Model introspection (`P5PA-03`): INTENTIONAL SUPPORTED LIMITATION
 
-`cli/studio/previewBuildDestination.ts` (shared by both the preview endpoint and the real build) resolves the
-default destination, when no `outDir` is supplied, as `path.join(cwd, manifestId)` — `cwd` is always
-`process.cwd()`, i.e. wherever the `pokie studio` process happens to have been launched from, exactly as
-`pokie-phase5-inventory.md` §4 found. This round went one step further than the original finding (which only
-observed the preview response) and read `StudioBlueprintService.build()`'s own guard: `outsideStudioRootMessage`/
-`isPathWithin(this.studioRoot, resolvedOutDir)` only runs `if (outDir !== undefined)` — an *explicit* `outDir`
-landing inside Studio's own root is rejected, but the *default* destination (`outDir` omitted) is never checked
-against `studioRoot` at all, even though it resolves through the exact same `cwd`. A Studio launched from inside
-its own source checkout (an ordinary developer workflow, and the same scenario the original finding's own
-`build-preview` response demonstrated: `"projectRoot": "/workspace/peppy-frisky-talisman"`) and then used via
-Blueprint Design's "Build" action without an explicit destination would have its default target land inside that
-checkout, unguarded by a check that exists and fires for the equivalent explicit path. This round went past
-static source reading and actually exercised the workflow: a throwaway test constructed the real, unmodified
-`StudioBlueprintService` (the exact class both Studio HTTP endpoints use), pointed `studioRoot` and `process.cwd()`
-at the same fresh temp directory (reproducing "Studio launched from inside its own checkout"), loaded the real
-checked-in fixture `examples/blueprints/sample-slot.blueprint.json`, and called `previewBuild()` then `build()`
-with no `outDir` — exactly the guided editor's "Build" action with its destination left at the default it always
-shows first. The real, unmodified `build()` returned `status: "ok"` and **actually wrote** `package.json`,
-`package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`, and `dist/index.js` to
-`<studioRoot>/sample-slot`, confirmed both from `build()`'s own returned `createdFiles` and a real
-`fs.readdirSync` of the resulting directory afterward — landing squarely inside `studioRoot`, with no
-`isPathWithin` rejection at any point. The test file was created only to capture this evidence, run once, and
-deleted immediately after; it was never committed to the test suite. Severity kept at **P2** (not P0/P1): it
-requires (a) launching Studio from a source checkout, a non-default deployment shape, and (b) using Design's
-"Build" without overriding the destination it always shows first — not remotely exploitable, and no data outside
-the local filesystem is at risk. Recorded here as the still-open item for a future P5PA remediation step to fix
-(e.g. extend the same `isPathWithin(studioRoot, ...)` guard to the default-`outDir` path too, the same way
-`build()` already guards the explicit one). See
-[`evidence/02-blueprint-build-destination.txt`](evidence/02-blueprint-build-destination.txt) (source excerpts) and
-[`evidence/05-blueprint-build-destination-workflow.txt`](evidence/05-blueprint-build-destination-workflow.txt)
-(this round's real, executed workflow reproduction).
+For a `tsPackage`-type project, POKIE's introspection stack (`GamePackageInspector`, `pokie inspect`, Studio's
+`GET /api/project/gameModel`) deliberately never parses TypeScript source — only `package.json`'s own
+name/version/description. `cli/studio/blueprint/buildProjectGameModel.ts`'s own doc comment states the design
+explicitly: `"tsPackage", the default) exposes only package.json's own name/version/description, since
+GamePackageInspector reads nothing deeper`; every other `GameModelProjection` section (`layout`, `symbols`,
+`reels`, `paytable`, `betsAndModes`, `mechanics`, `limits`) is marked `"unavailable"` with a plain-language
+reason string the UI shows verbatim, never a crash or silent omission. This is tested
+(`tests/cli/studio/blueprint/buildProjectGameModel.test.ts:120-130`) and documented to end users
+(`docs/cli.md:2060-2079`).
 
-### #4 — Pixel/visual browser evidence: FALSE POSITIVE (the described gap no longer matches current reality)
+Verified with a real, unmocked reproduction: generated a real `tsPackage` from the checked-in fixture
+`examples/blueprints/sample-slot.blueprint.json` via the real `GamePackageGenerator` (the same class
+`pokie build --target tsPackage` uses — the generated `src/index.ts` genuinely embeds the full
+paytable/reels/symbols), then called the real `GamePackageInspector.inspect(...)` and
+`buildProjectGameModel(...)` against it: only `basics` (package.json fields) came back available; every other
+section reported `"unavailable"` with the documented reason — even though the real paytable/reels/symbols data
+was sitting right there in the generated source. The real `InspectCommand` CLI path was also run end-to-end
+(exit 0, output matching `docs/cli.md`'s documented example). No TODO/FIXME/"unsupported" throw exists anywhere
+in this path. Full transcript:
+[`evidence/09-ts-package-game-model-introspection.txt`](evidence/09-ts-package-game-model-introspection.txt).
+No prior doc claims a deeper-introspection gap; this is a fresh area for the campaign, not a re-verification.
 
-This concern is the claim (from `pokie-phase5-inventory.md` §5 / the pre-2026-08-10 rounds of
-`phase5-audit/README.md`) that no real, external-host, Chromium-rendered evidence exists for the Studio F9
-journey (Detect → Register a Blueprint → Open → Overview/Game Model). This round did not take that claim's
-resolution on faith from an older report; it independently re-verified two things itself, this round, with real
-commands:
+### #3 — Multi-mode Outcome Library selection/provenance (`P5PA-04`): INTENTIONAL SUPPORTED LIMITATION
 
-1. **This implementer sandbox still cannot run a browser at all**, reconfirmed fresh (not assumed from a prior
-   round): no chromium-family binary anywhere on a bounded filesystem scan, no `P5_*`/host-browser environment
-   variable set, no Puppeteer/Playwright installed, `npx` and `npm` both disabled/broken the same way every prior
-   Phase 5 round already documented, and no root to install one via `apt-get`. See
-   [`evidence/06-f9-sandbox-reconfirmation.txt`](evidence/06-f9-sandbox-reconfirmation.txt). This means the
-   journey cannot be *re-run* from inside this sandbox this round — the same structural constraint every prior
-   round hit.
-2. **The already-existing external-host evidence is real and current**, verified rather than narratively cited:
-   `sha256sum -c` against `docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/SHA256SUMS.txt` passes for
-   every one of its 13 files (transcript, four PNG captures, four paired text extracts, and three terminal logs);
-   that evidence's own `ENVIRONMENT.txt` names the exact commit its fresh Studio build ran from
-   (`cc0785f5bc1b654bdf749e46e8d22fe4baaa8d55`), and `git merge-base --is-ancestor` confirms that commit is an
-   ancestor of this step's own product HEAD (`33360978190b55ad6dbd46dba10070b26f3fdb83`) — so the evidence reflects
-   current source, not a stale build; and the F9 fix commit it exercises (`02991fb`, the Blueprint row's Open
-   action) is still present and unreverted in current `cli/studio-client/src/components/home/ProjectsPanel.tsx`.
-   See [`evidence/07-f9-external-evidence-crosscheck.txt`](evidence/07-f9-external-evidence-crosscheck.txt).
+Mode selection throughout the outcome-library bundle stack (`OutcomeLibraryBundleReader.readModeIndex`,
+`OutcomeLibraryBundleOutcomeSource.drawOutcome` — the class actually wired into `pokie serve`, Studio
+Play/Simulation/Replay) is filename-exact (`index_${modeName}.json`, no fuzzy/case-folding/"closest mode"
+fallback); write-time invariants (`OutcomeLibraryBundleWriter`) enforce that a mode's filename and its own
+internal `modeName` field always agree and that every mode in one bundle shares the same game/version/
+provenance identity; the deployment layer separately rejects a selector whose mode name disagrees with its
+deployment row before ever loading it (`StudioDeploymentService.describeSelectorModeMismatch`). Provenance
+(`OutcomeLibraryBundleManifestModeEntry.generator`) is copied verbatim from generation diagnostics, never
+recomputed on a second path, and Studio's registry view evaluates each mode against *its own* source bundle's
+manifest.
 
-Given both of those, the original finding's premise — "no real browser evidence exists for this journey" — is
-demonstrably false against current source and current evidence: real, checksum-verified, current-commit-traceable
-evidence does exist (`docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/`), even though this particular
-implementer sandbox cannot independently reproduce it. This step does not re-run the capture itself: doing so is
-not achievable from inside this sandbox (per point 1), and re-attempting it would not change point 2's already
-independently-verified result. No outstanding pixel-evidence gap remains for the journey Phase 5 itself scoped.
+Verified with a real, unmocked reproduction: built the CLI from source, constructed a real two-mode bundle
+(`base` + `buyFeature`, distinct provenance) via `pokie outcomelibrary build`, then sampled each mode via
+`pokie outcomesource sample --mode <name>`: `base` drew exclusively from `demo-base-lib`'s own outcomes,
+`buyFeature` drew exclusively from `demo-buyfeature-lib`'s own outcomes (no cross-mode contamination, correct
+`library`/`hash` reported for each), and a nonexistent mode name failed hard (`ENOENT`) rather than silently
+falling back. Full transcript:
+[`evidence/10-outcome-library-multimode-selection-provenance.txt`](evidence/10-outcome-library-multimode-selection-provenance.txt).
 
-### #5 — `SpinCommandHandler` cross-store atomicity: INTENTIONAL SUPPORTED LIMITATION
+One documented trust boundary, not classified as a defect: `OutcomeLibraryBundleReader`'s own class doc states
+it "assumes an already-valid bundle" and points to the separate, opt-in `OutcomeLibraryBundleValidator` for a
+bundle "from an untrusted source" — consistent with that, `pokie serve`/`StudioPlayService` do not
+auto-validate a bundle's own internal mode-name/filename self-consistency before serving spins from it; only
+`pokie outcomelibrary validate` and the certification path do. This can only diverge from a bundle POKIE's own
+writer produced through external tampering/corruption, matching the documented "untrusted source" scope of the
+validator rather than the reader — flagged in the evidence file as the one place a future reviewer might
+reasonably want defense-in-depth, but not a defect. No prior doc makes any claim about this concern; it is a
+fresh area, not a re-verification.
 
-`src/server/spin/SpinCommandHandler.ts`'s own class-level doc comment, re-read in full this round, still states
-the handler performs "best-effort, process-local compensation, not a strict cross-store transaction guarantee,"
-names the exact reconciliation/checkpoint mechanism that closes the dangerous case (`SpinOperationCheckpoint`/
-`SpinReconciliationService`), and explicitly says "full atomicity is a v2 concern" — matching
-`v1.3-closeout-report.md`'s own "Deferred to v2.0" entry for the same gap verbatim. Current source has not
-drifted from that documented boundary: the reconciliation/checkpoint classes it names still exist and are still
-wired into the same handler. Classified as an intentional, already-documented design limitation, not a defect —
-no action needed unless a future step scopes true v2 cross-store atomicity. See
-[`evidence/03-spin-atomicity.txt`](evidence/03-spin-atomicity.txt).
+### #4 — Player custom scenario/Replay (`P5PA-05`): FALSE POSITIVE (fixed)
+
+There is no dedicated "custom scenario"/forced-outcome API in this product (Studio's Play "Find any win"/"Find
+symbol win" is a real, bounded spin-and-check search — `StudioPlayService.findAnyWin`/`spinUntilMatch`,
+`maxFindScenarioSpins` default 2000, honest `{status: "error", ...}` on exhaustion — never a forced outcome).
+Replay (`pokie replay` / Studio Replay) is explicitly, documentedly "best-effort": it never replays recorded
+RNG values, only re-plays a fresh session forward from round 1 using the same seed
+(`src/replay/ReplayRecorder.ts:11-13`, `cli/commands/ReplayCommand.ts:76`), and Studio's own comparison logic
+only calls a reproduction "verified" when an original `debug.reelStops` trace exists to check against,
+otherwise honestly labeling it `"bestEffort"` (`cli/studio-client/src/domain/interpret/Replay.ts:487`).
+
+The determinism defect class this concern's own framing hypothesizes — a seed/scenario silently falling
+through to unseeded RNG — **was** a real, confirmed bug for generated packages (reel-strip *content* shuffling
+defaulted to unseeded `Math.random()` even when stop-position draws were correctly seeded), already found and
+fixed under `[P5-POLISH-19]` `582f5323efdd1baaa6c95bb00f761def24b2c287` ("make generated-package rounds
+seed-reproducible, prove four-surface parity", 2026-08-08; confirmed a real ancestor of this step's own product
+HEAD). This round independently re-verified the fix holds at current HEAD, not on the old report's word: a
+fresh package generated through the real `GamePackageGenerator` codegen path (the exact branch that commit
+fixed) was replayed twice with the same seed+round and produced a bit-for-bit identical screen and `totalWin`
+both times. Re-ran the real `ReplayRecorder`/`SeededRandomNumberGenerator`/`DefaultSymbolsSequence` test suites
+(49 tests) at current HEAD — all pass. Full transcript, including a control case
+(`tests/cli/fixtures/playable-game-with-free-games`, a hand-authored fixture whose own comment already
+discloses non-full seeding) that confirms the *residual*, already-documented "best-effort" limitation is real
+and distinct from the fixed defect:
+[`evidence/11-player-custom-scenario-replay.txt`](evidence/11-player-custom-scenario-replay.txt). No outstanding
+silent-fallthrough gap remains for the supported code-generation path.
+
+### #5 — `pokie init` portability (`P5PA-06`): CONFIRMED P3
+
+Every real filesystem call in the `init`/scaffold/prepare path uses `path.resolve`/`path.join` (verified by
+grepping every `fs.*Sync` call across `cli/scaffold/*`, `cli/prepare/*`, `cli/commands/InitCommand.ts`); child
+processes are spawned via `execFile`/`execFileAsync` with an argument array, never a shell
+(`cli/prepare/PackageCommandRunner.ts` — no `shell: true` anywhere in the CLI); user-supplied values (game-id,
+directory names) are embedded into generated source via `JSON.stringify`, not string interpolation. One
+cosmetic exception found: `cli/scaffold/GamePackageMergeConflictError.ts:23` builds its error message with a
+raw `` `${projectRoot}/package.json` `` (forward slash) for display only — never for an actual file operation,
+which is computed separately via `path.join` — so on a real Windows OS this one message would render a
+mixed-separator string. No functional or security consequence; genuinely untested and previously undocumented.
+
+Verified with real, unmocked reproductions under `/tmp` against a freshly built CLI: a space-containing path,
+a deeply nested relative path, `../../` traversal, a trailing slash, an existing non-empty directory (both
+with and without `--yes`), a shell-metacharacter game-id (`foo; rm -rf / #` — scaffolded safely, no shell
+execution), a backtick/template-literal game-id (command-injection probe — safely escaped), an empty game-id,
+and a Unicode directory name — all behaved correctly. The real `InitCommand.test.ts` suite (27/27) and the real
+`InitCommandWorkflow.integration.test.ts` were also run. Full transcripts:
+[`evidence/12-pokie-init-portability.txt`](evidence/12-pokie-init-portability.txt).
+
+The already-documented "`npm install` fails" behavior (`pokie-phase5-inventory.md` §3 and this repo's own prior
+evidence) was independently re-confirmed this round, via a real integration test failing at the identical
+point with the identical message, to be entirely this sandbox's own broken `npm` wrapper — not a `pokie init`
+defect — and is therefore not entered as its own matrix item, consistent with how `pokie-phase5-inventory.md`
+already scoped it. Kept at **P3**, not P2: the one genuine finding is purely cosmetic display text in a rare
+conflict-resolution error path, with no functional, data-loss, or security consequence.
 
 ## 4. Architectural sweep
 
@@ -209,9 +270,11 @@ none of its own authors flagged inline with these specific markers as of this SH
 ## Boundary: what this step does and does not do
 
 This step **is** a baseline freeze plus a protocol/matrix opener: it records exact provenance, defines the
-taxonomy and evidence conventions later P5PA steps reuse, and freshly classifies five named concerns plus one
-bounded sweep, entirely by reading current source/history and citing real command output — no product code,
-test, or existing Phase 5 document was edited. This step **is not** a remediation step: concern #3 above (the
-only CONFIRMED-open item) is named and evidenced here, but not fixed — fixing it is real product-source work
-that belongs to a later, explicitly-scoped P5PA remediation step, consistent with "no product behavior is
-changed in this baseline/evidence step."
+taxonomy and evidence conventions later P5PA steps reuse, and freshly classifies the five `P5PA-02`–`P5PA-06`
+concerns plus one bounded sweep, entirely by reading current source/history, cross-checking prior docs, and
+citing real, unmocked command/reproduction output — no product code, test, or existing Phase 5 document was
+edited. This step **is not** a remediation step: concern #1 (`P5PA-02`, Blueprint Game Model editor JSON-mode
+data loss, CONFIRMED P2) and concern #5 (`P5PA-06`, `pokie init` portability mixed-separator message, CONFIRMED
+P3) — the two CONFIRMED-open items above — are named and evidenced here, but not fixed; fixing either is real
+product-source work that belongs to the later, explicitly-scoped `P5PA-02`/`P5PA-06` steps themselves,
+consistent with "no product behavior is changed in this baseline/evidence step."

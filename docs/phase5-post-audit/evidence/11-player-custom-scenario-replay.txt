@@ -1,0 +1,111 @@
+P5PA-01 correction round — Concern: Player custom scenario/Replay (P5PA-05 scope)
+Gathered against product HEAD 0494a779c0a011d302a352b18b273ebb27cb876d, working tree clean before and
+after (git status/git diff --stat empty; scratch fixtures/tests under /tmp only, deleted after use).
+
+SOURCE READ (structural)
+=========================
+There is no dedicated "customScenario"/forced-outcome API (grepped src/, cli/ — no hits). The nearest
+match is Studio's Play tab "Find any win"/"Find symbol win": a real, repeated, authoritative spin-and-check
+search, not a forced outcome — cli/studio/runtime/StudioPlayService.ts:312-347 (findAnyWin/findSymbolWin),
+:368-398 (spinUntilMatch), bounded by maxFindScenarioSpins (default 2000, line 132); on exhaustion it
+returns an explicit {status: "error", error: "No matching round was found within N spins."} rather than
+silently returning a non-matching round — asserted by existing real tests
+tests/cli/studio/runtime/StudioPlayService.test.ts:466-491,597-610.
+
+Replay determinism model: `pokie replay` / Studio Replay never replays recorded RNG values — it re-plays a
+fresh session forward from round 1 using the same seed. Explicit, not hidden:
+  - src/replay/ReplayRecorder.ts:11-13: "There is no seek-to-round primitive... Reproducibility for a given
+    seed depends entirely on the game package actually threading context.seed into a deterministic setup."
+  - cli/commands/ReplayCommand.ts:76: CLI's own description: "Best-effort replay of a single round..."
+  - cli/studio/replay/StudioReplayExecutionService.ts:51-57,229-236: same best-effort, chunked
+    forward-replay, same caveat repeated.
+  - cli/studio-client/src/domain/interpret/Replay.ts:344-364,412-493: comparison/gating logic is
+    capability-aware — only calls a reproduction "ready"/verified when an original debug.reelStops trace
+    exists; otherwise labels it "bestEffort" (line 487): "Reproduce is still offered, but only as a
+    best-effort forward replay: it is explicitly non-verifiable, never presented as an exact match."
+
+Root cause of the (now-fixed) determinism gap this concern's framing hypothesizes: reel-stop *position*
+draws and reel-strip *content* shuffling are two separate RNG consumers.
+src/session/videoslot/combinations/PseudorandomNumberGenerator.ts:5 (SymbolsCombinationsGenerator) and
+src/session/videoslot/combinations/SymbolsSequence.ts:122-132 (shuffle()) both default to unseeded
+Math.random() unless a caller injects a seeded RNG. Before commit 582f532, generated packages seeded only
+the first (stop-position draws) and left the second (reel-strip content shuffle) unseeded, so a supplied
+seed controlled *where* reels stopped but not *what symbols* sat there — a silent, non-obvious replay
+mismatch. Fixed by [P5-POLISH-19] commit 582f5323efdd1baaa6c95bb00f761def24b2c287 ("make generated-package
+rounds seed-reproducible, prove four-surface parity", 2026-08-08), threading context.seed into both, across
+every codegen template (src/generated/renderBuiltGameModule.ts, cli/scaffold/renderEntryModule.ts,
+renderGameModule.ts, renderSessionModule.ts — see `git show 582f532` for the diff).
+
+REAL WORKFLOW EXERCISED (behavioral)
+=====================================
+1. Ran the repo's own real integration test against a real fixture game package:
+
+     $ node node_modules/.bin/jest --config jest.config.mjs --selectProjects pokie \
+         --testPathPattern "tests/replay/ReplayRecorder.test.ts" --verbose
+     ...
+     ✓ replays a real game package's round deterministically for a given seed (30 ms)
+     ✓ produces a different screen for a different seed (6 ms)
+     Test Suites: 1 passed, 1 total / Tests: 11 passed, 11 total
+
+2. Ran the exact unit tests P5-POLISH-19 added to prove the fix (SeededRandomNumberGenerator.test.ts,
+   DefaultSymbolsSequence.test.ts, ReelsSymbolsSequencesGenerator.test.ts) at current HEAD — all 38 pass.
+
+3. Wrote and ran (then deleted) a throwaway /tmp jest harness exercising three real scenarios end-to-end
+   via pokie's real source (module "pokie" -> src/index.ts, the same mapping the repo's own tests use):
+
+   a. tests/cli/fixtures/playable-game (fixed reel strips): same seed+round replayed twice -> identical
+      screen [["S","A","K"],["10","9","W"],["S","A","K"],["S","A","K"],["9","W","S"]], identical
+      totalWin: 8/8. Deterministic.
+
+   b. tests/cli/fixtures/playable-game-with-free-games (hand-written fixture, default/unfixed reel
+      strips — its own comment already says "seed controls stop positions but not full reproducibility
+      across runs", index.js:14-22): same seed+round replayed twice -> different screens and different
+      totalWin (2 vs 1) each run. Confirms the residual gap is real for hand-authored, non-codegen
+      sessions — matching the documented "best-effort" caveat, not a hidden defect.
+
+   c. A freshly generated package via the real GamePackageGenerator codegen path (the same primitive
+      `pokie build`/`create` use, default reel-strip branch, no symbolWeights/reelStrips override — the
+      exact branch P5-POLISH-19 fixed): same seed+round replayed twice -> identical screen
+      [["W","Q","W"],["S","9","A"],["S","10","A"],["A","S","W"],["S","Q","10"]], identical totalWin: 0/0.
+      Deterministic — confirms the fix holds for the actual supported/shipped code-generation path at
+      current HEAD.
+
+All three sub-tests passed their own assertions; (b) was deliberately exploratory (no equality assertion),
+observing rather than assuming behavior. Temp files (/tmp/replay.repro.test.ts, /tmp/replay.repro2.test.ts,
+/tmp/jest.repro.config.mjs, /tmp/replay_repro.js) were created, run, and deleted; git status/git diff --stat
+confirmed the working tree unmodified throughout.
+
+CLASSIFICATION: FALSE POSITIVE (fixed)
+=========================================
+The determinism defect class this concern's own framing hypothesizes ("does a custom scenario/seed force
+the claimed outcome reliably, or can it silently fall through to normal RNG") was a real, confirmed bug in
+this codebase for generated packages — already found and fixed under P5-POLISH-19
+(582f5323efdd1baaa6c95bb00f761def24b2c287, 2026-08-08). This round independently re-verified the fix holds
+at current HEAD (0494a77) by generating a fresh package through the real GamePackageGenerator codegen path
+and replaying it twice — bit-for-bit identical (screen (c) above). The residual, narrower risk — hand-
+authored/bespoke sessions that don't fully seed every RNG consumption point — is real and reproducible
+(screen (b) above) but is a pre-acknowledged, explicitly documented design boundary ("best-effort replay",
+never presented as an exact match unless a debug.reelStops trace exists to verify against), not a hidden
+defect; it does not change this entry's classification since it is a distinct, already-disclosed limitation
+rather than the silent-fallthrough failure mode being audited.
+
+PRIOR-DOC CROSS-CHECK
+=======================
+docs/pokie-phase5-inventory.md does not mention a customScenario/forced-outcome concept.
+docs/phase5-evidence/p5-polish-19/ (commits faa647c..af1e427) is exactly this concern's history: it found
+the generated-package seed-determinism bug, fixed it, and captured real four-surface parity evidence (CLI
+replay, npm start, Studio Play, Studio Replay) — all matching; this round's fresh reproduction corroborates
+the fix is still effective at HEAD 0494a77. docs/provably-fair.md does not mention Replay at all — Replay is
+a Studio/QA debugging tool, not part of the fairness-commitment/certification proof mechanism.
+
+WHAT COULD NOT BE VERIFIED
+============================
+The browser-based Studio Replay UI itself was not driven live (no browser/Puppeteer in this sandbox, same
+constraint every prior Phase 5/P5PA round has documented) — the Replay tab's comparison/gating logic was
+verified by reading Replay.ts and its own existing test suite, not by rendering the DOM. The full
+Workflow.integration.test.ts (the four-surface parity test P5-POLISH-19 added) was not re-run live end-to-
+end over HTTP this round; its diff was read and an equivalent in-process reproduction was run instead,
+exercising the same underlying GamePackageGenerator -> loadPokieGame -> ReplayRecorder path. Not every
+feature module (jackpots, hold-and-win, bet-modes, gamble) was exhaustively audited for a rogue unseeded
+Math.random() call outside the reel-generation path; the ones most plausibly in scope (cascades, free games)
+were checked and no independent randomness source outside the seeded combinationsGenerator was found.
