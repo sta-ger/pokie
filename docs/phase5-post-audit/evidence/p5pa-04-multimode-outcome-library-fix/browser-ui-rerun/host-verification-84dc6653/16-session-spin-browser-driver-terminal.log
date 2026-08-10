@@ -1,0 +1,10 @@
+node[961616]: ../src/node_platform.cc:68:std::unique_ptr<long unsigned int> node::WorkerThreadsTaskRunner::DelayedTaskScheduler::Start(): Assertion `(0) == (uv_thread_create(t.get(), start_thread, this))' failed.
+ 1: 0x7f8c3700633c node::Abort() [/lib/x86_64-linux-gnu/libnode.so.109]
+ 2: 0x7f8c370063cb  [/lib/x86_64-linux-gnu/libnode.so.109]
+ 3: 0x7f8c3708340d node::WorkerThreadsTaskRunner::WorkerThreadsTaskRunner(int) [/lib/x86_64-linux-gnu/libnode.so.109]
+ 4: 0x7f8c37083544 node::NodePlatform::NodePlatform(int, v8::TracingController*, v8::PageAllocator*) [/lib/x86_64-linux-gnu/libnode.so.109]
+ 5: 0x7f8c36fbdeb2 node::InitializeOncePerProcess(std::vector<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::allocator<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > const&, node::ProcessFlags::Flags) [/lib/x86_64-linux-gnu/libnode.so.109]
+ 6: 0x7f8c36fbe3fb node::Start(int, char**) [/lib/x86_64-linux-gnu/libnode.so.109]
+ 7: 0x7f8c3622a1ca  [/lib/x86_64-linux-gnu/libc.so.6]
+ 8: 0x7f8c3622a28b __libc_start_main [/lib/x86_64-linux-gnu/libc.so.6]
+ 9: 0x6434544dc035 _start [node]

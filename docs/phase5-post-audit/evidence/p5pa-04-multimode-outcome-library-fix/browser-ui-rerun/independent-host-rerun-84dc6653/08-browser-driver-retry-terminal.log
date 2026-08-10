@@ -1,0 +1,4 @@
+Script started on 2026-08-10 20:19:32+02:00 [COMMAND="env P5_STUDIO_URL=http://127.0.0.1:48119 P5_DEVTOOLS_URL=http://127.0.0.1:9499 P5_AUDIT_OUTPUT=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/independent-host-rerun-84dc6653 PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin /home/stager/.nvm/versions/node/v24.18.0/bin/node docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/host-verification-84dc6653/session-spin-provenance-rerun.mjs" <not executed on terminal>]
+[2026-08-10T18:19:32.877Z] FAILED TypeError: fetch failed
+
+Script done on 2026-08-10 20:19:32+02:00 [COMMAND_EXIT_CODE="1"]

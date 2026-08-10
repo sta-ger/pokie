@@ -1,0 +1,12 @@
+Script started on 2026-08-10 17:23:06+02:00 [COMMAND="node generate-barrels.js && node_modules/.bin/tsc --project tsconfig.prod.json && node_modules/.bin/tsc --project tsconfig.cli.json && node_modules/.bin/tsc --project cli/studio-client/tsconfig.json --noEmit && node_modules/.bin/vite build --config cli/studio-client/vite.config.ts" <not executed on terminal>]
+file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/node_modules/rolldown/dist/shared/rolldown-build-CtPvmZgJ.mjs:9
+import { formatWithOptions, styleText } from "node:util";
+                            ^^^^^^^^^
+SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:123:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:191:5)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:336:24)
+
+Node.js v18.19.1
+
+Script done on 2026-08-10 17:24:30+02:00 [COMMAND_EXIT_CODE="1"]

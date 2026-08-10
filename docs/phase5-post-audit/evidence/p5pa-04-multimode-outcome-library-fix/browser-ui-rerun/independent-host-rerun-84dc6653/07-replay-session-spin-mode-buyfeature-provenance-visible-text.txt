@@ -1,0 +1,78 @@
+POKIE Studio
+/
+Outcome library
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Outcome library
+
+/tmp/p5pa04-independent-real-multimode-library
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Refresh
+All sessions
+59e400c9-c6a0-4c2b-bd8b-7284e7aebd26
+Round 1 in session 59e400c9-c6a0-4c2b-bd8b-7284e7aebd26 — credits -1, win 0, 8/10/2026, 8:20:16 PM
+Loaded replay
+Source	Recorded -- Play tab outcome-library draw
+Identities	session 59e400c9-c6a0-4c2b-bd8b-7284e7aebd26, round 1, mode buyFeature
+Seed	(no seed was given for this session)
+Version / hash	browser-multimode v1.0.0
+Timestamp	8/10/2026, 8:20:16 PM
+Completeness	Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.
+Inspectable	
+AVAILABLE
+This round's data is loaded and ready to inspect.
+Reproducible	
+UNAVAILABLE
+This is a live spin's actual recorded result -- there's nothing to reproduce it against.
+Comparable	
+UNAVAILABLE
+A fresh forward replay with no prior recorded result to compare against.
+Exportable	
+AVAILABLE
+Ready to download as JSON.
+Game	Browser Multi-mode Library (id: "browser-multimode", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.00
+Total win	0.00 (0.00x)
+Credits	-1
+A
+Round detail
+
+No wins on this step.
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+State snapshot unavailable for this game/session type.
+
+Show advanced details (raw JSON, debug data)
+
+Download JSON
+Recent replays
+Refresh
+
+No replays run yet.

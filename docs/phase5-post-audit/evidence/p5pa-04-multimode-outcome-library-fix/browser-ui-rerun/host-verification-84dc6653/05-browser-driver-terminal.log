@@ -1,0 +1,46 @@
+Script started on 2026-08-10 17:24:38+02:00 [COMMAND="P5_STUDIO_URL=http://127.0.0.1:48104 P5_DEVTOOLS_URL=http://127.0.0.1:9484 P5_AUDIT_OUTPUT=docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/host-verification-84dc6653 node docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/browser-ui-rerun.mjs" <not executed on terminal>]
+Aborted
+
+Script done on 2026-08-10 17:24:38+02:00 [COMMAND_EXIT_CODE="134"]
+[2026-08-10T15:24:52.829Z] START fresh Chrome browser session against local candidate Studio http://127.0.0.1:48104
+[2026-08-10T15:24:52.846Z] NAVIGATE visible Studio root
+[2026-08-10T15:24:53.340Z] OBSERVE real two-mode Outcome Library Overview / Exact Analysis table
+[2026-08-10T15:24:53.370Z] CLICK Exact Analysis Draw an outcome in buyFeature row at visible coordinates (674, 423)
+[2026-08-10T15:24:53.778Z] OBSERVE Exact Analysis visibly draws from non-first buyFeature library
+[2026-08-10T15:24:54.083Z] CAPTURE 02-overview-exact-analysis-buyfeature.png and 02-overview-exact-analysis-buyfeature-visible-text.txt
+[2026-08-10T15:24:54.098Z] CLICK Play navigation at visible coordinates (130, 178)
+[2026-08-10T15:24:54.505Z] OBSERVE Play mode picker
+[2026-08-10T15:24:54.591Z] CLICK Outcome library mode picker at visible coordinates (436, 240)
+[2026-08-10T15:24:55.002Z] OBSERVE open buyFeature picker option
+[2026-08-10T15:24:55.070Z] CLICK buyFeature option at visible coordinates (436, 322)
+[2026-08-10T15:24:55.475Z] OBSERVE buyFeature visibly selected in the rendered mode control
+[2026-08-10T15:24:55.532Z] CLICK Play New session at visible coordinates (337, 395)
+[2026-08-10T15:24:55.939Z] OBSERVE Play session controls
+[2026-08-10T15:24:55.996Z] CLICK Play Spin at visible coordinates (310, 162)
+[2026-08-10T15:24:56.401Z] OBSERVE executed Play round with the visible buyFeature selection retained in its rendered control
+[2026-08-10T15:24:56.665Z] CAPTURE 03-play-buyfeature-round-provenance.png and 03-play-buyfeature-round-provenance-visible-text.txt
+[2026-08-10T15:24:56.686Z] CLICK Simulation navigation at visible coordinates (130, 219)
+[2026-08-10T15:24:57.092Z] OBSERVE Simulation configuration and mode picker
+[2026-08-10T15:24:57.167Z] CLICK Outcome library mode picker at visible coordinates (436, 276)
+[2026-08-10T15:24:57.575Z] OBSERVE open buyFeature picker option
+[2026-08-10T15:24:57.623Z] CLICK buyFeature option at visible coordinates (436, 357)
+[2026-08-10T15:24:58.028Z] OBSERVE buyFeature visibly selected in the rendered mode control
+[2026-08-10T15:24:58.057Z] CLICK input "Rounds" at visible coordinates (386, 184)
+[2026-08-10T15:24:58.516Z] INPUT "Rounds"="20" through visible browser keyboard
+[2026-08-10T15:24:58.901Z] CLICK Run Simulation at visible coordinates (577, 184)
+[2026-08-10T15:24:59.306Z] OBSERVE completed simulation report after selecting non-first buyFeature mode
+[2026-08-10T15:24:59.544Z] CAPTURE 04-simulation-buyfeature-completed.png and 04-simulation-buyfeature-completed-visible-text.txt
+[2026-08-10T15:24:59.564Z] CLICK Replay navigation at visible coordinates (130, 292)
+[2026-08-10T15:24:59.970Z] OBSERVE Replay recreation controls and mode picker
+[2026-08-10T15:25:00.037Z] CLICK Outcome library mode picker at visible coordinates (436, 401)
+[2026-08-10T15:25:00.442Z] OBSERVE open buyFeature picker option
+[2026-08-10T15:25:00.503Z] CLICK buyFeature option at visible coordinates (436, 353)
+[2026-08-10T15:25:00.910Z] OBSERVE buyFeature visibly selected in the rendered mode control
+[2026-08-10T15:25:00.934Z] CLICK input "Seed (optional)" at visible coordinates (380, 294)
+[2026-08-10T15:25:01.377Z] INPUT "Seed (optional)"="p5pa04-browser-replay" through visible browser keyboard
+[2026-08-10T15:25:01.760Z] CLICK Replay Load at visible coordinates (531, 294)
+[2026-08-10T15:25:02.167Z] OBSERVE loaded Replay target
+[2026-08-10T15:25:02.188Z] CLICK Replay Run again at visible coordinates (329, 1081)
+[2026-08-10T15:25:47.613Z] FAILED Error: Timed out waiting for completed Replay visibly reports buyFeature provenance
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/browser-ui-rerun.mjs:34:178)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/browser-ui-rerun.mjs:78:5)

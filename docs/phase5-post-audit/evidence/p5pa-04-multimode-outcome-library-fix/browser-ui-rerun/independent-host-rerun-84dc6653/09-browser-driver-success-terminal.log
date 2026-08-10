@@ -1,0 +1,26 @@
+Script started on 2026-08-10 20:20:13+02:00 [COMMAND="env P5_STUDIO_URL=http://127.0.0.1:48119 P5_DEVTOOLS_URL=http://127.0.0.1:9499 P5_AUDIT_OUTPUT=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/independent-host-rerun-84dc6653 PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin /home/stager/.nvm/versions/node/v24.18.0/bin/node docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/host-verification-84dc6653/session-spin-provenance-rerun.mjs" <not executed on terminal>]
+[2026-08-10T18:20:14.127Z] START fresh local candidate Studio browser session at http://127.0.0.1:48119
+[2026-08-10T18:20:14.170Z] NAVIGATE rendered Studio root
+[2026-08-10T18:20:14.632Z] OBSERVE two-mode rendered Outcome Source dashboard
+[2026-08-10T18:20:14.656Z] CLICK Play navigation at rendered coordinates (130, 178)
+[2026-08-10T18:20:15.062Z] OBSERVE Play mode picker
+[2026-08-10T18:20:15.170Z] CLICK Outcome library mode picker at rendered coordinates (436, 292)
+[2026-08-10T18:20:15.576Z] OBSERVE visible buyFeature option
+[2026-08-10T18:20:15.643Z] CLICK buyFeature option at rendered coordinates (436, 374)
+[2026-08-10T18:20:16.045Z] OBSERVE buyFeature selected in visible mode control
+[2026-08-10T18:20:16.073Z] CLICK New session at rendered coordinates (337, 447)
+[2026-08-10T18:20:16.479Z] OBSERVE Play session controls
+[2026-08-10T18:20:16.544Z] CLICK Spin at rendered coordinates (310, 210)
+[2026-08-10T18:20:16.950Z] OBSERVE completed rendered Play round
+[2026-08-10T18:20:17.200Z] CAPTURE 06-play-buyfeature-recorded-round.png and 06-play-buyfeature-recorded-round-visible-text.txt
+[2026-08-10T18:20:17.212Z] CLICK Replay navigation at rendered coordinates (130, 292)
+[2026-08-10T18:20:17.618Z] OBSERVE Replay source chooser
+[2026-08-10T18:20:17.715Z] CLICK Session Spin source at rendered coordinates (602, 111)
+[2026-08-10T18:20:18.130Z] OBSERVE visible recorded Play round list
+[2026-08-10T18:20:18.206Z] CLICK recorded Play Round 1 at rendered coordinates (513, 259)
+[2026-08-10T18:20:18.612Z] OBSERVE artifact-backed Session Spin inspector
+[2026-08-10T18:20:18.616Z] OBSERVE Session Spin Loaded replay Identities visibly renders "mode buyFeature" provenance
+[2026-08-10T18:20:18.926Z] CAPTURE 07-replay-session-spin-mode-buyfeature-provenance.png and 07-replay-session-spin-mode-buyfeature-provenance-visible-text.txt
+[2026-08-10T18:20:18.926Z] COMPLETE Play → Replay → Session Spin provenance verification
+
+Script done on 2026-08-10 20:20:18+02:00 [COMMAND_EXIT_CODE="0"]
