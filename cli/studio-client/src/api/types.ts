@@ -576,6 +576,9 @@ export type StudioSimulationJobView = {
     report?: SimulationReport;
     statistics?: StudioSimulationStatisticsView;
     error?: string;
+    // The real outcome-library mode this job samples/sampled -- undefined for an ordinary
+    // "tsPackage"/"blueprint" simulation, which has no notion of an outcome-library mode at all.
+    modeName?: string;
 };
 
 // One row of GET /api/project/reports — only ever built from a "completed" job, see
@@ -595,6 +598,7 @@ export type StudioSimulationReportListEntry = {
     completedAt: string;
     durationMs: number;
     hasWarnings: boolean;
+    modeName?: string;
 };
 
 // The server's copies of this whole RoundArtifact family live in "pokie" itself (src/artifact/*.ts) —
@@ -703,6 +707,9 @@ export type StudioReplayJobView = {
     game?: {id: string; name: string; version: string};
     descriptor?: ReplayDescriptor;
     error?: string;
+    // The real outcome-library mode this job replays/replayed -- undefined for an ordinary
+    // "tsPackage"/"blueprint" replay, which has no notion of an outcome-library mode at all.
+    modeName?: string;
 };
 
 // One row of GET /api/project/replays — see cli/studio/replay/StudioReplayListEntry.ts's own doc
@@ -721,6 +728,7 @@ export type StudioReplayListEntry = {
     completedAt?: string;
     durationMs: number;
     error?: string;
+    modeName?: string;
 };
 
 // Play tab (and Outcome Source Analysis "Sample") response DTO — see
@@ -764,6 +772,10 @@ export type StudioRuntimeSessionView = {
     studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
     studioProjectRoot?: string;
     studioSeed?: string | number;
+    // The real outcome-library mode this round was drawn against -- present only for an outcome-library-
+    // backed round ("play-outcome-source"/"outcome-source-sample"/"simulation-sample"), absent for a
+    // "runtime"/"live"/"pre-generated" one, which has no such notion at all.
+    studioModeName?: string;
     debug?: {
         stateAfter?: unknown;
         stateBefore?: unknown;

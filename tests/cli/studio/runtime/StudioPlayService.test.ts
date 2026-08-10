@@ -15,6 +15,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioPlayService} from "../../../../cli/studio/runtime/StudioPlayService.js";
+import {StudioRoundRecorder} from "../../../../cli/studio/runtime/StudioRoundRecorder.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
@@ -397,6 +398,79 @@ describe("StudioPlayService", () => {
             }
 
             expect(firstSpin.session.debug?.artifact).toEqual(secondSpin.session.debug?.artifact);
+        });
+
+        async function buildMultiModeLibraryBundle(): Promise<string> {
+            const bundleDir = path.join(bundleRoot, "multi-mode-library");
+            await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+                [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("buyFeature", "buy-lib")],
+                bundleDir,
+            );
+            return bundleDir;
+        }
+
+        describe("a multi-mode outcome-library project", () => {
+            it("plays the manifest's own first mode when no mode is explicitly requested, preserving pre-existing behavior", async () => {
+                const bundleDir = await buildMultiModeLibraryBundle();
+                const service = new StudioPlayService();
+
+                const created = await service.newSession(bundleDir, "multi-mode-default-seed");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                const spun = await service.spin(created.session.sessionId);
+                if (spun.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                expect((spun.session.debug?.artifact as {roundId?: string} | undefined)?.roundId).toMatch(/^base-lib-/);
+                expect(spun.session.studioModeName).toBe("base");
+            });
+
+            it("plays an explicitly-requested non-first mode -- never silently substitutes the manifest's own first mode", async () => {
+                const bundleDir = await buildMultiModeLibraryBundle();
+                const service = new StudioPlayService();
+
+                const created = await service.newSession(bundleDir, "multi-mode-explicit-seed", "buyFeature");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                const spun = await service.spin(created.session.sessionId);
+                if (spun.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                expect((spun.session.debug?.artifact as {roundId?: string} | undefined)?.roundId).toMatch(/^buy-lib-/);
+                expect(spun.session.studioModeName).toBe("buyFeature");
+            });
+
+            it("fails honestly, naming every real mode, for a mode name that isn't part of this library -- never falls back to the first mode", async () => {
+                const bundleDir = await buildMultiModeLibraryBundle();
+                const service = new StudioPlayService();
+
+                const result = await service.newSession(bundleDir, undefined, "bonus");
+                expect(result.status).toBe("failed");
+                if (result.status !== "failed") {
+                    throw new Error("expected failed");
+                }
+                expect(result.error).toContain('"bonus" is not a mode of this outcome library');
+                expect(result.error).toContain("base");
+                expect(result.error).toContain("buyFeature");
+            });
+
+            it("stamps the shared StudioRoundRecorder's own provenance with the real mode a round was drawn against", async () => {
+                const bundleDir = await buildMultiModeLibraryBundle();
+                const roundRecorder = new StudioRoundRecorder();
+                const service = new StudioPlayService(undefined, undefined, undefined, undefined, undefined, undefined, roundRecorder);
+
+                const created = await service.newSession(bundleDir, "multi-mode-provenance-seed", "buyFeature");
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                await service.spin(created.session.sessionId);
+
+                const recorded = roundRecorder.list();
+                expect(recorded).toHaveLength(1);
+                expect(recorded[0].studioModeName).toBe("buyFeature");
+            });
         });
     });
 

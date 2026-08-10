@@ -22,6 +22,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     resolveGameSessionSerializer,
+    resolveOutcomeLibraryModeName,
     RoundArtifact,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
@@ -73,6 +74,10 @@ type ActiveOutcomeSourceSession = {
     // Same reasoning as ActiveRuntimeSession's own projectRoot/seed above.
     readonly projectRoot: string;
     readonly seed?: string | number;
+    // The real outcome-library mode this session's own outcomeSource is bound to (resolved by
+    // newOutcomeSourceSession via resolveOutcomeLibraryModeName) -- stamped onto every round this
+    // session produces (see spin()) as that round's own `studioModeName`, the same way `seed` already is.
+    readonly modeName: string;
 };
 
 type ActiveSession = ActiveRuntimeSession | ActiveOutcomeSourceSession;
@@ -175,7 +180,7 @@ export class StudioPlayService {
     // needed for the synchronous loadGame() call itself (see resolveRuntimePackageRoot's own doc comment
     // on why a "tsPackage" project's own release() is already a no-op) -- released immediately afterward,
     // never held for this session's own lifetime.
-    public async newSession(projectRoot: string, seed?: string | number): Promise<StudioPlaySessionResult> {
+    public async newSession(projectRoot: string, seed?: string | number, modeName?: string): Promise<StudioPlaySessionResult> {
         let project: PokieProject | undefined;
         try {
             project = await this.resolveProject.resolve(projectRoot);
@@ -184,7 +189,7 @@ export class StudioPlayService {
         }
 
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
-            return this.newOutcomeSourceSession(project, seed);
+            return this.newOutcomeSourceSession(project, seed, modeName);
         }
 
         let game: PokieGame;
@@ -294,6 +299,7 @@ export class StudioPlayService {
                 operation,
                 projectRoot: active.projectRoot,
                 seed: active.seed,
+                modeName: active.kind === "outcomeSource" ? active.modeName : undefined,
             });
         }
         return result;
@@ -403,25 +409,27 @@ export class StudioPlayService {
     // contract at all (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) -- describeUnsupportedProjectOperation
     // catches that here, honestly, before ever reading a single file, the same structured diagnostic every
     // other POKIE surface (ServeCommand, the Outcome Library sample route) already gives for it. A resolved
-    // "outcomeLibrary" project plays its manifest's own first mode (Play has no mode picker of its own,
-    // unlike the dedicated Outcome Library sample route) through a real OutcomeLibraryBundleOutcomeSource --
-    // the exact same selector class PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in
-    // production -- never loadPokieGame, never a regenerated game-model draw.
-    private async newOutcomeSourceSession(project: PokieProject, seed?: string | number): Promise<StudioPlaySessionResult> {
+    // "outcomeLibrary" project plays `modeName` -- a real mode from the manifest's own list, resolved via
+    // resolveOutcomeLibraryModeName (defaulting to the manifest's own first mode when the caller doesn't
+    // request one, same as before Play had a mode picker at all) -- through a real
+    // OutcomeLibraryBundleOutcomeSource -- the exact same selector class
+    // PreGeneratedSpinCommandHandler/sampleOutcomeSourceProject already use in production -- never
+    // loadPokieGame, never a regenerated game-model draw.
+    private async newOutcomeSourceSession(project: PokieProject, seed?: string | number, modeName?: string): Promise<StudioPlaySessionResult> {
         const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SAMPLE_OPERATION);
         if (diagnostic !== undefined) {
             return {status: "failed", error: diagnostic.message};
         }
 
         let bundleGame: {id: string; name: string; version: string};
-        let modeName: string;
+        let resolvedModeName: string;
         try {
             const manifest = await this.outcomeLibraryReader.readManifest(project.rootPath);
             if (manifest.modes.length === 0) {
                 return {status: "failed", error: `"${project.rootPath}" has no outcome-library modes to play.`};
             }
             bundleGame = manifest.game;
-            modeName = manifest.modes[0].modeName;
+            resolvedModeName = resolveOutcomeLibraryModeName(manifest.modes, modeName);
         } catch (error) {
             return this.fail(error);
         }
@@ -437,11 +445,12 @@ export class StudioPlayService {
         this.active = {
             kind: "outcomeSource",
             manifest: bundleGame,
-            outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName),
+            outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, resolvedModeName),
             randomSource,
             credits: 0,
             projectRoot: project.rootPath,
             seed,
+            modeName: resolvedModeName,
         };
         this.currentSessionId = sessionId;
 

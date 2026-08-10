@@ -18,4 +18,7 @@ export type StudioReplayListEntry = {
     completedAt?: string;
     durationMs: number;
     error?: string;
+    // The real outcome-library mode this job replayed -- see StudioReplayJobRecord's own doc comment.
+    // Undefined for an ordinary "tsPackage"/"blueprint" replay.
+    modeName?: string;
 };

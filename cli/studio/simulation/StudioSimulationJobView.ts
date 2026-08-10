@@ -32,6 +32,9 @@ export type StudioSimulationJobView = {
     report?: SimulationReport;
     statistics?: StudioSimulationStatisticsView;
     error?: string;
+    // The real outcome-library mode this job samples/sampled -- see StudioSimulationJobRecord's own
+    // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" simulation.
+    modeName?: string;
 };
 
 // The GET /api/project/reports/:id response envelope -- bundles the persisted SimulationReport with the

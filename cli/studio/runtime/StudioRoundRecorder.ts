@@ -25,12 +25,17 @@ export type StudioRoundOperation = "spin" | "find-any-win" | "find-symbol-win" |
 // What a producer actually knows about a round beyond the StudioRuntimeSessionView itself -- `projectRoot`/
 // `seed` are only ever attached when the producer genuinely has them (a Play session's own creation
 // parameters; there is no session, and therefore no seed, for a one-shot outcome-source sample unless the
-// caller supplied one directly), never invented to fill the shape out.
+// caller supplied one directly), never invented to fill the shape out. `modeName` is the real outcome-
+// library mode (resolveOutcomeLibraryModeName's own resolved value, never a raw unvalidated request field)
+// this exact round was drawn against -- present only for the three outcome-library-backed sources
+// ("play-outcome-source", "outcome-source-sample", "simulation-sample"), absent for a "runtime"/"live"/
+// "pre-generated" round, which has no notion of an outcome-library mode at all.
 export type StudioRoundProvenance = {
     readonly source: StudioRoundSource;
     readonly operation: StudioRoundOperation;
     readonly projectRoot?: string;
     readonly seed?: string | number;
+    readonly modeName?: string;
 };
 
 // The single place every round-producing action in Studio -- Play tab spins/scenario
@@ -64,6 +69,7 @@ export class StudioRoundRecorder {
                 session.studioOperation = duplicate.studioOperation;
                 session.studioProjectRoot = duplicate.studioProjectRoot;
                 session.studioSeed = duplicate.studioSeed;
+                session.studioModeName = duplicate.studioModeName;
                 return;
             }
         }
@@ -77,6 +83,9 @@ export class StudioRoundRecorder {
         }
         if (provenance.seed !== undefined) {
             session.studioSeed = provenance.seed;
+        }
+        if (provenance.modeName !== undefined) {
+            session.studioModeName = provenance.modeName;
         }
 
         this.records.unshift(session);

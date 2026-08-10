@@ -22,4 +22,8 @@ export type StudioReplayJobView = {
     descriptor?: ReplayDescriptor;
     // Only present once `status` is "failed" — a safe message, never a stack trace.
     error?: string;
+    // The real outcome-library mode this job replays/replayed -- see StudioReplayJobRecord's own doc
+    // comment. Threaded through for the same "Run again with the same parameters" reason simulationId
+    // is above. Undefined for an ordinary "tsPackage"/"blueprint" replay.
+    modeName?: string;
 };

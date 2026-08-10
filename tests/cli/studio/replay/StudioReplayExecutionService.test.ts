@@ -1,8 +1,22 @@
-import {GameSessionHandling, GameSessionSerializing, loadPokieGame, PokieGame, PokieGameManifest, ReplayRecorder, WinEvaluationResult} from "pokie";
+import {
+    GameSessionHandling,
+    GameSessionSerializing,
+    loadPokieGame,
+    OutcomeLibraryBundleWriter,
+    PokieGame,
+    PokieGameManifest,
+    PokieProject,
+    ProjectTargetResolver,
+    ReplayRecorder,
+    WinEvaluationResult,
+} from "pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
 import {InMemoryStudioReplayRepository} from "../../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
 import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
 import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioReplayJobView.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // FNV-1a, same hashing trick the "playable-game" fixture uses to turn a --seed string into a
 // deterministic 32-bit int.
@@ -933,6 +947,73 @@ describe("StudioReplayExecutionService", () => {
 
             expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
         });
+    });
+});
+
+describe("StudioReplayExecutionService with a resolved, multi-mode native outcome-library project", () => {
+    let bundleRoot: string;
+
+    beforeEach(() => {
+        bundleRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-outcome-library-test-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(bundleRoot, {recursive: true, force: true});
+    });
+
+    async function buildMultiModeLibraryProject(): Promise<PokieProject> {
+        const bundleDir = path.join(bundleRoot, "library");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+            [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("buyFeature", "buy-lib")],
+            bundleDir,
+        );
+        return (await new ProjectTargetResolver().resolve(bundleDir)) as PokieProject;
+    }
+
+    it("replays the manifest's own first mode when no mode is explicitly requested, preserving pre-existing behavior", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioReplayExecutionService();
+
+        const result = service.start(project.rootPath, {round: 1, seed: "multi-mode-default-seed"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, project.rootPath, result.job.id);
+
+        expect(job.status).toBe("completed");
+        expect(job.modeName).toBe("base");
+        expect(job.descriptor?.artifact?.roundId).toMatch(/^base-lib-/);
+    });
+
+    it("replays an explicitly-requested non-first mode -- never silently substitutes the manifest's own first mode", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioReplayExecutionService();
+
+        const result = service.start(project.rootPath, {round: 1, seed: "multi-mode-explicit-seed", modeName: "buyFeature"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, project.rootPath, result.job.id);
+
+        expect(job.status).toBe("completed");
+        expect(job.modeName).toBe("buyFeature");
+        expect(job.descriptor?.artifact?.roundId).toMatch(/^buy-lib-/);
+    });
+
+    it("fails honestly, naming every real mode, for a mode name that isn't part of this library -- never falls back to the first mode", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioReplayExecutionService();
+
+        const result = service.start(project.rootPath, {round: 1, modeName: "bonus"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, project.rootPath, result.job.id);
+
+        expect(job.status).toBe("failed");
+        expect(job.error).toContain('"bonus" is not a mode of this outcome library');
+        expect(job.error).toContain("base");
+        expect(job.error).toContain("buyFeature");
     });
 });
 

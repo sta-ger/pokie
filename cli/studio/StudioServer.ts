@@ -1525,7 +1525,7 @@ export class StudioServer implements StudioServerHandling {
             validated.seed !== undefined ? new SeededWeightedOutcomeRandomSource(validated.seed) : new SecureWeightedOutcomeRandomSource();
         const result = await sampleOutcomeSourceProject(this.projectDashboard.project, validated.modeName, randomSource);
         if (result.supported) {
-            this.recordOutcomeSourceSample(result.selection.outcome.artifact, this.currentContext.projectRoot, validated.seed);
+            this.recordOutcomeSourceSample(result.selection.outcome.artifact, this.currentContext.projectRoot, validated.seed, validated.modeName);
         }
         this.sendJson(res, 200, result);
     }
@@ -1538,7 +1538,7 @@ export class StudioServer implements StudioServerHandling {
     // than fabricated as 0 (see StudioRuntimeSessionView.credits's own doc comment). Every other field --
     // game/bet/win/screen/artifact -- is read straight off the real, already-drawn RoundArtifact, never
     // recomputed.
-    private recordOutcomeSourceSample(artifact: RoundArtifact, projectRoot: string, seed: string | undefined): void {
+    private recordOutcomeSourceSample(artifact: RoundArtifact, projectRoot: string, seed: string | undefined, modeName: string): void {
         const view: StudioRuntimeSessionView = {
             sessionId: crypto.randomUUID(),
             game: artifact.provenance.game,
@@ -1547,7 +1547,7 @@ export class StudioServer implements StudioServerHandling {
             screen: artifact.screen.map((row) => [...row]),
             debug: {artifact: new PokieJsonRoundArtifactProjector().project(artifact)},
         };
-        this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed});
+        this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed, modeName});
     }
 
     // StudioReplayExecutionService's own onCompleted hook (see its constructor) -- fires for every
@@ -1576,6 +1576,7 @@ export class StudioServer implements StudioServerHandling {
             operation: "simulation-sample",
             projectRoot: record.projectRoot,
             seed: record.seed,
+            modeName: record.modeName,
         });
     }
 
@@ -2067,7 +2068,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.playService.newSession(this.currentContext.projectRoot, validated.seed);
+        const result = await this.playService.newSession(this.currentContext.projectRoot, validated.seed, validated.modeName);
         if (result.status === "ok") {
             this.sendJson(res, 201, {status: "ok", session: result.session});
             return;

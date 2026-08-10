@@ -16,5 +16,6 @@ export function toStudioReplayJobView(record: StudioReplayJobRecord): StudioRepl
         game: record.game,
         descriptor: record.descriptor,
         error: record.error,
+        modeName: record.modeName,
     };
 }

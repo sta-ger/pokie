@@ -42,12 +42,16 @@ export type StudioRuntimeSessionView = {
     // an ordinary "spin" or one found by "find-any-win"/"find-symbol-win". `studioProjectRoot`/
     // `studioSeed` are attached only when the producer genuinely had them at record time (every producer
     // except a one-shot outcome-source sample without an explicit seed) -- never invented otherwise.
+    // `studioModeName` is the real outcome-library mode this round was drawn against (see
+    // StudioRoundProvenance's own doc comment) -- present only for an outcome-library-backed round, absent
+    // for a "runtime"/"live"/"pre-generated" one, which has no such notion at all.
     studioRound?: number;
     studioRecordedAt?: string;
     studioSource?: "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
     studioOperation?: "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
     studioProjectRoot?: string;
     studioSeed?: string | number;
+    studioModeName?: string;
     debug?: {
         stateAfter?: unknown;
         stateBefore?: unknown;

@@ -102,6 +102,9 @@ export type ReplayResultView = {
     // that case rather than silently omitting the section.
     stateBefore?: unknown;
     stateAfter?: unknown;
+    // The real outcome-library mode this reproduction replayed against -- see StudioReplayJobView's own
+    // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" replay.
+    modeName?: string;
 };
 
 // Only meaningful for a completed job (job.descriptor is defined) — callers only call this once
@@ -126,6 +129,7 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         artifact: descriptor.artifact ? describeRoundArtifact(descriptor.artifact) : undefined,
         stateBefore: descriptor.stateBefore,
         stateAfter: descriptor.stateAfter,
+        modeName: job.modeName,
     };
 }
 

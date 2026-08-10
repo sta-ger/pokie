@@ -109,7 +109,7 @@ linked from each subsection below.
 | --- | --- | --- | --- |
 | 1 | Blueprint Game Model editor | `P5PA-02` | **CONFIRMED P2** |
 | 2 | TypeScript package Game Model introspection | `P5PA-03` | **INTENTIONAL SUPPORTED LIMITATION** |
-| 3 | Multi-mode Outcome Library selection/provenance | `P5PA-04` | **INTENTIONAL SUPPORTED LIMITATION** |
+| 3 | Multi-mode Outcome Library selection/provenance | `P5PA-04` | **CONFIRMED P2** (fixed) |
 | 4 | Player custom scenario/Replay | `P5PA-05` | **FALSE POSITIVE** (fixed) |
 | 5 | `pokie init` portability | `P5PA-06` | **CONFIRMED P3** |
 
@@ -171,7 +171,19 @@ in this path. Full transcript:
 [`evidence/09-ts-package-game-model-introspection.txt`](evidence/09-ts-package-game-model-introspection.txt).
 No prior doc claims a deeper-introspection gap; this is a fresh area for the campaign, not a re-verification.
 
-### #3 — Multi-mode Outcome Library selection/provenance (`P5PA-04`): INTENTIONAL SUPPORTED LIMITATION
+### #3 — Multi-mode Outcome Library selection/provenance (`P5PA-04`): INTENTIONAL SUPPORTED LIMITATION (original classification, corrected below)
+
+**Correction (`P5PA-04`'s own remediation, see the section near the bottom of this file):** this round's own
+real reproduction below only exercised `pokie outcomesource sample --mode <name>` — the one route that already
+let a caller name a real mode. It never checked what `modeName` `StudioPlayService`/`StudioSimulationService`/
+`StudioReplayExecutionService` actually passed to the exact same selector class, even though this section's own
+source-read quotes their call sites by line number. All three passed `manifest.modes[0].modeName`
+unconditionally — Play/Simulation/Replay could only ever reach a multi-mode library's first mode, with no
+mode picker anywhere in their own request bodies or frontend tabs. This is genuinely what the classification
+below describes as ruled out ("no genuine, currently-reproducible defect... exact-match... fails loudly") —
+it was not; it was never tested for those three surfaces. Reclassified **CONFIRMED P2** and fixed; the original
+text below is kept as an honest record of what this round's own predecessor actually found (correctly, for the
+one surface it checked) and did not find (for the three it didn't).
 
 Mode selection throughout the outcome-library bundle stack (`OutcomeLibraryBundleReader.readModeIndex`,
 `OutcomeLibraryBundleOutcomeSource.drawOutcome` — the class actually wired into `pokie serve`, Studio
@@ -399,3 +411,80 @@ Out of scope, left as-is: `author` is read by nothing in this path (`GamePackage
 `GamePackageInspectionReport`, `pokie inspect`'s own description, and `docs/cli.md:2062` all consistently scope
 to "name, version, description" only) — an intentional, consistently-documented narrower scope, not a proven
 false projection, so left untouched.
+
+## `P5PA-04` remediation: Play/Simulation/Replay now select a real Outcome Library mode, never silently the first one
+
+§3 #3 above (`P5PA-01`'s own freeze) classified this concern **INTENTIONAL SUPPORTED LIMITATION**, verified only
+against `pokie outcomesource sample --mode <name>` — the one route that already let a caller name a real mode.
+This step's own instruction asked for a real, multi-mode library exercised across Overview, Exact Analysis,
+Play, Simulation/Sampling, Replay, and Build/Export, recording the selected/effective mode rather than assuming
+a frontend-only or free-text substitution counts as selection. Doing that surfaced what the prior round's own
+narrower reproduction missed: `StudioPlayService.newOutcomeSourceSession`,
+`StudioSimulationService.runOutcomeSourceSampling`, and `StudioReplayExecutionService.runOutcomeSourceReplay`
+each constructed `OutcomeLibraryBundleOutcomeSource` with `manifest.modes[0].modeName` unconditionally — none of
+the three took a `modeName` parameter, and neither their HTTP request bodies nor their frontend tabs
+(`PlayTab.tsx`/`SimulationTab.tsx`/`ReplayTab.tsx`) offered any way to choose a different one. A multi-mode
+library's Play/Simulation/Replay coverage was silently narrowed to its first mode — exactly the acceptance
+criteria's own "sampling/replay always silently uses the first mode" condition. Classified **material P2** and
+fixed, per that same instruction.
+
+**The fix**, shared by all three surfaces (the acceptance criteria's own "canonical library modes shared by
+Play, sampling and Replay"): a new `resolveOutcomeLibraryModeName(modes, requestedModeName)` helper
+(`src/project/resolveOutcomeLibraryModeName.ts`) — `undefined` still resolves to the manifest's own first mode
+(every existing single-mode caller's behavior is unchanged), a real requested mode resolves to itself, and an
+unreal one throws immediately naming every real mode, never a silent fallback or a raw `ENOENT`. All three
+services now accept an optional `modeName`, resolve it through this one helper, and use the resolved value —
+stamped back onto their own job record (`StudioSimulationJobRecord.modeName`/`StudioReplayJobRecord.modeName`)
+so a job started without an explicit mode still honestly reports which real mode it ran against. Round
+provenance was a second, related gap this step's own instruction named directly ("Round provenance and the
+shared recorder preserve the selected mode"): `StudioRoundProvenance`/`StudioRuntimeSessionView` had no
+`modeName`/`studioModeName` field at all, so even Overview's own working "Draw an outcome" route never recorded
+which mode a round came from into the shared `StudioRoundRecorder` history Replay's "Session Spin" list reads.
+Fixed the same way, stamped by every outcome-library-backed producer (Play's spin, Overview's sample, Replay's
+"Recent Simulation" reproduction). Frontend: `PlayTab`/`SimulationTab`/`ReplayTab` each gained a mode `<Select>`
+(a closed list, never free text) bound to `ProjectDashboardPage`'s own `outcomeLibraryModes` — the exact same
+`report.modes` list `OutcomeSourceOverview.tsx`'s Exact Analysis table already renders, never a separately
+invented list; "Recent Simulation" reuses whichever mode the picked simulation entry itself already sampled
+(its own recorded provenance) rather than a second, independent picker that could disagree with it.
+
+**Stake adapter capability honesty** (the acceptance criteria's own third requirement) was re-verified, not
+assumed: `PROJECT_TYPE_CAPABILITIES` (`src/project/ProjectCapabilities.ts`) and `ProjectDashboardPage.tsx`'s own
+`OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES` tab gating were both unchanged by this fix and re-confirmed correct
+against a real running server (below) — a resolved `stakeAdapter` project never carries
+`outcomeSource.sample`, and Play/Simulation/Replay each refuse it honestly with the same structured capability
+diagnostic. No defect found there; this step only closed the mode-selection/provenance gap.
+
+Verified with a real, unmocked reproduction: built a real two-mode (`base`/`buyFeature`, distinct `libraryId`s)
+outcome-library bundle on disk with the real, built package's own `OutcomeLibraryBundleWriter`, started a real
+`pokie studio <bundle>` process, and drove its real HTTP API with plain `fetch` — the same request/response
+contract `apiClient.ts` uses — across every surface named above: Overview/Exact Analysis's `report.modes` lists
+both real modes; sampling each mode draws exclusively from its own library (`roundId` prefix proves it); a Play
+session with no `modeName` still plays the first mode (behavior preserved) while one with `modeName:
+"buyFeature"` genuinely plays it and stamps `studioModeName: "buyFeature"` onto the recorded round; a
+Simulation/Replay job with `modeName: "buyFeature"` completes with `job.modeName === "buyFeature"`, not
+silently `"base"`; an unreal mode name fails honestly everywhere, naming both real modes, never falling back. A
+second real server opened a real Stake Engine export and confirmed Play/Simulation/Replay/Sample each refuse it
+with the structured `outcomeSource.sample` diagnostic. Full transcripts, scripts, and server logs:
+[`evidence/p5pa-04-multimode-outcome-library-fix/README.md`](evidence/p5pa-04-multimode-outcome-library-fix/README.md).
+
+Regression coverage: a new `tests/project/resolveOutcomeLibraryModeName.test.ts`, and new multi-mode describe
+blocks in `tests/cli/studio/runtime/StudioPlayService.test.ts`,
+`tests/cli/studio/simulation/StudioSimulationService.test.ts`,
+`tests/cli/studio/replay/StudioReplayExecutionService.test.ts`, and two new HTTP-level cases in
+`tests/cli/studio/StudioServer.test.ts` — all against real bundles on disk, real `ProjectTargetResolver`
+resolution, no reader/selector mocking. Ran the full `pokie` Jest project (351 suites / 5571 tests, up from the
+350/5562 baseline this step started from), plus `studio-client-components` (29 suites / 230 tests) and
+`studio-client-workflows` (18 suites / 187 tests, covering `ProjectDashboardPage`'s own
+Play/Simulation/Replay integration tests) since this fix touched their own frontend plumbing — all passed.
+
+What could not be verified: no Chromium/Chrome binary exists anywhere on this filesystem, this sandbox is not
+root, and no host-browser bridge (`P5_STUDIO_URL`/`P5_DEVTOOLS_URL`) was wired into this environment for this
+step — the same constraint `docs/phase5-audit/evidence/environment-verification/` and
+`docs/phase5-audit/evidence/host-browser/f9-rerun-attempt-20260810/` already documented for this exact sandbox,
+re-confirmed fresh rather than assumed. A real Chrome session driving the rendered Studio UI (the kind
+`P5PA-02`/`P5PA-03`'s own `browser-ui-rerun/` evidence captured) was therefore not possible here; the real,
+running Studio HTTP server was driven end to end instead (above), and the frontend's own mode-picker source was
+confirmed to read the server's real `report.modes` (never a free-text field or an invented list) both by
+reading the rendered-control source directly and by exercising it through `studio-client-components`/
+`studio-client-workflows`' own React Testing Library suites (a real jsdom DOM, real user-event interactions,
+`fetch` mocked only at the HTTP boundary).

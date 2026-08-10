@@ -1,4 +1,4 @@
-import {Anchor, Button, Collapse, Group, List, NumberInput, Progress, SimpleGrid, Stepper, Text, TextInput} from "@mantine/core";
+import {Anchor, Button, Collapse, Group, List, NumberInput, Progress, Select, SimpleGrid, Stepper, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
@@ -27,7 +27,7 @@ export type ReportDetailState =
 // so the out-of-the-box default never itself trips the "requested rounds is low" warning/recommendation.
 const DEFAULT_ROUNDS = 10000;
 
-type FormValues = {rounds: number; seed: string; workers: number};
+type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
 
 // The single Configure -> Run -> Review -> Export workflow, replacing the old separate Simulation and
 // Reports tabs. All data-fetching is still owned by ProjectDashboardPage (useSimulationPoll, the
@@ -51,10 +51,11 @@ export function SimulationTab({
     onCompare,
     onClearCompare,
     downloadUrls,
+    availableModes,
 }: {
     progress: SimulationProgressView | undefined;
     error: string | undefined;
-    onRun: (rounds: number, seed: string | undefined, workers: number) => void;
+    onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
     onCancel: () => void;
     onRetry: () => void;
     recentRuns: ReportListView;
@@ -69,9 +70,22 @@ export function SimulationTab({
     onCompare: (entry: StudioSimulationReportListEntry) => void;
     onClearCompare: () => void;
     downloadUrls: {json: string; markdown: string; html: string} | undefined;
+    // The current project's own real outcome-library modes -- see ProjectDashboardPage's own
+    // outcomeLibraryModes doc comment. Undefined for an ordinary game-backed project.
+    availableModes?: string[];
 }) {
     const confirm = useConfirm();
-    const form = useForm<FormValues>({mode: "uncontrolled", initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1}});
+    const form = useForm<FormValues>({mode: "uncontrolled", initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""}});
+
+    // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
+    // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own
+    // identical effect for why).
+    useEffect(() => {
+        if (form.getValues().modeName === "" && availableModes !== undefined && availableModes.length > 0) {
+            form.setFieldValue("modeName", availableModes[0]);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [availableModes]);
     const [fullReportOpened, {toggle: toggleFullReport, close: closeFullReport}] = useDisclosure(false);
     const [compareOpened, setCompareOpened] = useState(false);
 
@@ -176,13 +190,29 @@ export function SimulationTab({
             </Stepper>
 
             {activeStep === 0 && (
-                <form onSubmit={form.onSubmit((values) => onRun(values.rounds, values.seed.trim() || undefined, values.workers))}>
+                <form
+                    onSubmit={form.onSubmit((values) =>
+                        onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined),
+                    )}
+                >
                     <QuickActions>
                         <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
                         <Button type="submit" loading={progress?.status === "queued"} disabled={active}>
                             Run Simulation
                         </Button>
                     </QuickActions>
+                    {availableModes !== undefined && availableModes.length > 0 && (
+                        <Select
+                            label="Outcome library mode"
+                            description="Which real mode of this outcome library this run samples."
+                            data={availableModes}
+                            allowDeselect={false}
+                            mb="sm"
+                            style={{maxWidth: 320}}
+                            {...form.getInputProps("modeName")}
+                            key={form.key("modeName")}
+                        />
+                    )}
                     <AdvancedDisclosure detail="seed, workers">
                         <QuickActions>
                             <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />

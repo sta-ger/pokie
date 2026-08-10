@@ -1,5 +1,5 @@
 import {Button, Select, Text, TextInput} from "@mantine/core";
-import {ReactNode, useState} from "react";
+import {ReactNode, useEffect, useState} from "react";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
 import {EmptyState} from "../common/EmptyState";
@@ -24,16 +24,31 @@ export function PlayTab({
     onSpin,
     onFindAnyWin,
     onFindSymbolWin,
+    availableModes,
 }: {
     session: PlaySessionView;
     sessionId: string | undefined;
-    onNewSession: (seed?: string) => void;
+    onNewSession: (seed?: string, modeName?: string) => void;
     onSpin: () => void;
     onFindAnyWin: () => void;
     onFindSymbolWin: (symbolId: string) => void;
+    // The current project's own real outcome-library modes (see ProjectDashboardPage's own
+    // outcomeLibraryModes doc comment) -- undefined for an ordinary game-backed project, which has no
+    // notion of an outcome-library mode at all. When present, New session/Reset draw against whichever
+    // of these real modes is selected below, never the manifest's own first mode by default silently.
+    availableModes?: string[];
 }) {
     const [seed, setSeed] = useState("");
     const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+    const [selectedMode, setSelectedMode] = useState<string | null>(null);
+    // Defaults the picker to the first real mode the moment the list becomes available -- PlayTab mounts
+    // before the project header's own outcome-source report necessarily has, so availableModes can go
+    // from undefined to populated after this component's own first render, not just at mount.
+    useEffect(() => {
+        if (selectedMode === null && availableModes !== undefined && availableModes.length > 0) {
+            setSelectedMode(availableModes[0]);
+        }
+    }, [availableModes, selectedMode]);
     const loading = session.status === "loading";
     // The game's own real symbol list -- present on session/spin/find-scenario responses alike (see
     // StudioPlayService.buildSessionView()'s own doc comment) -- undefined until the first "ok" response,
@@ -65,6 +80,23 @@ export function PlayTab({
         />
     );
 
+    // Only rendered for a resolved "outcomeLibrary"/"stakeAdapter" project (availableModes present) --
+    // an ordinary game-backed project has no notion of an outcome-library mode, so New session/Reset
+    // never passes one for it at all.
+    const modeField = availableModes !== undefined && availableModes.length > 0 && (
+        <Select
+            aria-label="Outcome library mode"
+            label="Outcome library mode"
+            description="Which real mode of this outcome library New session/Reset draws against."
+            data={availableModes}
+            value={selectedMode}
+            onChange={setSelectedMode}
+            allowDeselect={false}
+            mb="sm"
+            style={{maxWidth: 320}}
+        />
+    );
+
     if (sessionId === undefined) {
         return (
             <div>
@@ -73,11 +105,12 @@ export function PlayTab({
                     needed) and creates a real session directly in Studio&apos;s own backend -- no server,
                     host, port, or separate API to set up.
                 </Text>
+                {modeField}
                 {seedField}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
                 <QuickActions>
-                    <Button loading={loading} onClick={() => onNewSession(seed.trim() || undefined)}>
+                    <Button loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
                         New session
                     </Button>
                 </QuickActions>
@@ -116,10 +149,11 @@ export function PlayTab({
                 >
                     Find symbol win
                 </Button>
-                <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined)}>
+                <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
                     Reset
                 </Button>
             </QuickActions>
+            {modeField}
             {seedField}
             {availableSymbols !== undefined && availableSymbols.length > 0 && (
                 <Select

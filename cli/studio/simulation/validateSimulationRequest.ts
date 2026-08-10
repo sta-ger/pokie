@@ -5,6 +5,7 @@ export type SimulationRequestInput = {
     rounds?: unknown;
     seed?: unknown;
     workers?: unknown;
+    modeName?: unknown;
 };
 
 export type ValidatedSimulationRequest = {
@@ -15,6 +16,11 @@ export type ValidatedSimulationRequest = {
     // validator) doesn't need to specify it just to get the default — StudioSimulationService.start()
     // treats a missing value the same as 1, same as validateSimulationRequest() does below.
     workers?: number;
+    // Only meaningful for a resolved "outcomeLibrary" project (see
+    // StudioSimulationService.runOutcomeSourceSampling's own doc comment) -- undefined means "no explicit
+    // choice", resolved to the manifest's own first mode by resolveOutcomeLibraryModeName, same as before
+    // this field existed; harmlessly ignored for an ordinary "tsPackage"/"blueprint" simulation.
+    modeName?: string;
 };
 
 // The one place a POST /api/project/simulations body is turned into a trusted
@@ -23,7 +29,7 @@ export type ValidatedSimulationRequest = {
 // `rounds`, a `seed` that's present but not a non-empty string, or a `workers` outside [1,
 // MAX_SIMULATION_WORKERS].
 export function validateSimulationRequest(input: SimulationRequestInput): ValidatedSimulationRequest {
-    const {rounds, seed, workers} = input;
+    const {rounds, seed, workers, modeName} = input;
 
     if (typeof rounds !== "number" || !Number.isInteger(rounds) || rounds < 1) {
         throw new Error('"rounds" must be a positive integer.');
@@ -40,11 +46,15 @@ export function validateSimulationRequest(input: SimulationRequestInput): Valida
         validatedWorkers = workers;
     }
 
+    if (modeName !== undefined && (typeof modeName !== "string" || modeName.trim().length === 0)) {
+        throw new Error('"modeName" must be a non-empty string when given.');
+    }
+
     if (seed === undefined) {
-        return {rounds, workers: validatedWorkers};
+        return {rounds, workers: validatedWorkers, ...(modeName === undefined ? {} : {modeName})};
     }
     if (typeof seed !== "string" || seed.trim().length === 0) {
         throw new Error('"seed" must be a non-empty string when given.');
     }
-    return {rounds, seed, workers: validatedWorkers};
+    return {rounds, seed, workers: validatedWorkers, ...(modeName === undefined ? {} : {modeName})};
 }

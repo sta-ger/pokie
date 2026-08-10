@@ -31,13 +31,13 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     const spinGuard = useDoubleSubmitGuard();
 
     const newSession = useCallback(
-        (seed?: string) => {
+        (seed?: string, modeName?: string) => {
             if (!newSessionGuard.begin()) {
                 return;
             }
             const requestId = ++requestIdRef.current;
             setSession({status: "loading"});
-            createPlaySession(fetchImpl, seed)
+            createPlaySession(fetchImpl, seed, modeName)
                 .then((result) => {
                     if (requestId !== requestIdRef.current) {
                         return;

@@ -17,4 +17,7 @@ export type StudioSimulationReportListEntry = {
     completedAt: string;
     durationMs: number;
     hasWarnings: boolean;
+    // The real outcome-library mode this run sampled -- see StudioSimulationJobRecord's own doc comment.
+    // Undefined for an ordinary "tsPackage"/"blueprint" simulation.
+    modeName?: string;
 };
