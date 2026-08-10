@@ -1,0 +1,81 @@
+POKIE Studio
+/
+Playable Game With Free Games
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Playable Game With Free Games
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/tests/cli/fixtures/playable-game-with-free-games
+
+Close project
+Spin
+Find any win
+Find symbol win
+Find free games
+Reset
+Seed (optional)
+
+A given seed always plays out the same way -- genuine input to the game's own RNG, not cosmetic.
+
+Symbol
+
+The symbol Find symbol win searches for -- a real spin's own already-computed win, never predicted.
+
+Game	Playable Game With Free Games (id: "playable-game-with-free-games", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.00
+Total win	1.00 (1.00x)
+Credits	961
+K
+W
+K
+	
+K
+S
+10
+	
+9
+S
+J
+	
+9
+S
+A
+	
+A
+Q
+A
+scatter: S, win: 1
+Round detail
+Type	Symbol	Amount	Positions	Multiplier
+scatter	S	1.00 (1.00x stake)	3	not applicable — no multiplier applied to this win
+
+Feature events
+
+freeGamesTriggered
+
+Show advanced details (feature event data)
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+Snapshot captured for this round — see Advanced details for the full before/after state.
+
+Show advanced details (raw JSON, debug data)

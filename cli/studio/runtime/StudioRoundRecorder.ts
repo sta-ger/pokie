@@ -12,15 +12,15 @@ import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 export type StudioRoundSource = "live" | "pre-generated" | "play" | "play-outcome-source" | "outcome-source-sample" | "simulation-sample";
 
 // The concrete action that produced a round, independent of *where* it came from (StudioRoundSource) --
-// "spin" is the Play tab's ordinary Spin/outcome-source draw; "find-any-win"/"find-symbol-win" are the
-// Play tab's own scenario-search controls (StudioPlayService.findAnyWin()/findSymbolWin()), which repeat
-// real spin() calls until one matches -- every spin along the way, not just the final matching one, is
-// recorded under the operation that's actually driving it, never demoted to a bare "spin" once it's part
-// of a search. "outcome-source-sample" is the Outcome Source Analysis tab's own stateless single-draw
-// route; "simulation-sample" is the Replay tab's "Recent Simulation" reproduction -- one action, so
-// (unlike "spin"/"find-any-win"/"find-symbol-win") it never needs a second, more specific operation name
-// of its own.
-export type StudioRoundOperation = "spin" | "find-any-win" | "find-symbol-win" | "outcome-source-sample" | "simulation-sample";
+// "spin" is the Play tab's ordinary Spin/outcome-source draw; "find-any-win"/"find-symbol-win"/
+// "find-free-games" are the Play tab's own scenario-search controls (StudioPlayService.findAnyWin()/
+// findSymbolWin()/findFreeGames()), which repeat real spin() calls until one matches -- every spin along
+// the way, not just the final matching one, is recorded under the operation that's actually driving it,
+// never demoted to a bare "spin" once it's part of a search. "outcome-source-sample" is the Outcome
+// Source Analysis tab's own stateless single-draw route; "simulation-sample" is the Replay tab's "Recent
+// Simulation" reproduction -- one action, so (unlike "spin"/"find-any-win"/"find-symbol-win"/
+// "find-free-games") it never needs a second, more specific operation name of its own.
+export type StudioRoundOperation = "spin" | "find-any-win" | "find-symbol-win" | "find-free-games" | "outcome-source-sample" | "simulation-sample";
 
 // What a producer actually knows about a round beyond the StudioRuntimeSessionView itself -- `projectRoot`/
 // `seed` are only ever attached when the producer genuinely has them (a Play session's own creation

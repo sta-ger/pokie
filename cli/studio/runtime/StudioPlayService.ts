@@ -8,9 +8,11 @@ import {
     isTransactionalWalletPort,
     loadPokieGame,
     OUTCOME_SOURCE_SAMPLE_OPERATION,
+    GameWithFreeGamesSessionHandling,
     OutcomeLibraryBundleOutcomeSource,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
+    PlayFreeGamesStrategy,
     PlayUntilAnyWinStrategy,
     PlayUntilSymbolWinStrategy,
     PokieGame,
@@ -32,6 +34,7 @@ import {
     WeightedOutcomeRandomSource,
     type RoundArtifactJson,
     type VideoSlotSessionHandling,
+    type VideoSlotWithFreeGamesSessionHandling,
 } from "pokie";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
@@ -352,6 +355,34 @@ export class StudioPlayService {
         );
     }
 
+    // PlayTab's "Find free games" scenario control -- the canonical shared "custom scenario" abstraction
+    // pokie-examples' own custom-scenario dropdown already uses for its "Free games" entry (see that
+    // repo's `games/slot-with-free-games/index.ts`, `new PlayFreeGamesStrategy()`): a real, generic
+    // PlayStrategy the "pokie" library ships (src/simulation/playstrategy/PlayFreeGamesStrategy.ts),
+    // never a Studio-local reimplementation. Same real, authoritative search loop as findAnyWin()/
+    // findSymbolWin() above: for a "runtime" session, whether to keep searching is decided by handing the
+    // engine's own PlayFreeGamesStrategy the same live GameSessionHandling spin() just played, exactly as
+    // findAnyWin() does for PlayUntilAnyWinStrategy; for an "outcomeSource" session (no live
+    // GameSessionHandling -- see findAnyWin()'s own doc comment), the equivalent real, already-computed
+    // signal is read off that round's own artifact instead -- its `featureEvents`, specifically the
+    // "freeGamesTriggered" event buildRoundArtifactFromSession derives from the exact same
+    // getWonFreeGamesNumber() this strategy itself reads, never a second free-games determination.
+    public findFreeGames(sessionId: string): Promise<StudioPlaySpinResult> {
+        // Same feature-detection-before-ever-spinning reasoning as findSymbolWin() above -- a game whose
+        // session doesn't report free-games state at all (an ordinary VideoSlotSessionHandling, no free
+        // games mechanics) can never answer this scenario search, so it should never burn a real spin
+        // finding that out.
+        if (this.active !== undefined && this.active.kind === "runtime" && !this.supportsFreeGamesSearch(this.active.session)) {
+            return Promise.resolve({status: "error", error: "This game doesn't support free games, so Find free games isn't available for it."});
+        }
+        return this.spinUntilMatch(
+            sessionId,
+            "find-free-games",
+            (session) => !new PlayFreeGamesStrategy().canPlayNextSimulationRound(session as unknown as VideoSlotWithFreeGamesSessionHandling),
+            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"),
+        );
+    }
+
     // Called on a project switch or Studio shutdown -- a genuinely different (or no longer active)
     // project must never leave a previous project's session reachable. Nothing here holds an OS resource
     // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
@@ -368,6 +399,16 @@ export class StudioPlayService {
             typeof candidate.getWinningLines === "function" &&
             typeof candidate.getWinningScatters === "function" &&
             typeof candidate.getSymbolsCombination === "function"
+        );
+    }
+
+    private supportsFreeGamesSearch(session: GameSessionHandling): boolean {
+        const candidate = session as Partial<GameWithFreeGamesSessionHandling>;
+        return (
+            typeof candidate.getWonFreeGamesNumber === "function" &&
+            typeof candidate.getFreeGamesNum === "function" &&
+            typeof candidate.getFreeGamesSum === "function" &&
+            typeof candidate.getFreeGamesBank === "function"
         );
     }
 

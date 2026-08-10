@@ -1,0 +1,36 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[1062324:1062365:0810/221723.868671:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062365:0810/221723.868898:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062365:0810/221723.868934:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062365:0810/221723.869027:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062365:0810/221723.928517:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062365:0810/221723.976806:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:9225/devtools/browser/01bfc3cf-d4c0-4239-aac0-0388c329f062
+[1062324:1062324:0810/221724.315217:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1062324:1062324:0810/221724.319244:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1062324:1062365:0810/221724.319363:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062365:0810/221724.319405:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1062324:1062324:0810/221724.319480:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1062324:1062324:0810/221724.412762:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1062324:1062324:0810/221724.416530:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1062478:1062478:0810/221724.608052:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786393046.804585 1062362 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[1062358:1062358:0810/221729.413863:ERROR:content/zygote/zygote_linux.cc:621] Zygote could not fork: process_type utility numfds 5 child_pid -1
+[1062324:1062376:0810/221729.413903:ERROR:content/common/zygote/zygote_communication_linux.cc:164] NOTREACHED hit. Did not receive ping from zygote child
+[1062324:1062366:0810/221730.230843:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[1062324:1062324:0810/221739.614842:ERROR:content/common/zygote/zygote_communication_linux.cc:296] Failed to send GetTerminationStatus message to zygote
+[1062324:1062366:0810/221759.572553:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1062324:1062366:0810/221851.038808:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1062324:1062366:0810/222015.955788:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786393224.746059 1063748 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+Error: ../src/intel/vulkan/anv_device.c:2455: Unable to open device /dev/dri/renderD128: Permission denied (VK_ERROR_INCOMPATIBLE_DRIVER)
+Error: ../src/intel/vulkan_hasvk/anv_device.c:1575: Unable to open device /dev/dri/renderD128: Permission denied (VK_ERROR_INCOMPATIBLE_DRIVER)
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+[1062324:1062324:0810/222024.797769:ERROR:services/on_device_model/public/cpp/service_client.cc:36] Unexpected on_device_model service disconnect: The device's GPU is not supported.
+[1062324:1062366:0810/222320.317415:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1062324:1062366:0810/223016.555273:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT

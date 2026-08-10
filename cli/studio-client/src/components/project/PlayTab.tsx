@@ -24,6 +24,7 @@ export function PlayTab({
     onSpin,
     onFindAnyWin,
     onFindSymbolWin,
+    onFindFreeGames,
     availableModes,
 }: {
     session: PlaySessionView;
@@ -32,6 +33,11 @@ export function PlayTab({
     onSpin: () => void;
     onFindAnyWin: () => void;
     onFindSymbolWin: (symbolId: string) => void;
+    // The canonical shared "custom scenario" control -- StudioPlayService.findFreeGames()'s own doc
+    // comment. Always rendered, same as Find any win/Find symbol win: a game that doesn't support free
+    // games reports that honestly once clicked (errorNotice below), rather than this tab guessing ahead
+    // of time which games do.
+    onFindFreeGames: () => void;
     // The current project's own real outcome-library modes (see ProjectDashboardPage's own
     // outcomeLibraryModes doc comment) -- undefined for an ordinary game-backed project, which has no
     // notion of an outcome-library mode at all. When present, New session/Reset draw against whichever
@@ -148,6 +154,9 @@ export function PlayTab({
                     onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
                 >
                     Find symbol win
+                </Button>
+                <Button variant="default" loading={loading} onClick={onFindFreeGames}>
+                    Find free games
                 </Button>
                 <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
                     Reset

@@ -1,0 +1,125 @@
+POKIE Studio
+/
+Playable Game With Free Games
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Playable Game With Free Games
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/tests/cli/fixtures/playable-game-with-free-games
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Refresh
+All sessions
+b9bc0ad3-c53f-437b-8241-538a5bbe7821
+Round 287 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 763, win 2, 8/10/2026, 11:50:13 PM
+Round 286 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 762, win 0, 8/10/2026, 11:50:13 PM
+Round 285 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 763, win 1, 8/10/2026, 11:50:13 PM
+Round 284 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 763, win 0, 8/10/2026, 11:50:13 PM
+Round 283 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 764, win 0, 8/10/2026, 11:50:13 PM
+Round 282 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 765, win 0, 8/10/2026, 11:50:13 PM
+Round 281 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 766, win 0, 8/10/2026, 11:50:13 PM
+Round 280 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 767, win 0, 8/10/2026, 11:50:13 PM
+Round 279 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 768, win 0, 8/10/2026, 11:50:13 PM
+Round 278 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 769, win 0, 8/10/2026, 11:50:13 PM
+Round 277 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 770, win 0, 8/10/2026, 11:50:13 PM
+Round 276 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 771, win 1, 8/10/2026, 11:50:13 PM
+Round 275 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 771, win 1, 8/10/2026, 11:50:13 PM
+Round 274 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 771, win 0, 8/10/2026, 11:50:13 PM
+Round 273 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 772, win 0, 8/10/2026, 11:50:13 PM
+Round 272 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 773, win 1, 8/10/2026, 11:50:13 PM
+Round 271 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 773, win 0, 8/10/2026, 11:50:13 PM
+Round 270 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 774, win 0, 8/10/2026, 11:50:13 PM
+Round 269 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 775, win 0, 8/10/2026, 11:50:13 PM
+Round 268 in session b9bc0ad3-c53f-437b-8241-538a5bbe7821 — credits 776, win 0, 8/10/2026, 11:50:13 PM
+Loaded replay
+Source	Recorded -- Play tab spin
+Identities	session b9bc0ad3-c53f-437b-8241-538a5bbe7821, round 287
+Seed	p5pa05-visible-find-free-games
+Version / hash	playable-game-with-free-games v1.0.0
+Timestamp	8/10/2026, 11:50:13 PM
+Completeness	Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.
+Inspectable	
+AVAILABLE
+This round's data is loaded and ready to inspect.
+Reproducible	
+UNAVAILABLE
+This is a live spin's actual recorded result -- there's nothing to reproduce it against.
+Comparable	
+UNAVAILABLE
+A fresh forward replay with no prior recorded result to compare against.
+Exportable	
+AVAILABLE
+Ready to download as JSON.
+Game	Playable Game With Free Games (id: "playable-game-with-free-games", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.00
+Total win	2.00 (2.00x)
+Credits	763
+9
+J
+S
+	
+9
+A
+S
+	
+9
+9
+S
+	
+K
+10
+A
+	
+J
+J
+J
+line: 9, win: 1
+scatter: S, win: 1
+Round detail
+Type	Symbol	Amount	Positions	Multiplier
+line	9	1.00 (1.00x stake)	3	not applicable — no multiplier applied to this win
+scatter	S	1.00 (1.00x stake)	3	not applicable — no multiplier applied to this win
+
+Feature events
+
+freeGamesTriggered
+
+Show advanced details (feature event data)
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+Snapshot captured for this round — see Advanced details for the full before/after state.
+
+Show advanced details (raw JSON, debug data)
+
+Download JSON
+Recent replays
+Refresh
+
+No replays run yet.

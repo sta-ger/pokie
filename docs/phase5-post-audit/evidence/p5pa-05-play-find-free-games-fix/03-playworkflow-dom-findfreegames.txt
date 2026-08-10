@@ -1,0 +1,19 @@
+PASS studio-client-workflows tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx
+  ProjectDashboardPage - Play
+    ✓ Find any win requests the scenario route and renders the round it returns (1237 ms)
+    ✓ shows a symbol chooser once the session reports available symbols, and Find symbol win propagates the chosen symbol (1226 ms)
+    ✓ Find free games requests the scenario route and renders the round it returns (789 ms)
+    ✓ Find symbol win is disabled until a symbol is chosen (1013 ms)
+    ○ skipped creates a real session directly through Studio's own API -- never the Runtime tab's server-start route -- with no host/port/server URL shown
+    ○ skipped threads a given seed through to the session-creation request
+    ○ skipped shows a subject-specific recovery message, with a retry, when session creation fails
+    ○ skipped Spin renders the played round through the shared RoundSummary/GameScreenView chain
+    ○ skipped Reset discards the current session and creates a fresh one, clearing the previous round
+  canonical player parity: Play renders the same fixture round Replay/Outcome Library render via RoundArtifactInspector
+    ○ skipped Play's own Spin workflow renders the fixture round's screen/win highlighting identically to a direct RoundArtifactInspector render of the same artifact
+
+Test Suites: 1 skipped, 1 passed, 1 of 2 total
+Tests:       40 skipped, 4 passed, 44 total
+Snapshots:   0 total
+Time:        7.495 s, estimated 61 s
+Ran all test suites matching /playWorkflow\.test\.tsx$/i with tests matching "Find".

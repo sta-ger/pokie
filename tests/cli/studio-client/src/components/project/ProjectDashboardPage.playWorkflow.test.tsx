@@ -247,6 +247,66 @@ describe("ProjectDashboardPage - Play", () => {
         expect(findCall?.init?.body).toBe(JSON.stringify({symbolId: "seven"}));
     }, 30000);
 
+    // Find free games -- the canonical shared "custom scenario" abstraction (see
+    // StudioPlayService.findFreeGames()'s own doc comment): pokie-examples' own custom-scenario dropdown
+    // already uses the same shared PlayFreeGamesStrategy for its "Free games" entry. Same real,
+    // authoritative request/response flow as Find any win/Find symbol win above.
+    it("Find free games requests the scenario route and renders the round it returns", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/play/sessions/sess-1/find-free-games": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    session: sessionFor({
+                        credits: 1000,
+                        bet: 5,
+                        win: 0,
+                        screen: [["scatter", "scatter"]],
+                        debug: {
+                            artifact: {
+                                schemaVersion: 1,
+                                roundId: "r1",
+                                provenance: {game: GAME, pokieVersion: "1.0.0"},
+                                betMode: "base",
+                                stake: 5,
+                                totalWin: 0,
+                                payoutMultiplier: 0,
+                                screen: [["scatter", "scatter"]],
+                                steps: [
+                                    {
+                                        index: 0,
+                                        screen: [["scatter", "scatter"]],
+                                        totalWin: 0,
+                                        wins: [],
+                                        featureEvents: [{type: "freeGamesTriggered", data: {count: 3}}],
+                                    },
+                                ],
+                                wins: [],
+                                featureEvents: [{type: "freeGamesTriggered", data: {count: 3}}],
+                                hash: "fake-hash",
+                            } as unknown as RoundArtifactJson,
+                        },
+                    }),
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "Find free games"}));
+
+        // The round returned by find-free-games renders through the exact same RoundArtifactInspector
+        // chain a plain Spin's RoundArtifact does -- its own real "freeGamesTriggered" feature event shows
+        // up as genuine rendered proof, never a client-computed/simulated indicator.
+        await waitFor(() => expect(screen.getAllByText("freeGamesTriggered").length).toBeGreaterThan(0));
+        expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/find-free-games")).toBe(true);
+    }, 30000);
+
     it("Find symbol win is disabled until a symbol is chosen", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

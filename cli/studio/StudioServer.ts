@@ -620,6 +620,12 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const playFindFreeGamesSessionId = this.matchPlayFindFreeGamesRoute(url.pathname);
+        if (playFindFreeGamesSessionId !== undefined && method === "POST") {
+            await this.handlePlayFindFreeGames(res, playFindFreeGamesSessionId);
+            return;
+        }
+
         if (method === "GET" && url.pathname === "/api/project/deployment/targets") {
             this.handleListDeploymentTargets(res);
             return;
@@ -816,6 +822,21 @@ export class StudioServer implements StudioServerHandling {
             segments[2] === "play" &&
             segments[3] === "sessions" &&
             segments[5] === "find-symbol-win"
+        ) {
+            return decodeURIComponent(segments[4]);
+        }
+        return undefined;
+    }
+
+    private matchPlayFindFreeGamesRoute(pathname: string): string | undefined {
+        const segments = pathname.split("/").filter((segment) => segment.length > 0);
+        if (
+            segments.length === 6 &&
+            segments[0] === "api" &&
+            segments[1] === "project" &&
+            segments[2] === "play" &&
+            segments[3] === "sessions" &&
+            segments[5] === "find-free-games"
         ) {
             return decodeURIComponent(segments[4]);
         }
@@ -2128,6 +2149,24 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const result = await this.playService.findSymbolWin(sessionId, validated.symbolId);
+        if (result.status === "ok") {
+            this.sendJson(res, 200, {status: "ok", session: result.session});
+            return;
+        }
+        this.sendPlayErrorResult(res, sessionId, result);
+    }
+
+    // PlayTab's "Find free games" scenario control -- POST /api/project/play/sessions/:id/find-free-games,
+    // no body. Same response shape/error handling as handlePlayFindAnyWin above
+    // (StudioPlayService.findFreeGames() returns the exact same StudioPlaySpinResult spin() does -- see
+    // its own doc comment), just repeating real spins server-side until one actually triggers free games.
+    private async handlePlayFindFreeGames(res: ServerResponse, sessionId: string): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+
+        const result = await this.playService.findFreeGames(sessionId);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;

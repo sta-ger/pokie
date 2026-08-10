@@ -1,0 +1,20 @@
+[2026-08-10T22:04:00.329Z] START fresh Chrome browser session against local candidate Studio http://127.0.0.1:41257
+[2026-08-10T22:04:00.381Z] NAVIGATE rendered Studio project workspace
+[2026-08-10T22:04:00.902Z] OBSERVE free-games-capable project dashboard
+[2026-08-10T22:04:00.989Z] CLICK Play navigation at rendered coordinates (130, 178)
+[2026-08-10T22:04:01.395Z] OBSERVE rendered Play session setup
+[2026-08-10T22:04:01.421Z] CLICK input "Seed (optional)" at rendered coordinates (436, 391)
+[2026-08-10T22:04:01.850Z] INPUT "Seed (optional)"="p5pa05-visible-find-free-games" through the browser keyboard
+[2026-08-10T22:04:02.200Z] CLICK Play New session at rendered coordinates (337, 439)
+[2026-08-10T22:04:02.607Z] OBSERVE rendered Find free games control
+[2026-08-10T22:04:02.666Z] CLICK Find free games at rendered coordinates (349, 307)
+[2026-08-10T22:04:03.073Z] OBSERVE returned Play artifact visibly contains freeGamesTriggered
+[2026-08-10T22:04:03.324Z] CAPTURE 08-play-find-free-games-artifact.png and 08-play-find-free-games-artifact-visible-text.txt
+[2026-08-10T22:04:03.338Z] CLICK Replay navigation immediately after Find free games at rendered coordinates (130, 292)
+[2026-08-10T22:04:03.743Z] OBSERVE Replay source chooser
+[2026-08-10T22:04:03.852Z] CLICK Replay Session Spin source at rendered coordinates (602, 112)
+[2026-08-10T22:04:04.259Z] OBSERVE shared recorder Session Spin entry list
+[2026-08-10T22:04:04.370Z] CLICK newest shared recorder round at rendered coordinates (513, 260)
+[2026-08-10T22:05:04.831Z] FAILED Error: Timed out waiting for same shared recorder entry visibly identified as Find free games with its free-games event
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/docs/phase5-post-audit/evidence/p5pa-05-play-find-free-games-fix/browser-ui-rerun.mjs:64:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/docs/phase5-post-audit/evidence/p5pa-05-play-find-free-games-fix/browser-ui-rerun.mjs:117:5)

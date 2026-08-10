@@ -1,0 +1,45 @@
+PASS pokie tests/cli/studio/runtime/StudioPlayService.test.ts
+  StudioPlayService
+    ○ skipped creates a real, live session directly, with no server/host/port involved
+    ○ skipped passes a given seed through to the game's own createSession() as a real PokieGameContext
+    ○ skipped reports a safe 'failed' result when the game fails to load, never throwing
+    ○ skipped spins the just-created session and returns a real RoundArtifact, settled through the same wallet SpinCommandHandler always uses
+    ○ skipped keeps the settled win when a serializer's round payload carries a stale win
+    ○ skipped reports an honest artifactUnavailableReason instead of a fabricated artifact for a non-video-slot game
+    ○ skipped reports 'not-found' spinning a sessionId from before the most recent newSession() call
+    ○ skipped reports 'not-found' spinning before any session was ever created
+    ○ skipped reports 'not-found' spinning after reset()
+    ○ skipped crosses the shared runtime-package-materialization boundary exactly once per newSession(), loading only the resolved runtime path
+    ○ skipped reports a safe 'failed' result, without ever loading the game, when the runtime package cannot be materialized
+    ○ skipped replaces whatever session was active on every newSession() call, discarding the previous one
+    ○ skipped reports the real, resolver-derived 'outcomeSource.sample' capability diagnostic for a resolved Stake Engine export, never attempting to load it as a package
+    a resolved native outcome-library project
+      ○ skipped plays a real draw through the bundle's own OutcomeLibraryBundleOutcomeSource adapter, never loadPokieGame
+      ○ skipped draws the same real outcome every time for a given seed, the same reproducibility a live game's own seed promises
+      a multi-mode outcome-library project
+        ○ skipped plays the manifest's own first mode when no mode is explicitly requested, preserving pre-existing behavior
+        ○ skipped plays an explicitly-requested non-first mode -- never silently substitutes the manifest's own first mode
+        ○ skipped fails honestly, naming every real mode, for a mode name that isn't part of this library -- never falls back to the first mode
+        ○ skipped stamps the shared StudioRoundRecorder's own provenance with the real mode a round was drawn against
+    findAnyWin / findSymbolWin / findFreeGames
+      ✓ findAnyWin returns the very first round when it already wins, driving the engine's own PlayUntilAnyWinStrategy against the live session (35 ms)
+      ✓ findAnyWin repeats real, authoritative spins -- never a client-side calculation -- until one actually wins (28 ms)
+      ✓ findSymbolWin propagates the chooser's own selected symbol into the search -- a round winning a different symbol never matches (64 ms)
+      ✓ findSymbolWin stops on the first real spin that actually wins the requested symbol, not just any win (6 ms)
+      ✓ findSymbolWin reports an honest 'error' for a non-video-slot game, never throwing, and never burning a spin first (4 ms)
+      ✓ findAnyWin reports 'not-found' against a sessionId from before the most recent newSession() call (5 ms)
+      ✓ findFreeGames returns the very first round when it already triggers free games, driving the engine's own PlayFreeGamesStrategy against the live session (4 ms)
+      ✓ findFreeGames repeats real, authoritative spins -- never a client-side calculation -- until one actually triggers free games (5 ms)
+      ✓ findFreeGames reports an honest 'error' for a game that doesn't support free games, never throwing, and never burning a spin first (10 ms)
+      against a resolved native outcome-library project (no live GameSessionHandling)
+        ✓ finds a real winning draw by reading the already-drawn artifact's own totalWin, never a live session/strategy object (23 ms)
+        ✓ reaches the identical winning round for the same seed -- deterministic search, same reproducibility a single seeded draw promises (13 ms)
+        ✓ findSymbolWin against a symbol that never wins in the bundle reports an honest 'error' once the bound is exhausted, never hanging (13 ms)
+        ✓ findFreeGames finds a real drawn round by reading the already-drawn artifact's own featureEvents, never a live session/strategy object (8 ms)
+        ✓ findFreeGames against a bundle whose outcomes never trigger free games reports an honest 'error' once the bound is exhausted, never hanging (13 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       19 skipped, 14 passed, 33 total
+Snapshots:   0 total
+Time:        2.087 s
+Ran all test suites matching /StudioPlayService\.test\.ts$/i with tests matching "findFreeGames".

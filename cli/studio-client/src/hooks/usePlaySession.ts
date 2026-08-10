@@ -1,5 +1,5 @@
 import {useCallback, useRef, useState} from "react";
-import {createPlaySession, findAnyWinPlaySession, findSymbolWinPlaySession, spinPlaySession} from "../api/apiClient";
+import {createPlaySession, findAnyWinPlaySession, findFreeGamesPlaySession, findSymbolWinPlaySession, spinPlaySession} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describePlaySessionResult, describePlaySpinResult, type PlaySessionResultView, type PlaySpinResultView} from "../domain/interpret/Runtime";
@@ -13,7 +13,7 @@ export type PlaySessionView = PlaySessionResultView | PlaySpinResultView;
 // "New session" and "Reset" are the exact same action from this hook's own point of view -- both just
 // call newSession() again, discarding whatever was active (see StudioPlayService.newSession()'s own doc
 // comment) -- PlayTab is what gives the two calls their own distinct labels/affordances.
-// "onRoundRecorded", when given, fires after every successful spin/findAnyWin/findSymbolWin -- Play's own
+// "onRoundRecorded", when given, fires after every successful spin/findAnyWin/findSymbolWin/findFreeGames -- Play's own
 // rounds pass through the same shared StudioRoundRecorder every other Studio tab's rounds do (see
 // StudioPlayService's own doc comment), so a caller wired to it (ProjectDashboardPage, passing its own
 // refreshRecentSpins) sees a Play round in the Replay tab's "Session Spin" list without the user having to
@@ -114,6 +114,14 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         [runSpinAction, fetchImpl],
     );
 
+    // Studio Play's "Find free games" scenario control -- the canonical shared "custom scenario"
+    // abstraction (see StudioPlayService.findFreeGames()'s own doc comment); same real, authoritative
+    // search as findAnyWin() above.
+    const findFreeGames = useCallback(() => {
+        runSpinAction((sid) => findFreeGamesPlaySession(fetchImpl, sid));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [runSpinAction, fetchImpl]);
+
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
     // never show a trace of the previous one's session. Bumps the request id first, so a newSession()/
     // spin() call still in flight from before the switch can never land afterward and repopulate what's
@@ -124,5 +132,5 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         setSessionId(undefined);
     }, []);
 
-    return {session, sessionId, newSession, spin, findAnyWin, findSymbolWin, resetForProjectSwitch};
+    return {session, sessionId, newSession, spin, findAnyWin, findSymbolWin, findFreeGames, resetForProjectSwitch};
 }
