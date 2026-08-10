@@ -17,5 +17,6 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
         report: record.report,
         statistics: record.statistics,
         error: record.error,
+        modeName: record.modeName,
     };
 }

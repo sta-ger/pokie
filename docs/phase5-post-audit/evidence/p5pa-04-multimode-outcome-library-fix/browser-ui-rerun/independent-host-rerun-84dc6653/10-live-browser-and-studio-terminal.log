@@ -1,0 +1,24 @@
+Script started on 2026-08-10 20:20:32+02:00 [COMMAND="curl --silent --show-error --fail http://127.0.0.1:9499/json/version && curl --silent --show-error --fail http://127.0.0.1:48119/" <not executed on terminal>]
+{
+   "Browser": "Chrome/138.0.7204.183",
+   "Protocol-Version": "1.3",
+   "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/138.0.0.0 Safari/537.36",
+   "V8-Version": "13.8.258.30",
+   "WebKit-Version": "537.36 (@e90faf484ddbc033fc9bf337621761d3dd5c5289)",
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9499/devtools/browser/fb7a05a5-8ae3-4c80-b719-e182f2764402"
+}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>POKIE Studio</title>
+  <script type="module" crossorigin src="/assets/index-D5nbG0-R.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BYljzUTd.css">
+</head>
+<body>
+<div id="root"></div>
+</body>
+</html>
+
+Script done on 2026-08-10 20:20:32+02:00 [COMMAND_EXIT_CODE="0"]

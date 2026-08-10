@@ -66,13 +66,13 @@ export function useSimulationPoll() {
             });
     }
 
-    function run(rounds: number, seed: string | undefined, workers: number): void {
+    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string): void {
         if (!runGuard.begin()) {
             return;
         }
         setError(undefined);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
-        startSimulation(fetchImpl, rounds, seed, workers)
+        startSimulation(fetchImpl, rounds, seed, workers, modeName)
             .then((result) => {
                 if (cancelledRef.current) {
                     return;

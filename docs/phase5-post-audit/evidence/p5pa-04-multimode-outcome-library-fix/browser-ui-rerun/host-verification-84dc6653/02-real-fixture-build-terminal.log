@@ -1,0 +1,5 @@
+Script started on 2026-08-10 17:23:55+02:00 [COMMAND="node docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/build-real-multimode-bundle.mjs /tmp/p5pa04-84dc6653-multimode-library-verify && node dist/cli/pokie.js outcomelibrary validate /tmp/p5pa04-84dc6653-multimode-library-verify --deep" <not executed on terminal>]
+Built two real outcome-library modes at /tmp/p5pa04-84dc6653-multimode-library-verify
+"/tmp/p5pa04-84dc6653-multimode-library-verify" is a valid outcome library bundle (deep check).
+
+Script done on 2026-08-10 17:24:03+02:00 [COMMAND_EXIT_CODE="0"]

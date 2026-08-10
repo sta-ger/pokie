@@ -1,0 +1,23 @@
+file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/node_modules/rolldown/dist/shared/rolldown-build-CtPvmZgJ.mjs:9
+import { formatWithOptions, styleText } from "node:util";
+                            ^^^^^^^^^
+SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:123:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:191:5)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:336:24)
+
+Node.js v18.19.1
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 7164 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/cli/studio-client/index.html                   0.36 kB │ gzip:   0.26 kB
+dist/cli/studio-client/assets/index-BYljzUTd.css  223.98 kB │ gzip:  33.07 kB
+dist/cli/studio-client/assets/index-CHT4lRRX.js   898.00 kB │ gzip: 261.96 kB
+
+✓ built in 3.89s
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

@@ -1,0 +1,54 @@
+POKIE Studio
+/
+Outcome library
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Outcome library
+
+/tmp/p5pa04-84dc6653-multimode-library-verify
+
+Close project
+Spin
+Find any win
+Find symbol win
+Reset
+Outcome library mode
+
+Which real mode of this outcome library New session/Reset draws against.
+
+Seed (optional)
+
+A given seed always plays out the same way -- genuine input to the game's own RNG, not cosmetic.
+
+Game	Browser Multi-mode Library (id: "browser-multimode", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.00
+Total win	20.00 (20.00x)
+Credits	19
+A
+value: A, win: 20
+Round detail
+Type	Symbol	Amount	Positions	Multiplier
+value	A	20.00 (20.00x stake)	1	not applicable — no multiplier applied to this win
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+State snapshot unavailable for this game/session type.
+
+Show advanced details (raw JSON, debug data)

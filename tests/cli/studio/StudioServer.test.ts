@@ -4572,6 +4572,55 @@ describe("StudioServer", () => {
             expect(entries[0].studioRound).toBe(1);
         });
 
+        it("plays an explicitly-requested non-first mode of a multi-mode outcome library through POST /api/project/play/session, and records that real mode into the shared round history", async () => {
+            const bundleDir = path.join(outcomeStudioRoot, "multi-mode-library");
+            await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+                [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("buyFeature", "buy-lib")],
+                bundleDir,
+            );
+            const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
+            outcomeServer = createOutcomeSourceServer(bundleDir, loadGame);
+            const address = await outcomeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {seed: "multi-mode-play-seed", modeName: "buyFeature"});
+            expect(created.status).toBe(201);
+            const createdBody = created.body as {status: string; session: {sessionId: string; debug?: {artifact?: {roundId?: string}}}};
+            expect(createdBody.status).toBe("ok");
+            const sessionId = createdBody.session.sessionId;
+
+            const spun = await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {});
+            expect(spun.status).toBe(200);
+            const spunBody = spun.body as {status: string; session: {debug?: {artifact?: {roundId?: string}}}};
+            expect(spunBody.status).toBe("ok");
+            expect(spunBody.session.debug?.artifact?.roundId).toMatch(/^buy-lib-/);
+
+            const {body: roundsBody} = await get(`${baseUrl}/api/project/rounds`);
+            const entries = roundsBody as Array<{studioModeName?: string}>;
+            expect(entries).toHaveLength(1);
+            expect(entries[0].studioModeName).toBe("buyFeature");
+        });
+
+        it("rejects a Play session request for a mode name that isn't part of this library, naming every real mode, rather than silently falling back to the first mode", async () => {
+            const bundleDir = path.join(outcomeStudioRoot, "multi-mode-library-unknown-mode");
+            await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+                [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("buyFeature", "buy-lib")],
+                bundleDir,
+            );
+            const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));
+            outcomeServer = createOutcomeSourceServer(bundleDir, loadGame);
+            const address = await outcomeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const created = await post(`${baseUrl}/api/project/play/session`, {modeName: "bonus"});
+            expect(created.status).toBe(200);
+            const createdBody = created.body as {status: string; error: string};
+            expect(createdBody.status).toBe("failed");
+            expect(createdBody.error).toContain('"bonus" is not a mode of this outcome library');
+            expect(createdBody.error).toContain("base");
+            expect(createdBody.error).toContain("buyFeature");
+        });
+
         it("reports the resolver-derived 'outcomeSource.sample' capability diagnostic for a resolved Stake Engine export, never loadPokieGame", async () => {
             const stakeDir = await buildStakeExportDir();
             const loadGame = jest.fn(() => Promise.resolve(createPlayableFakeGame({id: "unused", name: "unused", version: "0.0.0"})));

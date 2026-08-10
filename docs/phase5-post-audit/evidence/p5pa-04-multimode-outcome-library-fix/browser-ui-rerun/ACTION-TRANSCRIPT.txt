@@ -1,0 +1,52 @@
+[2026-08-10T15:12:05.099Z] START fresh Chrome browser session against local candidate Studio http://127.0.0.1:4404
+[2026-08-10T15:12:05.130Z] NAVIGATE visible Studio root
+[2026-08-10T15:12:05.565Z] OBSERVE real two-mode Outcome Library Overview / Exact Analysis table
+[2026-08-10T15:12:05.588Z] CLICK Exact Analysis Draw an outcome in buyFeature row at visible coordinates (1155, 506)
+[2026-08-10T15:12:05.994Z] OBSERVE Exact Analysis visibly draws from non-first buyFeature library
+[2026-08-10T15:12:06.347Z] CAPTURE 02-overview-exact-analysis-buyfeature.png and 02-overview-exact-analysis-buyfeature-visible-text.txt
+[2026-08-10T15:12:06.376Z] CLICK Play navigation at visible coordinates (130, 178)
+[2026-08-10T15:12:06.783Z] OBSERVE Play mode picker
+[2026-08-10T15:12:06.844Z] CLICK Outcome library mode picker at visible coordinates (436, 321)
+[2026-08-10T15:12:07.251Z] OBSERVE open buyFeature picker option
+[2026-08-10T15:12:07.299Z] CLICK buyFeature option at visible coordinates (436, 403)
+[2026-08-10T15:12:07.705Z] OBSERVE buyFeature visibly selected in the rendered mode control
+[2026-08-10T15:12:07.744Z] CLICK Play New session at visible coordinates (337, 476)
+[2026-08-10T15:12:08.148Z] OBSERVE Play session controls
+[2026-08-10T15:12:08.187Z] CLICK Play Spin at visible coordinates (310, 210)
+[2026-08-10T15:12:08.593Z] OBSERVE executed Play round with the visible buyFeature selection retained in its rendered control
+[2026-08-10T15:12:08.890Z] CAPTURE 03-play-buyfeature-round-provenance.png and 03-play-buyfeature-round-provenance-visible-text.txt
+[2026-08-10T15:12:08.907Z] CLICK Simulation navigation at visible coordinates (130, 219)
+[2026-08-10T15:12:09.314Z] OBSERVE Simulation configuration and mode picker
+[2026-08-10T15:12:09.371Z] CLICK Outcome library mode picker at visible coordinates (436, 379)
+[2026-08-10T15:12:09.777Z] OBSERVE open buyFeature picker option
+[2026-08-10T15:12:09.822Z] CLICK buyFeature option at visible coordinates (436, 460)
+[2026-08-10T15:12:10.228Z] OBSERVE buyFeature visibly selected in the rendered mode control
+[2026-08-10T15:12:10.250Z] CLICK input "Rounds" at visible coordinates (386, 287)
+[2026-08-10T15:12:10.673Z] INPUT "Rounds"="20" through visible browser keyboard
+[2026-08-10T15:12:11.041Z] CLICK Run Simulation at visible coordinates (577, 287)
+[2026-08-10T15:12:11.861Z] OBSERVE completed simulation report after selecting non-first buyFeature mode
+[2026-08-10T15:12:12.177Z] CAPTURE 04-simulation-buyfeature-completed.png and 04-simulation-buyfeature-completed-visible-text.txt
+[2026-08-10T15:12:12.192Z] CLICK Replay navigation at visible coordinates (130, 292)
+[2026-08-10T15:12:12.597Z] OBSERVE Replay recreation controls and mode picker
+[2026-08-10T15:12:12.651Z] CLICK Outcome library mode picker at visible coordinates (436, 465)
+[2026-08-10T15:12:13.062Z] OBSERVE open buyFeature picker option
+[2026-08-10T15:12:13.120Z] CLICK buyFeature option at visible coordinates (436, 546)
+[2026-08-10T15:12:13.525Z] OBSERVE buyFeature visibly selected in the rendered mode control
+[2026-08-10T15:12:13.550Z] CLICK input "Seed (optional)" at visible coordinates (1059, 358)
+[2026-08-10T15:12:13.986Z] INPUT "Seed (optional)"="p5pa04-browser-replay" through visible browser keyboard
+[2026-08-10T15:12:14.361Z] CLICK Replay Load at visible coordinates (1210, 358)
+[2026-08-10T15:12:14.766Z] OBSERVE loaded Replay target
+[2026-08-10T15:12:14.820Z] CLICK Replay Run again at visible coordinates (329, 995)
+[2026-08-10T15:12:15.225Z] OBSERVE completed Replay visibly reports buyFeature provenance
+[2026-08-10T15:12:15.586Z] CAPTURE 05-replay-buyfeature-completed.png and 05-replay-buyfeature-completed-visible-text.txt
+[2026-08-10T15:12:15.615Z] CLICK Replay Session Spin source at visible coordinates (602, 262)
+[2026-08-10T15:12:16.018Z] OBSERVE recorded round list
+[2026-08-10T15:12:16.054Z] CLICK recorded Play round at visible coordinates (650, 398)
+[2026-08-10T15:12:16.460Z] OBSERVE recorded Play round inspector
+[2026-08-10T15:12:16.464Z] FINDING recorded Play round inspector does not visibly render its outcome-library mode provenance
+[2026-08-10T15:12:16.908Z] CAPTURE 06-replay-session-spin-recorded-mode-provenance.png and 06-replay-session-spin-recorded-mode-provenance-visible-text.txt
+[2026-08-10T15:12:16.925Z] CLICK Build/Export navigation at visible coordinates (130, 333)
+[2026-08-10T15:12:17.331Z] OBSERVE visible Build/Export outcome-library surface
+[2026-08-10T15:12:17.737Z] CAPTURE 07-build-export-visible.png and 07-build-export-visible-visible-text.txt
+[2026-08-10T15:12:17.737Z] FAILED Error: Recorded Play round provenance is persisted but not visibly rendered by Replay's Session Spin inspector when the round has an artifact.
+    at main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/browser-ui-rerun.mjs:94:38)

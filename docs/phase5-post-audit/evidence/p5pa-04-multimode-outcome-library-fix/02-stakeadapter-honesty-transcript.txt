@@ -1,0 +1,134 @@
+=== GET /api/project/context (a resolved stakeAdapter project) ===
+{
+  "status": "outcome-source",
+  "projectRoot": "/tmp/p5pa04-evidence/stake-export",
+  "project": {
+    "type": "stakeAdapter",
+    "rootPath": "/tmp/p5pa04-evidence/stake-export",
+    "capabilities": [
+      "stakeAdapter.exchange",
+      "outcomeSource.read"
+    ],
+    "provenance": "recognized Stake Engine export manifest (\"pokie-manifest.json\")"
+  },
+  "report": {
+    "rootPath": "/tmp/p5pa04-evidence/stake-export",
+    "descriptor": {
+      "kind": "stakeEngine",
+      "streaming": false,
+      "limitations": [
+        "Reads an entire mode's own lookup CSV and books into memory at once, never a single-outcome random-access read.",
+        "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundArtifact-shaped step model or a pokie-manifest.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
+        "Never re-derives or recovers the game model/blueprint that produced these outcomes."
+      ]
+    },
+    "issues": [],
+    "modes": [
+      {
+        "modeName": "base",
+        "analysis": {
+          "modeName": "base",
+          "cost": 1,
+          "outcomeCount": 2,
+          "totalWeight": 1000,
+          "rtp": 1,
+          "hitFrequency": 0.5,
+          "zeroWinFrequency": 0.5,
+          "variance": 1,
+          "standardDeviation": 1,
+          "maxPayoutMultiplier": 200,
+          "maxRatio": 2,
+          "maxWinProbability": 0.5,
+          "nonInvertibleRatioCount": 0,
+          "payoutDistribution": [
+            {
+              "payoutMultiplier": 0,
+              "weight": 500,
+              "ratio": 0,
+              "probability": 0.5
+            },
+            {
+              "payoutMultiplier": 200,
+              "weight": 500,
+              "ratio": 2,
+              "probability": 0.5
+            }
+          ],
+          "eventClassificationBreakdown": [
+            {
+              "category": "finalWin",
+              "occurrenceFrequency": 1,
+              "averageOccurrencesPerOutcome": 1
+            },
+            {
+              "category": "reveal",
+              "occurrenceFrequency": 1,
+              "averageOccurrencesPerOutcome": 1
+            },
+            {
+              "category": "win",
+              "occurrenceFrequency": 0.5,
+              "averageOccurrencesPerOutcome": 0.5
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+  OK: resolved project type is stakeAdapter
+  OK: stakeAdapter never carries outcomeSource.sample
+  OK: stakeAdapter still carries outcomeSource.read (Overview/Exact Analysis stays reachable)
+
+=== POST /api/project/outcome-source/sample: no draw offered ===
+{
+  "supported": false,
+  "diagnostic": {
+    "detectedType": "stakeAdapter",
+    "operation": "outcomeSource.sample",
+    "missingCapability": "outcomeSource.sample",
+    "alternatives": [
+      "outcomeLibrary"
+    ],
+    "message": "\"outcomeSource.sample\" is not supported for a \"stakeAdapter\" project (missing the \"outcomeSource.sample\" capability). Supported by: outcomeLibrary."
+  }
+}
+  OK: sample honestly refuses a stakeAdapter draw
+  OK: the diagnostic names the missing capability
+
+=== POST /api/project/play/session: Play never offered for a stakeAdapter project ===
+{
+  "status": "failed",
+  "error": "\"outcomeSource.sample\" is not supported for a \"stakeAdapter\" project (missing the \"outcomeSource.sample\" capability). Supported by: outcomeLibrary."
+}
+  OK: Play session creation fails honestly
+  OK: the failure names the missing capability
+
+=== POST /api/project/simulations: Simulation never offered for a stakeAdapter project ===
+{
+  "id": "161b0d14-6542-4dad-b9ab-fcd8ec96f7bf",
+  "status": "failed",
+  "rounds": 5,
+  "workers": 1,
+  "startedAt": "2026-08-10T14:45:08.355Z",
+  "roundsCompleted": 0,
+  "durationMs": 2,
+  "error": "\"outcomeSource.simulate\" is not supported for a \"stakeAdapter\" project (missing the \"outcomeSource.sample\" capability). Supported by: outcomeLibrary."
+}
+  OK: simulation job fails honestly for a stakeAdapter project
+  OK: the failure names the missing capability
+
+=== POST /api/project/replays: Replay never offered for a stakeAdapter project ===
+{
+  "id": "8500ef0c-dd7a-4137-b6c8-b7c0db8d8a27",
+  "status": "failed",
+  "round": 1,
+  "startedAt": "2026-08-10T14:45:08.420Z",
+  "completedRounds": 0,
+  "durationMs": 1,
+  "error": "\"outcomeSource.replay\" is not supported for a \"stakeAdapter\" project (missing the \"outcomeSource.sample\" capability). Supported by: outcomeLibrary."
+}
+  OK: replay job fails honestly for a stakeAdapter project
+  OK: the failure names the missing capability
+
+ALL ASSERTIONS PASSED

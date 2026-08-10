@@ -230,6 +230,12 @@ export function ProjectDashboardPage() {
     // (game-backed) or "outcome-source" (canonical-reader-backed) resolution (see GameModelTab's
     // `editable`/ExportDeployTab's `capabilities` props below).
     const headerCapabilities = header.status === "loaded" || header.status === "outcome-source" ? header.capabilities : [];
+    // The real, canonical mode list a resolved "outcomeLibrary"/"stakeAdapter" project's own reader
+    // reports (see OutcomeSourceOverview's own "Mode" table, which reads this exact same list) -- the one
+    // source of truth Play/Simulation/Replay's own mode pickers below are built from, never a free-text
+    // field or an invented default. Undefined for a "loaded" (ordinary game-backed) project, which has no
+    // notion of an outcome-library mode at all.
+    const outcomeLibraryModes = header.status === "outcome-source" ? header.report.modes.map((mode) => mode.modeName) : undefined;
 
     // Replacing the whole state on every attempt (not just a summary + a separate loading bool) is what
     // makes a failed re-validation correctly clear a stale successful result instead of silently leaving
@@ -338,14 +344,14 @@ export function ProjectDashboardPage() {
     // run has actually started, regardless of which of the three entry points (Configure, Retry, Run
     // again) got it going.
     const startRun = useCallback(
-        (rounds: number, seed: string | undefined, workers: number) => {
+        (rounds: number, seed: string | undefined, workers: number, modeName?: string) => {
             reportRequestIdRef.current++;
             compareRequestIdRef.current++;
             setReportDetail({status: "empty"});
             setSelectedReportId(undefined);
             setCompareDetail({status: "empty"});
             setRunAgainNotice(undefined);
-            simulation.run(rounds, seed, workers);
+            simulation.run(rounds, seed, workers, modeName);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [simulation.run],
@@ -401,7 +407,7 @@ export function ProjectDashboardPage() {
                 return;
             }
             // No explicit clear here -- startRun() itself always clears runAgainNotice.
-            startRun(entry.requestedRounds, entry.seed, entry.workers);
+            startRun(entry.requestedRounds, entry.seed, entry.workers, entry.modeName);
         },
         [simulation.job, startRun],
     );
@@ -527,11 +533,11 @@ export function ProjectDashboardPage() {
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
     // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
     const runReplay = useCallback(
-        (round: number, seed: string | undefined, simulationId?: string, keepExpected = false) => {
+        (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string) => {
             if (!keepExpected) {
                 clearExpectedReplay();
             }
-            replay.run(round, seed, simulationId);
+            replay.run(round, seed, simulationId, modeName);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [replay.run, clearExpectedReplay],
@@ -796,6 +802,7 @@ export function ProjectDashboardPage() {
                                     onSpin={play.spin}
                                     onFindAnyWin={play.findAnyWin}
                                     onFindSymbolWin={play.findSymbolWin}
+                                    availableModes={outcomeLibraryModes}
                                 />
                             )}
                             {activeTab === "simulation" && (
@@ -810,7 +817,9 @@ export function ProjectDashboardPage() {
                                         setRunAgainNotice(undefined);
                                         simulation.cancel();
                                     }}
-                                    onRetry={() => simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers)}
+                                    onRetry={() =>
+                                        simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers, simulation.job.modeName)
+                                    }
                                     recentRuns={reportsView}
                                     recentRunsError={reportsError}
                                     onRefreshRecentRuns={refreshReports}
@@ -831,6 +840,7 @@ export function ProjectDashboardPage() {
                                             }
                                             : undefined
                                     }
+                                    availableModes={outcomeLibraryModes}
                                 />
                             )}
                             {activeTab === "replay" && (
@@ -841,7 +851,14 @@ export function ProjectDashboardPage() {
                                     onRun={runReplay}
                                     onCancel={replay.cancel}
                                     onRetry={() =>
-                                        replay.job && runReplay(replay.job.round, replay.job.seed, replay.job.simulationId, expectedReplay.status === "loaded")
+                                        replay.job &&
+                                        runReplay(
+                                            replay.job.round,
+                                            replay.job.seed,
+                                            replay.job.simulationId,
+                                            expectedReplay.status === "loaded",
+                                            replay.job.modeName,
+                                        )
                                     }
                                     listView={replayListView}
                                     listError={replayListError}
@@ -859,6 +876,7 @@ export function ProjectDashboardPage() {
                                     recentRunsError={reportsError}
                                     onRefreshRecentRuns={refreshReports}
                                     currentGame={header.status === "loaded" ? {id: header.id, version: header.version} : undefined}
+                                    availableModes={outcomeLibraryModes}
                                 />
                             )}
                             {activeTab === "exportDeploy" && (

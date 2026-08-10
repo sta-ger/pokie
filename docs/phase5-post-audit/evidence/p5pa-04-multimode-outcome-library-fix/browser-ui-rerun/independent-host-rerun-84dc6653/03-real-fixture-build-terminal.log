@@ -1,0 +1,5 @@
+Script started on 2026-08-10 20:18:01+02:00 [COMMAND="env PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin /home/stager/.nvm/versions/node/v24.18.0/bin/node /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/build-real-multimode-bundle.mjs /tmp/p5pa04-independent-real-multimode-library && env PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:/usr/local/bin:/usr/bin:/bin /home/stager/.nvm/versions/node/v24.18.0/bin/node dist/cli/pokie.js outcomelibrary validate /tmp/p5pa04-independent-real-multimode-library --deep" <not executed on terminal>]
+Built two real outcome-library modes at /tmp/p5pa04-independent-real-multimode-library
+"/tmp/p5pa04-independent-real-multimode-library" is a valid outcome library bundle (deep check).
+
+Script done on 2026-08-10 20:18:03+02:00 [COMMAND_EXIT_CODE="0"]

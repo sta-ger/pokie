@@ -9,6 +9,7 @@ import {
     ParallelSimulationRunOptions,
     PokieGameManifest,
     PokieProject,
+    resolveOutcomeLibraryModeName,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     SimulationAccumulator,
@@ -131,6 +132,7 @@ export class StudioSimulationService {
             durationMs: 0,
             abortController: new AbortController(),
             outcomeSourceProject,
+            modeName: request.modeName,
         };
         this.repository.save(record);
 
@@ -246,6 +248,7 @@ export class StudioSimulationService {
             completedAt: new Date(record.completedAt ?? record.startedAt).toISOString(),
             durationMs: record.durationMs,
             hasWarnings: (report.warnings?.length ?? 0) > 0,
+            modeName: record.modeName,
         };
     }
 
@@ -316,14 +319,18 @@ export class StudioSimulationService {
     // given an already-resolved `outcomeSourceProject` (see that parameter's own doc comment). A "stakeAdapter" export has no
     // draw contract of its own (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) and fails here
     // with the same structured capability diagnostic every other POKIE surface gives it, before ever
-    // reading a bundle file. A resolved "outcomeLibrary" project samples its manifest's own first mode
-    // (Simulation has no mode picker of its own, same convention as StudioPlayService's own Play session)
-    // through real, independent draws from OutcomeLibraryBundleOutcomeSource -- the exact same selector
-    // simulateOutcomeSourceProject/sampleOutcomeSourceProject already draw through -- accumulated into an
-    // ordinary SimulationAccumulator, chunked and abort-aware exactly like the ParallelSimulationRunner
-    // path above, never a freshly regenerated game-model simulation. Always reports `workers: 1` on the
-    // built report regardless of what was requested -- sampling here is never split across worker threads
-    // the way a "tsPackage" simulation can be.
+    // reading a bundle file. A resolved "outcomeLibrary" project samples `record.modeName` -- a real mode
+    // from the manifest's own list, resolved via resolveOutcomeLibraryModeName (defaulting to the
+    // manifest's own first mode when start() wasn't given one explicitly, same as before Simulation had a
+    // mode picker at all) -- through real, independent draws from OutcomeLibraryBundleOutcomeSource -- the
+    // exact same selector simulateOutcomeSourceProject/sampleOutcomeSourceProject already draw through --
+    // accumulated into an ordinary SimulationAccumulator, chunked and abort-aware exactly like the
+    // ParallelSimulationRunner path above, never a freshly regenerated game-model simulation. Always
+    // reports `workers: 1` on the built report regardless of what was requested -- sampling here is never
+    // split across worker threads the way a "tsPackage" simulation can be. `record.modeName` is
+    // overwritten here with the actually-resolved value (even when start() left it undefined), so every
+    // terminal job/report/listing carries the real mode this run sampled, never just "whatever the caller
+    // happened to ask for".
     private async runOutcomeSourceSampling(record: StudioSimulationJobRecord, project: PokieProject): Promise<void> {
         const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_SIMULATE_OPERATION);
         if (diagnostic !== undefined) {
@@ -339,12 +346,13 @@ export class StudioSimulationService {
                 this.fail(record, new Error(`"${project.rootPath}" has no outcome-library modes to simulate.`));
                 return;
             }
-            modeName = manifest.modes[0].modeName;
+            modeName = resolveOutcomeLibraryModeName(manifest.modes, record.modeName);
             manifestGame = manifest.game;
         } catch (error) {
             this.fail(record, error);
             return;
         }
+        record.modeName = modeName;
 
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);

@@ -1,0 +1,15 @@
+[2026-08-10T16:53:00.755Z] START fresh local candidate Studio browser session at http://127.0.0.1:48105
+[2026-08-10T16:53:00.789Z] NAVIGATE rendered Studio root
+[2026-08-10T16:53:01.297Z] OBSERVE two-mode rendered Outcome Source dashboard
+[2026-08-10T16:53:01.319Z] CLICK Play navigation at rendered coordinates (130, 178)
+[2026-08-10T16:53:01.726Z] OBSERVE Play mode picker
+[2026-08-10T16:53:01.816Z] CLICK Outcome library mode picker at rendered coordinates (436, 292)
+[2026-08-10T16:53:02.223Z] OBSERVE visible buyFeature option
+[2026-08-10T16:53:02.285Z] CLICK buyFeature option at rendered coordinates (436, 374)
+[2026-08-10T16:53:02.691Z] OBSERVE buyFeature selected in visible mode control
+[2026-08-10T16:53:02.742Z] CLICK New session at rendered coordinates (337, 447)
+[2026-08-10T16:53:03.148Z] OBSERVE Play session controls
+[2026-08-10T16:53:03.202Z] CLICK Spin at rendered coordinates (310, 210)
+[2026-08-10T16:53:33.798Z] FAILED Error: Timed out waiting for completed rendered buyFeature Play round
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/host-verification-84dc6653/session-spin-provenance-rerun.mjs:54:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-04-20260810154958/docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/host-verification-84dc6653/session-spin-provenance-rerun.mjs:94:5)

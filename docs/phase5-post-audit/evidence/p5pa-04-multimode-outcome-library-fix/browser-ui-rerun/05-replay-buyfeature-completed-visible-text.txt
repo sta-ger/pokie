@@ -1,0 +1,103 @@
+POKIE Studio
+/
+Outcome library
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Outcome library
+
+/tmp/p5pa-04-browser-multimode-library
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Target round number in a new replay session *
+
+Reproducing plays a brand-new session forward from round 1 up to this round -- it doesn't look up an existing recorded round.
+
+Seed (optional)
+Load
+Outcome library mode
+
+Which real mode of this outcome library this reproduction draws against.
+
+Loaded replay
+Source	Recreated -- recreate from seed
+Identities	replay session 41765fcb-27fc-4ed0-8222-0241c8e6a23b, replay job f27f03a8-e9f7-4440-805a-8b748177e48b
+Seed	p5pa04-browser-replay
+Version / hash	browser-multimode v1.0.0, hash sha256:e0b36e1593631373a1d71b60248489b84a76100644d0bba0c00705d9b93c6459
+Timestamp	8/10/2026, 5:12:14 PM
+Completeness	Full -- round artifact captured (screen, wins, steps, debug).
+Inspectable	
+AVAILABLE
+This round's data is loaded and ready to inspect.
+Reproducible	
+AVAILABLE
+Ready -- plays a fresh session forward from round 1 using the configured seed.
+Comparable	
+UNAVAILABLE
+A fresh forward replay with no prior recorded result to compare against.
+Exportable	
+AVAILABLE
+Ready to download as JSON.
+
+Round 1, seed p5pa04-browser-replay, outcome library mode "buyFeature".
+
+Reproducing will create a new replay session and play it forward from round 1 through round 1, using seed "p5pa04-browser-replay", to reach round 1.
+
+Run again with the same parameters
+
+completed — 1/1 rounds
+
+Replay session	41765fcb-27fc-4ed0-8222-0241c8e6a23b
+Replay job	f27f03a8-e9f7-4440-805a-8b748177e48b
+Requested round	1
+Actual round reached	1
+Seed	p5pa04-browser-replay
+Outcome library mode	buyFeature
+Run at	8/10/2026, 5:12:14 PM
+Reproducibility	Not verified -- a fresh forward replay with no prior recorded result to compare against.
+Game	Browser Multi-mode Library (id: "browser-multimode", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.00
+Total win	0.00 (0.00x)
+A
+Round detail
+
+No wins on this step.
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+State snapshot unavailable for this game/session type.
+
+Show advanced details (raw JSON, debug data)
+
+Download JSON
+Recent replays
+Refresh
+
+browser-multimode round 1 — Reproduced
+
+Inspect
+Reproduce & compare

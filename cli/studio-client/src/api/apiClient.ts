@@ -513,11 +513,17 @@ export async function startSimulation(
     rounds: number,
     seed?: string,
     workers?: number,
+    modeName?: string,
 ): Promise<StartSimulationResult> {
     const response = await fetchImpl("/api/project/simulations", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({rounds, ...(seed === undefined ? {} : {seed}), ...(workers === undefined ? {} : {workers})}),
+        body: JSON.stringify({
+            rounds,
+            ...(seed === undefined ? {} : {seed}),
+            ...(workers === undefined ? {} : {workers}),
+            ...(modeName === undefined ? {} : {modeName}),
+        }),
     });
 
     if (response.status === 409) {
@@ -584,11 +590,22 @@ export type StartReplayResult =
 // returned here as a typed result) vs. "no active project" or any other failure (thrown as a plain
 // Error). The replay itself runs in the background (see StudioReplayExecutionService) — this call
 // always returns immediately with a "queued" job, never the finished result.
-export async function runReplay(fetchImpl: FetchLike, round: number, seed?: string, simulationId?: string): Promise<StartReplayResult> {
+export async function runReplay(
+    fetchImpl: FetchLike,
+    round: number,
+    seed?: string,
+    simulationId?: string,
+    modeName?: string,
+): Promise<StartReplayResult> {
     const response = await fetchImpl("/api/project/replays", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({round, ...(seed !== undefined ? {seed} : {}), ...(simulationId !== undefined ? {simulationId} : {})}),
+        body: JSON.stringify({
+            round,
+            ...(seed !== undefined ? {seed} : {}),
+            ...(simulationId !== undefined ? {simulationId} : {}),
+            ...(modeName !== undefined ? {modeName} : {}),
+        }),
     });
 
     if (response.status === 409) {
@@ -692,10 +709,13 @@ export type PlaySpinResult =
 // Studio's own API, never PokieDevServer's own HTTP contract (see StudioPlayService's own doc comment).
 // Every outcome is a typed result, never thrown -- "no-active-project" is the one precondition this
 // route actually has (a project being open at all).
-export async function createPlaySession(fetchImpl: FetchLike, seed?: string | number): Promise<PlaySessionResult> {
+export async function createPlaySession(fetchImpl: FetchLike, seed?: string | number, modeName?: string): Promise<PlaySessionResult> {
     const requestBody: Record<string, unknown> = {};
     if (seed !== undefined) {
         requestBody.seed = seed;
+    }
+    if (modeName !== undefined) {
+        requestBody.modeName = modeName;
     }
     const response = await fetchImpl("/api/project/play/session", {
         method: "POST",

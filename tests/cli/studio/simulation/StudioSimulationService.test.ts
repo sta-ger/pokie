@@ -1,8 +1,19 @@
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameManifest} from "pokie";
+import {
+    GameSessionHandling,
+    loadPokieGame,
+    OutcomeLibraryBundleWriter,
+    PokieGame,
+    PokieGameManifest,
+    PokieProject,
+    ProjectTargetResolver,
+} from "pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
 import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioSimulationService.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function createFakeSession(options: {failOnRound?: number; stopAfterRounds?: number} = {}): GameSessionHandling {
     let credits = 1000;
@@ -598,6 +609,71 @@ describe("StudioSimulationService", () => {
 
             expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
         });
+    });
+});
+
+describe("StudioSimulationService with a resolved, multi-mode native outcome-library project", () => {
+    let bundleRoot: string;
+
+    beforeEach(() => {
+        bundleRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-outcome-library-test-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(bundleRoot, {recursive: true, force: true});
+    });
+
+    async function buildMultiModeLibraryProject(): Promise<PokieProject> {
+        const bundleDir = path.join(bundleRoot, "library");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+            [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("buyFeature", "buy-lib")],
+            bundleDir,
+        );
+        return (await new ProjectTargetResolver().resolve(bundleDir)) as PokieProject;
+    }
+
+    it("samples the manifest's own first mode when no mode is explicitly requested, preserving pre-existing behavior", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioSimulationService();
+
+        const result = service.start(project.rootPath, {rounds: 5, seed: "multi-mode-default-seed"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, result.job.id);
+
+        expect(job.status).toBe("completed");
+        expect(job.modeName).toBe("base");
+    });
+
+    it("samples an explicitly-requested non-first mode -- never silently substitutes the manifest's own first mode", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioSimulationService();
+
+        const result = service.start(project.rootPath, {rounds: 5, seed: "multi-mode-explicit-seed", modeName: "buyFeature"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, result.job.id);
+
+        expect(job.status).toBe("completed");
+        expect(job.modeName).toBe("buyFeature");
+    });
+
+    it("fails honestly, naming every real mode, for a mode name that isn't part of this library -- never falls back to the first mode", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioSimulationService();
+
+        const result = service.start(project.rootPath, {rounds: 5, modeName: "bonus"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, result.job.id);
+
+        expect(job.status).toBe("failed");
+        expect(job.error).toContain('"bonus" is not a mode of this outcome library');
+        expect(job.error).toContain("base");
+        expect(job.error).toContain("buyFeature");
     });
 });
 

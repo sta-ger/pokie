@@ -1,4 +1,4 @@
-import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Table, Text, Textarea, TextInput} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useEffect, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
@@ -63,6 +63,11 @@ export type ExpectedReplayState =
 // replay as if it were retrieving the original round's actual history.
 type FindMethod = "seedRound" | "artifact" | "spin" | "simulation";
 type FindFormValues = {round: number; seed: string};
+// The round/seed/mode a load step has produced, ready to reproduce -- "Recreate from seed"/"Recent
+// Simulation" share this shape (see `target` below). `modeName` is only ever meaningful for a resolved
+// "outcomeLibrary"/"stakeAdapter" project; absent for every other project type, same as `availableModes`
+// itself being undefined for one.
+type ReplayLoadTarget = {round: number; seed?: string; modeName?: string};
 
 // Shown in place of the loaded card/action bar/result view below while the currently-selected
 // source has nothing loaded yet -- one message per source rather than a single generic one, since
@@ -162,11 +167,12 @@ export function ReplayTab({
     recentRunsError,
     onRefreshRecentRuns,
     currentGame,
+    availableModes,
 }: {
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
     error: string | undefined;
-    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean) => void;
+    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string) => void;
     onCancel: () => void;
     onRetry: () => void;
     listView: ReplayListView;
@@ -188,9 +194,22 @@ export function ReplayTab({
     // check in describeReplayReproducibility. Undefined only while the project header itself hasn't
     // loaded yet, in which case that check is simply skipped (never blocks on an absent value).
     currentGame: {id: string; version: string} | undefined;
+    // The current project's own real outcome-library modes -- see ProjectDashboardPage's own
+    // outcomeLibraryModes doc comment. Undefined for an ordinary game-backed project. Only "Recreate
+    // from seed" shows a picker for it (see the modeField below) -- "Recent Simulation" instead reuses
+    // whichever mode the picked simulation entry itself already sampled (its own recorded provenance,
+    // never re-picked), and "Session Spin"/"Replay Artifact" never reach the outcome-library draw path
+    // at all.
+    availableModes?: string[];
 }) {
     const confirm = useConfirm();
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
+    const [selectedMode, setSelectedMode] = useState<string | null>(null);
+    useEffect(() => {
+        if (selectedMode === null && availableModes !== undefined && availableModes.length > 0) {
+            setSelectedMode(availableModes[0]);
+        }
+    }, [availableModes, selectedMode]);
 
     const [findMethod, setFindMethod] = useState<FindMethod>("seedRound");
     // Which source a load action last actually completed for -- the loaded card/action bar/result
@@ -205,7 +224,7 @@ export function ReplayTab({
     // `markLoaded(method, false)`, which is what keeps a prior target's terminal progress/retry/error/
     // result from being presented as this target's state.
     const [jobLoaded, setJobLoaded] = useState(false);
-    const [pending, setPending] = useState<{round: number; seed?: string}>();
+    const [pending, setPending] = useState<ReplayLoadTarget>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
     const [selectedSimEntry, setSelectedSimEntry] = useState<StudioSimulationReportListEntry>();
@@ -260,8 +279,8 @@ export function ReplayTab({
         setJobLoaded(resultReady);
     }
 
-    function loadTarget(round: number, seed: string | undefined): void {
-        setPending({round, seed});
+    function loadTarget(round: number, seed: string | undefined, modeName?: string): void {
+        setPending({round, seed, modeName});
         markLoaded(findMethod, false);
     }
 
@@ -269,7 +288,7 @@ export function ReplayTab({
     // Recreate from seed / Recent Simulation share one "loaded target" shape: the round/seed the user
     // configured, or -- reached via Recent Replays' "Inspect" shortcut, which loads a result directly
     // without going through Load -- the round/seed of the result itself.
-    const target = pending ?? (result ? {round: result.round, seed: result.seed ?? undefined} : undefined);
+    const target = pending ?? (result ? {round: result.round, seed: result.seed ?? undefined, modeName: result.modeName} : undefined);
 
     // Only a "Replay Artifact" record (pasted or picked from Recent Replays) carries known
     // seed/provenance to check up front — Recreate from seed/Recent Simulation are fresh attempts that never
@@ -279,14 +298,14 @@ export function ReplayTab({
             ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact, stateBefore: expected.stateBefore, stateAfter: expected.stateAfter}, currentGame)
             : undefined;
 
-    // The round/seed to reproduce, shared across every non-spin source once its own load step has
+    // The round/seed/mode to reproduce, shared across every non-spin source once its own load step has
     // produced one -- undefined until then, which is what gates the shared action bar/result view
     // below (Session Spin never has one at all: there's nothing to reproduce).
-    let reproduceTarget: {round: number; seed: string | undefined} | undefined;
+    let reproduceTarget: ReplayLoadTarget | undefined;
     if (findMethod === "artifact") {
         reproduceTarget = expected.status === "loaded" ? {round: expected.round, seed: expected.seed} : undefined;
     } else if (findMethod === "seedRound" || findMethod === "simulation") {
-        reproduceTarget = target ? {round: target.round, seed: target.seed} : undefined;
+        reproduceTarget = target ? {round: target.round, seed: target.seed, modeName: target.modeName} : undefined;
     }
     const reproduceDisabled = findMethod === "artifact" && artifactReproducibility?.status === "blocked";
     // What the run result's own "Reproducibility" row (below) reports -- only "Replay Artifact" ever
@@ -352,7 +371,7 @@ export function ReplayTab({
             />
 
             {findMethod === "seedRound" && (
-                <form onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined))}>
+                <form onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined))}>
                     <QuickActions>
                         {/* Confirmed against StudioReplayExecutionService.run(): Reproduce below creates a brand-new
                             game session (game.createSession()) and plays it forward through round 1, 2, ... up to
@@ -370,6 +389,18 @@ export function ReplayTab({
                         <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
                         <Button type="submit">Load</Button>
                     </QuickActions>
+                    {availableModes !== undefined && availableModes.length > 0 && (
+                        <Select
+                            label="Outcome library mode"
+                            description="Which real mode of this outcome library this reproduction draws against."
+                            data={availableModes}
+                            value={selectedMode}
+                            onChange={setSelectedMode}
+                            allowDeselect={false}
+                            mt="sm"
+                            style={{maxWidth: 320}}
+                        />
+                    )}
                 </form>
             )}
 
@@ -534,8 +565,8 @@ export function ReplayTab({
                                         }}
                                         style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                     >
-                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds} rounds,{" "}
-                                        {new Date(entry.startedAt).toLocaleString()}
+                                        {entry.game.id} v{entry.game.version} — seed {entry.seed ?? "(none)"}, {entry.actualRounds} rounds
+                                        {entry.modeName ? `, mode ${entry.modeName}` : ""}, {new Date(entry.startedAt).toLocaleString()}
                                     </Anchor>
                                 </List.Item>
                             ))}
@@ -551,7 +582,11 @@ export function ReplayTab({
                                 value={simRound}
                                 onChange={(value) => setSimRound(typeof value === "number" ? value : 1)}
                             />
-                            <Button onClick={() => loadTarget(simRound, selectedSimEntry.seed)}>Load</Button>
+                            {/* Reuses the picked simulation's own already-recorded modeName -- never a
+                                separately-selected mode -- so this reproduction genuinely samples against the
+                                same mode that run did, preserving that run's own provenance rather than
+                                defaulting back to the manifest's first mode. */}
+                            <Button onClick={() => loadTarget(simRound, selectedSimEntry.seed, selectedSimEntry.modeName)}>Load</Button>
                         </QuickActions>
                     )}
                 </div>
@@ -610,7 +645,7 @@ export function ReplayTab({
                     {findMethod === "spin" && selectedSpin && (
                         <div>
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
-                                its Identities/Timestamp rows already name the session/round/request/recorded-at/source. */}
+                                its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
                             {selectedSpin.debug?.artifact ? (
                                 // A complete RoundArtifact was captured for this exact spin (see
                                 // StudioPlayService.buildSessionView) -- the same
@@ -674,6 +709,12 @@ export function ReplayTab({
                                                 <Table.Tr>
                                                     <Table.Th>Operation</Table.Th>
                                                     <Table.Td>{describeStudioRoundOperation(selectedSpin.studioOperation)}</Table.Td>
+                                                </Table.Tr>
+                                            )}
+                                            {selectedSpin.studioModeName && (
+                                                <Table.Tr>
+                                                    <Table.Th>Outcome library mode</Table.Th>
+                                                    <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.studioModeName}</Table.Td>
                                                 </Table.Tr>
                                             )}
                                             <Table.Tr>
@@ -794,7 +835,8 @@ export function ReplayTab({
                     {(findMethod === "seedRound" || findMethod === "simulation") && target && (
                         <div>
                             <Text size="sm" mb={4}>
-                                Round {target.round}, seed {target.seed ?? "(none)"}.
+                                Round {target.round}, seed {target.seed ?? "(none)"}
+                                {target.modeName ? `, outcome library mode "${target.modeName}"` : ""}.
                             </Text>
                             {/* The pre-run summary: honest about what Reproduce below actually does (confirmed
                                 against StudioReplayExecutionService.run()) -- a brand-new game session, played
@@ -824,6 +866,7 @@ export function ReplayTab({
                                                 reproduceTarget.seed,
                                                 findMethod === "simulation" ? selectedSimEntry?.id : undefined,
                                                 findMethod === "artifact" ? true : undefined,
+                                                reproduceTarget.modeName,
                                             );
                                             setJobLoaded(true);
                                         }}
@@ -908,6 +951,12 @@ export function ReplayTab({
                                             <Table.Th>Seed</Table.Th>
                                             <Table.Td>{result.seed ?? "(none)"}</Table.Td>
                                         </Table.Tr>
+                                        {result.modeName && (
+                                            <Table.Tr>
+                                                <Table.Th>Outcome library mode</Table.Th>
+                                                <Table.Td style={{overflowWrap: "anywhere"}}>{result.modeName}</Table.Td>
+                                            </Table.Tr>
+                                        )}
                                         <Table.Tr>
                                             <Table.Th>Run at</Table.Th>
                                             <Table.Td>{new Date(result.timestamp).toLocaleString()}</Table.Td>

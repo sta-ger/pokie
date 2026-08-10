@@ -1,0 +1,4 @@
+candidate_sha=84dc6653cebcc6c3c590fcdc373863852f4ab0cc
+verification_type=browser_ui_rerun
+finding_id=p5pa-04-session-spin-provenance-rerun
+result=passed

@@ -1,0 +1,6 @@
+e1c6db83be56af83206712f34de20670ab67f8eeeefd5336a48c27cf0748623f  docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/02-overview-exact-analysis-buyfeature.png
+b984f2054653aa5cbc7f9e8a8700d1c52f07e0e492f4340eba35237dd3e5f369  docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/03-play-buyfeature-round-provenance.png
+e8597e0d8a4a384ee92c43395164d7bdfa0711c6fa58ccd56c9467c1e651c39f  docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/04-simulation-buyfeature-completed.png
+3b4edc7af4d3cefacce20214c455b19e465d06d791acafe3a0c628a7e6fde09f  docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/05-replay-buyfeature-completed.png
+26ffa6b7fefa9b2b006fec16b897aab29cf87ac6acfcb69fc1fc9f4ccd0ff581  docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/06-replay-session-spin-recorded-mode-provenance.png
+fc2201ec210151f158c2707cde280991a1a86d8457be1685425f97786aeb1c9c  docs/phase5-post-audit/evidence/p5pa-04-multimode-outcome-library-fix/browser-ui-rerun/07-build-export-visible.png

@@ -1,0 +1,766 @@
+=== 1. Overview / Exact Analysis: GET /api/project/context (the exact fetch OutcomeSourceOverview.tsx reads) ===
+{
+  "status": "outcome-source",
+  "projectRoot": "/tmp/p5pa04-evidence/bundle",
+  "project": {
+    "type": "outcomeLibrary",
+    "rootPath": "/tmp/p5pa04-evidence/bundle",
+    "capabilities": [
+      "outcomeLibrary.read",
+      "outcomeSource.read",
+      "outcomeSource.sample"
+    ],
+    "provenance": "\"manifest.json\" matches the outcome-library bundle manifest shape (schemaVersion 1)"
+  },
+  "report": {
+    "rootPath": "/tmp/p5pa04-evidence/bundle",
+    "descriptor": {
+      "kind": "native",
+      "streaming": true,
+      "limitations": [
+        "Serves already-computed outcomes exactly as built -- never re-derives or recovers the game model/blueprint that produced them.",
+        "Draws are only ever atomic against this bundle's own current on-disk content -- a rebuild mid-read surfaces as a PreGeneratedOutcomeSourceConflictError, never a silently stale result."
+      ]
+    },
+    "issues": [],
+    "modes": [
+      {
+        "modeName": "base",
+        "analysis": {
+          "totalWeight": 1000,
+          "rtp": 2.75,
+          "hitFrequency": 0.49999999999999994,
+          "zeroWinFrequency": 0.5,
+          "variance": 101.3875,
+          "standardDeviation": 10.069136010601904,
+          "maxWin": 100,
+          "maxWinProbability": 0.01,
+          "payoutDistribution": [
+            {
+              "payoutMultiplier": 0,
+              "probability": 0.5
+            },
+            {
+              "payoutMultiplier": 2,
+              "probability": 0.3
+            },
+            {
+              "payoutMultiplier": 5,
+              "probability": 0.15
+            },
+            {
+              "payoutMultiplier": 10,
+              "probability": 0.04
+            },
+            {
+              "payoutMultiplier": 100,
+              "probability": 0.01
+            }
+          ]
+        }
+      },
+      {
+        "modeName": "buyFeature",
+        "analysis": {
+          "totalWeight": 1000,
+          "rtp": 2.75,
+          "hitFrequency": 0.49999999999999994,
+          "zeroWinFrequency": 0.5,
+          "variance": 101.3875,
+          "standardDeviation": 10.069136010601904,
+          "maxWin": 100,
+          "maxWinProbability": 0.01,
+          "payoutDistribution": [
+            {
+              "payoutMultiplier": 0,
+              "probability": 0.5
+            },
+            {
+              "payoutMultiplier": 2,
+              "probability": 0.3
+            },
+            {
+              "payoutMultiplier": 5,
+              "probability": 0.15
+            },
+            {
+              "payoutMultiplier": 10,
+              "probability": 0.04
+            },
+            {
+              "payoutMultiplier": 100,
+              "probability": 0.01
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+  OK: context returns 200
+  OK: dashboard resolves to the outcome-source header status
+  OK: resolved project type is outcomeLibrary
+  OK: report.modes lists exactly 2 real modes
+  OK: report.modes are exactly ["base","buyFeature"] (got ["base","buyFeature"])
+  OK: outcomeLibrary project carries outcomeSource.sample (Play/Sampling truly offered)
+
+=== 2. Exact Analysis draw: POST /api/project/outcome-source/sample (explicit real mode) ===
+  OK: sample against 'base' succeeds
+  OK: sample('base') drew from base-lib (roundId=base-lib-1)
+  OK: sample against 'buyFeature' succeeds
+  OK: sample('buyFeature') drew from buy-lib (roundId=buy-lib-1)
+{
+  "status": 500,
+  "body": {
+    "error": "ENOENT: no such file or directory, open '/tmp/p5pa04-evidence/bundle/index_bonus.json'"
+  }
+}
+  OK: sample against an unknown mode never silently substitutes another mode's data
+
+=== 3. Play: POST /api/project/play/session (default = first mode, no modeName sent) ===
+  OK: default Play session creates ok
+  OK: default Play session (no modeName) plays 'base' -- the manifest's own first mode (roundId=base-lib-1)
+
+=== 4. Play: POST /api/project/play/session (explicit non-first mode) ===
+  OK: explicit-mode Play session creates ok
+  OK: explicit-mode Play session plays 'buyFeature', not the first mode (roundId=buy-lib-1)
+  OK: the recorded round's own studioModeName is 'buyFeature' -- round provenance preserves the selected mode
+
+=== 5. Play: an unknown mode name fails honestly, never silently falls back ===
+{
+  "status": 200,
+  "body": {
+    "status": "failed",
+    "error": "\"bonus\" is not a mode of this outcome library. Available modes: base, buyFeature."
+  }
+}
+  OK: Play session creation for an unknown mode fails
+  OK: the failure names every real mode, never a raw ENOENT
+  OK: the failure message lists both real modes
+
+=== 6. Simulation/Sampling: POST /api/project/simulations (explicit non-first mode) ===
+  OK: simulation job created
+{
+  "id": "fb09f907-3503-4737-85a2-3f5fb4564aa9",
+  "status": "completed",
+  "rounds": 20,
+  "seed": "p5pa04-sim-seed",
+  "workers": 1,
+  "startedAt": "2026-08-10T14:44:07.803Z",
+  "roundsCompleted": 20,
+  "durationMs": 23,
+  "report": {
+    "game": {
+      "id": "sample-slot",
+      "name": "Sample Slot",
+      "version": "0.1.0"
+    },
+    "requestedRounds": 20,
+    "rounds": 20,
+    "seed": "p5pa04-sim-seed",
+    "totalBet": 20,
+    "totalWin": 31,
+    "rtp": 1.5499999999999998,
+    "hitFrequency": 0.55,
+    "maxWin": 5,
+    "durationMs": 21,
+    "spinsPerSecond": 952,
+    "workers": 1,
+    "averageBet": 1,
+    "averagePayout": 1.55,
+    "volatility": 1.7168284713389392,
+    "payoutHistogram": {
+      "0": 9,
+      "1-9": 11
+    },
+    "maxWinFrequency": 0.55,
+    "reproducibility": {
+      "game": {
+        "id": "sample-slot",
+        "name": "Sample Slot",
+        "version": "0.1.0"
+      },
+      "seed": "p5pa04-sim-seed",
+      "requestedRounds": 20,
+      "actualRounds": 20,
+      "command": "pokie sim /tmp/p5pa04-evidence/bundle --rounds 20 --seed p5pa04-sim-seed"
+    },
+    "warnings": [
+      "Requested rounds (20) is low — RTP/hit-frequency estimates may be noisy."
+    ],
+    "recommendations": [
+      "Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates.",
+      "Use \"pokie diff\" to compare this report against a previous run after changing the game's math.",
+      "Save this report as JSON via --out to keep a record you can diff or replay against later."
+    ]
+  },
+  "statistics": {
+    "volatility": 1.7168284713389392,
+    "payoutStandardDeviation": 1.7168284713389392,
+    "returnStandardDeviation": 1.7168284713389392,
+    "averagePayoutConfidenceInterval95": {
+      "low": 0.7975667471463003,
+      "high": 2.3024332528537
+    },
+    "rtpConfidenceInterval95": {
+      "low": 0.7975667471463,
+      "high": 2.3024332528536995
+    },
+    "payoutHistogram": {
+      "0": 9,
+      "1-9": 11
+    }
+  },
+  "modeName": "buyFeature"
+}
+  OK: simulation job completes
+  OK: the completed simulation job's own modeName is 'buyFeature', not silently the first mode
+
+=== 7. Replay: POST /api/project/replays 'Recreate from seed' (explicit non-first mode) ===
+  OK: replay job created
+{
+  "id": "826fd62e-a0a0-4d43-8b9a-f71b3b465a3c",
+  "status": "completed",
+  "round": 1,
+  "seed": "p5pa04-replay-seed",
+  "startedAt": "2026-08-10T14:44:07.866Z",
+  "completedRounds": 1,
+  "durationMs": 4,
+  "game": {
+    "id": "sample-slot",
+    "name": "Sample Slot",
+    "version": "0.1.0"
+  },
+  "descriptor": {
+    "sessionId": "f170482e-8456-4158-b09a-5f687a3aac98",
+    "game": {
+      "id": "sample-slot",
+      "name": "Sample Slot",
+      "version": "0.1.0"
+    },
+    "seed": "p5pa04-replay-seed",
+    "round": 1,
+    "totalBet": 1,
+    "totalWin": 0,
+    "screen": [
+      [
+        "A"
+      ]
+    ],
+    "timestamp": 1786373047866,
+    "durationMs": 3,
+    "artifact": {
+      "betMode": "base",
+      "payoutMultiplier": 0,
+      "provenance": {
+        "game": {
+          "id": "sample-slot",
+          "name": "Sample Slot",
+          "version": "0.1.0"
+        },
+        "pokieVersion": "1.3.0"
+      },
+      "roundId": "buy-lib-0",
+      "schemaVersion": 1,
+      "screen": [
+        [
+          "A"
+        ]
+      ],
+      "stake": 1,
+      "steps": [
+        {
+          "index": 0,
+          "screen": [
+            [
+              "A"
+            ]
+          ],
+          "totalWin": 0,
+          "wins": []
+        }
+      ],
+      "totalWin": 0,
+      "wins": [],
+      "hash": "sha256:bc47e36a2a6e7738dc7655edd63635d476bf95602b6185d3ffdc9e952644bef9"
+    }
+  },
+  "modeName": "buyFeature"
+}
+  OK: replay job completes
+  OK: the completed replay job's own modeName is 'buyFeature'
+  OK: the reproduced round's own artifact was drawn from buy-lib (roundId=buy-lib-0)
+
+=== 8. Replay: an unknown mode name fails honestly ===
+{
+  "id": "2565c47f-87f2-4df9-8496-02376d38d909",
+  "status": "failed",
+  "round": 1,
+  "startedAt": "2026-08-10T14:44:07.926Z",
+  "completedRounds": 0,
+  "durationMs": 1,
+  "error": "\"bonus\" is not a mode of this outcome library. Available modes: base, buyFeature.",
+  "modeName": "bonus"
+}
+  OK: replay job for an unknown mode fails
+  OK: the failure names every real mode
+
+=== 9. Round provenance: GET /api/project/rounds preserves modeName across every producer ===
+[
+  {
+    "sessionId": "ea106bbf-ff78-4c5c-bd1a-9a3dfdf18a35",
+    "game": {
+      "id": "sample-slot",
+      "name": "Sample Slot",
+      "version": "0.1.0"
+    },
+    "credits": 1,
+    "bet": 1,
+    "win": 2,
+    "screen": [
+      [
+        "A"
+      ]
+    ],
+    "debug": {
+      "artifact": {
+        "betMode": "base",
+        "payoutMultiplier": 2,
+        "provenance": {
+          "game": {
+            "id": "sample-slot",
+            "name": "Sample Slot",
+            "version": "0.1.0"
+          },
+          "pokieVersion": "1.3.0"
+        },
+        "roundId": "buy-lib-1",
+        "schemaVersion": 1,
+        "screen": [
+          [
+            "A"
+          ]
+        ],
+        "stake": 1,
+        "steps": [
+          {
+            "index": 0,
+            "screen": [
+              [
+                "A"
+              ]
+            ],
+            "totalWin": 2,
+            "wins": [
+              {
+                "id": "A",
+                "metadata": {
+                  "symbolsPositions": [
+                    [
+                      0,
+                      0
+                    ]
+                  ]
+                },
+                "multiplierBreakdown": [],
+                "symbolId": "A",
+                "type": "value",
+                "winAmount": 2,
+                "winningPositions": [
+                  [
+                    0,
+                    0
+                  ]
+                ]
+              }
+            ]
+          }
+        ],
+        "totalWin": 2,
+        "wins": [
+          {
+            "id": "A",
+            "metadata": {
+              "symbolsPositions": [
+                [
+                  0,
+                  0
+                ]
+              ]
+            },
+            "multiplierBreakdown": [],
+            "symbolId": "A",
+            "type": "value",
+            "winAmount": 2,
+            "winningPositions": [
+              [
+                0,
+                0
+              ]
+            ]
+          }
+        ],
+        "hash": "sha256:fc1140239b45aa21dfdd8529a09363e8e1c5867d3f9022a5ff7fc4b7ffde0a81"
+      }
+    },
+    "studioRound": 1,
+    "studioRecordedAt": "2026-08-10T14:44:07.752Z",
+    "studioSource": "play-outcome-source",
+    "studioOperation": "spin",
+    "studioProjectRoot": "/tmp/p5pa04-evidence/bundle",
+    "studioSeed": "p5pa04-play-buy-seed",
+    "studioModeName": "buyFeature"
+  },
+  {
+    "sessionId": "a880afc3-3c5d-437c-a9a0-0fdab2d5dc29",
+    "game": {
+      "id": "sample-slot",
+      "name": "Sample Slot",
+      "version": "0.1.0"
+    },
+    "credits": 1,
+    "bet": 1,
+    "win": 2,
+    "screen": [
+      [
+        "A"
+      ]
+    ],
+    "debug": {
+      "artifact": {
+        "betMode": "base",
+        "payoutMultiplier": 2,
+        "provenance": {
+          "game": {
+            "id": "sample-slot",
+            "name": "Sample Slot",
+            "version": "0.1.0"
+          },
+          "pokieVersion": "1.3.0"
+        },
+        "roundId": "base-lib-1",
+        "schemaVersion": 1,
+        "screen": [
+          [
+            "A"
+          ]
+        ],
+        "stake": 1,
+        "steps": [
+          {
+            "index": 0,
+            "screen": [
+              [
+                "A"
+              ]
+            ],
+            "totalWin": 2,
+            "wins": [
+              {
+                "id": "A",
+                "metadata": {
+                  "symbolsPositions": [
+                    [
+                      0,
+                      0
+                    ]
+                  ]
+                },
+                "multiplierBreakdown": [],
+                "symbolId": "A",
+                "type": "value",
+                "winAmount": 2,
+                "winningPositions": [
+                  [
+                    0,
+                    0
+                  ]
+                ]
+              }
+            ]
+          }
+        ],
+        "totalWin": 2,
+        "wins": [
+          {
+            "id": "A",
+            "metadata": {
+              "symbolsPositions": [
+                [
+                  0,
+                  0
+                ]
+              ]
+            },
+            "multiplierBreakdown": [],
+            "symbolId": "A",
+            "type": "value",
+            "winAmount": 2,
+            "winningPositions": [
+              [
+                0,
+                0
+              ]
+            ]
+          }
+        ],
+        "hash": "sha256:3484dc272c998bc7e8f8e426b3f6931e6320e0957b222f895c58515c8dc46e8a"
+      }
+    },
+    "studioRound": 1,
+    "studioRecordedAt": "2026-08-10T14:44:07.735Z",
+    "studioSource": "play-outcome-source",
+    "studioOperation": "spin",
+    "studioProjectRoot": "/tmp/p5pa04-evidence/bundle",
+    "studioSeed": "p5pa04-play-default-seed",
+    "studioModeName": "base"
+  },
+  {
+    "sessionId": "4d55a3cd-e2e6-4006-b57a-dfa4bf8dfef4",
+    "game": {
+      "id": "sample-slot",
+      "name": "Sample Slot",
+      "version": "0.1.0"
+    },
+    "bet": 1,
+    "win": 2,
+    "screen": [
+      [
+        "A"
+      ]
+    ],
+    "debug": {
+      "artifact": {
+        "betMode": "base",
+        "payoutMultiplier": 2,
+        "provenance": {
+          "game": {
+            "id": "sample-slot",
+            "name": "Sample Slot",
+            "version": "0.1.0"
+          },
+          "pokieVersion": "1.3.0"
+        },
+        "roundId": "buy-lib-1",
+        "schemaVersion": 1,
+        "screen": [
+          [
+            "A"
+          ]
+        ],
+        "stake": 1,
+        "steps": [
+          {
+            "index": 0,
+            "screen": [
+              [
+                "A"
+              ]
+            ],
+            "totalWin": 2,
+            "wins": [
+              {
+                "id": "A",
+                "metadata": {
+                  "symbolsPositions": [
+                    [
+                      0,
+                      0
+                    ]
+                  ]
+                },
+                "multiplierBreakdown": [],
+                "symbolId": "A",
+                "type": "value",
+                "winAmount": 2,
+                "winningPositions": [
+                  [
+                    0,
+                    0
+                  ]
+                ]
+              }
+            ]
+          }
+        ],
+        "totalWin": 2,
+        "wins": [
+          {
+            "id": "A",
+            "metadata": {
+              "symbolsPositions": [
+                [
+                  0,
+                  0
+                ]
+              ]
+            },
+            "multiplierBreakdown": [],
+            "symbolId": "A",
+            "type": "value",
+            "winAmount": 2,
+            "winningPositions": [
+              [
+                0,
+                0
+              ]
+            ]
+          }
+        ],
+        "hash": "sha256:fc1140239b45aa21dfdd8529a09363e8e1c5867d3f9022a5ff7fc4b7ffde0a81"
+      }
+    },
+    "studioRound": 1,
+    "studioRecordedAt": "2026-08-10T14:44:07.711Z",
+    "studioSource": "outcome-source-sample",
+    "studioOperation": "outcome-source-sample",
+    "studioProjectRoot": "/tmp/p5pa04-evidence/bundle",
+    "studioSeed": "p5pa04-sample-seed",
+    "studioModeName": "buyFeature"
+  },
+  {
+    "sessionId": "993e086c-0784-4ec7-bddf-22891fbbea06",
+    "game": {
+      "id": "sample-slot",
+      "name": "Sample Slot",
+      "version": "0.1.0"
+    },
+    "bet": 1,
+    "win": 2,
+    "screen": [
+      [
+        "A"
+      ]
+    ],
+    "debug": {
+      "artifact": {
+        "betMode": "base",
+        "payoutMultiplier": 2,
+        "provenance": {
+          "game": {
+            "id": "sample-slot",
+            "name": "Sample Slot",
+            "version": "0.1.0"
+          },
+          "pokieVersion": "1.3.0"
+        },
+        "roundId": "base-lib-1",
+        "schemaVersion": 1,
+        "screen": [
+          [
+            "A"
+          ]
+        ],
+        "stake": 1,
+        "steps": [
+          {
+            "index": 0,
+            "screen": [
+              [
+                "A"
+              ]
+            ],
+            "totalWin": 2,
+            "wins": [
+              {
+                "id": "A",
+                "metadata": {
+                  "symbolsPositions": [
+                    [
+                      0,
+                      0
+                    ]
+                  ]
+                },
+                "multiplierBreakdown": [],
+                "symbolId": "A",
+                "type": "value",
+                "winAmount": 2,
+                "winningPositions": [
+                  [
+                    0,
+                    0
+                  ]
+                ]
+              }
+            ]
+          }
+        ],
+        "totalWin": 2,
+        "wins": [
+          {
+            "id": "A",
+            "metadata": {
+              "symbolsPositions": [
+                [
+                  0,
+                  0
+                ]
+              ]
+            },
+            "multiplierBreakdown": [],
+            "symbolId": "A",
+            "type": "value",
+            "winAmount": 2,
+            "winningPositions": [
+              [
+                0,
+                0
+              ]
+            ]
+          }
+        ],
+        "hash": "sha256:3484dc272c998bc7e8f8e426b3f6931e6320e0957b222f895c58515c8dc46e8a"
+      }
+    },
+    "studioRound": 1,
+    "studioRecordedAt": "2026-08-10T14:44:07.702Z",
+    "studioSource": "outcome-source-sample",
+    "studioOperation": "outcome-source-sample",
+    "studioProjectRoot": "/tmp/p5pa04-evidence/bundle",
+    "studioSeed": "p5pa04-sample-seed",
+    "studioModeName": "base"
+  }
+]
+  OK: recorded outcome-source-sample round carries studioModeName=base
+  OK: recorded outcome-source-sample round carries studioModeName=buyFeature
+  OK: recorded default Play round carries studioModeName=base
+  OK: recorded explicit-mode Play round carries studioModeName=buyFeature
+
+=== 10. Build/Export: GET /api/project/gameModel (outcomeLibrary honestly has no game model to export from) ===
+{
+  "basics": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "layout": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "symbols": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "reels": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "paytable": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "betsAndModes": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "mechanics": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  },
+  "limits": {
+    "status": "unavailable",
+    "reason": "This project is a pre-generated outcome source, not a Blueprint -- Studio never derives a game model from outcome data."
+  }
+}
+
+ALL ASSERTIONS PASSED

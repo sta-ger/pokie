@@ -280,6 +280,7 @@ export * from "./project/describeUnsupportedProjectOperation.js";
 export * from "./project/diffOutcomeSourceProjects.js";
 export * from "./project/readWasmComponentManifest.js";
 export * from "./project/replayOutcomeSourceProject.js";
+export * from "./project/resolveOutcomeLibraryModeName.js";
 export * from "./project/sampleOutcomeSourceProject.js";
 export * from "./project/simulateOutcomeSourceProject.js";
 export * from "./project/wasm/PokieWasmComponentManifest.js";

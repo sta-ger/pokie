@@ -18,6 +18,7 @@ import {
     PokieSessionState,
     ReplayDescriptor,
     resolveGameSessionSerializer,
+    resolveOutcomeLibraryModeName,
     RoundArtifact,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
@@ -127,6 +128,7 @@ export class StudioReplayExecutionService {
             durationMs: 0,
             abortController: new AbortController(),
             outcomeSourceProject,
+            modeName: request.modeName,
         };
         this.repository.save(record);
 
@@ -223,6 +225,7 @@ export class StudioReplayExecutionService {
             completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
             durationMs: record.durationMs,
             error: record.error,
+            modeName: record.modeName,
         };
     }
 
@@ -355,15 +358,18 @@ export class StudioReplayExecutionService {
     // draw contract of its own (see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment) and fails here
     // with the same structured capability diagnostic every other POKIE surface gives it, before ever
     // reading a bundle file. A resolved "outcomeLibrary" project reproduces round `record.round` of a
-    // seeded draw stream against its manifest's own first mode (Replay has no mode picker of its own,
-    // same convention as StudioPlayService's own Play session and StudioSimulationService's own
-    // sampling) -- the exact same OutcomeLibraryBundleOutcomeSource selector Play/Simulation already
-    // draw through, drawn forward `record.round` times and keeping only the last draw, mirroring
-    // exactly what a fresh Play session seeded the same way would show at that Nth draw. Unlike the
-    // "runtime" branch above, there is no live GameSessionHandling/PokieSessionState to snapshot
-    // before/after -- a drawn WeightedOutcome carries no session state of its own (see
-    // StudioPlayService's own buildOutcomeSourceSessionView doc comment) -- so the resulting
-    // ReplayDescriptor never sets stateBefore/stateAfter, only its own real artifact.
+    // seeded draw stream against `record.modeName` -- a real mode from the manifest's own list, resolved
+    // via resolveOutcomeLibraryModeName (defaulting to the manifest's own first mode when start() wasn't
+    // given one explicitly, same as before Replay had a mode picker at all) -- the exact same
+    // OutcomeLibraryBundleOutcomeSource selector Play/Simulation already draw through, drawn forward
+    // `record.round` times and keeping only the last draw, mirroring exactly what a fresh Play session
+    // seeded the same way, against the same mode, would show at that Nth draw. Unlike the "runtime"
+    // branch above, there is no live GameSessionHandling/PokieSessionState to snapshot before/after -- a
+    // drawn WeightedOutcome carries no session state of its own (see StudioPlayService's own
+    // buildOutcomeSourceSessionView doc comment) -- so the resulting ReplayDescriptor never sets
+    // stateBefore/stateAfter, only its own real artifact. `record.modeName` is overwritten here with the
+    // actually-resolved value, mirroring StudioSimulationService.runOutcomeSourceSampling's own reasoning
+    // -- every terminal job/list entry carries the real mode this run replayed against.
     private async runOutcomeSourceReplay(record: StudioReplayJobRecord, project: PokieProject): Promise<void> {
         const diagnostic = describeUnsupportedProjectOperation(project, OUTCOME_SOURCE_REPLAY_OPERATION);
         if (diagnostic !== undefined) {
@@ -379,12 +385,13 @@ export class StudioReplayExecutionService {
                 this.fail(record, new Error(`"${project.rootPath}" has no outcome-library modes to replay.`));
                 return;
             }
-            modeName = manifest.modes[0].modeName;
+            modeName = resolveOutcomeLibraryModeName(manifest.modes, record.modeName);
             manifestGame = manifest.game;
         } catch (error) {
             this.fail(record, error);
             return;
         }
+        record.modeName = modeName;
 
         if (record.abortController.signal.aborted) {
             this.cancelRecord(record);

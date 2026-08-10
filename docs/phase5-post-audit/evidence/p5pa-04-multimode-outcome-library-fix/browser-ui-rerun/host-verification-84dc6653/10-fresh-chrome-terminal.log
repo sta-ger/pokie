@@ -1,0 +1,3 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[960145:960145:0810/185519.666902:ERROR:third_party/crashpad/crashpad/util/posix/spawn_subprocess.cc:145] fork: Resource temporarily unavailable (11)
