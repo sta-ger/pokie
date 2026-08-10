@@ -713,3 +713,34 @@ present=false` line are therefore left unchanged and are now known-stale relativ
 and regression-test coverage as of this round; the hard gate's own evidence-rerun requirement for it is not yet
 satisfied until an external browser-capable host re-runs the Import Project journey (Detect → Register a
 Blueprint → Open) and its capture replaces the stale evidence above.
+
+## Correction round 8 (2026-08-10): F9 rerun re-attempted, sandbox blocker independently reconfirmed
+
+This step's reviewer asked for the F9 host-browser rerun above (Detect → Register a Blueprint → **Open** →
+Overview/Game Model) to be performed for real, through `scripts/phase5-host-browser-audit.mjs` against a live
+Studio via CDP, with an explicit instruction not to fabricate evidence. This round did not assume "Correction
+round 7"'s conclusion still held — it re-derived it from scratch in the implementer sandbox that would have to
+run that script, checking every precondition the script itself needs (host-browser env vars, a live CDP endpoint,
+a browser binary, and the tooling to stand one up), and separately confirmed outbound network egress works so
+"no network" isn't a hidden alternate cause. See
+[`evidence/host-browser/f9-rerun-attempt-20260810/00-environment-recheck.txt`](evidence/host-browser/f9-rerun-attempt-20260810/00-environment-recheck.txt)
+for the full command transcript (run 2026-08-10T05:47:09Z) and
+[`NOTES.md`](evidence/host-browser/f9-rerun-attempt-20260810/NOTES.md) for the summary.
+
+**Result: still blocked, same conjunction of causes "Correction round" first reproduced with a real downloaded
+Chrome-for-Testing binary** — no Chromium-family binary anywhere on the filesystem, no CDP endpoint listening on
+any checked port, none of the script's own `P5_*` environment variables set, no Playwright/Puppeteer installed,
+no `wget`/`unzip`/`curl`/`python3` to fetch and unpack a browser by hand, no root to install missing shared
+libraries via `apt-get`, and `npm`/`npx` still broken/disabled the same way "Correction round 3" first documented
+and "Correction round 6"/"Correction round 7" reconfirmed. No CDP session could be opened, so no Detect/Register/
+Open action was actually taken this round and none is claimed — the evidence above is a record of the attempt and
+its blocker, not a substitute for the rerun.
+
+**Status.** F9 itself (`ProjectsPanel.tsx` Open action for a registered Blueprint row) remains fixed and
+regression-tested as of commit `02991fb`, unchanged by this round. Its host-browser evidence rerun remains the
+one open item on F9, and remains blocked strictly by this sandbox's infrastructure (missing browser binary and
+shared libraries, no root, no package manager) rather than by anything in the product or this repository — the
+same class of external-host dependency every successful "Host-browser completion"/"Final external Chrome audit"
+round in this file relied on. `evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/`'s stale
+`05-blueprint-home-post-import.png`/`.txt` and `ACTION-TRANSCRIPT.txt` are unchanged; they still predate the F9
+fix and should not be read as current.
