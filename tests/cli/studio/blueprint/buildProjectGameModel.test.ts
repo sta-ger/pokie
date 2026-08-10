@@ -117,7 +117,7 @@ describe("buildProjectGameModel", () => {
         expect(projection.basics).toEqual({status: "unavailable", reason: "The sidecar manifest is no longer compatible."});
     });
 
-    it("exposes only package.json's own fields for a tsPackage project, mapping its \"name\" to basics.id (an npm package identifier), never basics.name (the game's own display name, which is never recoverable from a compiled package)", async () => {
+    it("exposes only package.json's own version/description for a tsPackage project, never mapping its \"name\" to basics.id or basics.name (an npm package identifier, not the game's own id or display name)", async () => {
         const inspectPackage = (root: string): GamePackageInspectionReport => {
             expect(root).toBe("/games/a-package");
             return {packageRoot: root, valid: true, packageJson: {name: "a-package", version: "1.0.0", description: "A game"}};
@@ -125,8 +125,35 @@ describe("buildProjectGameModel", () => {
 
         const projection = await buildProjectGameModel("/games/a-package", undefined, false, readers({inspectPackage}));
 
-        expect(projection.basics).toEqual({status: "available", data: {id: "a-package", version: "1.0.0", description: "A game"}});
+        expect(projection.basics).toEqual({status: "available", data: {version: "1.0.0", description: "A game"}});
         expect(projection.paytable).toEqual({status: "unavailable", reason: expect.stringContaining("compiled TypeScript package")});
+    });
+
+    // Regression for a real `pokie init --package-name <x> --game-id <y>` package where the two diverge
+    // (see GamePackageMerger.ts's own resolveDefaultPackageName / deriveManifestDefaults(idOverride) --
+    // `--package-name` and `--game-id` are independent overrides, never seeded from each other, and
+    // GamePackageInspector's report carries no marker distinguishing this case from a `pokie build` package
+    // where packageJson.name genuinely does equal the manifest id). Before this fix, this exact input
+    // produced `basics.data.id === "storefront-widgets"` -- the package name, not the real game id
+    // "sunset-riches" (only readable from the tracked Blueprint/src/index.ts, never package.json).
+    it("never projects packageJson.name as basics.id for a real pokie-init package whose --package-name and --game-id diverge", async () => {
+        const inspectPackage = (root: string): GamePackageInspectionReport => {
+            expect(root).toBe("/games/divergent-package");
+            // "storefront-widgets" is package.json's own "name" (from --package-name); the real game id
+            // "sunset-riches" (from --game-id) was written only into src/index.ts's manifest literal, which
+            // GamePackageInspector never reads -- exactly what GamePackageMerger.merge() produces for
+            // `pokie init --package-name storefront-widgets --game-id sunset-riches`.
+            return {packageRoot: root, valid: true, packageJson: {name: "storefront-widgets", version: "0.1.0"}};
+        };
+
+        const projection = await buildProjectGameModel("/games/divergent-package", undefined, false, readers({inspectPackage}));
+
+        expect(projection.basics).toEqual({status: "available", data: {version: "0.1.0"}});
+        if (projection.basics.status !== "available") {
+            throw new Error("expected an available basics section");
+        }
+        expect(projection.basics.data.id).toBeUndefined();
+        expect(projection.basics.data.name).toBeUndefined();
     });
 
     it("reports every section unavailable, with the inspect error as the reason, when a tsPackage project can't be inspected", async () => {

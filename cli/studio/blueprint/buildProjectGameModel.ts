@@ -21,9 +21,11 @@ export type GameModelSourceReaders = {
 // all (a pre-generated outcome source is drawn from, not modeled -- see OutcomeSourceProjectReport's own
 // doc comment); "wasm" exposes only its own manifest identity (POKIE has no WASM execution backend to
 // introspect anything beyond that -- see PokieWasmComponentManifest's own doc comment); everything else
-// ("tsPackage", the default) exposes only package.json's own name/version/description, since
-// GamePackageInspector reads nothing deeper. Every branch's `reason` is plain language a caller
-// (GameModelTab.tsx) shows verbatim, never a guess the UI has to construct itself.
+// ("tsPackage", the default) exposes only package.json's own version/description as `basics` (its own
+// "name" is an npm package identifier that isn't reliably this game's own id or name, see the tsPackage
+// branch's own doc comment below, so it is never projected into either field), since GamePackageInspector
+// reads nothing deeper. Every branch's `reason` is plain language a caller (GameModelTab.tsx) shows
+// verbatim, never a guess the UI has to construct itself.
 export async function buildProjectGameModel(
     projectRoot: string,
     resolved: PokieProject | undefined,
@@ -65,14 +67,24 @@ export async function buildProjectGameModel(
     if (!inspected.valid || inspected.packageJson === undefined) {
         return buildGameModelProjection(undefined, {reason: inspected.error ?? "This project's package could not be inspected."});
     }
-    // package.json's own "name" is an npm package identifier, never the game's own display name --
+    // package.json's own "name" is an npm package identifier, never the game's own id or display name --
+    // and unlike version (which GamePackageMerger always keeps in lockstep with the manifest's own
+    // `version`, see its own `firstNonBlank(versionOverride, existingPkg.version, DEFAULT_VERSION)`),
+    // there is no such guarantee for `name` in either direction Studio would need to trust it as identity:
     // GamePackageGenerator (`pokie build --target tsPackage`) writes it as `blueprint.manifest.id`
-    // verbatim, and GamePackageMerger (`pokie init`) writes it from `--package-name`/the directory name,
-    // never from `--game-name` (see docs/cli.md's own "`--game-id` never seeds or otherwise changes
-    // package.json's `name`" for the general rule). Mapping it to `basics.id` here (not `basics.name`)
-    // reflects that; the game's own display name is never recoverable from a compiled package at all.
+    // verbatim, but GamePackageMerger (`pokie init`) writes it from `--package-name`/the directory name,
+    // a value `pokie init --package-name <x> --game-id <y>` lets a caller set to something else entirely
+    // from `--game-id` (see docs/cli.md's own "`--game-id` never seeds or otherwise changes package.json's
+    // `name`" -- the same is true of `--game-name`). GamePackageInspector's report carries no provenance
+    // marker distinguishing a built package (where the two really do agree) from an init'd one (where they
+    // may not), so there is no case in which reading `basics.id`/`basics.name` off `packageJson.name` here
+    // is safe -- it is left unset in both, not guessed at from a value that might be right by coincidence.
+    // The game's own display name is never recoverable from a compiled package at all.
     return buildGameModelProjection(undefined, {
-        manifest: {id: inspected.packageJson.name, version: inspected.packageJson.version, description: inspected.packageJson.description},
-        reason: "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model.",
+        manifest: {version: inspected.packageJson.version, description: inspected.packageJson.description},
+        reason:
+            `This project is a compiled TypeScript package${inspected.packageJson.name !== undefined ? ` ("${inspected.packageJson.name}")` : ""} -- ` +
+            "Studio can only read its package.json here, and package.json's own \"name\" is an npm package identifier that " +
+            "isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.",
     });
 }

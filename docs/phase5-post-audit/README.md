@@ -149,14 +149,15 @@ switch/navigation on its own dirty state, the same way Form edits are already ga
 ### #2 — TypeScript package Game Model introspection (`P5PA-03`): INTENTIONAL SUPPORTED LIMITATION
 
 For a `tsPackage`-type project, POKIE's introspection stack (`GamePackageInspector`, `pokie inspect`, Studio's
-`GET /api/project/gameModel`) deliberately never parses TypeScript source — only `package.json`'s own
-name/version/description. `cli/studio/blueprint/buildProjectGameModel.ts`'s own doc comment states the design
-explicitly: `"tsPackage", the default) exposes only package.json's own name/version/description, since
-GamePackageInspector reads nothing deeper`; every other `GameModelProjection` section (`layout`, `symbols`,
-`reels`, `paytable`, `betsAndModes`, `mechanics`, `limits`) is marked `"unavailable"` with a plain-language
-reason string the UI shows verbatim, never a crash or silent omission. This is tested
-(`tests/cli/studio/blueprint/buildProjectGameModel.test.ts:120-130`) and documented to end users
-(`docs/cli.md:2060-2079`).
+`GET /api/project/gameModel`) deliberately never parses TypeScript source — `GamePackageInspector` reads only
+`package.json`'s own name/version/description (`GamePackageInspectionReport.packageJson`), and (as of the
+`P5PA-03` remediation below) `buildProjectGameModel.ts` projects only `version`/`description` of those into
+`basics` — `name` is an npm package identifier that isn't reliably this game's own id or name, so it is never
+projected into either `GameModelBasics` field, only shown, in context, inside the `reason` string. Every other
+`GameModelProjection` section (`layout`, `symbols`, `reels`, `paytable`, `betsAndModes`, `mechanics`, `limits`)
+is marked `"unavailable"` with a plain-language reason string the UI shows verbatim, never a crash or silent
+omission. This is tested (`tests/cli/studio/blueprint/buildProjectGameModel.test.ts`) and documented to end
+users (`docs/cli.md:2060-2079`).
 
 Verified with a real, unmocked reproduction: generated a real `tsPackage` from the checked-in fixture
 `examples/blueprints/sample-slot.blueprint.json` via the real `GamePackageGenerator` (the same class
@@ -328,7 +329,7 @@ Out of scope for this step, left open for a future one: the JSON-mode data-loss 
 completeness) and untouched here; `pokie edit`'s own CLI wizard mechanics support is a legitimate, separate,
 documented CLI tool (not a Studio browser-workflow competitor) and was left as-is.
 
-## `P5PA-03` remediation: `tsPackage` Basics no longer conflates package.json's `name` with the game's own name
+## `P5PA-03` remediation: `tsPackage` Basics no longer conflates package.json's `name` with the game's own id or name
 
 This step's own instruction: trace which of `GameModelProjection`'s sections a `tsPackage` project can safely,
 canonically expose, and correct only a *proven* false projection or misleading presentation — never invent a
@@ -352,31 +353,47 @@ to a separate `Id: ...` line. `packageJson.name` is never the game's own display
   documents this exact independence ("`--game-id` never seeds or otherwise changes `package.json`'s `name`";
   the same holds for `--game-name`).
 
-So a real `tsPackage` project rendered `Id: (none)` (even though the id *is* knowable — it's exactly
-`packageJson.name` for anything `pokie build --target tsPackage` produced, and coincides with it by default for
-`pokie init` too) next to `Name: <npm package identifier>` (a value that is never the game's actual name, and
-routinely reads nothing like it — verified with a deliberately adversarial real `pokie init --package-name
-sample-init-slot --game-name "Sample Init Slot"` run, see evidence below). That is a proven false projection,
-not a stylistic nit: the UI asserted a specific, wrong value for the field labeled "Name" while claiming
-ignorance of the field it actually knew.
+That is a proven false projection, not a stylistic nit: the UI asserted a specific, wrong value for the field
+labeled "Name" while claiming ignorance of the field it actually knew.
 
-Fixed with a two-line change in `buildProjectGameModel.ts`'s `tsPackage` branch: `packageJson.name` now maps to
-`basics.id`, and `basics.name` is left unset (`GameModelBasics.name` is optional; `BasicsSection` already
-renders an unset field as `(none)`, no UI change needed). This does not widen the introspection scope — still
-only `package.json`'s own three fields are ever read, exactly as `P5PA-01`'s classification described — it only
-corrects which `GameModelBasics` slot the one identity-shaped field among them is honestly labeled as.
+**First pass (reviewer-corrected):** this step's first fix mapped `packageJson.name` to `basics.id` instead of
+`basics.name`, reasoning that `packageJson.name` *is* exactly `blueprint.manifest.id` for a `pokie build
+--target tsPackage` package. That reasoning only holds for that one provenance. `GamePackageMerger.ts`
+(`pokie init`) writes `packageJson.name` from `--package-name` and the game manifest's own `id` from a wholly
+independent `--game-id` (`GamePackageMerger.ts:52-58`, `deriveManifestDefaults(idOverride ?? packageName)`) —
+`pokie init --package-name storefront-widgets --game-id sunset-riches` is a real, valid, fully-supported
+invocation where the two diverge completely. Nothing `GamePackageInspector` reads distinguishes a `pokie
+build`-produced package (where `packageJson.name` really does equal the manifest id) from a `pokie init`-
+produced one (where it may not), so the same false-projection risk the original bug had for `basics.name` still
+existed for `basics.id`. A reviewer caught this before merge; the evidence in
+`evidence/p5pa-03-real-init-basics-fix/README.md`'s original real-init cases had (as the reviewer noted) set
+`--package-name` and `--game-id` to the same value in every case, so it never actually exercised the divergence
+that makes the mapping unsafe.
+
+**Corrected fix:** `buildProjectGameModel.ts`'s `tsPackage` branch now maps neither `basics.id` nor
+`basics.name` from `packageJson.name` — only `version` (which `GamePackageMerger` always keeps in lockstep with
+the manifest's own `version`) and `description` are projected into `basics`. `packageJson.name` is still
+surfaced, but only inside the `reason` string (`This project is a compiled TypeScript package
+("<packageJson.name>") -- ...`), in context, never asserted as identity. This does not widen the introspection
+scope — still only `package.json`'s own fields are ever read, exactly as `P5PA-01`'s classification described —
+it corrects which of those fields are safe to present as this game's own canonical id/name (none of them, for
+`tsPackage`) versus merely descriptive package metadata (version/description, shown as such).
 
 Regression coverage: updated the existing `tests/cli/studio/blueprint/buildProjectGameModel.test.ts` `tsPackage`
-case (it already asserted the old, wrong mapping) to assert `basics.data.id`, not `basics.data.name`; ran the
-full `pokie` Jest project (350 suites / 5557 tests) to confirm nothing else in that project regressed.
+case to assert `basics.data` carries only `version`/`description` (no `id`, no `name`), and added a new case,
+contract-faithful to `GamePackageMerger`'s own independent `--package-name`/`--game-id` overrides, asserting
+`basics.data.id`/`.name` stay `undefined` even when `packageJson.name` is present. Ran the full `pokie` Jest
+project (350 suites / 5558 tests) to confirm nothing else in that project regressed.
 
-Verified with a real, unmocked reproduction — the real `InitCommand`, unmocked, run twice against real
-`fs.mkdtempSync` directories (once with explicit `--package-name`/`--game-name` deliberately set apart, once
-with no overrides at all), each followed by the real `GamePackageInspector.inspect(...)` and
-`buildProjectGameModel(...)` against the files it actually wrote to disk. `npm` remains broken in this sandbox
-(same defect prior rounds hit); `node_modules/.bin/jest` was invoked directly instead, same fallback the
-`P5PA-01` round used for this exact concern. Full transcript and analysis:
-[`evidence/p5pa-03-real-init-basics-fix/README.md`](evidence/p5pa-03-real-init-basics-fix/README.md).
+Verified with a real, unmocked reproduction — the real `InitCommand`, unmocked, run against a real
+`fs.mkdtempSync` directory with `--package-name storefront-widgets --game-id sunset-riches --game-name "Sunset
+Riches"` (genuinely divergent id/name, not merely differently-formatted), followed by the real
+`GamePackageInspector.inspect(...)` and `buildProjectGameModel(...)` against the files it actually wrote to
+disk: `basics` came back `{version: "0.1.0"}` — no `id`, no `name`, and specifically not `id:
+"storefront-widgets"` (what this step's first, reviewer-corrected pass would have produced for this exact
+input). `npm` remains broken in this sandbox (same defect prior rounds hit); `node_modules/.bin/jest` was
+invoked directly instead, same fallback the `P5PA-01` round used for this exact concern. Full transcript and
+analysis: [`evidence/p5pa-03-real-init-basics-fix/README.md`](evidence/p5pa-03-real-init-basics-fix/README.md).
 
 Out of scope, left as-is: `author` is read by nothing in this path (`GamePackageInspector`,
 `GamePackageInspectionReport`, `pokie inspect`'s own description, and `docs/cli.md:2062` all consistently scope
