@@ -1,0 +1,3 @@
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113
+{"id":"playable-game-with-free-games","name":"Playable Game With Free Games","version":"1.0.0"}
+!! tests/cli/fixtures/playable-game-with-free-games/node_modules/
