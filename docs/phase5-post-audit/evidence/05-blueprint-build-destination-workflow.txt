@@ -1,0 +1,61 @@
+$ node node_modules/.bin/jest --config jest.config.mjs tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts --verbose
+(command run against product HEAD 33360978190b55ad6dbd46dba10070b26f3fdb83; test file created for this evidence capture only, deleted immediately after, not committed)
+
+  console.log
+    PREVIEW projectRoot: /tmp/pokie-p5pa01-studioroot-XcnUAr/sample-slot
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:30:21
+
+  console.log
+    studioRoot: /tmp/pokie-p5pa01-studioroot-XcnUAr
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:32:21
+
+  console.log
+    BUILD status: ok
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:36:21
+
+  console.log
+    BUILD projectRoot: /tmp/pokie-p5pa01-studioroot-XcnUAr/sample-slot
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:39:25
+
+  console.log
+    BUILD createdFiles: [
+      'package.json',
+      'package-lock.json',
+      'tsconfig.json',
+      'README.md',
+      'src/index.ts',
+      'dist/index.js'
+    ]
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:41:25
+
+  console.log
+    projectRoot is inside studioRoot: true
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:43:25
+
+  console.log
+    actual files on disk at projectRoot: [
+      'README.md',
+      'dist',
+      'package-lock.json',
+      'package.json',
+      'src',
+      'tsconfig.json'
+    ]
+
+      at tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts:45:25
+
+PASS pokie tests/cli/studio/blueprint/_p5pa01-repro-build-destination.test.ts
+  P5PA-01 concern #3 workflow reproduction (throwaway, not committed)
+    ✓ build() with no outDir writes the package inside studioRoot when cwd == studioRoot, unguarded (50 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        1.963 s, estimated 10 s
+Ran all test suites matching /tests\/cli\/studio\/blueprint\/_p5pa01-repro-build-destination.test.ts/i.

@@ -91,7 +91,7 @@ reviewer can redirect this matrix if a different five were intended.
 | 1 | Stale `src/index.ts` public API barrel (`supportsBetModeSelecting` missing) | `pokie-phase5-inventory.md` §2 | **FALSE POSITIVE** (fixed) |
 | 2 | `pokie build random` smoke-simulation `Cannot find module 'pokie'` failure | `pokie-phase5-inventory.md` §3 | **FALSE POSITIVE** (obsolete) |
 | 3 | Blueprint Design build destination defaults to Studio's own launch `cwd`, unguarded | `pokie-phase5-inventory.md` §4 | **CONFIRMED P2** (still present) |
-| 4 | Pixel/visual (Chromium-rendered) Studio browser evidence | `pokie-phase5-inventory.md` §5 / `phase5-audit/README.md` | **CONFIRMED RESOLVED** (closed 2026-08-10) |
+| 4 | Pixel/visual (Chromium-rendered) Studio browser evidence | `pokie-phase5-inventory.md` §5 / `phase5-audit/README.md` | **FALSE POSITIVE** (the gap the finding described — no real external-host browser evidence for the F9 journey — no longer matches current reality) |
 | 5 | Cross-store atomicity in `SpinCommandHandler` | `v1.3-closeout-report.md` "Deferred to v2.0" | **INTENTIONAL SUPPORTED LIMITATION** |
 
 ### #1 — Stale public barrel: FALSE POSITIVE (fixed)
@@ -129,27 +129,58 @@ against `studioRoot` at all, even though it resolves through the exact same `cwd
 its own source checkout (an ordinary developer workflow, and the same scenario the original finding's own
 `build-preview` response demonstrated: `"projectRoot": "/workspace/peppy-frisky-talisman"`) and then used via
 Blueprint Design's "Build" action without an explicit destination would have its default target land inside that
-checkout, unguarded by a check that exists and fires for the equivalent explicit path. This is real and
-reproducible from source (not fabricated): confirmed by reading `previewBuildDestination.ts`,
-`StudioBlueprintService.previewBuild`/`build`, and `isPathWithin.ts` together. Severity kept at **P2** (not P0/P1):
-it requires (a) launching Studio from a source checkout, a non-default deployment shape, and (b) using
-Design's "Build" without overriding the destination it always shows first — not remotely exploitable, and no
-data outside the local filesystem is at risk. Recorded here as the still-open item for a future P5PA remediation
-step to fix (e.g. extend the same `isPathWithin(studioRoot, ...)` guard to the default-`outDir` path too, the
-same way `build()` already guards the explicit one). See
-[`evidence/02-blueprint-build-destination.txt`](evidence/02-blueprint-build-destination.txt).
+checkout, unguarded by a check that exists and fires for the equivalent explicit path. This round went past
+static source reading and actually exercised the workflow: a throwaway test constructed the real, unmodified
+`StudioBlueprintService` (the exact class both Studio HTTP endpoints use), pointed `studioRoot` and `process.cwd()`
+at the same fresh temp directory (reproducing "Studio launched from inside its own checkout"), loaded the real
+checked-in fixture `examples/blueprints/sample-slot.blueprint.json`, and called `previewBuild()` then `build()`
+with no `outDir` — exactly the guided editor's "Build" action with its destination left at the default it always
+shows first. The real, unmodified `build()` returned `status: "ok"` and **actually wrote** `package.json`,
+`package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`, and `dist/index.js` to
+`<studioRoot>/sample-slot`, confirmed both from `build()`'s own returned `createdFiles` and a real
+`fs.readdirSync` of the resulting directory afterward — landing squarely inside `studioRoot`, with no
+`isPathWithin` rejection at any point. The test file was created only to capture this evidence, run once, and
+deleted immediately after; it was never committed to the test suite. Severity kept at **P2** (not P0/P1): it
+requires (a) launching Studio from a source checkout, a non-default deployment shape, and (b) using Design's
+"Build" without overriding the destination it always shows first — not remotely exploitable, and no data outside
+the local filesystem is at risk. Recorded here as the still-open item for a future P5PA remediation step to fix
+(e.g. extend the same `isPathWithin(studioRoot, ...)` guard to the default-`outDir` path too, the same way
+`build()` already guards the explicit one). See
+[`evidence/02-blueprint-build-destination.txt`](evidence/02-blueprint-build-destination.txt) (source excerpts) and
+[`evidence/05-blueprint-build-destination-workflow.txt`](evidence/05-blueprint-build-destination-workflow.txt)
+(this round's real, executed workflow reproduction).
 
-### #4 — Pixel/visual browser evidence: CONFIRMED RESOLVED (closed 2026-08-10)
+### #4 — Pixel/visual browser evidence: FALSE POSITIVE (the described gap no longer matches current reality)
 
-`docs/phase5-audit/README.md`'s "External completion (2026-08-10): F9 Blueprint import-and-open rerun passed"
-section already records a real external Chrome host completing the Detect → Register → Open → Overview/Game
-Model journey, with a saved `ACTION-TRANSCRIPT.txt` and four PNG captures under
-`docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/`. This step re-read that record rather than assuming
-it (per this protocol's own rule against inferring from an older report) and confirms: the file paths cited exist,
-the section is the newest dated entry in that document, and no later correction in the same file supersedes it. No
-outstanding pixel-evidence gap remains for the journeys Phase 5 itself scoped. This step does not re-run the
-capture — the existing evidence is preserved unchanged, and re-capturing would duplicate real host-browser cost
-for a status that is already closed and already dated after this baseline's own product SHA history.
+This concern is the claim (from `pokie-phase5-inventory.md` §5 / the pre-2026-08-10 rounds of
+`phase5-audit/README.md`) that no real, external-host, Chromium-rendered evidence exists for the Studio F9
+journey (Detect → Register a Blueprint → Open → Overview/Game Model). This round did not take that claim's
+resolution on faith from an older report; it independently re-verified two things itself, this round, with real
+commands:
+
+1. **This implementer sandbox still cannot run a browser at all**, reconfirmed fresh (not assumed from a prior
+   round): no chromium-family binary anywhere on a bounded filesystem scan, no `P5_*`/host-browser environment
+   variable set, no Puppeteer/Playwright installed, `npx` and `npm` both disabled/broken the same way every prior
+   Phase 5 round already documented, and no root to install one via `apt-get`. See
+   [`evidence/06-f9-sandbox-reconfirmation.txt`](evidence/06-f9-sandbox-reconfirmation.txt). This means the
+   journey cannot be *re-run* from inside this sandbox this round — the same structural constraint every prior
+   round hit.
+2. **The already-existing external-host evidence is real and current**, verified rather than narratively cited:
+   `sha256sum -c` against `docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/SHA256SUMS.txt` passes for
+   every one of its 13 files (transcript, four PNG captures, four paired text extracts, and three terminal logs);
+   that evidence's own `ENVIRONMENT.txt` names the exact commit its fresh Studio build ran from
+   (`cc0785f5bc1b654bdf749e46e8d22fe4baaa8d55`), and `git merge-base --is-ancestor` confirms that commit is an
+   ancestor of this step's own product HEAD (`33360978190b55ad6dbd46dba10070b26f3fdb83`) — so the evidence reflects
+   current source, not a stale build; and the F9 fix commit it exercises (`02991fb`, the Blueprint row's Open
+   action) is still present and unreverted in current `cli/studio-client/src/components/home/ProjectsPanel.tsx`.
+   See [`evidence/07-f9-external-evidence-crosscheck.txt`](evidence/07-f9-external-evidence-crosscheck.txt).
+
+Given both of those, the original finding's premise — "no real browser evidence exists for this journey" — is
+demonstrably false against current source and current evidence: real, checksum-verified, current-commit-traceable
+evidence does exist (`docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/`), even though this particular
+implementer sandbox cannot independently reproduce it. This step does not re-run the capture itself: doing so is
+not achievable from inside this sandbox (per point 1), and re-attempting it would not change point 2's already
+independently-verified result. No outstanding pixel-evidence gap remains for the journey Phase 5 itself scoped.
 
 ### #5 — `SpinCommandHandler` cross-store atomicity: INTENTIONAL SUPPORTED LIMITATION
 
