@@ -278,3 +278,52 @@ data loss, CONFIRMED P2) and concern #5 (`P5PA-06`, `pokie init` portability mix
 P3) — the two CONFIRMED-open items above — are named and evidenced here, but not fixed; fixing either is real
 product-source work that belongs to the later, explicitly-scoped `P5PA-02`/`P5PA-06` steps themselves,
 consistent with "no product behavior is changed in this baseline/evidence step."
+
+## `P5PA-02` remediation: Mechanics is now a real Game Model section, Limits explains itself truthfully
+
+This step's own instruction is narrower than the `08-blueprint-game-model-editor.txt` JSON-mode data-loss
+finding above (still open, left for a future step): "repair only a confirmed supported-field completeness gap
+through the one canonical section editor." Reading `GameModelTab.tsx`/`GameModelSections.tsx` (Studio's own
+canonical, post-creation Game Model tab — Design Blueprint → open project → Game Model) end-to-end, cross-checked
+against the guided Design Game editor (`SectionedFormEditor.tsx`) and the raw `GameBlueprint`/
+`GameBlueprintValidator` schema (`src/generated/`), found exactly one such gap:
+
+- **Mechanics** (`GameBlueprintMechanics.freeGames` — scatter symbol + match-count→award map) is real,
+  persisted, validated `GameBlueprint` data (`GameBlueprintValidator`'s own `blueprint-mechanics-*` codes), yet
+  had **zero** field editor anywhere in Studio — not in the guided Design Game editor (never had one), and not in
+  the post-creation Game Model tab (`MechanicsSection` was read-only, no `action=` Edit button, no explanation).
+  The *only* place it was reachable for an already-created project was the standalone `pokie edit <blueprint>`
+  CLI wizard (`cli/wizard/GameBlueprintWizard.ts`'s `askMechanics`, via `cli/commands/EditCommand.ts`) — a real,
+  separate, competing mutation path entirely outside Studio's own browser workflow.
+- **Limits** (`GameModelLimits.minBet`/`maxBet`) is not itself a stored `GameBlueprint` field — it is purely
+  derived from Bets & Modes' own `availableBets` (`buildGameModelProjection.ts`'s `deriveLimits`). Its read-only
+  status was already correct; the only gap was that the UI never said so.
+
+Fixed by extending `GameModelSections.tsx`'s own existing per-section Edit/Save/Cancel +
+single-whole-blueprint-write architecture (the same one `PaytableEditor`/`BetsList` already use) to cover
+Mechanics too, via a new `FreeGamesFieldset.tsx` (scatter-symbol select constrained to `blueprint.scatters`,
+an award table, "Add/Remove free games") and matching `blueprintFormOps.ts` mutate functions
+(`addFreeGames`/`removeFreeGames`/`setFreeGamesScatterSymbol`/`setFreeGamesAward`/`removeFreeGamesAward`,
+`readFreeGames`) — this is Game Model itself becoming the sole full sectional editor for this field, never a
+second, separate "Mechanics Editor" or its own apply/commit/publish backend the way the old, deleted
+`MechanicsEditorTab` (removed in `P4-POLISH-03`) was. `LimitsSection` now shows a truthful, always-present note
+("Derived from Bets & Modes' own Available bets above — edit there to change it.") instead of a bare, unexplained
+absence of an Edit button.
+
+Regression coverage: `tests/cli/studio-client/src/domain/blueprintFormOps.test.ts` (new `"mechanics (…)"`
+`describe` block, 5 tests, pure mutate/read logic) and
+`tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx` (updated to
+assert Mechanics now offers Edit, plus a new end-to-end test: Edit → add free games → pick a real scatter symbol
+from a real Mantine combobox → add an award → Save → asserts the real `POST /api/home/blueprints/save` body
+carries the mutated `mechanics.freeGames` → View Mode, refetched from the server, shows the persisted truth). No
+host browser (CDP) is reachable in this sandbox (reproduced fresh; see evidence) — per this campaign's own
+protocol (§2 above), the fallback is the same real, unmocked `jest-environment-jsdom` capture of the actual
+production component tree `evidence/08-blueprint-game-model-editor.txt` already used, exercising the real
+`HomePage`/`ProjectDashboardPage`/`GameModelTab` component tree with real Mantine and only the network boundary
+faked. Full transcript (source citations, before/after description, real test/typecheck/lint runs):
+[`evidence/13-blueprint-game-model-editor-remediation.txt`](evidence/13-blueprint-game-model-editor-remediation.txt).
+
+Out of scope for this step, left open for a future one: the JSON-mode data-loss defect
+(`08-blueprint-game-model-editor.txt`, still CONFIRMED P2) is a different concern (unsaved-work loss, not field
+completeness) and untouched here; `pokie edit`'s own CLI wizard mechanics support is a legitimate, separate,
+documented CLI tool (not a Studio browser-workflow competitor) and was left as-is.

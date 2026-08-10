@@ -1,0 +1,42 @@
+{
+    "manifest": {
+        "id": "p5pa-02-browser-fixture",
+        "name": "P5PA-02 Browser Mechanics Fixture",
+        "version": "1.0.0"
+    },
+    "reels": 3,
+    "rows": 3,
+    "symbols": [
+        "A",
+        "B",
+        "C",
+        "S"
+    ],
+    "scatters": [
+        "S"
+    ],
+    "paytable": {
+        "A": {
+            "3": 5
+        },
+        "B": {
+            "3": 3
+        },
+        "C": {
+            "3": 1
+        }
+    },
+    "availableBets": [
+        1,
+        2,
+        5
+    ],
+    "mechanics": {
+        "freeGames": {
+            "scatterSymbol": "S",
+            "awardsByCount": {
+                "3": 12
+            }
+        }
+    }
+}

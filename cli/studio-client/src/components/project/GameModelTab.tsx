@@ -5,7 +5,6 @@ import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {setReelGenerationMode} from "../../domain/blueprintFormOps";
 import {describeValidation, type BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
-import type {BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
 import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
@@ -15,7 +14,7 @@ import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfi
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
 import {QuickActions} from "../common/QuickActions";
-import {GameModelSections} from "./GameModelSections";
+import {GameModelSections, type GameModelSectionId} from "./GameModelSections";
 
 type GameModelState = {status: "loading"} | {status: "error"; message: string} | {status: "loaded"; projection: GameModelProjection};
 
@@ -31,9 +30,9 @@ type GameModelState = {status: "loading"} | {status: "error"; message: string} |
 // clicked; validate-then-write is in flight.
 type EditState =
     | {status: "viewing"}
-    | {status: "loading"; section: BlueprintSectionId}
-    | {status: "editing"; section: BlueprintSectionId; baselineRevision: number}
-    | {status: "saving"; section: BlueprintSectionId; baselineRevision: number};
+    | {status: "loading"; section: GameModelSectionId}
+    | {status: "editing"; section: GameModelSectionId; baselineRevision: number}
+    | {status: "saving"; section: GameModelSectionId; baselineRevision: number};
 
 // The Project Workspace's own Game Model tab -- View Mode's default (and only) content: a calm,
 // read-only rendering of GET /api/project/gameModel's own resolved-project-type-aware projection (see
@@ -137,7 +136,7 @@ export function GameModelTab({
         return () => window.removeEventListener("beforeunload", handleBeforeUnload);
     }, [isDirty]);
 
-    const handleEdit = (section: BlueprintSectionId): void => {
+    const handleEdit = (section: GameModelSectionId): void => {
         if (!editable || projectRoot === undefined || !loadGuard.begin()) {
             return;
         }

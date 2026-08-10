@@ -1,0 +1,119 @@
+=== P5PA-02 remediation evidence: Blueprint Game Model editor completeness gap ===
+Captured: implementer sandbox, task/P5PA-02-* worktree
+
+--- 1. Source evidence for the gap (before this step's fix, as found) ---
+
+$ git log --oneline --all -- 'cli/studio-client/src/components/**MechanicsEditor*' | head -3
+ccbc9a8 [P4-POLISH-03] remove pre-release compatibility surfaces
+a2e42db [P3-POLISH-18] add shared-weights → editable reelStrips conversion action
+e5cd47a [P3-POLISH-17] cancel pending auto-validate when leaving Game Model Edit mode
+
+$ git show --stat ccbc9a8 | head -6   # P4-POLISH-03: deleted the old, separate Mechanics Editor tab outright
+commit ccbc9a8477a4b32d3968b652465c4739331111f2
+Author: pokie-implementer <implementer@pokie.local>
+Date:   Wed Aug 5 13:15:28 2026 +0000
+
+    [P4-POLISH-03] remove pre-release compatibility surfaces
+    
+
+$ grep -n 'freeGames\|mechanics' src/generated/GameBlueprint.ts   # mechanics.freeGames IS a real, supported GameBlueprint field
+34:    freeGames?: GameBlueprintFreeGames;
+71:    mechanics?: GameBlueprintMechanics;
+
+$ grep -n 'blueprint-mechanics-' src/generated/GameBlueprintValidator.ts | head -8   # ...with its own dedicated validator rules
+218:                code: "blueprint-mechanics-invalid",
+235:                code: "blueprint-mechanics-freegames-invalid",
+247:                code: "blueprint-mechanics-freegames-missing-scatter",
+254:                code: "blueprint-mechanics-freegames-unknown-scatter",
+269:                code: "blueprint-mechanics-freegames-empty-awards",
+281:                    code: "blueprint-mechanics-freegames-invalid-count",
+288:                    code: "blueprint-mechanics-freegames-invalid-award",
+
+Before this step's fix, GameModelSections.tsx (Studio's own canonical, post-creation Game Model tab --
+Design Blueprint -> open project -> Game Model) rendered Mechanics/Limits read-only, with no Edit
+action and no explanation, alongside 6 other sections that DO have a real field editor:
+
+  function MechanicsSection(...) { ... }          // read-only render only, no mutate() call anywhere
+  <PageSection legend="Mechanics">                 // no action= Edit/Save/Cancel, unlike every other section
+      <MechanicsSection section={projection.mechanics} />
+  </PageSection>
+
+The only place mechanics.freeGames was actually reachable for an EXISTING project was the standalone
+'pokie edit <blueprint>' CLI wizard (cli/wizard/GameBlueprintWizard.ts askMechanics(), invoked from
+cli/commands/EditCommand.ts) -- a genuinely separate, competing mutation path outside Studio entirely,
+confirmed by reading cli/commands/EditCommand.ts and cli/wizard/GameBlueprintWizard.ts directly.
+
+'Limits' (GameModelLimits: minBet/maxBet) is NOT a stored GameBlueprint field at all -- confirmed by
+grepping src/generated/GameBlueprint.ts for 'limits' (zero hits); it is purely derived from Bets &
+Modes' own availableBets (src/project/buildGameModelProjection.ts's deriveLimits). Its own read-only
+status was already correct; the gap there was that the UI never said so -- it just showed data or
+'No bet limits configured.' with no explanation of why there was no Edit button at all.
+
+--- 2. The fix ---
+
+Mechanics (freeGames) is now edited through Game Model itself (FreeGamesFieldset.tsx, wired into
+GameModelSections.tsx's existing per-section Edit/Save/Cancel + single-whole-blueprint-write flow --
+the exact same architecture PaytableEditor/BetsList already use, not a second, competing editor or
+mutation path the way the old, deleted MechanicsEditorTab was). Limits stays read-only, but now says
+truthfully, in every state, that it is derived from Bets & Modes' own Available bets.
+
+--- 3. Real browser workflow evidence ---
+
+No host browser (CDP) is reachable in this sandbox -- reproduced fresh, not assumed from a prior
+round's conclusion:
+
+$ node -e "fetch('http://127.0.0.1:9222/json/version', {signal: AbortSignal.timeout(3000)}).then(r=>r.json()).then(d=>console.log(JSON.stringify(d))).catch(e=>console.log('ERR', e.message))"
+ERR fetch failed
+
+Per this campaign's own protocol (docs/phase5-post-audit/README.md section 2), the fallback is a
+real, unmocked jest-environment-jsdom capture of the actual production component tree -- the exact
+same convention P5PA-01's own evidence/08-blueprint-game-model-editor.txt already used. The workflow
+exercised below is real: renderRoutedApp mounts the real HomePage/ProjectDashboardPage/GameModelTab
+React tree with real Mantine and a routed fake fetch standing in only for the network boundary --
+goes to the Game Model tab of an already-open project, clicks Edit on Mechanics, adds free games,
+picks a real scatter symbol from a real Mantine combobox, adds a match-count->award row, clicks
+Save, and asserts (a) the real POST /api/home/blueprints/save body carries the mutated
+mechanics.freeGames, and (b) View Mode, refetched from the server, shows the persisted truth.
+
+$ node_modules/.bin/jest --config jest.config.mjs tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx
+PASS studio-client-components tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx (14.118 s)
+  ProjectDashboardPage - Game Model tab
+    ✓ renders every section of a full projection, straight off GET /api/project/gameModel (825 ms)
+    ✓ shows each section's own truthful 'Not available' reason, never inventing data, when the project has no tracked game model (426 ms)
+    ✓ shows a recovery message, never a raw stack trace, when the fetch itself fails (335 ms)
+  ProjectDashboardPage - Game Model tab editing
+    ✓ offers Edit on every section with a canonical field editor, including Mechanics, but never on Limits (a derived value, not its own field) (677 ms)
+    ✓ Edit -> mutate -> Save loads the real tracked source, validates, atomically writes it, and View Mode then shows the saved truth (1470 ms)
+    ✓ Edit -> mutate -> Save on Mechanics adds scatter-triggered free games and atomically writes the whole blueprint (2205 ms)
+    ✓ Save runs validateBlueprint first -- an invalid draft is never written, and the errors show inline (984 ms)
+    ✓ Cancel with unsaved edits confirms before discarding them, reverting to the last-loaded truth (1923 ms)
+    ✓ blocks navigating away from the Game Model tab while a section edit is dirty, same as any other unsaved-changes guard (3378 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       9 passed, 9 total
+Snapshots:   0 total
+Time:        15.017 s
+Ran all test suites matching /tests\/cli\/studio-client\/src\/components\/project\/ProjectDashboardPage.gameModelWorkflow.test.tsx/i.
+
+$ node_modules/.bin/jest --config jest.config.mjs tests/cli/studio-client/src/domain/blueprintFormOps.test.ts
+        ✓ sums and rounds the active symbolWeights (1 ms)
+        ✓ returns undefined when the active side is empty
+    reel generation mode
+      ✓ reports default when no field is set (1 ms)
+      ✓ reports reelStrips/reelStripGeneration/symbolWeights when set (1 ms)
+      ✓ switching to reelStrips clears reelStripGeneration/symbolWeights and seeds one empty strip per reel (1 ms)
+      ✓ switching to reelStripGeneration clears reelStrips/symbolWeights and seeds one literal entry per reel (6 ms)
+      ✓ switching to symbolWeights clears reelStrips/reelStripGeneration
+      ✓ switching to default clears all three (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       52 passed, 52 total
+Snapshots:   0 total
+Time:        0.72 s, estimated 1 s
+Ran all test suites matching /tests\/cli\/studio-client\/src\/domain\/blueprintFormOps.test.ts/i.
+
+$ node_modules/.bin/tsc --project cli/studio-client/tsconfig.json --noEmit   # exit $?
+exit: 0
+
+$ node_modules/.bin/eslint cli/studio-client/src/components/blueprintEditor/FreeGamesFieldset.tsx cli/studio-client/src/components/project/GameModelSections.tsx cli/studio-client/src/components/project/GameModelTab.tsx cli/studio-client/src/domain/blueprintFormOps.ts --ext .ts,.tsx   # exit $?
+exit: 0
