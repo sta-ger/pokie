@@ -65,8 +65,14 @@ export async function buildProjectGameModel(
     if (!inspected.valid || inspected.packageJson === undefined) {
         return buildGameModelProjection(undefined, {reason: inspected.error ?? "This project's package could not be inspected."});
     }
+    // package.json's own "name" is an npm package identifier, never the game's own display name --
+    // GamePackageGenerator (`pokie build --target tsPackage`) writes it as `blueprint.manifest.id`
+    // verbatim, and GamePackageMerger (`pokie init`) writes it from `--package-name`/the directory name,
+    // never from `--game-name` (see docs/cli.md's own "`--game-id` never seeds or otherwise changes
+    // package.json's `name`" for the general rule). Mapping it to `basics.id` here (not `basics.name`)
+    // reflects that; the game's own display name is never recoverable from a compiled package at all.
     return buildGameModelProjection(undefined, {
-        manifest: {name: inspected.packageJson.name, version: inspected.packageJson.version, description: inspected.packageJson.description},
+        manifest: {id: inspected.packageJson.name, version: inspected.packageJson.version, description: inspected.packageJson.description},
         reason: "This project is a compiled TypeScript package -- Studio can only read its package.json here; open its own Blueprint source to see the full game model.",
     });
 }

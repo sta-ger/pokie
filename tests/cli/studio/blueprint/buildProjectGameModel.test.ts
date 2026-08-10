@@ -117,7 +117,7 @@ describe("buildProjectGameModel", () => {
         expect(projection.basics).toEqual({status: "unavailable", reason: "The sidecar manifest is no longer compatible."});
     });
 
-    it("exposes only package.json's own fields for a tsPackage project", async () => {
+    it("exposes only package.json's own fields for a tsPackage project, mapping its \"name\" to basics.id (an npm package identifier), never basics.name (the game's own display name, which is never recoverable from a compiled package)", async () => {
         const inspectPackage = (root: string): GamePackageInspectionReport => {
             expect(root).toBe("/games/a-package");
             return {packageRoot: root, valid: true, packageJson: {name: "a-package", version: "1.0.0", description: "A game"}};
@@ -125,7 +125,7 @@ describe("buildProjectGameModel", () => {
 
         const projection = await buildProjectGameModel("/games/a-package", undefined, false, readers({inspectPackage}));
 
-        expect(projection.basics).toEqual({status: "available", data: {name: "a-package", version: "1.0.0", description: "A game"}});
+        expect(projection.basics).toEqual({status: "available", data: {id: "a-package", version: "1.0.0", description: "A game"}});
         expect(projection.paytable).toEqual({status: "unavailable", reason: expect.stringContaining("compiled TypeScript package")});
     });
 
