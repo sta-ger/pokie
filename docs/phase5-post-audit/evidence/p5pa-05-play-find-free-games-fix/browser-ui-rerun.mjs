@@ -114,6 +114,10 @@ async function main() {
     await click(await control("Session Spin"), "Replay Session Spin source");
     await wait("document.body.innerText.includes('All sessions') && [...document.querySelectorAll('button')].some((e) => /^Round \\d+ in session /.test(e.textContent?.trim() ?? ''))", "shared recorder Session Spin entry list");
     await click(await foundRound(), "newest shared recorder round");
+    // Persist the post-selection UI even when the acceptance assertion below fails: it is the
+    // primary host-side evidence for a provenance regression and is still produced entirely by
+    // reading the rendered page/capturing its pixels.
+    await snapshot("09-replay-session-spin-selected");
     await wait("document.body.innerText.includes('Loaded replay') && document.body.innerText.includes('Operation') && document.body.innerText.includes('Find free games') && document.body.innerText.includes('freeGamesTriggered')", "same shared recorder entry visibly identified as Find free games with its free-games event");
     await snapshot("09-replay-session-spin-find-free-games");
     note("COMPLETE visible Studio Play → Find free games → Replay Session Spin verification.");

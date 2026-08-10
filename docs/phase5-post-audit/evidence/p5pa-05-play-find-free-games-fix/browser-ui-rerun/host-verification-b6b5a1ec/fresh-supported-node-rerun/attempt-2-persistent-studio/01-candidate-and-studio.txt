@@ -1,0 +1,5 @@
+candidate_sha=b6b5a1ec5c0b80940d8ed7fc4383acd0b912b20e
+node=v24.18.0
+studio_pid=1153670
+studio_url=http://127.0.0.1:41260
+fixture=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/tests/cli/fixtures/playable-game-with-free-games

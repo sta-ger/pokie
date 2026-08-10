@@ -1,0 +1,21 @@
+[2026-08-10T23:35:20.732Z] START fresh Chrome browser session against local candidate Studio http://127.0.0.1:41262
+[2026-08-10T23:35:20.775Z] NAVIGATE rendered Studio project workspace
+[2026-08-10T23:35:21.253Z] OBSERVE free-games-capable project dashboard
+[2026-08-10T23:35:21.280Z] CLICK Play navigation at rendered coordinates (130, 178)
+[2026-08-10T23:35:21.686Z] OBSERVE rendered Play session setup
+[2026-08-10T23:35:21.711Z] CLICK input "Seed (optional)" at rendered coordinates (436, 391)
+[2026-08-10T23:35:22.139Z] INPUT "Seed (optional)"="p5pa05-visible-find-free-games" through the browser keyboard
+[2026-08-10T23:35:22.473Z] CLICK Play New session at rendered coordinates (337, 439)
+[2026-08-10T23:35:22.879Z] OBSERVE rendered Find free games control
+[2026-08-10T23:35:22.946Z] CLICK Find free games at rendered coordinates (349, 307)
+[2026-08-10T23:35:23.352Z] OBSERVE returned Play artifact visibly contains freeGamesTriggered
+[2026-08-10T23:35:23.584Z] CAPTURE 08-play-find-free-games-artifact.png and 08-play-find-free-games-artifact-visible-text.txt
+[2026-08-10T23:35:23.600Z] CLICK Replay navigation immediately after Find free games at rendered coordinates (130, 292)
+[2026-08-10T23:35:24.006Z] OBSERVE Replay source chooser
+[2026-08-10T23:35:24.107Z] CLICK Replay Session Spin source at rendered coordinates (602, 112)
+[2026-08-10T23:35:24.510Z] OBSERVE shared recorder Session Spin entry list
+[2026-08-10T23:35:24.571Z] CLICK newest shared recorder round at rendered coordinates (513, 260)
+[2026-08-10T23:35:25.523Z] CAPTURE 09-replay-session-spin-selected.png and 09-replay-session-spin-selected-visible-text.txt
+[2026-08-10T23:35:25.527Z] OBSERVE same shared recorder entry visibly identified as Find free games with its free-games event
+[2026-08-10T23:35:25.990Z] CAPTURE 09-replay-session-spin-find-free-games.png and 09-replay-session-spin-find-free-games-visible-text.txt
+[2026-08-10T23:35:25.990Z] COMPLETE visible Studio Play → Find free games → Replay Session Spin verification.

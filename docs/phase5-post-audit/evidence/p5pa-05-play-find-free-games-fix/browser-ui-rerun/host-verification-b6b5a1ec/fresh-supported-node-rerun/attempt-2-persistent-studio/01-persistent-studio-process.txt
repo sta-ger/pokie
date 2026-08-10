@@ -1,0 +1,1 @@
+1153670 1153665 Sl   /home/stager/.nvm/versions/node/v24.18.0/bin/node dist/cli/pokie.js studio tests/cli/fixtures/playable-game-with-free-games --port 41260 --host 127.0.0.1 --no-open

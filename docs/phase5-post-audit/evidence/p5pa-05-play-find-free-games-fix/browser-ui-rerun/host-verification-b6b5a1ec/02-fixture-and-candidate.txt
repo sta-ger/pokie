@@ -1,0 +1,4 @@
+candidate_sha=b6b5a1ec5c0b80940d8ed7fc4383acd0b912b20e
+fixture=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/tests/cli/fixtures/playable-game-with-free-games
+existing fixture dependency: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113
+{"id":"playable-game-with-free-games","name":"Playable Game With Free Games","version":"1.0.0"}

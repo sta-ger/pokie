@@ -1,0 +1,6 @@
+[2026-08-10T22:01:48.977Z] FAILED TypeError: fetch failed
+    at Object.fetch (node:internal/deps/undici/undici:11360:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async requestJson (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/docs/phase5-post-audit/evidence/p5pa-05-play-find-free-games-fix/browser-ui-rerun.mjs:26:22)
+    at async connect (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/docs/phase5-post-audit/evidence/p5pa-05-play-find-free-games-fix/browser-ui-rerun.mjs:32:20)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-05-20260810205113/docs/phase5-post-audit/evidence/p5pa-05-play-find-free-games-fix/browser-ui-rerun.mjs:59:17)
