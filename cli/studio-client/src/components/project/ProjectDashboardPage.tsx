@@ -533,7 +533,7 @@ export function ProjectDashboardPage() {
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
     // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
     const runReplay = useCallback(
-        (round: number, seed: string | undefined, simulationId?: string, keepExpected = false, modeName?: string) => {
+        (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string) => {
             if (!keepExpected) {
                 clearExpectedReplay();
             }
