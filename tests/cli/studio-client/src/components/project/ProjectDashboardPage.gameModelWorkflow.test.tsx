@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
@@ -145,7 +145,7 @@ function sectionFieldset(legend: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Game Model tab editing", () => {
-    it("offers Edit only on the sections with a canonical field editor, never on Mechanics/Limits", async () => {
+    it("offers Edit on every section with a canonical field editor, including Mechanics, but never on Limits (a derived value, not its own field)", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -155,11 +155,10 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToGameModelTab(user);
 
-        expect(await screen.findAllByRole("button", {name: "Edit"})).toHaveLength(6);
-        expect(screen.queryByText("Mechanics", {selector: "span"})).not.toBeInTheDocument();
+        expect(await screen.findAllByRole("button", {name: "Edit"})).toHaveLength(7);
+        expect(screen.getByText("Mechanics", {selector: "span"})).toBeInTheDocument();
         expect(screen.queryByText("Limits", {selector: "span"})).not.toBeInTheDocument();
         // Still there, just as plain (non-editable) legend text.
-        expect(screen.getByText("Mechanics")).toBeInTheDocument();
         expect(screen.getByText("Limits")).toBeInTheDocument();
     });
 
@@ -199,6 +198,61 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         const saveCall = calls.find((call) => call.url === "/api/home/blueprints/save");
         expect(saveCall).toBeDefined();
         expect(JSON.parse(saveCall!.init!.body!)).toMatchObject({path: "/games/a", overwrite: true});
+        expect(gameModelCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    // Covers the completeness gap this step fixes: Mechanics (GameBlueprintMechanics.freeGames) used to
+    // have no field editor anywhere in Studio (see GameModelSections.tsx's own doc comment) -- this
+    // proves Edit -> add free games -> set scatter symbol -> add an award -> Save really does reach the
+    // same atomic whole-blueprint write every other section's Save already uses, and View Mode then
+    // shows the saved truth.
+    it("Edit -> mutate -> Save on Mechanics adds scatter-triggered free games and atomically writes the whole blueprint", async () => {
+        const user = userEvent.setup();
+        const rawBlueprintWithScatter = {...RAW_BLUEPRINT, symbols: ["A", "S"], scatters: ["S"]};
+        let gameModelCalls = 0;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => {
+                gameModelCalls += 1;
+                const projection = fullProjection();
+                if (gameModelCalls > 1) {
+                    projection.mechanics = {status: "available", data: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 10}}}};
+                }
+                return {ok: true, status: 200, body: projection};
+            },
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: rawBlueprintWithScatter, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const mechanics = sectionFieldset("Mechanics");
+        await user.click(within(mechanics).getByRole("button", {name: "Edit"}));
+
+        await user.click(await within(mechanics).findByRole("button", {name: "Add free games"}));
+        await user.click(within(mechanics).getByRole("combobox", {name: "Scatter symbol"}));
+        // Mantine's own dropdown positioning never settles to visible under jsdom's layout-less
+        // environment (its Popover stays "display: none" even once opened -- a jsdom limitation, not a
+        // real hidden state), so the option is targeted directly with fireEvent rather than a visibility-
+        // checking userEvent.click; the option element itself is real and already in the DOM (see
+        // ProjectDashboardPage.playWorkflow.test.tsx's own "Symbol" chooser for the same pattern).
+        fireEvent.click(await screen.findByRole("option", {name: "S", hidden: true}));
+        await user.type(within(mechanics).getByLabelText("New match count"), "3");
+        await user.type(within(mechanics).getByLabelText("New free games awarded"), "10");
+        await user.click(within(mechanics).getByRole("button", {name: "Add award"}));
+
+        await user.click(within(mechanics).getByRole("button", {name: "Save"}));
+
+        expect(await within(mechanics).findByRole("button", {name: "Edit"})).toBeInTheDocument();
+        expect(within(mechanics).getByText(/scatter symbol: S/)).toBeInTheDocument();
+        expect(within(mechanics).getByText(/3x → 10 free games/)).toBeInTheDocument();
+
+        const saveCall = calls.find((call) => call.url === "/api/home/blueprints/save");
+        expect(saveCall).toBeDefined();
+        const savedBody = JSON.parse(saveCall!.init!.body!) as {blueprint: {mechanics?: unknown}};
+        expect(savedBody.blueprint.mechanics).toEqual({freeGames: {scatterSymbol: "S", awardsByCount: {"3": 10}}});
         expect(gameModelCalls).toBeGreaterThanOrEqual(2);
     });
 

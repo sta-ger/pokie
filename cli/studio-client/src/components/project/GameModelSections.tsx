@@ -14,11 +14,13 @@ import type {
     GameModelSection,
     GameModelSharedWeightsSample,
     GameModelSymbol,
+    ValidationIssue,
 } from "../../api/types";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {BetsList} from "../blueprintEditor/BetsList";
+import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
 import {LayoutFieldset} from "../blueprintEditor/LayoutFieldset";
 import {MetadataFieldset} from "../blueprintEditor/MetadataFieldset";
 import {PaylinesEditor} from "../blueprintEditor/PaylinesEditor";
@@ -30,13 +32,19 @@ import {EmptyState} from "../common/EmptyState";
 import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
 
-// GameModelSections offers Edit on exactly "basics"/"layout"/"symbols"/"reels"/"paytable"/"bets" below --
-// the BlueprintSectionId values with an existing, canonical field editor to reuse from the guided Design
-// Game editor (see SectionedFormEditor.tsx, whose own 6 tabs these mirror one-for-one). "Mechanics"/
-// "Limits" have no dedicated field editor anywhere in Studio today (their old one, MechanicsEditorTab's
-// BetModesEditor/FreeGamesFieldset, was deleted outright in P4-POLISH-03, not merely hidden) --
-// reintroducing one here would be exactly the second, competing implementation this step's own "without
-// duplicating mechanics or domain semantics" contract forbids, so those two stay read-only.
+// GameModelSections offers Edit on "basics"/"layout"/"symbols"/"reels"/"paytable"/"bets" (the
+// BlueprintSectionId values with an existing, canonical field editor to reuse from the guided Design
+// Game editor -- see SectionedFormEditor.tsx, whose own 6 tabs these mirror one-for-one) plus
+// "mechanics" (GameModelSectionId's own extra member, below) -- Mechanics is real, persisted
+// GameBlueprint data (GameBlueprintMechanics.freeGames) with its own validator rules
+// (GameBlueprintValidator's "blueprint-mechanics-*" codes), so leaving it read-only here left it
+// reachable only through the standalone `pokie edit` CLI wizard, never through Studio. FreeGamesFieldset
+// is wired into this tab's own existing Edit/Save/Cancel-per-section, single-whole-blueprint-write flow
+// (the same one PaytableEditor/BetsList already use) -- not a second, competing editor or mutation path
+// the way the old, deleted MechanicsEditorTab (its own separate apply/commit/publish backend, removed
+// outright in P4-POLISH-03) was. "Limits" stays read-only: it isn't a stored GameBlueprint field at all,
+// only a derived min/max of Bets & Modes' own `availableBets` (see GameModelLimits's own doc comment) --
+// there is no separate field to edit, so LimitsSection below says so truthfully instead of inventing one.
 //
 // Everything GameModelSections needs to render Edit/Save/Cancel per section and swap an editable
 // section's read-only body for the exact same field-editor component the guided Design Game editor uses
@@ -45,16 +53,18 @@ import {PageSection} from "../common/PageSection";
 // Undefined (the default) everywhere GameModelSections renders a projection that isn't a saved, in-place-
 // editable Blueprint Project -- GameModelPreviewPanel's own live Design Game preview never passes this,
 // so it renders exactly as it always has, purely read-only.
+export type GameModelSectionId = BlueprintSectionId | "mechanics";
+
 export type GameModelEditController = {
     // Set the instant Edit is clicked (before the fresh source has even loaded) through to Save/Cancel --
     // every *other* section's own Edit disables the moment this is set, not just once `ready` below
     // flips, so a second Edit click can never race the first section's own still-in-flight load.
-    activeSection: BlueprintSectionId | undefined;
+    activeSection: GameModelSectionId | undefined;
     // False while `activeSection`'s own fresh source is still loading (see GameModelTab's own "loading"
     // EditState) -- the field editor only ever renders bound to real, already-loaded content, never a
     // stale or empty draft, so the read-only body stays up until this flips true.
     ready: boolean;
-    onEdit: (section: BlueprintSectionId) => void;
+    onEdit: (section: GameModelSectionId) => void;
     onSave: () => void;
     onCancel: () => void;
     saving: boolean;
@@ -85,7 +95,7 @@ export type GameModelReelsSampleControls = {
 // a time" contract, which keeps every save a single, atomic whole-blueprint write against a baseline
 // nothing else in this tab is concurrently mutating), and shows its own loading spinner while its own
 // section is the one still fetching a fresh source.
-function SectionEditAction({id, edit}: {id: BlueprintSectionId; edit: GameModelEditController}) {
+function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelEditController}) {
     if (edit.activeSection === id) {
         if (!edit.ready) {
             return (
@@ -127,6 +137,23 @@ function SectionValidationIssues({id, edit}: {id: BlueprintSectionId; edit: Game
             <IssueList title="Warnings" issues={crossFieldOnly(warningsBySection[id])} />
         </>
     );
+}
+
+// Mechanics' own slice of GameModelTab's own last validateBlueprint() result -- "mechanics" isn't one of
+// BlueprintSectionId's own six members (see GameModelSectionId's own doc comment on why), so it has no
+// entry in classifyIssuesBySection's shared, code-prefix-driven categorization; every
+// "blueprint-mechanics-*" code (GameBlueprintValidator.validateMechanics/validateFreeGames) plus the one
+// cross-field code a buyFeature bet mode raises when free games isn't configured
+// ("blueprint-betmodes-buyfeature-requires-freegames") is filtered directly here instead.
+function isMechanicsIssue(issue: ValidationIssue): boolean {
+    return issue.code.startsWith("blueprint-mechanics-") || issue.code === "blueprint-betmodes-buyfeature-requires-freegames";
+}
+
+function mechanicsIssues(edit: GameModelEditController): ValidationIssue[] {
+    const view = edit.validationView;
+    const errors = view.status === "invalid" ? view.errors : [];
+    const warnings = view.status === "invalid" || view.status === "ok" ? view.warnings : [];
+    return [...errors, ...warnings].filter(isMechanicsIssue);
 }
 
 function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
@@ -633,21 +660,42 @@ function BetsAndModesSection({section}: {section: GameModelProjection["betsAndMo
     );
 }
 
+// `note` is shown for every status alike (unavailable, empty, or populated) -- Limits has no Edit button
+// anywhere on this page not because it's unsupported, but because it isn't its own stored field: it's
+// always exactly the min/max of Bets & Modes' own `availableBets` (see GameModelLimits's own doc
+// comment), so there is nothing here for a separate editor to write. Truthfully saying so, every time,
+// is what the "displays that limitation truthfully rather than inventing fields" contract asks for.
 function LimitsSection({section}: {section: GameModelSection<GameModelLimits>}) {
+    const note = (
+        <Text size="xs" c="dimmed" mb={4}>
+            Derived from Bets &amp; Modes&apos; own Available bets above -- edit there to change it.
+        </Text>
+    );
     if (section.status === "unavailable") {
-        return <UnavailableSection reason={section.reason} />;
+        return (
+            <>
+                {note}
+                <UnavailableSection reason={section.reason} />
+            </>
+        );
     }
     if (section.data.minBet === undefined && section.data.maxBet === undefined) {
         return (
-            <Text size="sm" c="dimmed">
-                No bet limits configured.
-            </Text>
+            <>
+                {note}
+                <Text size="sm" c="dimmed">
+                    No bet limits configured.
+                </Text>
+            </>
         );
     }
     return (
-        <Text size="sm">
-            Bet range: {section.data.minBet ?? "(none)"} – {section.data.maxBet ?? "(none)"}
-        </Text>
+        <>
+            {note}
+            <Text size="sm">
+                Bet range: {section.data.minBet ?? "(none)"} – {section.data.maxBet ?? "(none)"}
+            </Text>
+        </>
     );
 }
 
@@ -676,6 +724,7 @@ export function GameModelSections({
     const editingReels = edit?.ready === true && edit.activeSection === "reels";
     const editingPaytable = edit?.ready === true && edit.activeSection === "paytable";
     const editingBets = edit?.ready === true && edit.activeSection === "bets";
+    const editingMechanics = edit?.ready === true && edit.activeSection === "mechanics";
 
     return (
         <div>
@@ -750,8 +799,12 @@ export function GameModelSections({
                 )}
             </PageSection>
 
-            <PageSection legend="Mechanics">
-                <MechanicsSection section={projection.mechanics} />
+            <PageSection legend="Mechanics" action={edit && <SectionEditAction id="mechanics" edit={edit} />}>
+                {editingMechanics && edit ? (
+                    <FreeGamesFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={mechanicsIssues(edit)} />
+                ) : (
+                    <MechanicsSection section={projection.mechanics} />
+                )}
             </PageSection>
 
             <PageSection legend="Limits">

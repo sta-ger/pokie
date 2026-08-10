@@ -239,6 +239,82 @@ export function duplicatePaytablePayout(blueprint: Record<string, unknown>, symb
     }
 }
 
+// ---- Mechanics (scatter-triggered free games) ----
+
+function asMechanics(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : {};
+}
+
+function asFreeGames(value: unknown): {scatterSymbol?: unknown; awardsByCount?: unknown} | undefined {
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? {...(value as Record<string, unknown>)} : undefined;
+}
+
+// Read-only helper for the Mechanics section's own field editor (FreeGamesFieldset.tsx) -- pulls a
+// typed, defaulted `{scatterSymbol, awardsByCount}` out of an untyped blueprint, or `undefined` if this
+// blueprint has no scatter-triggered free games configured at all (the "not every blueprint has this
+// mechanic" case GameModelSections' own read-only MechanicsSection already renders as "No
+// mechanics/features configured."). Mutations still go exclusively through the functions below.
+export function readFreeGames(blueprint: Record<string, unknown>): {scatterSymbol: string; awardsByCount: Record<string, number>} | undefined {
+    const freeGames = asFreeGames(asMechanics(blueprint.mechanics).freeGames);
+    if (freeGames === undefined) {
+        return undefined;
+    }
+    return {
+        scatterSymbol: typeof freeGames.scatterSymbol === "string" ? freeGames.scatterSymbol : "",
+        awardsByCount: asNumberRecord(freeGames.awardsByCount),
+    };
+}
+
+// Turns this mechanic on, starting from nothing (no scatter symbol, no awards yet) -- the same
+// "start editable, then fill in" pattern addBet/addPayline already follow for their own optional
+// collections.
+export function addFreeGames(blueprint: Record<string, unknown>): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    mechanics.freeGames = {scatterSymbol: "", awardsByCount: {}};
+    blueprint.mechanics = mechanics;
+}
+
+// Turns this mechanic off outright -- removes `freeGames` (not just its fields), same as how a
+// GameBlueprint that never had this mechanic represents "no free games", never an empty-but-present
+// object standing in for absence.
+export function removeFreeGames(blueprint: Record<string, unknown>): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    Reflect.deleteProperty(mechanics, "freeGames");
+    blueprint.mechanics = mechanics;
+}
+
+export function setFreeGamesScatterSymbol(blueprint: Record<string, unknown>, symbolId: string): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames) ?? {};
+    mechanics.freeGames = {...freeGames, scatterSymbol: symbolId};
+    blueprint.mechanics = mechanics;
+}
+
+export function setFreeGamesAward(blueprint: Record<string, unknown>, matchCount: number, awarded: number): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames) ?? {};
+    const awardsByCount = asNumberRecord(freeGames.awardsByCount);
+    mechanics.freeGames = {...freeGames, awardsByCount: {...awardsByCount, [String(matchCount)]: awarded}};
+    blueprint.mechanics = mechanics;
+}
+
+// Removes just this one matchCount entry -- if that was the last award, `awardsByCount` is left as an
+// empty object (GameBlueprintValidator's own "blueprint-mechanics-freegames-empty-awards" already
+// reports that as an error rather than this helper silently turning the whole mechanic off, the same
+// division of responsibility removePaytablePayout/GameBlueprintValidator already follow for the
+// paytable's own "empty payouts" case).
+export function removeFreeGamesAward(blueprint: Record<string, unknown>, matchCount: number): void {
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames);
+    if (freeGames === undefined) {
+        return;
+    }
+    const awardsByCount = {...asNumberRecord(freeGames.awardsByCount)};
+    Reflect.deleteProperty(awardsByCount, String(matchCount));
+    mechanics.freeGames = {...freeGames, awardsByCount};
+    blueprint.mechanics = mechanics;
+}
+
 // ---- Reel strips (one symbol-id list per reel) ----
 
 function asReelStrips(value: unknown): string[][] {

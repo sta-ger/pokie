@@ -1,5 +1,6 @@
 import {
     addBet,
+    addFreeGames,
     addPayline,
     applyPaylineSet,
     addReelStripGenerationLiteralSymbol,
@@ -21,7 +22,10 @@ import {
     moveReelStripSymbolAt,
     moveSymbolAt,
     parseReelStripGenerationConstraintsJson,
+    readFreeGames,
     removeBetAt,
+    removeFreeGames,
+    removeFreeGamesAward,
     removePaylineAt,
     removePaytablePayout,
     removeReelStripGenerationLiteralSymbolAt,
@@ -35,6 +39,8 @@ import {
     resizeReelStripGenerationToReelCount,
     resizeReelStripsToReelCount,
     setBetAt,
+    setFreeGamesAward,
+    setFreeGamesScatterSymbol,
     setPaylineCell,
     setPaytablePayout,
     setReelGenerationMode,
@@ -213,6 +219,60 @@ describe("blueprintFormOps", () => {
             removePaytablePayout(b, "A", 3);
 
             expect(b.paytable).toEqual({});
+        });
+    });
+
+    describe("mechanics (scatter-triggered free games)", () => {
+        it("reports no free games configured until addFreeGames turns the mechanic on", () => {
+            const b: Record<string, unknown> = {};
+
+            expect(readFreeGames(b)).toBeUndefined();
+
+            addFreeGames(b);
+
+            expect(readFreeGames(b)).toEqual({scatterSymbol: "", awardsByCount: {}});
+        });
+
+        it("sets the scatter symbol and awards, independent of each other", () => {
+            const b: Record<string, unknown> = {};
+            addFreeGames(b);
+
+            setFreeGamesScatterSymbol(b, "S");
+            setFreeGamesAward(b, 3, 10);
+            setFreeGamesAward(b, 4, 15);
+
+            expect(readFreeGames(b)).toEqual({scatterSymbol: "S", awardsByCount: {"3": 10, "4": 15}});
+        });
+
+        it("removes just one award entry, leaving the rest and the scatter symbol untouched", () => {
+            const b: Record<string, unknown> = {};
+            addFreeGames(b);
+            setFreeGamesScatterSymbol(b, "S");
+            setFreeGamesAward(b, 3, 10);
+            setFreeGamesAward(b, 4, 15);
+
+            removeFreeGamesAward(b, 3);
+
+            expect(readFreeGames(b)).toEqual({scatterSymbol: "S", awardsByCount: {"4": 15}});
+        });
+
+        it("turns the mechanic off outright, not just clearing its fields", () => {
+            const b: Record<string, unknown> = {mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 10}}}};
+
+            removeFreeGames(b);
+
+            expect(readFreeGames(b)).toBeUndefined();
+            expect(b.mechanics).toEqual({});
+        });
+
+        it("tolerates a missing/malformed mechanics field", () => {
+            const b: Record<string, unknown> = {mechanics: "not an object"};
+
+            expect(readFreeGames(b)).toBeUndefined();
+
+            setFreeGamesScatterSymbol(b, "S");
+
+            expect(readFreeGames(b)).toEqual({scatterSymbol: "S", awardsByCount: {}});
         });
     });
 
