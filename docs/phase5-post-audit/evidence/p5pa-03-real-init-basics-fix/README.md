@@ -99,7 +99,7 @@ independent `--package-name`/`--game-id` overrides), asserting `basics.data.id`/
 (350 suites / 5558 tests, `--selectProjects pokie`, no path filter) — all passed, confirming this fix regresses
 nothing else in that project.
 
-## What could not be verified
+## What could not be verified in the original pass
 
 Same sandbox constraint as every prior P5PA round: no Chromium binary, no Playwright/Puppeteer, `npm` broken —
 so no real Studio HTTP server + browser capture of `GameModelSections.tsx`'s rendered `Id:`/`Name:` lines. The
@@ -109,3 +109,28 @@ is a thin, already-covered render of whatever `projection.basics.data` holds (`I
 `Name: {data.name ?? "(none)"}` — read directly, not re-derived), so the field-level fix above is what actually
 determines what those two lines show — now `(none)` for both, on a real `tsPackage` project, regardless of
 `--package-name`/`--game-id` divergence.
+
+## Browser UI rerun (candidate `8d15989a178c7fd9fe56ef8dac39733167dbbc64`)
+
+The previously unavailable browser check is now completed against a fresh local Studio build from this
+candidate. The evidence is in [`browser-ui-rerun/`](browser-ui-rerun/):
+
+- [`01-pokie-init-terminal.txt`](browser-ui-rerun/01-pokie-init-terminal.txt) records the real public
+  `pokie init` invocation with `--package-name storefront-widgets --game-id sunset-riches --game-name
+  "Sunset Riches" --no-prepare`. Its generated, committed package is
+  [`divergent-init-package/`](browser-ui-rerun/divergent-init-package/), whose `package.json` holds the
+  deliberately divergent npm name.
+- [`02-studio-server-terminal.txt`](browser-ui-rerun/02-studio-server-terminal.txt) records the real
+  `pokie studio <that package> --host 127.0.0.1 --port 4103 --no-open` server startup from the freshly
+  built candidate.
+- Fresh Chrome navigated to that public Studio URL and physically clicked the rendered `Game Model`
+  control. The action record is [`03-browser-action-transcript.txt`](browser-ui-rerun/03-browser-action-transcript.txt),
+  and the complete rendered result is captured in
+  [`04-game-model-no-false-package-name-projection.png`](browser-ui-rerun/04-game-model-no-false-package-name-projection.png)
+  and its searchable [`visible text`](browser-ui-rerun/04-game-model-no-false-package-name-projection-visible-text.txt).
+
+The visible Game basics card says `Id: (none)` and `Name: (none)` while the unavailable-section reason
+still identifies the package as `"storefront-widgets"`. The npm package name therefore remains explanatory
+context and is not falsely projected into either canonical game identity field. The expected unbuilt-entry
+warning is visible because `--no-prepare` deliberately skips the package install/build phases; Game Model's
+package-metadata inspection remains live and rendered.

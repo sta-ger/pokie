@@ -1,0 +1,15 @@
+POKIE Studio
+/
+Project
+/
+
+Overview
+
+Overview
+Game Model
+Project
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package
+
+Close project
+Entry module "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package/dist/index.js" (from "pokie.entry": "./dist/index.js" in "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package/package.json") does not exist. This package hasn't been built yet -- run "npm install && npm run build" in "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package" to build it, then retry.

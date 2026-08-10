@@ -1,0 +1,58 @@
+POKIE Studio
+/
+Project
+/
+
+Game Model
+
+Overview
+Game Model
+Project
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package
+
+Close project
+Entry module "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package/dist/index.js" (from "pokie.entry": "./dist/index.js" in "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package/package.json") does not exist. This package hasn't been built yet -- run "npm install && npm run build" in "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-03-20260810143324/docs/phase5-post-audit/evidence/p5pa-03-real-init-basics-fix/browser-ui-rerun/divergent-init-package" to build it, then retry.
+Game basics
+
+Id: (none)
+
+Name: (none)
+
+Version: 0.1.0
+
+Description: (none)
+
+Author: (none)
+
+Layout
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Symbols
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Reels
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Paytable
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Bets & Modes
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Mechanics
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Limits
+
+Derived from Bets & Modes' own Available bets above -- edit there to change it.
+
+Not available — This project is a compiled TypeScript package ("storefront-widgets") -- Studio can only read its package.json here, and package.json's own "name" is an npm package identifier that isn't necessarily this game's own id or name -- open its own Blueprint source to see the full game model.
+
+Refresh
