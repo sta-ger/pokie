@@ -71,6 +71,12 @@ const PATH_ISSUE_COPY: Record<StudioFsBrowseErrorReason, (path: string, kind: Pa
 
 const NETWORK_PATH_ISSUE: PathIssue = {status: "Couldn't check this location.", remediation: "Confirm POKIE Studio's server is reachable, then try again."};
 
+const DEFAULT_BROWSE_TITLE: Record<PathBrowseKind, string> = {
+    file: "Browse for a file",
+    any: "Browse for a file or folder",
+    directory: "Browse for a directory",
+};
+
 function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: string, kind: PathBrowseKind): PathIssue {
     return reason === "network" ? NETWORK_PATH_ISSUE : PATH_ISSUE_COPY[reason](path, kind);
 }
@@ -233,7 +239,7 @@ export function PathInput({
                 onSelect={rememberAndSelect}
                 kind={kind}
                 initialPath={modalInitialPath}
-                title={browseTitle ?? (kind === "file" ? "Browse for a file" : kind === "any" ? "Browse for a file or folder" : "Browse for a directory")}
+                title={browseTitle ?? DEFAULT_BROWSE_TITLE[kind]}
             />
         </Stack>
     );

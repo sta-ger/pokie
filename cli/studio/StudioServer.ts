@@ -946,7 +946,7 @@ export class StudioServer implements StudioServerHandling {
         const requestedPath = url.searchParams.get("path");
         const base = url.searchParams.get("base");
         const kindParam = url.searchParams.get("kind");
-        const kind = kindParam === "file" ? "file" : kindParam === "any" ? "any" : "directory";
+        const kind = kindParam === "file" || kindParam === "any" ? kindParam : "directory";
         this.sendJson(res, 200, this.fsBrowseService.browse(requestedPath ?? undefined, base ?? undefined, kind));
     }
 
