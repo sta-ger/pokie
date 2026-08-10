@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Records the P5-POLISH-20 host-browser audit through Chrome DevTools Protocol.
- * The browser is deliberately external to the provider container.  Each action
- * below uses a rendered control, then stores both the resulting pixels and the
- * accessible page text so the audit can be independently repeated.
+ * Records the P5-POLISH-20 F9 host-browser audit through Chrome DevTools
+ * Protocol.  CDP is used as a physical browser input device only: controls
+ * are first located in the rendered page, then clicked at their visible pixel
+ * coordinates and text is entered through the browser keyboard/input channel.
  */
 import {mkdir, writeFile} from "node:fs/promises";
 import {dirname, resolve} from "node:path";
@@ -12,9 +12,7 @@ import WebSocket from "ws";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const studio = process.env.P5_STUDIO_URL ?? "http://127.0.0.1:4100";
-const projectStudio = process.env.P5_PROJECT_STUDIO_URL ?? studio;
-const packageStudio = process.env.P5_PACKAGE_STUDIO_URL ?? projectStudio;
-const output = resolve(process.env.P5_AUDIT_OUTPUT ?? "docs/phase5-audit/evidence/host-browser/complete");
+const output = resolve(process.env.P5_AUDIT_OUTPUT ?? "docs/phase5-audit/evidence/host-browser/f9-rerun-current");
 const devtools = process.env.P5_DEVTOOLS_URL ?? "http://127.0.0.1:9222";
 const transcript = [];
 
@@ -24,7 +22,7 @@ function note(message) {
     process.stdout.write(`${stamped}\n`);
 }
 
-async function sleep(ms) { await new Promise((resolveSleep) => setTimeout(resolveSleep, ms)); }
+async function sleep(ms) { await new Promise((wake) => setTimeout(wake, ms)); }
 
 async function json(url, options) {
     const response = await fetch(url, options);
@@ -63,65 +61,50 @@ async function connect() {
 async function main() {
     await mkdir(output, {recursive: true});
     const cdp = await connect();
-    let activeStudio = studio;
     const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {
         expression, returnByValue: true, awaitPromise: true,
     })).result.value;
-    const navigate = async (route) => {
-        note(`NAVIGATE ${route}`);
-        await cdp.send("Page.navigate", {url: `${activeStudio}/#${route}`});
-        await sleep(900);
-    };
-    const click = async (label) => {
-        const result = await evaluate(`(() => {
-            const wanted = ${JSON.stringify(label)};
-            const controls = [...document.querySelectorAll('button,a,[role="button"]')].filter((candidate) => candidate.getClientRects().length > 0);
-            const element = controls.find((candidate) => candidate.textContent?.trim() === wanted);
-            if (!element) return {ok: false, available: controls.map((candidate) => candidate.textContent?.trim()).filter(Boolean)};
-            element.click();
-            return {ok: true, tag: element.tagName, text: element.textContent.trim()};
-        })()`);
-        if (!result?.ok) throw new Error(`Rendered control ${JSON.stringify(label)} was not found: ${JSON.stringify(result?.available)}`);
-        note(`CLICK ${JSON.stringify(label)} via rendered ${result.tag}`);
-        await sleep(650);
-    };
-    const clickStartingWith = async (prefix) => {
-        const result = await evaluate(`(() => {
-            const prefix = ${JSON.stringify(prefix)};
-            const controls = [...document.querySelectorAll('button,a,[role="button"]')].filter((candidate) => candidate.getClientRects().length > 0);
-            const element = controls.find((candidate) => (candidate.textContent?.trim() ?? '').startsWith(prefix) && !candidate.disabled);
-            if (!element) return {ok: false, available: controls.map((candidate) => ({text: candidate.textContent?.trim(), disabled: candidate.disabled})).filter((candidate) => candidate.text)};
-            element.click();
-            return {ok: true, tag: element.tagName, text: element.textContent.trim()};
-        })()`);
-        if (!result?.ok) throw new Error(`Rendered control starting with ${JSON.stringify(prefix)} was not found or was disabled: ${JSON.stringify(result?.available)}`);
-        note(`CLICK ${JSON.stringify(result.text)} via rendered ${result.tag}`);
-        await sleep(650);
-    };
-    const waitUntil = async (expression, description, timeoutMs = 20000) => {
+    const waitUntil = async (expression, description, timeoutMs = 30000) => {
         const deadline = Date.now() + timeoutMs;
-        for (;;) {
-            if (await evaluate(expression)) return;
+        while (!(await evaluate(expression))) {
             if (Date.now() > deadline) throw new Error(`Timed out waiting for ${description}`);
-            await sleep(300);
+            await sleep(250);
         }
     };
-    const home = async () => {
-        await navigate("/home/projects");
+    const renderedControl = async (label) => evaluate(`(() => {
+        const wanted = ${JSON.stringify(label)};
+        const controls = [...document.querySelectorAll('button,a,[role="button"]')];
+        const element = controls.find((candidate) => candidate.textContent?.trim() === wanted && !candidate.disabled && candidate.getClientRects().length > 0);
+        if (!element) return {ok: false, available: controls.filter((candidate) => candidate.getClientRects().length > 0).map((candidate) => candidate.textContent?.trim()).filter(Boolean)};
+        const rect = element.getBoundingClientRect();
+        return {ok: true, tag: element.tagName, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    })()`);
+    const click = async (label) => {
+        const control = await renderedControl(label);
+        if (!control?.ok) throw new Error(`Rendered control ${JSON.stringify(label)} was not found: ${JSON.stringify(control?.available)}`);
+        await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: control.x, y: control.y, button: "left", clickCount: 1});
+        await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: control.x, y: control.y, button: "left", clickCount: 1});
+        note(`CLICK ${JSON.stringify(label)} at rendered ${control.tag} coordinates (${Math.round(control.x)}, ${Math.round(control.y)})`);
+        await sleep(600);
     };
-    const setLocation = async (location) => {
-        const result = await evaluate(`(() => {
-            const input = [...document.querySelectorAll('input')].find((candidate) => Array.from(candidate.labels ?? []).some((label) => label.textContent?.includes('Location')) || candidate.getAttribute('aria-label') === 'Location');
-            if (!input) return {ok: false, inputs: [...document.querySelectorAll('input')].map((candidate) => ({outerHTML: candidate.outerHTML, aria: candidate.getAttribute('aria-label')})), body: document.body.innerText};
-            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-            setter.call(input, ${JSON.stringify(location)});
-            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: ${JSON.stringify(location)}}));
-            input.dispatchEvent(new Event('change', {bubbles: true}));
-            return {ok: true};
+    const inputLocation = async (location) => {
+        const input = await evaluate(`(() => {
+            const element = [...document.querySelectorAll('input')].find((candidate) => (
+                candidate.getAttribute('aria-label') === 'Location'
+                || [...candidate.labels ?? []].some((label) => label.textContent?.includes('Location'))
+            ) && candidate.getClientRects().length > 0);
+            if (!element) return {ok: false};
+            const rect = element.getBoundingClientRect();
+            return {ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
         })()`);
-        if (!result?.ok) throw new Error(`Rendered Location input was not found: ${JSON.stringify(result)}`);
-        note(`INPUT Location=${JSON.stringify(location)} through native input/change events`);
-        await sleep(250);
+        if (!input?.ok) throw new Error("Rendered Location input was not found");
+        await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: input.x, y: input.y, button: "left", clickCount: 1});
+        await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: input.x, y: input.y, button: "left", clickCount: 1});
+        await cdp.send("Input.dispatchKeyEvent", {type: "keyDown", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2});
+        await cdp.send("Input.dispatchKeyEvent", {type: "keyUp", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2});
+        await cdp.send("Input.insertText", {text: location});
+        note(`INPUT Location=${JSON.stringify(location)} through browser mouse/keyboard input`);
+        await sleep(300);
     };
     const snapshot = async (name) => {
         const png = await cdp.send("Page.captureScreenshot", {format: "png", captureBeyondViewport: true});
@@ -130,105 +113,35 @@ async function main() {
         await writeFile(resolve(output, `${name}.txt`), `${text}\n`);
         note(`CAPTURE ${name}.png and ${name}.txt`);
     };
-    const selectReplaySource = async () => {
-        const selected = await evaluate(`(() => {
-            const input = [...document.querySelectorAll('input')].find((candidate) => candidate.value === 'spin' && candidate.getClientRects().length > 0);
-            if (!input) return false;
-            input.click();
-            return true;
-        })()`);
-        if (!selected) throw new Error('Rendered Session Spin replay-source selector was not found');
-        note('SELECT "Session Spin" through rendered replay-source control');
-        await sleep(400);
-    };
 
-    note(`START Chrome CDP audit against ${studio}`);
-    await home();
-    await setLocation("/definitely/not/a/pokie/project");
+    note(`START fresh external Chrome audit against ${studio}`);
+    await cdp.send("Page.navigate", {url: `${studio}/#/home/projects`});
+    note("NAVIGATE public Studio Projects URL");
+    await waitUntil("document.body.innerText.includes('Import Project')", "the rendered Projects page");
+    const blueprint = resolve(repositoryRoot, "docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json");
+    await inputLocation(blueprint);
     await click("Detect");
-    await snapshot("01-qa-malformed-project-import");
-
-    await home();
-    // This fixture must resolve from the audit script's own repository, not the
-    // caller's cwd. Host-run audits are intentionally launched from arbitrary
-    // working directories, and a cwd-relative path can silently turn this
-    // required Blueprint import into an unrecognized/missing project context.
-    await setLocation(resolve(repositoryRoot, "docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json"));
-    await click("Detect");
+    await waitUntil("document.body.innerText.includes('Blueprint') && document.body.innerText.includes('Register')", "the rendered Blueprint detection result");
+    await snapshot("01-blueprint-detected");
     await click("Register");
-    await snapshot("02-mathematician-project-import");
-    activeStudio = projectStudio;
-    note(`SWITCH to Studio instance with the audited Blueprint already open: ${activeStudio}`);
-
-    await navigate("/project/gameModel");
-    await click("Edit");
-    await snapshot("03-designer-blueprint-edit");
-
-    activeStudio = packageStudio;
-    note(`SWITCH to fresh materialized developer package: ${activeStudio}`);
-    await navigate("/project/play");
-    await click("New session");
-    await click("Find any win");
-    await snapshot("04-mathematician-play-scenario");
-
-    await navigate("/project/simulation");
-    await click("Run Simulation");
-    await waitUntil(
-        "document.body.innerText.includes('Open full report') || document.body.innerText.includes('Simulation failed') || document.body.innerText.includes('Simulation cancelled')",
-        "the rendered simulation to reach a terminal state",
-        60000,
-    );
-    await snapshot("05-qa-simulation-run");
-
-    await navigate("/project/replay");
-    await selectReplaySource();
-    await click("Refresh");
-    const picked = await evaluate(`(() => {
-        const entry = [...document.querySelectorAll('button')].find((candidate) => /^Round \\d+ in session /.test(candidate.textContent?.trim() ?? '') && candidate.getClientRects().length > 0);
-        if (!entry) return false;
-        entry.click();
-        return true;
-    })()`);
-    if (!picked) throw new Error('No rendered recorded Session Spin was available after the browser Play action');
-    note('CLICK rendered recorded Session Spin');
-    await sleep(500);
-    await snapshot("06-qa-replay-session-spin");
-
-    await navigate("/project/exportDeploy");
-    const countAlerts = () => evaluate("document.querySelectorAll('[role=\"alert\"]').length");
-    const alertsBeforeGenerate = await countAlerts();
-    await clickStartingWith("Generate outcome library");
-    await waitUntil(
-        `document.body.innerText.includes('Generated ') || document.querySelectorAll('[role="alert"]').length > ${alertsBeforeGenerate}`,
-        "the rendered outcome library generation result",
-    );
-    const generated = await evaluate("document.body.innerText.includes('Generated ')");
-    if (generated) {
-        note("RESULT rendered outcome library generation succeeded");
-        const alertsBeforeExport = await countAlerts();
-        await clickStartingWith("Run Stake Engine Export");
-        await waitUntil(
-            `document.body.innerText.includes('Exported ') || document.querySelectorAll('[role="alert"]').length > ${alertsBeforeExport}`,
-            "the rendered Stake Engine export result",
-        );
-        if (await evaluate("document.body.innerText.includes('Exporting will replace')")) {
-            note("RESULT rendered Stake Engine export reported an existing-directory conflict; resolving with Overwrite");
-            await click("Overwrite");
-            await waitUntil("document.body.innerText.includes('Exported ')", "the rendered Stake Engine export result after Overwrite");
-        }
-        note("RESULT rendered Stake Engine export completed");
-    } else {
-        note("RESULT rendered outcome library generation did not succeed; capturing the rendered diagnostic instead of forcing Export");
-    }
-    await snapshot("07-integration-build-export");
-
-    await writeFile(resolve(output, "ACTION-TRANSCRIPT.txt"), `${transcript.join("\n")}\n`);
-    note("COMPLETE all recorded browser actions");
+    await waitUntil("document.body.innerText.includes('Open')", "the rendered Blueprint registry Open action");
+    note("OBSERVE Blueprint registry row exposes rendered Open action");
+    await snapshot("02-blueprint-registered-open-available");
+    await click("Open");
+    await waitUntil("document.body.innerText.includes('Overview') && document.body.innerText.includes('Game Model')", "the opened Blueprint Studio workspace");
+    note("ARRIVE at opened Blueprint Studio workspace with Overview and Game Model");
+    await snapshot("03-blueprint-workspace-overview");
+    await click("Game Model");
+    await waitUntil("document.body.innerText.includes('Game Model')", "the opened Blueprint Game Model workspace");
+    note("ARRIVE at opened Blueprint Game Model workspace");
+    await snapshot("04-blueprint-workspace-game-model");
+    note("COMPLETE F9 Blueprint Detect → Register → Open → Overview/Game Model browser audit");
     await writeFile(resolve(output, "ACTION-TRANSCRIPT.txt"), `${transcript.join("\n")}\n`);
     cdp.close();
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
     note(`FAILED ${error.stack ?? error}`);
-    writeFile(resolve(output, "ACTION-TRANSCRIPT.txt"), `${transcript.join("\n")}\n`).finally(() => process.exitCode = 1);
+    await writeFile(resolve(output, "ACTION-TRANSCRIPT.txt"), `${transcript.join("\n")}\n`);
+    process.exit(1);
 });

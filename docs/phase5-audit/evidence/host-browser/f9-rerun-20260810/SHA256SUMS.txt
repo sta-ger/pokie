@@ -1,0 +1,13 @@
+9a10f3475387ab4c5eebe80048212e061a7417082529d079c1bbc590760c6aa5  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/01-blueprint-detected.png
+8f47ba83f51d5a442d2c36d0871f63c760f49814afe829dfcc33e8de520c60bb  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/01-blueprint-detected.txt
+9a7ea060023856786353d23f57bace44812d363e56715865711be4579bb441ad  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/02-blueprint-registered-open-available.png
+bcede7322fa510b5998cbed4706bd409da431a025302ee261316ea1fc7f9276f  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/02-blueprint-registered-open-available.txt
+52e5e82cf6ab7fe29b49e2ef691d20f3a4d8557aaae2b7c45412a944802b9e31  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/03-blueprint-workspace-overview.png
+11a7745c15fd186dcf70dfdcf1c89c90227085abc2565588998b05b923f8e07b  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/03-blueprint-workspace-overview.txt
+f8fbb7f92a99b830e6be0b2a5c9aefa59df80189b8272e904c5c22f838eada9b  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/04-blueprint-workspace-game-model.png
+6a2a7877b0d416d341baa703b0b73fc828bf33be30a3a6ce86193f25dff334bc  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/04-blueprint-workspace-game-model.txt
+e9345b940a1470614c7da71abcd818f003ec53edff27c0cd43daf3328f24f01c  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/ACTION-TRANSCRIPT.txt
+f28b3eb69f32942f915e9c63f4bae33714b5550e9246f259f3c1a4e05fb0d71a  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/BUILD-TERMINAL.log
+aa1aa23979f6939380f5c9911b1c27195276be1204aba7b964ab1f0764a98b51  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/ENVIRONMENT.txt
+e9345b940a1470614c7da71abcd818f003ec53edff27c0cd43daf3328f24f01c  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/RERUN-TERMINAL.log
+15a1a1bdf23900b37918ae0e73f33fb3273f66bb52cf53ad6ced6bc877a61f86  docs/phase5-audit/evidence/host-browser/f9-rerun-20260810/STUDIO-TERMINAL.log

@@ -736,11 +736,25 @@ and "Correction round 6"/"Correction round 7" reconfirmed. No CDP session could 
 Open action was actually taken this round and none is claimed — the evidence above is a record of the attempt and
 its blocker, not a substitute for the rerun.
 
-**Status.** F9 itself (`ProjectsPanel.tsx` Open action for a registered Blueprint row) remains fixed and
-regression-tested as of commit `02991fb`, unchanged by this round. Its host-browser evidence rerun remains the
-one open item on F9, and remains blocked strictly by this sandbox's infrastructure (missing browser binary and
-shared libraries, no root, no package manager) rather than by anything in the product or this repository — the
-same class of external-host dependency every successful "Host-browser completion"/"Final external Chrome audit"
-round in this file relied on. `evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/`'s stale
-`05-blueprint-home-post-import.png`/`.txt` and `ACTION-TRANSCRIPT.txt` are unchanged; they still predate the F9
-fix and should not be read as current.
+**Historical status.** At the time of this re-attempt, F9 itself (`ProjectsPanel.tsx` Open action for a registered
+Blueprint row) remained fixed and regression-tested as of commit `02991fb`, but its host-browser evidence rerun
+was still outstanding. The later external rerun below replaces that status; the older
+`evidence/host-browser/import-rerun-fb1e22e-rerun6-clean/` capture predates the F9 fix and must not be read as
+current.
+
+## External completion (2026-08-10): F9 Blueprint import-and-open rerun passed
+
+An independent external Chrome run started a freshly built Studio with an isolated registry and used only the
+rendered Studio controls. Its saved [action transcript](evidence/host-browser/f9-rerun-20260810/ACTION-TRANSCRIPT.txt)
+records browser mouse/keyboard entry of the Blueprint location, **Detect**, **Register**, the observed rendered
+**Open** action, and clicking **Open**. The same transcript then records arrival at the opened Blueprint workspace
+with **Overview** and **Game Model**, followed by a rendered **Game Model** navigation click.
+
+The pixel captures and paired extracted browser text show each acceptance point: Blueprint detection
+([01](evidence/host-browser/f9-rerun-20260810/01-blueprint-detected.png)), the registered Blueprint registry row
+with its visible **Open** button ([02](evidence/host-browser/f9-rerun-20260810/02-blueprint-registered-open-available.png)),
+the opened **Overview** workspace ([03](evidence/host-browser/f9-rerun-20260810/03-blueprint-workspace-overview.png)),
+and the opened **Game Model** workspace ([04](evidence/host-browser/f9-rerun-20260810/04-blueprint-workspace-game-model.png)).
+The directory also retains fresh-build, Studio, and browser-rerun terminal logs.
+
+**Status: closed.** F9's required external rerun is no longer outstanding.

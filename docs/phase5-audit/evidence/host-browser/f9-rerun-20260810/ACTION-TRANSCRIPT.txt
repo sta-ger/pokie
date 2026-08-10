@@ -1,0 +1,15 @@
+[2026-08-10T08:32:26.168Z] START fresh external Chrome audit against http://127.0.0.1:4312
+[2026-08-10T08:32:26.180Z] NAVIGATE public Studio Projects URL
+[2026-08-10T08:32:26.706Z] INPUT Location="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-polishing/task_P5-POLISH-20-20260809031218/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json" through browser mouse/keyboard input
+[2026-08-10T08:32:27.053Z] CLICK "Detect" at rendered BUTTON coordinates (339, 466)
+[2026-08-10T08:32:28.021Z] CAPTURE 01-blueprint-detected.png and 01-blueprint-detected.txt
+[2026-08-10T08:32:28.042Z] CLICK "Register" at rendered BUTTON coordinates (346, 658)
+[2026-08-10T08:32:28.647Z] OBSERVE Blueprint registry row exposes rendered Open action
+[2026-08-10T08:32:28.911Z] CAPTURE 02-blueprint-registered-open-available.png and 02-blueprint-registered-open-available.txt
+[2026-08-10T08:32:28.943Z] CLICK "Open" at rendered BUTTON coordinates (1305, 291)
+[2026-08-10T08:32:29.561Z] ARRIVE at opened Blueprint Studio workspace with Overview and Game Model
+[2026-08-10T08:32:29.775Z] CAPTURE 03-blueprint-workspace-overview.png and 03-blueprint-workspace-overview.txt
+[2026-08-10T08:32:29.792Z] CLICK "Game Model" at rendered BUTTON coordinates (130, 137)
+[2026-08-10T08:32:30.398Z] ARRIVE at opened Blueprint Game Model workspace
+[2026-08-10T08:32:30.756Z] CAPTURE 04-blueprint-workspace-game-model.png and 04-blueprint-workspace-game-model.txt
+[2026-08-10T08:32:30.756Z] COMPLETE F9 Blueprint Detect → Register → Open → Overview/Game Model browser audit

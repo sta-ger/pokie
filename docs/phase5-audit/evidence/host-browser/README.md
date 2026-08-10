@@ -60,3 +60,12 @@ These actions exercised the rendered Studio controls rather than invoking a back
 The player-to-recorder-to-Replay journey is reproducible in the real browser and the screenshots are retained
 as external evidence. This file does not claim that the remaining persona browser journeys were completed; they
 must be extended before the P5-POLISH-20 hard gate can be accepted.
+
+## F9 Blueprint import-and-open completion — 2026-08-10
+
+[`f9-rerun-20260810/`](f9-rerun-20260810/) is the current external-browser evidence for finding
+`legacy-37e8e5b75ba7`. A freshly built Studio used an isolated registry; an external Chrome session entered the
+Blueprint fixture path through the visible Location input, clicked **Detect**, **Register**, and the Blueprint
+row's visible **Open** button, then clicked **Game Model** after arrival in the opened workspace. The run saved
+pixel screenshots, extracted visible text, an action transcript, and fresh-build/Studio/browser terminal logs.
+It supersedes the old pre-fix `import-rerun-fb1e22e-rerun6-clean/` record for this narrow workflow.
