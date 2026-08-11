@@ -1,0 +1,98 @@
+POKIE Studio
+Design Game
+Projects
+Design Your Game
+
+Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your game package.
+
+Configure
+, completed
+
+Game model
+
+Validate
+, failed
+
+Check for issues
+
+Build
+, blocked
+
+Create your package
+
+Fix validation issues
+
+Resolve the errors below before building your package.
+
+Save
+
+Validate your configuration successfully before saving.
+
+Hide advanced options (JSON mode, load/save by path)
+
+New Blueprint
+Load from path
+Browse…
+Load
+Save to path
+Browse…
+Save
+Replaced the current blueprint.
+Undo
+Form
+JSON
+PAR Sheet Import / Export
+
+Import an existing PAR sheet (.xlsx) into a canonical POKIE blueprint, or export the blueprint currently open in this editor back out to one — both always run through the pokie package's own PAR sheet import/export services, purely in memory until you explicitly Apply or Export.
+
+1
+Import
+Read a PAR sheet
+2
+Diagnose & map
+Issues & provenance
+3
+Preview canonical model
+What it becomes
+4
+Apply / Export
+Commit or write out
+PAR sheet path
+Browse…
+
+"/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/dist/cli/studio-client" is a folder, not a file.
+
+Point this at a file instead, or use Browse to pick one.
+
+Import
+Blueprint JSON
+Apply JSON
+Validation
+Validate
+
+Invalid — 4 error(s).
+
+Errors
+
+blueprint-manifest-invalid-id: "manifest.id" must be a non-empty string.
+blueprint-manifest-invalid-name: "manifest.name" must be a non-empty string.
+blueprint-symbols-invalid: "symbols" must be a non-empty array of non-empty strings.
+blueprint-paytable-empty: "paytable" must define at least one symbol payout.
+Game Model preview
+Preview Game Model
+Build
+Output directory (optional)
+Browse…
+Build Preview
+Build Package
+
+Fix the validation errors above before building.
+
+Documentation
+Docs index
+Getting started
+CLI reference
+Please confirm
+Switch away from JSON mode? The unapplied JSON edit will be discarded.
+Cancel
+Confirm

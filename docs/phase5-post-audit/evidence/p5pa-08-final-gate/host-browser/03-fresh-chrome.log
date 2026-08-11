@@ -1,0 +1,26 @@
+$ /bin/google-chrome --headless=new --no-first-run --no-default-browser-check --remote-debugging-port=9238 --user-data-dir=/tmp/p5pa-08-chrome-Ep4QLe about:blank
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[1355875:1355902:0811/081014.089644:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355902:0811/081014.090176:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355902:0811/081014.090314:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355902:0811/081014.090339:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355902:0811/081014.111784:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355902:0811/081014.142957:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:9238/devtools/browser/c1e7dcdd-addd-4bfd-9dbb-58682fa848a7
+[1355875:1355875:0811/081014.298451:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1355875:1355875:0811/081014.300363:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1355875:1355902:0811/081014.300501:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355902:0811/081014.300561:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1355875:1355875:0811/081014.300634:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1355875:1355875:0811/081014.359210:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1355875:1355875:0811/081014.360380:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1355960:6:0811/081014.460874:ERROR:gpu/ipc/client/command_buffer_proxy_impl.cc:127] ContextResult::kTransientFailure: Failed to send GpuControl.CreateCommandBuffer.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786428617.044637 1355898 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[1355875:1355903:0811/081018.369940:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[1356166:1:0811/081025.406524:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[1356166:1:0811/081025.407229:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+
+[exit still-running-at-capture]

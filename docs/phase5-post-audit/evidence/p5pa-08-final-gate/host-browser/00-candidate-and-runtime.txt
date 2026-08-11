@@ -1,0 +1,7 @@
+candidate_sha=4ad24ecd7ea317d4902dbc5b80d290f4ded8be1b
+node=/home/stager/.nvm/versions/node/v24.18.0/bin/node
+node_version=v24.18.0
+npm=/home/stager/.nvm/versions/node/v24.18.0/bin/npm
+studio=http://127.0.0.1:32108
+devtools=http://127.0.0.1:9238
+workflow=real public Studio UI; coordinate input via Chrome DevTools Protocol

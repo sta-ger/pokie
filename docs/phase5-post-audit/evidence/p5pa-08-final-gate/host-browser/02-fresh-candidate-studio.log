@@ -1,0 +1,4 @@
+$ /home/stager/.nvm/versions/node/v24.18.0/bin/node dist/cli/pokie.js studio --port 32108 --no-open
+POKIE Studio listening on http://127.0.0.1:32108
+
+[exit 0]

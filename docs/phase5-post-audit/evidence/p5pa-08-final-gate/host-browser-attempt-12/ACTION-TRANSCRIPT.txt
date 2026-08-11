@@ -1,0 +1,44 @@
+[2026-08-11T06:08:26.702Z] REUSE the immediately preceding full candidate build; start a fresh Studio and Chrome session
+[2026-08-11T06:08:27.806Z] OBSERVE fresh candidate Studio HTTP server
+[2026-08-11T06:08:28.939Z] OBSERVE fresh Chrome DevTools endpoint
+[2026-08-11T06:08:29.258Z] START fresh visible browser workflow against http://127.0.0.1:32108
+[2026-08-11T06:08:29.279Z] NAVIGATE Studio public root URL
+[2026-08-11T06:08:29.834Z] OBSERVE rendered Design Game Blueprint workflow
+[2026-08-11T06:08:30.086Z] CAPTURE 05-design-game-initial.png, 05-design-game-initial-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:30.160Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 398)
+[2026-08-11T06:08:30.624Z] OBSERVE rendered New Blueprint chooser
+[2026-08-11T06:08:30.938Z] CAPTURE 05a-new-blueprint-chooser.png, 05a-new-blueprint-chooser-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:31.056Z] CLICK "Blank" at rendered BUTTON coordinates (217, 155)
+[2026-08-11T06:08:32.208Z] SELECT Blank through the rendered New Blueprint dialog
+[2026-08-11T06:08:32.293Z] CLICK "Show advanced options (JSON mode, load/save by path)" at rendered BUTTON coordinates (454, 66)
+[2026-08-11T06:08:32.750Z] OBSERVE visible advanced JSON/Form mode control
+[2026-08-11T06:08:32.849Z] CLICK "JSON" at rendered LABEL coordinates (364, 388)
+[2026-08-11T06:08:33.306Z] OBSERVE rendered Blueprint JSON textarea
+[2026-08-11T06:08:33.612Z] FOCUS Blueprint JSON textarea through rendered keyboard Tab navigation after 6 step(s)
+[2026-08-11T06:08:33.622Z] INPUT unapplied JSON draft marker through rendered textarea keyboard input: /* P5PA-08 UNAPPLIED JSON DRAFT */
+[2026-08-11T06:08:33.668Z] OBSERVE typed, unapplied JSON draft in rendered textarea
+[2026-08-11T06:08:33.996Z] CAPTURE 06-unapplied-json-draft.png, 06-unapplied-json-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:34.282Z] FOCUS json mode radio through rendered keyboard Tab navigation after 6 step(s)
+[2026-08-11T06:08:34.337Z] SELECT Form mode through the focused rendered segmented-control radio and browser ArrowLeft
+[2026-08-11T06:08:34.792Z] OBSERVE visible mode-switch warning modal
+[2026-08-11T06:08:35.241Z] CAPTURE 07-mode-switch-warning.png, 07-mode-switch-warning-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:35.255Z] CLICK "Cancel" at rendered BUTTON coordinates (437, 168)
+[2026-08-11T06:08:35.710Z] OBSERVE Cancel preserves the unapplied JSON draft and JSON mode
+[2026-08-11T06:08:36.034Z] CAPTURE 08-cancel-preserves-draft.png, 08-cancel-preserves-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:36.394Z] FOCUS New Blueprint action through rendered keyboard Tab navigation after 8 step(s)
+[2026-08-11T06:08:36.431Z] ACTIVATE New Blueprint action through browser keyboard Space
+[2026-08-11T06:08:36.887Z] OBSERVE shared New Blueprint unsaved-work protection for the JSON-only draft
+[2026-08-11T06:08:37.337Z] CAPTURE 09-shared-unsaved-work-protection.png, 09-shared-unsaved-work-protection-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:37.371Z] CLICK "Cancel" at rendered BUTTON coordinates (261, 228)
+[2026-08-11T06:08:37.826Z] OBSERVE shared gate Cancel preserves the same JSON draft
+[2026-08-11T06:08:38.265Z] CAPTURE 10-shared-cancel-preserves-draft.png, 10-shared-cancel-preserves-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:38.643Z] FOCUS json mode radio through rendered keyboard Tab navigation after 8 step(s)
+[2026-08-11T06:08:38.706Z] SELECT Form mode before discard through the focused rendered segmented-control radio and browser ArrowLeft
+[2026-08-11T06:08:39.168Z] OBSERVE mode-switch warning before deliberate discard
+[2026-08-11T06:08:39.362Z] CLICK "Confirm" at rendered BUTTON coordinates (541, 168)
+[2026-08-11T06:08:39.820Z] OBSERVE Confirm discards the JSON draft and switches to Form mode
+[2026-08-11T06:08:40.264Z] CAPTURE 11-confirm-discards-and-switches-form.png, 11-confirm-discards-and-switches-form-visible-text.txt, and rendered textarea value
+[2026-08-11T06:08:41.536Z] FAILED Error: Could not focus form mode radio through browser Tab navigation
+    at focusByTab (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:194:15)
+    at async selectAdjacentMode (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:203:9)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:270:5)
