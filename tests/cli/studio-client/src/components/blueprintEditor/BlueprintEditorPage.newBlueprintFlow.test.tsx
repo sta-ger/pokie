@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -85,6 +85,18 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(await screen.findByRole("button", {name: "Blank"}));
 
         expect(screen.getByLabelText("Game id")).toHaveValue("");
+    });
+
+    it("an unapplied JSON-textarea edit alone (no Form field touched) still gates New Blueprint as dirty", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+
+        await user.click(screen.getByRole("radio", {name: "JSON"}));
+        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: "unsaved-work-in-progress"}});
+
+        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        expect(await screen.findByText("You have unsaved changes to the current blueprint. Save them, discard them, or cancel.")).toBeInTheDocument();
     });
 
     it("saves the dirty draft to a typed path before proceeding to the choice step", async () => {
@@ -284,8 +296,9 @@ describe("BlueprintEditorPage - New flow", () => {
         // Build Preview's own result is this panel's local state -- must not survive the replace.
         expect(screen.queryByText(/Before New/)).not.toBeInTheDocument();
 
-        // The JSON textarea is uncontrolled (see BlueprintJsonPanel's own `defaultValue`) -- without its
-        // own key={formGeneration}, it would otherwise keep showing the pre-replace blueprint's JSON.
+        // BlueprintJsonPanel's own controlled textarea state only initializes from `jsonText` at mount --
+        // without its own key={formGeneration} forcing a remount, it would otherwise keep showing the
+        // pre-replace blueprint's JSON.
         await user.click(screen.getByRole("radio", {name: "JSON"}));
         expect(jsonTextareaValue()).not.toContain("before-new");
     });
