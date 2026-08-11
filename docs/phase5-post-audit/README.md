@@ -625,14 +625,19 @@ hand-typed JSON), the per-form evidence table, and the current, corrected mechan
 in
 [`evidence/p5pa-06-init-dependency-portability-audit/README.md`](evidence/p5pa-06-init-dependency-portability-audit/README.md).
 This implementer's own sandbox reproduced the same broken-`npm`-wrapper blocker `pokie-phase5-inventory.md`
-and this campaign's own §1 already documented (every `npm` invocation, including `npm run typecheck` and
-`npm test --`, fails on a real shell syntax error in the wrapper itself, not just project-wide gates), so
-`InitCommandWorkflow.integration.test.ts` (npm-link, real npm) and `npmPackSmoke.test.ts` (npm-pack install,
-real npm, real tarball) -- both of which now also assert the corrected `package-lock.json` normalization
-and independently reinstall a copied package without `node_modules` -- could not be executed live in this
-sandbox at any point across this step's rounds; both are cited as source-level evidence instead, consistent
-with this campaign's own protocol for a reproduced, honestly-recorded blocker. What this sandbox *could* and
-did run directly, with real `node_modules/.bin/jest` (the project's own `npm` wrapper being unusable even
+and this campaign's own §1 already documented for real `npm install`/`npm link`/`npm pack` invocations (a
+real shell syntax error in the wrapper script itself, `/usr/local/bin/npm`, not a product defect -- not
+just project-wide gates), so `InitCommandWorkflow.integration.test.ts` (npm-link, real npm) and
+`npmPackSmoke.test.ts` (npm-pack install, real npm, real tarball) -- both of which now also assert the
+corrected `package-lock.json` normalization and independently reinstall a copied package without
+`node_modules` -- could not be executed live in this sandbox at any point across this step's rounds; both
+are cited as source-level evidence instead, consistent with this campaign's own protocol for a reproduced,
+honestly-recorded blocker. `npm run typecheck` does not share this limitation: the current, independent
+pre-review sanity check for this round reports it passing, and this implementer's own sandbox reproduces
+the same clean result directly against the check it wraps (`node_modules/.bin/tsc --noEmit -p
+tsconfig.typecheck.json`, exit 0, zero diagnostics) -- the wrapper's syntax error blocks the literal
+`npm ...` invocation, never the substantive typecheck gate itself. What this sandbox *could* and did run
+directly, with real `node_modules/.bin/jest` (the project's own `npm` wrapper being unusable even
 for a single named test file), is the focused, no-real-npm unit coverage in
 `tests/cli/prepare/PackageCommandRunner.test.ts` -- 12/12 passing, including four cases added this round
 that exercise `restorePersistedPackageLock`'s lockfile-normalization logic directly against a

@@ -12,11 +12,12 @@ without breaking unpublished offline local development.
 
 ## Environment blocker (reproduced fresh, same shape `pokie-phase5-inventory.md`/`P5PA-01` already documented)
 
-`/usr/local/bin/npm` in this implementer sandbox fails on *every* invocation with a real shell syntax
-error in its own wrapper script (`case " $* " in *' check:fast '*|*' check:full '*|...`), not just the
-project-wide gates it's meant to restrict -- reproduced fresh this round:
+`/usr/local/bin/npm` in this implementer sandbox fails on *every literal invocation* with a real shell
+syntax error in its own wrapper script (`case " $* " in *' check:fast '*|*' check:full '*|...`), not just
+the project-wide gates it's meant to restrict -- reproduced fresh this round:
 [`00-npm-broken.txt`](00-npm-broken.txt). That means no real `npm install`/`npm pack`/`npm link`/`npm run
-build` can be spawned by this implementer at all, so:
+build` can be spawned by this implementer at all, so (see below for why `npm run typecheck` is a documented
+exception to this blocker, not a further instance of it):
 
 - `tests/cli/InitCommandWorkflow.integration.test.ts` (which covers the unpublished-checkout and real
   npm-link forms end to end, with real `npm install`/`npm run build`) fails at its own `ensureCompiledTestOutput`
@@ -35,6 +36,17 @@ recording double (so the exact package.json shape at each phase is captured from
 typed by hand), and the pre-existing, already-committed, already-passing (in an environment with working
 npm -- e.g. the orchestrator's own gates) integration/packaging suites cited by name and quoted assertion
 as source-level evidence for the forms this sandbox can't itself execute.
+
+**The `npm run typecheck` sanity gate is a separate case and does not carry this blocker.** The literal
+`npm run typecheck` command still fails in this sandbox for the same reason as above (the wrapper script's
+own shell syntax error trips on any argument, including this one) -- but the check that command exists to
+run, `tsc --noEmit -p tsconfig.typecheck.json`, is independently reachable without the broken wrapper and
+passes cleanly: the current, independent pre-review sanity check for this round reports `npm run typecheck`
+passing, and this implementer's own sandbox reproduces the identical clean result by invoking
+`node_modules/.bin/tsc --noEmit -p tsconfig.typecheck.json` directly (exit 0, zero diagnostics). The
+wrapper bug therefore blocks only the literal `npm install`/`npm pack`/`npm link` invocation path this
+section's forms need -- there is no non-npm fallback for actually running those -- not the typecheck gate,
+which stands verified.
 
 ## What was found (at this step's base SHA, `0be705f`, before the correction below)
 
@@ -204,8 +216,10 @@ stripping a closure override's link entry (e.g. `commander`) by name, leaving an
 link entry untouched, and leaving package-lock.json alone entirely when the wrapped install never produced
 one.
 
-**Not verified live in this sandbox** (same broken-`npm`-wrapper blocker as above, affecting every `npm`
-invocation including `npm run typecheck`): `tests/cli/InitCommandWorkflow.integration.test.ts` (npm-link)
+**Not verified live in this sandbox** (same broken-`npm`-wrapper blocker as above, affecting the real
+`npm install`/`npm link`/`npm pack` invocations these two suites need -- not `npm run typecheck`, which is
+independently confirmed passing, see the "Environment blocker" section above):
+`tests/cli/InitCommandWorkflow.integration.test.ts` (npm-link)
 and `tests/packaging/npmPackSmoke.test.ts` (npm-pack install, real tarball) were both extended by `5436387`
 and `439af56` to assert the corrected, portable persisted shape (`pkg.dependencies?.pokie` no longer
 matching `file:`, `package-lock.json` containing no `node_modules/pokie` link entry or host-specific path)
