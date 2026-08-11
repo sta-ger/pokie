@@ -16,6 +16,34 @@ function readPackageJson(dir: string): Record<string, unknown> {
     return JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf-8")) as Record<string, unknown>;
 }
 
+function writePackageLock(dir: string, lock: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "package-lock.json"), JSON.stringify(lock, null, 2));
+}
+
+function readPackageLock(dir: string): {packages: Record<string, unknown>} {
+    return JSON.parse(fs.readFileSync(path.join(dir, "package-lock.json"), "utf-8")) as {packages: Record<string, unknown>};
+}
+
+// Real `npm install` records a resolved `file:` spec as a symlink "link": true entry under its own
+// "node_modules/<name>" key, plus a second entry (keyed by the relative path "resolved" points at)
+// carrying the linked target's real package.json metadata -- verified against a real `npm install` of
+// this exact mechanism's own output (see PackageCommandRunner.ts's own doc comment on
+// stripLocalPokieLockEntries). Reproduced by hand here rather than spawning real npm, matching every
+// other test in this file's own "no real npm process" convention.
+function fileLinkLockEntries(name: string, targetKey: string): Record<string, unknown> {
+    return {
+        [targetKey]: {name, version: "1.3.0", license: "ISC"},
+        [`node_modules/${name}`]: {resolved: targetKey, link: true},
+    };
+}
+
+function createLockWritingBase(lock: Record<string, unknown>): PackageCommandRunning {
+    return (_command, _args, cwd) => {
+        writePackageLock(cwd, lock);
+        return Promise.resolve({stdout: "", stderr: ""});
+    };
+}
+
 function createRecordingBase(): PackageCommandRunning & {calls: RecordedCall[]} {
     const calls: RecordedCall[] = [];
     const runner = (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
@@ -171,5 +199,105 @@ describe("withLocalPokieInstall", () => {
         await expect(runner("npm", ["install"], projectDir)).rejects.toThrow("npm exploded");
 
         expect(readPackageJson(projectDir)).toEqual(original);
+    });
+
+    // Restoring package.json alone isn't enough: a real "npm install" against the transient `file:`
+    // rewrite writes those same absolute, host-specific paths into package-lock.json too (see
+    // PackageCommandRunner.ts's own doc comment on stripLocalPokieLockEntries) -- these tests drive that
+    // normalization directly against a hand-reproduced real npm lockfile shape, distinct from the
+    // package.json-only coverage above.
+    describe("normalizing package-lock.json once the wrapped 'npm install' succeeds", () => {
+        it("strips the 'pokie' link entry and its target metadata block, leaving every unrelated (genuinely portable) entry untouched", async () => {
+            const original = {name: "starter-slot", version: "0.1.0", dependencies: {pokie: "^1.3.0"}};
+            writePackageJson(projectDir, original);
+            const lock = {
+                name: "starter-slot",
+                version: "0.1.0",
+                lockfileVersion: 3,
+                requires: true,
+                packages: {
+                    "": {name: "starter-slot", version: "0.1.0", dependencies: {pokie: "file:/opt/pokie-checkout"}},
+                    ...fileLinkLockEntries("pokie", "../../opt/pokie-checkout"),
+                    "node_modules/left-pad": {
+                        version: "1.3.0",
+                        resolved: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+                        integrity: "sha512-abc",
+                    },
+                },
+            };
+            const base = createLockWritingBase(lock);
+            const runner = withLocalPokieInstall("/opt/pokie-checkout", base);
+
+            await runner("npm", ["install"], projectDir);
+
+            const written = readPackageLock(projectDir);
+            expect(written.packages["node_modules/pokie"]).toBeUndefined();
+            expect(written.packages["../../opt/pokie-checkout"]).toBeUndefined();
+            expect(written.packages["node_modules/left-pad"]).toEqual(lock.packages["node_modules/left-pad"]);
+            expect((written.packages[""] as {dependencies: unknown}).dependencies).toEqual({pokie: "^1.3.0"});
+        });
+
+        it("also strips a closure override's link entry (e.g. 'commander'), by name, wherever it was rewritten", async () => {
+            const original = {name: "starter-slot", dependencies: {pokie: "^1.3.0"}};
+            writePackageJson(projectDir, original);
+            const commanderRoot = path.join(REPO_ROOT, "node_modules", "commander");
+            const lock = {
+                packages: {
+                    "": {
+                        name: "starter-slot",
+                        dependencies: {pokie: `file:${REPO_ROOT}`},
+                        overrides: {commander: `file:${commanderRoot}`},
+                    },
+                    ...fileLinkLockEntries("pokie", "../../workspace"),
+                    ...fileLinkLockEntries("commander", "../../workspace/node_modules/commander"),
+                },
+            };
+            const base = createLockWritingBase(lock);
+            const runner = withLocalPokieInstall(REPO_ROOT, base);
+
+            await runner("npm", ["install"], projectDir);
+
+            const written = readPackageLock(projectDir);
+            expect(written.packages["node_modules/pokie"]).toBeUndefined();
+            expect(written.packages["../../workspace"]).toBeUndefined();
+            expect(written.packages["node_modules/commander"]).toBeUndefined();
+            expect(written.packages["../../workspace/node_modules/commander"]).toBeUndefined();
+            // Once install settles, package.json carries no "overrides" at all (the original never had one)
+            // -- the lock's own root entry follows suit rather than keeping the transient override behind.
+            expect((written.packages[""] as {overrides?: unknown}).overrides).toBeUndefined();
+        });
+
+        it("leaves an unrelated pre-existing link entry (a name outside pokie's own closure) untouched", async () => {
+            writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+            const lock = {
+                packages: {
+                    "": {name: "starter-slot", dependencies: {pokie: "file:/opt/pokie-checkout"}},
+                    ...fileLinkLockEntries("pokie", "../../opt/pokie-checkout"),
+                    ...fileLinkLockEntries("some-unrelated-local-dep", "../../opt/some-unrelated-local-dep"),
+                },
+            };
+            const base = createLockWritingBase(lock);
+            const runner = withLocalPokieInstall("/opt/pokie-checkout", base);
+
+            await runner("npm", ["install"], projectDir);
+
+            const written = readPackageLock(projectDir);
+            expect(written.packages["node_modules/some-unrelated-local-dep"]).toEqual(
+                lock.packages["node_modules/some-unrelated-local-dep"],
+            );
+            expect(written.packages["../../opt/some-unrelated-local-dep"]).toEqual(
+                lock.packages["../../opt/some-unrelated-local-dep"],
+            );
+        });
+
+        it("never writes/touches package-lock.json when the wrapped install never produced one", async () => {
+            writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+            const base: PackageCommandRunning = () => Promise.resolve({stdout: "", stderr: ""});
+            const runner = withLocalPokieInstall("/opt/pokie-checkout", base);
+
+            await runner("npm", ["install"], projectDir);
+
+            expect(fs.existsSync(path.join(projectDir, "package-lock.json"))).toBe(false);
+        });
     });
 });

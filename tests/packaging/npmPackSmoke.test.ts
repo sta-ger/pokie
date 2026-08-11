@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {BUILT_PACKAGE_FILES} from "pokie";
 import {ensureFixturesCanRequirePokie} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
+import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
@@ -400,7 +401,77 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(report.rounds).toBe(200);
     });
 
-    it("moves the initialized package (with its already-resolved node_modules) to a new location and still loads/validates there without ever running npm install again -- proving the persisted package.json carries no absolute path back to where it was installed", () => {
+    function readPackageLockPackages(packageRoot: string): Record<string, unknown> {
+        const lock = JSON.parse(fs.readFileSync(path.join(packageRoot, "package-lock.json"), "utf-8")) as {
+            packages?: Record<string, unknown>;
+        };
+        return lock.packages ?? {};
+    }
+
+    // The rename-based move test below proves a package moved with its already-resolved node_modules
+    // never needs npm again. This proves the stronger claim P5PA-06 actually requires: the *persisted*
+    // package.json/package-lock.json pair -- copied without node_modules, i.e. with none of the
+    // resolution "pokie init" itself already did -- is on its own enough for a genuinely independent,
+    // later "npm install" to resolve "pokie" again. Real npm calls can't reach the public registry for
+    // this repo's own never-published "pokie" (or reliably for "typescript" in a network-restricted
+    // sandbox), so this reinstall is routed offline through localPokieDependencyRunner -- the same real,
+    // uninjected `npm install` GamePackagePreparer.integration.test.ts and
+    // BlueprintProjectMaterializer.integration.test.ts already rely on (see
+    // tests/testUtils/offlinePokieDependencyOverride.ts's own doc comment) -- rather than skipped
+    // outright, so this still exercises a real spawned npm wherever that offline substitution is itself
+    // runnable. Runs before the rename-based move test below, which consumes "sample-slot" in place.
+    it("copies the initialized package -- without node_modules, without any of 'npm install's own resolution -- to a new location, and a real, independent 'npm install' there resolves \"pokie\" fresh from only the portable persisted package.json/package-lock.json", async () => {
+        const sourceRoot = path.join(installDir!, "sample-slot");
+        const reinstalledRoot = path.join(installDir!, "sample-slot-reinstalled");
+        for (const relativeFile of [
+            "package.json",
+            "package-lock.json",
+            "tsconfig.json",
+            path.join("src", "index.ts"),
+            path.join("dist", "index.js"),
+        ]) {
+            const destination = path.join(reinstalledRoot, relativeFile);
+            fs.mkdirSync(path.dirname(destination), {recursive: true});
+            fs.copyFileSync(path.join(sourceRoot, relativeFile), destination);
+        }
+        expect(fs.existsSync(path.join(reinstalledRoot, "node_modules"))).toBe(false);
+
+        const lockPackagesBeforeReinstall = readPackageLockPackages(reinstalledRoot);
+        expect(lockPackagesBeforeReinstall["node_modules/pokie"]).toBeUndefined();
+        for (const key of Object.keys(lockPackagesBeforeReinstall)) {
+            expect(key).not.toContain(installDir!);
+        }
+
+        await localPokieDependencyRunner()("npm", ["install"], reinstalledRoot);
+
+        expect(fs.existsSync(path.join(reinstalledRoot, "node_modules", "pokie", "package.json"))).toBe(true);
+
+        const pkgAfterReinstall = JSON.parse(fs.readFileSync(path.join(reinstalledRoot, "package.json"), "utf-8")) as {
+            dependencies?: Record<string, string>;
+        };
+        expect(pkgAfterReinstall.dependencies?.pokie).not.toMatch(/^file:/);
+        expect(pkgAfterReinstall.dependencies?.pokie).not.toContain(installDir!);
+
+        const lockPackagesAfterReinstall = readPackageLockPackages(reinstalledRoot);
+        expect(lockPackagesAfterReinstall["node_modules/pokie"]).toBeUndefined();
+        for (const key of Object.keys(lockPackagesAfterReinstall)) {
+            expect(key).not.toContain(installDir!);
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const game = require(path.join(reinstalledRoot, "dist", "index.js")) as {getManifest(): {id: string}};
+        expect(game.getManifest().id).toBeDefined();
+
+        const validate = spawnSync(pokieBinPath, ["validate", reinstalledRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expect(validate.status).toBe(0);
+    });
+
+    // Real "npm install" resolves a `file:` spec as a symlink, recording it in package-lock.json as its
+    // own absolute-host-tied "link": true entry (see PackageCommandRunner.ts's own doc comment on
+    // stripLocalPokieLockEntries) -- checked here against the real lockfile a real spawned "pokie init"
+    // (above) actually wrote, not just the hand-reproduced shape PackageCommandRunner.test.ts's own unit
+    // coverage exercises.
+    it("moves the initialized package (with its already-resolved node_modules) to a new location and still loads/validates there without ever running npm install again -- proving the persisted package.json AND package-lock.json carry no absolute path back to where it was installed", () => {
         const sourceRoot = path.join(installDir!, "sample-slot");
         const movedRoot = path.join(installDir!, "sample-slot-moved");
         fs.renameSync(sourceRoot, movedRoot);
@@ -410,6 +481,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         };
         expect(movedPkg.dependencies?.pokie).not.toMatch(/^file:/);
         expect(movedPkg.dependencies?.pokie).not.toContain(installDir!);
+
+        const movedLockPackages = readPackageLockPackages(movedRoot);
+        expect(movedLockPackages["node_modules/pokie"]).toBeUndefined();
+        for (const key of Object.keys(movedLockPackages)) {
+            expect(key).not.toContain(installDir!);
+        }
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const game = require(path.join(movedRoot, "dist", "index.js")) as {getManifest(): {id: string}};

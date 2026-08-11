@@ -258,6 +258,18 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
         expect(pkg.dependencies?.pokie).toBe("^9.9.9");
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
 
+        // The persisted package-lock.json this real "npm install" produced carries none of that
+        // resolution either -- a real npm install of a `file:` spec records it as a "link": true entry
+        // (see PackageCommandRunner.ts's own doc comment on stripLocalPokieLockEntries), which
+        // withLocalPokieInstall strips once install settles, same as it restores package.json above.
+        const lock = JSON.parse(fs.readFileSync(path.join(projectRoot, "package-lock.json"), "utf-8")) as {
+            packages?: Record<string, unknown>;
+        };
+        expect(lock.packages?.["node_modules/pokie"]).toBeUndefined();
+        for (const key of Object.keys(lock.packages ?? {})) {
+            expect(key).not.toContain(linkedPokieRoot);
+        }
+
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const game = require(path.join(projectRoot, "dist", "index.js")) as {getManifest(): {id: string}};
         expect(game.getManifest().id).toBe("sample-slot");

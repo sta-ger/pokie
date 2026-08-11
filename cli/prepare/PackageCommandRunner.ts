@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import util from "util";
 import {PackageJsonLike, withLocalPokieDependency} from "pokie";
-import {resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
+import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
 
 const execFileAsync = util.promisify(execFile);
 
@@ -27,8 +27,7 @@ export const runPackageCommand: PackageCommandRunning = async (command, args, cw
 // except where `pkg` already declares that name directly, which is rewritten in place instead: npm
 // rejects an "overrides" entry for a package that's also a direct dependency/devDependency unless it
 // matches that direct spec exactly (EOVERRIDE).
-function withLocalPokieDependencyClosure(pkg: PackageJsonLike, pokiePackageRoot: string): PackageJsonLike {
-    const closure = resolveLocalPokieDependencyClosure(pokiePackageRoot);
+function withLocalPokieDependencyClosure(pkg: PackageJsonLike, closure: readonly LocalPokieDependencyClosureEntry[]): PackageJsonLike {
     if (closure.length === 0) {
         return pkg;
     }
@@ -48,6 +47,89 @@ function withLocalPokieDependencyClosure(pkg: PackageJsonLike, pokiePackageRoot:
     }
 
     return {...pkg, dependencies, devDependencies, overrides};
+}
+
+// Extracts the package name a package-lock.json (lockfileVersion >= 2) "packages" key refers to --
+// everything after the final "node_modules/" segment, keeping a scope ("@scope/name") intact. Returns
+// undefined for the root package's own "" key, which restorePersistedPackageLock handles separately.
+function packageNameFromLockKey(key: string): string | undefined {
+    const marker = "node_modules/";
+    const markerIndex = key.lastIndexOf(marker);
+    if (markerIndex === -1) {
+        return undefined;
+    }
+    const segments = key.slice(markerIndex + marker.length).split("/");
+    return segments[0]?.startsWith("@") ? `${segments[0]}/${segments[1]}` : segments[0];
+}
+
+// Real `npm install` resolves a `file:` spec (what every name in withLocalPokieDependencyClosure's
+// closure -- and "pokie" itself, via withLocalPokieDependency -- is rewritten to) as a symlink by
+// default, recorded in package-lock.json as a `{"resolved": "<relative path>", "link": true}` entry
+// under its own "node_modules/<name>" key, plus a *second*, separate top-level entry (keyed by that
+// same relative path) carrying the linked target's real package.json metadata -- confirmed against a
+// real `npm install` of this exact mechanism's own output, not guessed from documentation. Neither
+// entry is ever produced any other way (an ordinary registry/git resolution never sets "link" or uses
+// a bare relative-path key), so sweeping every "link": true entry whose own name is in `taintedNames`
+// -- together with the target entry it points at -- removes exactly and only what this transient
+// rewrite added, leaving every other (genuinely portable, registry-resolved) lockfile entry untouched.
+function stripLocalPokieLockEntries(packages: Record<string, unknown>, taintedNames: ReadonlySet<string>): void {
+    const targetKeysToRemove = new Set<string>();
+    for (const [key, rawEntry] of Object.entries(packages)) {
+        if (key === "") {
+            continue;
+        }
+        const name = packageNameFromLockKey(key);
+        if (name === undefined || !taintedNames.has(name)) {
+            continue;
+        }
+        const entry = rawEntry as {link?: unknown; resolved?: unknown};
+        if (entry.link !== true || typeof entry.resolved !== "string") {
+            continue;
+        }
+        targetKeysToRemove.add(entry.resolved);
+        Reflect.deleteProperty(packages, key);
+    }
+    for (const targetKey of targetKeysToRemove) {
+        Reflect.deleteProperty(packages, targetKey);
+    }
+}
+
+// The lockfile's own root ("") entry mirrors whatever "dependencies"/"devDependencies"/"overrides"
+// were in package.json the moment "npm install" resolved against it -- the transient, `file:`-rewritten
+// versions, not the portable ones restored to disk once install settles. Patched back in place (rather
+// than reconstructing the whole root entry) so every other field npm computed there (license, engines,
+// bin, ...) survives untouched.
+function restorePortableLockRoot(packages: Record<string, unknown>, originalPackageJson: PackageJsonLike): void {
+    const root = packages[""] as Record<string, unknown> | undefined;
+    if (!root) {
+        return;
+    }
+    for (const field of ["dependencies", "devDependencies", "overrides"] as const) {
+        if (field in originalPackageJson) {
+            root[field] = originalPackageJson[field];
+        } else {
+            Reflect.deleteProperty(root, field);
+        }
+    }
+}
+
+// Undoes, inside the just-written package-lock.json, exactly what resolving the transient `file:`
+// rewrite above left behind -- the counterpart to restoring package.json itself. Run once "npm install"
+// has actually succeeded (a failed install may leave no lockfile, or one mid-write; either way there's
+// nothing consistent to normalize, and the next retry re-derives everything fresh). A project with
+// "package-lock=false" (no lockfile at all) is left exactly as-is.
+function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJsonLike, taintedNames: ReadonlySet<string>): void {
+    const lockPath = path.join(cwd, "package-lock.json");
+    if (!fs.existsSync(lockPath)) {
+        return;
+    }
+    const lockfile = JSON.parse(fs.readFileSync(lockPath, "utf-8")) as {packages?: Record<string, unknown>};
+    if (!lockfile.packages) {
+        return;
+    }
+    stripLocalPokieLockEntries(lockfile.packages, taintedNames);
+    restorePortableLockRoot(lockfile.packages, originalPackageJson);
+    fs.writeFileSync(lockPath, `${JSON.stringify(lockfile, null, 2)}\n`);
 }
 
 // Wraps a PackageCommandRunning so every "npm install" it runs rewrites `cwd`'s own package.json for
@@ -70,24 +152,29 @@ function withLocalPokieDependencyClosure(pkg: PackageJsonLike, pokiePackageRoot:
 // The rewrite is reverted the moment the wrapped "npm install" settles, success or failure alike -- the
 // `file:`/`overrides` entries it writes are never what's left on disk once this call returns; the
 // package's own "pokie" dependency (and everything buildPackageJsonPatch's caller wrote around it) is
-// back to exactly what it was before this call. That's deliberate, not an oversight: `npm install`
-// itself only ever reads package.json to *resolve* dependencies into node_modules/package-lock.json --
-// once that's done, nothing later (a build, a require("pokie"), a "pokie validate") reads package.json's
-// "pokie"/"overrides" fields again, so there's no reason to leave the resolution mechanism's own,
-// absolute, host-specific paths sitting in the one file most likely to be committed, published, or
-// copied elsewhere. A later "npm install" against this exact package.json -- whether InitCommand's own
-// retry after a failed later phase, or a person re-running "pokie init" by hand -- goes through this same
-// wrapper again and re-derives the same local `file:` rewrite fresh from whatever's on disk, so offline
-// resolution keeps working across retries without ever depending on a stale rewrite surviving between
-// calls. The one path this doesn't cover is a bare, un-wrapped "npm install" run directly against this
-// package.json after install already succeeded (e.g. after deleting node_modules by hand, or on a
-// different machine) -- that reads the portable version range this leaves behind, exactly like any other
-// npm dependency, and needs "pokie" to actually be resolvable there (published, or node_modules copied
-// alongside) -- see renderPackageReadme.ts's own "Moving or copying this package" section, which is where
-// that's surfaced to the person running "pokie init". "pokie build" (GamePackageGenerator) never goes
-// through this function at all and stays fully portable instead (see renderBuiltPackageLock.ts) -- it
-// doesn't run "npm install" itself, so it never needs a local override in the first place, at the cost of
-// leaving `node_modules/pokie` for its own generated `require("pokie")` up to the caller.
+// back to exactly what it was before this call. A successful install's own package-lock.json gets the
+// same treatment (restorePersistedPackageLock): real `npm install` resolves those `file:` specs as
+// symlinks, which it records in the lockfile as its own absolute-host-tied entries (see
+// stripLocalPokieLockEntries's own doc comment) -- left alone, those would survive in the one lockfile
+// most likely to be committed, published, or copied elsewhere, even though package.json itself no longer
+// mentions them. That's deliberate, not an oversight: `npm install` itself only ever reads package.json
+// (and package-lock.json) to *resolve* dependencies into node_modules -- once that's done, nothing later
+// (a build, a require("pokie"), a "pokie validate") reads either file's "pokie"/"overrides"/`file:` fields
+// again, so there's no reason to leave the resolution mechanism's own, absolute, host-specific paths
+// sitting in either file. A later "npm install" against this exact package.json -- whether InitCommand's
+// own retry after a failed later phase, or a person re-running "pokie init" by hand -- goes through this
+// same wrapper again and re-derives the same local `file:` rewrite fresh from whatever's on disk, so
+// offline resolution keeps working across retries without ever depending on a stale rewrite surviving
+// between calls. The one path this doesn't cover is a bare, un-wrapped "npm install" run directly against
+// this exact package.json/package-lock.json pair after install already succeeded (e.g. after deleting
+// node_modules by hand, or on a different machine) -- that reads the portable version range/lockfile this
+// leaves behind, exactly like any other npm dependency, and needs "pokie" to actually be resolvable there
+// (published, or node_modules copied alongside) -- see renderPackageReadme.ts's own "Moving or copying
+// this package" section, which is where that's surfaced to the person running "pokie init". "pokie build"
+// (GamePackageGenerator) never goes through this function at all and stays fully portable instead (see
+// renderBuiltPackageLock.ts) -- it doesn't run "npm install" itself, so it never needs a local override in
+// the first place, at the cost of leaving `node_modules/pokie` for its own generated `require("pokie")` up
+// to the caller.
 export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
     return async (command, args, cwd) => {
         if (args[0] !== "install") {
@@ -96,11 +183,15 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
         const packageJsonPath = path.join(cwd, "package.json");
         const original = fs.readFileSync(packageJsonPath, "utf-8");
         const packageJson = JSON.parse(original) as PackageJsonLike;
+        const closure = resolveLocalPokieDependencyClosure(pokiePackageRoot);
         const withPokie = withLocalPokieDependency(packageJson, pokiePackageRoot);
-        const patched = withLocalPokieDependencyClosure(withPokie, pokiePackageRoot);
+        const patched = withLocalPokieDependencyClosure(withPokie, closure);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patched, null, 4)}\n`);
         try {
-            return await base(command, args, cwd);
+            const result = await base(command, args, cwd);
+            const taintedNames = new Set(["pokie", ...closure.map((entry) => entry.name)]);
+            restorePersistedPackageLock(cwd, packageJson, taintedNames);
+            return result;
         } finally {
             fs.writeFileSync(packageJsonPath, original);
         }
