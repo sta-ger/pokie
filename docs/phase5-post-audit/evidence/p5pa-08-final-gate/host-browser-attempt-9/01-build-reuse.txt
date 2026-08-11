@@ -1,0 +1,1 @@
+This fresh browser session reuses dist produced by the immediately preceding successful full candidate build in host-browser-attempt-2/01-full-candidate-build.log. Candidate SHA is recorded above and unchanged.

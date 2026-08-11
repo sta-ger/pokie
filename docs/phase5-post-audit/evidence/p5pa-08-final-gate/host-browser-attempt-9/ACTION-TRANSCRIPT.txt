@@ -1,0 +1,20 @@
+[2026-08-11T06:04:43.970Z] REUSE the immediately preceding full candidate build; start a fresh Studio and Chrome session
+[2026-08-11T06:04:44.037Z] OBSERVE fresh candidate Studio HTTP server
+[2026-08-11T06:04:44.845Z] OBSERVE fresh Chrome DevTools endpoint
+[2026-08-11T06:04:45.276Z] START fresh visible browser workflow against http://127.0.0.1:32108
+[2026-08-11T06:04:45.347Z] NAVIGATE Studio public root URL
+[2026-08-11T06:04:46.179Z] OBSERVE rendered Design Game Blueprint workflow
+[2026-08-11T06:04:46.572Z] CAPTURE 05-design-game-initial.png, 05-design-game-initial-visible-text.txt, and rendered textarea value
+[2026-08-11T06:04:46.621Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 398)
+[2026-08-11T06:04:47.076Z] OBSERVE rendered New Blueprint chooser
+[2026-08-11T06:04:47.383Z] CAPTURE 05a-new-blueprint-chooser.png, 05a-new-blueprint-chooser-visible-text.txt, and rendered textarea value
+[2026-08-11T06:04:47.485Z] CLICK "Blank" at rendered BUTTON coordinates (217, 155)
+[2026-08-11T06:04:48.637Z] SELECT Blank through the rendered New Blueprint dialog
+[2026-08-11T06:04:48.724Z] CLICK "Show advanced options (JSON mode, load/save by path)" at rendered BUTTON coordinates (454, 66)
+[2026-08-11T06:04:49.179Z] OBSERVE visible advanced JSON/Form mode control
+[2026-08-11T06:04:49.227Z] CLICK "JSON" at rendered LABEL coordinates (364, 388)
+[2026-08-11T06:04:49.683Z] OBSERVE rendered Blueprint JSON textarea
+[2026-08-11T06:04:50.979Z] SCROLL down to the rendered Blueprint JSON textarea through browser mouse-wheel gesture (1000)
+[2026-08-11T06:05:21.456Z] FAILED Error: Timed out waiting for textarea visibly within the browser viewport
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:156:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:240:5)

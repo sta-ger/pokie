@@ -250,6 +250,14 @@ export function BlueprintEditorPage({
     // wholesale one.
     const cleanRevisionRef = useRef(editor.state.revision);
     const nextFormGenerationIsClean = useRef(false);
+    // Whether the JSON-mode textarea currently holds a typed edit that was never "Apply JSON"-ed --
+    // reported up by BlueprintJsonPanel's own dirty derivation (live text vs. editor.state.jsonText).
+    // Folded into `isDirty` below so this unsaved, in-progress edit gets exactly the same New/navigation/
+    // beforeunload protection a Form edit already has, instead of the zero-warning silent loss switching
+    // away from JSON mode (or navigating away) used to cause. Reset on every wholesale replace
+    // (New/Load/a successful JSON apply all bump formGeneration) since BlueprintJsonPanel remounts fresh,
+    // in sync, at that point -- see the formGeneration effect below.
+    const [jsonDraftDirty, setJsonDraftDirty] = useState(false);
     // Save success mutates cleanRevisionRef from an async callback, which (being a ref) doesn't itself
     // trigger a re-render -- this forces one so `isDirty` below gets recomputed against whatever
     // editor.state.revision *actually* is by then (which may have moved past what was saved, if the user
@@ -264,6 +272,7 @@ export function BlueprintEditorPage({
             cleanRevisionRef.current = editor.state.revision;
             nextFormGenerationIsClean.current = false;
         }
+        setJsonDraftDirty(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.formGeneration]);
     // Refs must never be read during render (react-hooks/refs) -- reading cleanRevisionRef.current here,
@@ -276,7 +285,7 @@ export function BlueprintEditorPage({
     const [isDirty, setIsDirty] = useState(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        const dirty = editor.state.revision !== cleanRevisionRef.current;
+        const dirty = editor.state.revision !== cleanRevisionRef.current || jsonDraftDirty;
         setIsDirty(dirty);
         onDirtyChange?.(dirty);
     });
@@ -965,7 +974,21 @@ export function BlueprintEditorPage({
             <Collapse expanded={!guided || advancedOpened}>
                 <SegmentedControl
                     value={mode}
-                    onChange={(value) => setMode(value as BlueprintMode)}
+                    onChange={(value) => {
+                        const nextMode = value as BlueprintMode;
+                        // Same "confirm before discarding an unapplied edit" gate
+                        // ReelStripGenerationEditor's own selectReel() uses for a dirty reel draft --
+                        // switching away from JSON mode while jsonDraftDirty would otherwise unmount
+                        // BlueprintJsonPanel (and its never-applied draft) with zero warning.
+                        if (mode === "json" && jsonDraftDirty && nextMode !== mode) {
+                            confirm("Switch away from JSON mode? The unapplied JSON edit will be discarded.", () => {
+                                setJsonDraftDirty(false);
+                                setMode(nextMode);
+                            });
+                            return;
+                        }
+                        setMode(nextMode);
+                    }}
                     data={[
                         {label: "Form", value: "form"},
                         {label: "JSON", value: "json"},
@@ -999,7 +1022,13 @@ export function BlueprintEditorPage({
                 // are direct siblings of `formModeContent` (whose own root already carries a bare
                 // `key={editor.formGeneration}`, see its own definition above) *within the same parent's
                 // children array*, so reusing that same bare value here would collide with it.
-                <BlueprintJsonPanel key={`json-${editor.formGeneration}`} jsonText={editor.state.jsonText} jsonError={editor.state.jsonError} onApply={editor.applyJson} />
+                <BlueprintJsonPanel
+                    key={`json-${editor.formGeneration}`}
+                    jsonText={editor.state.jsonText}
+                    jsonError={editor.state.jsonError}
+                    onApply={editor.applyJson}
+                    onDraftDirtyChange={setJsonDraftDirty}
+                />
             )}
 
             <BlueprintValidationPanel view={validationView} onValidate={handleValidate} />

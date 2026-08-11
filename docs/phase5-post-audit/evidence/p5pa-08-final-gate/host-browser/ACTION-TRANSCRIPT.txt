@@ -1,0 +1,41 @@
+[2026-08-11T06:10:12.794Z] REUSE the immediately preceding full candidate build; start a fresh Studio and Chrome session
+[2026-08-11T06:10:13.916Z] OBSERVE fresh candidate Studio HTTP server
+[2026-08-11T06:10:14.454Z] OBSERVE fresh Chrome DevTools endpoint
+[2026-08-11T06:10:14.634Z] START fresh visible browser workflow against http://127.0.0.1:32108
+[2026-08-11T06:10:14.983Z] NAVIGATE Studio public root URL
+[2026-08-11T06:10:15.501Z] OBSERVE rendered Design Game Blueprint workflow
+[2026-08-11T06:10:15.748Z] CAPTURE 05-design-game-initial.png, 05-design-game-initial-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:15.796Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 398)
+[2026-08-11T06:10:16.253Z] OBSERVE rendered New Blueprint chooser
+[2026-08-11T06:10:16.552Z] CAPTURE 05a-new-blueprint-chooser.png, 05a-new-blueprint-chooser-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:16.655Z] CLICK "Blank" at rendered BUTTON coordinates (217, 155)
+[2026-08-11T06:10:17.806Z] SELECT Blank through the rendered New Blueprint dialog
+[2026-08-11T06:10:17.898Z] CLICK "Show advanced options (JSON mode, load/save by path)" at rendered BUTTON coordinates (454, 66)
+[2026-08-11T06:10:18.354Z] OBSERVE visible advanced JSON/Form mode control
+[2026-08-11T06:10:18.458Z] CLICK "JSON" at rendered LABEL coordinates (364, 388)
+[2026-08-11T06:10:18.913Z] OBSERVE rendered Blueprint JSON textarea
+[2026-08-11T06:10:19.223Z] FOCUS Blueprint JSON textarea through rendered keyboard Tab navigation after 6 step(s)
+[2026-08-11T06:10:19.234Z] INPUT unapplied JSON draft marker through rendered textarea keyboard input: /* P5PA-08 UNAPPLIED JSON DRAFT */
+[2026-08-11T06:10:19.280Z] OBSERVE typed, unapplied JSON draft in rendered textarea
+[2026-08-11T06:10:19.641Z] CAPTURE 06-unapplied-json-draft.png, 06-unapplied-json-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:19.973Z] FOCUS json mode radio through rendered keyboard Tab navigation after 6 step(s)
+[2026-08-11T06:10:20.043Z] SELECT Form mode through the focused rendered segmented-control radio and browser ArrowLeft
+[2026-08-11T06:10:20.499Z] OBSERVE visible mode-switch warning modal
+[2026-08-11T06:10:20.868Z] CAPTURE 07-mode-switch-warning.png, 07-mode-switch-warning-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:20.890Z] CLICK "Cancel" at rendered BUTTON coordinates (437, 168)
+[2026-08-11T06:10:21.346Z] OBSERVE Cancel preserves the unapplied JSON draft and JSON mode
+[2026-08-11T06:10:21.770Z] CAPTURE 08-cancel-preserves-draft.png, 08-cancel-preserves-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:22.240Z] FOCUS New Blueprint action through rendered keyboard Tab navigation after 8 step(s)
+[2026-08-11T06:10:22.277Z] ACTIVATE New Blueprint action through browser keyboard Space
+[2026-08-11T06:10:22.733Z] OBSERVE shared New Blueprint unsaved-work protection for the JSON-only draft
+[2026-08-11T06:10:23.189Z] CAPTURE 09-shared-unsaved-work-protection.png, 09-shared-unsaved-work-protection-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:23.219Z] CLICK "Cancel" at rendered BUTTON coordinates (261, 228)
+[2026-08-11T06:10:23.673Z] OBSERVE shared gate Cancel preserves the same JSON draft
+[2026-08-11T06:10:24.013Z] CAPTURE 10-shared-cancel-preserves-draft.png, 10-shared-cancel-preserves-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:24.412Z] FOCUS json mode radio through rendered keyboard Tab navigation after 8 step(s)
+[2026-08-11T06:10:24.476Z] SELECT Form mode before discard through the focused rendered segmented-control radio and browser ArrowLeft
+[2026-08-11T06:10:24.932Z] OBSERVE mode-switch warning before deliberate discard
+[2026-08-11T06:10:25.102Z] CLICK "Confirm" at rendered BUTTON coordinates (541, 168)
+[2026-08-11T06:10:25.557Z] OBSERVE Confirm discards the JSON draft and switches to Form mode
+[2026-08-11T06:10:25.905Z] CAPTURE 11-confirm-discards-and-switches-form.png, 11-confirm-discards-and-switches-form-visible-text.txt, and rendered textarea value
+[2026-08-11T06:10:25.905Z] PASS real Studio JSON-draft workflow: warning, Cancel preserve, Confirm discard, and shared New Blueprint protection.

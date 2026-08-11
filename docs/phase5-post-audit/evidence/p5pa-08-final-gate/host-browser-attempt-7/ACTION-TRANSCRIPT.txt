@@ -1,0 +1,23 @@
+[2026-08-11T06:00:07.265Z] REUSE the immediately preceding full candidate build; start a fresh Studio and Chrome session
+[2026-08-11T06:00:08.404Z] OBSERVE fresh candidate Studio HTTP server
+[2026-08-11T06:00:08.960Z] OBSERVE fresh Chrome DevTools endpoint
+[2026-08-11T06:00:09.257Z] START fresh visible browser workflow against http://127.0.0.1:32108
+[2026-08-11T06:00:09.272Z] NAVIGATE Studio public root URL
+[2026-08-11T06:00:09.808Z] OBSERVE rendered Design Game Blueprint workflow
+[2026-08-11T06:00:10.053Z] CAPTURE 05-design-game-initial.png, 05-design-game-initial-visible-text.txt, and rendered textarea value
+[2026-08-11T06:00:10.102Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 398)
+[2026-08-11T06:00:10.556Z] OBSERVE rendered New Blueprint chooser
+[2026-08-11T06:00:10.788Z] CAPTURE 05a-new-blueprint-chooser.png, 05a-new-blueprint-chooser-visible-text.txt, and rendered textarea value
+[2026-08-11T06:00:10.890Z] CLICK "Blank" at rendered BUTTON coordinates (217, 155)
+[2026-08-11T06:00:12.041Z] SELECT Blank through the rendered New Blueprint dialog
+[2026-08-11T06:00:12.134Z] CLICK "Show advanced options (JSON mode, load/save by path)" at rendered BUTTON coordinates (454, 66)
+[2026-08-11T06:00:12.590Z] OBSERVE visible advanced JSON/Form mode control
+[2026-08-11T06:00:12.684Z] CLICK "JSON" at rendered LABEL coordinates (364, 388)
+[2026-08-11T06:00:13.137Z] OBSERVE rendered Blueprint JSON textarea
+[2026-08-11T06:00:13.396Z] FOCUS Blueprint JSON textarea through rendered keyboard Tab navigation after 6 step(s)
+[2026-08-11T06:00:13.413Z] INPUT unapplied JSON draft marker through rendered textarea keyboard input: /* P5PA-08 UNAPPLIED JSON DRAFT */
+[2026-08-11T06:00:13.474Z] OBSERVE typed, unapplied JSON draft in rendered textarea
+[2026-08-11T06:00:13.799Z] CAPTURE 06-unapplied-json-draft.png, 06-unapplied-json-draft-visible-text.txt, and rendered textarea value
+[2026-08-11T06:00:17.628Z] FAILED Error: Could not focus Form mode radio through browser Tab navigation
+    at focusByTab (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:192:15)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-08-20260811055822/docs/phase5-post-audit/evidence/p5pa-08-final-gate/browser-ui-rerun.mjs:237:5)

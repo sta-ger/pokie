@@ -1,0 +1,16 @@
+/* P5PA-08 UNAPPLIED JSON DRAFT */
+{
+    "manifest": {
+        "id": "",
+        "name": "",
+        "version": "0.1.0"
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": [],
+    "paytable": {},
+    "availableBets": [
+        1
+    ]
+}
+

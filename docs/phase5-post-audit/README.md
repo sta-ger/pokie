@@ -107,11 +107,11 @@ linked from each subsection below.
 
 | # | Concern | Step | Classification |
 | --- | --- | --- | --- |
-| 1 | Blueprint Game Model editor | `P5PA-02` | **CONFIRMED P2** |
+| 1 | Blueprint Game Model editor | `P5PA-02` | **CONFIRMED P2** (Mechanics gap fixed by `P5PA-02`; JSON-mode data loss fixed by `P5PA-08`, see bottom of this file) |
 | 2 | TypeScript package Game Model introspection | `P5PA-03` | **INTENTIONAL SUPPORTED LIMITATION** |
 | 3 | Multi-mode Outcome Library selection/provenance | `P5PA-04` | **CONFIRMED P2** (fixed) |
 | 4 | Player custom scenario/Replay | `P5PA-05` | **CONFIRMED P2** (fixed) |
-| 5 | `pokie init` portability | `P5PA-06` | **CONFIRMED P3** |
+| 5 | `pokie init` portability | `P5PA-06` | **CONFIRMED P3** (fixed by `P5PA-07`) |
 
 ### #1 — Blueprint Game Model editor (`P5PA-02`): CONFIRMED P2
 
@@ -680,3 +680,63 @@ touched files (clean). Full transcript and per-category sweep disposition:
 Out of scope, left open, not this step's concern: the Blueprint Game Model editor's JSON-mode unsaved-work data
 loss (`P5PA-01` §3 #1, still `CONFIRMED P2`, a distinct concern from this sweep's own categories and already
 explicitly scoped to a future step).
+
+## `P5PA-08`: independent final post-audit hard gate — closes the campaign's last open item
+
+This step's own instruction: a fresh, independent reviewer re-checks all five targeted concerns, every
+confirmed correction, current `develop` source, and real CLI/browser evidence — not prior reports or
+unit/jsdom-only claims — and the campaign may complete only once no material P0/P1/P2 finding remains.
+
+Independently re-read current source (base SHA `7c2a007ab42b50aa0a852f2e1d6d7ce96a475882`) for all five
+`P5PA-02`–`P5PA-06` concerns, the `P5PA-07` architecture sweep, and the companion. Every prior round's own
+claimed fix is genuinely present and unregressed (confirmed by reading each one's own current source, not
+by trusting this document's own prior word) — with exactly one exception this document itself had already
+named three separate times (§3 #1, the `P5PA-02` remediation's own "Out of scope," and the `P5PA-07`
+sweep's own "Out of scope," most recently just above): the Blueprint Game Model editor's JSON-mode
+unsaved-work data loss, left `CONFIRMED P2` and explicitly deferred "for a future step" every time it was
+touched. Re-reproduced fresh against this step's own base SHA (`BlueprintJsonPanel.tsx`'s `Textarea` was
+still uncontrolled, the Form/JSON `SegmentedControl` still had no dirty-check) — genuinely still open, not
+a stale claim. Per this step's own acceptance criteria, that blocks completion, so this step fixes it.
+
+**The fix:** `BlueprintJsonPanel.tsx`'s `Textarea` is now controlled (`value`/`onChange` local state,
+still safely re-initialized on every wholesale replace via its existing `key={json-${formGeneration}}`),
+deriving a `dirty` flag (live text vs. the last value the editor actually knows about) every render and
+reporting it to `BlueprintEditorPage` via a new `onDraftDirtyChange` callback. `BlueprintEditorPage.tsx`
+folds that into its existing `isDirty` (the same state that already gates the New Blueprint dialog's
+Save/Discard/Cancel step and, via `onDirtyChange`, `useDesignNavigationGuard`'s SPA-navigation blocker and
+`HomePage.tsx`'s `beforeunload` guard), and gates the Form/JSON mode toggle itself behind the same
+`useConfirm()` modal `ReelStripGenerationEditor.tsx`'s own dirty-reel `selectReel()` already uses for an
+analogous unapplied-draft-discard decision — two abstractions the editor already had, reused for a third
+source of unapplied work, not a new parallel mechanism.
+
+Verified the defect was real (not already fixed) by `git stash`-ing both product-source changes and
+re-running the new regression suite against the unfixed source: the two mode-switch-while-dirty cases fail
+outright (no confirm dialog ever appears — the original zero-warning silent loss), while the two cases
+that don't depend on the new gate (no dirty edit; an edit that was already applied) pass either way, as
+expected; `git stash pop` restored the fix and the full suite re-ran clean.
+
+Regression coverage: new
+[`tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.jsonModeUnsavedWork.test.tsx`](../../tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.jsonModeUnsavedWork.test.tsx)
+(4 cases: warn-and-Cancel-keeps-draft, warn-and-Confirm-discards-and-switches, no-gate-when-clean,
+no-gate-after-a-successful-Apply) plus a new case in `BlueprintEditorPage.newBlueprintFlow.test.tsx`
+proving an unapplied JSON-textarea edit alone (no Form field touched) already gates "New Blueprint" as
+dirty — proving `jsonDraftDirty` genuinely reaches the shared `isDirty`, not just the mode-toggle's own
+local check. Ran the full set of touched/adjacent test files across both Jest projects they span
+(`studio-client-components`, `studio-client-workflows`): 52/52 passing. `tsc --noEmit -p
+tsconfig.typecheck.json` and `eslint` on every touched file: clean.
+
+`npm`/`check:release`/packaging: reproduced fresh (not assumed from a prior round) — `npm --version` itself
+fails with a real shell syntax error in `/usr/local/bin/npm`'s own `case` pattern, the same sandbox
+constraint every `P5PA-01`–`P5PA-07` round already documented; consistent with this implementer step's own
+scope, `check:release`/packaging/other project-wide gates are left to the orchestrator, not attempted here.
+`/pokie-examples` needed no change (this fix is Studio-only, with no companion-repo counterpart) and
+remains on `develop` `0d068cafbf541a66b86ae5abe128e510291bacfa`, working tree clean.
+
+Full transcript, source citations, and the final classification table (no remaining material P0/P1/P2 —
+the campaign may complete): [`evidence/p5pa-08-final-gate/README.md`](evidence/p5pa-08-final-gate/README.md).
+
+**Boundary preserved:** Phase 5 itself (`docs/phase5-audit/`, `docs/phase5-evidence/`,
+`docs/pokie-phase5-inventory.md`, `docs/v1.3-closeout-report.md`) remains completed historical evidence,
+untouched by this step; this campaign's own `docs/phase5-post-audit/` tree is the only thing this step (or
+any step in this campaign) has ever edited. No pre-release compatibility shim, feature flag, or parallel
+product surface was introduced by this fix or any other step in this campaign.

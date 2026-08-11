@@ -629,8 +629,8 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
                 {type: "literal", strip: []},
             ],
         };
-        // Uncontrolled textarea (read via ref only when "Apply JSON" is clicked) -- set its value
-        // directly to avoid user-event's `{`/`}` special-character parsing on raw JSON text.
+        // fireEvent.change (not user.type) avoids user-event's `{`/`}` special-character parsing on raw
+        // JSON text.
         fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(newBlueprint)}});
         await user.click(screen.getByRole("button", {name: "Apply JSON"}));
 

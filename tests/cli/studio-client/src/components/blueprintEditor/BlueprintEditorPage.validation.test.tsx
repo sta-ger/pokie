@@ -117,8 +117,8 @@ describe("Guided Design Game: validation staleness and build gating", () => {
             paytable: {},
             availableBets: [1],
         };
-        // The textarea is uncontrolled (read via ref only when "Apply JSON" is clicked) -- setting its
-        // value directly avoids user-event's `{`/`}` special-character parsing on raw JSON text.
+        // Using fireEvent.change (not user.type) avoids user-event's `{`/`}` special-character parsing
+        // on raw JSON text.
         const textarea = screen.getByLabelText("Blueprint JSON");
         fireEvent.change(textarea, {target: {value: JSON.stringify(newBlueprint)}});
         await user.click(screen.getByRole("button", {name: "Apply JSON"}));
