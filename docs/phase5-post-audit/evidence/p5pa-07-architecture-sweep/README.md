@@ -113,3 +113,37 @@ compatibility shim. The one change is a display-text correction inside an existi
 Everything else swept above was read, classified, and — where already a false positive or an intentional,
 documented boundary — left untouched, consistent with this campaign's own protocol (§2 of the campaign README):
 no entry is classified without a real, current source read this round.
+
+## Independent public CLI rerun (host verification, 2026-08-11)
+
+This addendum independently verifies the missing user-visible error path against candidate
+`15afe75c16d2431dc0b6faec567712595c47feaf`; it does **not** invoke Jest or import/call a private CLI API.
+The reproducible runner is [`run-installed-cli-conflict.sh`](run-installed-cli-conflict.sh). It uses Node
+24.18.0, packages this exact candidate with public `npm pack --ignore-scripts`, installs that tarball into an
+isolated temporary npm consumer, and then invokes the consumer's installed
+`node_modules/.bin/pokie` executable.
+
+The passing terminal transcript is
+[`02-installed-cli-conflict-passing-transcript.txt`](02-installed-cli-conflict-passing-transcript.txt). It records
+the installed `pokie@1.3.0`, the exact public command (with `--yes --no-prepare` so the merge check is reached
+before unrelated dependency/build work), its required `exit=1`, and this user-visible merge-conflict message:
+
+```
+"…/conflicting-pokie-init-project/package.json" already has POKIE-required field(s) set to a conflicting value:
+  - main: found "./existing-application-entry.js", POKIE requires "./dist/index.js"
+```
+
+That is the public CLI rendering of the `GamePackageMergeConflictError` path. Crucially, the referenced
+`package.json` path is the actual path constructed by the current candidate, including the fixture directory;
+the same transcript records equal before/after SHA-256 values, proving the conflicting package file remained
+untouched. The deliberately conflicting input is retained at
+[`artifacts/conflicting-pokie-init-project/package.json`](artifacts/conflicting-pokie-init-project/package.json),
+and the exact packed candidate consumed by npm is retained as
+[`artifacts/pokie-1.3.0.tgz`](artifacts/pokie-1.3.0.tgz) (SHA-256
+`cb171e667af828e96a905d2793ff53deeb8a8146f2d701b1c50762094a917db9`).
+
+[`01-installed-cli-conflict-transcript.txt`](01-installed-cli-conflict-transcript.txt) is preserved as a failed
+setup attempt: it discovered that this CLI has no `--version` option and deliberately stops before the target
+command. It is not used as acceptance evidence; the corrected, complete rerun is transcript 02. No browser or
+Studio UI was used because this persisted request is a `cli_rerun`, not a `browser_ui_rerun`; no screenshot or
+browser transcript would represent this public terminal workflow faithfully.
