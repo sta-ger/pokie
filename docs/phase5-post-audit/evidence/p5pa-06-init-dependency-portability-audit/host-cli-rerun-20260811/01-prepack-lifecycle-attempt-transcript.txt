@@ -1,0 +1,27 @@
+candidate_root=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-06-20260811015812
+work_dir=/tmp/p5pa-06-real-npm.KduuYE
+
+$ npm --version 
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+11.16.0
+
+$ node --version 
+v18.19.1
+
+$ npm pack --pack-destination /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-5-post-audit-polishing/task_P5PA-06-20260811015812/docs/phase5-post-audit/evidence/p5pa-06-init-dependency-portability-audit/host-cli-rerun-20260811/artifacts 
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 prepack
+> npm run build
+
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 prebuild
+> npm run lint
+
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 lint
+> eslint . --ext .ts,.tsx
+
+Terminated
