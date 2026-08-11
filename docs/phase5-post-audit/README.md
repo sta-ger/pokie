@@ -646,3 +646,37 @@ hand-reproduced real npm lockfile shape.
 Out of scope, left as-is: `pokie build --target tsPackage` (already portable, needed no change); the
 `GamePackageMergeConflictError.ts` mixed-separator cosmetic message §3 #5 already found (untouched, still
 open, not this step's concern).
+
+## `P5PA-07`: bounded architecture sweep — one carried-forward P3 fixed, nothing new confirmed
+
+This step's own instruction: independently sweep Project capability resolution, Game Model, Studio Play, Round
+Recorder, Replay, `ArtifactBuilderRegistry`, OutcomeSource project handling, and init/materialization for
+duplicated execution paths, hardcoded project-type switches diverging from capabilities, first-item/first-mode
+assumptions, stale Runtime/server/deployment or pre-release routes, frontend game math, silent degradation, and
+TODO/stub/placeholder branches — fix any confirmed P0/P1/material P2, and fix a small obvious P3 (or document one
+explicitly) if found.
+
+Read current source end-to-end across every named area (full list and per-category disposition in
+[`evidence/p5pa-07-architecture-sweep/README.md`](evidence/p5pa-07-architecture-sweep/README.md)). Result: **no
+new P0/P1/material P2 divergence found** — every `[0]`-indexing site, project-type switch, Runtime-era vestige,
+frontend numeric display, and error-swallowing `catch` checked either already matches
+`PROJECT_TYPE_CAPABILITIES`/`resolveOutcomeLibraryModeName` (the `P5PA-04` fix already owns every real
+multi-mode call site) or is a documented, inert, non-reachable remnant (`StudioRoundSource`'s vestigial
+`"live"`/`"pre-generated"` members). Zero TODO/FIXME/HACK/XXX/stub markers, consistent with `P5PA-01`'s own
+sweep (§4 above) and every round since.
+
+One item this campaign already found twice before (`P5PA-01` §3 #5, carried forward untouched through
+`P5PA-06`'s own close-out) but never fixed, because fixing it belonged to whichever step actually got scoped to
+touch that file: `GamePackageMergeConflictError.ts` built its thrown message with a hardcoded
+`` `${projectRoot}/package.json` `` forward slash instead of `path.join`, the one path construction in the
+entire `init`/scaffold/prepare surface that doesn't follow that convention. Fixed by switching to
+`path.join(projectRoot, "package.json")`, matching every other path built in this same file's own collaborators.
+Display-only, in an already-thrown error path — no functional or security consequence, kept at **P3**. Added
+`tests/cli/scaffold/GamePackageMerger.test.ts`'s new path-separator-construction case; ran it plus
+`InitCommand.test.ts` (44/44 passing), `tsc --noEmit -p tsconfig.typecheck.json` (clean), and `eslint` on both
+touched files (clean). Full transcript and per-category sweep disposition:
+[`evidence/p5pa-07-architecture-sweep/README.md`](evidence/p5pa-07-architecture-sweep/README.md).
+
+Out of scope, left open, not this step's concern: the Blueprint Game Model editor's JSON-mode unsaved-work data
+loss (`P5PA-01` §3 #1, still `CONFIRMED P2`, a distinct concern from this sweep's own categories and already
+explicitly scoped to a future step).

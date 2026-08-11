@@ -1,3 +1,5 @@
+import path from "path";
+
 export type PackageJsonFieldConflict = {
     field: string;
     existingValue: string;
@@ -20,7 +22,7 @@ export class GamePackageMergeConflictError extends Error {
             .map((conflict) => `  - ${conflict.field}: found ${conflict.existingValue}, POKIE requires ${conflict.requiredValue}`)
             .join("\n");
         super(
-            `"${projectRoot}/package.json" already has POKIE-required field(s) set to a conflicting value:\n${details}\n` +
+            `"${path.join(projectRoot, "package.json")}" already has POKIE-required field(s) set to a conflicting value:\n${details}\n` +
                 `package.json was left untouched. Update or remove the conflicting field(s) above so they match the ` +
                 `required value, then re-run "pokie init ${projectRoot}".`,
         );
