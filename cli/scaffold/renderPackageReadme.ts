@@ -30,7 +30,9 @@ source directly, so re-run \`npm run build\` after every source change before re
 
 ## Moving or copying this package
 
-If \`package.json\`'s \`"pokie"\` dependency is a \`file:\` path (check it -- \`pokie init\` writes this whenever the \`pokie\` installation that scaffolded this package has not been published to the npm registry yet, e.g. a dev checkout, an \`npm link\`ed target, or a pre-release tarball install), that path points at this exact machine's own \`pokie\` installation. Moving this package elsewhere on the same machine is fine, but copying it to another machine or environment and running \`npm install\` there from scratch will fail unless either \`node_modules\` is copied along with it (no reinstall needed), a matching \`pokie\` installation already exists at that same path there, or \`pokie\` has since been published and you replace the \`file:\` spec with a version range (e.g. \`"^1.3.0"\`) yourself.
+\`pokie init\`'s own \`npm install\` resolves this package's \`"pokie"\` dependency against the exact \`pokie\` installation that scaffolded it (a dev checkout, an \`npm link\`ed target, a pre-release tarball install, or an ordinarily published copy) rather than the registry -- but only for that one install. Once it finishes, \`package.json\` is left with a normal version range (e.g. \`"^1.3.0"\`), never an absolute, machine-specific \`file:\` path, so this file itself is portable: safe to move or copy to another machine or environment.
+
+Running \`npm install\` again afterward -- by hand, after deleting \`node_modules\`, or on another machine you copied this package to -- reads that version range like any other dependency: it succeeds immediately if \`node_modules\` travels along with it (no reinstall needed) or if \`pokie\` has since been published at a matching version; otherwise, re-run \`pokie init\` in this directory again (or against a \`pokie\` checkout you have available there) to re-resolve it locally.
 
 See [\`pokie\`'s CLI docs](https://github.com/sta-ger/pokie/blob/master/docs/cli.md) for what each
 command does and every available option.

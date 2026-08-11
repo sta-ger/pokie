@@ -356,7 +356,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         );
     });
 
-    it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root (never the registry, never a manual rewrite), then validates and simulates it", () => {
+    it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root during install (never the registry, never a manual rewrite), then is left with a portable version range, and it validates and simulates", () => {
         const projectRoot = path.join(installDir!, "sample-slot");
         // No --no-prepare, no --no-install, no manual package.json rewrite: "pokie init" now resolves its
         // own scaffolded "pokie" dependency against the running installation's own root (readOwnPackageRoot()
@@ -372,9 +372,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.existsSync(path.join(projectRoot, "src", "index.ts"))).toBe(true);
         expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
 
+        // The transient local resolution already ran and settled by the time "pokie init" exits (this is
+        // a real spawned binary, not an injected runCommand -- there's no in-process hook to observe the
+        // package.json PackageCommandRunner.ts's withLocalPokieInstall writes for the duration of "npm
+        // install" itself; see PackageCommandRunner.test.ts and InitCommandWorkflow.integration.test.ts
+        // for that half of the contract, captured via an injected recording runCommand). What's left on
+        // disk here is only ever the *persisted* half: a portable version range, never the absolute,
+        // host-specific `file:` path "npm install" actually resolved against.
         const packageJsonPath = path.join(projectRoot, "package.json");
         const scaffoldedPkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {dependencies?: Record<string, string>};
-        expect(scaffoldedPkg.dependencies?.pokie).toBe(`file:${path.join(installDir!, "node_modules", "pokie")}`);
+        const {version: ownVersion} = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {version: string};
+        expect(scaffoldedPkg.dependencies?.pokie).toBe(`^${ownVersion}`);
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
 
         const validate = spawnSync(pokieBinPath, ["validate", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
@@ -390,6 +398,25 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         const report = JSON.parse(fs.readFileSync(simFile, "utf-8")) as {rounds: number};
         expect(report.rounds).toBe(200);
+    });
+
+    it("moves the initialized package (with its already-resolved node_modules) to a new location and still loads/validates there without ever running npm install again -- proving the persisted package.json carries no absolute path back to where it was installed", () => {
+        const sourceRoot = path.join(installDir!, "sample-slot");
+        const movedRoot = path.join(installDir!, "sample-slot-moved");
+        fs.renameSync(sourceRoot, movedRoot);
+
+        const movedPkg = JSON.parse(fs.readFileSync(path.join(movedRoot, "package.json"), "utf-8")) as {
+            dependencies?: Record<string, string>;
+        };
+        expect(movedPkg.dependencies?.pokie).not.toMatch(/^file:/);
+        expect(movedPkg.dependencies?.pokie).not.toContain(installDir!);
+
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const game = require(path.join(movedRoot, "dist", "index.js")) as {getManifest(): {id: string}};
+        expect(game.getManifest().id).toBeDefined();
+
+        const validate = spawnSync(pokieBinPath, ["validate", movedRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        expect(validate.status).toBe(0);
     });
 
     it("runs `pokie outcomelibrary generate` against a package built by the installed binary itself, then bundles and validates the result", () => {

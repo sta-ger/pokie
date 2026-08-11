@@ -5,7 +5,7 @@ import path from "path";
 import {SimulationReport} from "pokie";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
 import {GamePackagePreparationError} from "../../cli/prepare/GamePackagePreparationError.js";
-import {PackageCommandRunning, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
@@ -228,17 +228,34 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
         (console.error as jest.Mock).mockRestore();
     });
 
-    it("scaffolds/installs/builds an in-place package whose \"pokie\" dependency resolves to the real npm-linked root, producing a genuinely loadable runtime", async () => {
+    it("scaffolds/installs/builds an in-place package whose \"pokie\" dependency resolves to the real npm-linked root during install, but is left with the portable version range once init succeeds, producing a genuinely loadable runtime", async () => {
         const projectRoot = path.join(workDir, "sample-slot");
-        const initCommand = new InitCommand("9.9.9", undefined, withLocalPokieInstall(linkedPokieRoot));
+        // Captures package.json exactly as it stands the moment the real "npm install" spawns -- proving
+        // that transient install-time resolution really does happen against the npm-linked root, not
+        // just that the final, persisted package.json ends up portable (see the assertion below).
+        const packageJsonDuringInstall: string[] = [];
+        const capturingBase: PackageCommandRunning = (command, args, cwd) => {
+            if (args[0] === "install") {
+                packageJsonDuringInstall.push(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
+            }
+            return runPackageCommand(command, args, cwd);
+        };
+        const initCommand = new InitCommand("9.9.9", undefined, withLocalPokieInstall(linkedPokieRoot, capturingBase));
 
         const exitCode = await initCommand.run([projectRoot]);
 
         expect(exitCode).toBe(0);
+        expect(packageJsonDuringInstall).toHaveLength(1);
+        expect((JSON.parse(packageJsonDuringInstall[0]) as {dependencies: Record<string, string>}).dependencies.pokie).toBe(
+            `file:${linkedPokieRoot}`,
+        );
+
         const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {
             dependencies?: Record<string, string>;
         };
-        expect(pkg.dependencies?.pokie).toBe(`file:${linkedPokieRoot}`);
+        // Once "pokie init" has succeeded, the persisted package.json carries none of that -- just the
+        // portable version range InitCommand's own merger originally wrote, no absolute host-specific path.
+        expect(pkg.dependencies?.pokie).toBe("^9.9.9");
         expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
 
         // eslint-disable-next-line @typescript-eslint/no-var-requires

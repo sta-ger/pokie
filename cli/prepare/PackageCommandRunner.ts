@@ -50,48 +50,60 @@ function withLocalPokieDependencyClosure(pkg: PackageJsonLike, pokiePackageRoot:
     return {...pkg, dependencies, devDependencies, overrides};
 }
 
-// Wraps a PackageCommandRunning so every "npm install" it runs first rewrites `cwd`'s own package.json
-// -- its direct "pokie" dependency to a `file:` spec bound to `pokiePackageRoot` (via
-// withLocalPokieDependency), and every name in "pokie"'s own real runtime dependency closure to this
-// exact running installation's already-resolved copies (withLocalPokieDependencyClosure) -- the one
-// shared mechanism every real "npm install" this repo's tooling runs against a staged/generated package
-// goes through (BlueprintProjectMaterializer's staging installs in production; GamePackagePreparer's own
-// real create -> install -> build lifecycle in its own integration tests, via
-// tests/testUtils/offlinePokieDependencyOverride.ts's localPokieDependencyRunner) so it never has to ask
-// a registry for this exact, possibly-unpublished running POKIE installation, nor for any of its own
-// dependencies (e.g. "exceljs" alone pulls in dozens of packages of its own). Deliberately never touches
-// devDependencies-vs-dependencies install semantics itself (e.g. no "--omit=dev") -- a caller that needs
-// that (BlueprintProjectMaterializer's own dependency phase never needs devDependencies at all, since its
-// staged dist/index.js is already generated -- see its own doc comment) decides that for itself. Only
-// "install" invocations are touched -- any other npm subcommand (e.g. "run build") passes straight
-// through untouched, since the package.json rewrite only ever matters immediately before dependency
-// resolution.
+// Wraps a PackageCommandRunning so every "npm install" it runs rewrites `cwd`'s own package.json for
+// the duration of that one call -- its direct "pokie" dependency to a `file:` spec bound to
+// `pokiePackageRoot` (via withLocalPokieDependency), and every name in "pokie"'s own real runtime
+// dependency closure to this exact running installation's already-resolved copies
+// (withLocalPokieDependencyClosure) -- the one shared mechanism every real "npm install" this repo's
+// tooling runs against a staged/generated package goes through (BlueprintProjectMaterializer's staging
+// installs in production; GamePackagePreparer's own real create -> install -> build lifecycle in its own
+// integration tests, via tests/testUtils/offlinePokieDependencyOverride.ts's localPokieDependencyRunner)
+// so it never has to ask a registry for this exact running POKIE installation, published or not, nor for
+// any of its own dependencies (e.g. "exceljs" alone pulls in dozens of packages of its own). Deliberately
+// never touches devDependencies-vs-dependencies install semantics itself (e.g. no "--omit=dev") -- a
+// caller that needs that (BlueprintProjectMaterializer's own dependency phase never needs devDependencies
+// at all, since its staged dist/index.js is already generated -- see its own doc comment) decides that
+// for itself. Only "install" invocations are touched -- any other npm subcommand (e.g. "run build")
+// passes straight through untouched, since the package.json rewrite only ever matters immediately before
+// dependency resolution.
 //
-// This rewrite is never reverted afterward: the `file:` spec it writes is what's left on disk as the
-// package's own canonical, persisted "pokie"/overrides entries (InitCommand never restores
-// buildPackageJsonPatch's own portable "^<version>" spec once install has run). That's the deliberate
-// trade-off, not an oversight -- it's what lets a staged/generated package's later "npm install" retries
-// keep working offline on this exact machine without ever needing a registry for a possibly-unpublished
-// "pokie". The cost: those same `file:` specs are absolute, host-specific paths, so a package this wrote
-// into is only portable to another machine/environment if node_modules travels with it (no reinstall
-// needed there) or a matching "pokie" install already exists at that same absolute path there -- see
-// InitCommand's own warnIfLocalPokieDependency() and renderPackageReadme.ts's "Moving or copying this
-// package" section, which is where that trade-off is actually surfaced to the person running "pokie
-// init". "pokie build" (GamePackageGenerator) never goes through this function at all and stays fully
-// portable instead (see renderBuiltPackageLock.ts) -- it doesn't run "npm install" itself, so it never
-// needs a local override in the first place, at the cost of leaving `node_modules/pokie` for its own
-// generated `require("pokie")` up to the caller.
+// The rewrite is reverted the moment the wrapped "npm install" settles, success or failure alike -- the
+// `file:`/`overrides` entries it writes are never what's left on disk once this call returns; the
+// package's own "pokie" dependency (and everything buildPackageJsonPatch's caller wrote around it) is
+// back to exactly what it was before this call. That's deliberate, not an oversight: `npm install`
+// itself only ever reads package.json to *resolve* dependencies into node_modules/package-lock.json --
+// once that's done, nothing later (a build, a require("pokie"), a "pokie validate") reads package.json's
+// "pokie"/"overrides" fields again, so there's no reason to leave the resolution mechanism's own,
+// absolute, host-specific paths sitting in the one file most likely to be committed, published, or
+// copied elsewhere. A later "npm install" against this exact package.json -- whether InitCommand's own
+// retry after a failed later phase, or a person re-running "pokie init" by hand -- goes through this same
+// wrapper again and re-derives the same local `file:` rewrite fresh from whatever's on disk, so offline
+// resolution keeps working across retries without ever depending on a stale rewrite surviving between
+// calls. The one path this doesn't cover is a bare, un-wrapped "npm install" run directly against this
+// package.json after install already succeeded (e.g. after deleting node_modules by hand, or on a
+// different machine) -- that reads the portable version range this leaves behind, exactly like any other
+// npm dependency, and needs "pokie" to actually be resolvable there (published, or node_modules copied
+// alongside) -- see renderPackageReadme.ts's own "Moving or copying this package" section, which is where
+// that's surfaced to the person running "pokie init". "pokie build" (GamePackageGenerator) never goes
+// through this function at all and stays fully portable instead (see renderBuiltPackageLock.ts) -- it
+// doesn't run "npm install" itself, so it never needs a local override in the first place, at the cost of
+// leaving `node_modules/pokie` for its own generated `require("pokie")` up to the caller.
 export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
-    return (command, args, cwd) => {
+    return async (command, args, cwd) => {
         if (args[0] !== "install") {
             return base(command, args, cwd);
         }
         const packageJsonPath = path.join(cwd, "package.json");
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as PackageJsonLike;
+        const original = fs.readFileSync(packageJsonPath, "utf-8");
+        const packageJson = JSON.parse(original) as PackageJsonLike;
         const withPokie = withLocalPokieDependency(packageJson, pokiePackageRoot);
         const patched = withLocalPokieDependencyClosure(withPokie, pokiePackageRoot);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patched, null, 4)}\n`);
-        return base(command, args, cwd);
+        try {
+            return await base(command, args, cwd);
+        } finally {
+            fs.writeFileSync(packageJsonPath, original);
+        }
     };
 }
 

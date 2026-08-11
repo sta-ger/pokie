@@ -276,38 +276,10 @@ export class InitCommand implements CliCommandHandling {
     private printPrepared(scaffold: ScaffoldResult, projectRoot: string): void {
         console.log(`\nGame package "${scaffold.manifest.name}" (id: "${scaffold.manifest.id}") prepared and verified in "${projectRoot}".`);
         console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "pokie".`);
-        this.warnIfLocalPokieDependency(projectRoot);
         console.log(`\nNext:`);
         console.log(`  pokie validate ${projectRoot}`);
         console.log(`  pokie sim ${projectRoot} --rounds 10000 --seed demo --out sim.json`);
         console.log(`  pokie dev ${projectRoot}`);
         console.log(`  npm start`);
-    }
-
-    // "pokie" resolves as a `file:` spec whenever this exact running installation hasn't been published
-    // to the npm registry yet (a dev checkout, an npm-linked target, a pre-release tarball install --
-    // see withLocalPokieDependency's own doc comment). That spec is an absolute, host-specific path:
-    // fine for further "npm install"s right here, but copying this package to another machine or
-    // environment and running "npm install" there from scratch will fail unless node_modules travels
-    // with it, a matching "pokie" install already exists at that same path there, or "pokie" gets
-    // published and the spec is swapped for a version range by hand -- see renderPackageReadme.ts's own
-    // "Moving or copying this package" section, which this echoes at scaffold time.
-    private warnIfLocalPokieDependency(projectRoot: string): void {
-        let pokieDependency: string | undefined;
-        try {
-            const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as PackageJsonLike;
-            pokieDependency = pkg.dependencies?.pokie;
-        } catch {
-            return;
-        }
-        if (pokieDependency?.startsWith("file:") !== true) {
-            return;
-        }
-        console.log(
-            `\nNote: "pokie" is not yet published, so this package's own "pokie" dependency points at this machine's ` +
-                `installation ("${pokieDependency}"). It'll keep working here, but copying this package to another ` +
-                `machine/environment and running "npm install" there from scratch won't, unless node_modules comes ` +
-                `along with it -- see this package's own README.md.`,
-        );
     }
 }
