@@ -1,0 +1,6 @@
+{
+    "name": "conflicting-pokie-init-project",
+    "version": "1.0.0",
+    "main": "./existing-application-entry.js",
+    "description": "Deliberately incompatible POKIE-owned main field for the P5PA-07 public CLI verification."
+}

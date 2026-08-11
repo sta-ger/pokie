@@ -107,6 +107,21 @@ describe("GamePackageMerger", () => {
             expect(fs.existsSync(path.join(projectRoot, "src"))).toBe(false);
         });
 
+        it("names the conflicting file with the platform's own path separator, not a hardcoded forward slash", () => {
+            fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "already-here", main: "./lib/custom.js"}));
+            const merger = new GamePackageMerger("1.2.1");
+
+            let caught: GamePackageMergeConflictError | undefined;
+            try {
+                merger.merge(projectRoot);
+            } catch (error) {
+                caught = error as GamePackageMergeConflictError;
+            }
+
+            expect(caught).toBeInstanceOf(GamePackageMergeConflictError);
+            expect(caught!.message).toContain(path.join(projectRoot, "package.json"));
+        });
+
         it("throws when \"exports\" disagrees", () => {
             fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "already-here", exports: "./lib/custom.js"}));
             const merger = new GamePackageMerger("1.2.1");
