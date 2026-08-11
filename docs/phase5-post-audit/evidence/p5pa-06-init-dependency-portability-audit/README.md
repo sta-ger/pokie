@@ -36,7 +36,7 @@ typed by hand), and the pre-existing, already-committed, already-passing (in an 
 npm -- e.g. the orchestrator's own gates) integration/packaging suites cited by name and quoted assertion
 as source-level evidence for the forms this sandbox can't itself execute.
 
-## What was found
+## What was found (at this step's base SHA, `0be705f`, before the correction below)
 
 **The mechanism, traced end to end (`cli/pokie.ts` → `cli/registerCliCommands.ts` →
 `cli/prepare/PackageCommandRunner.ts` → `src/gamepackage/withLocalPokieDependency.ts` →
@@ -57,10 +57,13 @@ as source-level evidence for the forms this sandbox can't itself execute.
   on-disk runtime dependency closure (walked via `require.resolve`, not read off a lockfile) is rewritten
   to `file:<that name's own resolved root>` -- as a direct dependency/devDependency in place where one
   already exists, otherwise via `overrides` (`localPokieDependencyClosure.ts`).
-- **This rewrite is never reverted.** `GamePackagePreparer`/`InitCommand` never restore
-  `buildPackageJsonPatch`'s own portable `"pokie": "^<version>"` spec once the "dependencies" phase has
-  run. The `file:` specs left on disk *are* the package's own canonical, persisted `package.json` -- the
-  exact file a user is meant to keep, hand-edit, `git add`, and move.
+- **At this base SHA, the rewrite was never reverted.** `GamePackagePreparer`/`InitCommand` did not restore
+  `buildPackageJsonPatch`'s own portable `"pokie": "^<version>"` spec once the "dependencies" phase had
+  run. The `file:` specs left on disk *were* the package's own canonical, persisted `package.json` -- the
+  exact file a user is meant to keep, hand-edit, `git add`, and move. **This is the condition the
+  correction below (`5436387`, `439af56`) fixes** -- see "The correction landed since the base SHA" further
+  down; everywhere else in this section describes the base-SHA state that motivated it, not current
+  behavior.
 
 **Real reproduction of the exact package.json shape at each phase**, `npm install`/`npm run build`
 replaced by a recording double (no real npm spawned, no hand-typed JSON -- every value below is what the
@@ -78,64 +81,77 @@ call chain actually wrote):
   `archiver`, `dayjs`, `fast-csv`, `jszip`, down through `crc-32`).
 
 These are the two states the acceptance criteria asks to be told apart: the first is genuinely portable
-and ephemeral (would be discarded/overwritten the moment install runs); the second is what's actually left
-behind, and it is host-specific.
+and ephemeral; the second, **at this step's base SHA**, was what got left behind on disk, and it was
+host-specific.
 
-**Classification: CONFIRMED.** A canonical `pokie init` package's persisted `package.json` does carry a
-host-specific `file:` dependency (plus a host-specific `overrides` block for `pokie`'s entire transitive
-runtime closure), and does so **by design** -- this is not an accident, it's deliberately built and
-covered by three separate, already-committed test files that predate this step and explicitly assert the
-exact `file:` shape as correct, across three of this audit's own named installation forms:
+**Classification at the base SHA: CONFIRMED.** A canonical `pokie init` package's persisted `package.json`
+carried a host-specific `file:` dependency (plus a host-specific `overrides` block for `pokie`'s entire
+transitive runtime closure). Three already-committed test files predating this step covered the mechanism
+across three installation forms, but at the base SHA they asserted the *unrestored* `file:` shape as the
+persisted result:
 
-| Installation form | Test (already committed, predates this step) | Asserted persisted shape |
+| Installation form | Test (already committed, predates this step) | Persisted shape asserted at the base SHA |
 | --- | --- | --- |
-| Unpublished checkout | `tests/cli/prepare/PackageCommandRunner.test.ts` ("also rewrites every one of pokie's own real runtime dependencies...") | `patched.dependencies.pokie === file:${REPO_ROOT}`, `patched.overrides.commander/exceljs/dayjs === file:${REPO_ROOT}/node_modules/<name>` |
-| npm-link | `tests/cli/InitCommandWorkflow.integration.test.ts` ("...from a real npm-linked installation") | `pkg.dependencies?.pokie === file:${linkedPokieRoot}` (a real `npm link ${REPO_ROOT}`, real `npm install`) |
-| npm-pack install | `tests/packaging/npmPackSmoke.test.ts` ("scaffolds a package in place via a fully non-interactive `pokie init`...") | `scaffoldedPkg.dependencies?.pokie === file:${path.join(installDir, "node_modules", "pokie")}` (a real tarball, real `npm install`) |
-| Future published npm install | Source only (`05-source-evidence.txt`) -- no test exercises this because `pokie` isn't published yet | Would be identical: `registerCliCommands.ts:66`'s wiring has no "already published" branch, so even a genuinely-published running installation still forces `file:<pokiePackageRoot>` |
+| Unpublished checkout | `tests/cli/prepare/PackageCommandRunner.test.ts` | `patched.dependencies.pokie === file:${REPO_ROOT}`, `patched.overrides.commander/exceljs/dayjs === file:${REPO_ROOT}/node_modules/<name>` |
+| npm-link | `tests/cli/InitCommandWorkflow.integration.test.ts` | `pkg.dependencies?.pokie === file:${linkedPokieRoot}` (a real `npm link ${REPO_ROOT}`, real `npm install`) |
+| npm-pack install | `tests/packaging/npmPackSmoke.test.ts` | `scaffoldedPkg.dependencies?.pokie === file:${path.join(installDir, "node_modules", "pokie")}` (a real tarball, real `npm install`) |
 
-This implementer's own sandbox can't execute the npm-link/npm-pack-install rows directly (npm is broken
-here -- see above), so those two rows are cited as **source-level evidence**: real, already-committed test
-files with real assertions, not re-derived or assumed. The unpublished-checkout row *was* executed this
-round, via the recording-double reproduction above (real production code, no real npm process, same
-result the real integration test already asserts).
+**All three of these tests were updated by the correction below (`5436387`, `439af56`) and now assert the
+opposite: the persisted `package.json`/`package-lock.json` carry a portable version range, not a `file:`
+path.** See "The correction landed since the base SHA" further down for what they assert now. This
+implementer's own sandbox can't execute the npm-link/npm-pack-install rows directly at either SHA (npm is
+broken here -- see above), so those two rows remain **source-level evidence**: real, already-committed test
+files with real assertions, not re-derived or assumed. The unpublished-checkout row's base-SHA behavior
+*was* executed at the time via the recording-double reproduction above (real production code, no real npm
+process); its current, corrected behavior is verified directly below by running
+`tests/cli/prepare/PackageCommandRunner.test.ts` itself, which needs no real npm.
 
-**Move/copy portability, reasoned from the exact mechanism above (real npm still unavailable to actually
-run the "after" half of a move/copy live in this sandbox):**
+**Move/copy portability at the base SHA, reasoned from the mechanism as it stood before the correction
+(real npm still unavailable to actually run the "after" half of a move/copy live in this sandbox):**
 
 - **Moving the generated directory** (same machine, `pokiePackageRoot` untouched): every `file:` spec
   written is an *absolute* path (`pokiePackageRoot` itself is always absolute -- `path.dirname` of a
   `file://` URL), and it points at `pokie`'s own installation location, never at the generated package's
   own path. Moving the generated package elsewhere on the same machine does not change where `pokie`
   lives, so a fresh `rm -rf node_modules && npm install` there continues to resolve identically. Not
-  broken by moving.
-- **Copying to another machine/environment, then `npm install` from scratch:** the identical absolute
-  `file:` targets (`pokiePackageRoot` and each of its 71 transitive dependency roots in this checkout's
-  own case) essentially never exist at that same absolute path on a different machine or a fresh
-  environment (a different developer's checkout location, a CI runner, a Docker image). `npm install`
-  there fails to resolve those specs (`ENOENT`/`ENOTDIR` on the `file:` target) **unless** either (a)
-  `node_modules` is copied along with the package (no reinstall is needed there at all -- Node's own
-  module resolution never re-validates `node_modules` against `package.json` on its own), or (b) a
-  matching `pokie` installation happens to already exist at that exact same absolute path on the new
-  machine, or (c) `pokie` has since been published and the `file:` spec is manually replaced with a
-  version range. This is the one genuinely confirmed portability gap: real, reproducible from the source
-  alone, and not previously documented anywhere in this repository (`README.md`, the generated
-  `README.md`/`renderPackageReadme.ts`, or any doc comment) before this round.
-- **Offline local development** (the mechanism's own stated purpose): confirmed working as intended --
-  this is exactly what the mechanism above, and its dedicated test coverage
+  broken by moving, at the base SHA or since.
+- **Copying to another machine/environment, then `npm install` from scratch, at the base SHA:** the
+  identical absolute `file:` targets (`pokiePackageRoot` and each of its 71 transitive dependency roots in
+  this checkout's own case) essentially never exist at that same absolute path on a different machine or a
+  fresh environment (a different developer's checkout location, a CI runner, a Docker image). `npm install`
+  there failed to resolve those specs (`ENOENT`/`ENOTDIR` on the `file:` target), because the specs
+  themselves -- not just the transient install-time state -- were what got persisted. This was the one
+  genuinely confirmed portability gap at the base SHA: real, reproducible from the source alone, and not
+  previously documented anywhere in this repository before this step's first round. **The correction below
+  removes this gap for the persisted files themselves**: `package.json`/`package-lock.json` no longer carry
+  any `file:`/absolute-path state once install settles, so copying them (without `node_modules`) to another
+  machine no longer fails on a stale local path. A copy still needs either `node_modules` to travel with it,
+  a real `pokie` installation from the registry (once published), or a fresh `pokie init`/wrapped
+  `npm install` re-run against a local `pokie` checkout to resolve an unpublished version offline -- that
+  remaining requirement is inherent to resolving an unpublished package with no network access, not a
+  regression the correction leaves behind, and is exactly what
+  `tests/packaging/npmPackSmoke.test.ts`'s new copy-without-`node_modules` reinstall test (`439af56`)
+  exercises.
+- **Offline local development** (the mechanism's own stated purpose): confirmed working as intended, both
+  at the base SHA and since -- this is exactly what the mechanism, and its dedicated test coverage
   (`tests/cli/prepare/PackageCommandRunner.test.ts`, `tests/testUtils/offlinePokieDependencyOverride.ts`),
-  already exist to guarantee, and is not in question.
+  exist to guarantee, and is not in question.
 
-**Why this can't simply be "fixed" by reverting `package.json` to the portable spec after install
-completes**, the naive reading of "separate ephemeral install-time resolution from the persisted
-dependency": doing that would make a *plain, manual* `npm install` retry in the same generated package, on
-the very same machine, try to resolve `pokie`'s now-portable `"^<version>"` spec from the registry --
-which fails offline for a genuinely unpublished version, breaking the exact "keeping unpublished offline
-local development viable" guarantee the acceptance criteria itself protects, and contradicting all three
-already-committed test files in the table above. There is no `file:`-based mechanism that can be
-simultaneously (a) resolvable from a bare `package.json` with no network access to an unpublished package,
-and (b) portable to a machine that doesn't already have a copy of that package somewhere on disk --  that
-tension is intrinsic to how npm's own `file:` specifier works, not a defect specific to this codebase.
+**Why the correction doesn't break offline retries.** The concern the base-SHA finding raised against a
+naive "just revert `package.json` after install" fix was that a *plain, manual* `npm install` retry in the
+same generated package, on the same machine, would try to resolve `pokie`'s now-portable `"^<version>"`
+spec from the registry -- which fails offline for a genuinely unpublished version. The correction avoids
+that failure mode not by leaving the `file:` rewrite in place, but because every real retry path
+(`pokie init`'s own retry, `GamePackagePreparer`'s dependencies phase) goes back through
+`withLocalPokieInstall` itself, which re-derives the local `file:` rewrite fresh from whatever's on disk
+before every wrapped `npm install` call and restores the portable spec again once that call settles --
+see `withLocalPokieInstall`'s own doc comment in `cli/prepare/PackageCommandRunner.ts` for the current,
+detailed statement of this. The one path this still doesn't cover -- a bare, un-wrapped `npm install` run
+directly against the persisted `package.json`/`package-lock.json` outside of `pokie init`/the wrapper (e.g.
+after deleting `node_modules` by hand) -- reads the portable version range like any other npm dependency
+and needs `pokie` to actually be resolvable there (published, or re-resolved by re-running `pokie init`);
+this is now the documented, current behavior in the generated `README.md`'s "Moving or copying this
+package" section (`renderPackageReadme.ts`), not an unresolved portability gap.
 
 **A genuine, useful contrast: `pokie build --target tsPackage` (`src/generated/GamePackageGenerator.ts`)
 is fully portable already**, and never goes through any of the above. It writes `package.json` via the
@@ -151,48 +167,56 @@ choice specific to that one command's own "install it right now, offline, from w
 be running" contract -- not an unavoidable property of every canonical generated package in this
 repository.
 
-## The fix landed this round
+## The correction landed since the base SHA
 
-Given the above, a behavioral change to the mechanism itself is out of scope for this round (the step's
-own instruction frames this explicitly as auditing *before* changing dependency materialization, and any
-such change would need to be verified against real `npm install` runs this sandbox cannot perform). What
-*is* both safe and directly responsive to "separate ephemeral... from... persisted" is making that
-distinction visible at the two places a real `pokie init` user would actually need it, since neither said
-anything about it before this round:
+The base SHA's own first round (`0be705f`, whose transcript is [`04-portability-note-fix-transcript.txt`](04-portability-note-fix-transcript.txt))
+took a documentation-only approach instead: a new "Moving or copying this package" section in the generated
+README, plus an `InitCommand.printPrepared()` warning (`warnIfLocalPokieDependency()`) that printed the
+persisted `file:` path back to the user. Reviewer correction identified that approach as insufficient --
+the underlying persistence itself was fixable without breaking offline/unpublished local development, since
+every real retry path already goes back through the same wrapper (see below). Two follow-up rounds replaced
+it with an actual behavioral fix to the mechanism, and **removed** `warnIfLocalPokieDependency()` entirely
+(there is no dependency-portability warning in `InitCommand.ts` anymore, since there is no longer a
+host-specific dependency left to warn about):
 
-- **`cli/scaffold/renderPackageReadme.ts`**: a new "Moving or copying this package" section in the
-  generated `README.md` every `pokie init` package already gets, explaining the `file:` spec, why it's
-  there, and exactly what does/doesn't survive a move or copy.
-- **`cli/commands/InitCommand.ts`**: a new `warnIfLocalPokieDependency()`, called from the existing
-  `printPrepared()` success path, reads the persisted `package.json` right back and prints an explicit
-  `Note:` -- with the *real* resolved path, not a canned string -- whenever the dependency it just wrote
-  is in fact a `file:` spec (i.e., every real invocation today, given the unconditional wiring above; a
-  no-op the moment the mechanism ever changes, since it reads the actual written value rather than
-  assuming). Points at the generated README.md for the full explanation.
-- **`cli/prepare/PackageCommandRunner.ts`**: `withLocalPokieInstall`'s own doc comment now states the
-  trade-off explicitly (never reverted, why, and what it costs) next to the pre-existing "why this exists"
-  rationale, and cross-references `renderBuiltPackageLock.ts`'s contrasting `pokie build` behavior for a
-  future reader who wonders why the two commands differ.
+- **`5436387`** -- `withLocalPokieInstall` (`cli/prepare/PackageCommandRunner.ts`) now writes the `file:`
+  rewrite to `package.json` immediately before the wrapped `npm install` call, then restores the original
+  file content in a `finally` block once that call settles, success or failure alike. The wrapped `npm
+  install` still resolves `"pokie"` (and its runtime closure, via `overrides`) against the running
+  installation, but only for the duration of that one call; the persisted `package.json` afterward is
+  exactly what it was before, i.e. a portable version range. `cli/scaffold/renderPackageReadme.ts`'s generated "Moving or copying this
+  package" section was rewritten to describe this transient-resolution behavior accurately instead of the
+  old "never reverted" framing.
+- **`439af56`** -- a real `npm install` against the transient `file:` rewrite still resolves it as a
+  symlink and records that in `package-lock.json` as a `"link": true` entry (plus a second, path-keyed
+  metadata entry) -- restoring `package.json` alone left those host-specific lockfile entries behind.
+  `restorePersistedPackageLock` (`PackageCommandRunner.ts`) now strips exactly those entries -- by name,
+  via the same set of tainted closure names used for the `package.json` rewrite -- once a successful
+  install settles, leaving every other, genuinely portable lockfile entry (ordinary registry-resolved
+  dependencies) untouched. A project with no lockfile at all (`package-lock=false`) is left as-is.
 
-Verified with a real, unmocked reproduction (recording double standing in for `npm`, not a real npm
-process -- same constraint as the mechanism transcript above): a scaffold whose merger persists a `file:`
-`pokie` dependency prints the new `Note:` line with the real path and points at `README.md`; a scaffold
-whose merger persists an already-portable semver spec prints nothing extra. Full transcript:
-[`04-portability-note-fix-transcript.txt`](04-portability-note-fix-transcript.txt).
+**Verified in this sandbox**, with real `node_modules/.bin/jest` (the project's own `npm` wrapper being
+unusable even for a single named test file -- see the environment blocker above):
+`tests/cli/prepare/PackageCommandRunner.test.ts` -- 12/12 passing, covering both the `package.json`
+restore-on-success/restore-on-failure behavior and, in a new `describe("normalizing package-lock.json...")`
+block, the lockfile-stripping logic directly: stripping the `pokie` link entry and its target metadata,
+stripping a closure override's link entry (e.g. `commander`) by name, leaving an unrelated pre-existing
+link entry untouched, and leaving package-lock.json alone entirely when the wrapped install never produced
+one.
 
-Regression coverage: the full pre-existing `InitCommand.test.ts` (27/27), `PackageCommandRunner.test.ts`
-(7/7), `GamePackagePreparer.test.ts`, `GamePackageMerger.test.ts`, `GamePackageCreator.test.ts`,
-`withLocalPokieDependency.test.ts`, and `BlueprintProjectMaterializer.test.ts` all still pass unchanged
-(71 + 49 tests across the two runs below, no assertions touched) -- none of them assert on
-`printPrepared()`'s exact stdout (only `.toContain(...)` checks), so the new note is additive, not a
-behavior change to anything already covered. `npm run typecheck` (via a direct `tsc` invocation, since the
-project's own `npm` wrapper is broken for every invocation in this sandbox -- see above) and
-`eslint` against the three touched files both ran clean.
+**Not verified live in this sandbox** (same broken-`npm`-wrapper blocker as above, affecting every `npm`
+invocation including `npm run typecheck`): `tests/cli/InitCommandWorkflow.integration.test.ts` (npm-link)
+and `tests/packaging/npmPackSmoke.test.ts` (npm-pack install, real tarball) were both extended by `5436387`
+and `439af56` to assert the corrected, portable persisted shape (`pkg.dependencies?.pokie` no longer
+matching `file:`, `package-lock.json` containing no `node_modules/pokie` link entry or host-specific path)
+and, in `439af56`, to copy a generated package without `node_modules` and drive a real, independent `npm
+install` against only the persisted `package.json`/`package-lock.json`, proving it resolves `"pokie"` fresh
+through the portable metadata alone. These remain source-level evidence -- real, already-committed test
+files with real assertions against real npm, not re-derived or assumed -- for the forms this sandbox's
+broken npm wrapper cannot execute, consistent with this campaign's own protocol for a reproduced, honestly
+recorded blocker.
 
-Out of scope, left as-is: the underlying `file:`-persistence mechanism itself, on all three grounds above
-(it's intentional and multiply-tested; a true fix is provably impossible without either publishing `pokie`
-or a materially larger vendoring change; and this step's own instruction scopes the actual materialization
-change to a later step). `pokie build --target tsPackage` needed no change (already portable). The
+Out of scope, left as-is: `pokie build --target tsPackage` needed no change (already portable). The
 `overrides` block's own necessity/size (71 entries in this checkout) is real and load-bearing (keeps
 `pokie`'s own transitive deps from ever needing the registry either, deliberately, per
 `localPokieDependencyClosure.ts`'s own doc comment) -- narrowing it is a materialization change, not an
