@@ -66,6 +66,21 @@ function withLocalPokieDependencyClosure(pkg: PackageJsonLike, pokiePackageRoot:
 // "install" invocations are touched -- any other npm subcommand (e.g. "run build") passes straight
 // through untouched, since the package.json rewrite only ever matters immediately before dependency
 // resolution.
+//
+// This rewrite is never reverted afterward: the `file:` spec it writes is what's left on disk as the
+// package's own canonical, persisted "pokie"/overrides entries (InitCommand never restores
+// buildPackageJsonPatch's own portable "^<version>" spec once install has run). That's the deliberate
+// trade-off, not an oversight -- it's what lets a staged/generated package's later "npm install" retries
+// keep working offline on this exact machine without ever needing a registry for a possibly-unpublished
+// "pokie". The cost: those same `file:` specs are absolute, host-specific paths, so a package this wrote
+// into is only portable to another machine/environment if node_modules travels with it (no reinstall
+// needed there) or a matching "pokie" install already exists at that same absolute path there -- see
+// InitCommand's own warnIfLocalPokieDependency() and renderPackageReadme.ts's "Moving or copying this
+// package" section, which is where that trade-off is actually surfaced to the person running "pokie
+// init". "pokie build" (GamePackageGenerator) never goes through this function at all and stays fully
+// portable instead (see renderBuiltPackageLock.ts) -- it doesn't run "npm install" itself, so it never
+// needs a local override in the first place, at the cost of leaving `node_modules/pokie` for its own
+// generated `require("pokie")` up to the caller.
 export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
     return (command, args, cwd) => {
         if (args[0] !== "install") {

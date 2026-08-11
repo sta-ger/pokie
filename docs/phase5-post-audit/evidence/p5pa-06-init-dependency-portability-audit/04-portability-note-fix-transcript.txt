@@ -1,0 +1,28 @@
+Running one project: pokie
+  console.log
+    PRINTED OUTPUT:
+      created  package.json
+    
+    Game package "Sample Slot" (id: "sample-slot") prepared and verified in "/tmp/p5pa06-warn-scratch-GFnBe9/sample-slot".
+    Load it anywhere with: loadPokieGame("/tmp/p5pa06-warn-scratch-GFnBe9/sample-slot") from "pokie".
+    
+    Note: "pokie" is not yet published, so this package's own "pokie" dependency points at this machine's installation ("file:/workspace"). It'll keep working here, but copying this package to another machine/environment and running "npm install" there from scratch won't, unless node_modules comes along with it -- see this package's own README.md.
+    
+    Next:
+      pokie validate /tmp/p5pa06-warn-scratch-GFnBe9/sample-slot
+      pokie sim /tmp/p5pa06-warn-scratch-GFnBe9/sample-slot --rounds 10000 --seed demo --out sim.json
+      pokie dev /tmp/p5pa06-warn-scratch-GFnBe9/sample-slot
+      npm start
+
+      at tests/cli/__p5pa06_warn_scratch__.test.ts:55:17
+
+PASS pokie tests/cli/__p5pa06_warn_scratch__.test.ts
+  P5PA-06 scratch: InitCommand.printPrepared's new local-pokie-dependency note
+    ✓ prints the portability note when the persisted package.json's pokie dependency is a file: spec (37 ms)
+    ✓ prints nothing extra when the persisted package.json's pokie dependency is already portable (2 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Time:        2.005 s
+Ran all test suites matching /tests\/cli\/__p5pa06_warn_scratch__.test.ts/i.

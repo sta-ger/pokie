@@ -1,0 +1,139 @@
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+FAIL pokie-integration tests/cli/InitCommandWorkflow.integration.test.ts
+  ● CLI workflow (integration): pokie init (in-place, non-interactive) produces a package that validates/sims/reports › merges/installs/builds/verifies an empty directory (with a space in its path) into a ready package.json/package-lock.json/tsconfig.json/README.md/src/index.ts/dist/index.js, then validates, simulates, and reports on it
+
+    Command failed: npm run build-test-runtime
+
+      71 |                 // A previous owner can finish between our initial exists check and lock acquisition.
+      72 |                 if (!outputsExist()) {
+    > 73 |                     execFileSync(command[0], [...command.slice(1)], {cwd: repositoryRoot, stdio: "inherit"});
+         |                                 ^
+      74 |                 }
+      75 |             } finally {
+      76 |                 fs.rmSync(lockDirectory, {recursive: true, force: true});
+
+      at ensureCompiledTestOutput (tests/testUtils/ensureCompiledTestOutput.ts:73:33)
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:32:33)
+
+  ● CLI workflow (integration): pokie init (in-place, non-interactive) produces a package that validates/sims/reports › merges/installs/builds/verifies an empty directory (with a space in its path) into a ready package.json/package-lock.json/tsconfig.json/README.md/src/index.ts/dist/index.js, then validates, simulates, and reports on it
+
+    TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined
+
+      49 |
+      50 |     afterEach(() => {
+    > 51 |         fs.rmSync(workDir, {recursive: true, force: true});
+         |            ^
+      52 |         (console.log as jest.Mock).mockRestore();
+      53 |         (console.error as jest.Mock).mockRestore();
+      54 |     });
+
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:51:12)
+
+  ● CLI workflow (integration): pokie init (in-place, non-interactive) produces a package that validates/sims/reports › merges into an existing, non-empty npm project only with --yes, preserving its own unrelated package.json fields
+
+    Command failed: npm run build-test-runtime
+
+      71 |                 // A previous owner can finish between our initial exists check and lock acquisition.
+      72 |                 if (!outputsExist()) {
+    > 73 |                     execFileSync(command[0], [...command.slice(1)], {cwd: repositoryRoot, stdio: "inherit"});
+         |                                 ^
+      74 |                 }
+      75 |             } finally {
+      76 |                 fs.rmSync(lockDirectory, {recursive: true, force: true});
+
+      at ensureCompiledTestOutput (tests/testUtils/ensureCompiledTestOutput.ts:73:33)
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:32:33)
+
+  ● CLI workflow (integration): pokie init (in-place, non-interactive) produces a package that validates/sims/reports › merges into an existing, non-empty npm project only with --yes, preserving its own unrelated package.json fields
+
+    TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined
+
+      49 |
+      50 |     afterEach(() => {
+    > 51 |         fs.rmSync(workDir, {recursive: true, force: true});
+         |            ^
+      52 |         (console.log as jest.Mock).mockRestore();
+      53 |         (console.error as jest.Mock).mockRestore();
+      54 |     });
+
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:51:12)
+
+  ● CLI workflow (integration): pokie init (in-place, non-interactive) produces a package that validates/sims/reports › reports a real `npm run build` failure as an actionable, retryable 'build' error, then succeeds on retry once the source is fixed
+
+    Command failed: npm run build-test-runtime
+
+      71 |                 // A previous owner can finish between our initial exists check and lock acquisition.
+      72 |                 if (!outputsExist()) {
+    > 73 |                     execFileSync(command[0], [...command.slice(1)], {cwd: repositoryRoot, stdio: "inherit"});
+         |                                 ^
+      74 |                 }
+      75 |             } finally {
+      76 |                 fs.rmSync(lockDirectory, {recursive: true, force: true});
+
+      at ensureCompiledTestOutput (tests/testUtils/ensureCompiledTestOutput.ts:73:33)
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:32:33)
+
+  ● CLI workflow (integration): pokie init (in-place, non-interactive) produces a package that validates/sims/reports › reports a real `npm run build` failure as an actionable, retryable 'build' error, then succeeds on retry once the source is fixed
+
+    TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined
+
+      49 |
+      50 |     afterEach(() => {
+    > 51 |         fs.rmSync(workDir, {recursive: true, force: true});
+         |            ^
+      52 |         (console.log as jest.Mock).mockRestore();
+      53 |         (console.error as jest.Mock).mockRestore();
+      54 |     });
+
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:51:12)
+
+  ● CLI workflow (integration): pokie init resolves "pokie" through the real production wiring mechanism, from a real npm-linked installation › scaffolds/installs/builds an in-place package whose "pokie" dependency resolves to the real npm-linked root, producing a genuinely loadable runtime
+
+    Command failed: npm run build-test-runtime
+
+      71 |                 // A previous owner can finish between our initial exists check and lock acquisition.
+      72 |                 if (!outputsExist()) {
+    > 73 |                     execFileSync(command[0], [...command.slice(1)], {cwd: repositoryRoot, stdio: "inherit"});
+         |                                 ^
+      74 |                 }
+      75 |             } finally {
+      76 |                 fs.rmSync(lockDirectory, {recursive: true, force: true});
+
+      at ensureCompiledTestOutput (tests/testUtils/ensureCompiledTestOutput.ts:73:33)
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:189:33)
+
+  ● CLI workflow (integration): pokie init resolves "pokie" through the real production wiring mechanism, from a real npm-linked installation › scaffolds/installs/builds an in-place package whose "pokie" dependency resolves to the real npm-linked root, producing a genuinely loadable runtime
+
+    TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined
+
+      224 |
+      225 |     afterEach(() => {
+    > 226 |         fs.rmSync(workDir, {recursive: true, force: true});
+          |            ^
+      227 |         (console.log as jest.Mock).mockRestore();
+      228 |         (console.error as jest.Mock).mockRestore();
+      229 |     });
+
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:226:12)
+
+
+  ● Test suite failed to run
+
+    TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined
+
+      213 |
+      214 |     afterAll(() => {
+    > 215 |         fs.rmSync(linkInstallDir, {recursive: true, force: true});
+          |            ^
+      216 |         fs.rmSync(linkNpmPrefix, {recursive: true, force: true});
+      217 |     });
+      218 |
+
+      at Object.<anonymous> (tests/cli/InitCommandWorkflow.integration.test.ts:215:12)
+
+Test Suites: 1 failed, 1 total
+Tests:       4 failed, 4 total
+Snapshots:   0 total
+Time:        1.898 s, estimated 9 s
+Ran all test suites matching /tests\/cli\/InitCommandWorkflow.integration.test.ts/i.

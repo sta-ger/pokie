@@ -1,0 +1,364 @@
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+FAIL pokie-packaging tests/packaging/npmPackSmoke.test.ts (8.814 s)
+  npm pack smoke test (real tarball, real npm install, real spawned pokie binary)
+    ✕ runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API (2 ms)
+    ✕ runs `pokie . --no-open` (Project mode) against a non-package directory: starts cleanly, reports an error dashboard, never crashes
+    ✕ imports ParallelSimulationRunner from the installed "pokie" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads
+    ✕ prints the general usage and the full command list for `pokie --help`, exiting 0
+    ✕ prints the general usage and the full command list for `pokie -h`, exiting 0
+    ✕ `pokie --version` has no dedicated top-level flag today: falls through to Studio's own unknown-option error, exiting 1 (1 ms)
+    ✕ `pokie <unrecognized command>` prints the same usage/command list as --help, but exits 1
+    ✕ `pokie name --json` prints machine-readable JSON from the real installed binary, distinct from its human-readable default
+    ✕ `pokie name --count 0` rejects an invalid option value with a non-zero exit and a stderr-only message
+    ✕ scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded "pokie" dependency resolves against this exact installed binary's own root (never the registry, never a manual rewrite), then validates and simulates it
+    ✕ runs `pokie outcomelibrary generate` against a package built by the installed binary itself, then bundles and validates the result
+    ✕ `npm pack`s a package built by the installed binary itself: ships the canonical runtime/source files, nothing from the pre-migration build-info/blueprint/src-generated format
+    Studio startup target
+      ✕ `pokie` inside a project opens that project
+      ✕ `pokie` from a nested directory inside a project still opens that project (1 ms)
+      ✕ `pokie` outside any project opens Home
+      ✕ an explicit `pokie studio` opens Home even from inside a project
+      ✕ `pokie .` opens the project it was pointed at
+      ✕ `pokie studio <path>` opens the project it was pointed at
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › runs `pokie . --no-open` (Project mode) against a non-package directory: starts cleanly, reports an error dashboard, never crashes
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › imports ParallelSimulationRunner from the installed "pokie" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie` inside a project opens that project
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie` inside a project opens that project
+
+    TypeError: The "file" argument must be of type string. Received undefined
+
+      221 |
+      222 |         beforeAll(() => {
+    > 223 |             const create = spawnSync(
+          |                                     ^
+      224 |                 pokieBinPath,
+      225 |                 ["create", "--random", "--seed", "4242", "--out", "./startup-project.blueprint.json"],
+      226 |                 {cwd: installDir, encoding: "utf-8", timeout: 120000},
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:223:37)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie` from a nested directory inside a project still opens that project
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie` from a nested directory inside a project still opens that project
+
+    TypeError: The "file" argument must be of type string. Received undefined
+
+      221 |
+      222 |         beforeAll(() => {
+    > 223 |             const create = spawnSync(
+          |                                     ^
+      224 |                 pokieBinPath,
+      225 |                 ["create", "--random", "--seed", "4242", "--out", "./startup-project.blueprint.json"],
+      226 |                 {cwd: installDir, encoding: "utf-8", timeout: 120000},
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:223:37)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie` outside any project opens Home
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie` outside any project opens Home
+
+    TypeError: The "file" argument must be of type string. Received undefined
+
+      221 |
+      222 |         beforeAll(() => {
+    > 223 |             const create = spawnSync(
+          |                                     ^
+      224 |                 pokieBinPath,
+      225 |                 ["create", "--random", "--seed", "4242", "--out", "./startup-project.blueprint.json"],
+      226 |                 {cwd: installDir, encoding: "utf-8", timeout: 120000},
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:223:37)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › an explicit `pokie studio` opens Home even from inside a project
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › an explicit `pokie studio` opens Home even from inside a project
+
+    TypeError: The "file" argument must be of type string. Received undefined
+
+      221 |
+      222 |         beforeAll(() => {
+    > 223 |             const create = spawnSync(
+          |                                     ^
+      224 |                 pokieBinPath,
+      225 |                 ["create", "--random", "--seed", "4242", "--out", "./startup-project.blueprint.json"],
+      226 |                 {cwd: installDir, encoding: "utf-8", timeout: 120000},
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:223:37)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie .` opens the project it was pointed at
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie .` opens the project it was pointed at
+
+    TypeError: The "file" argument must be of type string. Received undefined
+
+      221 |
+      222 |         beforeAll(() => {
+    > 223 |             const create = spawnSync(
+          |                                     ^
+      224 |                 pokieBinPath,
+      225 |                 ["create", "--random", "--seed", "4242", "--out", "./startup-project.blueprint.json"],
+      226 |                 {cwd: installDir, encoding: "utf-8", timeout: 120000},
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:223:37)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie studio <path>` opens the project it was pointed at
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › Studio startup target › `pokie studio <path>` opens the project it was pointed at
+
+    TypeError: The "file" argument must be of type string. Received undefined
+
+      221 |
+      222 |         beforeAll(() => {
+    > 223 |             const create = spawnSync(
+          |                                     ^
+      224 |                 pokieBinPath,
+      225 |                 ["create", "--random", "--seed", "4242", "--out", "./startup-project.blueprint.json"],
+      226 |                 {cwd: installDir, encoding: "utf-8", timeout: 120000},
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:223:37)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › prints the general usage and the full command list for `pokie --help`, exiting 0
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › prints the general usage and the full command list for `pokie -h`, exiting 0
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › `pokie --version` has no dedicated top-level flag today: falls through to Studio's own unknown-option error, exiting 1
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › `pokie <unrecognized command>` prints the same usage/command list as --help, but exits 1
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › `pokie name --json` prints machine-readable JSON from the real installed binary, distinct from its human-readable default
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › `pokie name --count 0` rejects an invalid option value with a non-zero exit and a stderr-only message
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded "pokie" dependency resolves against this exact installed binary's own root (never the registry, never a manual rewrite), then validates and simulates it
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › runs `pokie outcomelibrary generate` against a package built by the installed binary itself, then bundles and validates the result
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+  ● npm pack smoke test (real tarball, real npm install, real spawned pokie binary) › `npm pack`s a package built by the installed binary itself: ships the canonical runtime/source files, nothing from the pre-migration build-info/blueprint/src-generated format
+
+    Command failed: npm run build
+
+      68 |         // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
+      69 |         // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+    > 70 |         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
+         |                     ^
+      71 |         const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
+      72 |         const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
+      73 |         tarballPath = path.join(REPO_ROOT, filename);
+
+      at Object.<anonymous> (tests/packaging/npmPackSmoke.test.ts:70:21)
+
+Test Suites: 1 failed, 1 total
+Tests:       18 failed, 18 total
+Snapshots:   0 total
+Time:        9.18 s
+Ran all test suites matching /tests\/packaging\/npmPackSmoke.test.ts/i.

@@ -1,0 +1,228 @@
+  console.log
+    PACKAGE.JSON immediately after GamePackageMerger.merge() (pre-install, portable): {
+      "pokie": "^1.3.0"
+    }
+
+      at Object.<anonymous> (tests/cli/__p5pa06_audit_scratch__.test.ts:35:17)
+
+  console.log
+      created  package.json
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  tsconfig.json
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  README.md
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+      created  src/index.ts
+
+      at InitCommand.<anonymous> (cli/commands/InitCommand.ts:215:21)
+
+  console.log
+    THREW (verify phase, expected -- faked dist/index.js is not a real build): Prepared package "/tmp/p5pa06-scratch-h3aBnO/sample-slot" is not a valid POKIE game:
+      - pokie-game-missing-contract-methods: The loaded export does not implement the PokieGame contract (missing getManifest()/createSession()).
+    If this is a missing/stale build, run "npm run build" in "/tmp/p5pa06-scratch-h3aBnO/sample-slot" so "dist/index.js" matches the current source, then re-run "pokie init /tmp/p5pa06-scratch-h3aBnO/sample-slot".
+
+      at tests/cli/__p5pa06_audit_scratch__.test.ts:93:17
+          at Generator.throw (<anonymous>)
+
+  console.log
+    CALLS (in order): [ 'install', 'run build' ]
+
+      at tests/cli/__p5pa06_audit_scratch__.test.ts:94:17
+          at Generator.throw (<anonymous>)
+
+  console.log
+    PACKAGE.JSON on disk AFTER withLocalPokieInstall's install-time rewrite (persisted, host-specific): {
+      "name": "sample-slot",
+      "version": "0.1.0",
+      "main": "./dist/index.js",
+      "exports": "./dist/index.js",
+      "scripts": {
+        "build": "tsc",
+        "start": "pokie dev .",
+        "server": "pokie serve .",
+        "client": "pokie client ."
+      },
+      "dependencies": {
+        "pokie": "file:/workspace"
+      },
+      "devDependencies": {
+        "typescript": "^5.0.4"
+      },
+      "pokie": {
+        "entry": "./dist/index.js"
+      },
+      "overrides": {
+        "commander": "file:/workspace/node_modules/commander",
+        "exceljs": "file:/workspace/node_modules/exceljs",
+        "archiver": "file:/workspace/node_modules/archiver",
+        "dayjs": "file:/workspace/node_modules/dayjs",
+        "fast-csv": "file:/workspace/node_modules/fast-csv",
+        "jszip": "file:/workspace/node_modules/jszip",
+        "readable-stream": "file:/workspace/node_modules/readable-stream",
+        "saxes": "file:/workspace/node_modules/saxes",
+        "tmp": "file:/workspace/node_modules/tmp",
+        "unzipper": "file:/workspace/node_modules/unzipper",
+        "uuid": "file:/workspace/node_modules/uuid",
+        "archiver-utils": "file:/workspace/node_modules/archiver-utils",
+        "async": "file:/workspace/node_modules/async",
+        "buffer-crc32": "file:/workspace/node_modules/buffer-crc32",
+        "readdir-glob": "file:/workspace/node_modules/readdir-glob",
+        "tar-stream": "file:/workspace/node_modules/tar-stream",
+        "zip-stream": "file:/workspace/node_modules/zip-stream",
+        "@fast-csv/format": "file:/workspace/node_modules/@fast-csv/format",
+        "@fast-csv/parse": "file:/workspace/node_modules/@fast-csv/parse",
+        "lie": "file:/workspace/node_modules/lie",
+        "pako": "file:/workspace/node_modules/pako",
+        "setimmediate": "file:/workspace/node_modules/setimmediate",
+        "inherits": "file:/workspace/node_modules/inherits",
+        "util-deprecate": "file:/workspace/node_modules/util-deprecate",
+        "xmlchars": "file:/workspace/node_modules/xmlchars",
+        "big-integer": "file:/workspace/node_modules/big-integer",
+        "binary": "file:/workspace/node_modules/binary",
+        "bluebird": "file:/workspace/node_modules/bluebird",
+        "buffer-indexof-polyfill": "file:/workspace/node_modules/buffer-indexof-polyfill",
+        "duplexer2": "file:/workspace/node_modules/duplexer2",
+        "fstream": "file:/workspace/node_modules/fstream",
+        "graceful-fs": "file:/workspace/node_modules/graceful-fs",
+        "listenercount": "file:/workspace/node_modules/listenercount",
+        "glob": "file:/workspace/node_modules/glob",
+        "lazystream": "file:/workspace/node_modules/lazystream",
+        "lodash.defaults": "file:/workspace/node_modules/lodash.defaults",
+        "lodash.difference": "file:/workspace/node_modules/lodash.difference",
+        "lodash.flatten": "file:/workspace/node_modules/lodash.flatten",
+        "lodash.isplainobject": "file:/workspace/node_modules/lodash.isplainobject",
+        "lodash.union": "file:/workspace/node_modules/lodash.union",
+        "normalize-path": "file:/workspace/node_modules/normalize-path",
+        "minimatch": "file:/workspace/node_modules/minimatch",
+        "bl": "file:/workspace/node_modules/bl",
+        "end-of-stream": "file:/workspace/node_modules/end-of-stream",
+        "fs-constants": "file:/workspace/node_modules/fs-constants",
+        "compress-commons": "file:/workspace/node_modules/compress-commons",
+        "lodash.escaperegexp": "file:/workspace/node_modules/lodash.escaperegexp",
+        "lodash.isboolean": "file:/workspace/node_modules/lodash.isboolean",
+        "lodash.isequal": "file:/workspace/node_modules/lodash.isequal",
+        "lodash.isfunction": "file:/workspace/node_modules/lodash.isfunction",
+        "lodash.isnil": "file:/workspace/node_modules/lodash.isnil",
+        "lodash.groupby": "file:/workspace/node_modules/lodash.groupby",
+        "lodash.isundefined": "file:/workspace/node_modules/lodash.isundefined",
+        "lodash.uniq": "file:/workspace/node_modules/lodash.uniq",
+        "immediate": "file:/workspace/node_modules/immediate",
+        "chainsaw": "file:/workspace/node_modules/chainsaw",
+        "buffers": "file:/workspace/node_modules/buffers",
+        "mkdirp": "file:/workspace/node_modules/mkdirp",
+        "rimraf": "file:/workspace/node_modules/rimraf",
+        "fs.realpath": "file:/workspace/node_modules/fs.realpath",
+        "inflight": "file:/workspace/node_modules/inflight",
+        "once": "file:/workspace/node_modules/once",
+        "path-is-absolute": "file:/workspace/node_modules/path-is-absolute",
+        "brace-expansion": "file:/workspace/node_modules/brace-expansion",
+        "crc32-stream": "file:/workspace/node_modules/crc32-stream",
+        "traverse": "file:/workspace/node_modules/traverse",
+        "minimist": "file:/workspace/node_modules/minimist",
+        "wrappy": "file:/workspace/node_modules/wrappy",
+        "balanced-match": "file:/workspace/node_modules/balanced-match",
+        "concat-map": "file:/workspace/node_modules/concat-map",
+        "crc-32": "file:/workspace/node_modules/crc-32"
+      }
+    }
+
+      at tests/cli/__p5pa06_audit_scratch__.test.ts:95:17
+          at Generator.throw (<anonymous>)
+
+  console.log
+    REAL runtime dependency closure resolved from /workspace (71 packages): [
+      'commander -> /workspace/node_modules/commander',
+      'exceljs -> /workspace/node_modules/exceljs',
+      'archiver -> /workspace/node_modules/archiver',
+      'dayjs -> /workspace/node_modules/dayjs',
+      'fast-csv -> /workspace/node_modules/fast-csv',
+      'jszip -> /workspace/node_modules/jszip',
+      'readable-stream -> /workspace/node_modules/readable-stream',
+      'saxes -> /workspace/node_modules/saxes',
+      'tmp -> /workspace/node_modules/tmp',
+      'unzipper -> /workspace/node_modules/unzipper',
+      'uuid -> /workspace/node_modules/uuid',
+      'archiver-utils -> /workspace/node_modules/archiver-utils',
+      'async -> /workspace/node_modules/async',
+      'buffer-crc32 -> /workspace/node_modules/buffer-crc32',
+      'readdir-glob -> /workspace/node_modules/readdir-glob',
+      'tar-stream -> /workspace/node_modules/tar-stream',
+      'zip-stream -> /workspace/node_modules/zip-stream',
+      '@fast-csv/format -> /workspace/node_modules/@fast-csv/format',
+      '@fast-csv/parse -> /workspace/node_modules/@fast-csv/parse',
+      'lie -> /workspace/node_modules/lie',
+      'pako -> /workspace/node_modules/pako',
+      'setimmediate -> /workspace/node_modules/setimmediate',
+      'inherits -> /workspace/node_modules/inherits',
+      'util-deprecate -> /workspace/node_modules/util-deprecate',
+      'xmlchars -> /workspace/node_modules/xmlchars',
+      'big-integer -> /workspace/node_modules/big-integer',
+      'binary -> /workspace/node_modules/binary',
+      'bluebird -> /workspace/node_modules/bluebird',
+      'buffer-indexof-polyfill -> /workspace/node_modules/buffer-indexof-polyfill',
+      'duplexer2 -> /workspace/node_modules/duplexer2',
+      'fstream -> /workspace/node_modules/fstream',
+      'graceful-fs -> /workspace/node_modules/graceful-fs',
+      'listenercount -> /workspace/node_modules/listenercount',
+      'glob -> /workspace/node_modules/glob',
+      'lazystream -> /workspace/node_modules/lazystream',
+      'lodash.defaults -> /workspace/node_modules/lodash.defaults',
+      'lodash.difference -> /workspace/node_modules/lodash.difference',
+      'lodash.flatten -> /workspace/node_modules/lodash.flatten',
+      'lodash.isplainobject -> /workspace/node_modules/lodash.isplainobject',
+      'lodash.union -> /workspace/node_modules/lodash.union',
+      'normalize-path -> /workspace/node_modules/normalize-path',
+      'minimatch -> /workspace/node_modules/minimatch',
+      'bl -> /workspace/node_modules/bl',
+      'end-of-stream -> /workspace/node_modules/end-of-stream',
+      'fs-constants -> /workspace/node_modules/fs-constants',
+      'compress-commons -> /workspace/node_modules/compress-commons',
+      'lodash.escaperegexp -> /workspace/node_modules/lodash.escaperegexp',
+      'lodash.isboolean -> /workspace/node_modules/lodash.isboolean',
+      'lodash.isequal -> /workspace/node_modules/lodash.isequal',
+      'lodash.isfunction -> /workspace/node_modules/lodash.isfunction',
+      'lodash.isnil -> /workspace/node_modules/lodash.isnil',
+      'lodash.groupby -> /workspace/node_modules/lodash.groupby',
+      'lodash.isundefined -> /workspace/node_modules/lodash.isundefined',
+      'lodash.uniq -> /workspace/node_modules/lodash.uniq',
+      'immediate -> /workspace/node_modules/immediate',
+      'chainsaw -> /workspace/node_modules/chainsaw',
+      'buffers -> /workspace/node_modules/buffers',
+      'mkdirp -> /workspace/node_modules/mkdirp',
+      'rimraf -> /workspace/node_modules/rimraf',
+      'fs.realpath -> /workspace/node_modules/fs.realpath',
+      'inflight -> /workspace/node_modules/inflight',
+      'once -> /workspace/node_modules/once',
+      'path-is-absolute -> /workspace/node_modules/path-is-absolute',
+      'brace-expansion -> /workspace/node_modules/brace-expansion',
+      'crc32-stream -> /workspace/node_modules/crc32-stream',
+      'traverse -> /workspace/node_modules/traverse',
+      'minimist -> /workspace/node_modules/minimist',
+      'wrappy -> /workspace/node_modules/wrappy',
+      'balanced-match -> /workspace/node_modules/balanced-match',
+      'concat-map -> /workspace/node_modules/concat-map',
+      'crc-32 -> /workspace/node_modules/crc-32'
+    ]
+
+      at tests/cli/__p5pa06_audit_scratch__.test.ts:103:17
+          at Generator.throw (<anonymous>)
+
+PASS pokie tests/cli/__p5pa06_audit_scratch__.test.ts
+  P5PA-06 scratch: pokie init persisted dependency shape
+    ✓ phase 0: GamePackageMerger.merge() alone (before any install) writes a portable semver "pokie" dependency (36 ms)
+    ✓ captures the exact npm command sequence and the package.json AFTER each phase, without ever spawning real npm (66 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Time:        1.987 s, estimated 2 s
+Ran all test suites matching /tests\/cli\/__p5pa06_audit_scratch__.test.ts/i.
