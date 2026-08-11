@@ -1,0 +1,8 @@
+{
+  "packageRoot": "/tmp/p5pa-06-real-npm.GjHoyU/link-consumer/linked-init-project",
+  "pokieDependency": "^1.3.0",
+  "packageJsonContainsFileSpec": false,
+  "lockHasPokieLinkEntry": false,
+  "lockKeysWithAbsolutePath": [],
+  "packageCount": 2
+}

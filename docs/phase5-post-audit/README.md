@@ -579,3 +579,70 @@ defect.
 Out of scope, left as-is: `pokie-examples` itself needed no change (already correct); the generated-package
 `npm start`/`pokie dev`/`pokie client` minimal Spin-only player is a real, honestly-scoped preview surface, not
 a parity gap.
+
+## `P5PA-06` audit: `pokie init`'s original host-specific persisted dependency, and the correction landed since
+
+§3 #5 above (`P5PA-01`'s own freeze) classified `pokie init` portability **CONFIRMED P3** on a narrower
+question -- injection safety and a cosmetic mixed-path-separator error message
+(`GamePackageMergeConflictError.ts`). This step's own instruction asked a different, deeper question: does
+a *canonical, persisted* `pokie init` package carry a host-specific dependency, and is production local
+POKIE resolution actually portable across unpublished checkout, npm-pack install, npm-link, a future
+published npm install, moving the generated directory, copying it to another machine/environment, and
+offline local development? That question is independent of the P3 finding above and was audited fresh at
+this step's base SHA (`0be705f`) -- **CONFIRMED**, at severity **P2**: `pokie init`'s production wiring
+(`registerCliCommands.ts:66`) unconditionally routed every install through
+`withLocalPokieInstall(pokiePackageRoot)`, which rewrote the scaffolded package's `package.json` in place
+-- `"pokie"` to `file:<pokiePackageRoot>`, plus every name in `pokie`'s own real transitive runtime closure
+to `file:<that name's resolved root>` via `overrides` -- immediately before every `npm install`, and at
+that SHA never reverted it afterward, so the `file:` state was left as the canonical, persisted result.
+Copying the generated package to a different machine or environment and running `npm install` there from
+scratch genuinely failed unless `node_modules` traveled with it, a matching `pokie` install already existed
+at that exact absolute path there, or the spec was hand-replaced with a version range once `pokie` is
+published -- a real, reproducible gap that was not documented anywhere in this repository before this
+step's first round. By contrast, `pokie build --target tsPackage` (`GamePackageGenerator`) was already fully
+portable: it writes the same portable `"^<version>"` spec via `buildPackageJsonPatch` and a statically
+generated `package-lock.json` seed, and never runs `npm install` itself, so it never needed a local
+override.
+
+**The mechanism itself was corrected in two follow-up rounds, superseding the base-SHA finding above.**
+`withLocalPokieInstall` (`cli/prepare/PackageCommandRunner.ts`) now rewrites `package.json`'s `"pokie"`
+dependency and its runtime closure's `overrides` to `file:` specs only for the duration of the wrapped
+`npm install` call, then restores the original, portable `package.json` content once that call settles --
+success or failure alike (`5436387`). A real `npm install` against the transient `file:` rewrite still
+resolves those specs as symlinks and bakes the same absolute, host-specific paths into
+`package-lock.json` (npm records a `file:` resolution as a `"link": true` entry plus a second,
+path-keyed metadata entry); a further round normalizes that lockfile the same way once a successful
+install settles, stripping exactly those entries while leaving every other, genuinely portable lockfile
+entry untouched (`439af56`). Together, both `InitCommand`'s success wiring (`printPrepared()`, which does
+not print any dependency-portability warning) and `renderPackageReadme.ts`'s generated "Moving or copying
+this package" section now describe a `package.json`/`package-lock.json` pair that, once install completes,
+carries no host-specific path back to the machine it was installed on -- resolution against the running
+`pokie` installation happens only transiently, for that one install.
+
+Full source citations, the exact pre-/post-install `package.json` shapes at the base SHA (captured from a
+real reproduction of the production code path, `npm`/`npm run build` replaced by a recording double, no
+hand-typed JSON), the per-form evidence table, and the current, corrected mechanism's own doc comments are
+in
+[`evidence/p5pa-06-init-dependency-portability-audit/README.md`](evidence/p5pa-06-init-dependency-portability-audit/README.md).
+This implementer's own sandbox reproduced the same broken-`npm`-wrapper blocker `pokie-phase5-inventory.md`
+and this campaign's own §1 already documented for real `npm install`/`npm link`/`npm pack` invocations (a
+real shell syntax error in the wrapper script itself, `/usr/local/bin/npm`, not a product defect -- not
+just project-wide gates), so `InitCommandWorkflow.integration.test.ts` (npm-link, real npm) and
+`npmPackSmoke.test.ts` (npm-pack install, real npm, real tarball) -- both of which now also assert the
+corrected `package-lock.json` normalization and independently reinstall a copied package without
+`node_modules` -- could not be executed live in this sandbox at any point across this step's rounds; both
+are cited as source-level evidence instead, consistent with this campaign's own protocol for a reproduced,
+honestly-recorded blocker. `npm run typecheck` does not share this limitation: the current, independent
+pre-review sanity check for this round reports it passing, and this implementer's own sandbox reproduces
+the same clean result directly against the check it wraps (`node_modules/.bin/tsc --noEmit -p
+tsconfig.typecheck.json`, exit 0, zero diagnostics) -- the wrapper's syntax error blocks the literal
+`npm ...` invocation, never the substantive typecheck gate itself. What this sandbox *could* and did run
+directly, with real `node_modules/.bin/jest` (the project's own `npm` wrapper being unusable even
+for a single named test file), is the focused, no-real-npm unit coverage in
+`tests/cli/prepare/PackageCommandRunner.test.ts` -- 12/12 passing, including four cases added this round
+that exercise `restorePersistedPackageLock`'s lockfile-normalization logic directly against a
+hand-reproduced real npm lockfile shape.
+
+Out of scope, left as-is: `pokie build --target tsPackage` (already portable, needed no change); the
+`GamePackageMergeConflictError.ts` mixed-separator cosmetic message §3 #5 already found (untouched, still
+open, not this step's concern).

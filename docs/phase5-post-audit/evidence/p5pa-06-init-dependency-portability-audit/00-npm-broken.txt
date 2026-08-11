@@ -1,0 +1,11 @@
+=== npm --version ===
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+exit=2
+
+=== npm run build-test-runtime ===
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+exit=2
+
+=== npm install (in a scratch dir) ===
+/usr/local/bin/npm: 4: Syntax error: word unexpected (expecting ")")
+exit=2

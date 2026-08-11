@@ -4,7 +4,7 @@ import path from "path";
 import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "pokie";
 import {defaultDirectoryNeedsConfirmation, InitCommand} from "../../../cli/commands/InitCommand.js";
 import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
-import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {GamePackageMergeConflictError} from "../../../cli/scaffold/GamePackageMergeConflictError.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "../../../cli/scaffold/GamePackageMerging.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
@@ -213,6 +213,59 @@ describe("InitCommand", () => {
             const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
             expect(printed).toContain("scaffolded in");
             expect(printed).toContain('run "npm install" then "npm run build"');
+        });
+    });
+
+    // Every other test in this file injects a fully fake runCommand, so it never proves anything about
+    // the real package.json rewrite production wires in (registerCliCommands.ts's
+    // withLocalPokieInstall(pokiePackageRoot)) -- only that InitCommand calls its injected runCommand
+    // with the right args. This exercises that real rewrite against a real, on-disk package.json,
+    // proving the two halves of P5PA-06's contract at once: the "npm install" InitCommand actually runs
+    // sees a local `file:` resolution (so it never needs the registry for a possibly-unpublished
+    // "pokie"), while the package.json left behind once "pokie init" succeeds carries none of that --
+    // just the portable version range the scaffold originally had.
+    describe("real package.json rewrite via withLocalPokieInstall", () => {
+        let projectRoot: string;
+
+        beforeEach(() => {
+            projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-real-install-test-"));
+            fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "sample-slot", dependencies: {pokie: "^1.3.0"}}, null, 4));
+        });
+
+        afterEach(() => {
+            fs.rmSync(projectRoot, {recursive: true, force: true});
+        });
+
+        it("resolves 'npm install' locally against pokiePackageRoot while it runs, but leaves package.json with the portable pokie range once init succeeds", async () => {
+            const packageJsonDuringInstall: string[] = [];
+            const base: PackageCommandRunning = (_command, args, cwd) => {
+                if (args[0] === "install") {
+                    packageJsonDuringInstall.push(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
+                }
+                return Promise.resolve({stdout: "", stderr: ""});
+            };
+            const runCommand = withLocalPokieInstall("/opt/pokie-checkout", base);
+            const {command} = createCommand(createStubMerger(), runCommand);
+
+            const exitCode = await command.run([projectRoot]);
+
+            expect(exitCode).toBe(0);
+            expect(packageJsonDuringInstall).toHaveLength(1);
+            expect((JSON.parse(packageJsonDuringInstall[0]) as {dependencies: {pokie: string}}).dependencies.pokie).toBe("file:/opt/pokie-checkout");
+
+            const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {dependencies: {pokie: string}};
+            expect(persisted.dependencies.pokie).toBe("^1.3.0");
+        });
+
+        it("still restores the portable range even when 'npm install' itself fails, so a retried 'pokie init' re-derives the local override fresh rather than depending on a stale rewrite surviving the failure", async () => {
+            const base: PackageCommandRunning = () => Promise.reject(new Error("network unreachable"));
+            const runCommand = withLocalPokieInstall("/opt/pokie-checkout", base);
+            const {command} = createCommand(createStubMerger(), runCommand);
+
+            await expect(command.run([projectRoot])).rejects.toMatchObject({phase: "dependencies"});
+
+            const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {dependencies: {pokie: string}};
+            expect(persisted.dependencies.pokie).toBe("^1.3.0");
         });
     });
 

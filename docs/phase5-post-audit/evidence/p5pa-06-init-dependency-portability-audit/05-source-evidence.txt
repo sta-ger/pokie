@@ -1,0 +1,21 @@
+=== registerCliCommands.ts: InitCommand wiring is unconditional (no registry-availability check) ===
+11:import {InitCommand} from "./commands/InitCommand.js";
+26:import {withLocalPokieInstall} from "./prepare/PackageCommandRunner.js";
+62:        // withLocalPokieInstall(pokiePackageRoot): the same mechanism createMaterializingRuntimePackageResolver
+66:        new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
+
+=== GamePackageGenerator.ts: tsPackage build path never calls withLocalPokieInstall / never runs npm install ===
+46:    // ways: "src/index.ts" (typed, recompilable via the package's own "npm run build" -- see
+50:    // no need to actually invoke tsc (or "npm install", which package-lock.json's own doc comment
+51:    // explains this never does either) for the output to be immediately loadable -- "npm run build"
+(no matches above = confirmed: GamePackageGenerator never spawns npm and never uses the local-file-dependency mechanism)
+
+=== GamePackageGenerator.ts: package.json is written via the same portable buildPackageJsonPatch as scaffold/merge ===
+4:import {buildPackageJsonPatch} from "../gamepackage/buildPackageJsonPatch.js";
+18:// A reasonably current, broadly-compatible @types/node -- unlike buildPackageJsonPatch's own
+43:    // package.json (via the shared buildPackageJsonPatch, so main/exports/pokie.entry/scripts.build
+82:        const packageJson = buildPackageJsonPatch(
+
+=== buildPackageJsonPatch.ts: the portable spec every canonical package starts from ===
+23:            pokie: `^${pokieVersion}`,
+30:        pokie: {
