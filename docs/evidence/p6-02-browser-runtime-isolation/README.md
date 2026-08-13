@@ -1,22 +1,23 @@
 # P6-02 browser runtime-isolation rerun
 
-Candidate `e166b86075a0192ceb586510b289bbe695f21163` was compiled with Node
+Candidate `fe3c13cda55ee76d42d5b6dae66bb2ffe705b2b1` was compiled with Node
 `v24.18.0` using `npm run build-cli`, then launched through the public
-`pokie studio <Project A> --no-open` workflow. A fresh 1440×1000 Chrome profile
-drove only rendered Studio controls with ordinary mouse and keyboard input. The
-driver made no Studio product API calls and performed no DOM or application-state
-writes.
+`pokie studio <Project A> --no-open` workflow. A fresh 1440x1000 Chrome
+browser rendered Studio, and the driver used only ordinary mouse/keyboard
+input against visible controls plus browser Back/Forward. It made no Studio
+product API calls and performed no DOM or application-state writes.
 
-Result: **finding**. The legacy Project A Play entry was upgraded to its
-project-scoped Play route; an A session visibly spun a round; and Project B was
-visibly detected, registered, opened, and given its own session. Browser Back
-restored scoped Project A with neither Project B identity nor a round rendered.
-Browser Forward then failed: after the first visible `Alt+Right` reached
-`#/home/design`, seven further visible `Alt+Right` attempts remained there
-instead of restoring Project B's project-scoped Play route. The final Forward
-capture is the Home/Design error surface, not Project B Play.
+Result: **finding (P1)**. Project A's legacy Play entry visibly upgraded to
+its project-scoped Play URL; an A session visibly spun a round. Project B was
+then visibly detected, registered, opened, and given a new B-only session.
+Browser Back reached the expected scoped Project A Play URL with neither
+Project B's identity nor the A round rendered. Browser Forward failed: its
+first rendered `Alt+Right` landed on `#/home/design`, and seven further
+visible Forward attempts remained there rather than reaching Project B's
+project-scoped Play URL. Thus the persisted A -> B -> Back/Forward acceptance
+workflow is not complete.
 
-The evidence is bounded to the current build/server/Chrome/driver logs, browser
-transcript, port preflight, and the two Back/Forward destination captures.
-`04-*` records the successful isolated Back destination; `05-*` records the
-failed Forward destination.
+The evidence is intentionally limited to the current build/server/browser
+logs, the browser action transcript, and the Back/Forward destination captures.
+`04-*` proves the successful isolated Back destination; `05-*` records the
+actual failed Forward destination.

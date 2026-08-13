@@ -4,5 +4,5 @@
    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/138.0.0.0 Safari/537.36",
    "V8-Version": "13.8.258.30",
    "WebKit-Version": "537.36 (@e90faf484ddbc033fc9bf337621761d3dd5c5289)",
-   "webSocketDebuggerUrl": "ws://127.0.0.1:9228/devtools/browser/142c39e4-8c6c-4d8d-a148-05658db08edb"
+   "webSocketDebuggerUrl": "ws://127.0.0.1:9229/devtools/browser/f3dfd585-219d-498a-bb10-8142aedf4989"
 }

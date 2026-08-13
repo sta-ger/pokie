@@ -1,33 +1,34 @@
-npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
 
 > pokie@1.3.0 build-cli
 > tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js
 
-npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
 
 > pokie@1.3.0 build-client
 > tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/
 
-npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
 
 > pokie@1.3.0 build-studio-client
 > npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts
 
-npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
 
 > pokie@1.3.0 typecheck-studio-client
 > tsc --project cli/studio-client/tsconfig.json --noEmit
 
-file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/node_modules/rolldown/dist/shared/rolldown-build-CtPvmZgJ.mjs:9
-import { formatWithOptions, styleText } from "node:util";
-                            ^^^^^^^^^
-SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
-    at ModuleJob._instantiate (node:internal/modules/esm/module_job:123:21)
-    at async ModuleJob.run (node:internal/modules/esm/module_job:191:5)
-    at async ModuleLoader.import (node:internal/modules/esm/loader:336:24)
+vite v8.1.5 building client environment for production...
+[2Ktransforming...✓ 7164 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/cli/studio-client/index.html                   0.36 kB │ gzip:   0.26 kB
+dist/cli/studio-client/assets/index-BYljzUTd.css  223.98 kB │ gzip:  33.07 kB
+dist/cli/studio-client/assets/index-BPMMLiEl.js   903.61 kB │ gzip: 263.50 kB
 
-Node.js v18.19.1
-candidate_sha=e166b86075a0192ceb586510b289bbe695f21163
-node=v18.19.1
+✓ built in 4.06s
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+candidate_sha=fe3c13cda55ee76d42d5b6dae66bb2ffe705b2b1
+node=v24.18.0
 npm=11.16.0
-build_exit=1
+build_exit=0
