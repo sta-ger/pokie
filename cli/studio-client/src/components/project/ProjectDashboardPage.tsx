@@ -152,6 +152,14 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
+// A route with a project root must remount the dashboard when browser history changes that root.
+// ProjectDashboardPage owns several long-lived runtime hooks, and retaining an A instance while the
+// server has already switched to B would leave A's session/run identifiers actionable against B.
+export function ProjectDashboardRoute() {
+    const {projectRoot} = useParams<{projectRoot: string}>();
+    return <ProjectDashboardPage key={projectRoot ?? "current-project"} requestedProjectRoot={projectRoot} />;
+}
+
 // Whether `tab` is actually reachable for the loaded project. A tab with no `requiredCapabilities`
 // (Overview) is always supported; everything else needs the project to be resolved -- "loaded" or
 // "outcome-source" alike, the only two ProjectHeaderView statuses that carry a `capabilities` array at
@@ -206,7 +214,7 @@ function describeProjectName(header: ProjectHeaderView): string {
 // simultaneously (just hidden via CSS), so a Simulation/Replay run (or an in-flight Deployment request)
 // was never interrupted by looking at a different tab; conditionally *mounting* only the active tab's
 // hook would silently cancel that background work, which this file exists specifically to avoid.
-export function ProjectDashboardPage() {
+export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
@@ -217,12 +225,13 @@ export function ProjectDashboardPage() {
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
-            navigate(`/project/${value}`);
+            const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+            navigate(`${routePrefix}/${value}`);
         },
-        [navigate],
+        [navigate, requestedProjectRoot],
     );
 
-    const header = useProjectContext();
+    const header = useProjectContext(requestedProjectRoot);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
     // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's

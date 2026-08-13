@@ -104,7 +104,7 @@ describe("useOpenProject: guarded side effects", () => {
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-        expect(router.state.location.pathname).toBe("/project/overview");
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
     }, 60000);
 

@@ -120,3 +120,59 @@ describe("Routable Home sections: browser back/forward", () => {
         // explicit timeout.
     }, 90000);
 });
+
+describe("Project-scoped browser history", () => {
+    it("restores the project recorded in a history entry before rendering its dashboard", async () => {
+        // The server begins on B while browser history begins at A, precisely the stale-history
+        // condition this route contract must repair before it can render the Play dashboard.
+        let currentProjectRoot = "/games/b";
+        const dashboardForCurrentProject = () => ({
+            ok: true,
+            status: 200,
+            body: {
+                status: "loaded",
+                projectRoot: currentProjectRoot,
+                game: {
+                    id: currentProjectRoot === "/games/a" ? "a" : "b",
+                    name: currentProjectRoot === "/games/a" ? "A" : "B",
+                    version: "1.0.0",
+                },
+                type: "blueprint",
+                capabilities: ["blueprint.build"],
+            },
+        });
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/open": (call) => {
+                currentProjectRoot = (JSON.parse(call.init?.body ?? "{}") as {projectRoot: string}).projectRoot;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentProjectRoot}}};
+            },
+            "/api/project/context": dashboardForCurrentProject,
+            "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, issues: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: currentProjectRoot, valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: []}),
+        });
+        const aRoute = `/project/${encodeURIComponent("/games/a")}/play`;
+        const bRoute = `/project/${encodeURIComponent("/games/b")}/play`;
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: [aRoute]});
+
+        await screen.findByRole("heading", {name: "A"});
+        expect(screen.getByRole("button", {name: "Play"})).toHaveAttribute("aria-current", "page");
+
+        await act(() => router.navigate(bRoute));
+        await screen.findByRole("heading", {name: "B"});
+
+        await act(() => router.navigate(-1));
+        await screen.findByRole("heading", {name: "A"});
+
+        expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init?.body ?? "{}"))).toEqual([
+            {projectRoot: "/games/a"},
+            {projectRoot: "/games/b"},
+            {projectRoot: "/games/a"},
+        ]);
+    });
+});
