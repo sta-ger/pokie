@@ -14,6 +14,7 @@ export function toStudioReplayJobView(record: StudioReplayJobRecord): StudioRepl
         completedRounds: record.completedRounds,
         durationMs: record.durationMs,
         game: record.game,
+        configHash: record.configHash,
         descriptor: record.descriptor,
         error: record.error,
         modeName: record.modeName,

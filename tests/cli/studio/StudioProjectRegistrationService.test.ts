@@ -9,6 +9,7 @@ import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioP
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {toStudioReplayJobView} from "../../../cli/studio/replay/toStudioReplayJobView.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
     return {
@@ -571,5 +572,49 @@ describe("Studio Blueprint Project save conflicts", () => {
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
         }
+    });
+
+    it("publishes the new persisted configuration hash for the next Project execution snapshot", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-execution-freshness-"));
+        try {
+            const filePath = path.join(directory, "game.json");
+            const prior = {manifest: {id: "game"}, rows: 3};
+            const saved = {manifest: {id: "game"}, rows: 4};
+            fs.writeFileSync(filePath, JSON.stringify(prior));
+            const service = createService(path.join(directory, "studio"));
+            const loaded = service.load(filePath);
+            expect(loaded.status).toBe("ok");
+            if (loaded.status !== "ok") {
+                throw new Error("Expected initial Blueprint to load.");
+            }
+
+            expect(service.save(filePath, saved, true, loaded.blueprintHash)).toEqual({
+                status: "ok",
+                path: filePath,
+                blueprintHash: computeGameBlueprintHash(saved),
+            });
+            expect(service.load(filePath)).toEqual({status: "ok", path: filePath, blueprint: saved, blueprintHash: computeGameBlueprintHash(saved)});
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("retains a replay's original configuration hash after a later Blueprint save", () => {
+        const originalConfigurationHash = computeGameBlueprintHash({manifest: {id: "game"}, rows: 3});
+        const replay = toStudioReplayJobView({
+            id: "replay-1",
+            projectRoot: "/projects/game.json",
+            status: "completed",
+            round: 1,
+            startedAt: 0,
+            completedRounds: 1,
+            durationMs: 1,
+            game: {id: "game", name: "Game", version: "1.0.0"},
+            configHash: originalConfigurationHash,
+            abortController: new AbortController(),
+        });
+
+        expect(replay.configHash).toBe(originalConfigurationHash);
+        expect(replay.configHash).not.toBe(computeGameBlueprintHash({manifest: {id: "game"}, rows: 4}));
     });
 });

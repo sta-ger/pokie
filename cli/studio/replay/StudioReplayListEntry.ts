@@ -9,6 +9,8 @@ export type StudioReplayListEntry = {
     id: string;
     status: StudioReplayStatus;
     game?: {id: string; name: string; version: string};
+    // The immutable configuration provenance captured when this replay started.
+    configHash?: string;
     round: number;
     seed?: string;
     completedRounds: number;

@@ -216,6 +216,7 @@ export class StudioReplayExecutionService {
             id: record.id,
             status: record.status,
             game: record.game,
+            configHash: record.configHash,
             round: record.round,
             seed: record.seed,
             completedRounds: record.completedRounds,
@@ -259,6 +260,7 @@ export class StudioReplayExecutionService {
         record.status = "running";
         const manifest = game.getManifest();
         record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
+        record.configHash = game.getConfigHash?.();
 
         const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
         // Minted here, at the exact moment the brand-new session is created -- never reused from
@@ -529,7 +531,7 @@ export class StudioReplayExecutionService {
         }
         const artifact = buildRoundArtifactFromSession(session, {
             roundId: `replay:${record.seed ?? "no-seed"}:${record.round}`,
-            provenance: {game: manifest, pokieVersion: this.pokieVersion},
+            provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash !== undefined ? {configHash: record.configHash} : {})},
             ...(debug !== undefined ? {debug} : {}),
         });
         return new PokieJsonRoundArtifactProjector().project(artifact);

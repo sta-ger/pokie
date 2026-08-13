@@ -225,10 +225,21 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
-        this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
+        // Every default Project execution service loads through the same materializing boundary as
+        // Play. This makes a Blueprint save observable on the next simulation/replay/generation
+        // instead of letting those paths load an earlier package-shaped interpretation of the path.
+        const loadCurrentProjectGame: typeof loadPokieGame = async (projectRoot) => {
+            const resolution = await this.resolveRuntimePackageRoot(projectRoot);
+            try {
+                return await this.loadGame(resolution.runtimePath);
+            } finally {
+                await resolution.release();
+            }
+        };
+        this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, loadCurrentProjectGame);
         this.replayService =
             options.replayService ??
-            new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
+            new StudioReplayExecutionService(undefined, loadCurrentProjectGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
                 this.recordSimulationSampleReplay(record),
             );
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
@@ -236,10 +247,14 @@ export class StudioServer implements StudioServerHandling {
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
-        this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
+        this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
-        this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
+        this.stakeEngineExportService =
+            options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion, undefined, undefined, undefined, undefined, undefined, undefined, async (projectRoot) => {
+                const game = await loadCurrentProjectGame(projectRoot);
+                return game.getConfigHash?.();
+            });
         this.artifactBuildService = options.artifactBuildService ?? new StudioArtifactBuildService(this.pokieVersion);
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
@@ -1137,6 +1152,12 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const result = this.blueprintService.save(validated.path, validated.blueprint, validated.overwrite, validated.expectedHash);
+        if (result.status === "ok" && this.currentContext.mode === "project" && path.resolve(this.currentContext.projectRoot) === result.path) {
+            // The Dashboard retains a loaded Project snapshot for its Overview. Refresh that snapshot
+            // after an in-place Blueprint save so every Project-facing surface observes the newly
+            // authoritative source, not the pre-save dashboard model.
+            this.startProjectDashboardLoad(result.path);
+        }
         this.sendJson(res, this.statusForBlueprintSave(result.status), result);
     }
 

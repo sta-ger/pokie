@@ -27,6 +27,10 @@ export type StudioReplayJobRecord = {
     // Known as soon as the game package has loaded (before the round-playing loop starts) — lets the
     // Replay list show which game a still-running job belongs to without waiting for it to finish.
     game?: {id: string; name: string; version: string};
+    // Captured when this replay loads its game, never recomputed while the record is retained.
+    // This is the replay's configuration provenance even after the Blueprint Project is later saved
+    // with different content.
+    configHash?: string;
     descriptor?: ReplayDescriptor;
     error?: string;
     abortController: AbortController;

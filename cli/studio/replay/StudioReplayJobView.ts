@@ -18,6 +18,8 @@ export type StudioReplayJobView = {
     completedRounds: number;
     durationMs: number;
     game?: {id: string; name: string; version: string};
+    // The exact runtime configuration that produced this replay, retained after later Blueprint saves.
+    configHash?: string;
     // Only present once `status` is "completed" — see StudioReplayExecutionService.run().
     descriptor?: ReplayDescriptor;
     // Only present once `status` is "failed" — a safe message, never a stack trace.
