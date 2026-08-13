@@ -1,4 +1,0 @@
-requested_shutdown studio_pid=3274164 chrome_pid=3275689
-studio_alive=no
-chrome_alive=no
-State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess

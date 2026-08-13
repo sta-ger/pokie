@@ -70,23 +70,32 @@ async function main() {
     const nav = (label) => target(`[...document.querySelectorAll('nav button,nav [role="button"]')].find((e) => e.textContent?.trim() === ${JSON.stringify(label)} && e.getClientRects().length > 0)`);
     const field = (label) => target(`[...document.querySelectorAll('input')].find((e) => (e.getAttribute('aria-label') === ${JSON.stringify(label)} || [...(e.labels ?? [])].some((l) => l.textContent?.trim().startsWith(${JSON.stringify(label)}))) && e.getClientRects().length > 0)`);
     const click = async (value, description, locateAgain) => {
-        if (!value?.ok) throw new Error(`No rendered ${description}`);
-        const height = await evaluate("window.innerHeight");
-        if (value.y < 0 || value.y > height) {
-            await cdp.send("Input.dispatchMouseEvent", {type:"mouseWheel", x:Math.max(1, value.x), y:Math.max(1, height / 2), deltaX:0, deltaY:value.y - height / 2});
-            note(`SCROLL to rendered ${description}`);
-            await sleep(350);
+        for (let attempt = 1; attempt <= 8; attempt += 1) {
+            if (!value?.ok) throw new Error(`No rendered ${description}`);
+            const viewport = await evaluate("({width:window.innerWidth,height:window.innerHeight})");
+            if (value.x < 8 || value.x > viewport.width - 8 || value.y < 8 || value.y > viewport.height - 8) {
+                await cdp.send("Input.dispatchMouseEvent", {type:"mouseWheel", x:Math.max(1, Math.min(viewport.width - 1, value.x)), y:Math.max(1, Math.min(viewport.height - 1, value.y)), deltaX:value.x - viewport.width / 2, deltaY:value.y - viewport.height / 2});
+                note(`SCROLL to rendered ${description}`);
+                await sleep(350);
+                value = locateAgain ? await locateAgain() : value;
+                continue;
+            }
+            await cdp.send("Page.bringToFront");
+            const hit = await evaluate(`(() => { const e=document.elementFromPoint(${value.x},${value.y}); return e ? {tag:e.tagName,text:e.textContent?.trim()} : null; })()`);
+            note(`OBSERVE pointer target for ${description}: ${JSON.stringify(hit)}`);
+            if (hit) {
+                await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:value.x, y:value.y});
+                await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:value.x, y:value.y, button:"left", buttons:1, clickCount:1, pointerType:"mouse"});
+                await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:value.x, y:value.y, button:"left", buttons:0, clickCount:1, pointerType:"mouse"});
+                note(`CLICK ${description} at rendered coordinates (${Math.round(value.x)}, ${Math.round(value.y)})`);
+                await sleep(500);
+                return;
+            }
+            note(`RETRY rendered ${description}: no browser hit target`);
+            await sleep(250);
             value = locateAgain ? await locateAgain() : value;
         }
-        if (!value?.ok) throw new Error(`No rendered ${description} after scrolling`);
-        const hit = await evaluate(`(() => { const e=document.elementFromPoint(${value.x},${value.y}); return e ? {tag:e.tagName,text:e.textContent?.trim()} : null; })()`);
-        note(`OBSERVE pointer target for ${description}: ${JSON.stringify(hit)}`);
-        await cdp.send("Page.bringToFront");
-        await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:value.x, y:value.y});
-        await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:value.x, y:value.y, button:"left", buttons:1, clickCount:1, pointerType:"mouse"});
-        await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:value.x, y:value.y, button:"left", buttons:0, clickCount:1, pointerType:"mouse"});
-        note(`CLICK ${description} at rendered coordinates (${Math.round(value.x)}, ${Math.round(value.y)})`);
-        await sleep(500);
+        throw new Error(`No browser pointer target for rendered ${description}`);
     };
     const type = async (label, value) => {
         await click(await field(label), `input ${JSON.stringify(label)}`, () => field(label));
@@ -107,8 +116,10 @@ async function main() {
         note(`CAPTURE ${name}.png, ${name}-visible-text.txt, and ${name}-url.txt`);
     };
     const historyKey = async (key, description) => {
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:key === "ArrowLeft" ? 37 : 39, modifiers:1});
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:key === "ArrowLeft" ? 37 : 39, modifiers:1});
+        const virtualKeyCode = key === "ArrowLeft" ? 37 : 39;
+        await cdp.send("Page.bringToFront");
+        await cdp.send("Input.dispatchKeyEvent", {type:"rawKeyDown", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1, isSystemKey:true});
+        await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1});
         note(`KEYBOARD Alt+${key === "ArrowLeft" ? "Left" : "Right"} browser ${key === "ArrowLeft" ? "Back" : "Forward"}: ${description}`);
         await sleep(650);
     };

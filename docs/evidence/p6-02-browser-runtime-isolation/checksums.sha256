@@ -1,3 +1,10 @@
-4f05f376220cf5f01a3e5b9261d2ce60d683ebe740851b1daf49f68e0fd7c91d  project-a-play-state.png
-3d50028a577c13fa5a434c0034b49b81a065615605c28456a94ab42fd0f6820b  project-b-fresh-play-state.png
-3d50028a577c13fa5a434c0034b49b81a065615605c28456a94ab42fd0f6820b  browser-back-historical-a-route.png
+947179811cdefdfb3d7259d0d06c264900a7f9dcd0bd7ce67f082fed2894673c  docs/evidence/p6-02-browser-runtime-isolation/00-legacy-project-a-play-before-route-scope-check.png
+76d5db63735e8abf3445e33291809289b51b4f5600eccb42e7c30187f640b916  docs/evidence/p6-02-browser-runtime-isolation/01-project-a-legacy-entry-upgraded-and-played.png
+d8c4be4511c193cb88594a23827d62d4c5d11eb1836fef94963c2809bef84002  docs/evidence/p6-02-browser-runtime-isolation/02-project-b-fresh-play.png
+270c71b6907572e9a184ed10febe25f1de104041403056d8c7b4dfcf64fae1a6  docs/evidence/p6-02-browser-runtime-isolation/03-project-b-session.png
+947179811cdefdfb3d7259d0d06c264900a7f9dcd0bd7ce67f082fed2894673c  docs/evidence/p6-02-browser-runtime-isolation/04-browser-back-restores-project-a-scoped.png
+221a2169545fc9abf30786748951a636e07b0901d104616b6411f7a5d03a7309  docs/evidence/p6-02-browser-runtime-isolation/05-browser-forward-failed-to-restore-project-b.png
+2c2a6f621aecc0694e42bac47d183358928d45d7311b9eebcdf0ac1c31b93446  docs/evidence/p6-02-browser-runtime-isolation/06-browser-action-transcript.txt
+2c2a6f621aecc0694e42bac47d183358928d45d7311b9eebcdf0ac1c31b93446  docs/evidence/p6-02-browser-runtime-isolation/03-current-browser-driver-terminal.log
+0b61c699c9b6ed76c95ebcf58b7c7de0c1c7c40d05560947792737d04bf12c02  docs/evidence/p6-02-browser-runtime-isolation/00-current-candidate-build.log
+e07b79592cefb53a0ffe7899151d60916cfa20816489444906faedfa9e03d8e3  docs/evidence/p6-02-browser-runtime-isolation/01-current-fresh-studio-server.log
