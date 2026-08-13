@@ -171,11 +171,12 @@ export function LegacyProjectDashboardRoute() {
     const activeTab = isProjectTab(tab) ? tab : "overview";
     const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
 
-    // A legacy hash can be a browser entry the router did not create. Replacing it through the router
-    // rewrites its transition bookkeeping as well; after Home/Projects is traversed, browser Back can
-    // then stop at Home instead of reaching this entry. Replace only the native entry and render the
-    // resolved root locally until the next real browser traversal lets the router observe that scoped
-    // hash. This preserves both sides of the browser's history stack.
+    // A legacy hash can be a browser entry the router did not create. Updating that entry through the
+    // running hash router leaves its in-memory location pointing at the old route, while replacing it
+    // only through window.history leaves the router equally stale. Both cases make a later Forward
+    // traversal lose the entries after Home. Replace the native entry and reload it instead: the new
+    // router instance starts from the scoped hash and the browser keeps both sides of this entry's
+    // history stack intact. The dashboard never mounts from the ambiguous route.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (projectRoot !== undefined && projectRoot !== "") {
@@ -183,6 +184,7 @@ export function LegacyProjectDashboardRoute() {
             if (window.location.hash === `#/project/${tab ?? ""}`) {
                 window.history.replaceState(window.history.state, "", `#${scopedPath}`);
                 setScopedProjectRoot(projectRoot);
+                window.location.reload();
             } else {
                 navigate(scopedPath, {replace: true});
             }
