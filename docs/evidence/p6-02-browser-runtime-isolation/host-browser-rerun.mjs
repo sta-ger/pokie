@@ -153,6 +153,10 @@ async function main() {
     await wait("document.body.innerText.includes('Detected a Package')", "Project B detected through rendered UI");
     await click(await button("Register"), "Project B Register", () => button("Register"));
     await wait("[...document.querySelectorAll('button')].some((e) => e.textContent?.trim() === 'Open')", "Project B visible Open action");
+    await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"End", code:"End", windowsVirtualKeyCode:35});
+    await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"End", code:"End", windowsVirtualKeyCode:35});
+    note("KEYBOARD End scrolls to rendered Project B Open action");
+    await sleep(300);
     await click(await button("Open"), "Project B Open", () => button("Open"));
     await wait("document.body.innerText.includes('Playable Game With Bonus Round')", "Project B dashboard");
     await click(await nav("Play"), "Project B Play navigation", () => nav("Play"));
