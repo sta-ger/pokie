@@ -183,9 +183,10 @@ async function main() {
         note(`OBSERVE Forward step ${step}: ${JSON.stringify({url:identity.url, hasA:identity.text.includes("Playable Game"), hasB:identity.text.includes("Playable Game With Bonus Round"), hasRound:identity.text.includes("Round detail")})}`);
         if (identity.url.includes(`#${bPath}`)) break;
     }
+    // Preserve the rendered Forward destination even when the following assertion fails.
+    await snapshot("05-browser-forward-restores-project-b-scoped");
     await wait(`location.hash === '#${bPath}'`, "browser Forward restores the project-scoped B Play route");
     await wait("document.body.innerText.includes('Playable Game With Bonus Round') && !document.body.innerText.includes('Round detail')", "Project B fresh/session state without Project A round rendered or actionable");
-    await snapshot("05-browser-forward-restores-project-b-scoped");
     note("PASS: visible A → B → Back/Forward workflow stayed project-scoped with no cross-project rendered state.");
     await writeFile(resolve(output, "06-browser-action-transcript.txt"), `${transcript.join("\n")}\n`);
     cdp.close();
