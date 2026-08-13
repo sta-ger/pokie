@@ -169,19 +169,29 @@ export function LegacyProjectDashboardRoute() {
     const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
+    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
 
-    // The router must own this replacement. Updating window.history directly leaves createHashRouter's
-    // transition bookkeeping out of sync with the entry it is replacing; after a later browser Back,
-    // that stale bookkeeping can consume the first Forward transition and strand the user at Home.
-    // A router-level replace updates only the current entry, preserving its Forward entries while
-    // keeping the router's location and browser-history index together.
+    // A legacy hash can be a browser entry the router did not create. Replacing it through the router
+    // rewrites its transition bookkeeping as well; after Home/Projects is traversed, browser Back can
+    // then stop at Home instead of reaching this entry. Replace only the native entry and render the
+    // resolved root locally until the next real browser traversal lets the router observe that scoped
+    // hash. This preserves both sides of the browser's history stack.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (projectRoot !== undefined && projectRoot !== "") {
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            navigate(scopedPath, {replace: true});
+            if (window.location.hash === `#/project/${tab ?? ""}`) {
+                window.history.replaceState(window.history.state, "", `#${scopedPath}`);
+                setScopedProjectRoot(projectRoot);
+            } else {
+                navigate(scopedPath, {replace: true});
+            }
         }
-    }, [activeTab, navigate, projectRoot]);
+    }, [activeTab, navigate, projectRoot, tab]);
+
+    if (scopedProjectRoot !== undefined) {
+        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
+    }
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;

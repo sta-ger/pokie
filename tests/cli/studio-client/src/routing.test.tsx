@@ -162,7 +162,6 @@ describe("Project-scoped browser history", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
-        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
 
         await act(() => router.navigate("/home/design"));
         await act(() => router.navigate("/home/projects"));
