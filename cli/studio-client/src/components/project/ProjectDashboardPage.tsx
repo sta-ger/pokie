@@ -1,6 +1,6 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
@@ -161,7 +161,7 @@ export function ProjectDashboardRoute() {
 }
 
 // Legacy `/project/:tab` links contain no project identity. Resolve the server's current project
-// in this deliberately state-free route first, then replace the history entry before the dashboard
+// in this deliberately state-free route first, then push a scoped successor before the dashboard
 // (and its session/run/error state) can mount. This makes every rendered project dashboard derive
 // from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
@@ -169,31 +169,21 @@ export function LegacyProjectDashboardRoute() {
     const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
-    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
+    const upgradeStartedRef = useRef(false);
 
-    // A legacy hash can be a browser entry the router did not create. Updating that entry through the
-    // running hash router leaves its in-memory location pointing at the old route, while replacing it
-    // only through window.history leaves the router equally stale. Both cases make a later Forward
-    // traversal lose the entries after Home. Replace the native entry and reload it instead: the new
-    // router instance starts from the scoped hash and the browser keeps both sides of this entry's
-    // history stack intact. The dashboard never mounts from the ambiguous route.
+    // A legacy hash can be a browser entry the router did not create. Replacing that entry either
+    // natively or through the router leaves one of the two history implementations out of sync, so a
+    // later browser Forward can lose the entries after Home. Push a scoped, router-owned successor
+    // instead. The old legacy entry remains behind it, while Back/Forward reaches this project-scoped
+    // entry and all later entries without either history implementation rewriting the other.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
-    useLayoutEffect(() => {
-        if (projectRoot !== undefined && projectRoot !== "") {
+    useEffect(() => {
+        if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
+            upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            if (window.location.hash === `#/project/${tab ?? ""}`) {
-                window.history.replaceState(window.history.state, "", `#${scopedPath}`);
-                setScopedProjectRoot(projectRoot);
-                window.location.reload();
-            } else {
-                navigate(scopedPath, {replace: true});
-            }
+            navigate(scopedPath);
         }
-    }, [activeTab, navigate, projectRoot, tab]);
-
-    if (scopedProjectRoot !== undefined) {
-        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
-    }
+    }, [activeTab, navigate, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
