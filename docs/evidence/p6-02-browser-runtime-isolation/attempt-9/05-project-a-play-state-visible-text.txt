@@ -1,0 +1,55 @@
+POKIE Studio
+/
+Outcome library
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Outcome library
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode
+
+Close project
+Spin
+Find any win
+Find symbol win
+Find free games
+Reset
+Outcome library mode
+
+Which real mode of this outcome library New session/Reset draws against.
+
+Seed (optional)
+
+A given seed always plays out the same way -- genuine input to the game's own RNG, not cosmetic.
+
+Game	Browser Multi-mode Library (id: "browser-multimode", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.00
+Total win	0.00 (0.00x)
+Credits	-1
+A
+Round detail
+
+No wins on this step.
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+State snapshot unavailable for this game/session type.
+
+Show advanced details (raw JSON, debug data)
