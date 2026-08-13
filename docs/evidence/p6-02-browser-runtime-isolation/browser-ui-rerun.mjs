@@ -8,11 +8,12 @@ import {mkdir, writeFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import WebSocket from "ws";
 
-const studio = "http://127.0.0.1:41206";
-const devtools = "http://127.0.0.1:9229";
-const output = resolve("docs/evidence/p6-02-browser-runtime-isolation");
-const projectA = resolve(output, "fixtures/project-a");
-const projectB = resolve(output, "fixtures/project-b");
+const studio = process.env.P6_STUDIO_URL ?? "http://127.0.0.1:41206";
+const devtools = process.env.P6_DEVTOOLS_URL ?? "http://127.0.0.1:9229";
+const output = resolve(process.env.P6_AUDIT_OUTPUT ?? "docs/evidence/p6-02-browser-runtime-isolation");
+const evidenceRoot = resolve("docs/evidence/p6-02-browser-runtime-isolation");
+const projectA = resolve(process.env.P6_PROJECT_A ?? resolve(evidenceRoot, "fixtures/project-a"));
+const projectB = resolve(process.env.P6_PROJECT_B ?? resolve(evidenceRoot, "fixtures/project-b"));
 const transcript = [];
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -78,6 +79,8 @@ async function main() {
     const nav = (label) => pointFor(`[...document.querySelectorAll('nav button,nav [role="button"]')].find((e) => e.textContent?.trim() === ${JSON.stringify(label)})`);
     const input = (label) =>
         pointFor(`[...document.querySelectorAll('input')].find((e) => (e.getAttribute('aria-label') === ${JSON.stringify(label)} || [...(e.labels ?? [])].some((l) => l.textContent?.trim().startsWith(${JSON.stringify(label)}))) && e.getClientRects().length > 0)`);
+    const option = (label) =>
+        pointFor(`[...document.querySelectorAll('[role="option"]')].find((e) => e.textContent?.trim() === ${JSON.stringify(label)} && e.getClientRects().length > 0)`);
     const click = async (target, description, reselect) => {
         if (!target?.ok) throw new Error(`No visible ${description}: ${JSON.stringify(target)}`);
         const viewportHeight = await evaluate("window.innerHeight");
@@ -118,6 +121,12 @@ async function main() {
         note(`INPUT ${JSON.stringify(label)}=${JSON.stringify(value)} through browser keyboard`);
         await sleep(300);
     };
+    const chooseMode = async (modeName) => {
+        await click(await input("Outcome library mode"), "Outcome library mode picker");
+        await wait(`[...document.querySelectorAll('[role="option"]')].some((e) => e.textContent?.trim() === ${JSON.stringify(modeName)} && e.getClientRects().length > 0)`, `visible ${modeName} mode option`);
+        await click(await option(modeName), `${modeName} mode option`);
+        await wait(`[...document.querySelectorAll('input')].some((e) => (e.getAttribute('aria-label') === 'Outcome library mode' || [...(e.labels ?? [])].some((l) => l.textContent?.trim() === 'Outcome library mode')) && e.value === ${JSON.stringify(modeName)})`, `${modeName} visibly selected`);
+    };
     const snapshot = async (name) => {
         const png = await cdp.send("Page.captureScreenshot", {format: "png", captureBeyondViewport: true});
         await writeFile(resolve(output, `${name}.png`), Buffer.from(png.data, "base64"));
@@ -129,6 +138,12 @@ async function main() {
         await cdp.send("Input.dispatchKeyEvent", {type: "keyDown", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37, modifiers: 1});
         await cdp.send("Input.dispatchKeyEvent", {type: "keyUp", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37, modifiers: 1});
         note(`KEYBOARD Alt+Left browser Back: ${description}`);
+        await sleep(550);
+    };
+    const browserForward = async (description) => {
+        await cdp.send("Input.dispatchKeyEvent", {type: "keyDown", key: "ArrowRight", code: "ArrowRight", windowsVirtualKeyCode: 39, modifiers: 1});
+        await cdp.send("Input.dispatchKeyEvent", {type: "keyUp", key: "ArrowRight", code: "ArrowRight", windowsVirtualKeyCode: 39, modifiers: 1});
+        note(`KEYBOARD Alt+Right browser Forward: ${description}`);
         await sleep(550);
     };
     const activateWithKeyboard = async (description, tabPresses) => {
@@ -156,14 +171,17 @@ async function main() {
 
     await replaceInput("Location", projectA);
     await click(await control("Detect"), "Project A Detect");
-    await wait("document.body.innerText.includes('Detected a Package')", "Project A package detection");
+    await wait("[...document.querySelectorAll('button')].some((e) => e.textContent?.trim() === 'Register')", "Project A detection result and Register action");
     await click(await control("Register"), "Project A Register");
     await wait("[...document.querySelectorAll('button')].some((e) => e.textContent?.trim() === 'Open')", "Project A visible Open action");
     await snapshot("04-project-a-registered");
     await click(await control("Open"), "Project A Open", () => control("Open"));
-    await wait("document.body.innerText.includes('Playable Game') && document.body.innerText.includes('Overview')", "Project A dashboard");
+    await wait("document.body.innerText.includes('Overview') && document.body.innerText.includes('Play')", "Project A dashboard");
     await click(await nav("Play"), "Project A Play navigation");
     await wait("document.body.innerText.includes('New session')", "Project A Play setup");
+    if (await evaluate("document.body.innerText.includes('Outcome library mode')")) {
+        await chooseMode("buyFeature");
+    }
     await replaceInput("Seed (optional)", "p6-a-visible-session");
     await click(await control("New session"), "Project A New session");
     await wait("[...document.querySelectorAll('button')].some((e) => e.textContent?.trim() === 'Spin' && !e.disabled)", "Project A visible Spin action");
@@ -202,6 +220,13 @@ async function main() {
     await wait("location.hash === '#/project/play'", "historical A Play route after browser Back");
     await wait("document.body.innerText.includes('Playable Game With Bonus Round')", "server-backed Project B rendered on the historical A route");
     await snapshot("08-browser-back-historical-a-route");
+    await browserForward("historical A Play route to Home Design");
+    await browserForward("Home Design to Home Projects");
+    await browserForward("Home Projects to B dashboard");
+    await browserForward("B dashboard to B Play");
+    await wait("location.hash === '#/project/play'", "B Play route after browser Forward");
+    await wait("document.body.innerText.includes('Playable Game With Bonus Round')", "Project B after browser Forward");
+    await snapshot("09-browser-forward-project-b-route");
     note("COMPLETE browser A → B → Back audit.");
     await writeFile(resolve(output, "09-browser-action-transcript.txt"), `${transcript.join("\n")}\n`);
     cdp.close();

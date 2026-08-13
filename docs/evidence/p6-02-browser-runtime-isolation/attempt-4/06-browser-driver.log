@@ -1,0 +1,12 @@
+[2026-08-13T10:58:41.028Z] START fresh Chrome session against candidate Studio http://127.0.0.1:41209
+[2026-08-13T10:58:41.040Z] NAVIGATE public Home Projects URL
+[2026-08-13T10:58:41.532Z] OBSERVE rendered Projects UI
+[2026-08-13T10:58:41.638Z] KEYBOARD End scrolls to the visible Import Project controls
+[2026-08-13T10:58:42.100Z] OBSERVE pointer target for input "Location": {"tag":"INPUT","text":""}
+[2026-08-13T10:58:42.190Z] CLICK input "Location" at rendered coordinates (403, 699)
+[2026-08-13T10:58:42.796Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode" through browser keyboard
+[2026-08-13T10:58:43.102Z] OBSERVE pointer target for Project A Detect: {"tag":"SPAN","text":"Detect"}
+[2026-08-13T10:58:43.177Z] CLICK Project A Detect at rendered coordinates (339, 768)
+[2026-08-13T10:59:13.789Z] FAILED Error: Timed out waiting for Project A package detection
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/browser-ui-rerun.mjs:70:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/browser-ui-rerun.mjs:168:5)

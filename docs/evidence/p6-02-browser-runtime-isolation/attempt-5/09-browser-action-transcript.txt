@@ -1,0 +1,20 @@
+[2026-08-13T11:01:23.577Z] START fresh Chrome session against candidate Studio http://127.0.0.1:41211
+[2026-08-13T11:01:23.587Z] NAVIGATE public Home Projects URL
+[2026-08-13T11:01:24.048Z] OBSERVE rendered Projects UI
+[2026-08-13T11:01:24.092Z] KEYBOARD End scrolls to the visible Import Project controls
+[2026-08-13T11:01:24.463Z] OBSERVE pointer target for input "Location": {"tag":"INPUT","text":""}
+[2026-08-13T11:01:24.587Z] CLICK input "Location" at rendered coordinates (403, 721)
+[2026-08-13T11:01:25.197Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a" through browser keyboard
+[2026-08-13T11:01:25.513Z] OBSERVE pointer target for Project A Detect: {"tag":"SPAN","text":"Detect"}
+[2026-08-13T11:01:25.619Z] CLICK Project A Detect at rendered coordinates (1319, 742)
+[2026-08-13T11:01:26.071Z] OBSERVE Project A detection result and Register action
+[2026-08-13T11:01:26.093Z] SCROLL browser viewport by 478px to reach Project A Register
+[2026-08-13T11:01:26.450Z] OBSERVE pointer target for Project A Register: {"tag":"LABEL","text":"Location"}
+[2026-08-13T11:01:26.547Z] CLICK Project A Register at rendered coordinates (346, 457)
+[2026-08-13T11:01:27.004Z] OBSERVE Project A visible Open action
+[2026-08-13T11:01:27.325Z] CAPTURE 04-project-a-registered.png, 04-project-a-registered-visible-text.txt, and 04-project-a-registered-url.txt
+[2026-08-13T11:01:27.331Z] OBSERVE pointer target for Project A Open: {"tag":"DIV","text":"POKIE Studio"}
+[2026-08-13T11:01:27.413Z] CLICK Project A Open at rendered coordinates (1280, 56)
+[2026-08-13T11:01:57.948Z] FAILED Error: Timed out waiting for Project A dashboard
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/browser-ui-rerun.mjs:70:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/browser-ui-rerun.mjs:179:5)

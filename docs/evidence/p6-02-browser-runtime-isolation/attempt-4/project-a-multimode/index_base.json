@@ -1,0 +1,33 @@
+{
+    "schemaVersion": 2,
+    "modeName": "base",
+    "libraryId": "base-browser-lib",
+    "librarySchemaVersion": 1,
+    "libraryHash": "sha256:95bc5cc6f67de810391f44d079d2bb716bba0a294b6095cabed9977daa7e7bf0",
+    "outcomeCount": 3,
+    "totalWeight": 1000,
+    "outcomesFile": "outcomes_base.jsonl",
+    "entries": [
+        {
+            "id": "0",
+            "weight": 700,
+            "byteOffset": 0,
+            "byteLength": 361,
+            "recordHash": "sha256:5da0e135788fed8701d19d96094c670c099c736befd7536996c6ae37743e2464"
+        },
+        {
+            "id": "1",
+            "weight": 250,
+            "byteOffset": 362,
+            "byteLength": 653,
+            "recordHash": "sha256:09201fde3ca225601c06d00685b0160aed727b7b42e0a25f007dcd7108e5e5a8"
+        },
+        {
+            "id": "2",
+            "weight": 50,
+            "byteOffset": 1016,
+            "byteLength": 657,
+            "recordHash": "sha256:d1b7ee36dbf9356453c72dcd3f9ec6953cf1d2cc08e5f2de2fe27ef1ccf9f103"
+        }
+    ]
+}
