@@ -57,7 +57,10 @@ async function main() {
     await mkdir(output, {recursive: true});
     const cdp = await connect();
     const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true})).result.value;
-    const wait = async (expression, description, timeout = 30000) => {
+    // Five seconds is ample for this local build and keeps a failed acceptance
+    // assertion bounded, so the terminal transcript is written before the
+    // external host command's observation window ends.
+    const wait = async (expression, description, timeout = 5000) => {
         const deadline = Date.now() + timeout;
         while (!(await evaluate(expression))) {
             if (Date.now() > deadline) throw new Error(`Timed out waiting for ${description}`);

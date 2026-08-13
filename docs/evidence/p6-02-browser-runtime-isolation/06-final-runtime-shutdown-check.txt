@@ -1,1 +1,5 @@
-Stopped current Studio PID 3362472 and current Chrome PID 3362573; no listener remained on ports 43108 or 9222.
+shutdown_utc=2026-08-13T19:30:11Z
+requested_studio_pid=3375060
+requested_chrome_pid=3375062
+remaining_runtime_listeners:
+remaining_requested_processes:

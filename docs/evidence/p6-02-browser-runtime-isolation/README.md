@@ -1,22 +1,20 @@
 # P6-02 browser runtime-isolation rerun
 
-Candidate `5b627371c807f8df4223c29f2ea502b9f35fea94` was rebuilt with Node
-24.18.0 using `build-client` and `build-studio-client`, then launched through
-the public `pokie studio <Project A> --no-open` workflow. A fresh 1440×1000
-Chrome profile drove the visible Studio UI with normal mouse/keyboard input
-only; it made no Studio product API calls or DOM/state writes.
+Candidate `e8c30f629980dad1e122802f147205458da153ae` was rebuilt with Node
+24.18.0 and launched through the public `pokie studio <Project A> --no-open`
+workflow. A fresh 1440×1000 Chrome profile drove only the rendered Studio UI
+with normal mouse/keyboard input; the driver made no Studio product API calls
+or DOM/state writes.
 
-Result: **finding**. Project A opened from the legacy Play URL, was upgraded
-to its project-scoped route, and played one visible round. Project B was then
-detected, registered, opened, and given its own visible session through the
-Studio UI. Browser Back stepped through Project B Overview, Home/Projects,
-and Home/Design, but further Back attempts stayed at `#/home/design`; it
-never restored Project A's project-scoped Play route. The failure is captured
-in the current `04-*` screenshot, rendered text, and URL, with all eight
-attempts in `03-current-browser-driver-terminal.log` and
-`06-browser-action-transcript.txt`.
+Result: **finding**. The legacy Project A Play entry became its scoped Play
+route, a visible A session played a round, and a visible Project B session was
+created through Detect, Register, Open, and Play. Browser Back then restored
+the scoped Project A Play page with no B identity or round displayed. Browser
+Forward failed: eight visible `Alt+Right` attempts remained at `#/home/design`
+instead of restoring Project B's scoped Play route. The final screenshot and
+text confirm that the failure page exposed no cross-project session, mode, run,
+or error state.
 
-The retained artifacts are limited to the current source-built rerun: UI
-triples `00`–`04`, the action transcript, build/runtime metadata, port
-preflight, and shutdown check. No Forward artifact is retained because the
-required Back destination was never reached.
+Current evidence is limited to the build and runtime logs, the visible-browser
+action transcript, and captures `00`–`05`. `04-*` is the successful Back
+destination; `05-*` is the actual failed Forward destination.
