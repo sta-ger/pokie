@@ -1,6 +1,6 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
@@ -161,7 +161,7 @@ export function ProjectDashboardRoute() {
 }
 
 // Legacy `/project/:tab` links contain no project identity. Resolve the server's current project
-// in this deliberately state-free route first, then push a scoped successor before the dashboard
+// in this deliberately state-free route first, then replace that history entry before the dashboard
 // (and its session/run/error state) can mount. This makes every rendered project dashboard derive
 // from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
@@ -169,19 +169,16 @@ export function LegacyProjectDashboardRoute() {
     const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
-    const upgradeStartedRef = useRef(false);
-
-    // A legacy hash can be a browser entry the router did not create. Replacing that entry either
-    // natively or through the router leaves one of the two history implementations out of sync, so a
-    // later browser Forward can lose the entries after Home. Push a scoped, router-owned successor
-    // instead. The old legacy entry remains behind it, while Back/Forward reaches this project-scoped
-    // entry and all later entries without either history implementation rewriting the other.
+    // The hash router owns the initial legacy entry as soon as it starts, assigning it its history
+    // index when necessary. Replace that entry through the router before mounting the dashboard: adding
+    // a scoped successor leaves an obsolete legacy entry in the stack, which makes a Back restoration
+    // create a new Forward branch when later Home routes are reached. A router-owned replacement keeps
+    // the original index and every subsequent Home/Project entry intact.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
-    useEffect(() => {
-        if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
-            upgradeStartedRef.current = true;
+    useLayoutEffect(() => {
+        if (projectRoot !== undefined && projectRoot !== "") {
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            navigate(scopedPath);
+            navigate(scopedPath, {replace: true});
         }
     }, [activeTab, navigate, projectRoot]);
 
