@@ -169,29 +169,25 @@ export function LegacyProjectDashboardRoute() {
     const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
-    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
 
     // On the real hash router, update the URL entry directly. A router navigation runs after the
     // browser's Back/Forward pop and can create a new history branch, dropping the entries in front
     // of the legacy route. replaceState changes only this entry and retains that Forward history.
-    // The local root lets this controller render the dashboard immediately even though replaceState
-    // intentionally does not emit a popstate event for the router to consume.
+    // It does not notify the router, so follow it with the matching popstate event: the router must
+    // also observe the scoped location before another browser traversal can calculate its history
+    // position correctly.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (projectRoot !== undefined && projectRoot !== "") {
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
             if (window.location.hash === `#/project/${tab ?? ""}`) {
                 window.history.replaceState(window.history.state, "", `#${scopedPath}`);
-                setScopedProjectRoot(projectRoot);
+                window.dispatchEvent(new PopStateEvent("popstate", {state: window.history.state}));
             } else {
                 navigate(scopedPath, {replace: true});
             }
         }
     }, [activeTab, navigate, projectRoot, tab]);
-
-    if (scopedProjectRoot !== undefined) {
-        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
-    }
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
