@@ -1,0 +1,5 @@
+{
+  "href": "http://127.0.0.1:43102/#/project/play",
+  "hash": "#/project/play",
+  "text": "POKIE Studio\n/\nPlayable Game\n/\n\nPlay\n\nOverview\nGame Model\nPlay\nSimulation\n\nADVANCED\n\nReplay\nBuild/Export\nCertification\nFairness\nPlayable Game\n\n/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a\n\nClose project\n\nPlay prepares this project (materializing a Blueprint into a runnable package first if needed) and creates a real session directly in Studio's own backend -- no server, host, port, or separate API to set up.\n\nSeed (optional)\n\nA given seed always plays out the same way -- genuine input to the game's own RNG, not cosmetic.\n\nNew session"
+}

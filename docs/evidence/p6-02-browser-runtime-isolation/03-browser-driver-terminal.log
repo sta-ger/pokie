@@ -1,0 +1,8 @@
+[2026-08-13T17:15:54.266Z] START fresh Chrome session against fresh candidate Studio http://127.0.0.1:43102
+[2026-08-13T17:15:54.291Z] NAVIGATE public legacy unscoped Project A Play URL
+[2026-08-13T17:15:56.293Z] OBSERVE Project A rendered through the legacy Play route
+[2026-08-13T17:16:26.355Z] FAILED Error: Timed out waiting for legacy A history entry replaced by a project-scoped A Play route
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/host-browser-rerun.mjs:63:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/host-browser-rerun.mjs:123:5)
+
+[exit 1]

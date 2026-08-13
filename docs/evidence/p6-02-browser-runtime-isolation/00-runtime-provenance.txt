@@ -1,0 +1,7 @@
+candidate_sha=4b40a06fa595f0e864b8e17043c983706ebdcbed
+studio_url=http://127.0.0.1:43102
+devtools_url=http://127.0.0.1:9322
+node=/home/stager/.nvm/versions/node/v24.18.0/bin/node
+node_version=v24.18.0
+chrome=Google Chrome 138.0.7204.183
+workflow=visible public Studio UI via physical CDP mouse/keyboard only
