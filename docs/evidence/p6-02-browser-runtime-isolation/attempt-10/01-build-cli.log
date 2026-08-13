@@ -1,0 +1,29 @@
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 build-cli
+> tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js
+
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 build-client
+> tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/
+
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 build-studio-client
+> npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts
+
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 typecheck-studio-client
+> tsc --project cli/studio-client/tsconfig.json --noEmit
+
+file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/node_modules/rolldown/dist/shared/rolldown-build-CtPvmZgJ.mjs:9
+import { formatWithOptions, styleText } from "node:util";
+                            ^^^^^^^^^
+SyntaxError: The requested module 'node:util' does not provide an export named 'styleText'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:123:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:191:5)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:336:24)
+
+Node.js v18.19.1

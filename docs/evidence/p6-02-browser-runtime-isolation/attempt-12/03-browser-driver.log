@@ -1,0 +1,66 @@
+[2026-08-13T11:34:06.593Z] START fresh Chrome session against candidate Studio http://127.0.0.1:41222
+[2026-08-13T11:34:06.605Z] NAVIGATE public initial Project A Play URL
+[2026-08-13T11:34:07.081Z] OBSERVE Project A dashboard
+[2026-08-13T11:34:07.083Z] OBSERVE Project A Play setup
+[2026-08-13T11:34:07.085Z] OBSERVE Project A visible outcome-library mode picker
+[2026-08-13T11:34:07.097Z] OBSERVE pointer target for Outcome library mode picker: {"tag":"INPUT","text":""}
+[2026-08-13T11:34:07.200Z] CLICK Outcome library mode picker at rendered coordinates (436, 346)
+[2026-08-13T11:34:07.653Z] OBSERVE visible buyFeature mode option
+[2026-08-13T11:34:07.657Z] OBSERVE pointer target for buyFeature mode option: {"tag":"DIV","text":"buyFeature"}
+[2026-08-13T11:34:07.735Z] CLICK buyFeature mode option at rendered coordinates (436, 427)
+[2026-08-13T11:34:08.188Z] OBSERVE buyFeature visibly selected
+[2026-08-13T11:34:08.197Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
+[2026-08-13T11:34:08.276Z] CLICK input "Seed (optional)" at rendered coordinates (436, 452)
+[2026-08-13T11:34:08.860Z] INPUT "Seed (optional)"="p6-a-visible-session" through browser keyboard
+[2026-08-13T11:34:09.174Z] OBSERVE pointer target for Project A New session: {"tag":"SPAN","text":"New session"}
+[2026-08-13T11:34:09.281Z] CLICK Project A New session at rendered coordinates (337, 500)
+[2026-08-13T11:34:09.737Z] OBSERVE Project A visible Spin action
+[2026-08-13T11:34:09.748Z] OBSERVE pointer target for Project A Spin: {"tag":"SPAN","text":"Spin"}
+[2026-08-13T11:34:09.873Z] CLICK Project A Spin at rendered coordinates (310, 235)
+[2026-08-13T11:34:10.328Z] OBSERVE Project A visible session and played-round state
+[2026-08-13T11:34:10.591Z] CAPTURE 05-project-a-play-state.png, 05-project-a-play-state-visible-text.txt, and 05-project-a-play-state-url.txt
+[2026-08-13T11:34:10.595Z] OBSERVE pointer target for Studio Home breadcrumb from Project A: {"tag":"BUTTON","text":"POKIE Studio"}
+[2026-08-13T11:34:10.707Z] CLICK Studio Home breadcrumb from Project A at rendered coordinates (62, 29)
+[2026-08-13T11:34:11.161Z] OBSERVE Home after closing Project A
+[2026-08-13T11:34:11.167Z] OBSERVE pointer target for Home Projects navigation: {"tag":"DIV","text":"Projects"}
+[2026-08-13T11:34:11.247Z] CLICK Home Projects navigation at rendered coordinates (130, 137)
+[2026-08-13T11:34:11.703Z] OBSERVE Projects UI for Project B
+[2026-08-13T11:34:11.712Z] KEYBOARD End scrolls to the visible Project B Import controls
+[2026-08-13T11:34:12.080Z] OBSERVE pointer target for input "Location": {"tag":"INPUT","text":""}
+[2026-08-13T11:34:12.172Z] CLICK input "Location" at rendered coordinates (403, 647)
+[2026-08-13T11:34:12.775Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b" through browser keyboard
+[2026-08-13T11:34:13.090Z] OBSERVE pointer target for Project B Detect: {"tag":"SPAN","text":"Detect"}
+[2026-08-13T11:34:13.198Z] CLICK Project B Detect at rendered coordinates (1319, 668)
+[2026-08-13T11:34:13.654Z] OBSERVE Project B package detection
+[2026-08-13T11:34:13.674Z] OBSERVE pointer target for Project B Register: null
+[2026-08-13T11:34:13.758Z] CLICK Project B Register at rendered coordinates (346, 861)
+[2026-08-13T11:34:14.214Z] OBSERVE Project B visible Open action
+[2026-08-13T11:34:14.232Z] OBSERVE pointer target for Project B Open: {"tag":"SPAN","text":"Open"}
+[2026-08-13T11:34:14.334Z] CLICK Project B Open at rendered coordinates (1280, 217)
+[2026-08-13T11:34:14.789Z] OBSERVE Project B dashboard
+[2026-08-13T11:34:14.801Z] OBSERVE pointer target for Project B Play navigation: {"tag":"DIV","text":"Play"}
+[2026-08-13T11:34:14.892Z] CLICK Project B Play navigation at rendered coordinates (130, 178)
+[2026-08-13T11:34:15.345Z] OBSERVE Project B fresh Play setup with no visible A round
+[2026-08-13T11:34:15.530Z] CAPTURE 06-project-b-fresh-play-state.png, 06-project-b-fresh-play-state-visible-text.txt, and 06-project-b-fresh-play-state-url.txt
+[2026-08-13T11:34:15.533Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
+[2026-08-13T11:34:15.607Z] CLICK input "Seed (optional)" at rendered coordinates (436, 346)
+[2026-08-13T11:34:16.184Z] INPUT "Seed (optional)"="p6-b-visible-session" through browser keyboard
+[2026-08-13T11:34:16.498Z] OBSERVE pointer target for Project B New session: {"tag":"SPAN","text":"New session"}
+[2026-08-13T11:34:16.607Z] CLICK Project B New session at rendered coordinates (337, 394)
+[2026-08-13T11:34:17.062Z] OBSERVE Project B visible Spin action
+[2026-08-13T11:34:17.337Z] CAPTURE 07-project-b-session-state.png, 07-project-b-session-state-visible-text.txt, and 07-project-b-session-state-url.txt
+[2026-08-13T11:34:17.341Z] KEYBOARD Alt+Left browser Back: B Play to B dashboard
+[2026-08-13T11:34:17.901Z] KEYBOARD Alt+Left browser Back: B dashboard to Home Projects
+[2026-08-13T11:34:18.460Z] KEYBOARD Alt+Left browser Back: Home Projects to Home Design
+[2026-08-13T11:34:19.015Z] KEYBOARD Alt+Left browser Back: Home Design to historical A Play URL
+[2026-08-13T11:34:19.570Z] OBSERVE historical A Play route after browser Back
+[2026-08-13T11:34:19.573Z] OBSERVE server-backed Project B rendered on the historical A route
+[2026-08-13T11:34:19.828Z] CAPTURE 08-browser-back-historical-a-route.png, 08-browser-back-historical-a-route-visible-text.txt, and 08-browser-back-historical-a-route-url.txt
+[2026-08-13T11:34:19.830Z] KEYBOARD Alt+Right browser Forward: historical A Play route to Home Design
+[2026-08-13T11:34:20.387Z] KEYBOARD Alt+Right browser Forward: Home Design to Home Projects
+[2026-08-13T11:34:20.945Z] KEYBOARD Alt+Right browser Forward: Home Projects to B dashboard
+[2026-08-13T11:34:21.503Z] KEYBOARD Alt+Right browser Forward: B dashboard to B Play
+[2026-08-13T11:34:22.058Z] OBSERVE B Play route after browser Forward
+[2026-08-13T11:34:22.061Z] OBSERVE Project B after browser Forward
+[2026-08-13T11:34:22.315Z] CAPTURE 09-browser-forward-project-b-route.png, 09-browser-forward-project-b-route-visible-text.txt, and 09-browser-forward-project-b-route-url.txt
+[2026-08-13T11:34:22.315Z] COMPLETE browser A → B → Back audit.

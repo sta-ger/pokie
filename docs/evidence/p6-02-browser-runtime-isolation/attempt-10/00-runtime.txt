@@ -1,0 +1,5 @@
+candidate_sha=b3d250d2281942570865555ccfb9412c33671dab
+head_sha=32d2df09df6178b64ec72236a8999a990a150442
+node=/home/stager/.nvm/versions/node/v24.18.0/bin/node
+node_version=v24.18.0
+build_exit=1

@@ -1,0 +1,3 @@
+    PID STAT CMD
+3012222 Sl   /home/stager/.nvm/versions/node/v24.18.0/bin/node dist/cli/pokie.js studio /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode --port 41222 --host 127.0.0.1 --no-open
+3012249 Sl   /bin/google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-breakpad --remote-debugging-address=127.0.0.1 --remote-debugging-port=9236 --user-data-dir=/tmp/p6-02-attempt-12-chrome.eVXf4y --window-size=1440,1000 about:blank

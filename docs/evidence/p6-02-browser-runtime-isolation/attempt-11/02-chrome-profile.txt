@@ -1,0 +1,4 @@
+profile=/tmp/p6-02-attempt-11-chrome.bVv8ap
+config=/tmp/p6-02-attempt-11-xdg-config.z8sbTB
+cache=/tmp/p6-02-attempt-11-xdg-cache.9abCg1
+data=/tmp/p6-02-attempt-11-xdg-data.oQll2U

@@ -1,0 +1,33 @@
+[2026-08-13T11:32:36.378Z] START fresh Chrome session against candidate Studio http://127.0.0.1:41221
+[2026-08-13T11:32:36.388Z] NAVIGATE public Home Projects URL
+[2026-08-13T11:32:36.849Z] OBSERVE rendered Projects UI
+[2026-08-13T11:32:36.896Z] KEYBOARD End scrolls to the visible Import Project controls
+[2026-08-13T11:32:37.263Z] OBSERVE pointer target for input "Location": {"tag":"INPUT","text":""}
+[2026-08-13T11:32:37.387Z] CLICK input "Location" at rendered coordinates (403, 721)
+[2026-08-13T11:32:38.029Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode" through browser keyboard
+[2026-08-13T11:32:38.347Z] OBSERVE pointer target for Project A Detect: {"tag":"SPAN","text":"Detect"}
+[2026-08-13T11:32:38.452Z] CLICK Project A Detect at rendered coordinates (339, 790)
+[2026-08-13T11:32:38.908Z] OBSERVE Project A detection result and Register action
+[2026-08-13T11:32:38.929Z] SCROLL browser viewport by 552px to reach Project A Register
+[2026-08-13T11:32:39.284Z] OBSERVE pointer target for Project A Register: {"tag":"DIV","text":"LocationBrowse…Resolves to: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimodeDetect"}
+[2026-08-13T11:32:39.358Z] CLICK Project A Register at rendered coordinates (346, 431)
+[2026-08-13T11:32:39.813Z] OBSERVE Project A visible Open action
+[2026-08-13T11:32:40.143Z] CAPTURE 04-project-a-registered.png, 04-project-a-registered-visible-text.txt, and 04-project-a-registered-url.txt
+[2026-08-13T11:32:40.163Z] SCROLL browser viewport by -474px to reach Project A Open
+[2026-08-13T11:32:40.520Z] OBSERVE pointer target for Project A Open: {"tag":"SPAN","text":"Open"}
+[2026-08-13T11:32:40.615Z] CLICK Project A Open at rendered coordinates (1280, 291)
+[2026-08-13T11:32:41.071Z] OBSERVE Project A dashboard
+[2026-08-13T11:32:41.085Z] OBSERVE pointer target for Project A Play navigation: {"tag":"DIV","text":"Play"}
+[2026-08-13T11:32:41.178Z] CLICK Project A Play navigation at rendered coordinates (130, 178)
+[2026-08-13T11:32:41.633Z] OBSERVE Project A Play setup
+[2026-08-13T11:32:41.651Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
+[2026-08-13T11:32:41.735Z] CLICK input "Seed (optional)" at rendered coordinates (436, 346)
+[2026-08-13T11:32:42.312Z] INPUT "Seed (optional)"="p6-a-visible-session" through browser keyboard
+[2026-08-13T11:32:42.624Z] OBSERVE pointer target for Project A New session: {"tag":"SPAN","text":"New session"}
+[2026-08-13T11:32:42.735Z] CLICK Project A New session at rendered coordinates (337, 394)
+[2026-08-13T11:32:43.191Z] OBSERVE Project A visible Spin action
+[2026-08-13T11:32:43.202Z] OBSERVE pointer target for Project A Spin: {"tag":"SPAN","text":"Spin"}
+[2026-08-13T11:32:43.297Z] CLICK Project A Spin at rendered coordinates (310, 235)
+[2026-08-13T11:33:13.911Z] FAILED Error: Timed out waiting for Project A visible session and played-round state
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/browser-ui-rerun.mjs:70:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/browser-ui-rerun.mjs:189:5)

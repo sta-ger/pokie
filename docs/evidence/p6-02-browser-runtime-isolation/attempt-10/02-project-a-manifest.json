@@ -1,0 +1,92 @@
+{
+    "schemaVersion": 1,
+    "generatedBy": "pokie outcomelibrary build",
+    "pokieVersion": "1.3.0",
+    "generatedAt": "2026-08-13T10:58:13.073Z",
+    "game": {
+        "id": "browser-multimode",
+        "name": "Browser Multi-mode Library",
+        "version": "1.0.0"
+    },
+    "artifactPokieVersion": "1.3.0",
+    "modes": [
+        {
+            "modeName": "base",
+            "betMode": "base",
+            "stake": 1,
+            "libraryId": "base-browser-lib",
+            "libraryHash": "sha256:95bc5cc6f67de810391f44d079d2bb716bba0a294b6095cabed9977daa7e7bf0",
+            "outcomeCount": 3,
+            "totalWeight": 1000,
+            "analysis": {
+                "totalWeight": 1000,
+                "rtp": 1.5,
+                "hitFrequency": 0.3,
+                "zeroWinFrequency": 0.7,
+                "variance": 18.75,
+                "standardDeviation": 4.330127018922194,
+                "maxWin": 20,
+                "maxWinProbability": 0.05,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.7
+                    },
+                    {
+                        "payoutMultiplier": 2,
+                        "probability": 0.25
+                    },
+                    {
+                        "payoutMultiplier": 20,
+                        "probability": 0.05
+                    }
+                ]
+            },
+            "indexFile": "index_base.json",
+            "outcomesFile": "outcomes_base.jsonl"
+        },
+        {
+            "modeName": "buyFeature",
+            "betMode": "base",
+            "stake": 1,
+            "libraryId": "buy-browser-lib",
+            "libraryHash": "sha256:330ffcfa28c81f18d2bc484369c72a74ec36a4f59c7af8868ba7f4b1b7810365",
+            "outcomeCount": 3,
+            "totalWeight": 1000,
+            "analysis": {
+                "totalWeight": 1000,
+                "rtp": 1.5,
+                "hitFrequency": 0.3,
+                "zeroWinFrequency": 0.7,
+                "variance": 18.75,
+                "standardDeviation": 4.330127018922194,
+                "maxWin": 20,
+                "maxWinProbability": 0.05,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.7
+                    },
+                    {
+                        "payoutMultiplier": 2,
+                        "probability": 0.25
+                    },
+                    {
+                        "payoutMultiplier": 20,
+                        "probability": 0.05
+                    }
+                ]
+            },
+            "indexFile": "index_buyFeature.json",
+            "outcomesFile": "outcomes_buyFeature.jsonl"
+        }
+    ],
+    "files": [
+        "index_base.json",
+        "outcomes_base.jsonl",
+        "index_buyFeature.json",
+        "outcomes_buyFeature.jsonl",
+        "manifest.json"
+    ]
+}
+
