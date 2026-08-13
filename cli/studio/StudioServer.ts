@@ -86,6 +86,7 @@ import type {StudioRuntimeSessionView} from "./runtime/StudioRuntimeSessionView.
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
 import {validateProjectLocationRequest, ProjectLocationRequestInput} from "./validateProjectLocationRequest.js";
 import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} from "./validateProjectRegistrationRequest.js";
+import {validateProjectRelocationRequest, ProjectRelocationRequestInput} from "./validateProjectRelocationRequest.js";
 import {validatePlaySessionRequest, PlaySessionRequestInput} from "./runtime/validatePlaySessionRequest.js";
 import {validatePlayFindSymbolWinRequest, PlayFindSymbolWinRequestInput} from "./runtime/validatePlayFindSymbolWinRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
@@ -405,6 +406,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/projects/registry/remove") {
             await this.handleHomeProjectRegistryRemove(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/relocate") {
+            await this.handleHomeProjectRegistryRelocate(req, res);
             return;
         }
 
@@ -914,6 +920,19 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {status: "ok"});
     }
 
+    private async handleHomeProjectRegistryRelocate(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateProjectRelocationRequest((body ?? {}) as ProjectRelocationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.projectRegistrationService.relocate(validated.location, validated.newLocation));
+    }
+
     private async handleHomeOpenProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -956,6 +975,13 @@ export class StudioServer implements StudioServerHandling {
         // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
+        // Opening is a first-class Project lifecycle event, not merely a recent-project hint.  Record it
+        // only after the dashboard was successfully loaded, preserving a managed entry's origin while
+        // making an ad-hoc Open as Project durable and most-recent in the same registry Home renders.
+        await this.projectRegistrationService.recordOpened(
+            dashboard.projectRoot,
+            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
+        );
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 

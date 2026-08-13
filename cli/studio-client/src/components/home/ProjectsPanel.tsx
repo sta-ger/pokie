@@ -1,7 +1,14 @@
 import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
 import {useEffect, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
-import {listProjectRegistry, previewProjectImport, ProjectOpenError, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
+import {
+    listProjectRegistry,
+    previewProjectImport,
+    ProjectOpenError,
+    registerProjectImport,
+    relocateProjectRegistryEntry,
+    removeProjectRegistryEntry,
+} from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
@@ -66,9 +73,13 @@ export function ProjectsPanel() {
     const [importView, setImportView] = useState<ImportView>({status: "idle"});
     const [registerName, setRegisterName] = useState("");
     const [openingLocation, setOpeningLocation] = useState<string | undefined>(undefined);
+    const [relocatingEntry, setRelocatingEntry] = useState<StudioProjectRegistryView | undefined>(undefined);
+    const [relocationLocation, setRelocationLocation] = useState("");
+    const [relocationError, setRelocationError] = useState<string | undefined>(undefined);
     const detectGuard = useDoubleSubmitGuard();
     const registerGuard = useDoubleSubmitGuard();
     const openGuard = useDoubleSubmitGuard();
+    const relocateGuard = useDoubleSubmitGuard();
 
     // Both mutating actions below (register/remove) already receive the server's own resulting entry
     // (or, for remove, already know which location was removed) straight from their own response, so they
@@ -149,6 +160,29 @@ export function ProjectsPanel() {
         if (importView.status !== "idle") {
             setImportView({status: "idle"});
         }
+    };
+
+    const handleRelocate = (): void => {
+        if (relocatingEntry === undefined || relocationLocation.trim().length === 0 || !relocateGuard.begin()) {
+            return;
+        }
+        setRelocationError(undefined);
+        relocateProjectRegistryEntry(fetchImpl, relocatingEntry.location, relocationLocation)
+            .then((result) => {
+                relocateGuard.end();
+                if (result.status !== "ok") {
+                    setRelocationError(`"${result.path}" doesn't look like a POKIE project.`);
+                    return;
+                }
+                removeEntry(relocatingEntry.location);
+                upsertEntry(result.entry);
+                setRelocatingEntry(undefined);
+                setRelocationLocation("");
+            })
+            .catch((error: unknown) => {
+                relocateGuard.end();
+                setRelocationError(errorMessage(error));
+            });
     };
 
     const handleDetect = (): void => {
@@ -272,6 +306,19 @@ export function ProjectsPanel() {
                                                         Open in Design Game
                                                     </Button>
                                                 )}
+                                                {entry.status === "missing" && (
+                                                    <Button
+                                                        variant="default"
+                                                        size="xs"
+                                                        onClick={() => {
+                                                            setRelocatingEntry(entry);
+                                                            setRelocationLocation("");
+                                                            setRelocationError(undefined);
+                                                        }}
+                                                    >
+                                                        Relocate
+                                                    </Button>
+                                                )}
                                                 <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>
                                                     Remove
                                                 </Button>
@@ -282,6 +329,30 @@ export function ProjectsPanel() {
                             </Table.Tbody>
                         </Table>
                     </Table.ScrollContainer>
+                )}
+                {relocatingEntry && (
+                    <div>
+                        <Text size="sm" mt="sm" mb="xs">
+                            Relocate &quot;{relocatingEntry.name}&quot; without changing files on disk.
+                        </Text>
+                        <QuickActions>
+                            <PathInput
+                                label="New location"
+                                placeholder="/path/to/moved-project"
+                                kind="any"
+                                browseTitle="Choose the moved project"
+                                browseId="relocate-project-location"
+                                value={relocationLocation}
+                                onChange={(event) => setRelocationLocation(event.currentTarget.value)}
+                                onPathSelected={setRelocationLocation}
+                            />
+                            <Button onClick={handleRelocate}>Relocate</Button>
+                            <Button variant="default" onClick={() => setRelocatingEntry(undefined)}>
+                                Cancel
+                            </Button>
+                        </QuickActions>
+                        {relocationError && <ErrorState message={relocationError} />}
+                    </div>
                 )}
             </PageSection>
 

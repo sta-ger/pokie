@@ -196,6 +196,24 @@ export async function removeProjectRegistryEntry(fetchImpl: FetchLike, location:
     }
 }
 
+// Repairs a missing entry after a project was moved outside Studio.  This is registry-only: the server
+// verifies the new location, then replaces the old record without copying or deleting either path.
+export async function relocateProjectRegistryEntry(
+    fetchImpl: FetchLike,
+    location: string,
+    newLocation: string,
+): Promise<StudioProjectRegistrationResult> {
+    const response = await fetchImpl("/api/home/projects/registry/relocate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({location, newLocation}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to relocate the project"));
+    }
+    return (await response.json()) as StudioProjectRegistrationResult;
+}
+
 // Never writes/reads anything on disk — see StudioBlueprintService.validate()'s own doc comment.
 export async function validateBlueprint(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioBlueprintValidationView> {
     const response = await fetchImpl("/api/home/blueprints/validate", {

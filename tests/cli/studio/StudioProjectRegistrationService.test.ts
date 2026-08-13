@@ -237,6 +237,88 @@ describe("StudioProjectRegistrationService", () => {
 
             expect(await registry.list()).toEqual([]);
         });
+
+        it("removes the canonical project when the caller supplies a symlink alias", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registry-canonical-remove-"));
+            try {
+                const blueprintPath = path.join(directory, "game.json");
+                const aliasPath = path.join(directory, "game-alias.json");
+                fs.writeFileSync(
+                    blueprintPath,
+                    JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+                );
+                fs.symlinkSync(blueprintPath, aliasPath);
+                const registry = new InMemoryStudioProjectRegistry();
+                const service = new StudioProjectRegistrationService(registry);
+
+                await service.registerExternal(blueprintPath);
+                await service.remove(aliasPath);
+
+                expect(await registry.list()).toEqual([]);
+                expect(fs.existsSync(blueprintPath)).toBe(true);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+    });
+
+    describe("canonical lifecycle identity", () => {
+        it("treats relative, absolute, and symlink spellings as one project record", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registry-canonical-"));
+            try {
+                const blueprintPath = path.join(directory, "game.json");
+                const aliasPath = path.join(directory, "game-alias.json");
+                fs.writeFileSync(
+                    blueprintPath,
+                    JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+                );
+                fs.symlinkSync(blueprintPath, aliasPath);
+                const service = new StudioProjectRegistrationService(new InMemoryStudioProjectRegistry());
+
+                await service.registerExternal(path.relative(process.cwd(), blueprintPath));
+                await service.registerExternal(aliasPath);
+
+                expect(await service.list()).toEqual([expect.objectContaining({location: fs.realpathSync(blueprintPath), name: "game"})]);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("relocates a missing record without copying or deleting the moved project", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registry-relocate-"));
+            try {
+                const oldPath = path.join(directory, "old.json");
+                const newPath = path.join(directory, "new.json");
+                fs.writeFileSync(
+                    oldPath,
+                    JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+                );
+                const registry = new InMemoryStudioProjectRegistry();
+                const service = new StudioProjectRegistrationService(registry);
+                await service.registerManaged(oldPath, "My managed game");
+                fs.renameSync(oldPath, newPath);
+
+                expect(await service.list()).toEqual([expect.objectContaining({location: oldPath, status: "missing"})]);
+                const result = await service.relocate(oldPath, newPath);
+
+                expect(result).toEqual({status: "ok", entry: expect.objectContaining({location: newPath, name: "My managed game", origin: "managed"})});
+                expect(await service.list()).toEqual([expect.objectContaining({location: newPath, status: "ok"})]);
+                expect(fs.existsSync(newPath)).toBe(true);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("records opening an existing managed project without changing its origin", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/projects/sample-slot": tsPackageProject("/projects/sample-slot")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+            await service.registerManaged("/projects/sample-slot", "Old name");
+
+            await service.recordOpened("/projects/sample-slot", "Renamed game");
+
+            expect(await registry.list()).toEqual([expect.objectContaining({origin: "managed", name: "Renamed game"})]);
+        });
     });
 
     describe("resolveShowInFolderTarget", () => {
