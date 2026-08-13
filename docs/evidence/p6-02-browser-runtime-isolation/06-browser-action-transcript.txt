@@ -1,78 +1,78 @@
-[2026-08-13T21:54:38.483Z] START fresh Chrome session against fresh candidate Studio http://127.0.0.1:43228
-[2026-08-13T21:54:38.511Z] NAVIGATE public legacy unscoped Project A Play URL
-[2026-08-13T21:54:39.006Z] OBSERVE Project A rendered through the legacy Play route
-[2026-08-13T21:54:39.171Z] CAPTURE 00-legacy-project-a-play-before-route-scope-check.png, 00-legacy-project-a-play-before-route-scope-check-visible-text.txt, and 00-legacy-project-a-play-before-route-scope-check-url.txt
-[2026-08-13T21:54:39.173Z] OBSERVE legacy A history entry replaced by a project-scoped A Play route
-[2026-08-13T21:54:39.194Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
-[2026-08-13T21:54:39.228Z] CLICK input "Seed (optional)" at rendered coordinates (436, 346)
-[2026-08-13T21:54:39.872Z] INPUT "Seed (optional)"="p6-a-visible-session" through browser keyboard
-[2026-08-13T21:54:40.189Z] OBSERVE pointer target for Project A New session: {"tag":"SPAN","text":"New session"}
-[2026-08-13T21:54:40.232Z] CLICK Project A New session at rendered coordinates (337, 394)
-[2026-08-13T21:54:40.734Z] OBSERVE Project A session-only Spin action
-[2026-08-13T21:54:40.771Z] OBSERVE pointer target for Project A Spin: {"tag":"SPAN","text":"Spin"}
-[2026-08-13T21:54:40.803Z] CLICK Project A Spin at rendered coordinates (310, 235)
-[2026-08-13T21:54:41.310Z] OBSERVE Project A played-round state
-[2026-08-13T21:54:41.545Z] CAPTURE 01-project-a-legacy-entry-upgraded-and-played.png, 01-project-a-legacy-entry-upgraded-and-played-visible-text.txt, and 01-project-a-legacy-entry-upgraded-and-played-url.txt
-[2026-08-13T21:54:41.552Z] OBSERVE pointer target for Studio Home breadcrumb from Project A: {"tag":"BUTTON","text":"POKIE Studio"}
-[2026-08-13T21:54:41.575Z] CLICK Studio Home breadcrumb from Project A at rendered coordinates (62, 29)
-[2026-08-13T21:54:42.079Z] OBSERVE Home after closing Project A
-[2026-08-13T21:54:42.091Z] OBSERVE pointer target for Home Projects navigation: {"tag":"DIV","text":"Projects"}
-[2026-08-13T21:54:42.120Z] CLICK Home Projects navigation at rendered coordinates (130, 137)
-[2026-08-13T21:54:42.623Z] OBSERVE rendered Project B import form
-[2026-08-13T21:54:42.629Z] KEYBOARD End scrolls to visible Project B import controls
-[2026-08-13T21:54:42.946Z] OBSERVE pointer target for input "Location": {"tag":"INPUT","text":""}
-[2026-08-13T21:54:42.985Z] CLICK input "Location" at rendered coordinates (403, 647)
-[2026-08-13T21:54:43.651Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b" through browser keyboard
-[2026-08-13T21:54:43.968Z] OBSERVE pointer target for Project B Detect: {"tag":"SPAN","text":"Detect"}
-[2026-08-13T21:54:44.013Z] CLICK Project B Detect at rendered coordinates (1319, 668)
-[2026-08-13T21:54:44.578Z] OBSERVE Project B detected through rendered UI
-[2026-08-13T21:54:44.622Z] SCROLL to rendered Project B Register
-[2026-08-13T21:54:44.985Z] OBSERVE pointer target for Project B Register: {"tag":"SPAN","text":"Register"}
-[2026-08-13T21:54:45.020Z] CLICK Project B Register at rendered coordinates (346, 648)
-[2026-08-13T21:54:45.523Z] OBSERVE Project B visible Open action
-[2026-08-13T21:54:45.527Z] KEYBOARD End scrolls to rendered Project B Open action
-[2026-08-13T21:54:45.839Z] OBSERVE pointer target for Project B Open: {"tag":"SPAN","text":"Open"}
-[2026-08-13T21:54:45.877Z] CLICK Project B Open at rendered coordinates (1280, 176)
-[2026-08-13T21:54:46.382Z] OBSERVE Project B dashboard
-[2026-08-13T21:54:46.390Z] OBSERVE pointer target for Project B Play navigation: {"tag":"DIV","text":"Play"}
-[2026-08-13T21:54:46.404Z] CLICK Project B Play navigation at rendered coordinates (130, 178)
-[2026-08-13T21:54:46.907Z] OBSERVE fresh Project B Play state without Project A round
-[2026-08-13T21:54:47.087Z] CAPTURE 02-project-b-fresh-play.png, 02-project-b-fresh-play-visible-text.txt, and 02-project-b-fresh-play-url.txt
-[2026-08-13T21:54:47.092Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
-[2026-08-13T21:54:47.099Z] CLICK input "Seed (optional)" at rendered coordinates (436, 346)
-[2026-08-13T21:54:47.739Z] INPUT "Seed (optional)"="p6-b-visible-session" through browser keyboard
-[2026-08-13T21:54:48.045Z] OBSERVE pointer target for Project B New session: {"tag":"SPAN","text":"New session"}
-[2026-08-13T21:54:48.063Z] CLICK Project B New session at rendered coordinates (337, 394)
-[2026-08-13T21:54:48.567Z] OBSERVE Project B session-only Spin action
-[2026-08-13T21:54:48.766Z] CAPTURE 03-project-b-session.png, 03-project-b-session-visible-text.txt, and 03-project-b-session-url.txt
-[2026-08-13T21:54:48.792Z] KEYBOARD Alt+Left browser Back: step 1 toward Project A
-[2026-08-13T21:54:49.445Z] OBSERVE Back step 1: {"url":"http://127.0.0.1:43228/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fworktrees%2Fpokie-phase-6-final-polishing%2Ftask_P6-02-20260813112647%2Fdocs%2Fevidence%2Fp6-02-browser-runtime-isolation%2Ffixtures%2Fproject-b/overview","hasA":true,"hasB":true,"hasRound":false}
-[2026-08-13T21:54:49.561Z] KEYBOARD Alt+Left browser Back: step 2 toward Project A
-[2026-08-13T21:54:50.234Z] OBSERVE Back step 2: {"url":"http://127.0.0.1:43228/#/home/projects","hasA":true,"hasB":true,"hasRound":false}
-[2026-08-13T21:54:50.248Z] KEYBOARD Alt+Left browser Back: step 3 toward Project A
-[2026-08-13T21:54:50.905Z] OBSERVE Back step 3: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:50.961Z] KEYBOARD Alt+Left browser Back: step 4 toward Project A
-[2026-08-13T21:54:51.615Z] OBSERVE Back step 4: {"url":"http://127.0.0.1:43228/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fworktrees%2Fpokie-phase-6-final-polishing%2Ftask_P6-02-20260813112647%2Fdocs%2Fevidence%2Fp6-02-browser-runtime-isolation%2Ffixtures%2Fproject-a/play","hasA":true,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:51.786Z] CAPTURE 04-browser-back-restores-project-a-scoped.png, 04-browser-back-restores-project-a-scoped-visible-text.txt, and 04-browser-back-restores-project-a-scoped-url.txt
-[2026-08-13T21:54:51.787Z] OBSERVE browser Back restores the project-scoped A Play route
-[2026-08-13T21:54:51.788Z] OBSERVE Project A identity with no Project B state rendered or actionable
-[2026-08-13T21:54:51.907Z] KEYBOARD Alt+Right browser Forward: step 1 toward Project B
-[2026-08-13T21:54:52.572Z] OBSERVE Forward step 1: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:52.609Z] KEYBOARD Alt+Right browser Forward: step 2 toward Project B
-[2026-08-13T21:54:53.263Z] OBSERVE Forward step 2: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:53.324Z] KEYBOARD Alt+Right browser Forward: step 3 toward Project B
-[2026-08-13T21:54:53.977Z] OBSERVE Forward step 3: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:54.037Z] KEYBOARD Alt+Right browser Forward: step 4 toward Project B
-[2026-08-13T21:54:54.690Z] OBSERVE Forward step 4: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:54.727Z] KEYBOARD Alt+Right browser Forward: step 5 toward Project B
-[2026-08-13T21:54:55.382Z] OBSERVE Forward step 5: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:55.442Z] KEYBOARD Alt+Right browser Forward: step 6 toward Project B
-[2026-08-13T21:54:56.097Z] OBSERVE Forward step 6: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:56.175Z] KEYBOARD Alt+Right browser Forward: step 7 toward Project B
-[2026-08-13T21:54:56.830Z] OBSERVE Forward step 7: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:56.892Z] KEYBOARD Alt+Right browser Forward: step 8 toward Project B
-[2026-08-13T21:54:57.547Z] OBSERVE Forward step 8: {"url":"http://127.0.0.1:43228/#/home/design","hasA":false,"hasB":false,"hasRound":false}
-[2026-08-13T21:54:57.855Z] CAPTURE 05-browser-forward-restores-project-b-scoped.png, 05-browser-forward-restores-project-b-scoped-visible-text.txt, and 05-browser-forward-restores-project-b-scoped-url.txt
-[2026-08-13T21:55:02.947Z] FAILED Error: Timed out waiting for browser Forward restores the project-scoped B Play route
+[2026-08-13T22:12:51.957Z] START fresh Chrome session against fresh candidate Studio http://127.0.0.1:44102
+[2026-08-13T22:12:51.976Z] NAVIGATE public legacy unscoped Project A Play URL
+[2026-08-13T22:12:53.582Z] OBSERVE Project A rendered through the legacy Play route
+[2026-08-13T22:12:53.894Z] CAPTURE 00-legacy-project-a-play-before-route-scope-check.png, 00-legacy-project-a-play-before-route-scope-check-visible-text.txt, and 00-legacy-project-a-play-before-route-scope-check-url.txt
+[2026-08-13T22:12:53.898Z] OBSERVE legacy A history entry replaced by a project-scoped A Play route
+[2026-08-13T22:12:53.920Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
+[2026-08-13T22:12:53.959Z] CLICK input "Seed (optional)" at rendered coordinates (436, 346)
+[2026-08-13T22:12:54.822Z] INPUT "Seed (optional)"="p6-a-visible-session" through browser keyboard
+[2026-08-13T22:12:55.167Z] OBSERVE pointer target for Project A New session: {"tag":"SPAN","text":"New session"}
+[2026-08-13T22:12:55.312Z] CLICK Project A New session at rendered coordinates (337, 394)
+[2026-08-13T22:12:55.815Z] OBSERVE Project A session-only Spin action
+[2026-08-13T22:12:55.825Z] OBSERVE pointer target for Project A Spin: {"tag":"SPAN","text":"Spin"}
+[2026-08-13T22:12:55.859Z] CLICK Project A Spin at rendered coordinates (310, 235)
+[2026-08-13T22:12:56.607Z] OBSERVE Project A played-round state
+[2026-08-13T22:12:56.919Z] CAPTURE 01-project-a-legacy-entry-upgraded-and-played.png, 01-project-a-legacy-entry-upgraded-and-played-visible-text.txt, and 01-project-a-legacy-entry-upgraded-and-played-url.txt
+[2026-08-13T22:12:56.944Z] OBSERVE pointer target for Studio Home breadcrumb from Project A: {"tag":"BUTTON","text":"POKIE Studio"}
+[2026-08-13T22:12:56.994Z] CLICK Studio Home breadcrumb from Project A at rendered coordinates (62, 29)
+[2026-08-13T22:12:57.861Z] OBSERVE Home after closing Project A
+[2026-08-13T22:12:58.143Z] OBSERVE pointer target for Home Projects navigation: {"tag":"DIV","text":"Projects"}
+[2026-08-13T22:12:58.539Z] CLICK Home Projects navigation at rendered coordinates (130, 137)
+[2026-08-13T22:12:59.053Z] OBSERVE rendered Project B import form
+[2026-08-13T22:12:59.087Z] KEYBOARD End scrolls to visible Project B import controls
+[2026-08-13T22:12:59.417Z] OBSERVE pointer target for input "Location": {"tag":"INPUT","text":""}
+[2026-08-13T22:12:59.489Z] CLICK input "Location" at rendered coordinates (403, 647)
+[2026-08-13T22:13:00.192Z] INPUT "Location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b" through browser keyboard
+[2026-08-13T22:13:00.499Z] OBSERVE pointer target for Project B Detect: {"tag":"SPAN","text":"Detect"}
+[2026-08-13T22:13:00.540Z] CLICK Project B Detect at rendered coordinates (1319, 668)
+[2026-08-13T22:13:01.053Z] OBSERVE Project B detected through rendered UI
+[2026-08-13T22:13:01.114Z] SCROLL to rendered Project B Register
+[2026-08-13T22:13:01.472Z] OBSERVE pointer target for Project B Register: {"tag":"SPAN","text":"Register"}
+[2026-08-13T22:13:01.501Z] CLICK Project B Register at rendered coordinates (346, 648)
+[2026-08-13T22:13:02.009Z] OBSERVE Project B visible Open action
+[2026-08-13T22:13:02.030Z] KEYBOARD End scrolls to rendered Project B Open action
+[2026-08-13T22:13:02.368Z] OBSERVE pointer target for Project B Open: {"tag":"SPAN","text":"Open"}
+[2026-08-13T22:13:02.469Z] CLICK Project B Open at rendered coordinates (1280, 176)
+[2026-08-13T22:13:02.976Z] OBSERVE Project B dashboard
+[2026-08-13T22:13:03.001Z] OBSERVE pointer target for Project B Play navigation: {"tag":"DIV","text":"Play"}
+[2026-08-13T22:13:03.102Z] CLICK Project B Play navigation at rendered coordinates (130, 178)
+[2026-08-13T22:13:03.605Z] OBSERVE fresh Project B Play state without Project A round
+[2026-08-13T22:13:03.995Z] CAPTURE 02-project-b-fresh-play.png, 02-project-b-fresh-play-visible-text.txt, and 02-project-b-fresh-play-url.txt
+[2026-08-13T22:13:04.013Z] OBSERVE pointer target for input "Seed (optional)": {"tag":"INPUT","text":""}
+[2026-08-13T22:13:04.061Z] CLICK input "Seed (optional)" at rendered coordinates (436, 346)
+[2026-08-13T22:13:04.703Z] INPUT "Seed (optional)"="p6-b-visible-session" through browser keyboard
+[2026-08-13T22:13:05.024Z] OBSERVE pointer target for Project B New session: {"tag":"SPAN","text":"New session"}
+[2026-08-13T22:13:05.105Z] CLICK Project B New session at rendered coordinates (337, 394)
+[2026-08-13T22:13:05.608Z] OBSERVE Project B session-only Spin action
+[2026-08-13T22:13:06.223Z] CAPTURE 03-project-b-session.png, 03-project-b-session-visible-text.txt, and 03-project-b-session-url.txt
+[2026-08-13T22:13:06.378Z] KEYBOARD Alt+Left browser Back: step 1 toward Project A
+[2026-08-13T22:13:07.036Z] OBSERVE Back step 1: {"url":"http://127.0.0.1:44102/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fworktrees%2Fpokie-phase-6-final-polishing%2Ftask_P6-02-20260813112647%2Fdocs%2Fevidence%2Fp6-02-browser-runtime-isolation%2Ffixtures%2Fproject-b/overview","hasA":true,"hasB":true,"hasRound":false}
+[2026-08-13T22:13:07.436Z] KEYBOARD Alt+Left browser Back: step 2 toward Project A
+[2026-08-13T22:13:08.158Z] OBSERVE Back step 2: {"url":"http://127.0.0.1:44102/#/home/projects","hasA":true,"hasB":true,"hasRound":false}
+[2026-08-13T22:13:08.347Z] KEYBOARD Alt+Left browser Back: step 3 toward Project A
+[2026-08-13T22:13:09.007Z] OBSERVE Back step 3: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:09.294Z] KEYBOARD Alt+Left browser Back: step 4 toward Project A
+[2026-08-13T22:13:09.951Z] OBSERVE Back step 4: {"url":"http://127.0.0.1:44102/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fworktrees%2Fpokie-phase-6-final-polishing%2Ftask_P6-02-20260813112647%2Fdocs%2Fevidence%2Fp6-02-browser-runtime-isolation%2Ffixtures%2Fproject-a/play","hasA":true,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:10.477Z] CAPTURE 04-browser-back-restores-project-a-scoped.png, 04-browser-back-restores-project-a-scoped-visible-text.txt, and 04-browser-back-restores-project-a-scoped-url.txt
+[2026-08-13T22:13:10.479Z] OBSERVE browser Back restores the project-scoped A Play route
+[2026-08-13T22:13:10.481Z] OBSERVE Project A identity with no Project B state rendered or actionable
+[2026-08-13T22:13:10.809Z] KEYBOARD Alt+Right browser Forward: step 1 toward Project B
+[2026-08-13T22:13:11.462Z] OBSERVE Forward step 1: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:11.544Z] KEYBOARD Alt+Right browser Forward: step 2 toward Project B
+[2026-08-13T22:13:12.205Z] OBSERVE Forward step 2: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:12.282Z] KEYBOARD Alt+Right browser Forward: step 3 toward Project B
+[2026-08-13T22:13:12.940Z] OBSERVE Forward step 3: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:13.157Z] KEYBOARD Alt+Right browser Forward: step 4 toward Project B
+[2026-08-13T22:13:13.814Z] OBSERVE Forward step 4: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:13.969Z] KEYBOARD Alt+Right browser Forward: step 5 toward Project B
+[2026-08-13T22:13:14.629Z] OBSERVE Forward step 5: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:14.950Z] KEYBOARD Alt+Right browser Forward: step 6 toward Project B
+[2026-08-13T22:13:15.606Z] OBSERVE Forward step 6: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:15.740Z] KEYBOARD Alt+Right browser Forward: step 7 toward Project B
+[2026-08-13T22:13:16.392Z] OBSERVE Forward step 7: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:16.435Z] KEYBOARD Alt+Right browser Forward: step 8 toward Project B
+[2026-08-13T22:13:17.090Z] OBSERVE Forward step 8: {"url":"http://127.0.0.1:44102/#/home/design","hasA":false,"hasB":false,"hasRound":false}
+[2026-08-13T22:13:17.979Z] CAPTURE 05-browser-forward-restores-project-b-scoped.png, 05-browser-forward-restores-project-b-scoped-visible-text.txt, and 05-browser-forward-restores-project-b-scoped-url.txt
+[2026-08-13T22:13:23.098Z] FAILED Error: Timed out waiting for browser Forward restores the project-scoped B Play route
     at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/host-browser-rerun.mjs:66:46)
     at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/host-browser-rerun.mjs:193:5)

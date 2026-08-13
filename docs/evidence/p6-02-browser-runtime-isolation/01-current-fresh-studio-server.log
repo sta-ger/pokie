@@ -1,4 +1,13 @@
-POKIE Studio listening on http://127.0.0.1:43228
-candidate_sha=fe3c13cda55ee76d42d5b6dae66bb2ffe705b2b1
-studio_pid=52389
+POKIE Studio listening on http://127.0.0.1:44102
+candidate_sha=326b32dc153e096bd4df3d3f494731cf495edf9f
+studio_pid=65139
+chrome_pid=65141
+studio_url=http://127.0.0.1:44102
+devtools_url=http://127.0.0.1:9223
 studio_ready=yes
+POKIE Studio listening on http://127.0.0.1:44102
+candidate_sha=326b32dc153e096bd4df3d3f494731cf495edf9f
+studio_url=http://127.0.0.1:44102
+devtools_url=http://127.0.0.1:9223
+studio_ready=yes
+chrome_ready=yes
