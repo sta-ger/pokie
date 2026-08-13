@@ -1,0 +1,20 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[3071535:3071578:0813/144917.587406:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071578:0813/144917.589046:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071578:0813/144917.589077:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071578:0813/144917.589099:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071535:0813/144917.613998:ERROR:chrome/browser/net/system_network_context_manager.cc:891] Cannot use V8 Proxy resolver in single process mode.
+[3071535:3071578:0813/144917.614781:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071578:0813/144917.641362:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071535:0813/144917.642195:ERROR:chrome/browser/net/system_network_context_manager.cc:891] Cannot use V8 Proxy resolver in single process mode.
+[3071535:3071535:0813/144917.663767:ERROR:chrome/browser/net/system_network_context_manager.cc:891] Cannot use V8 Proxy resolver in single process mode.
+
+DevTools listening on ws://127.0.0.1:9232/devtools/browser/1e32f0ec-aacc-474d-b87d-e50fdc765828
+[3071535:3071535:0813/144917.817133:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3071535:3071535:0813/144917.818148:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3071535:3071578:0813/144917.818380:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071578:0813/144917.818564:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3071535:3071535:0813/144917.818782:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3071535:3071535:0813/144918.082168:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3071535:3071535:0813/144918.084585:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 

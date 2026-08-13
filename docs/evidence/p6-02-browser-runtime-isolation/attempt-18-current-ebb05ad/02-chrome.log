@@ -1,0 +1,34 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[3068378:3068433:0813/144637.422285:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068433:0813/144637.422399:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068433:0813/144637.422421:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068433:0813/144637.422440:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068433:0813/144637.481098:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068433:0813/144637.517071:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:9230/devtools/browser/d8922f62-043a-4a0d-bd28-2e514b2c2a1a
+[3068378:3068378:0813/144637.914858:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3068378:3068378:0813/144637.916932:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3068378:3068378:0813/144637.919484:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3068378:3068433:0813/144637.920502:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068433:0813/144637.920544:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[3068378:3068378:0813/144638.081731:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3068378:3068378:0813/144638.087685:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[3068526:1:0813/144638.123777:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[3068526:1:0813/144638.127172:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[3068449:3068449:0813/144638.181508:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[3068518:1:0813/144638.219275:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[3068518:1:0813/144638.271342:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[3068562:1:0813/144638.399118:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+[3068562:1:0813/144638.402924:ERROR:base/threading/platform_thread_posix.cc:160] pthread_create: Resource temporarily unavailable (11)
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786625198.836277 3068431 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[3:3:0813/144640.606098:ERROR:content/zygote/zygote_linux.cc:621] Zygote could not fork: process_type renderer numfds 5 child_pid -1
+[3068378:3068447:0813/144640.605844:ERROR:content/common/zygote/zygote_communication_linux.cc:164] NOTREACHED hit. Did not receive ping from zygote child
+[3068378:3068447:0813/144640.796768:ERROR:content/common/zygote/zygote_communication_linux.cc:164] NOTREACHED hit. Did not receive ping from zygote child
+[3068378:3068378:0813/144640.809063:ERROR:content/common/zygote/zygote_communication_linux.cc:296] Failed to send GetTerminationStatus message to zygote
+[3068378:3068378:0813/144640.876083:ERROR:content/common/zygote/zygote_communication_linux.cc:296] Failed to send GetTerminationStatus message to zygote
+[3068378:3068434:0813/144651.584982:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[3068378:3068434:0813/144651.602635:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[3068378:3068434:0813/144713.415744:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
