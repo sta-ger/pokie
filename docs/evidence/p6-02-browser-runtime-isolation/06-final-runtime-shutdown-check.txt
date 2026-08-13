@@ -1,3 +1,2 @@
-fresh Studio process stopped after the browser audit
-fresh Chrome process stopped after the browser audit
+stopping fresh Studio pid=3342538 and fresh Chrome pid=3342539
 verified: no listener remained on local ports 43108 or 9223

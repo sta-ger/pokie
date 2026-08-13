@@ -1,4 +1,4 @@
-
+Node v24.18.0
 > pokie@1.3.0 build-client
 > tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/
 
@@ -6,6 +6,7 @@
 > pokie@1.3.0 build-studio-client
 > npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts
 
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
 
 > pokie@1.3.0 typecheck-studio-client
 > tsc --project cli/studio-client/tsconfig.json --noEmit
@@ -16,9 +17,9 @@ rendering chunks...
 computing gzip size...
 dist/cli/studio-client/index.html                   0.36 kB │ gzip:   0.26 kB
 dist/cli/studio-client/assets/index-BYljzUTd.css  223.98 kB │ gzip:  33.07 kB
-dist/cli/studio-client/assets/index-Dmj7tCn_.js   903.67 kB │ gzip: 263.53 kB
+dist/cli/studio-client/assets/index-EE-wWHCm.js   903.67 kB │ gzip: 263.55 kB
 
-✓ built in 5.56s
+✓ built in 10.47s
 [plugin builtin:vite-reporter]
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
