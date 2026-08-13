@@ -1,2 +1,1 @@
-stopping fresh Studio pid=3342538 and fresh Chrome pid=3342539
-verified: no listener remained on local ports 43108 or 9223
+Stopped current Studio PID 3362472 and current Chrome PID 3362573; no listener remained on ports 43108 or 9222.

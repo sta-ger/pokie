@@ -173,9 +173,11 @@ async function main() {
         note(`OBSERVE Back step ${step}: ${JSON.stringify({url:identity.url, hasA:identity.text.includes("Playable Game"), hasB:identity.text.includes("Playable Game With Bonus Round"), hasRound:identity.text.includes("Round detail")})}`);
         if (identity.url.includes(`#${aPath}`)) break;
     }
+    // This captures the actual browser destination whether the assertion passes or fails, so a
+    // negative verification result never inherits a screenshot from a previous rerun.
+    await snapshot("04-browser-back-restores-project-a-scoped");
     await wait(`location.hash === '#${aPath}'`, "browser Back restores the project-scoped A Play route");
     await wait("document.body.innerText.includes('Playable Game') && !document.body.innerText.includes('Playable Game With Bonus Round')", "Project A identity with no Project B state rendered or actionable");
-    await snapshot("04-browser-back-restores-project-a-scoped");
 
     for (let step = 1; step <= 8; step += 1) {
         await historyKey("ArrowRight", `step ${step} toward Project B`);

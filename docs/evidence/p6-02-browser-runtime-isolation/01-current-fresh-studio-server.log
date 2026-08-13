@@ -1,1 +1,2 @@
-POKIE Studio listening on http://127.0.0.1:43108
+LISTEN 0      10                      127.0.0.1:9222       0.0.0.0:*    users:(("chrome",pid=3362573,fd=73))
+LISTEN 0      511                     127.0.0.1:43108      0.0.0.0:*    users:(("MainThread",pid=3362472,fd=22))

@@ -1,31 +1,82 @@
 POKIE Studio
-/
-Playable Game
-/
+Design Game
+Projects
+Design Your Game
 
-Play
+Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your game package.
 
-Overview
-Game Model
-Play
-Simulation
+Configure
+, completed
 
-ADVANCED
+Game model
 
-Replay
-Build/Export
-Certification
-Fairness
-Playable Game
+Validate
+, failed
 
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a
+Check for issues
 
-Close project
+Build
+, blocked
 
-Play prepares this project (materializing a Blueprint into a runnable package first if needed) and creates a real session directly in Studio's own backend -- no server, host, port, or separate API to set up.
+Create your package
 
-Seed (optional)
+Fix validation issues
 
-A given seed always plays out the same way -- genuine input to the game's own RNG, not cosmetic.
+Resolve the errors below before building your package.
 
-New session
+Save
+
+Validate your configuration successfully before saving.
+
+Show advanced options (JSON mode, load/save by path)
+
+New Blueprint
+Game basics
+2
+2 errors
+Layout
+valid
+Symbols
+1
+1 error
+Reels
+valid
+Paytable
+1
+1 error
+Bets
+valid
+Layout
+Reels
+Rows
+Paylines
+
+Optional — omit to use the engine's default (one horizontal line per row).
+
+Add payline
+Apply preset…
+Validation
+Validate
+
+Invalid — 4 error(s).
+
+Errors
+
+blueprint-manifest-invalid-id: "manifest.id" must be a non-empty string.
+blueprint-manifest-invalid-name: "manifest.name" must be a non-empty string.
+blueprint-symbols-invalid: "symbols" must be a non-empty array of non-empty strings.
+blueprint-paytable-empty: "paytable" must define at least one symbol payout.
+Game Model preview
+Preview Game Model
+Build
+Output directory (optional)
+Browse…
+Build Preview
+Build Package
+
+Fix the validation errors above before building.
+
+Documentation
+Docs index
+Getting started
+CLI reference
