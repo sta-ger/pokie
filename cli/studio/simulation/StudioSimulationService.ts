@@ -166,12 +166,39 @@ export class StudioSimulationService {
         return record ? toStudioSimulationJobView(record) : undefined;
     }
 
+    // The project-scoped counterpart used by Studio's HTTP surface.  The service's unscoped
+    // getStatus() remains useful to its own process-level lifecycle tests and diagnostics, but a
+    // browser request is always made in the context of one canonical Project.  Treat an id from a
+    // different Project exactly like an unknown one so neither its run state nor its safe error text
+    // can leak when the user switches Projects.
+    public getStatusForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        const record = this.repository.get(id);
+        if (!record || record.projectRoot !== projectRoot) {
+            return undefined;
+        }
+        return toStudioSimulationJobView(record);
+    }
+
     // Idempotent: cancelling an already-terminal job is a no-op that still returns its (unchanged)
     // current view rather than an error — same "repeated request can't corrupt state" guarantee as
     // start(). Returns undefined only when `id` itself is unknown.
     public cancel(id: string): StudioSimulationJobView | undefined {
         const record = this.repository.get(id);
         if (!record) {
+            return undefined;
+        }
+        if (record.status === "queued" || record.status === "running") {
+            record.abortController.abort();
+        }
+        return toStudioSimulationJobView(record);
+    }
+
+    // Same Project identity boundary as getStatusForProject().  In particular, a stale Cancel
+    // request from Project A must never cancel a coincidentally-known job after Studio has moved to
+    // Project B.
+    public cancelForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        const record = this.repository.get(id);
+        if (!record || record.projectRoot !== projectRoot) {
             return undefined;
         }
         if (record.status === "queued" || record.status === "running") {

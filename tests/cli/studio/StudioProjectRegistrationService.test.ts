@@ -20,6 +20,7 @@ import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioAr
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {toStudioReplayJobView} from "../../../cli/studio/replay/toStudioReplayJobView.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
@@ -801,6 +802,123 @@ describe("Studio Blueprint Project execution freshness", () => {
             const replayAfterSave = await get(`${baseUrl}/api/project/replays/${replayCreated.body.id}`);
             expect(replayAfterSave.body.configHash).toBe(configurationAHash);
             expect(materializedHashes).toContain(configurationBHash);
+        } finally {
+            await server?.stop();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+});
+
+describe("Studio Project runtime state isolation", () => {
+    it("keeps sessions and failed run state behind the canonical Project opened by A → B → A navigation", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-runtime-isolation-"));
+        const studioRoot = path.join(directory, "studio");
+        const projectA = path.join(directory, "project-a");
+        const projectB = path.join(directory, "project-b");
+        let server: StudioServer | undefined;
+
+        const gameFor = (projectRoot: string): PokieGame => {
+            const name = path.resolve(projectRoot) === projectA ? "Project A" : "Project B";
+            return {
+                getManifest: () => ({id: name.toLowerCase().replace(" ", "-"), name, version: "0.1.0"}),
+                createSession: () => {
+                    let credits = 100;
+                    return {
+                        getCreditsAmount: () => credits,
+                        setCreditsAmount: (value: number) => {
+                            credits = value;
+                        },
+                        getBet: () => 1,
+                        setBet: () => undefined,
+                        getAvailableBets: () => [1],
+                        canPlayNextGame: () => true,
+                        play: () => {
+                            credits -= 1;
+                        },
+                        getWinAmount: () => 0,
+                    } as GameSessionHandling;
+                },
+            };
+        };
+        const loadGame = (projectRoot: string): Promise<PokieGame> => Promise.resolve(gameFor(projectRoot));
+        const passthroughRuntime = (projectRoot: string) => Promise.resolve({runtimePath: projectRoot, release: () => Promise.resolve()});
+
+        async function get(url: string): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url);
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        async function post(url: string, body: unknown): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        try {
+            fs.mkdirSync(studioRoot, {recursive: true});
+            fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
+            fs.writeFileSync(path.join(studioRoot, "main.js"), "console.log('studio');");
+            fs.writeFileSync(path.join(studioRoot, "style.css"), "body {}");
+
+            const registration = new StudioProjectRegistrationService(
+                new InMemoryStudioProjectRegistry(),
+                fakeResolver({[projectA]: tsPackageProject(projectA), [projectB]: tsPackageProject(projectB)}),
+            );
+            const homeService = new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntime);
+            const simulationService = new StudioSimulationService(undefined, () => Promise.reject(new Error("Project A run failed.")));
+            server = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+                loadGame,
+                resolveRuntimePackageRoot: passthroughRuntime,
+                projectRegistrationService: registration,
+                simulationService,
+            });
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const openedA = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectA});
+            expect(openedA.status).toBe(200);
+            expect((openedA.body.context as {projectRoot: string}).projectRoot).toBe(projectA);
+
+            const aSession = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(aSession.status).toBe(201);
+            const aSessionId = (aSession.body.session as {sessionId: string}).sessionId;
+            expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(200);
+
+            const aSimulation = await post(`${baseUrl}/api/project/simulations`, {rounds: 1});
+            expect(aSimulation.status).toBe(202);
+            const aSimulationId = aSimulation.body.id as string;
+            let failedRun: Record<string, unknown> | undefined;
+            for (let attempt = 0; attempt < 20; attempt++) {
+                const status = await get(`${baseUrl}/api/project/simulations/${aSimulationId}`);
+                if (status.body.status === "failed") {
+                    failedRun = status.body;
+                    break;
+                }
+                await new Promise<void>((resolve) => setImmediate(resolve));
+            }
+            expect(failedRun).toMatchObject({status: "failed", error: "Project A run failed."});
+
+            const openedB = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectB});
+            expect(openedB.status).toBe(200);
+            expect((openedB.body.context as {projectRoot: string}).projectRoot).toBe(projectB);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
+            expect((await get(`${baseUrl}/api/project/simulations/${aSimulationId}`)).status).toBe(404);
+            expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(404);
+
+            const bSession = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(bSession.status).toBe(201);
+            expect(((bSession.body.session as {game: {name: string}}).game.name)).toBe("Project B");
+
+            const reopenedA = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectA});
+            expect(reopenedA.status).toBe(200);
+            // Run history persists by its owning Project, while Play sessions intentionally do not.
+            expect((await get(`${baseUrl}/api/project/simulations/${aSimulationId}`)).body).toMatchObject({status: "failed", error: "Project A run failed."});
+            expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(404);
         } finally {
             await server?.stop();
             fs.rmSync(directory, {recursive: true, force: true});

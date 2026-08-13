@@ -1888,7 +1888,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private handleGetSimulation(res: ServerResponse, id: string): void {
-        const job = this.simulationService.getStatus(id);
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const job = this.simulationService.getStatusForProject(this.currentContext.projectRoot, id);
         if (!job) {
             this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
             return;
@@ -1897,7 +1901,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private handleCancelSimulation(res: ServerResponse, id: string): void {
-        const job = this.simulationService.cancel(id);
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const job = this.simulationService.cancelForProject(this.currentContext.projectRoot, id);
         if (!job) {
             this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
             return;

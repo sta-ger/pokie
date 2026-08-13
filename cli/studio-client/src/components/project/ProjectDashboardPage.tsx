@@ -796,6 +796,7 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "play" && (
                                 <PlayTab
+                                    key={projectKey ?? "no-project"}
                                     session={play.session}
                                     sessionId={play.sessionId}
                                     onNewSession={play.newSession}
@@ -808,6 +809,7 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "simulation" && (
                                 <SimulationTab
+                                    key={projectKey ?? "no-project"}
                                     progress={simulation.progress}
                                     error={simulation.error}
                                     onRun={startRun}
@@ -846,6 +848,7 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "replay" && (
                                 <ReplayTab
+                                    key={projectKey ?? "no-project"}
                                     progress={replay.progress}
                                     result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
                                     error={replay.error}
@@ -881,7 +884,7 @@ export function ProjectDashboardPage() {
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab capabilities={headerCapabilities} deployment={deployment} />
+                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns
