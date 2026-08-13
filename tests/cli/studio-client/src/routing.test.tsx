@@ -122,10 +122,11 @@ describe("Routable Home sections: browser back/forward", () => {
 });
 
 describe("Project-scoped browser history", () => {
-    it("restores the project recorded in a history entry before rendering its dashboard", async () => {
-        // The server begins on B while browser history begins at A, precisely the stale-history
-        // condition this route contract must repair before it can render the Play dashboard.
-        let currentProjectRoot = "/games/b";
+    it("upgrades a legacy unscoped entry so Back and Forward restore their own projects", async () => {
+        // Studio originally opened A at the legacy, ambiguous `/project/play` URL. The first render
+        // must replace that entry with A's scoped route before B is opened; otherwise Back finds the
+        // old URL and displays B again because the server only has one mutable current project.
+        let currentProjectRoot = "/games/a";
         const dashboardForCurrentProject = () => ({
             ok: true,
             status: 200,
@@ -158,10 +159,11 @@ describe("Project-scoped browser history", () => {
         });
         const aRoute = `/project/${encodeURIComponent("/games/a")}/play`;
         const bRoute = `/project/${encodeURIComponent("/games/b")}/play`;
-        const {router} = renderRoutedApp({fetchImpl, initialEntries: [aRoute]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/play"]});
 
         await screen.findByRole("heading", {name: "A"});
         expect(screen.getByRole("button", {name: "Play"})).toHaveAttribute("aria-current", "page");
+        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
 
         await act(() => router.navigate(bRoute));
         await screen.findByRole("heading", {name: "B"});
@@ -169,10 +171,13 @@ describe("Project-scoped browser history", () => {
         await act(() => router.navigate(-1));
         await screen.findByRole("heading", {name: "A"});
 
+        await act(() => router.navigate(1));
+        await screen.findByRole("heading", {name: "B"});
+
         expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init?.body ?? "{}"))).toEqual([
-            {projectRoot: "/games/a"},
             {projectRoot: "/games/b"},
             {projectRoot: "/games/a"},
+            {projectRoot: "/games/b"},
         ]);
     });
 });

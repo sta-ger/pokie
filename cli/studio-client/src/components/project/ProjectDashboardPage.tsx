@@ -234,6 +234,16 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const header = useProjectContext(requestedProjectRoot);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
+    // Older Studio sessions may have put an unscoped `/project/:tab` entry in browser history. Once
+    // that entry has resolved its current project, upgrade it in place: otherwise opening another
+    // project leaves Back pointing at an ambiguous route that can only render the server's *new*
+    // mutable current-project context. `replace` preserves the Back/Forward stack while recording the
+    // identity needed to restore this dashboard on every future visit.
+    useEffect(() => {
+        if (requestedProjectRoot === undefined && projectKey !== undefined) {
+            navigate(`/project/${encodeURIComponent(projectKey)}/${activeTab}`, {replace: true});
+        }
+    }, [activeTab, navigate, projectKey, requestedProjectRoot]);
     // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs "this project's resolved capabilities" without caring whether it's a "loaded"
     // (game-backed) or "outcome-source" (canonical-reader-backed) resolution (see GameModelTab's
