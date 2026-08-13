@@ -16,13 +16,11 @@ rendering chunks...
 computing gzip size...
 dist/cli/studio-client/index.html                   0.36 kB │ gzip:   0.26 kB
 dist/cli/studio-client/assets/index-BYljzUTd.css  223.98 kB │ gzip:  33.07 kB
-dist/cli/studio-client/assets/index-Dmj7tCn_.js   903.67 kB │ gzip: 263.53 kB
+dist/cli/studio-client/assets/index-DLX-icdv.js   903.69 kB │ gzip: 263.54 kB
 
-✓ built in 4.31s
+✓ built in 3.65s
 [plugin builtin:vite-reporter] 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-build_client_exit=0
-build_studio_client_exit=0

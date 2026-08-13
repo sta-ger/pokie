@@ -1,1 +1,3 @@
-preflight_utc=2026-08-13T19:28:11Z
+node=v24.18.0
+available 127.0.0.1:43155
+available 127.0.0.1:9222
