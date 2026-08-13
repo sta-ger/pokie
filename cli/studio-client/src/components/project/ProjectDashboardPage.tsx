@@ -173,16 +173,17 @@ export function LegacyProjectDashboardRoute() {
     // On the real hash router, update the URL entry directly. A router navigation runs after the
     // browser's Back/Forward pop and can create a new history branch, dropping the entries in front
     // of the legacy route. replaceState changes only this entry and retains that Forward history.
-    // It does not notify the router, so follow it with the matching popstate event: the router must
-    // also observe the scoped location before another browser traversal can calculate its history
-    // position correctly.
+    // Then let the router replace that same entry. Dispatching a synthetic popstate after the native
+    // replacement leaves the router in a POP transition that the browser did not perform; a later
+    // Forward can consequently stop at the first Home entry. Its own replace keeps the router's
+    // location in sync without adding a new history entry or dropping the existing Forward branch.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (projectRoot !== undefined && projectRoot !== "") {
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
             if (window.location.hash === `#/project/${tab ?? ""}`) {
                 window.history.replaceState(window.history.state, "", `#${scopedPath}`);
-                window.dispatchEvent(new PopStateEvent("popstate", {state: window.history.state}));
+                navigate(scopedPath, {replace: true});
             } else {
                 navigate(scopedPath, {replace: true});
             }
