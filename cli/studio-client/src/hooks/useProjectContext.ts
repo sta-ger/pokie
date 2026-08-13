@@ -15,7 +15,7 @@ const POLL_MAX_ATTEMPTS = 40;
 // `requestedProjectRoot` is taken from a project-scoped history route. It must be made current on
 // the server before any dashboard data is read: the server intentionally owns one active project,
 // while browser history may point back to an earlier one.
-export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderView {
+export function useProjectContext(requestedProjectRoot?: string, onLegacyProjectResolved?: (projectRoot: string) => void): ProjectHeaderView {
     const fetchImpl = useStudioApi();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
 
@@ -28,6 +28,13 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
                 .then((dashboard) => {
                     if (cancelled) {
                         return;
+                    }
+                    // Scope an old `/project/:tab` history entry as soon as the server identifies
+                    // its project, before exposing that context to the dashboard. The callback
+                    // replaces the browser entry with `/project/:projectRoot/:tab`, which then
+                    // remounts this hook under the explicit project identity.
+                    if (dashboard.status !== "empty") {
+                        onLegacyProjectResolved?.(dashboard.projectRoot);
                     }
                     setHeader(describeProjectHeader(dashboard));
                     if (dashboard.status === "loading" && attemptsLeft > 0) {
@@ -86,7 +93,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
             cancelled = true;
             clearTimeout(timeoutId);
         };
-    }, [fetchImpl, requestedProjectRoot]);
+    }, [fetchImpl, onLegacyProjectResolved, requestedProjectRoot]);
 
     return header;
 }

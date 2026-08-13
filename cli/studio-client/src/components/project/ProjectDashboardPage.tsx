@@ -1,6 +1,6 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
@@ -231,22 +231,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         [navigate, requestedProjectRoot],
     );
 
-    const header = useProjectContext(requestedProjectRoot);
+    // Older Studio sessions may have put an unscoped `/project/:tab` entry in browser history.
+    // Replace it as soon as its current-project lookup resolves, before that response reaches
+    // this stateful dashboard. This makes the entry itself sufficient to restore the project
+    // later, instead of depending on the server's mutable current-project context.
+    const scopeLegacyHistoryEntry = useCallback(
+        (projectRoot: string): void => {
+            navigate(`/project/${encodeURIComponent(projectRoot)}/${activeTab}`, {replace: true});
+        },
+        [activeTab, navigate],
+    );
+    const header = useProjectContext(requestedProjectRoot, requestedProjectRoot === undefined ? scopeLegacyHistoryEntry : undefined);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
-    // Older Studio sessions may have put an unscoped `/project/:tab` entry in browser history. Once
-    // that entry has resolved its current project, upgrade it in place: otherwise opening another
-    // project leaves Back pointing at an ambiguous route that can only render the server's *new*
-    // mutable current-project context. `replace` preserves the Back/Forward stack while recording the
-    // identity needed to restore this dashboard on every future visit.
-    // This has to run before paint. A passive effect leaves one rendered frame in which a user can
-    // continue from the legacy route before its history entry is scoped, so a later Back can still
-    // resolve against a different current project.
-    useLayoutEffect(() => {
-        if (requestedProjectRoot === undefined && projectKey !== undefined) {
-            navigate(`/project/${encodeURIComponent(projectKey)}/${activeTab}`, {replace: true});
-        }
-    }, [activeTab, navigate, projectKey, requestedProjectRoot]);
     // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs "this project's resolved capabilities" without caring whether it's a "loaded"
     // (game-backed) or "outcome-source" (canonical-reader-backed) resolution (see GameModelTab's
