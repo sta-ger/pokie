@@ -1,0 +1,7 @@
+{
+    "name": "playable-game-with-bonus-round",
+    "version": "1.0.0",
+    "pokie": {
+        "entry": "./index.js"
+    }
+}
