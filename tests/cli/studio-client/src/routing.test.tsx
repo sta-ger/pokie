@@ -1,7 +1,7 @@
 import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
-import {renderRoutedApp} from "./testUtils/renderRoutedApp";
+import {renderHashRoutedApp, renderRoutedApp} from "./testUtils/renderRoutedApp";
 
 describe("Routable Home/Project sections: refresh and direct-link", () => {
     it("a direct link to a non-default Home tab renders that tab, not the default", async () => {
@@ -122,6 +122,66 @@ describe("Routable Home sections: browser back/forward", () => {
 });
 
 describe("Project-scoped browser history", () => {
+    it("keeps every Forward entry after Back restores a legacy-scoped project", async () => {
+        let currentProjectRoot = "/games/a";
+        const dashboardForCurrentProject = () => ({
+            ok: true,
+            status: 200,
+            body: {
+                status: "loaded",
+                projectRoot: currentProjectRoot,
+                game: {
+                    id: currentProjectRoot === "/games/a" ? "a" : "b",
+                    name: currentProjectRoot === "/games/a" ? "A" : "B",
+                    version: "1.0.0",
+                },
+                type: "blueprint",
+                capabilities: ["blueprint.build"],
+            },
+        });
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/open": (call) => {
+                currentProjectRoot = (JSON.parse(call.init?.body ?? "{}") as {projectRoot: string}).projectRoot;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentProjectRoot}}};
+            },
+            "/api/project/context": dashboardForCurrentProject,
+            "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, issues: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: currentProjectRoot, valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: []}),
+        });
+        const aRoute = `/project/${encodeURIComponent("/games/a")}/play`;
+        const bRoute = `/project/${encodeURIComponent("/games/b")}/play`;
+
+        window.history.replaceState(null, "", "#/project/play");
+        const {router} = renderHashRoutedApp({fetchImpl});
+
+        await screen.findByRole("heading", {name: "A"});
+        await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
+
+        await act(() => router.navigate("/home/design"));
+        await act(() => router.navigate("/home/projects"));
+        await act(() => router.navigate(`/project/${encodeURIComponent("/games/b")}/overview`));
+        await screen.findByRole("heading", {name: "B"});
+        await act(() => router.navigate(bRoute));
+
+        await act(() => router.navigate(-4));
+        await screen.findByRole("heading", {name: "A"});
+        expect(router.state.location.pathname).toBe(aRoute);
+
+        await act(() => router.navigate(1));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
+        await act(() => router.navigate(1));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        await act(() => router.navigate(2));
+        await screen.findByRole("heading", {name: "B"});
+        expect(router.state.location.pathname).toBe(bRoute);
+    });
+
     it("upgrades a legacy unscoped entry so Back and Forward restore their own projects", async () => {
         // Studio originally opened A at the legacy, ambiguous `/project/play` URL. The first render
         // must replace that entry with A's scoped route before B is opened; otherwise Back finds the

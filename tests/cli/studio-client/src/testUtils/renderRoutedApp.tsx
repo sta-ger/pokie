@@ -1,7 +1,7 @@
 import {MantineProvider} from "@mantine/core";
 import {ModalsProvider} from "@mantine/modals";
 import {render, type RenderResult} from "@testing-library/react";
-import {createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
+import {createHashRouter, createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {HomePage} from "../../../../../cli/studio-client/src/components/home/HomePage";
 import {LegacyProjectDashboardRoute, ProjectDashboardRoute} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
@@ -33,6 +33,20 @@ const ROUTES = [
 
 export function renderRoutedApp(options?: {fetchImpl?: FetchLike; initialEntries?: string[]}) {
     const router = createMemoryRouter(ROUTES, {initialEntries: options?.initialEntries ?? ["/home/design"]});
+    const result: RenderResult = render(
+        <MantineProvider>
+            <StudioApiProvider fetchImpl={options?.fetchImpl}>
+                <ModalsProvider>
+                    <RouterProvider router={router} />
+                </ModalsProvider>
+            </StudioApiProvider>
+        </MantineProvider>,
+    );
+    return {...result, router};
+}
+
+export function renderHashRoutedApp(options?: {fetchImpl?: FetchLike}) {
+    const router = createHashRouter(ROUTES);
     const result: RenderResult = render(
         <MantineProvider>
             <StudioApiProvider fetchImpl={options?.fetchImpl}>
