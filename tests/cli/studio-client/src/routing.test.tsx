@@ -3,6 +3,16 @@ import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderHashRoutedApp, renderRoutedApp} from "./testUtils/renderRoutedApp";
 
+async function traverseBrowserHistory(direction: "back" | "forward"): Promise<void> {
+    await act(async () => {
+        const popped = new Promise<void>((resolve) => {
+            window.addEventListener("popstate", () => resolve(), {once: true});
+        });
+        window.history[direction]();
+        await popped;
+    });
+}
+
 describe("Routable Home/Project sections: refresh and direct-link", () => {
     it("a direct link to a non-default Home tab renders that tab, not the default", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
@@ -162,10 +172,7 @@ describe("Project-scoped browser history", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
-        // The legacy controller changes only the browser entry so its Forward branch remains intact;
-        // it deliberately does not synthesize a router transition. The first real browser pop below
-        // makes createHashRouter observe this scoped path.
-        expect(router.state.location.pathname).toBe("/project/play");
+        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
         expect(window.history.state).toMatchObject({idx: 0});
 
         await act(() => router.navigate("/home/design"));
@@ -174,15 +181,19 @@ describe("Project-scoped browser history", () => {
         await screen.findByRole("heading", {name: "B"});
         await act(() => router.navigate(bRoute));
 
-        await act(() => router.navigate(-4));
+        await traverseBrowserHistory("back");
+        await traverseBrowserHistory("back");
+        await traverseBrowserHistory("back");
+        await traverseBrowserHistory("back");
         await screen.findByRole("heading", {name: "A"});
         expect(router.state.location.pathname).toBe(aRoute);
 
-        await act(() => router.navigate(1));
+        await traverseBrowserHistory("forward");
         await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
-        await act(() => router.navigate(1));
+        await traverseBrowserHistory("forward");
         await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
-        await act(() => router.navigate(2));
+        await traverseBrowserHistory("forward");
+        await traverseBrowserHistory("forward");
         await screen.findByRole("heading", {name: "B"});
         expect(router.state.location.pathname).toBe(bRoute);
     });
@@ -237,10 +248,10 @@ describe("Project-scoped browser history", () => {
         await act(() => router.navigate(bRoute));
         await screen.findByRole("heading", {name: "B"});
 
-        await act(() => router.navigate(-1));
+        await traverseBrowserHistory("back");
         await screen.findByRole("heading", {name: "A"});
 
-        await act(() => router.navigate(1));
+        await traverseBrowserHistory("forward");
         await screen.findByRole("heading", {name: "B"});
 
         expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init?.body ?? "{}"))).toEqual([
