@@ -1,0 +1,220 @@
+    PID    PPID STAT COMMAND         COMMAND
+      1       0 Ss   systemd         /sbin/init
+      2       0 S    kthreadd        [kthreadd]
+      3       2 S    pool_workqueue_ [pool_workqueue_release]
+      4       2 I<   kworker/R-rcu_g [kworker/R-rcu_gp]
+      5       2 I<   kworker/R-sync_ [kworker/R-sync_wq]
+      6       2 I<   kworker/R-kvfre [kworker/R-kvfree_rcu_reclaim]
+      7       2 I<   kworker/R-slub_ [kworker/R-slub_flushwq]
+      8       2 I<   kworker/R-netns [kworker/R-netns]
+     10       2 I<   kworker/0:0H-kb [kworker/0:0H-kblockd]
+     13       2 I<   kworker/R-mm_pe [kworker/R-mm_percpu_wq]
+     14       2 I    rcu_tasks_kthre [rcu_tasks_kthread]
+     15       2 I    rcu_tasks_rude_ [rcu_tasks_rude_kthread]
+     16       2 I    rcu_tasks_trace [rcu_tasks_trace_kthread]
+     17       2 S    ksoftirqd/0     [ksoftirqd/0]
+     18       2 I    rcu_preempt     [rcu_preempt]
+     19       2 S    rcu_exp_par_gp_ [rcu_exp_par_gp_kthread_worker/0]
+     20       2 S    rcu_exp_gp_kthr [rcu_exp_gp_kthread_worker]
+     21       2 S    migration/0     [migration/0]
+     22       2 S    idle_inject/0   [idle_inject/0]
+     23       2 S    cpuhp/0         [cpuhp/0]
+     24       2 S    cpuhp/1         [cpuhp/1]
+     25       2 S    idle_inject/1   [idle_inject/1]
+     26       2 S    migration/1     [migration/1]
+     27       2 S    ksoftirqd/1     [ksoftirqd/1]
+     29       2 I<   kworker/1:0H-ev [kworker/1:0H-events_highpri]
+     30       2 S    cpuhp/2         [cpuhp/2]
+     31       2 S    idle_inject/2   [idle_inject/2]
+     32       2 S    migration/2     [migration/2]
+     33       2 S    ksoftirqd/2     [ksoftirqd/2]
+     35       2 I<   kworker/2:0H-ev [kworker/2:0H-events_highpri]
+     36       2 S    cpuhp/3         [cpuhp/3]
+     37       2 S    idle_inject/3   [idle_inject/3]
+     38       2 S    migration/3     [migration/3]
+     39       2 S    ksoftirqd/3     [ksoftirqd/3]
+     41       2 I<   kworker/3:0H-ev [kworker/3:0H-events_highpri]
+     42       2 S    kdevtmpfs       [kdevtmpfs]
+     43       2 I<   kworker/R-inet_ [kworker/R-inet_frag_wq]
+     44       2 S    kauditd         [kauditd]
+     45       2 S    khungtaskd      [khungtaskd]
+     47       2 S    oom_reaper      [oom_reaper]
+     49       2 I<   kworker/R-write [kworker/R-writeback]
+     50       2 S    kcompactd0      [kcompactd0]
+     51       2 SN   ksmd            [ksmd]
+     52       2 SN   khugepaged      [khugepaged]
+     53       2 I<   kworker/R-kinte [kworker/R-kintegrityd]
+     54       2 I<   kworker/R-kbloc [kworker/R-kblockd]
+     55       2 I<   kworker/R-blkcg [kworker/R-blkcg_punt_bio]
+     57       2 S    irq/9-acpi      [irq/9-acpi]
+     60       2 I<   kworker/R-tpm_d [kworker/R-tpm_dev_wq]
+     61       2 I<   kworker/R-ata_s [kworker/R-ata_sff]
+     62       2 I<   kworker/R-md    [kworker/R-md]
+     63       2 I<   kworker/R-md_bi [kworker/R-md_bitmap]
+     64       2 I<   kworker/R-edac- [kworker/R-edac-poller]
+     65       2 I<   kworker/R-devfr [kworker/R-devfreq_wq]
+     66       2 S    watchdogd       [watchdogd]
+     67       2 I<   kworker/0:1H-kb [kworker/0:1H-kblockd]
+     68       2 S    kswapd0         [kswapd0]
+     69       2 S    ecryptfs-kthrea [ecryptfs-kthread]
+     70       2 I<   kworker/R-kthro [kworker/R-kthrotld]
+     71       2 S    irq/26-pciehp   [irq/26-pciehp]
+     72       2 S    irq/27-pciehp   [irq/27-pciehp]
+     73       2 S    irq/28-pciehp   [irq/28-pciehp]
+     74       2 S    irq/29-pciehp   [irq/29-pciehp]
+     75       2 I<   kworker/R-acpi_ [kworker/R-acpi_thermal_pm]
+     77       2 I<   kworker/R-mld   [kworker/R-mld]
+     78       2 I<   kworker/3:1H-kb [kworker/3:1H-kblockd]
+     79       2 I<   kworker/R-ipv6_ [kworker/R-ipv6_addrconf]
+     89       2 I<   kworker/R-kstrp [kworker/R-kstrp]
+     94       2 I<   kworker/u17:0-h [kworker/u17:0-hci0]
+    107       2 I<   kworker/R-charg [kworker/R-charger_manager]
+    108       2 I<   kworker/1:1H-kb [kworker/1:1H-kblockd]
+    136       2 I<   kworker/2:1H-kb [kworker/2:1H-kblockd]
+    162       2 S    scsi_eh_0       [scsi_eh_0]
+    163       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_0]
+    164       2 S    scsi_eh_1       [scsi_eh_1]
+    165       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_1]
+    166       2 S    scsi_eh_2       [scsi_eh_2]
+    167       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_2]
+    168       2 S    scsi_eh_3       [scsi_eh_3]
+    169       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_3]
+    170       2 S    scsi_eh_4       [scsi_eh_4]
+    171       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_4]
+    172       2 S    scsi_eh_5       [scsi_eh_5]
+    173       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_5]
+    212       2 S    jbd2/sda2-8     [jbd2/sda2-8]
+    213       2 I<   kworker/R-ext4- [kworker/R-ext4-rsv-conversion]
+    260       1 S<s  systemd-journal /usr/lib/systemd/systemd-journald
+    321       1 Ss   systemd-udevd   /usr/lib/systemd/systemd-udevd
+    324       2 S    psimon          [psimon]
+    412       2 S    irq/50-mei_me   [irq/50-mei_me]
+    413       2 S    scsi_eh_6       [scsi_eh_6]
+    414       2 I<   kworker/R-scsi_ [kworker/R-scsi_tmf_6]
+    416       2 I<   kworker/R-cfg80 [kworker/R-cfg80211]
+    417       2 S    usb-storage     [usb-storage]
+    423       2 I<   kworker/R-uas   [kworker/R-uas]
+    428       2 I<   kworker/R-crypt [kworker/R-cryptd]
+    437       2 S    wl_event_handle [wl_event_handler]
+    453       2 I<   kworker/R-apple [kworker/R-applesmc-led]
+    495       2 I<   kworker/R-ttm   [kworker/R-ttm]
+    503       2 I<   kworker/u17:1-h [kworker/u17:1-hci0]
+    528       2 S    card1-crtc0     [card1-crtc0]
+    529       2 S    card1-crtc1     [card1-crtc1]
+    530       2 S    card1-crtc2     [card1-crtc2]
+    666       1 Ss   systemd-oomd    /usr/lib/systemd/systemd-oomd
+    684       1 Ss   systemd-resolve /usr/lib/systemd/systemd-resolved
+    690       1 Ssl  systemd-timesyn /usr/lib/systemd/systemd-timesyncd
+    721       1 Ss   dbus-daemon     @dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only
+    729       1 Ss   cron            /usr/sbin/cron -f -P
+    743       1 Ss   systemd-logind  /usr/lib/systemd/systemd-logind
+    744       1 Ssl  thermald        /usr/sbin/thermald --systemd --dbus-enable --adaptive
+    755       1 Ssl  NetworkManager  /usr/sbin/NetworkManager --no-daemon
+    756       1 Ss   wpa_supplicant  /usr/sbin/wpa_supplicant -u -s -O DIR=/run/wpa_supplicant GROUP=netdev
+    779       1 Ssl  rsyslogd        /usr/sbin/rsyslogd -n -iNONE
+    858       2 I<   kworker/R-wg-cr [kworker/R-wg-crypt-wg0]
+    866       2 S    napi/wg0-0      [napi/wg0-0]
+    870       1 Ssl  tailscaled      /usr/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=41641
+    871       1 Ssl  containerd      /usr/bin/containerd
+    877       1 Ss   systemd         /usr/lib/systemd/systemd --user
+    884       1 Ss   sshd            sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups
+    890       1 Ss+  agetty          /sbin/agetty -o -p -- \u --noclear - linux
+    894     877 S    (sd-pam)        (sd-pam)
+    976     877 Ssl  pipewire        /usr/bin/pipewire
+    978     877 Ssl  pipewire        /usr/bin/pipewire -c filter-chain.conf
+    984     877 Ssl  wireplumber     /usr/bin/wireplumber
+    987     877 Ssl  pipewire-pulse  /usr/bin/pipewire-pulse
+   1004     877 Ss   dbus-daemon     /usr/bin/dbus-daemon --session --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only
+   1022       1 SNsl rtkit-daemon    /usr/libexec/rtkit-daemon
+   1028       1 Ssl  polkitd         /usr/lib/polkit-1/polkitd --no-debug
+   1091       1 Ssl  dockerd         /usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
+   1093       1 Ssl  ollama          /usr/local/bin/ollama serve
+   1106       1 Ss   kerneloops      /usr/sbin/kerneloops --test
+   1111       1 Ss   kerneloops      /usr/sbin/kerneloops
+   1392       1 Ss   lidblankd.sh    /bin/sh /usr/local/sbin/lidblankd.sh
+   3050       1 Ss   tmux: server    tmux
+   3051    3050 Ss   bash            -bash
+   6655    3050 Ss+  bash            -bash
+   7089       2 S    psimon          [psimon]
+  26025       1 Ssl  adb             adb -L tcp:5037 fork-server server --reply-fd 4
+  47391     877 Ssl  at-spi-bus-laun /usr/libexec/at-spi-bus-launcher
+  47434       1 Ssl  upowerd         /usr/libexec/upowerd
+ 105563     884 Ss   sshd            sshd: stager [priv]
+ 105629  105563 S    sshd            sshd: stager@pts/3
+ 105631  105629 Ss   bash            -bash
+ 105891  105631 S+   tmux: client    tmux attach
+ 259534    3050 Ss   bash            -bash
+ 581428    3050 Ss+  bash            -bash
+ 627491     877 SLsl gpg-agent       /usr/bin/gpg-agent --supervised
+ 794233       2 I<   kworker/R-tls-s [kworker/R-tls-strp]
+ 950789     877 Sl   gnome-keyring-d /usr/bin/gnome-keyring-daemon --start --foreground --components=secrets
+ 950790     877 Ssl  gnome-keyring-d /usr/bin/gnome-keyring-daemon --foreground --components=pkcs11,secrets --control-directory=/run/user/1000/keyring
+1412280  259534 Sl+  claude          claude --dangerously-skip-permissions
+1603334     877 Ssl  MainThread      /home/stager/.nvm/versions/node/v24.18.0/bin/node /home/stager/.nvm/versions/node/v24.18.0/lib/node_modules/openclaw/dist/index.js gateway --port 18789
+1706123 1603334 Ssl  MainThread      node /home/stager/.openclaw/npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-49fd4dbfde2c5057/node_modules/@openclaw/codex/node_modules/.bin/codex app-server --listen stdio://
+1706133 1706123 Sl   codex           /home/stager/.openclaw/npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-49fd4dbfde2c5057/node_modules/@openclaw/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex app-server --listen stdio://
+1706556 1706133 Sl   codex-code-mode /home/stager/.openclaw/npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-49fd4dbfde2c5057/node_modules/@openclaw/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host
+2840234   47391 S    dbus-daemon     /usr/bin/dbus-daemon --config-file=/usr/share/defaults/at-spi2/accessibility.conf --nofork --print-address 11 --address=unix:path=/run/user/1000/at-spi/bus
+2840268     877 Sl   at-spi2-registr /usr/libexec/at-spi2-registryd --use-gnome-session
+2852489     877 Ssl  gvfsd           /usr/libexec/gvfsd
+2852495     877 Sl   gvfsd-fuse      /usr/libexec/gvfsd-fuse /run/user/1000/gvfs -f
+2852504     877 Ssl  gvfsd-metadata  /usr/libexec/gvfsd-metadata
+2854951    3051 Sl+  MainThread      node /home/stager/.nvm/versions/node/v24.18.0/bin/codex
+2854958 2854951 Sl+  codex           /home/stager/.nvm/versions/node/v24.18.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex
+2856461 2854958 Sl   codex-code-mode /home/stager/.nvm/versions/node/v24.18.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host
+2887223     884 Ss   sshd            sshd: stager [priv]
+2887324 2887223 S    sshd            sshd: stager@pts/5
+2887333 2887324 Ss   bash            -bash
+2890543 2887333 S+   tmux: client    tmux attach
+3023159       2 I    kworker/3:0-mm_ [kworker/3:0-mm_percpu_wq]
+3032933       2 I    kworker/u16:0-k [kworker/u16:0-kvfree_rcu_reclaim]
+3034576       2 I    kworker/0:2-kac [kworker/0:2-kacpi_notify]
+3048841       2 I    kworker/u16:7-e [kworker/u16:7-events_unbound]
+3053821       2 I    kworker/1:0-eve [kworker/1:0-events]
+3057468       2 I    kworker/1:3-kac [kworker/1:3-kacpi_notify]
+3064065       2 I    kworker/0:0-rcu [kworker/0:0-rcu_gp]
+3064352       2 I    kworker/u16:4-i [kworker/u16:4-iou_exit]
+3064441       2 I    kworker/u16:5-i [kworker/u16:5-iou_exit]
+3071785 1706133 Ss+  chawan          chawan https://bielsko.esklep.bi1.pl/
+3071799 3071785 S    cha forkserver  chawan https://bielsko.esklep.bi1.pl/
+3071803 3071799 S    cha loader      chawan https://bielsko.esklep.bi1.pl/
+3071839 3071799 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/
+3071841 3071799 S    http            http
+3071842 3071799 S    http            http
+3071843 3071799 S    http            http
+3073535 3071799 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/
+3073809 1706133 Ss+  chawan          chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3073822 3073809 S    cha forkserver  chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3073823 3073822 S    cha loader      chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3074714       2 I    kworker/2:1-mm_ [kworker/2:1-mm_percpu_wq]
+3075802       2 I    kworker/u16:1-e [kworker/u16:1-events_unbound]
+3076081 3073822 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3076276       1 Ss   python3         python3 /home/stager/Work/sta-ger/bounce/tools/webgl/serve.py /home/stager/Work/sta-ger/bounce/Builds/WebGL 8080 0.0.0.0
+3077306 3073822 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3077748 3073822 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3080146       2 I    kworker/3:2-kac [kworker/3:2-kacpi_notify]
+3080236       2 I    kworker/2:0-eve [kworker/2:0-events]
+3082417 3073822 S    cha buf 1       chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3082629 3073822 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/hipp-bio-owocowy-przyjaciel-owocowy-batonik-dla-ma/3-412-3325
+3083314 1706133 Ss+  chawan          chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3083326 3083314 S    cha forkserver  chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3083327 3083326 S    cha loader      chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3083361 3083326 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3084230       2 I    kworker/0:1-eve [kworker/0:1-events]
+3084295 3083326 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3086173       2 I    kworker/0:3     [kworker/0:3]
+3086419       2 I    kworker/u16:2-f [kworker/u16:2-flush-8:0]
+3086426 1706133 Ss+  chawan          chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3086439 3086426 S    cha forkserver  chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3086440 3086439 S    cha loader      chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3086554 3086439 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3086624     877 Ss   python3         /home/stager/miniconda3/bin/python3 /home/stager/Work/sta-ger/agents/pa.py _service
+3086637 3086624 Ssl  MainThread      node /home/stager/.nvm/versions/node/v24.18.0/bin/codex exec --skip-git-repo-check -s danger-full-access -c approval_policy="never" -m gpt-5.6-terra -c model_reasoning_effort="high" -
+3086644 3086637 Sl   codex           /home/stager/.nvm/versions/node/v24.18.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex exec --skip-git-repo-check -s danger-full-access -c approval_policy="never" -m gpt-5.6-terra -c model_reasoning_effort="high" -
+3087366 3086439 S    cha buf bielsko chawan https://bielsko.esklep.bi1.pl/ovko-bio-mus-owocowy-gruszka-90-g/3-412-22860
+3087595 3086644 Sl   codex-code-mode /home/stager/.nvm/versions/node/v24.18.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host
+3087752       2 I    kworker/u16:3   [kworker/u16:3]
+3088385       2 I    kworker/3:1-mm_ [kworker/3:1-mm_percpu_wq]
+3088667       2 I    kworker/1:1     [kworker/1:1]
+3089516 3086644 Ss   bash            /bin/bash -c out=docs/evidence/p6-02-browser-runtime-isolation/attempt-24-independent-current-ebb05ad; ps -eo pid,ppid,stat,comm,args > "$out/04-processes-before-driver.txt"; P6_STUDIO_URL=http://127.0.0.1:41240 P6_DEVTOOLS_URL=http://127.0.0.1:9230 P6_AUDIT_OUTPUT="$out" P6_PROJECT_A="$(pwd)/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a" P6_PROJECT_B="$(pwd)/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b" node docs/evidence/p6-02-browser-runtime-isolation/attempt-17/browser-ui-current-candidate-rerun.mjs > "$out/05-browser-driver.log" 2>&1; result=$?; printf 'browser_driver_exit=%s\n' "$result" > "$out/05-driver-result.log"; exit "$result"
+3089517 3089516 R    ps              ps -eo pid,ppid,stat,comm,args
