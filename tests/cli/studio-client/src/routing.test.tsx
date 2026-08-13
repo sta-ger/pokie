@@ -162,7 +162,10 @@ describe("Project-scoped browser history", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
-        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
+        // The legacy controller changes only the browser entry so its Forward branch remains intact;
+        // it deliberately does not synthesize a router transition. The first real browser pop below
+        // makes createHashRouter observe this scoped path.
+        expect(router.state.location.pathname).toBe("/project/play");
         expect(window.history.state).toMatchObject({idx: 0});
 
         await act(() => router.navigate("/home/design"));
@@ -221,11 +224,15 @@ describe("Project-scoped browser history", () => {
         });
         const aRoute = `/project/${encodeURIComponent("/games/a")}/play`;
         const bRoute = `/project/${encodeURIComponent("/games/b")}/play`;
-        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/play"]});
+        // The regression is specific to an externally-created browser hash entry, not a memory
+        // router's synthetic initial entry. Start from that real shape so every Back/Forward step
+        // exercises createHashRouter's native history bookkeeping.
+        window.history.replaceState(null, "", "#/project/play");
+        const {router} = renderHashRoutedApp({fetchImpl});
 
         await screen.findByRole("heading", {name: "A"});
         expect(screen.getByRole("button", {name: "Play"})).toHaveAttribute("aria-current", "page");
-        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
+        await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
 
         await act(() => router.navigate(bRoute));
         await screen.findByRole("heading", {name: "B"});

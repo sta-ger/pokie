@@ -161,26 +161,33 @@ export function ProjectDashboardRoute() {
 }
 
 // Legacy `/project/:tab` links contain no project identity. Resolve the server's current project
-// in this deliberately state-free route first, then replace that history entry before the dashboard
-// (and its session/run/error state) can mount. This makes every rendered project dashboard derive
-// from a project-scoped route, including direct links from older Studio versions.
+// in this deliberately state-free route first, then scope its *native* history entry before the
+// dashboard (and its session/run/error state) can mount. This makes every rendered project dashboard
+// derive from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
-    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
-    // The hash router owns the initial legacy entry as soon as it starts, assigning it its history
-    // index when necessary. Replace that entry through the router before mounting the dashboard: adding
-    // a scoped successor leaves an obsolete legacy entry in the stack, which makes a Back restoration
-    // create a new Forward branch when later Home routes are reached. A router-owned replacement keeps
-    // the original index and every subsequent Home/Project entry intact.
+    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
+
+    // This route can be the browser's initial, externally-created hash entry. Calling `navigate(...,
+    // {replace: true})` while handling that entry makes the data router replace it again after a later
+    // Back restoration, which truncates the browser's Forward branch. Preserve the browser entry and
+    // its router-assigned `idx` verbatim, changing only its hash. Rendering the scoped dashboard locally
+    // keeps the ambiguous route's mutable server context out of the dashboard; the next real Back/Forward
+    // pop is read from the scoped hash by createHashRouter and continues through the untouched branch.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
-        if (projectRoot !== undefined && projectRoot !== "") {
+        if (scopedProjectRoot === undefined && projectRoot !== undefined && projectRoot !== "") {
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            navigate(scopedPath, {replace: true});
+            window.history.replaceState(window.history.state, "", `#${scopedPath}`);
+            setScopedProjectRoot(projectRoot);
         }
-    }, [activeTab, navigate, projectRoot]);
+    }, [activeTab, projectRoot, scopedProjectRoot]);
+
+    if (scopedProjectRoot !== undefined) {
+        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
+    }
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
