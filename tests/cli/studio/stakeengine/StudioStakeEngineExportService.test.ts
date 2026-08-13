@@ -162,6 +162,42 @@ describe("StudioStakeEngineExportService", () => {
             expect(fs.existsSync(path.join(tmpRoot, "stakeengine", "index.json"))).toBe(true);
         });
 
+        it("rejects an Outcome Library created for configuration A after the Project resolves configuration B", async () => {
+            const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
+            const bundleDir = path.join(tmpRoot, "outcomelibrary");
+            await new OutcomeLibraryBundleWriter(TEST_POKIE_VERSION).writeToDirectory(
+                [{modeName: "base", libraryId: library.libraryId, schemaVersion: library.schemaVersion, outcomes: library.outcomes}],
+                bundleDir,
+            );
+            const manifestPath = path.join(bundleDir, "manifest.json");
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")) as Record<string, unknown>;
+            fs.writeFileSync(manifestPath, JSON.stringify({...manifest, configHash: "configuration-A"}));
+
+            const service = new StudioStakeEngineExportService(
+                TEST_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve("configuration-B"),
+            );
+            const view = await service.export(
+                tmpRoot,
+                [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}],
+                "stakeengine",
+                false,
+            );
+
+            expect(view.status).toBe("load-error");
+            if (view.status !== "load-error") throw new Error("expected load-error");
+            expect(view.error).toContain("configuration-A");
+            expect(view.error).toContain("configuration-B");
+            expect(view.error).toContain("Regenerate the library");
+            expect(fs.existsSync(path.join(tmpRoot, "stakeengine"))).toBe(false);
+        });
+
         it("returns an invalid view (no manifest) for an unsupported cost/outcome combination", async () => {
             const library = buildStakeEngineTestLibrary({libraryId: "base-lib", betMode: "base", stake: 1});
             writeLibraryFile(tmpRoot, "base.json", library);

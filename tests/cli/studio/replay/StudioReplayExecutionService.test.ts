@@ -342,6 +342,34 @@ describe("StudioReplayExecutionService", () => {
         expect(second.descriptor?.sessionId).not.toBe(first.descriptor?.sessionId);
     });
 
+    it("retains the configuration hash captured by a real replay after the Project configuration changes", async () => {
+        let currentConfiguration = "A";
+        const service = new StudioReplayExecutionService(
+            new InMemoryStudioReplayRepository(),
+            () =>
+                Promise.resolve({
+                    ...createSeedAwareFakeGame(manifest),
+                    getConfigHash: () => `configuration-${currentConfiguration}`,
+                }),
+        );
+
+        const started = service.start("/a", {round: 3, seed: "before-save"});
+        if (started.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const completedBeforeSave = await waitForTerminal(service, "/a", started.job.id);
+        expect(completedBeforeSave.configHash).toBe("configuration-A");
+
+        // Model a subsequent Blueprint save: future Project loads now expose B, but this completed
+        // replay remains evidence of the runtime that actually produced it.
+        currentConfiguration = "B";
+
+        expect(service.getStatus("/a", started.job.id)?.configHash).toBe("configuration-A");
+        expect(service.listJobs("/a")).toEqual([
+            expect.objectContaining({id: started.job.id, configHash: "configuration-A"}),
+        ]);
+    });
+
     it("produces a different result for a different seed", async () => {
         const service = new StudioReplayExecutionService(
             new InMemoryStudioReplayRepository(),

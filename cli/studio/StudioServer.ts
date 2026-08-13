@@ -236,7 +236,9 @@ export class StudioServer implements StudioServerHandling {
                 await resolution.release();
             }
         };
-        this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, loadCurrentProjectGame);
+        this.simulationService =
+            options.simulationService ??
+            new StudioSimulationService(undefined, this.loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, this.resolveRuntimePackageRoot);
         this.replayService =
             options.replayService ??
             new StudioReplayExecutionService(undefined, loadCurrentProjectGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>

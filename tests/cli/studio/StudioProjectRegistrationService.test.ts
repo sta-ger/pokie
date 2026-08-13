@@ -1,4 +1,12 @@
-import {computeGameBlueprintHash, type GameBlueprint, type PokieProject, type ProjectResolving} from "pokie";
+import {
+    computeGameBlueprintHash,
+    GameSessionHandling,
+    OutcomeLibraryBundleWriter,
+    PokieGame,
+    type GameBlueprint,
+    type PokieProject,
+    type ProjectResolving,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -8,8 +16,11 @@ import type {StudioHomeRecentProjectView} from "../../../cli/studio/home/StudioH
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {toStudioReplayJobView} from "../../../cli/studio/replay/toStudioReplayJobView.js";
+import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
     return {
@@ -616,5 +627,183 @@ describe("Studio Blueprint Project save conflicts", () => {
 
         expect(replay.configHash).toBe(originalConfigurationHash);
         expect(replay.configHash).not.toBe(computeGameBlueprintHash({manifest: {id: "game"}, rows: 4}));
+    });
+});
+
+describe("Studio Blueprint Project execution freshness", () => {
+    it("opens a managed Blueprint, then executes and materializes its saved configuration instead of the earlier dashboard snapshot", async () => {
+        const version = "1.3.0";
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-project-execution-"));
+        const studioRoot = path.join(directory, "studio");
+        const blueprintPath = path.join(directory, "blueprint.json");
+        const configurationA = {manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, configuration: "A"};
+        const configurationB = {...configurationA, configuration: "B"};
+        const configurationAHash = computeGameBlueprintHash(configurationA);
+        const configurationBHash = computeGameBlueprintHash(configurationB);
+        const configurations = new Map([
+            [configurationAHash, configurationA],
+            [configurationBHash, configurationB],
+        ]);
+        let server: StudioServer | undefined;
+
+        const createGame = (configurationHash: string): PokieGame => {
+            const configuration = configurations.get(configurationHash);
+            if (configuration === undefined) {
+                throw new Error(`Unknown materialized configuration "${configurationHash}".`);
+            }
+            return {
+                getManifest: () => ({...configuration.manifest, name: `${configuration.manifest.name} ${configuration.configuration}`}),
+                getConfigHash: () => configurationHash,
+                createSession: () => {
+                    let credits = 100;
+                    return {
+                        getCreditsAmount: () => credits,
+                        setCreditsAmount: (value: number) => {
+                            credits = value;
+                        },
+                        getBet: () => 1,
+                        setBet: () => undefined,
+                        getAvailableBets: () => [1],
+                        canPlayNextGame: () => true,
+                        play: () => {
+                            credits -= 1;
+                        },
+                        getWinAmount: () => 0,
+                    } as GameSessionHandling;
+                },
+            };
+        };
+
+        const materializedHashes: string[] = [];
+        const resolveRuntimePackageRoot = (projectRoot: string) => {
+            expect(path.resolve(projectRoot)).toBe(blueprintPath);
+            const currentBlueprint = JSON.parse(fs.readFileSync(blueprintPath, "utf-8"));
+            const configurationHash = computeGameBlueprintHash(currentBlueprint);
+            materializedHashes.push(configurationHash);
+            return Promise.resolve({runtimePath: `materialized:${configurationHash}`, release: () => Promise.resolve()});
+        };
+        const loadGame = (runtimePath: string): Promise<PokieGame> => Promise.resolve(createGame(runtimePath.replace("materialized:", "")));
+
+        async function get(url: string): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url);
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        async function post(url: string, body: unknown): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        async function waitForTerminal(url: string): Promise<Record<string, unknown>> {
+            for (let attempt = 0; attempt < 200; attempt++) {
+                const response = await get(url);
+                if (response.body.status !== "queued" && response.body.status !== "running") {
+                    return response.body;
+                }
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            throw new Error(`Timed out waiting for ${url}.`);
+        }
+
+        try {
+            fs.mkdirSync(studioRoot, {recursive: true});
+            fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
+            fs.writeFileSync(path.join(studioRoot, "main.js"), "console.log('studio');");
+            fs.writeFileSync(path.join(studioRoot, "style.css"), "body {}");
+            fs.writeFileSync(blueprintPath, JSON.stringify(configurationA));
+
+            // This is a canonical Outcome Library genuinely written before the save. The fixture's
+            // outcomes predate configuration hashes, so stamp its manifest with the source hash A.
+            const bundleDir = path.join(directory, "outcomelibrary");
+            await new OutcomeLibraryBundleWriter(version).writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+            const bundleManifestPath = path.join(bundleDir, "manifest.json");
+            const bundleManifest = JSON.parse(fs.readFileSync(bundleManifestPath, "utf-8")) as Record<string, unknown>;
+            fs.writeFileSync(bundleManifestPath, JSON.stringify({...bundleManifest, configHash: configurationAHash}));
+
+            const registration = new StudioProjectRegistrationService(
+                new InMemoryStudioProjectRegistry(),
+                fakeResolver({[blueprintPath]: blueprintProject(blueprintPath)}),
+            );
+            await registration.registerManaged(blueprintPath, "Sample Slot");
+
+            let previewedConfiguration: string | undefined;
+            const artifactBuildService = new StudioArtifactBuildService(version, undefined, {
+                resolve: (projectRoot) => {
+                    const currentBlueprint = JSON.parse(fs.readFileSync(projectRoot, "utf-8")) as {configuration: string};
+                    previewedConfiguration = currentBlueprint.configuration;
+                    return Promise.resolve(blueprintProject(projectRoot));
+                },
+            });
+            const homeService = new StudioHomeService(version, undefined, loadGame, undefined, resolveRuntimePackageRoot);
+            server = new StudioServer({
+                pokieVersion: version,
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService(version, studioRoot, homeService),
+                loadGame,
+                resolveRuntimePackageRoot,
+                projectRegistrationService: registration,
+                artifactBuildService,
+            });
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const opened = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: blueprintPath});
+            expect(opened.status).toBe(200);
+            expect((opened.body.manifest as {name: string}).name).toBe("Sample Slot A");
+
+            const replayCreated = await post(`${baseUrl}/api/project/replays`, {round: 2, seed: "before-save"});
+            expect(replayCreated.status).toBe(202);
+            const replayBeforeSave = await waitForTerminal(`${baseUrl}/api/project/replays/${replayCreated.body.id}`);
+            expect(replayBeforeSave.configHash).toBe(configurationAHash);
+
+            const saved = await post(`${baseUrl}/api/home/blueprints/save`, {
+                path: blueprintPath,
+                blueprint: configurationB,
+                overwrite: true,
+                expectedHash: configurationAHash,
+            });
+            expect(saved.status).toBe(201);
+            expect(saved.body.blueprintHash).toBe(configurationBHash);
+
+            const play = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(play.status).toBe(201);
+            expect(((play.body.session as {game: {name: string}}).game.name)).toBe("Sample Slot B");
+
+            const simulationCreated = await post(`${baseUrl}/api/project/simulations`, {rounds: 2});
+            expect(simulationCreated.status).toBe(202);
+            const simulation = await waitForTerminal(`${baseUrl}/api/project/simulations/${simulationCreated.body.id}`);
+            expect(((simulation.report as {game: {name: string}}).game.name)).toBe("Sample Slot B");
+
+            const buildPreview = await post(`${baseUrl}/api/project/artifacts/preview`, {target: "tsPackage"});
+            expect(buildPreview.status).toBe(200);
+            expect(buildPreview.body.status).toBe("ok");
+            expect(previewedConfiguration).toBe("B");
+
+            const registry = await get(`${baseUrl}/api/project/outcome-libraries/registry`);
+            expect(registry.status).toBe(200);
+            expect(registry.body.buildStatus).toBe("stale");
+            expect(registry.body.configHash).toBe(configurationAHash);
+
+            const stakeExport = await post(`${baseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(stakeExport.status).toBe(200);
+            expect(stakeExport.body.status).toBe("load-error");
+            expect(stakeExport.body.error).toContain(configurationAHash);
+            expect(stakeExport.body.error).toContain(configurationBHash);
+
+            const replayAfterSave = await get(`${baseUrl}/api/project/replays/${replayCreated.body.id}`);
+            expect(replayAfterSave.body.configHash).toBe(configurationAHash);
+            expect(materializedHashes).toContain(configurationBHash);
+        } finally {
+            await server?.stop();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 });
