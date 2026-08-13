@@ -1,0 +1,24 @@
+[
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b",
+        "name": "Playable Game With Bonus Round",
+        "type": "tsPackage",
+        "capabilities": [
+            "runtime.execute"
+        ],
+        "origin": "external",
+        "lastOpenedAt": "2026-08-13T11:09:26.691Z"
+    },
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode",
+        "name": "project-a-multimode",
+        "type": "outcomeLibrary",
+        "capabilities": [
+            "outcomeLibrary.read",
+            "outcomeSource.read",
+            "outcomeSource.sample"
+        ],
+        "origin": "external",
+        "lastOpenedAt": "2026-08-13T11:08:03.125Z"
+    }
+]
