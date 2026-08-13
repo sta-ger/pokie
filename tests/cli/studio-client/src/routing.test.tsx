@@ -172,7 +172,9 @@ describe("Project-scoped browser history", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
-        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
+        // The upgrader preserves this externally-created browser entry directly, so the router first
+        // observes its scoped path on the subsequent real history pop.
+        expect(router.state.location.pathname).toBe("/project/play");
         expect(window.history.state).toMatchObject({idx: 0});
 
         await act(() => router.navigate("/home/design"));
