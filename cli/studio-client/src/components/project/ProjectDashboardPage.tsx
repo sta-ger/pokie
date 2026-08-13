@@ -1,7 +1,7 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useRef, useState} from "react";
-import {useNavigate, useParams} from "react-router-dom";
+import {Navigate, useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
     closeProject,
@@ -160,6 +160,22 @@ export function ProjectDashboardRoute() {
     return <ProjectDashboardPage key={projectRoot ?? "current-project"} requestedProjectRoot={projectRoot} />;
 }
 
+// Legacy `/project/:tab` links contain no project identity. Resolve the server's current project
+// in this deliberately state-free route first, then replace the history entry before the dashboard
+// (and its session/run/error state) can mount. This makes every rendered project dashboard derive
+// from a project-scoped route, including direct links from older Studio versions.
+export function LegacyProjectDashboardRoute() {
+    const {tab} = useParams<{tab: string}>();
+    const header = useProjectContext();
+    const activeTab = isProjectTab(tab) ? tab : "overview";
+
+    if (header.status === "empty") {
+        return <LoadingState label="Resolving project…" />;
+    }
+
+    return <Navigate to={`/project/${encodeURIComponent(header.projectRoot)}/${activeTab}`} replace />;
+}
+
 // Whether `tab` is actually reachable for the loaded project. A tab with no `requiredCapabilities`
 // (Overview) is always supported; everything else needs the project to be resolved -- "loaded" or
 // "outcome-source" alike, the only two ProjectHeaderView statuses that carry a `capabilities` array at
@@ -231,17 +247,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         [navigate, requestedProjectRoot],
     );
 
-    // Older Studio sessions may have put an unscoped `/project/:tab` entry in browser history.
-    // Replace it as soon as its current-project lookup resolves, before that response reaches
-    // this stateful dashboard. This makes the entry itself sufficient to restore the project
-    // later, instead of depending on the server's mutable current-project context.
-    const scopeLegacyHistoryEntry = useCallback(
-        (projectRoot: string): void => {
-            navigate(`/project/${encodeURIComponent(projectRoot)}/${activeTab}`, {replace: true});
-        },
-        [activeTab, navigate],
-    );
-    const header = useProjectContext(requestedProjectRoot, requestedProjectRoot === undefined ? scopeLegacyHistoryEntry : undefined);
+    const header = useProjectContext(requestedProjectRoot);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
     // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's

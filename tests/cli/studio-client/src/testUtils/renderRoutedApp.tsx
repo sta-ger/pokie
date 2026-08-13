@@ -4,7 +4,7 @@ import {render, type RenderResult} from "@testing-library/react";
 import {createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {HomePage} from "../../../../../cli/studio-client/src/components/home/HomePage";
-import {ProjectDashboardRoute} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
+import {LegacyProjectDashboardRoute, ProjectDashboardRoute} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
 import {StudioLanding} from "../../../../../cli/studio-client/src/components/StudioLanding";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 
@@ -27,7 +27,7 @@ const ROUTES = [
     {path: "/home/:tab", element: <HomePage />},
     {path: "/project", element: <Navigate to="/project/overview" replace />},
     {path: "/project/:projectRoot/:tab", element: <ProjectDashboardRoute />},
-    {path: "/project/:tab", element: <ProjectDashboardRoute />},
+    {path: "/project/:tab", element: <LegacyProjectDashboardRoute />},
     {path: "*", element: <Navigate to="/home/design" replace />},
 ];
 
