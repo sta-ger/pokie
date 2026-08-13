@@ -1,7 +1,0 @@
-[2026-08-13T13:14:52.537Z] START fresh Chrome session against candidate Studio http://127.0.0.1:41241
-[2026-08-13T13:14:52.551Z] NAVIGATE public initial Project A Play URL
-[2026-08-13T13:14:53.011Z] OBSERVE Project A dashboard
-[2026-08-13T13:14:53.015Z] OBSERVE Project A Play setup
-[2026-08-13T13:15:23.043Z] FAILED Error: Timed out waiting for Project A visible outcome-library mode picker
-    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-17/browser-ui-current-candidate-rerun.mjs:70:46)
-    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-17/browser-ui-current-candidate-rerun.mjs:177:5)

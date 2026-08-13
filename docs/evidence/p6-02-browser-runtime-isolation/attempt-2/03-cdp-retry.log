@@ -1,4 +1,0 @@
-*   Trying 127.0.0.1:9230...
-* connect to 127.0.0.1 port 9230 from 127.0.0.1 port 47126 failed: Connection refused
-* Failed to connect to 127.0.0.1 port 9230 after 0 ms: Couldn't connect to server
-* Closing connection

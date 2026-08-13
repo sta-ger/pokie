@@ -1,5 +1,0 @@
-[2026-08-13T16:52:24.636Z] START fresh Chrome session against candidate Studio http://127.0.0.1:41240
-[2026-08-13T16:52:24.661Z] NAVIGATE public initial Project A Play URL
-[2026-08-13T16:52:54.817Z] FAILED Error: Timed out waiting for Project A dashboard
-    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-17/browser-ui-current-candidate-rerun.mjs:70:46)
-    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-17/browser-ui-current-candidate-rerun.mjs:175:5)

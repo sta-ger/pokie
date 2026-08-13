@@ -1,3 +1,0 @@
-final_studio_port=41242
-final_chrome_cdp_port=9234
-viewport=1440x1200

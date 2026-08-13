@@ -1,2 +1,0 @@
-3053355 Sl   node dist/cli/pokie.js studio /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode --port 41230 --host 127.0.0.1 --no-open
-3053419 Sl   /bin/google-chrome --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-breakpad --remote-debugging-address=127.0.0.1 --remote-debugging-port=9240 --user-data-dir=/tmp/p6-02-attempt-13-chrome.W75XAp --window-size=1440,1000 about:blank

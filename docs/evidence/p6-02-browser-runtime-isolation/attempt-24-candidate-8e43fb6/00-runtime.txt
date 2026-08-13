@@ -1,5 +1,0 @@
-candidate_sha=8e43fb69ce1a50202859c52f2a6be6a88bf8d451
-node=v24.18.0
-port=41240
-project_a=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/attempt-4/project-a-multimode
-project_b=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b

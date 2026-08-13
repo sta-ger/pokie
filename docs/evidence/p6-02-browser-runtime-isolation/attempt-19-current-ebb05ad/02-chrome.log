@@ -1,3 +1,0 @@
-mkdir: cannot create directory ‘/.local’: Permission denied
-touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
-[3070015:3070015:0813/144804.930917:ERROR:content/app/content_main_runner_impl.cc:367] Zygote cannot be disabled if sandbox is enabled. Use --no-zygote together with --no-sandbox

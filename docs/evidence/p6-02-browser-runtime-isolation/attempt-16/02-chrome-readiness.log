@@ -1,2 +1,0 @@
-curl: (7) Failed to connect to 127.0.0.1 port 9243 after 0 ms: Couldn't connect to server
-ready_at_attempt=2
