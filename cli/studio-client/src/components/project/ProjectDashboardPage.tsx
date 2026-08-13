@@ -166,21 +166,25 @@ export function ProjectDashboardRoute() {
 // derive from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
-    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
+    const upgradeStartedRef = useRef(false);
 
-    // The hash router must own this replacement. Updating window.history directly changes the browser
-    // URL without updating createHashRouter's current location, so its next Back/Forward pop starts
-    // from a stale legacy route and can discard the Forward branch. A router-owned replacement updates
-    // the URL, history state, and router state as one transition before the stateful dashboard mounts.
+    // `navigate(..., {replace: true})` turns an externally-created legacy entry into a new router
+    // transition. Chrome can then treat a later Back restoration as the start of a replacement branch
+    // and discard its Forward entries. Replace only the current browser entry, which leaves both
+    // branches intact, then deliver a zero-distance pop so createHashRouter adopts that replacement
+    // without creating another history entry. The stateful dashboard cannot mount until this route has
+    // become project-scoped.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
-        if (projectRoot !== undefined && projectRoot !== "") {
+        if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
+            upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            navigate(scopedPath, {replace: true});
+            window.history.replaceState(window.history.state, "", `#${scopedPath}`);
+            window.dispatchEvent(new PopStateEvent("popstate", {state: window.history.state}));
         }
-    }, [activeTab, navigate, projectRoot]);
+    }, [activeTab, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
