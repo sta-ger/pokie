@@ -166,28 +166,21 @@ export function ProjectDashboardRoute() {
 // derive from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
+    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
-    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
 
-    // A legacy hash can be the browser's externally-created initial entry. Replacing it through the
-    // router creates a new router transition while handling that entry; after a later Back restoration,
-    // Chrome can consequently discard the entries in its Forward branch. Preserve the browser entry and
-    // its router-assigned index verbatim, changing only its hash. Rendering the scoped dashboard locally
-    // keeps the ambiguous route's mutable server context out of the dashboard; the next genuine
-    // Back/Forward pop is read from the scoped hash and continues through the untouched native branch.
+    // The hash router must own this replacement. Updating window.history directly changes the browser
+    // URL without updating createHashRouter's current location, so its next Back/Forward pop starts
+    // from a stale legacy route and can discard the Forward branch. A router-owned replacement updates
+    // the URL, history state, and router state as one transition before the stateful dashboard mounts.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
-        if (scopedProjectRoot === undefined && projectRoot !== undefined && projectRoot !== "") {
+        if (projectRoot !== undefined && projectRoot !== "") {
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            window.history.replaceState(window.history.state, "", `#${scopedPath}`);
-            setScopedProjectRoot(projectRoot);
+            navigate(scopedPath, {replace: true});
         }
-    }, [activeTab, projectRoot, scopedProjectRoot]);
-
-    if (scopedProjectRoot !== undefined) {
-        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
-    }
+    }, [activeTab, navigate, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
