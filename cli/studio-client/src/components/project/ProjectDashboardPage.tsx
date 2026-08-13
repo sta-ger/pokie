@@ -1,7 +1,7 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useCallback, useEffect, useRef, useState} from "react";
-import {Navigate, useNavigate, useParams} from "react-router-dom";
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
+import {useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
     closeProject,
@@ -166,14 +166,26 @@ export function ProjectDashboardRoute() {
 // from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
+    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
 
-    if (header.status === "empty") {
-        return <LoadingState label="Resolving project…" />;
+    // Hash-router replacement must happen in the layout phase. Declarative <Navigate> schedules
+    // its replacement after paint; when this legacy entry is later reached via browser Back, that
+    // delayed hash replacement discards its Forward entries. Keeping this route state-free still
+    // prevents its mutable server context from reaching the dashboard before the route is scoped.
+    const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
+    useLayoutEffect(() => {
+        if (projectRoot !== undefined && projectRoot !== "") {
+            navigate(`/project/${encodeURIComponent(projectRoot)}/${activeTab}`, {replace: true});
+        }
+    }, [activeTab, navigate, projectRoot]);
+
+    if (header.status === "error" && projectRoot === "") {
+        return <ErrorState message={header.message} detail={header.errorDetail} />;
     }
 
-    return <Navigate to={`/project/${encodeURIComponent(header.projectRoot)}/${activeTab}`} replace />;
+    return <LoadingState label="Resolving project…" />;
 }
 
 // Whether `tab` is actually reachable for the loaded project. A tab with no `requiredCapabilities`
