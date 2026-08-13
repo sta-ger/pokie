@@ -1,13 +1,13 @@
-export type SaveBlueprintRequestInput = {path?: unknown; blueprint?: unknown; overwrite?: unknown};
+export type SaveBlueprintRequestInput = {path?: unknown; blueprint?: unknown; overwrite?: unknown; expectedHash?: unknown};
 
-export type ValidatedSaveBlueprintRequest = {path: string; blueprint: unknown; overwrite: boolean};
+export type ValidatedSaveBlueprintRequest = {path: string; blueprint: unknown; overwrite: boolean; expectedHash?: string};
 
 // The one place a POST /api/home/blueprints/save body is turned into a trusted request — throws a
 // plain, client-safe Error (StudioServer catches this and maps it to 400) for anything malformed.
 // `overwrite` defaults to false — see StudioBlueprintService.save()'s own doc comment for what that
 // gates.
 export function validateSaveBlueprintRequest(input: SaveBlueprintRequestInput): ValidatedSaveBlueprintRequest {
-    const {path, blueprint, overwrite} = input;
+    const {path, blueprint, overwrite, expectedHash} = input;
     if (typeof path !== "string" || path.trim().length === 0) {
         throw new Error('"path" is required.');
     }
@@ -17,5 +17,8 @@ export function validateSaveBlueprintRequest(input: SaveBlueprintRequestInput): 
     if (overwrite !== undefined && typeof overwrite !== "boolean") {
         throw new Error('"overwrite" must be a boolean when given.');
     }
-    return {path, blueprint, overwrite: overwrite === true};
+    if (expectedHash !== undefined && (typeof expectedHash !== "string" || expectedHash.length === 0)) {
+        throw new Error('"expectedHash" must be a non-empty string when given.');
+    }
+    return expectedHash === undefined ? {path, blueprint, overwrite: overwrite === true} : {path, blueprint, overwrite: overwrite === true, expectedHash};
 }

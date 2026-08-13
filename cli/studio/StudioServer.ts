@@ -1136,7 +1136,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.blueprintService.save(validated.path, validated.blueprint, validated.overwrite);
+        const result = this.blueprintService.save(validated.path, validated.blueprint, validated.overwrite, validated.expectedHash);
         this.sendJson(res, this.statusForBlueprintSave(result.status), result);
     }
 

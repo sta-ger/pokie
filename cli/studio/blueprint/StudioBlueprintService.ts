@@ -226,27 +226,94 @@ export class StudioBlueprintService {
         return {status: "changed", blueprint: loaded.blueprint, blueprintHash: loaded.blueprintHash};
     }
 
-    // Refuses to overwrite a file that already exists unless the request explicitly says `overwrite:
-    // true` — reported as "conflict", never a silent overwrite. The editor is expected to show this to
-    // the user and, once they confirm, resend the same request with `overwrite: true`.
-    public save(rawPath: string, blueprint: unknown, overwrite: boolean): StudioBlueprintSaveView {
+    // A save from a loaded source carries that source's `expectedHash`. Before writing, compare it with
+    // the current on-disk Blueprint: another tab or an external edit must never be overwritten merely
+    // because this caller previously owned the path. The conflict deliberately includes both states so
+    // the UI can reload, compare, or save the edit elsewhere. The legacy overwrite gate remains for a
+    // fresh Save target that has no loaded-source snapshot.
+    public save(rawPath: string, blueprint: unknown, overwrite: boolean, expectedHash?: string): StudioBlueprintSaveView {
         const resolved = path.resolve(process.cwd(), rawPath);
         if (isPathWithin(this.studioRoot, resolved)) {
             return {status: "error", error: outsideStudioRootMessage(rawPath)};
         }
 
-        if (fs.existsSync(resolved) && !overwrite) {
+        const editedHash = computeGameBlueprintHash(blueprint);
+        if (fs.existsSync(resolved)) {
+            let currentBlueprint: unknown;
+            let currentHash: string | undefined;
+            try {
+                currentBlueprint = this.loadBlueprint(resolved);
+                currentHash = computeGameBlueprintHash(currentBlueprint);
+            } catch {
+                if (expectedHash !== undefined) {
+                    return {
+                        status: "conflict",
+                        reason: "stale",
+                        path: resolved,
+                        error: `"${resolved}" changed or can no longer be read since it was loaded. Reload it before saving.`,
+                        editedBlueprint: blueprint,
+                        editedHash,
+                        expectedHash,
+                        canSaveAs: true,
+                    };
+                }
+                if (!overwrite) {
+                    return {
+                        status: "conflict",
+                        reason: "existing",
+                        path: resolved,
+                        error: `"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`,
+                        editedBlueprint: blueprint,
+                        editedHash,
+                        canSaveAs: true,
+                    };
+                }
+            }
+
+            if (expectedHash !== undefined && currentHash !== expectedHash) {
+                return {
+                    status: "conflict",
+                    reason: "stale",
+                    path: resolved,
+                    error: `"${resolved}" changed since it was loaded. Reload, compare, or save your edits to a new path.`,
+                    currentBlueprint,
+                    currentHash,
+                    editedBlueprint: blueprint,
+                    editedHash,
+                    expectedHash,
+                    canSaveAs: true,
+                };
+            }
+            if (expectedHash === undefined && !overwrite) {
+                return {
+                    status: "conflict",
+                    reason: "existing",
+                    path: resolved,
+                    error: `"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`,
+                    currentBlueprint,
+                    currentHash,
+                    editedBlueprint: blueprint,
+                    editedHash,
+                    canSaveAs: true,
+                };
+            }
+        } else if (expectedHash !== undefined) {
             return {
                 status: "conflict",
+                reason: "stale",
                 path: resolved,
-                error: `"${resolved}" already exists. Resubmit with "overwrite": true to replace it.`,
+                error: `"${resolved}" no longer exists at the version that was loaded. Reload or save your edits to a new path.`,
+                editedBlueprint: blueprint,
+                editedHash,
+                expectedHash,
+                canSaveAs: true,
             };
         }
 
         try {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
             fs.writeFileSync(resolved, serializeGameBlueprint(blueprint));
-            return {status: "ok", path: resolved, blueprintHash: computeGameBlueprintHash(blueprint)};
+            return {status: "ok", path: resolved, blueprintHash: editedHash};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }

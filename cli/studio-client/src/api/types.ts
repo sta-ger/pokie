@@ -445,13 +445,23 @@ export type StudioBlueprintRandomView = {
 };
 
 // POST /api/home/blueprints/save's own DTO — see cli/studio/blueprint/StudioBlueprintSaveView.ts's own
-// doc comment. "conflict" means the file already exists and the request needs `overwrite: true` to
-// replace it. "blueprintHash" on "ok" is the just-written content's own hash — a caller uses it the same
-// way it would use StudioBlueprintLoadView's own blueprintHash, e.g. as the next known-good snapshot for
-// StudioBlueprintCheckView.
+// doc comment. A stale conflict carries current-versus-edited content and hashes, allowing Reload,
+// Compare and Save As without risking a stale overwrite. "blueprintHash" on "ok" is the just-written
+// content's own hash — a caller uses it as the next known-good snapshot for StudioBlueprintCheckView.
 export type StudioBlueprintSaveView =
     | {status: "ok"; path: string; blueprintHash: string}
-    | {status: "conflict"; path: string; error: string}
+    | {
+          status: "conflict";
+          reason: "existing" | "stale";
+          path: string;
+          error: string;
+          currentBlueprint?: unknown;
+          currentHash?: string;
+          editedBlueprint: unknown;
+          editedHash: string;
+          expectedHash?: string;
+          canSaveAs: true;
+      }
     | {status: "error"; error: string};
 
 // POST /api/home/blueprints/save-managed's own DTO — see

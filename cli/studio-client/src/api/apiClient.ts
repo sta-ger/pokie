@@ -292,11 +292,12 @@ export async function saveBlueprint(
     path: string,
     blueprint: unknown,
     overwrite: boolean,
+    expectedHash?: string,
 ): Promise<StudioBlueprintSaveView> {
     const response = await fetchImpl("/api/home/blueprints/save", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({path, blueprint, overwrite}),
+        body: JSON.stringify({path, blueprint, overwrite, expectedHash}),
     });
     if (response.status === 409) {
         return (await response.json()) as StudioBlueprintSaveView;

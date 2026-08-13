@@ -153,12 +153,32 @@ export type BlueprintSaveView =
     | {status: "loading"}
     | {status: "error"; message: string}
     | {status: "failed"; message: string}
-    | {status: "conflict"; path: string; message: string}
+    | {
+          status: "conflict";
+          path: string;
+          reason: "existing" | "stale";
+          message: string;
+          currentBlueprint?: unknown;
+          currentHash?: string;
+          editedBlueprint: unknown;
+          editedHash: string;
+          canSaveAs: true;
+      }
     | {status: "ok"; path: string};
 
 export function describeSaveResult(result: StudioBlueprintSaveView): BlueprintSaveView {
     if (result.status === "conflict") {
-        return {status: "conflict", path: result.path, message: result.error};
+        return {
+            status: "conflict",
+            path: result.path,
+            reason: result.reason,
+            message: result.error,
+            currentBlueprint: result.currentBlueprint,
+            currentHash: result.currentHash,
+            editedBlueprint: result.editedBlueprint,
+            editedHash: result.editedHash,
+            canSaveAs: result.canSaveAs,
+        };
     }
     if (result.status === "error") {
         return {status: "failed", message: result.error};

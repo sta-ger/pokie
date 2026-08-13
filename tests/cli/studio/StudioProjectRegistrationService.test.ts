@@ -1,4 +1,4 @@
-import type {GameBlueprint, PokieProject, ProjectResolving} from "pokie";
+import {computeGameBlueprintHash, type GameBlueprint, type PokieProject, type ProjectResolving} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -7,6 +7,8 @@ import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
 import type {StudioHomeRecentProjectView} from "../../../cli/studio/home/StudioHomeRecentProjectView.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
     return {
@@ -488,5 +490,86 @@ describe("StudioProjectRegistrationService", () => {
 
             expect((await registry.list()).map((e) => e.location)).toEqual([path.resolve("/projects/a")]);
         });
+    });
+});
+
+// The registry lifecycle above deliberately stays independent of Blueprint persistence. These focused
+// save tests sit beside it because both paths begin with the same Project-open snapshot: a Project's
+// configuration hash is the optimistic-concurrency token that prevents a second tab or a disk editor
+// from replacing the newer registered Project source.
+describe("Studio Blueprint Project save conflicts", () => {
+    function createService(studioRoot: string): StudioBlueprintService {
+        return new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0"));
+    }
+
+    it("never lets a stale Studio tab overwrite a newer Blueprint save", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-stale-tab-"));
+        try {
+            const filePath = path.join(directory, "game.json");
+            const initial = {manifest: {id: "game"}, rows: 3};
+            const firstTabEdit = {manifest: {id: "game"}, rows: 4};
+            const staleTabEdit = {manifest: {id: "game"}, rows: 5};
+            fs.writeFileSync(filePath, JSON.stringify(initial));
+            const service = createService(path.join(directory, "studio"));
+
+            const firstSnapshot = service.load(filePath);
+            const staleSnapshot = service.load(filePath);
+            expect(firstSnapshot.status).toBe("ok");
+            expect(staleSnapshot.status).toBe("ok");
+            if (firstSnapshot.status !== "ok" || staleSnapshot.status !== "ok") {
+                throw new Error("Expected initial Blueprint snapshots to load.");
+            }
+
+            expect(service.save(filePath, firstTabEdit, true, firstSnapshot.blueprintHash).status).toBe("ok");
+            const result = service.save(filePath, staleTabEdit, true, staleSnapshot.blueprintHash);
+
+            expect(result).toMatchObject({
+                status: "conflict",
+                reason: "stale",
+                currentBlueprint: firstTabEdit,
+                currentHash: computeGameBlueprintHash(firstTabEdit),
+                editedBlueprint: staleTabEdit,
+                editedHash: computeGameBlueprintHash(staleTabEdit),
+                expectedHash: staleSnapshot.blueprintHash,
+                canSaveAs: true,
+            });
+            expect(JSON.parse(fs.readFileSync(filePath, "utf-8"))).toEqual(firstTabEdit);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("never lets a save overwrite a Blueprint edited externally after it was loaded", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-external-edit-"));
+        try {
+            const filePath = path.join(directory, "game.json");
+            const initial = {manifest: {id: "game"}, rows: 3};
+            const externalEdit = {manifest: {id: "game"}, rows: 4};
+            const editorDraft = {manifest: {id: "game"}, rows: 5};
+            fs.writeFileSync(filePath, JSON.stringify(initial));
+            const service = createService(path.join(directory, "studio"));
+            const loaded = service.load(filePath);
+            expect(loaded.status).toBe("ok");
+            if (loaded.status !== "ok") {
+                throw new Error("Expected initial Blueprint to load.");
+            }
+
+            fs.writeFileSync(filePath, JSON.stringify(externalEdit));
+            const result = service.save(filePath, editorDraft, true, loaded.blueprintHash);
+
+            expect(result).toMatchObject({
+                status: "conflict",
+                reason: "stale",
+                currentBlueprint: externalEdit,
+                currentHash: computeGameBlueprintHash(externalEdit),
+                editedBlueprint: editorDraft,
+                editedHash: computeGameBlueprintHash(editorDraft),
+                expectedHash: loaded.blueprintHash,
+                canSaveAs: true,
+            });
+            expect(JSON.parse(fs.readFileSync(filePath, "utf-8"))).toEqual(externalEdit);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 });

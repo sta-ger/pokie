@@ -1,4 +1,4 @@
-import {Button, Collapse} from "@mantine/core";
+import {Button, Collapse, Group, Text} from "@mantine/core";
 import {useState} from "react";
 import type {BlueprintLoadView, BlueprintSaveView} from "../../domain/interpret/BlueprintEditor";
 import {describePathActionError} from "../../domain/pathActionError";
@@ -13,6 +13,7 @@ export function BlueprintLoadSaveControls({
     onLoad,
     onSave,
     onOverwrite,
+    onReloadConflict,
     loadView,
     saveView,
     initialLoadPath,
@@ -23,6 +24,7 @@ export function BlueprintLoadSaveControls({
     onLoad: (path: string) => void;
     onSave: (path: string) => void;
     onOverwrite: (path: string) => void;
+    onReloadConflict: (path: string) => void;
     loadView: BlueprintLoadView;
     saveView: BlueprintSaveView;
     initialLoadPath: string;
@@ -35,6 +37,7 @@ export function BlueprintLoadSaveControls({
 }) {
     const [loadPath, setLoadPath] = useState(initialLoadPath);
     const [savePath, setSavePath] = useState(initialSavePath);
+    const [showConflictComparison, setShowConflictComparison] = useState(false);
     const loadSaveFields = (
         <QuickActions>
             <PathInput
@@ -79,8 +82,46 @@ export function BlueprintLoadSaveControls({
                 <ErrorState message={describePathActionError("The blueprint file", loadView.message)} />
             )}
 
-            {saveView.status === "conflict" && (
-                <RecoveryNotice title={saveView.message} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => onOverwrite(saveView.path)} />
+            {saveView.status === "conflict" &&
+                (saveView.reason === "stale" ? (
+                    <RecoveryNotice
+                        title="Blueprint changed while you were editing"
+                        message={saveView.message}
+                        actionLabel="Reload"
+                        onAction={() => onReloadConflict(saveView.path)}
+                        secondaryActionLabel="Compare"
+                        onSecondaryAction={() => setShowConflictComparison((shown) => !shown)}
+                    />
+                ) : (
+                    <RecoveryNotice title={saveView.message} message={null} actionLabel="Overwrite" actionColor="red" onAction={() => onOverwrite(saveView.path)} />
+                ))}
+            {saveView.status === "conflict" && saveView.reason === "stale" && (
+                <div>
+                    {saveView.canSaveAs && (
+                        <Group gap="xs" mb="sm">
+                            <Button variant="default" onClick={() => onSave(savePath)}>
+                                Save As
+                            </Button>
+                            <Text size="sm" c="dimmed">
+                                Choose a different path above to preserve both versions.
+                            </Text>
+                        </Group>
+                    )}
+                    {showConflictComparison && (
+                        <Text component="pre" size="xs" style={{whiteSpace: "pre-wrap", overflowWrap: "anywhere"}}>
+                            {JSON.stringify(
+                                {
+                                    currentHash: saveView.currentHash,
+                                    editedHash: saveView.editedHash,
+                                    currentBlueprint: saveView.currentBlueprint,
+                                    editedBlueprint: saveView.editedBlueprint,
+                                },
+                                null,
+                                2,
+                            )}
+                        </Text>
+                    )}
+                </div>
             )}
             {(saveView.status === "error" || saveView.status === "failed") && (
                 <ErrorState message={describePathActionError("The blueprint file", saveView.message)} />
