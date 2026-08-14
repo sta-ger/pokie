@@ -1,0 +1,7 @@
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/README.md
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/dist/index.js
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/node_modules/.package-lock.json
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/package-lock.json
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/package.json
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/src/index.ts
+docs/evidence/p6-02-registry-lifecycle/rerun-20260814/fixtures/external-project/tsconfig.json

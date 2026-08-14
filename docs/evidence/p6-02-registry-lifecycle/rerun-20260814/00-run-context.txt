@@ -1,0 +1,2 @@
+candidate_sha=6adf3490a4593d36dd794cc143115fbb040e10d4
+build_exit=1

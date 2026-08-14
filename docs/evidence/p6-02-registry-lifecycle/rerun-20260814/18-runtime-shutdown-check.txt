@@ -1,0 +1,5 @@
+Requested orderly shutdown for Chrome PID 626984 and Studio PID 626786.
+Remaining matching processes:
+628626 /bin/bash -c kill -TERM 626984 626786; sleep 1; { printf 'Requested orderly shutdown for Chrome PID 626984 and Studio PID 626786.\n'; printf 'Remaining matching processes:\n'; pgrep -af 'node dist/cli/pokie.js studio --host 127.0.0.1 --port 4126|google-chrome.*9236' || true; printf 'Studio listener after shutdown: '; curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:4126/ || printf 'unavailable\n'; } > docs/evidence/p6-02-registry-lifecycle/rerun-20260814/18-runtime-shutdown-check.txt; cat docs/evidence/p6-02-registry-lifecycle/rerun-20260814/18-runtime-shutdown-check.txt; git status --short
+Studio listener after shutdown: HTTP 000
+unavailable
