@@ -170,17 +170,21 @@ export class StudioStakeEngineExportService {
     // canonicalized (unreachable in practice -- see its own doc comment) is reported as this same
     // domain-level load-error, never a raw thrown error.
     private async loadModes(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<LoadModesResult> {
-        let currentConfigHash: string | undefined;
-        try {
-            currentConfigHash = await this.resolveCurrentConfigHash(projectRoot);
-        } catch (error) {
-            return {status: "load-error", error: `Could not resolve the current Project configuration: ${error instanceof Error ? error.message : String(error)}`};
-        }
         const loaded: StakeEngineExportModeInput<string>[] = [];
+        let currentConfigHash: string | undefined;
+        let resolvedCurrentConfigHash = false;
         for (const mode of modes) {
             const namedSelectorMode = selectorModeName(mode.librarySelector);
             if (namedSelectorMode !== undefined && namedSelectorMode !== mode.modeName) {
                 return {status: "load-error", error: describeSelectorModeMismatch(mode.modeName, namedSelectorMode)};
+            }
+            if (mode.librarySelector.kind === "bundle" && !resolvedCurrentConfigHash) {
+                try {
+                    currentConfigHash = await this.resolveCurrentConfigHash(projectRoot);
+                    resolvedCurrentConfigHash = true;
+                } catch (error) {
+                    return {status: "load-error", error: `Could not resolve the current Project configuration: ${error instanceof Error ? error.message : String(error)}`};
+                }
             }
             const compatibility = await this.validateBundleConfiguration(projectRoot, mode.librarySelector, currentConfigHash);
             if (compatibility !== undefined) {

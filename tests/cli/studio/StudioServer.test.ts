@@ -2955,6 +2955,8 @@ describe("StudioServer", () => {
         });
 
         it("returns 404 for GET of an unknown simulation id", async () => {
+            await openSampleSlot(createPlayableFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
+
             const {status, body} = await get(`${baseUrl}/api/project/simulations/does-not-exist`);
 
             expect(status).toBe(404);
@@ -2962,6 +2964,8 @@ describe("StudioServer", () => {
         });
 
         it("returns 404 for DELETE of an unknown simulation id", async () => {
+            await openSampleSlot(createPlayableFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
+
             const {status, body} = await del(`${baseUrl}/api/project/simulations/does-not-exist`);
 
             expect(status).toBe(404);
