@@ -159,7 +159,14 @@ export function BlueprintEditorPage({
     initialPath,
     initialParSheetPath,
     onDirtyChange,
-}: {guided?: boolean; initialPath?: string; initialParSheetPath?: string; onDirtyChange?: (dirty: boolean) => void} = {}) {
+    onManagedProjectSaved,
+}: {
+    guided?: boolean;
+    initialPath?: string;
+    initialParSheetPath?: string;
+    onDirtyChange?: (dirty: boolean) => void;
+    onManagedProjectSaved?: () => void;
+} = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -853,6 +860,12 @@ export function BlueprintEditorPage({
                     sourceCheckPausedRef.current = false;
                     // Same as runSave's own success branch -- see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
+                    // Home keeps Projects mounted beside this editor, so its initial registry read has
+                    // already happened by the time this first managed save registers the project.
+                    // Notify its owner to invalidate that stale list immediately.
+                    if (!alreadyOwnsPath) {
+                        onManagedProjectSaved?.();
+                    }
                 }
             })
             .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))

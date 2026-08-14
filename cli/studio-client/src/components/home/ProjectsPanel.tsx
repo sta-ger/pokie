@@ -63,7 +63,7 @@ const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
 
 // Projects registry list -- every managed/registered project Studio knows about (see
 // StudioProjectRegistrationService.list()'s own doc comment), most-recently-registered/opened first.
-export function ProjectsPanel() {
+export function ProjectsPanel({registryVersion = 0}: {registryVersion?: number}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
@@ -125,7 +125,7 @@ export function ProjectsPanel() {
         return () => {
             cancelled = true;
         };
-    }, [fetchImpl]);
+    }, [fetchImpl, registryVersion]);
 
     const handleOpen = (entry: StudioProjectRegistryView): void => {
         if (!openGuard.begin()) {

@@ -48,10 +48,26 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
     it("saves the imported blueprint as a managed Blueprint Project, recording the workbook only as provenance, and shows an 'Imported from PAR' label", async () => {
         const user = userEvent.setup();
         const saveManagedBodies: Array<{blueprint: unknown; sourceWorkbookPath?: string}> = [];
+        let managedProjectSaved = false;
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
             if (path === REGISTRY_URL) {
-                return jsonResponse([]);
+                return jsonResponse(
+                    managedProjectSaved
+                        ? [
+                              {
+                                  location: "/POKIE Projects/imported-game/blueprint.json",
+                                  name: "imported-game",
+                                  type: "blueprint",
+                                  capabilities: [],
+                                  origin: "managed",
+                                  lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                                  status: "ok",
+                                  importedFromParSheetPath: "/games/in.par.xlsx",
+                              },
+                          ]
+                        : [],
+                );
             }
             if (path === IMPORT_URL) {
                 return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
@@ -62,6 +78,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
             if (path === SAVE_MANAGED_URL) {
                 const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {blueprint: unknown; sourceWorkbookPath?: string};
                 saveManagedBodies.push(body);
+                managedProjectSaved = true;
                 return jsonResponse({
                     status: "ok",
                     path: "/POKIE Projects/imported-game/blueprint.json",
@@ -90,8 +107,14 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         expect(await screen.findByText('Saved to "/POKIE Projects/imported-game/blueprint.json".')).toBeInTheDocument();
 
         // The label survives the save -- this project's identity, not a one-request-only fact.
-        expect(screen.getByText("Imported from PAR")).toBeInTheDocument();
+        expect(screen.getAllByText("Imported from PAR")).toHaveLength(2);
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
+
+        // Projects stays mounted while Design Game saves. The managed-save notification must refresh
+        // the panel's already-fetched list rather than leaving its empty state stale until a reload.
+        await user.click(screen.getByRole("button", {name: "Projects"}));
+        expect(await screen.findByText("imported-game")).toBeInTheDocument();
+        expect(screen.getByText("Managed")).toBeInTheDocument();
     });
 
     it("does not show the 'Imported from PAR' label, and never sends sourceWorkbookPath, for an ordinary first Save with no PAR import behind it", async () => {

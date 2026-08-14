@@ -75,6 +75,7 @@ export function HomePage() {
     // attach/detach the listener; only flips true/false on New/Load/Save/Build, not per keystroke, so
     // this doesn't cause excess re-renders.
     const [isDesignDirty, setIsDesignDirty] = useState(false);
+    const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
     const guardedAction = useDesignNavigationGuard(isDesignDirty);
 
     return (
@@ -90,6 +91,7 @@ export function HomePage() {
                             initialPath={initialBlueprintPath}
                             initialParSheetPath={initialParSheetPath}
                             onDirtyChange={setIsDesignDirty}
+                            onManagedProjectSaved={() => setProjectRegistryVersion((version) => version + 1)}
                         />
                     </div>
 
@@ -104,7 +106,7 @@ export function HomePage() {
                                 Need a new project from your terminal? Run <Code>pokie init</Code> for a ready-to-build package, or{" "}
                                 <Code>pokie create</Code> for an editable Blueprint Project -- then import it above.
                             </Text>
-                            <ProjectsPanel />
+                            <ProjectsPanel registryVersion={projectRegistryVersion} />
                         </Stack>
                     </div>
 
