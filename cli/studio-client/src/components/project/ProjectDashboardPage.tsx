@@ -166,26 +166,29 @@ export function ProjectDashboardRoute() {
 // derive from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
-    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
     const upgradeStartedRef = useRef(false);
+    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
 
-    // This first legacy route may be an entry created before the current router existed. Replacing it
-    // through the live router has repeatedly proved unsafe: after a later Back restoration, the
-    // router can treat its replacement as a new navigation and discard the native Forward branch.
-    // Replace the document location instead. The browser retains the current entry's position while
-    // the restarted router initializes from the already-scoped hash, so neither history owner has to
-    // adopt a transition performed by the other. The stateful dashboard never mounts from the
-    // ambiguous route.
+    // A legacy hash can be an externally-created browser entry. `location.replace()` is a navigation,
+    // so using it while the user has already gone Back discards the native Forward branch. Update only
+    // the current entry's URL and keep the resolved root locally until the next actual browser
+    // traversal lets the hash router observe that scoped URL. The stateful dashboard never mounts from
+    // the ambiguous route, and neither side of the native history stack is consumed.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
             upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            window.location.replace(`#${scopedPath}`);
+            window.history.replaceState(window.history.state, "", `#${scopedPath}`);
+            setScopedProjectRoot(projectRoot);
         }
     }, [activeTab, projectRoot]);
+
+    if (scopedProjectRoot !== undefined) {
+        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
+    }
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
