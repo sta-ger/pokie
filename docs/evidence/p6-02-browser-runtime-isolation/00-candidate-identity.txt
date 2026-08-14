@@ -1,4 +1,2 @@
-candidate_sha=6c3244eab70b70eb76abf6f22c00eb33bdfe3012
 node=v24.18.0
-npm=11.16.0
-build_exit=0
+candidate_sha=6ccdda5615d61fee6d69bc565fe6f9daf92cf25b

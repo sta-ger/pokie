@@ -1,6 +1,6 @@
 POKIE Studio
 /
-Playable Game
+Playable Game With Bonus Round
 /
 
 Play
@@ -16,16 +16,18 @@ Replay
 Build/Export
 Certification
 Fairness
-Playable Game
+Playable Game With Bonus Round
 
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b
 
 Close project
-
-Play prepares this project (materializing a Blueprint into a runnable package first if needed) and creates a real session directly in Studio's own backend -- no server, host, port, or separate API to set up.
-
+Spin
+Find any win
+Find symbol win
+Find free games
+Reset
 Seed (optional)
 
 A given seed always plays out the same way -- genuine input to the game's own RNG, not cosmetic.
 
-New session
+No round played yet -- Spin to play.

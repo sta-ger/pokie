@@ -1,4 +1,0 @@
-$ ss -ltn sport = :49326
-State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
-$ ss -ltn sport = :49327
-State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess

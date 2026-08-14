@@ -22,7 +22,7 @@ dist/cli/studio-client/index.html                   0.36 kB │ gzip:   0.26 kB
 dist/cli/studio-client/assets/index-BYljzUTd.css  223.98 kB │ gzip:  33.07 kB
 dist/cli/studio-client/assets/index-Jvm9whkp.js   903.52 kB │ gzip: 263.47 kB
 
-✓ built in 2.94s
+✓ built in 2.28s
 [plugin builtin:vite-reporter] 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application

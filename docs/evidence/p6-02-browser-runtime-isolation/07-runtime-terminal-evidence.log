@@ -1,0 +1,6 @@
+2026-08-14T17:59:33+02:00
+6ccdda5615d61fee6d69bc565fe6f9daf92cf25b
+ 590296  586463 /home/stager/.nvm/versions/node/v24.18.0/bin/node dist/cli/pokie.js studio docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49502 --host 127.0.0.1 --no-open
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      10         127.0.0.1:9226       0.0.0.0:*    users:(("chrome",pid=590612,fd=73))
+LISTEN 0      511        127.0.0.1:49502      0.0.0.0:*    users:(("MainThread",pid=590296,fd=22))
