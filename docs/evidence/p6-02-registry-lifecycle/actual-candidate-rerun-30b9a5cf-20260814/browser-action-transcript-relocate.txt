@@ -1,0 +1,10 @@
+[2026-08-14T18:09:11.971Z] RELOAD visible Projects page through browser Ctrl+R after host-side external move
+[2026-08-14T18:09:11.991Z] OBSERVE moved managed row visibly marked missing with Relocate
+[2026-08-14T18:09:12.180Z] CAPTURE 07-moved-managed-missing-relocate.png, 07-moved-managed-missing-relocate-visible-text.txt, and 07-moved-managed-missing-relocate-url.txt
+[2026-08-14T18:09:12.240Z] CLICK Relocate missing managed project at rendered BUTTON coordinates (1221, 293)
+[2026-08-14T18:09:12.749Z] OBSERVE rendered Relocate form
+[2026-08-14T18:09:12.827Z] CLICK input "New location" at rendered INPUT coordinates (403, 426)
+[2026-08-14T18:09:13.379Z] INPUT "New location"="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/fixtures/relocated-managed/blueprint.json" through browser keyboard
+[2026-08-14T18:09:13.678Z] CLICK Relocate confirmation at rendered BUTTON coordinates (347, 511)
+[2026-08-14T18:09:14.185Z] OBSERVE relocated canonical managed record restored without duplicate
+[2026-08-14T18:09:14.465Z] CAPTURE 08-relocated-managed-no-duplicate.png, 08-relocated-managed-no-duplicate-visible-text.txt, and 08-relocated-managed-no-duplicate-url.txt

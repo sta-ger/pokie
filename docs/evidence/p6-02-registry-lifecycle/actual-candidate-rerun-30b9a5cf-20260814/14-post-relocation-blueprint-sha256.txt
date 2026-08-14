@@ -1,0 +1,1 @@
+4b7e44c728c26a748337e74f7bdc04299892a437ef7fcba35fde87329a4c25c2  /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/fixtures/relocated-managed/blueprint.json

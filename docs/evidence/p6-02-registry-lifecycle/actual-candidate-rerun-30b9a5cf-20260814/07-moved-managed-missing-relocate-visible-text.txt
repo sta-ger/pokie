@@ -1,0 +1,33 @@
+POKIE Studio
+Design Game
+Projects
+Projects
+
+Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.
+
+Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.
+
+Your projects
+Name	Type	Origin	Last opened	Actions
+
+
+radiant-phoenix (missing)
+
+/home/stager/POKIE Projects/radiant-phoenix/blueprint.json
+
+	Blueprint	
+Managed
+	8/14/2026, 8:07:21 PM	
+Relocate
+Remove
+Import Project
+
+Point at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.
+
+Location
+Browse…
+Detect
+Documentation
+Docs index
+Getting started
+CLI reference

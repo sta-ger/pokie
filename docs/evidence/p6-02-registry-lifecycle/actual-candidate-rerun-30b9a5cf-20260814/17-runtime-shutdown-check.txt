@@ -1,0 +1,3 @@
+final runtime process observation
+studio_http=stopped
+chrome_cdp=stopped

@@ -1,0 +1,123 @@
+{
+    "manifest": {
+        "id": "radiant-phoenix",
+        "name": "Radiant Phoenix",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 628252628)."
+    },
+    "reels": 5,
+    "rows": 4,
+    "symbols": [
+        "9",
+        "Q",
+        "8",
+        "10",
+        "7",
+        "J"
+    ],
+    "paytable": {
+        "7": {
+            "3": 2,
+            "4": 4,
+            "5": 6
+        },
+        "8": {
+            "3": 4,
+            "4": 8,
+            "5": 12
+        },
+        "9": {
+            "3": 6,
+            "4": 12,
+            "5": 18
+        },
+        "10": {
+            "3": 3,
+            "4": 6,
+            "5": 9
+        },
+        "Q": {
+            "3": 5,
+            "4": 10,
+            "5": 15
+        },
+        "J": {
+            "3": 1,
+            "4": 2,
+            "5": 3
+        }
+    },
+    "availableBets": [
+        1,
+        2,
+        5,
+        10
+    ],
+    "reelStripGeneration": [
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 5,
+                "8": 3,
+                "9": 1,
+                "10": 4,
+                "Q": 2,
+                "J": 6
+            },
+            "seed": 938881727
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 5,
+                "8": 3,
+                "9": 1,
+                "10": 4,
+                "Q": 2,
+                "J": 6
+            },
+            "seed": 1858521070
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 5,
+                "8": 3,
+                "9": 1,
+                "10": 4,
+                "Q": 2,
+                "J": 6
+            },
+            "seed": 344826908
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 5,
+                "8": 3,
+                "9": 1,
+                "10": 4,
+                "Q": 2,
+                "J": 6
+            },
+            "seed": 1627404124
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 5,
+                "8": 3,
+                "9": 1,
+                "10": 4,
+                "Q": 2,
+                "J": 6
+            },
+            "seed": 1300312743
+        }
+    ]
+}
