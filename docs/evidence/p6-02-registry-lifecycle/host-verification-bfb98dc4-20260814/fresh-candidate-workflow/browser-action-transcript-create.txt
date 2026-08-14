@@ -1,0 +1,17 @@
+[2026-08-14T18:30:10.483Z] START freshly launched Studio/client managed-save workflow against http://127.0.0.1:49381
+[2026-08-14T18:30:10.499Z] NAVIGATE public Studio Design Game route
+[2026-08-14T18:30:11.887Z] OBSERVE rendered Design Game
+[2026-08-14T18:30:12.106Z] CLICK New Blueprint at rendered BUTTON coordinates (342, 398)
+[2026-08-14T18:30:12.609Z] OBSERVE rendered New Blueprint dialog
+[2026-08-14T18:30:12.696Z] CLICK Generate random at rendered BUTTON coordinates (348, 155)
+[2026-08-14T18:30:13.257Z] CLICK Generate random blueprint at rendered BUTTON coordinates (447, 200)
+[2026-08-14T18:30:13.760Z] OBSERVE rendered generated Blueprint
+[2026-08-14T18:30:14.467Z] CLICK Use this blueprint at rendered BUTTON coordinates (426, 386)
+[2026-08-14T18:30:15.263Z] OBSERVE valid Blueprint
+[2026-08-14T18:30:15.494Z] CLICK managed Save at rendered BUTTON coordinates (311, 285)
+[2026-08-14T18:30:15.996Z] OBSERVE rendered managed save success
+[2026-08-14T18:30:16.000Z] OBSERVE managed project path from visible Save result: /home/stager/POKIE Projects/roaring-turbo-starfall/blueprint.json
+[2026-08-14T18:30:16.283Z] CAPTURE 04-managed-save-success.png, 04-managed-save-success-visible-text.txt, and 04-managed-save-success-url.txt
+[2026-08-14T18:30:16.307Z] CLICK Projects navigation at rendered BUTTON coordinates (130, 137)
+[2026-08-14T18:30:16.810Z] OBSERVE freshly saved managed registry row rendered without browser reload
+[2026-08-14T18:30:16.958Z] CAPTURE 05-managed-project-visible.png, 05-managed-project-visible-visible-text.txt, and 05-managed-project-visible-url.txt

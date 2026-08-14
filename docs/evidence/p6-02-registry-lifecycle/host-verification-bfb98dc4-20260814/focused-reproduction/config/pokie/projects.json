@@ -1,0 +1,12 @@
+[
+    {
+        "location": "/home/stager/POKIE Projects/rampaging-windfall/blueprint.json",
+        "name": "rampaging-windfall",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-14T18:41:55.925Z"
+    }
+]

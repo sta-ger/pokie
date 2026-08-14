@@ -1,0 +1,5 @@
+[2026-08-14T18:27:30.868Z] START fresh Studio/client after restart against http://127.0.0.1:49381
+[2026-08-14T18:27:30.884Z] NAVIGATE public Projects route in restarted Studio
+[2026-08-14T18:28:00.968Z] FAILED Error: Timed out waiting for truthful relocated managed status persisted after Studio restart
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/browser-workflow.mjs:57:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/browser-workflow.mjs:142:9)

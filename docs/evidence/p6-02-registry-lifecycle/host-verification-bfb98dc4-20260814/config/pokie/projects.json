@@ -1,0 +1,12 @@
+[
+    {
+        "location": "/home/stager/POKIE Projects/feral-meteor/blueprint.json",
+        "name": "feral-meteor",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-14T18:24:08.880Z"
+    }
+]

@@ -1,0 +1,13 @@
+external_host_action=mv
+source=/home/stager/POKIE Projects/roaring-turbo-starfall/blueprint.json
+destination=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/fresh-candidate-workflow/fixtures/relocated-managed/blueprint.json
+before_inode=6219933
+before_size=2712
+before_mode=664
+before_sha256=8861124f0aaaeabfbaf2238078a3df56670ee1c99589ca6f421e4d2c193601d4
+after_inode=6219933
+after_size=2712
+after_mode=664
+after_sha256=8861124f0aaaeabfbaf2238078a3df56670ee1c99589ca6f421e4d2c193601d4
+source_absent=true
+integrity_preserved=true

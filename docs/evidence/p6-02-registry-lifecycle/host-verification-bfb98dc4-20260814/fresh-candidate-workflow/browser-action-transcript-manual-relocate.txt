@@ -1,0 +1,10 @@
+[2026-08-14T18:38:47.051Z] RESIZE the browser viewport to expose the rendered table action horizontally
+[2026-08-14T18:38:47.356Z] OBSERVE missing managed row and rendered Relocate action
+[2026-08-14T18:38:47.433Z] CLICK missing managed row Relocate at rendered BUTTON coordinates (1228, 293)
+[2026-08-14T18:38:47.941Z] OBSERVE rendered Relocate dialog
+[2026-08-14T18:38:48.010Z] CLICK New location input at rendered INPUT coordinates (403, 426)
+[2026-08-14T18:38:48.560Z] INPUT New location="/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/fresh-candidate-workflow/fixtures/relocated-managed/blueprint.json" through browser keyboard
+[2026-08-14T18:38:48.613Z] CLICK Relocate dialog confirmation at rendered BUTTON coordinates (679, 446)
+[2026-08-14T18:39:19.320Z] FAILED Error: Timed out waiting for one truthful relocated managed row without a duplicate
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/fresh-candidate-workflow/manual-rendered-relocate.mjs:35:153)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/fresh-candidate-workflow/manual-rendered-relocate.mjs:48:5)

@@ -1,0 +1,2 @@
+08-studio-restart.pid=stopped
+09-chrome-restart.pid=stopped

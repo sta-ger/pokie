@@ -1,0 +1,6 @@
+[2026-08-14T18:42:06.958Z] NAVIGATE through visible Studio navigation after a second host-side external move
+[2026-08-14T18:42:07.061Z] CLICK Design Game navigation at rendered BUTTON coordinates (130, 96)
+[2026-08-14T18:42:07.569Z] OBSERVE rendered Design Game after external move
+[2026-08-14T18:42:07.614Z] CLICK Projects navigation at rendered BUTTON coordinates (130, 137)
+[2026-08-14T18:42:08.120Z] OBSERVE remounted Projects visibly refreshes moved managed row to missing with Relocate
+[2026-08-14T18:42:08.333Z] CAPTURE 15-remounted-projects-missing-relocate.png, 15-remounted-projects-missing-relocate-visible-text.txt, and 15-remounted-projects-missing-relocate-url.txt

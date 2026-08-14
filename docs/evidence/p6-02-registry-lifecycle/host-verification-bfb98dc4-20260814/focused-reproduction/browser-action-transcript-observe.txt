@@ -1,0 +1,2 @@
+[2026-08-14T18:43:18.283Z] OBSERVE current rendered Studio state after the bounded missing-status wait
+[2026-08-14T18:43:18.509Z] CAPTURE 07-post-reload-missing-status-timeout.png, 07-post-reload-missing-status-timeout-visible-text.txt, and 07-post-reload-missing-status-timeout-url.txt

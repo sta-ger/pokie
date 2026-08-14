@@ -1,0 +1,4 @@
+[2026-08-14T18:25:39.075Z] RELOAD visible Projects page through browser Ctrl+R after host-side external move
+[2026-08-14T18:26:09.127Z] FAILED Error: Timed out waiting for moved managed row visibly marked missing with Relocate
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/browser-workflow.mjs:57:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/browser-workflow.mjs:130:9)

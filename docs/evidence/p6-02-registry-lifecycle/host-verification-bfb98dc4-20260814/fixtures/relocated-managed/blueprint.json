@@ -1,0 +1,129 @@
+{
+    "manifest": {
+        "id": "feral-meteor",
+        "name": "Feral Meteor",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 1370467231)."
+    },
+    "reels": 6,
+    "rows": 3,
+    "symbols": [
+        "7",
+        "J",
+        "10",
+        "K",
+        "A"
+    ],
+    "paytable": {
+        "7": {
+            "3": 5,
+            "4": 10,
+            "5": 15,
+            "6": 20
+        },
+        "10": {
+            "3": 3,
+            "4": 6,
+            "5": 9,
+            "6": 12
+        },
+        "J": {
+            "3": 4,
+            "4": 8,
+            "5": 12,
+            "6": 16
+        },
+        "K": {
+            "3": 2,
+            "4": 4,
+            "5": 6,
+            "6": 8
+        },
+        "A": {
+            "3": 1,
+            "4": 2,
+            "5": 3,
+            "6": 4
+        }
+    },
+    "availableBets": [
+        1,
+        2,
+        5,
+        10
+    ],
+    "reelStripGeneration": [
+        {
+            "type": "generated",
+            "length": 15,
+            "symbolWeights": {
+                "7": 1,
+                "10": 3,
+                "J": 2,
+                "K": 4,
+                "A": 5
+            },
+            "seed": 173949281
+        },
+        {
+            "type": "generated",
+            "length": 15,
+            "symbolWeights": {
+                "7": 1,
+                "10": 3,
+                "J": 2,
+                "K": 4,
+                "A": 5
+            },
+            "seed": 1902232574
+        },
+        {
+            "type": "generated",
+            "length": 15,
+            "symbolWeights": {
+                "7": 1,
+                "10": 3,
+                "J": 2,
+                "K": 4,
+                "A": 5
+            },
+            "seed": 751906600
+        },
+        {
+            "type": "generated",
+            "length": 15,
+            "symbolWeights": {
+                "7": 1,
+                "10": 3,
+                "J": 2,
+                "K": 4,
+                "A": 5
+            },
+            "seed": 1312245414
+        },
+        {
+            "type": "generated",
+            "length": 15,
+            "symbolWeights": {
+                "7": 1,
+                "10": 3,
+                "J": 2,
+                "K": 4,
+                "A": 5
+            },
+            "seed": 1544484004
+        },
+        {
+            "type": "generated",
+            "length": 15,
+            "symbolWeights": {
+                "7": 1,
+                "10": 3,
+                "J": 2,
+                "K": 4,
+                "A": 5
+            },
+            "seed": 1895669007
+        }
+    ]
+}

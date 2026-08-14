@@ -1,0 +1,8 @@
+external_host_action=mv
+source=/home/stager/POKIE Projects/feral-meteor/blueprint.json
+destination=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/fixtures/relocated-managed/blueprint.json
+before_inode=6219931\nbefore_size=2637\nbefore_mode=664
+154dab468ec86a03d511a2e9613d5c206f3dc5f23535c547598949905f12a8cf  before_sha256
+after_inode=6219931\nafter_size=2637\nafter_mode=664
+154dab468ec86a03d511a2e9613d5c206f3dc5f23535c547598949905f12a8cf  after_sha256
+move_observation=source_absent_destination_present

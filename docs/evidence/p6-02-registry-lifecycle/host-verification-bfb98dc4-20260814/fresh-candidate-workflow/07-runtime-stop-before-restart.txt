@@ -1,0 +1,2 @@
+01-studio-initial.pid=stopped
+02-chrome-initial.pid=stopped
