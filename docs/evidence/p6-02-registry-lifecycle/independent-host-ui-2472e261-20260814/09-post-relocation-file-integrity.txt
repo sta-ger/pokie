@@ -1,6 +1,0 @@
-relocated_blueprint=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/fixtures/relocated-managed/golden-grand-safari/blueprint.json
-inode=453672 size=1904 mode=664 path=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/fixtures/relocated-managed/golden-grand-safari/blueprint.json
-5812b7113d5f35de31f7cc914a63f23787aed93fe8b89c1ca8229382433b5725  /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/fixtures/relocated-managed/golden-grand-safari/blueprint.json
-canonical_visible_rows=1
-registry_file=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/config/pokie/projects.json
-golden-grand-safari/blueprint.json

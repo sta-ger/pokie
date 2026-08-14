@@ -1,2 +1,0 @@
-24-studio-relocation-completion.pid=stopped
-25-chrome-relocation-completion.pid=stopped

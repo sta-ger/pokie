@@ -1,1 +1,0 @@
-/tmp/node-v24.19.0-linux-x64

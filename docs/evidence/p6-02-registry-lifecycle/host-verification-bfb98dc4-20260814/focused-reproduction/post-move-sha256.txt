@@ -1,1 +1,0 @@
-5dee3e7aed09ceb28b5ec2f4c49b4d30457088209954ab33bf4bad4e5c040105  /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/focused-reproduction/fixtures/relocated-managed/blueprint.json

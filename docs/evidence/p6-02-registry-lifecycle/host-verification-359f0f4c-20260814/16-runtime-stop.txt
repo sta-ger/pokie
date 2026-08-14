@@ -1,5 +1,0 @@
-stopped_studio_pid=678427
-stopped_chrome_pid=677096
-1514 docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/16-runtime-processes-after-stop.txt
-confirmed_no_matching_runtime_processes=yes
-terminated_actual_chrome_process=677097

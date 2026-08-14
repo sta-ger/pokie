@@ -1,4 +1,0 @@
-[2026-08-14T18:31:59.823Z] OBSERVE fresh Studio/client after restart against http://127.0.0.1:49381
-[2026-08-14T18:31:59.841Z] NAVIGATE public Projects route in restarted Studio
-[2026-08-14T18:32:00.323Z] OBSERVE rendered Projects route after Studio restart
-[2026-08-14T18:32:01.544Z] CAPTURE 10-after-studio-restart-status.png, 10-after-studio-restart-status-visible-text.txt, and 10-after-studio-restart-status-url.txt

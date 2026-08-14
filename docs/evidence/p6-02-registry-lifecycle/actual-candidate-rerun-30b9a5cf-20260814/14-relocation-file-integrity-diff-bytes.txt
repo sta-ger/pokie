@@ -1,1 +1,0 @@
-0 docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/14-relocation-file-integrity-diff.txt

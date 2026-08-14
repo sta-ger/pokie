@@ -1,4 +1,0 @@
-[2026-08-14T17:13:17.527Z] RESUME UI lifecycle phase 1 from the rendered post-save Projects page against http://127.0.0.1:4176
-[2026-08-14T17:13:47.621Z] FAILED Error: Timed out waiting for one managed row rendered without a browser reload
-    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/rerun-20260814/browser-rerun.mjs:70:46)
-    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/rerun-20260814/browser-rerun.mjs:190:9)

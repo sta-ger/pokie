@@ -1,1 +1,0 @@
-stopped_studio_pid=676969

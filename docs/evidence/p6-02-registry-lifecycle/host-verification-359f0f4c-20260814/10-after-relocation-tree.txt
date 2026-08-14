@@ -1,5 +1,0 @@
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/fixtures/relocated-managed/blueprint.json
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/fixtures/relocated-managed/tsPackage/README.md
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/fixtures/relocated-managed/tsPackage/package-lock.json
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/fixtures/relocated-managed/tsPackage/package.json
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/fixtures/relocated-managed/tsPackage/tsconfig.json

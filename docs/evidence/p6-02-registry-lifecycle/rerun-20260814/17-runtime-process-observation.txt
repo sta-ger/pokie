@@ -1,7 +1,0 @@
-stager    626786  622286  2 18:43 ?        00:00:03 node dist/cli/pokie.js studio --host 127.0.0.1 --port 4126 --no-open
-stager    626984  622286 10 18:43 pts/4    00:00:12 /bin/google-chrome --headless=new --no-sandbox --disable-gpu --remote-debugging-address=127.0.0.1 --remote-debugging-port=9236 --user-data-dir=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/rerun-20260814/chrome-profile about:blank
-stager    628424  622286  0 18:45 ?        00:00:00 /bin/bash -c ps -ef | rg 'node dist/cli/pokie.js studio --host 127.0.0.1 --port 4126|google-chrome.*9236' > docs/evidence/p6-02-registry-lifecycle/rerun-20260814/17-runtime-process-observation.txt || true; printf '\nStudio listener check:\n' >> docs/evidence/p6-02-registry-lifecycle/rerun-20260814/17-runtime-process-observation.txt; curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:4126/ >> docs/evidence/p6-02-registry-lifecycle/rerun-20260814/17-runtime-process-observation.txt || true; cat docs/evidence/p6-02-registry-lifecycle/rerun-20260814/17-runtime-process-observation.txt; pgrep -af 'node dist/cli/pokie.js studio --host 127.0.0.1 --port 4126|google-chrome.*9236' || true
-stager    628426  628424  0 18:45 ?        00:00:00 rg node dist/cli/pokie.js studio --host 127.0.0.1 --port 4126|google-chrome.*9236
-
-Studio listener check:
-HTTP 200

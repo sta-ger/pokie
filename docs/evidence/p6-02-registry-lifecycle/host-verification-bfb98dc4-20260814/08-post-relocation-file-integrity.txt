@@ -1,4 +1,0 @@
-relocated_path=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-bfb98dc4-20260814/fixtures/relocated-managed/blueprint.json
-post_relocate_inode=6219931\npost_relocate_size=2637\npost_relocate_mode=664
-154dab468ec86a03d511a2e9613d5c206f3dc5f23535c547598949905f12a8cf  post_relocate_sha256
-sha256_match=0

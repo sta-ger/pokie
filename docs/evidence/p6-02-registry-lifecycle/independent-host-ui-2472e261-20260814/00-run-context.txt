@@ -1,4 +1,0 @@
-candidate_sha=2472e2614ca75f5a2ebc12e75976814c3d3a7edc
-node=v18.19.1
-chrome=Google Chrome 138.0.7204.183 
-workflow=rendered Studio controls via CDP mouse/keyboard only; no product API routes, DOM injection, or application-state injection

@@ -1,5 +1,0 @@
-[2026-08-14T17:41:46.898Z] START UI lifecycle phase 2 against http://127.0.0.1:4136
-[2026-08-14T17:41:46.905Z] RELOAD Studio through browser Ctrl+R to render moved entry status
-[2026-08-14T17:42:17.069Z] FAILED Error: Timed out waiting for missing managed row exposes Relocate
-    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/browser-driver.mjs:70:46)
-    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/host-verification-359f0f4c-20260814/browser-driver.mjs:226:9)

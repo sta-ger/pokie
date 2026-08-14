@@ -1,3 +1,0 @@
- M docs/evidence/p6-02-registry-lifecycle/capture-rendered-state.mjs
- M docs/evidence/p6-02-registry-lifecycle/rerun-20260814/browser-rerun.mjs
-?? docs/evidence/p6-02-registry-lifecycle/final-verification-20260814/

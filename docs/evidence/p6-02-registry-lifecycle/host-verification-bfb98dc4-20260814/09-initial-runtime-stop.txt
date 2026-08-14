@@ -1,4 +1,0 @@
-initial_studio_pid=710412
-initial_chrome_pid=710630
-pid_710630_stopped_on_attempt=2
-pid_710412_stopped_on_attempt=1

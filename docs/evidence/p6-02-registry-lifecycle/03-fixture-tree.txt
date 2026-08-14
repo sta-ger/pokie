@@ -1,5 +1,0 @@
-docs/evidence/p6-02-registry-lifecycle/fixtures/external-project-alias
-docs/evidence/p6-02-registry-lifecycle/fixtures/external-project/README.md
-docs/evidence/p6-02-registry-lifecycle/fixtures/external-project/package-lock.json
-docs/evidence/p6-02-registry-lifecycle/fixtures/external-project/package.json
-docs/evidence/p6-02-registry-lifecycle/fixtures/external-project/tsconfig.json

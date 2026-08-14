@@ -1,7 +1,0 @@
-[2026-08-14T18:24:48.683Z] NAVIGATE through visible Studio navigation after a second host-side external move
-[2026-08-14T18:24:48.710Z] CLICK Design Game navigation at rendered BUTTON coordinates (130, 96)
-[2026-08-14T18:24:49.268Z] OBSERVE rendered Design Game after external move
-[2026-08-14T18:24:49.364Z] CLICK Projects navigation at rendered BUTTON coordinates (130, 137)
-[2026-08-14T18:25:19.884Z] FAILED Error: Timed out waiting for remounted Projects visibly refreshes moved managed row to missing with Relocate
-    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/browser-workflow.mjs:57:46)
-    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/actual-candidate-rerun-30b9a5cf-20260814/browser-workflow.mjs:166:9)

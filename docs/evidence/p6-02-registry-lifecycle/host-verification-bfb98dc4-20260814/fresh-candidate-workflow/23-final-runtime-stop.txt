@@ -1,2 +1,0 @@
-20-studio-persisted-check.pid=stopped
-21-chrome-persisted-check.pid=stopped
