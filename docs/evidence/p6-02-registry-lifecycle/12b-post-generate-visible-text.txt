@@ -1,0 +1,67 @@
+POKIE Studio
+Design Game
+Projects
+Design Your Game
+
+Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your game package.
+
+Configure
+, completed
+
+Game model
+
+Validate
+, completed
+
+Check for issues
+
+Build
+, current step
+
+Create your package
+
+Ready to build
+
+Your blueprint is valid — build your package below to open it in the Project Dashboard.
+
+Save
+
+Show advanced options (JSON mode, load/save by path)
+
+New Blueprint
+Replaced the current blueprint.
+Undo
+Game basics
+valid
+Layout
+valid
+Symbols
+valid
+Reels
+valid
+Paytable
+valid
+Bets
+valid
+Game basics
+Game id
+Game name
+Version
+Description (optional)
+Author (optional)
+Validation
+Validate
+
+Valid — no issues found.
+
+Game Model preview
+Preview Game Model
+Build
+Output directory (optional)
+Browse…
+Build Preview
+Build Package
+Documentation
+Docs index
+Getting started
+CLI reference
