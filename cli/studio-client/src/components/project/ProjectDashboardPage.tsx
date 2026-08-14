@@ -166,30 +166,23 @@ export function ProjectDashboardRoute() {
 // derive from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
+    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
     const upgradeStartedRef = useRef(false);
 
-    // Legacy entries predate createHashRouter, so its initial `idx` marker is not accompanied by the
-    // location key and user-state fields it puts on every route of its own. Preserve that index while
-    // replacing only the current browser entry, but complete it with the router's normal state shape
-    // before delivering the zero-distance pop. Without the key, returning to this entry can make the
-    // next Forward transition start a replacement branch at Home and lose the Project B entries.
-    // The stateful dashboard cannot mount until the route has become project-scoped.
+    // Let createHashRouter replace the current entry as one of its own transitions. Mutating native
+    // history and then synthesizing a zero-distance pop leaves the router with a history update it
+    // did not perform; when this entry is later restored by Back, that stale transition can consume
+    // the Forward branch. The stateful dashboard cannot mount until the route is project-scoped.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
             upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            const historyState = {
-                ...(window.history.state ?? {}),
-                key: window.crypto.randomUUID(),
-                usr: window.history.state?.usr ?? null,
-            };
-            window.history.replaceState(historyState, "", `#${scopedPath}`);
-            window.dispatchEvent(new PopStateEvent("popstate", {state: historyState}));
+            navigate(scopedPath, {replace: true});
         }
-    }, [activeTab, projectRoot]);
+    }, [activeTab, navigate, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
