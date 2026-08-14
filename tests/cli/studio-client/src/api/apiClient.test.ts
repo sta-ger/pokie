@@ -93,7 +93,7 @@ describe("studio-client apiClient", () => {
 
             const result = await listProjectRegistry(fetchImpl);
 
-            expect(calls).toEqual([{url: "/api/home/projects/registry", init: {cache: "no-store"}}]);
+            expect(calls).toEqual([{url: expect.stringMatching(/^\/api\/home\/projects\/registry\?refresh=\d+$/), init: {cache: "no-store"}}]);
             expect(result).toEqual(entries);
         });
     });

@@ -152,8 +152,9 @@ export async function pickNativePath(fetchImpl: FetchLike, request: NativeBrowse
 export async function listProjectRegistry(fetchImpl: FetchLike): Promise<StudioProjectRegistryView[]> {
     // This is a live registry read: after Managed Save, Import, Remove, or Relocate, its caller
     // expects the next request to observe the just-completed mutation rather than an HTTP-cached
-    // earlier list. The response has no freshness contract, so never retain it client-side.
-    const response = await fetchImpl("/api/home/projects/registry", {cache: "no-store"});
+    // earlier list. `cache: "no-store"` covers normal Fetch caches; the unique query also prevents
+    // an intermediary that ignores that directive from reusing an earlier registry snapshot.
+    const response = await fetchImpl(`/api/home/projects/registry?refresh=${Date.now()}`, {cache: "no-store"});
     return (await response.json()) as StudioProjectRegistryView[];
 }
 
