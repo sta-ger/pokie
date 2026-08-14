@@ -9,6 +9,7 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DocumentationLinks} from "./DocumentationLinks";
 import {ProjectsPanel} from "./ProjectsPanel";
+import type {StudioProjectRegistryView} from "../../api/types";
 
 export type HomeTab = "design" | "projects";
 
@@ -76,6 +77,7 @@ export function HomePage() {
     // this doesn't cause excess re-renders.
     const [isDesignDirty, setIsDesignDirty] = useState(false);
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
+    const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
     const guardedAction = useDesignNavigationGuard(isDesignDirty);
 
     return (
@@ -91,7 +93,10 @@ export function HomePage() {
                             initialPath={initialBlueprintPath}
                             initialParSheetPath={initialParSheetPath}
                             onDirtyChange={setIsDesignDirty}
-                            onManagedProjectSaved={() => setProjectRegistryVersion((version) => version + 1)}
+                            onManagedProjectSaved={(registeredProject) => {
+                                setJustSavedManagedProject(registeredProject);
+                                setProjectRegistryVersion((version) => version + 1);
+                            }}
                         />
                     </div>
 
@@ -106,7 +111,7 @@ export function HomePage() {
                                 Need a new project from your terminal? Run <Code>pokie init</Code> for a ready-to-build package, or{" "}
                                 <Code>pokie create</Code> for an editable Blueprint Project -- then import it above.
                             </Text>
-                            <ProjectsPanel registryVersion={projectRegistryVersion} />
+                            <ProjectsPanel registryVersion={projectRegistryVersion} registeredProject={justSavedManagedProject} />
                         </Stack>
                     </div>
 

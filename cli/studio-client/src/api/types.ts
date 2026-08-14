@@ -470,7 +470,16 @@ export type StudioBlueprintSaveView =
 // one that might already hold someone else's file) — "invalid-name"/"unavailable" cover a path this
 // service couldn't resolve a usable destination for at all.
 export type StudioBlueprintSaveManagedView =
-    | {status: "ok"; path: string; name: string; blueprintHash: string; sourceWorkbookPath?: string}
+    | {
+          status: "ok";
+          path: string;
+          name: string;
+          blueprintHash: string;
+          sourceWorkbookPath?: string;
+          // The server's just-persisted registry record.  Returning it with the save lets Home update
+          // its already-mounted Projects panel immediately, while its normal refresh reconciles later.
+          registeredProject?: StudioProjectRegistryView;
+      }
     | {status: "invalid-name"; error: string}
     | {status: "unavailable"; error: string}
     | {status: "error"; error: string};

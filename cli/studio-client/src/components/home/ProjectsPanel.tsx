@@ -1,5 +1,5 @@
 import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
-import {useEffect, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {
     listProjectRegistry,
@@ -63,7 +63,13 @@ const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
 
 // Projects registry list -- every managed/registered project Studio knows about (see
 // StudioProjectRegistrationService.list()'s own doc comment), most-recently-registered/opened first.
-export function ProjectsPanel({registryVersion = 0}: {registryVersion?: number}) {
+export function ProjectsPanel({
+    registryVersion = 0,
+    registeredProject,
+}: {
+    registryVersion?: number;
+    registeredProject?: StudioProjectRegistryView;
+}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
@@ -85,14 +91,14 @@ export function ProjectsPanel({registryVersion = 0}: {registryVersion?: number})
     // (or, for remove, already know which location was removed) straight from their own response, so they
     // update `listView` from that directly instead of re-fetching the whole list -- one round trip, not
     // two, and the row a user just acted on updates immediately rather than waiting on a second request.
-    const upsertEntry = (entry: StudioProjectRegistryView): void => {
+    const upsertEntry = useCallback((entry: StudioProjectRegistryView): void => {
         setListView((previous) => {
             const withoutExisting = (previous.status === "loaded" ? previous.entries : []).filter(
                 (existing) => existing.location !== entry.location,
             );
             return {status: "loaded", entries: [entry, ...withoutExisting]};
         });
-    };
+    }, []);
 
     const removeEntry = (location: string): void => {
         setListView((previous) => {
@@ -126,6 +132,15 @@ export function ProjectsPanel({registryVersion = 0}: {registryVersion?: number})
             cancelled = true;
         };
     }, [fetchImpl, registryVersion]);
+
+    // save-managed already has the canonical row the registry wrote. Render it immediately rather
+    // than waiting for the invalidating list request above; that request remains the eventual
+    // reconciliation source and the direct upsert uses the same deduplication path as Import/Relocate.
+    useEffect(() => {
+        if (registeredProject !== undefined) {
+            upsertEntry(registeredProject);
+        }
+    }, [registeredProject, upsertEntry]);
 
     const handleOpen = (entry: StudioProjectRegistryView): void => {
         if (!openGuard.begin()) {

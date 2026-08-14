@@ -1617,7 +1617,20 @@ describe("StudioServer", () => {
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
 
                 expect(status).toBe(201);
-                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+                expect(body).toMatchObject({
+                    status: "ok",
+                    path: expectedPath,
+                    name: "sample-slot",
+                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                    registeredProject: {
+                        location: expectedPath,
+                        name: "sample-slot",
+                        origin: "managed",
+                        type: "blueprint",
+                        status: "ok",
+                        lastOpenedAt: expect.any(String),
+                    },
+                });
                 expect(fs.existsSync(expectedPath)).toBe(true);
 
                 const entries = await managedRegistry.list();
@@ -1655,7 +1668,13 @@ describe("StudioServer", () => {
                 const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {blueprint: buildBlueprint()});
 
                 expect(status).toBe(201);
-                expect(body).toEqual({status: "ok", path: expectedPath, name: "sample-slot-2", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
+                expect(body).toMatchObject({
+                    status: "ok",
+                    path: expectedPath,
+                    name: "sample-slot-2",
+                    blueprintHash: computeGameBlueprintHash(buildBlueprint()),
+                    registeredProject: expect.objectContaining({location: expectedPath, origin: "managed", type: "blueprint", status: "ok"}),
+                });
                 expect(fs.readFileSync(path.join(collidingDir, "blueprint.json"), "utf-8")).toBe("existing project content");
                 expect(fs.existsSync(expectedPath)).toBe(true);
 
@@ -1677,12 +1696,19 @@ describe("StudioServer", () => {
                 });
 
                 expect(status).toBe(201);
-                expect(body).toEqual({
+                expect(body).toMatchObject({
                     status: "ok",
                     path: expectedPath,
                     name: "sample-slot",
                     blueprintHash: computeGameBlueprintHash(buildBlueprint()),
                     sourceWorkbookPath: "/games/in.par.xlsx",
+                    registeredProject: expect.objectContaining({
+                        location: expectedPath,
+                        origin: "managed",
+                        type: "blueprint",
+                        status: "ok",
+                        importedFromParSheetPath: "/games/in.par.xlsx",
+                    }),
                 });
 
                 const entries = await managedRegistry.list();

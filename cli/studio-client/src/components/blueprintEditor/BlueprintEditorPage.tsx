@@ -2,6 +2,7 @@ import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} f
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
+import type {StudioProjectRegistryView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {errorMessage} from "../../domain/errorMessage";
@@ -165,7 +166,7 @@ export function BlueprintEditorPage({
     initialPath?: string;
     initialParSheetPath?: string;
     onDirtyChange?: (dirty: boolean) => void;
-    onManagedProjectSaved?: () => void;
+    onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
 } = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
@@ -861,10 +862,11 @@ export function BlueprintEditorPage({
                     // Same as runSave's own success branch -- see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
                     // Home keeps Projects mounted beside this editor, so its initial registry read has
-                    // already happened by the time this first managed save registers the project.
-                    // Notify its owner to invalidate that stale list immediately.
+                    // already happened by the time this first managed save registers the project. Give
+                    // its owner the just-persisted row as well as asking it to reconcile its list, so
+                    // the visible Projects update never waits on that second request settling.
                     if (!alreadyOwnsPath) {
-                        onManagedProjectSaved?.();
+                        onManagedProjectSaved?.(raw.registeredProject);
                     }
                 }
             })

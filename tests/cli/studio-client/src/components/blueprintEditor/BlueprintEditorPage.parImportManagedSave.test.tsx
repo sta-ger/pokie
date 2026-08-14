@@ -24,6 +24,17 @@ const IMPORTED_BLUEPRINT = {
     paytable: {A: {2: 5}},
 };
 
+const REGISTERED_PROJECT = {
+    location: "/POKIE Projects/imported-game/blueprint.json",
+    name: "imported-game",
+    type: "blueprint" as const,
+    capabilities: [],
+    origin: "managed" as const,
+    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+    status: "ok" as const,
+    importedFromParSheetPath: "/games/in.par.xlsx",
+};
+
 function jsonResponse(body: unknown, status = 200) {
     return Promise.resolve({ok: status < 400, status, json: () => Promise.resolve(body)});
 }
@@ -54,22 +65,9 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
             const [path] = url.split("?");
             if (path === REGISTRY_URL) {
                 registryRequestStates.push(managedProjectSaved);
-                return jsonResponse(
-                    managedProjectSaved
-                        ? [
-                            {
-                                location: "/POKIE Projects/imported-game/blueprint.json",
-                                name: "imported-game",
-                                type: "blueprint",
-                                capabilities: [],
-                                origin: "managed",
-                                lastOpenedAt: "2026-01-01T00:00:00.000Z",
-                                status: "ok",
-                                importedFromParSheetPath: "/games/in.par.xlsx",
-                            },
-                        ]
-                        : [],
-                );
+                // The refresh request intentionally never settles. The saved row must nevertheless
+                // be visible as soon as the save response arrives, rather than after this list call.
+                return managedProjectSaved ? new Promise<never>(() => undefined) : jsonResponse([]);
             }
             if (path === IMPORT_URL) {
                 return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
@@ -87,6 +85,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
                     name: "imported-game",
                     blueprintHash: "sha256:abc",
                     sourceWorkbookPath: body.sourceWorkbookPath,
+                    registeredProject: REGISTERED_PROJECT,
                 });
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -113,11 +112,11 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         expect(screen.getAllByText("Imported from PAR")).toHaveLength(2);
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
 
-        // Projects stays mounted while Design Game saves. The managed-save notification must refresh
-        // the panel's already-fetched list rather than leaving its empty state stale until a reload.
+        // Projects stays mounted while Design Game saves. Its reconciliation request is still pending,
+        // but the server-returned registry row must appear immediately without a reload.
         await waitFor(() => expect(registryRequestStates).toEqual([false, true]));
         await user.click(screen.getByRole("button", {name: "Projects"}));
-        expect(await screen.findByText("imported-game")).toBeInTheDocument();
+        expect(screen.getByText("imported-game")).toBeInTheDocument();
         expect(screen.getByText("Managed")).toBeInTheDocument();
     });
 
