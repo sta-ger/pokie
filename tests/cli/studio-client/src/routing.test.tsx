@@ -96,10 +96,8 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
 
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
-        // Same reasoning as the direct-link test above: the still-mounted (CSS-hidden) Projects tab
-        // body's own ProjectsPanel kicked off its mount-time registry fetch too -- await it settling
-        // before this test ends.
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
+        // The inactive Projects tab remains mounted to preserve its state, but it deliberately does
+        // not fetch its registry until it becomes visible (ProjectsPanel's `isVisible` contract).
     });
 });
 
