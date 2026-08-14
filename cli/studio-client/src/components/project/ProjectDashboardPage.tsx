@@ -170,19 +170,24 @@ export function LegacyProjectDashboardRoute() {
     const activeTab = isProjectTab(tab) ? tab : "overview";
     const upgradeStartedRef = useRef(false);
 
-    // `navigate(..., {replace: true})` turns an externally-created legacy entry into a new router
-    // transition. Chrome can then treat a later Back restoration as the start of a replacement branch
-    // and discard its Forward entries. Replace only the current browser entry, which leaves both
-    // branches intact, then deliver a zero-distance pop so createHashRouter adopts that replacement
-    // without creating another history entry. The stateful dashboard cannot mount until this route has
-    // become project-scoped.
+    // Legacy entries predate createHashRouter, so its initial `idx` marker is not accompanied by the
+    // location key and user-state fields it puts on every route of its own. Preserve that index while
+    // replacing only the current browser entry, but complete it with the router's normal state shape
+    // before delivering the zero-distance pop. Without the key, returning to this entry can make the
+    // next Forward transition start a replacement branch at Home and lose the Project B entries.
+    // The stateful dashboard cannot mount until the route has become project-scoped.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
             upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            window.history.replaceState(window.history.state, "", `#${scopedPath}`);
-            window.dispatchEvent(new PopStateEvent("popstate", {state: window.history.state}));
+            const historyState = {
+                ...(window.history.state ?? {}),
+                key: window.crypto.randomUUID(),
+                usr: window.history.state?.usr ?? null,
+            };
+            window.history.replaceState(historyState, "", `#${scopedPath}`);
+            window.dispatchEvent(new PopStateEvent("popstate", {state: historyState}));
         }
     }, [activeTab, projectRoot]);
 
