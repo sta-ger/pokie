@@ -88,7 +88,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         expect(screen.queryByRole("button", {name: "Simulation"})).not.toBeInTheDocument();
     });
 
-    it("an unrecognized :tab falls back to the default section instead of erroring", async () => {
+    it("an unrecognized :tab falls back to the default section instead of erroring", () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
