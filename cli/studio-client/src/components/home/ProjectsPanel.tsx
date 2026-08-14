@@ -1,5 +1,5 @@
 import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
-import {useCallback, useEffect, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {
     listProjectRegistry,
@@ -83,6 +83,10 @@ export function ProjectsPanel({
     const [openingLocation, setOpeningLocation] = useState<string | undefined>(undefined);
     const [relocatingEntry, setRelocatingEntry] = useState<StudioProjectRegistryView | undefined>(undefined);
     const [relocationLocation, setRelocationLocation] = useState("");
+    // A rendered confirmation can immediately follow a browser input event. Keep the submitted path
+    // alongside React's display state so that confirmation always uses that event's latest value, even
+    // before React has committed the controlled input's re-render.
+    const relocationLocationRef = useRef("");
     const [relocationError, setRelocationError] = useState<string | undefined>(undefined);
     const detectGuard = useDoubleSubmitGuard();
     const registerGuard = useDoubleSubmitGuard();
@@ -185,11 +189,12 @@ export function ProjectsPanel({
     };
 
     const handleRelocate = (): void => {
-        if (relocatingEntry === undefined || relocationLocation.trim().length === 0 || !relocateGuard.begin()) {
+        const newLocation = relocationLocationRef.current.trim();
+        if (relocatingEntry === undefined || newLocation.length === 0 || !relocateGuard.begin()) {
             return;
         }
         setRelocationError(undefined);
-        relocateProjectRegistryEntry(fetchImpl, relocatingEntry.location, relocationLocation)
+        relocateProjectRegistryEntry(fetchImpl, relocatingEntry.location, newLocation)
             .then((result) => {
                 relocateGuard.end();
                 if (result.status !== "ok") {
@@ -200,6 +205,7 @@ export function ProjectsPanel({
                 upsertEntry(result.entry);
                 setRelocatingEntry(undefined);
                 setRelocationLocation("");
+                relocationLocationRef.current = "";
             })
             .catch((error: unknown) => {
                 relocateGuard.end();
@@ -335,6 +341,7 @@ export function ProjectsPanel({
                                                         onClick={() => {
                                                             setRelocatingEntry(entry);
                                                             setRelocationLocation("");
+                                                            relocationLocationRef.current = "";
                                                             setRelocationError(undefined);
                                                         }}
                                                     >
@@ -365,11 +372,23 @@ export function ProjectsPanel({
                                 browseTitle="Choose the moved project"
                                 browseId="relocate-project-location"
                                 value={relocationLocation}
-                                onChange={(event) => setRelocationLocation(event.currentTarget.value)}
-                                onPathSelected={setRelocationLocation}
+                                onChange={(event) => {
+                                    relocationLocationRef.current = event.currentTarget.value;
+                                    setRelocationLocation(event.currentTarget.value);
+                                }}
+                                onPathSelected={(path) => {
+                                    relocationLocationRef.current = path;
+                                    setRelocationLocation(path);
+                                }}
                             />
                             <Button onClick={handleRelocate}>Relocate</Button>
-                            <Button variant="default" onClick={() => setRelocatingEntry(undefined)}>
+                            <Button
+                                variant="default"
+                                onClick={() => {
+                                    relocationLocationRef.current = "";
+                                    setRelocatingEntry(undefined);
+                                }}
+                            >
                                 Cancel
                             </Button>
                         </QuickActions>

@@ -329,4 +329,68 @@ describe("ProjectsPanel: Import Project", () => {
         );
         expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
     });
+
+    it("repairs a missing managed entry from the rendered Relocate confirmation without leaving the old row behind", async () => {
+        const user = userEvent.setup();
+        const oldLocation = "/games/managed/blueprint.json";
+        const newLocation = "/moved/managed/blueprint.json";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {
+                        location: oldLocation,
+                        name: "My managed game",
+                        type: "blueprint",
+                        capabilities: ["blueprint.build"],
+                        origin: "managed",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "missing",
+                    },
+                ],
+            }),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: newLocation, displayPath: newLocation, entries: [], isDirectory: false},
+            }),
+            "/api/home/projects/registry/relocate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location: newLocation,
+                        name: "My managed game",
+                        type: "blueprint",
+                        capabilities: ["blueprint.build"],
+                        origin: "managed",
+                        lastOpenedAt: "2026-01-02T00:00:00.000Z",
+                        status: "ok",
+                    },
+                },
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        await screen.findByText("My managed game (missing)");
+        await user.click(screen.getByRole("button", {name: "Relocate"}));
+        await user.type(screen.getByLabelText("New location"), newLocation);
+        const relocateButtons = screen.getAllByRole("button", {name: "Relocate"});
+        await user.click(relocateButtons[relocateButtons.length - 1]);
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/registry/relocate",
+                    init: expect.objectContaining({body: JSON.stringify({location: oldLocation, newLocation})}),
+                }),
+            ),
+        );
+        expect(await screen.findByText(newLocation)).toBeInTheDocument();
+        expect(screen.queryByText("My managed game (missing)")).not.toBeInTheDocument();
+        expect(screen.getAllByText("My managed game")).toHaveLength(1);
+    });
 });
