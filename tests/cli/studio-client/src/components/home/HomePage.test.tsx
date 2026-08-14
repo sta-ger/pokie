@@ -94,6 +94,43 @@ describe("HomePage", () => {
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
     });
 
+    it("refreshes a moved managed project when returning from Design Game", async () => {
+        const user = userEvent.setup();
+        let status: "ok" | "missing" = "ok";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {
+                        location: "/games/moved",
+                        name: "Moved game",
+                        type: "tsPackage",
+                        capabilities: [],
+                        origin: "managed",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status,
+                    },
+                ],
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        expect(await screen.findByRole("button", {name: "Open"})).toBeInTheDocument();
+        await user.click(sectionsNav().getByRole("button", {name: "Design Game"}));
+        await expectActiveSection("Design Game");
+
+        status = "missing";
+        await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
+        await expectActiveSection("Projects");
+
+        expect(await screen.findByText("Moved game (missing)")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Relocate"})).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open"})).not.toBeInTheDocument();
+        expect(calls.filter((call) => call.url.startsWith("/api/home/projects/registry")).length).toBe(2);
+    });
+
     it("opens an already-registered project from the Projects tab's registry list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

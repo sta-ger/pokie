@@ -66,9 +66,11 @@ const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
 export function ProjectsPanel({
     registryVersion = 0,
     registeredProject,
+    isVisible = true,
 }: {
     registryVersion?: number;
     registeredProject?: StudioProjectRegistryView;
+    isVisible?: boolean;
 }) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
@@ -110,12 +112,17 @@ export function ProjectsPanel({
         });
     };
 
-    // `cancelled` guards against setting state from a registry fetch that resolves after this effect's
-    // own cleanup (unmount, or a `fetchImpl` change re-running it) -- without it, a fetch left in flight
-    // when a test unmounts this panel (e.g. navigating straight past Home) resolves later and trips
-    // React's "update on an unmounted component" act() warning.
+    // Home keeps this panel mounted while Design Game is visible, so a route change does not by itself
+    // remount it. Refresh whenever Projects becomes visible: an entry may have been moved outside Studio
+    // while the user was designing. `cancelled` also guards against a request settling after the panel
+    // becomes hidden or unmounts.
     useEffect(() => {
         let cancelled = false;
+        if (!isVisible) {
+            return () => {
+                cancelled = true;
+            };
+        }
         setListView({status: "loading"});
         listProjectRegistry(fetchImpl)
             .then((entries) => {
@@ -131,7 +138,7 @@ export function ProjectsPanel({
         return () => {
             cancelled = true;
         };
-    }, [fetchImpl, registryVersion]);
+    }, [fetchImpl, isVisible, registryVersion]);
 
     // save-managed already has the canonical row the registry wrote. Render it immediately rather
     // than waiting for the invalidating list request above; that request remains the eventual

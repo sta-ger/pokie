@@ -111,7 +111,11 @@ export function HomePage() {
                                 Need a new project from your terminal? Run <Code>pokie init</Code> for a ready-to-build package, or{" "}
                                 <Code>pokie create</Code> for an editable Blueprint Project -- then import it above.
                             </Text>
-                            <ProjectsPanel registryVersion={projectRegistryVersion} registeredProject={justSavedManagedProject} />
+                            <ProjectsPanel
+                                registryVersion={projectRegistryVersion}
+                                registeredProject={justSavedManagedProject}
+                                isVisible={activeTab === "projects"}
+                            />
                         </Stack>
                     </div>
 

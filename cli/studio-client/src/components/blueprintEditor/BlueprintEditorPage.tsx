@@ -865,7 +865,7 @@ export function BlueprintEditorPage({
                     // already happened by the time this first managed save registers the project. Give
                     // its owner the just-persisted row as well as asking it to reconcile its list, so
                     // the visible Projects update never waits on that second request settling.
-                    if (!alreadyOwnsPath) {
+                    if (!alreadyOwnsPath && "registeredProject" in raw) {
                         onManagedProjectSaved?.(raw.registeredProject);
                     }
                 }
