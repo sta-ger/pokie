@@ -1,0 +1,17 @@
+[2026-08-14T18:56:56.725Z] START freshly launched Studio/client managed-save workflow against http://127.0.0.1:49380
+[2026-08-14T18:56:56.774Z] NAVIGATE public Studio Design Game route
+[2026-08-14T18:56:57.323Z] OBSERVE rendered Design Game
+[2026-08-14T18:56:57.508Z] CLICK New Blueprint at rendered BUTTON coordinates (342, 433)
+[2026-08-14T18:56:58.011Z] OBSERVE rendered New Blueprint dialog
+[2026-08-14T18:56:58.046Z] CLICK Generate random at rendered BUTTON coordinates (685, 214)
+[2026-08-14T18:56:58.611Z] CLICK Generate random blueprint at rendered BUTTON coordinates (784, 259)
+[2026-08-14T18:56:59.118Z] OBSERVE rendered generated Blueprint
+[2026-08-14T18:56:59.408Z] CLICK Use this blueprint at rendered BUTTON coordinates (763, 444)
+[2026-08-14T18:57:00.125Z] OBSERVE valid Blueprint
+[2026-08-14T18:57:00.213Z] CLICK managed Save at rendered BUTTON coordinates (311, 320)
+[2026-08-14T18:57:00.719Z] OBSERVE rendered managed save success
+[2026-08-14T18:57:00.729Z] OBSERVE managed project path from visible Save result: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/documents/POKIE Projects/golden-grand-safari/blueprint.json
+[2026-08-14T18:57:01.139Z] CAPTURE 04-managed-save-success.png, 04-managed-save-success-visible-text.txt, and 04-managed-save-success-url.txt
+[2026-08-14T18:57:01.174Z] CLICK Projects navigation at rendered BUTTON coordinates (130, 137)
+[2026-08-14T18:57:01.680Z] OBSERVE freshly saved managed registry row rendered without browser reload
+[2026-08-14T18:57:01.971Z] CAPTURE 05-managed-project-visible.png, 05-managed-project-visible-visible-text.txt, and 05-managed-project-visible-url.txt

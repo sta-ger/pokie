@@ -1,0 +1,31 @@
+POKIE Studio
+Design Game
+Projects
+Projects
+
+Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.
+
+Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.
+
+Your projects
+Name	Type	Origin	Last opened	Actions
+golden-grand-safari
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/fixtures/relocated-managed/golden-grand-safari/blueprint.json
+
+	Blueprint	
+Managed
+	8/14/2026, 8:57:35 PM	
+Open
+Remove
+Import Project
+
+Point at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.
+
+Location
+Browse…
+Detect
+Documentation
+Docs index
+Getting started
+CLI reference

@@ -1,0 +1,4 @@
+[2026-08-14T18:59:38.320Z] START fresh Studio/client after restart against http://127.0.0.1:49382
+[2026-08-14T18:59:38.370Z] NAVIGATE public Projects route in restarted Studio
+[2026-08-14T18:59:39.139Z] OBSERVE truthful relocated managed status persisted after Studio restart
+[2026-08-14T18:59:39.496Z] CAPTURE 10-after-studio-restart-truthful-status.png, 10-after-studio-restart-truthful-status-visible-text.txt, and 10-after-studio-restart-truthful-status-url.txt

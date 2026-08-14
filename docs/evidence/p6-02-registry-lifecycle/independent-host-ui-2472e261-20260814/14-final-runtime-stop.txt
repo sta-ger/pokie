@@ -1,0 +1,7 @@
+stopped_restart_studio_pid=734880
+stopped_restart_chrome_pid=734881
+studio_listener=HTTP 000
+unavailable
+remaining_runtime_processes:
+ 737156  737156 /bin/bash -c kill -TERM 734880 734881 for attempt in $(seq 1 30); do   studio_live=0   chrome_live=0   kill -0 734880 2>/dev/null && studio_live=1   kill -0 734881 2>/dev/null && chrome_live=1   if [ "$studio_live" -eq 0 ] && [ "$chrome_live" -eq 0 ]; then break; fi   sleep 1 done {   printf 'stopped_restart_studio_pid=734880\n'   printf 'stopped_restart_chrome_pid=734881\n'   printf 'studio_listener='   curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:49382/ || printf 'unavailable\n'   printf 'remaining_runtime_processes:\n'   ps -eo pid=,pgid=,args= | rg 'pokie.js studio --host 127.0.0.1 --port 49382|remote-debugging-port=49383' || true } > docs/evidence/p6-02-registry-lifecycle/independent-host-ui-2472e261-20260814/14-final-runtime-stop.txt
+ 737291  737156 rg pokie.js studio --host 127.0.0.1 --port 49382|remote-debugging-port=49383
