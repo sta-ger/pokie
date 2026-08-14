@@ -122,12 +122,11 @@ async function main() {
         const virtualKeyCode = key === "ArrowLeft" ? 37 : 39;
         await cdp.send("Page.bringToFront");
         // CDP's `modifiers` field only annotates an event; it does not establish a real held Alt key.
-        // Chrome happened to accept the first synthetic Alt+Arrow transition without the matching
-        // modifier key events, but then left the following Forward commands at the first Home entry.
-        // Send the complete native shortcut lifecycle for every traversal so the browser, rather than
-        // application code or a DevTools history API, owns Back/Forward exactly as a user does.
-        await cdp.send("Input.dispatchKeyEvent", {type:"rawKeyDown", key:"Alt", code:"AltLeft", windowsVirtualKeyCode:18, nativeVirtualKeyCode:18, modifiers:1, isSystemKey:true});
-        await cdp.send("Input.dispatchKeyEvent", {type:"rawKeyDown", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1, isSystemKey:true});
+        // Dispatch the complete shortcut as ordinary key events: Chrome applies its browser-history
+        // command during a keyDown, while rawKeyDown is reserved for key events without normal keyboard
+        // processing. This keeps every traversal native without invoking a DevTools history API.
+        await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Alt", code:"AltLeft", windowsVirtualKeyCode:18, nativeVirtualKeyCode:18, modifiers:1, isSystemKey:true});
+        await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1, isSystemKey:true});
         await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1});
         await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Alt", code:"AltLeft", windowsVirtualKeyCode:18, nativeVirtualKeyCode:18, modifiers:0});
         note(`KEYBOARD Alt+${key === "ArrowLeft" ? "Left" : "Right"} browser ${key === "ArrowLeft" ? "Back" : "Forward"}: ${description}`);
