@@ -1,6 +1,4 @@
-candidate_sha=b5905c96977ae3aa555393a51d4790099ca97f7d
-verification_type=browser_ui_rerun
-verification_date=2026-08-14
+candidate_sha=6c3244eab70b70eb76abf6f22c00eb33bdfe3012
 node=v24.18.0
-chrome=138.0.7204.183
-workflow=Fresh local Studio and fresh Chrome profile; all product actions used rendered controls and native browser history keys.
+npm=11.16.0
+build_exit=0

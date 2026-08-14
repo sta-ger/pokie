@@ -140,6 +140,12 @@ async function main() {
     note(`START fresh Chrome session against fresh candidate Studio ${studio}`);
     await cdp.send("Page.navigate", {url:`${studio}/#/project/play`});
     note("NAVIGATE public legacy unscoped Project A Play URL");
+    // Capture the initial rendered route before its assertion.  This leaves a
+    // browser-visible diagnostic if a fresh runtime regresses before the
+    // normal Project A screenshot point, and is overwritten by the successful
+    // capture below when the route becomes ready.
+    await sleep(1200);
+    await snapshot("00-legacy-project-a-play-before-route-scope-check");
     await wait("document.body.innerText.includes('Playable Game') && document.body.innerText.includes('New session')", "Project A rendered through the legacy Play route");
     await snapshot("00-legacy-project-a-play-before-route-scope-check");
     await wait(`location.hash === '#${aPath}'`, "legacy A history entry replaced by a project-scoped A Play route");

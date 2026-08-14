@@ -1,3 +1,4 @@
-$ ss -ltnp '( sport = :49326 or sport = :59326 )'
+$ ss -ltn sport = :49326
 State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
-Both selected local ports were free before the fresh Studio and Chrome processes started.
+$ ss -ltn sport = :49327
+State Recv-Q Send-Q Local Address:Port Peer Address:PortProcess

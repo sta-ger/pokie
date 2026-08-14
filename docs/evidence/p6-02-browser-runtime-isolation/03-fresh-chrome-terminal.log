@@ -1,3 +1,24 @@
-$ /bin/google-chrome --headless=new --window-size=1440,1100 --no-first-run --no-default-browser-check --remote-debugging-port=59326 --user-data-dir=/tmp/p6-02-chrome-LoHkIZ about:blank
-DevTools listening on ws://127.0.0.1:59326/devtools/browser/c9914483-6dc1-4ee4-94e6-7e025e25e891
-Chrome 138.0.7204.183; fresh user-data directory. Chrome emitted only environment DBus/graphics warnings after startup.
+chrome_profile=/tmp/p6-02-chrome.yMN2n8
+mode=headless=new, window=1440x2000 (host has no X display; rendered Studio UI captured and driven through native browser input)
+[581386:581416:0814/174515.293412:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581416:0814/174515.293546:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581416:0814/174515.293578:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581416:0814/174515.293597:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581416:0814/174515.313453:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581416:0814/174515.333851:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+
+DevTools listening on ws://127.0.0.1:49327/devtools/browser/66fc2031-de56-42af-8019-f3ca44c1dc1f
+libva error: /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so init failed
+[581386:581386:0814/174515.559876:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[581386:581386:0814/174515.562788:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[581386:581386:0814/174515.563062:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[581386:581416:0814/174515.563313:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581416:0814/174515.563342:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[581386:581386:0814/174515.632314:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[581386:581386:0814/174515.632751:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786722317.793939  581412 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[581386:581417:0814/174518.323568:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+Created TensorFlow Lite XNNPACK delegate for CPU.
+Attempting to use a delegate that only supports static-sized tensors with a graph that has dynamic-sized tensors (tensor#-1 is a dynamic-sized tensor).
