@@ -899,7 +899,9 @@ describe("Studio Project runtime state isolation", () => {
                     failedRun = status.body;
                     break;
                 }
-                await new Promise<void>((resolve) => setImmediate(resolve));
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
             }
             expect(failedRun).toMatchObject({status: "failed", error: "Project A run failed."});
 

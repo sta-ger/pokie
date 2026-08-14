@@ -48,24 +48,26 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
     it("saves the imported blueprint as a managed Blueprint Project, recording the workbook only as provenance, and shows an 'Imported from PAR' label", async () => {
         const user = userEvent.setup();
         const saveManagedBodies: Array<{blueprint: unknown; sourceWorkbookPath?: string}> = [];
+        const registryRequestStates: boolean[] = [];
         let managedProjectSaved = false;
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
             if (path === REGISTRY_URL) {
+                registryRequestStates.push(managedProjectSaved);
                 return jsonResponse(
                     managedProjectSaved
                         ? [
-                              {
-                                  location: "/POKIE Projects/imported-game/blueprint.json",
-                                  name: "imported-game",
-                                  type: "blueprint",
-                                  capabilities: [],
-                                  origin: "managed",
-                                  lastOpenedAt: "2026-01-01T00:00:00.000Z",
-                                  status: "ok",
-                                  importedFromParSheetPath: "/games/in.par.xlsx",
-                              },
-                          ]
+                            {
+                                location: "/POKIE Projects/imported-game/blueprint.json",
+                                name: "imported-game",
+                                type: "blueprint",
+                                capabilities: [],
+                                origin: "managed",
+                                lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                                status: "ok",
+                                importedFromParSheetPath: "/games/in.par.xlsx",
+                            },
+                        ]
                         : [],
                 );
             }
@@ -91,6 +93,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         };
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await waitFor(() => expect(registryRequestStates).toEqual([false]));
         await applyParImport(user);
 
         // The freshly-applied draft already shows its own provenance before it's ever saved.
@@ -112,6 +115,7 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
 
         // Projects stays mounted while Design Game saves. The managed-save notification must refresh
         // the panel's already-fetched list rather than leaving its empty state stale until a reload.
+        await waitFor(() => expect(registryRequestStates).toEqual([false, true]));
         await user.click(screen.getByRole("button", {name: "Projects"}));
         expect(await screen.findByText("imported-game")).toBeInTheDocument();
         expect(screen.getByText("Managed")).toBeInTheDocument();
