@@ -1,1 +1,2 @@
+$ PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:$PATH node dist/cli/pokie.js studio docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49326 --host 127.0.0.1 --no-open
 POKIE Studio listening on http://127.0.0.1:49326

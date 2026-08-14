@@ -1,7 +1,7 @@
 # P6-02 browser runtime-isolation verification
 
 Independent fresh host-browser rerun of candidate
-`993026a71e6344cbc0376cb89989d20611227844` on 2026-08-14. The candidate's
+`b5905c96977ae3aa555393a51d4790099ca97f7d` on 2026-08-14. The candidate's
 CLI and Studio client were rebuilt under Node `v24.18.0`, then launched through
 the public `pokie studio <Project A> --port 49326 --host 127.0.0.1 --no-open`
 command. A new Chrome profile interacted only with rendered Studio controls
@@ -11,10 +11,10 @@ product endpoint calls or DOM/application-state assignments.
 Result: **finding P1** (`p6-02-browser-runtime-isolation`). Project A was
 opened through the legacy Play entry, given a real session and Spin. Project B
 was detected, registered, opened, and given a distinct real session. Native
-Back reached scoped Project A Play with neither Project B identity nor the
-earlier A round rendered. Native Forward reached `#/home/design` on the first
-keypress and remained there for all seven remaining keypresses; it never
-restored scoped Project B Play.
+Back reached scoped Project A Play, with neither Project B identity nor the
+earlier Project A round rendered. Native Forward reached `#/home/design` on
+the first keypress and remained there for all seven remaining keypresses; it
+never restored scoped Project B Play.
 
 Essential artifacts:
 

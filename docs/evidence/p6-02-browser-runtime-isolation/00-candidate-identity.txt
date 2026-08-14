@@ -1,4 +1,4 @@
-candidate_sha=993026a71e6344cbc0376cb89989d20611227844
+candidate_sha=b5905c96977ae3aa555393a51d4790099ca97f7d
 verification_type=browser_ui_rerun
 verification_date=2026-08-14
 node=v24.18.0
