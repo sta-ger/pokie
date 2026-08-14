@@ -88,16 +88,18 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         expect(screen.queryByRole("button", {name: "Simulation"})).not.toBeInTheDocument();
     });
 
-    it("an unrecognized :tab falls back to the default section instead of erroring", () => {
+    it("an unrecognized :tab falls back to the default section instead of erroring", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
 
+        // Navigate commits from an effect.  Waiting for the final route keeps this test from ending
+        // while that state update is still pending, without incorrectly waiting for the CSS-hidden
+        // Projects panel's registry request (it deliberately does not make one until visible).
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
-        // The inactive Projects tab remains mounted to preserve its state, but it deliberately does
-        // not fetch its registry until it becomes visible (ProjectsPanel's `isVisible` contract).
     });
 });
 
