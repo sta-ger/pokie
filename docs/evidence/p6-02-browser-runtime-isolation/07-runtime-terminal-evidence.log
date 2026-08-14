@@ -1,9 +1,7 @@
-2026-08-14T18:09:33+02:00
-d76afedb7df869632f0af09a0c6aaed1dd730b4c
- 598806  598799 node dist/cli/pokie.js studio docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49610 --host 127.0.0.1 --no-open
- 598838  598799 /bin/google-chrome --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=9227 --user-data-dir=/tmp/p6-02-chrome-profile.9bApLh --no-first-run --no-default-browser-check --window-size=1440,1024 about:blank
+studio_pid=609111
+chrome_pid=609112
+ 609111  608763 node dist/cli/pokie.js studio docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49612 --host 127.0.0.1 --no-open
+ 609112  608763 /bin/google-chrome --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=9229 --user-data-dir=/tmp/p6-02-chrome-profile.a37CzB --no-first-run --no-default-browser-check --window-size=1440,1024 about:blank
 State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
-LISTEN 0      511        127.0.0.1:49610      0.0.0.0:*    users:(("MainThread",pid=598806,fd=21))
-State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
-LISTEN 0      10         127.0.0.1:9227      0.0.0.0:*    users:(("chrome",pid=598838,fd=72))
-driver_exit_status=1
+LISTEN 0      10         127.0.0.1:9229       0.0.0.0:*    users:(("chrome",pid=609112,fd=74))
+LISTEN 0      511        127.0.0.1:49612      0.0.0.0:*    users:(("MainThread",pid=609111,fd=21))
