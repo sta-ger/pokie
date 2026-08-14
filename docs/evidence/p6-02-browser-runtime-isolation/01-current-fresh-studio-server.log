@@ -1,11 +1,1 @@
-POKIE Studio listening on http://127.0.0.1:49102
-candidate_sha=1088da403649b1da3e05da8726944bac259fc75c
-studio_command=node dist/cli/pokie.js studio /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49102 --no-open
-chrome_command=google-chrome --headless=new --window-size=1440,1400 --remote-debugging-port=9323
-studio_pid=529856
-chrome_pid=529857
-studio_url=http://127.0.0.1:49102
-devtools_url=http://127.0.0.1:9323
-chrome_profile=/tmp/p6-02-chrome-qDBYBa
-studio_ready=yes
-chrome_ready=yes
+POKIE Studio listening on http://127.0.0.1:49202
