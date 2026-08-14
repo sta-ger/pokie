@@ -1,0 +1,147 @@
+POKIE Studio
+/
+Opulent Gilded Payout
+/
+
+Build/Export
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Opulent Gilded Payout
+
+/home/stager/POKIE Projects/opulent-gilded-payout/blueprint.json
+
+Close project
+
+Every applicable way this project can be built or leave Studio, grouped by what it actually does -- generating an outcome library is the source build step every other target here reads from, a static export writes a standalone bundle with nothing registered, and a remote deployment is a registered External Adapter SDK target, checked for compatibility before anything is published. Each card runs its own builder right here, against this project's own primary build mode (base) -- nothing here silently runs in the background, and nothing leaves this tab to do it.
+
+Refresh registered targets
+Outcome libraries
+
+Generates or selects the canonical outcome library every other builder below reads from -- a build step in its own right, not a delivery target.
+
+Outcome library generator
+
+LOCAL
+
+Adapter: pokie's own weighted-outcome-library generator (v--)
+
+Purpose: Generates (or selects) a canonical outcome library from this project's own current build -- the source content every other target on this page deploys/exports from.
+
+Destination: A local bundle directory registered for this project (outcomelibrary by default, or a custom directory) -- nothing is deployed or exported externally.
+
+Write / publish behavior: Generate writes the bundle to disk and registers it for discovery; Select/Validate/Inspect never write anything.
+
+Capabilities
+
+Exact or bounded-sample generation, whichever the game's own mechanic supports
+Registry discovery by mode name for every other target on this page
+
+Prerequisites
+
+A built, runnable package for this project
+
+Compatibility: Read by every remote deployment target and Stake Engine Export alike -- generating or fixing a library here is reflected the next time either target's own Configure step looks it up.
+
+Generate outcome library (base)
+Static export
+
+Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.
+
+Stake Engine Export
+
+LOCAL
+
+Adapter: Stake Engine math-sdk static file format (vmanifest schema v1)
+
+Purpose: Exports one or more bet modes' canonical outcome libraries to the real Stake Engine math-sdk static file format -- the first static export target POKIE ships.
+
+Destination: A local output directory: index.json, a per-mode lookup CSV, per-mode zstd-compressed books, and a sibling pokie-manifest.json.
+
+Write / publish behavior: Export writes the whole bundle to disk in one atomic swap (an existing directory is only replaced once every file has been generated); Validate diagnostics runs the same checks first without writing anything.
+
+Capabilities
+
+Multiple bet modes, each with its own cost, published together as one atomic bundle
+Feature events and debug metadata carried through from the source outcome library
+A pokie-manifest.json provenance file alongside Stake's own strict index.json
+
+Limits
+
+Every outcome id must already be a valid Stake Engine integer id
+Every mode in one export must come from the same game build (id, version, config)
+Every payout amount must be exactly representable in Stake's integer unit convention
+
+Prerequisites
+
+A canonical outcome library file per mode
+A positive cost for every mode
+An output directory to write to
+
+Compatibility: A deliberately separate, sibling pipeline to the External Adapter SDK -- not built on the ExternalDeploymentTarget contract, so it never competes with (or is limited by) a registered adapter's own requirements.
+
+Run Stake Engine Export (base)
+
+Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.
+
+Build artifact
+
+Runs this project through pokie's own ArtifactBuilderRegistry -- the exact "pokie build <project> --target <target>" conversions the CLI itself offers, only ever listing a target this project's own resolved type actually supports.
+
+TypeScript Game Package
+
+LOCAL
+
+Adapter: ArtifactBuilderRegistry ("pokie build") (v--)
+
+Purpose: Builds a runnable tsPackage from this project's own GameBlueprint source -- the same conversion "pokie build --target tsPackage" runs.
+
+Destination: A new package directory (default: a "tsPackage" sibling of this project).
+
+Write / publish behavior: A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.
+
+Limits
+
+Builds a runnable package from its own GameBlueprint source only -- never compiles or targets WASM, and a built package cannot itself be converted into any other target type.
+
+Compatibility: The exact same ArtifactBuilderRegistry conversion "pokie build <project> --target tsPackage" runs -- CLI and Studio always agree on what's buildable and what it writes.
+
+Resolved destination: /home/stager/POKIE Projects/opulent-gilded-payout/tsPackage
+
+Build
+
+Built to /home/stager/POKIE Projects/opulent-gilded-payout/tsPackage.
+
+Open as Project
+Added to Projects
+Open output folder
+Remote deployment
+
+A registered External Adapter SDK target, checked for compatibility before Publish is ever offered -- the SDK's own local-json-example demo target is deliberately never listed here (see ExportDeployTargets.ts's own doc comment); register a real target to replace this group's placeholder.
+
+Remote deployment (none registered yet)
+
+REMOTE
+
+Adapter: External Adapter SDK (v--)
+
+Purpose: Reserved for a real remote RGS/aggregator integration -- register an ExternalDeploymentTarget with a remote runtimeAdapter to add one.
+
+Destination: Not yet registered.
+
+Write / publish behavior: Not applicable until a remote target is registered.
+
+Prerequisites
+
+Register an ExternalDeploymentTarget for this project's deployment registry (see docs/external-adapter-sdk.md).
+
+Compatibility: Once registered, goes through the same ExternalDeploymentCompatibilityValidator contract every other target already does.

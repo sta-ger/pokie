@@ -1,0 +1,113 @@
+{
+    "manifest": {
+        "id": "opulent-gilded-payout",
+        "name": "Opulent Gilded Payout",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 1194709122)."
+    },
+    "reels": 4,
+    "rows": 4,
+    "symbols": [
+        "Q",
+        "7",
+        "8",
+        "J",
+        "A",
+        "9",
+        "10"
+    ],
+    "paytable": {
+        "7": {
+            "3": 6,
+            "4": 12
+        },
+        "8": {
+            "3": 5,
+            "4": 10
+        },
+        "9": {
+            "3": 2,
+            "4": 4
+        },
+        "10": {
+            "3": 1,
+            "4": 2
+        },
+        "Q": {
+            "3": 7,
+            "4": 14
+        },
+        "J": {
+            "3": 4,
+            "4": 8
+        },
+        "A": {
+            "3": 3,
+            "4": 6
+        }
+    },
+    "availableBets": [
+        1,
+        2,
+        5,
+        10
+    ],
+    "reelStripGeneration": [
+        {
+            "type": "generated",
+            "length": 28,
+            "symbolWeights": {
+                "7": 2,
+                "8": 3,
+                "9": 6,
+                "10": 7,
+                "Q": 1,
+                "J": 4,
+                "A": 5
+            },
+            "seed": 1878641036
+        },
+        {
+            "type": "generated",
+            "length": 28,
+            "symbolWeights": {
+                "7": 2,
+                "8": 3,
+                "9": 6,
+                "10": 7,
+                "Q": 1,
+                "J": 4,
+                "A": 5
+            },
+            "seed": 482362308
+        },
+        {
+            "type": "generated",
+            "length": 28,
+            "symbolWeights": {
+                "7": 2,
+                "8": 3,
+                "9": 6,
+                "10": 7,
+                "Q": 1,
+                "J": 4,
+                "A": 5
+            },
+            "seed": 680010346
+        },
+        {
+            "type": "generated",
+            "length": 28,
+            "symbolWeights": {
+                "7": 2,
+                "8": 3,
+                "9": 6,
+                "10": 7,
+                "Q": 1,
+                "J": 4,
+                "A": 5
+            },
+            "seed": 1089401518
+        }
+    ]
+}

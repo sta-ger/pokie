@@ -1,0 +1,5 @@
+/home/stager/POKIE Projects/opulent-gilded-payout/blueprint.json
+/home/stager/POKIE Projects/opulent-gilded-payout/tsPackage/README.md
+/home/stager/POKIE Projects/opulent-gilded-payout/tsPackage/package-lock.json
+/home/stager/POKIE Projects/opulent-gilded-payout/tsPackage/package.json
+/home/stager/POKIE Projects/opulent-gilded-payout/tsPackage/tsconfig.json
