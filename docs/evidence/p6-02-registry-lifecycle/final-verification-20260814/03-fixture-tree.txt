@@ -1,0 +1,12 @@
+README.md
+dist/index.js
+node_modules/.package-lock.json
+node_modules/typescript/LICENSE.txt
+node_modules/typescript/README.md
+node_modules/typescript/SECURITY.md
+node_modules/typescript/ThirdPartyNoticeText.txt
+node_modules/typescript/package.json
+package-lock.json
+package.json
+src/index.ts
+tsconfig.json

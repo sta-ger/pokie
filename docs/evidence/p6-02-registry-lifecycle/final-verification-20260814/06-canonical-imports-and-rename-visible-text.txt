@@ -1,0 +1,47 @@
+POKIE Studio
+Design Game
+Projects
+Projects
+
+Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.
+
+Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.
+
+Your projects
+Name	Type	Origin	Last opened	Actions
+Registry Lifecycle External Renamed
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/final-verification-20260814/fixtures/external-project
+
+	Package	
+Registered
+	8/14/2026, 7:16:38 PM	
+Open
+Remove
+
+royal-prowl
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/final-verification-20260814/documents/POKIE Projects/royal-prowl/blueprint.json
+
+	Blueprint	
+Managed
+	8/14/2026, 7:11:01 PM	
+Open
+Remove
+Import Project
+
+Point at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.
+
+Location
+Browse…
+
+Resolves to: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-registry-lifecycle/final-verification-20260814/fixtures/external-project-alias
+
+Detect
+
+Registered "Registry Lifecycle External Renamed" -- it now shows up in Your projects above.
+
+Documentation
+Docs index
+Getting started
+CLI reference

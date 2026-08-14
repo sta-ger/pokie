@@ -1,0 +1,17 @@
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+
+DevTools listening on ws://127.0.0.1:9326/devtools/browser/7cdcf8e9-613d-476e-b2aa-a0b63c944c1a
+libva error: /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so init failed
+[657816:657843:0814/191041.645178:ERROR:crypto/nss_util.cc:344] After loading Root Certs, loaded==false: NSS error code: -8018
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786727443.833627  657843 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[657816:657848:0814/191044.246214:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+Created TensorFlow Lite XNNPACK delegate for CPU.
+Attempting to use a delegate that only supports static-sized tensors with a graph that has dynamic-sized tensors (tensor#-1 is a dynamic-sized tensor).
+[657816:657848:0814/191111.435972:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[657816:657848:0814/191152.955709:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[657816:657848:0814/191339.780874:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786727621.149890  659671 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+[657816:657816:0814/191341.193435:ERROR:services/on_device_model/public/cpp/service_client.cc:36] Unexpected on_device_model service disconnect: The device's GPU is not supported.
