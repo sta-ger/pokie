@@ -166,29 +166,24 @@ export function ProjectDashboardRoute() {
 // derive from a project-scoped route, including direct links from older Studio versions.
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
+    const navigate = useNavigate();
     const header = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : "overview";
     const upgradeStartedRef = useRef(false);
-    const [scopedProjectRoot, setScopedProjectRoot] = useState<string>();
 
-    // A legacy hash can be an externally-created browser entry. `location.replace()` is a navigation,
-    // so using it while the user has already gone Back discards the native Forward branch. Update only
-    // the current entry's URL and keep the resolved root locally until the next actual browser
-    // traversal lets the hash router observe that scoped URL. The stateful dashboard never mounts from
-    // the ambiguous route, and neither side of the native history stack is consumed.
+    // Replace the legacy entry through the data router. Native history.replaceState() changes the hash
+    // without updating createHashRouter's tracked location/key, which leaves its history index stale
+    // when the browser later traverses this entry and can strand the native Forward branch. Router-owned
+    // replacement preserves the entry's position while keeping both histories synchronized. The
+    // stateful dashboard never mounts from the ambiguous route.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
             upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            window.history.replaceState(window.history.state, "", `#${scopedPath}`);
-            setScopedProjectRoot(projectRoot);
+            navigate(scopedPath, {replace: true});
         }
-    }, [activeTab, projectRoot]);
-
-    if (scopedProjectRoot !== undefined) {
-        return <ProjectDashboardPage key={scopedProjectRoot} requestedProjectRoot={scopedProjectRoot} />;
-    }
+    }, [activeTab, navigate, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;

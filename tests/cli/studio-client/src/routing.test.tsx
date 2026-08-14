@@ -172,9 +172,9 @@ describe("Project-scoped browser history", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
-        // The legacy entry itself is rewritten without a router navigation: a navigation while Back
-        // is active truncates the browser's native Forward branch. The local dashboard is explicitly
-        // keyed to A until the next actual browser traversal lets the router observe this scoped URL.
+        // The router must own the replacement too: merely rewriting the native hash leaves its tracked
+        // location stale and breaks a later Forward traversal through this entry.
+        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
         expect(window.history.state).toMatchObject({idx: 0});
 
         await act(() => router.navigate("/home/design"));
