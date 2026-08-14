@@ -1,6 +1,6 @@
 POKIE Studio
 /
-Playable Game
+Playable Game With Bonus Round
 /
 
 Play
@@ -16,9 +16,9 @@ Replay
 Build/Export
 Certification
 Fairness
-Playable Game
+Playable Game With Bonus Round
 
-/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-02-20260813112647/docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-b
 
 Close project
 

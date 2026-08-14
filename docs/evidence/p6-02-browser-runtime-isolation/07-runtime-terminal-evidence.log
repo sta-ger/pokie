@@ -1,6 +1,9 @@
-2026-08-14T17:59:33+02:00
-6ccdda5615d61fee6d69bc565fe6f9daf92cf25b
- 590296  586463 /home/stager/.nvm/versions/node/v24.18.0/bin/node dist/cli/pokie.js studio docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49502 --host 127.0.0.1 --no-open
+2026-08-14T18:09:33+02:00
+d76afedb7df869632f0af09a0c6aaed1dd730b4c
+ 598806  598799 node dist/cli/pokie.js studio docs/evidence/p6-02-browser-runtime-isolation/fixtures/project-a --port 49610 --host 127.0.0.1 --no-open
+ 598838  598799 /bin/google-chrome --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=9227 --user-data-dir=/tmp/p6-02-chrome-profile.9bApLh --no-first-run --no-default-browser-check --window-size=1440,1024 about:blank
 State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
-LISTEN 0      10         127.0.0.1:9226       0.0.0.0:*    users:(("chrome",pid=590612,fd=73))
-LISTEN 0      511        127.0.0.1:49502      0.0.0.0:*    users:(("MainThread",pid=590296,fd=22))
+LISTEN 0      511        127.0.0.1:49610      0.0.0.0:*    users:(("MainThread",pid=598806,fd=21))
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+LISTEN 0      10         127.0.0.1:9227      0.0.0.0:*    users:(("chrome",pid=598838,fd=72))
+driver_exit_status=1

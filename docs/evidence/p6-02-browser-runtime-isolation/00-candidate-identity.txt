@@ -1,2 +1,3 @@
 node=v24.18.0
-candidate_sha=6ccdda5615d61fee6d69bc565fe6f9daf92cf25b
+candidate_sha=d76afedb7df869632f0af09a0c6aaed1dd730b4c
+build_command=npm run build-cli

@@ -1,35 +1,21 @@
-mkdir: cannot create directory ‘/.local’: Permission denied
-touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
-[590612:590640:0814/175750.007009:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590640:0814/175750.007458:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590640:0814/175750.007626:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590640:0814/175750.007658:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590640:0814/175750.029454:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590640:0814/175750.051999:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.725732:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.726200:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.726312:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.726343:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.749261:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.779594:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
 MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
 
-DevTools listening on ws://127.0.0.1:9226/devtools/browser/906e6976-c94e-48d6-973d-3e7fc392bfd1
+DevTools listening on ws://127.0.0.1:9227/devtools/browser/ef42c772-411d-46e2-9582-44edd78a36a3
 libva error: /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so init failed
-[590612:590612:0814/175750.263925:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:
-[590612:590612:0814/175750.266191:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:
-[590612:590640:0814/175750.266342:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590640:0814/175750.266406:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
-[590612:590612:0814/175750.267085:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:
-[590612:590612:0814/175750.327240:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:
-[590612:590612:0814/175750.327877:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:
-[590699:6:0814/175750.448314:ERROR:gpu/ipc/client/command_buffer_proxy_impl.cc:127] ContextResult::kTransientFailure: Failed to send GpuControl.CreateCommandBuffer.
+[598838:598838:0814/180906.964973:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[598838:598838:0814/180906.967896:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[598838:598868:0814/180906.968011:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598868:0814/180906.968049:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[598838:598838:0814/180906.968816:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[598838:598838:0814/180907.044479:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[598838:598838:0814/180907.044944:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
 WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-I0000 00:00:1786723072.931133  590636 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
-[590612:590641:0814/175754.928015:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-[590612:590641:0814/175754.930524:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-Created TensorFlow Lite XNNPACK delegate for CPU.
-Attempting to use a delegate that only supports static-sized tensors with a graph that has dynamic-sized tensors (tensor#-1 is a dynamic-sized tensor).
-[590612:590641:0814/175815.989200:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
-[590612:590641:0814/175916.588740:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
-[590612:590641:0814/180048.800238:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
-WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-I0000 00:00:1786723250.066049  592464 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
-MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
-error: XDG_RUNTIME_DIR is invalid or not set in the environment.
-error: XDG_RUNTIME_DIR is invalid or not set in the environment.
-[590612:590612:0814/180050.106584:ERROR:services/on_device_model/public/cpp/service_client.cc:36] Unexpected on_device_model service disconnect: The device's GPU is not supported.
+I0000 00:00:1786723750.152596  598864 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[598838:598869:0814/180920.390246:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[598885:598921:0814/180932.969046:ERROR:net/socket/ssl_client_socket_impl.cc:896] handshake failed; returned -1, SSL error code 1, net_error -100

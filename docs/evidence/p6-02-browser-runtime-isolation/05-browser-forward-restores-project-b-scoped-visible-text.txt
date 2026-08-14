@@ -1,0 +1,82 @@
+POKIE Studio
+Design Game
+Projects
+Design Your Game
+
+Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your game package.
+
+Configure
+, completed
+
+Game model
+
+Validate
+, failed
+
+Check for issues
+
+Build
+, blocked
+
+Create your package
+
+Fix validation issues
+
+Resolve the errors below before building your package.
+
+Save
+
+Validate your configuration successfully before saving.
+
+Show advanced options (JSON mode, load/save by path)
+
+New Blueprint
+Game basics
+2
+2 errors
+Layout
+valid
+Symbols
+1
+1 error
+Reels
+valid
+Paytable
+1
+1 error
+Bets
+valid
+Layout
+Reels
+Rows
+Paylines
+
+Optional — omit to use the engine's default (one horizontal line per row).
+
+Add payline
+Apply preset…
+Validation
+Validate
+
+Invalid — 4 error(s).
+
+Errors
+
+blueprint-manifest-invalid-id: "manifest.id" must be a non-empty string.
+blueprint-manifest-invalid-name: "manifest.name" must be a non-empty string.
+blueprint-symbols-invalid: "symbols" must be a non-empty array of non-empty strings.
+blueprint-paytable-empty: "paytable" must define at least one symbol payout.
+Game Model preview
+Preview Game Model
+Build
+Output directory (optional)
+Browse…
+Build Preview
+Build Package
+
+Fix the validation errors above before building.
+
+Documentation
+Docs index
+Getting started
+CLI reference
