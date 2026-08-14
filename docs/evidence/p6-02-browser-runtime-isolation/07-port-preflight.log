@@ -1,1 +1,6 @@
-2026-08-14T16:23:05+02:00
+candidate_sha=1088da403649b1da3e05da8726944bac259fc75c
+node_version=v24.18.0
+port_49102_listener_before=
+port_9323_listener_before=
+fresh_chrome_profile=yes
+current_run_writers_stopped=yes
