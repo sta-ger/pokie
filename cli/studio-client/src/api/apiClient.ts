@@ -59,7 +59,7 @@ import type {
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.
 export type FetchLike = (
     url: string,
-    init?: {method?: string; headers?: Record<string, string>; body?: string},
+    init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"},
 ) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
 
 type ProjectActionResult = {context: StudioContext; manifest: PokieGameManifest};
@@ -150,7 +150,10 @@ export async function pickNativePath(fetchImpl: FetchLike, request: NativeBrowse
 // The Projects area's own managed/registered list -- every project Studio knows about, most-recently-
 // registered/opened first (see StudioProjectRegistrationService.list()'s own doc comment).
 export async function listProjectRegistry(fetchImpl: FetchLike): Promise<StudioProjectRegistryView[]> {
-    const response = await fetchImpl("/api/home/projects/registry");
+    // This is a live registry read: after Managed Save, Import, Remove, or Relocate, its caller
+    // expects the next request to observe the just-completed mutation rather than an HTTP-cached
+    // earlier list. The response has no freshness contract, so never retain it client-side.
+    const response = await fetchImpl("/api/home/projects/registry", {cache: "no-store"});
     return (await response.json()) as StudioProjectRegistryView[];
 }
 
