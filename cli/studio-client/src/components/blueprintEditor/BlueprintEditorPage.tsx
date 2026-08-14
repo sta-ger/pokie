@@ -861,10 +861,9 @@ export function BlueprintEditorPage({
                     sourceCheckPausedRef.current = false;
                     // Same as runSave's own success branch -- see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
-                    // Home keeps Projects mounted beside this editor, so its initial registry read has
-                    // already happened by the time this first managed save registers the project. Give
-                    // its owner the just-persisted row as well as asking it to reconcile its list, so
-                    // the visible Projects update never waits on that second request settling.
+                    // Home keeps Projects mounted beside this editor, but Projects fetches only when
+                    // visible. Give its owner the just-persisted row as well as asking it to reconcile
+                    // its list, so the visible Projects update never waits on that request settling.
                     if (!alreadyOwnsPath && "registeredProject" in raw) {
                         onManagedProjectSaved?.(raw.registeredProject);
                     }

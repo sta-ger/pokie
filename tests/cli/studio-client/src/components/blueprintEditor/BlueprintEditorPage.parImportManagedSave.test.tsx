@@ -67,7 +67,9 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
                 registryRequestStates.push(managedProjectSaved);
                 // The refresh request intentionally never settles. The saved row must nevertheless
                 // be visible as soon as the save response arrives, rather than after this list call.
-                return managedProjectSaved ? new Promise<never>(() => undefined) : jsonResponse([]);
+                return managedProjectSaved ? new Promise<never>(() => {
+                    // Intentionally left pending to exercise optimistic registry reconciliation.
+                }) : jsonResponse([]);
             }
             if (path === IMPORT_URL) {
                 return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
@@ -92,7 +94,6 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         };
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
-        await waitFor(() => expect(registryRequestStates).toEqual([false]));
         await applyParImport(user);
 
         // The freshly-applied draft already shows its own provenance before it's ever saved.
@@ -112,10 +113,10 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         expect(screen.getAllByText("Imported from PAR")).toHaveLength(2);
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
 
-        // Projects stays mounted while Design Game saves. Its reconciliation request is still pending,
-        // but the server-returned registry row must appear immediately without a reload.
-        await waitFor(() => expect(registryRequestStates).toEqual([false, true]));
+        // Projects fetches only when visible. Its reconciliation request is still pending, but the
+        // server-returned registry row must appear immediately without a reload.
         await user.click(screen.getByRole("button", {name: "Projects"}));
+        await waitFor(() => expect(registryRequestStates).toEqual([true]));
         expect(screen.getByText("imported-game")).toBeInTheDocument();
         expect(screen.getByText("Managed")).toBeInTheDocument();
     });

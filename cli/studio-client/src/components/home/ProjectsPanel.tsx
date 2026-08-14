@@ -127,7 +127,9 @@ export function ProjectsPanel({
                 cancelled = true;
             };
         }
-        setListView({status: "loading"});
+        // Preserve a just-saved project's optimistic row while this reconciliation request is in
+        // flight. Otherwise opening Projects immediately after Save would briefly erase that row.
+        setListView((previous) => previous.status === "loaded" ? previous : {status: "loading"});
         listProjectRegistry(fetchImpl)
             .then((entries) => {
                 if (!cancelled) {
