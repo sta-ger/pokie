@@ -118,18 +118,17 @@ async function main() {
         await writeFile(resolve(output, `${name}-url.txt`), `${await evaluate("location.href")}\n`);
         note(`CAPTURE ${name}.png, ${name}-visible-text.txt, and ${name}-url.txt`);
     };
-    const historyKey = async (key, description) => {
-        const virtualKeyCode = key === "ArrowLeft" ? 37 : 39;
+    const historyButton = async (direction, description) => {
+        const button = direction === "back" ? "back" : "forward";
+        const buttons = direction === "back" ? 8 : 16;
         await cdp.send("Page.bringToFront");
-        // CDP's `modifiers` field only annotates an event; it does not establish a real held Alt key.
-        // Chrome handles its native history command from raw key input. `keyDown` reaches the page
-        // but does not invoke that browser command in a fresh headless Chrome session, so preserve
-        // the complete native shortcut lifecycle without using a DevTools history API.
-        await cdp.send("Input.dispatchKeyEvent", {type:"rawKeyDown", key:"Alt", code:"AltLeft", windowsVirtualKeyCode:18, nativeVirtualKeyCode:18, modifiers:1, isSystemKey:true});
-        await cdp.send("Input.dispatchKeyEvent", {type:"rawKeyDown", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1, isSystemKey:true});
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key, code:key === "ArrowLeft" ? "ArrowLeft" : "ArrowRight", windowsVirtualKeyCode:virtualKeyCode, nativeVirtualKeyCode:virtualKeyCode, modifiers:1});
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Alt", code:"AltLeft", windowsVirtualKeyCode:18, nativeVirtualKeyCode:18, modifiers:0});
-        note(`KEYBOARD Alt+${key === "ArrowLeft" ? "Left" : "Right"} browser ${key === "ArrowLeft" ? "Back" : "Forward"}: ${description}`);
+        // Use the browser's Back/Forward mouse buttons, not a synthetic Alt+Arrow chord. CDP key
+        // events can make Chrome execute only the first Forward traversal after a route restoration;
+        // these ordinary browser mouse buttons invoke the same native history command each time
+        // without a DevTools history API or any application-side state change.
+        await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:1, y:1, button, buttons, clickCount:1, pointerType:"mouse"});
+        await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:1, y:1, button, buttons:0, clickCount:1, pointerType:"mouse"});
+        note(`MOUSE browser ${direction === "back" ? "Back" : "Forward"} button: ${description}`);
         await sleep(650);
     };
     const pageIdentity = async () => evaluate("({url:location.href,text:document.body.innerText})");
@@ -183,7 +182,7 @@ async function main() {
     await snapshot("03-project-b-session");
 
     for (let step = 1; step <= 8; step += 1) {
-        await historyKey("ArrowLeft", `step ${step} toward Project A`);
+        await historyButton("back", `step ${step} toward Project A`);
         const identity = await pageIdentity();
         note(`OBSERVE Back step ${step}: ${JSON.stringify({url:identity.url, hasA:identity.text.includes("Playable Game"), hasB:identity.text.includes("Playable Game With Bonus Round"), hasRound:identity.text.includes("Round detail")})}`);
         if (identity.url.includes(`#${aPath}`)) break;
@@ -195,7 +194,7 @@ async function main() {
     await wait("document.body.innerText.includes('Playable Game') && !document.body.innerText.includes('Playable Game With Bonus Round')", "Project A identity with no Project B state rendered or actionable");
 
     for (let step = 1; step <= 8; step += 1) {
-        await historyKey("ArrowRight", `step ${step} toward Project B`);
+        await historyButton("forward", `step ${step} toward Project B`);
         const identity = await pageIdentity();
         note(`OBSERVE Forward step ${step}: ${JSON.stringify({url:identity.url, hasA:identity.text.includes("Playable Game"), hasB:identity.text.includes("Playable Game With Bonus Round"), hasRound:identity.text.includes("Round detail")})}`);
         if (identity.url.includes(`#${bPath}`)) break;
