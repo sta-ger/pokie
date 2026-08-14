@@ -27,7 +27,7 @@ describe("Studio startup landing route", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
         await screen.findByRole("heading", {name: "My Slot"});
-        expect(router.state.location.pathname).toBe("/project/overview");
+        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fmy-slot/overview");
     });
 
     it("lands a home-mode server on Home", async () => {
