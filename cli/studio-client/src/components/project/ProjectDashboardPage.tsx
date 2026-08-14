@@ -171,18 +171,21 @@ export function LegacyProjectDashboardRoute() {
     const activeTab = isProjectTab(tab) ? tab : "overview";
     const upgradeStartedRef = useRef(false);
 
-    // Let createHashRouter replace the current entry as one of its own transitions. Mutating native
-    // history and then synthesizing a zero-distance pop leaves the router with a history update it
-    // did not perform; when this entry is later restored by Back, that stale transition can consume
-    // the Forward branch. The stateful dashboard cannot mount until the route is project-scoped.
+    // This first legacy route may be an entry created before the current router existed. Replacing it
+    // through the live router has repeatedly proved unsafe: after a later Back restoration, the
+    // router can treat its replacement as a new navigation and discard the native Forward branch.
+    // Replace the document location instead. The browser retains the current entry's position while
+    // the restarted router initializes from the already-scoped hash, so neither history owner has to
+    // adopt a transition performed by the other. The stateful dashboard never mounts from the
+    // ambiguous route.
     const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
     useLayoutEffect(() => {
         if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
             upgradeStartedRef.current = true;
             const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
-            navigate(scopedPath, {replace: true});
+            window.location.replace(`#${scopedPath}`);
         }
-    }, [activeTab, navigate, projectRoot]);
+    }, [activeTab, projectRoot]);
 
     if (header.status === "error" && projectRoot === "") {
         return <ErrorState message={header.message} detail={header.errorDetail} />;
