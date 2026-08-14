@@ -1,0 +1,3 @@
+candidate_sha=9770b8ac3e310cdc7d3607816655a8d5ecc876fa
+verification_type=browser_ui_rerun
+node=v24.18.0
