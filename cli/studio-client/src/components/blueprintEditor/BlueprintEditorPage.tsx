@@ -237,6 +237,11 @@ export function BlueprintEditorPage({
     // is recognized as stale even in the (currently impossible, since validateGuard already serializes
     // validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
+    // React batches the automatic validation response's state update. If Create Project is clicked in
+    // the small gap after that response settles but before the next render observes `validationView`,
+    // consult this completed result as well. This keeps one model revision to one validation request
+    // while preserving the same success/error outcome the rendered panel will show.
+    const completedValidationRef = useRef<{revision: number; validation: BlueprintValidationView} | undefined>(undefined);
     // The scheduled automatic validation may already have begun when Create Project is clicked. Keep
     // its revision separately from the rendered view so the primary action can join that exact check
     // instead of issuing a second request for the same model while React is committing "loading".
@@ -280,6 +285,7 @@ export function BlueprintEditorPage({
                     return;
                 }
                 const validation = describeValidation(result);
+                completedValidationRef.current = {revision: requestedRevision, validation};
                 setValidationView(validation);
                 // eslint-disable-next-line react-hooks/immutability -- the request resolves after this render initializes the shared completion handler.
                 finishPendingGuidedSave(validation, requestedRevision);
@@ -290,6 +296,7 @@ export function BlueprintEditorPage({
                     return;
                 }
                 const validation: BlueprintValidationView = {status: "error", message: errorMessage(error)};
+                completedValidationRef.current = {revision: requestedRevision, validation};
                 setValidationView(validation);
                 // eslint-disable-next-line react-hooks/immutability -- the request resolves after this render initializes the shared completion handler.
                 finishPendingGuidedSave(validation, requestedRevision);
@@ -867,6 +874,15 @@ export function BlueprintEditorPage({
         }
 
         const savedRevision = editor.state.revision;
+        const completedValidation = completedValidationRef.current;
+        if (completedValidation?.revision === savedRevision) {
+            if (completedValidation.validation.status === "ok") {
+                saveGuidedProject(savedRevision);
+            } else {
+                saveGuard.end();
+            }
+            return;
+        }
         if (validationView.status === "ok") {
             saveGuidedProject(savedRevision);
             return;
