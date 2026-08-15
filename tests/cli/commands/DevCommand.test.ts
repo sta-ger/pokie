@@ -369,7 +369,7 @@ describe("DevCommand (integration, real loadPokieGame + PokieDevServer + PokieCl
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
         const apiMatch = printed.match(/POKIE dev server.*http:\/\/127\.0\.0\.1:(\d+)/);
-        const clientMatch = printed.match(/POKIE client preview.*http:\/\/127\.0\.0\.1:(\d+)/);
+        const clientMatch = printed.match(/POKIE client UI.*http:\/\/127\.0\.0\.1:(\d+)/);
         expect(apiMatch).not.toBeNull();
         expect(clientMatch).not.toBeNull();
 

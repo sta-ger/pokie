@@ -139,7 +139,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "client",
-        description: 'Serve the universal browser preview UI for a running "pokie serve" API.',
+        description: 'Serve the universal browser UI for a running "pokie serve" API.',
         verbs: [
             {
                 verb: undefined,
@@ -218,7 +218,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "dev",
-        description: 'Run "pokie serve" and "pokie client" together, opening a browser preview.',
+        description: 'Run "pokie serve" and "pokie client" together, opening a browser UI.',
         verbs: [
             {
                 verb: undefined,

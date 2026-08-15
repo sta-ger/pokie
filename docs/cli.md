@@ -2306,7 +2306,7 @@ contract and an example.
 
 No option exists to make `internal` the *default* — every endpoint is public-only unless a specific request opts
 in. `pokie client`/`pokie dev` never pass `?debug=1` themselves (see `cli/client/apiClient.ts` — every request URL
-it builds is a plain `/sessions`/`/sessions/:id`/`/sessions/:id/spin`, no query string), so the browser preview
+it builds is a plain `/sessions`/`/sessions/:id`/`/sessions/:id/spin`, no query string), so the browser UI
 always talks to the public API exactly as before this feature existed; passing `?debug=1` by hand (e.g. via `curl`
 or a browser devtools request) is how a game author inspects the internal data while developing.
 
@@ -2679,7 +2679,7 @@ await server.stop();
 
 ## `pokie client <packageRoot>`
 
-Serves the universal browser preview UI: create a session, save its `sessionId`, restore it
+Serves the universal browser UI: create a session, save its `sessionId`, restore it
 after a page reload, spin, and see credits/bet/win/screen update — plus playback for any
 `MultiStageRoundSessionSerializer`-based `stages` array (e.g. a cascade round) and a generic collapsible raw-JSON
 view for whatever it doesn't specifically recognize (see [Network Serialization](serialization.md)).
@@ -2694,7 +2694,7 @@ pokie client ./sample-slot            # in another
 ```
 
 ```
-POKIE client preview listening on http://127.0.0.1:3100
+POKIE client UI listening on http://127.0.0.1:3100
 Talking to a pokie serve API expected at http://127.0.0.1:3000 — start it separately (e.g. "pokie serve") or use "pokie dev" to run both together.
 ```
 
@@ -2706,13 +2706,13 @@ Options:
   `127.0.0.1:3000`).
 - `--no-open` — don't try to open a browser.
 
-Once listening, `pokie client` best-effort opens a browser pointed at the preview it just started — the same
+Once listening, `pokie client` best-effort opens a browser pointed at the UI it just started — the same
 `open`/`start`/`xdg-open` mechanism, and the same `--no-open` escape hatch, `pokie dev` (below) uses. A two-step
 `pokie serve` + `pokie client` workflow ends up at the exact same canonical player, opened the exact same way, as
 running `pokie dev` directly.
 
 `<packageRoot>` is required — for signature symmetry with `pokie serve`/`pokie dev`, and because the scaffolded
-`"client": "pokie client ."` script always passes one — but it's **never loaded**: the browser preview is entirely
+`"client": "pokie client ."` script always passes one — but it's **never loaded**: the browser UI is entirely
 game-agnostic, so `pokie client` doesn't call `loadPokieGame` at all.
 
 The client's own configured API address is served from the same origin at `GET /config`
@@ -2749,7 +2749,7 @@ pokie dev ./sample-slot
 
 ```
 POKIE dev server listening on http://127.0.0.1:3000
-POKIE client preview listening on http://127.0.0.1:3100
+POKIE client UI listening on http://127.0.0.1:3100
 This is a local/dev reference setup for a single game package — not a casino backend or RGS.
 ```
 

@@ -13,7 +13,7 @@ const USAGE =
 // `pokie client` is a static-file server only — it never loads the game package or starts an API
 // server of its own (see docs/cli.md). `packageRoot` is required for CLI-signature symmetry with
 // `pokie serve`/`pokie dev` (and the scaffolded `"client": "pokie client ."` script), but is never
-// actually read — the browser preview is entirely game-agnostic. Pair it with a separately-running
+// actually read — the browser UI is entirely game-agnostic. Pair it with a separately-running
 // `pokie serve` (default `127.0.0.1:3000`, overridable via --api-host/--api-port), or use
 // `pokie dev` to run both together. Best-effort opens a browser pointed at the client once listening
 // (--no-open opts out), the exact same open/no-open shape `pokie dev`/`pokie studio` already use, so
@@ -48,7 +48,7 @@ export class ClientCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Serve the universal browser preview UI for a running \"pokie serve\" API.";
+        return "Serve the universal browser UI for a running \"pokie serve\" API.";
     }
 
     public getCommanderCommand(): Command {
@@ -85,7 +85,7 @@ export class ClientCommand implements CliCommandHandling {
         });
         const address = await server.start();
 
-        console.log(`POKIE client preview listening on http://${address.host}:${address.port}`);
+        console.log(`POKIE client UI listening on http://${address.host}:${address.port}`);
         console.log(
             `Talking to a pokie serve API expected at http://${resolvedApiHost}:${resolvedApiPort} — start it separately ` +
                 '(e.g. "pokie serve") or use "pokie dev" to run both together.',
@@ -124,7 +124,7 @@ export class ClientCommand implements CliCommandHandling {
             .option("--host <string>", "host to listen on (default: loopback only)")
             .option("--api-port <number>", `port of the pokie serve API to talk to (default: ${DEFAULT_API_PORT})`, parsePort("--api-port"))
             .option("--api-host <string>", `host of the pokie serve API to talk to (default: ${DEFAULT_API_HOST})`)
-            .option("--no-open", "do not open a browser pointed at the client preview")
+            .option("--no-open", "do not open a browser pointed at the client UI")
             .action(
                 (
                     root: string,

@@ -94,7 +94,7 @@ export class DevCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return 'Run "pokie serve" and "pokie client" together, opening a browser preview.';
+        return 'Run "pokie serve" and "pokie client" together, opening a browser UI.';
     }
 
     public getCommanderCommand(): Command {
@@ -150,7 +150,7 @@ export class DevCommand implements CliCommandHandling {
             await this.waitForHealthImpl(`http://${apiAddress.host}:${apiAddress.port}/health`);
 
             console.log(`POKIE dev server listening on http://${apiAddress.host}:${apiAddress.port}`);
-            console.log(`POKIE client preview listening on http://${clientAddress.host}:${clientAddress.port}`);
+            console.log(`POKIE client UI listening on http://${clientAddress.host}:${clientAddress.port}`);
             console.log("This is a local/dev reference setup for a single game package — not a casino backend or RGS.");
 
             if (!options.noOpen) {
@@ -185,9 +185,9 @@ export class DevCommand implements CliCommandHandling {
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--port <number>", "port for the API server (default: an available port)", (value: string) => this.parsePortValue(value, "--port"))
             .option("--host <string>", "host for the API server (default: loopback only)")
-            .option("--client-port <number>", "port for the client preview server (default: an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
-            .option("--client-host <string>", "host for the client preview server (default: loopback only)")
-            .option("--no-open", "do not open a browser pointed at the client preview")
+            .option("--client-port <number>", "port for the client UI server (default: an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
+            .option("--client-host <string>", "host for the client UI server (default: loopback only)")
+            .option("--no-open", "do not open a browser pointed at the client UI")
             .action(
                 (
                     packageRoot: string,
