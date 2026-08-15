@@ -99,8 +99,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     resolved outcome-source projects;
     `pokie replay <packageRoot>`, which best-effort replays one round (by seed + round index) as a JSON artifact;
     `pokie serve <packageRoot>`, which starts a local/dev JSON HTTP server over a package — not a
-    casino backend or RGS; `pokie client <packageRoot>`, a universal browser preview UI talking to
-    a running `pokie serve`; `pokie dev <packageRoot>`, which runs both together; `pokie import <input.xlsx>`,
+    casino backend or RGS; `pokie client <packageRoot>`, a universal browser UI talking to
+    a running `pokie serve`; `pokie dev <packageRoot>`, which runs both together and opens the browser UI;
+    `pokie import <input.xlsx>`,
     which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable, paylines, available bets,
     win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie export <config.json> --to
     workbook`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie reel generate
@@ -227,8 +228,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Comparing sim reports or resolved outcome sources (e.g. before/after a config change) | `pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>` |
 | Best-effort replay of a single round (by seed + round index) | `pokie replay <packageRoot>` |
 | Local/dev JSON HTTP server over a package | `pokie serve <packageRoot>` |
-| Browser preview UI for a running `pokie serve` | `pokie client <packageRoot>` |
-| `pokie serve` + `pokie client` together, with a browser auto-opened | `pokie dev <packageRoot>` |
+| Browser UI for a running `pokie serve` | `pokie client <packageRoot>` |
+| `pokie serve` + `pokie client` together, with its browser UI auto-opened | `pokie dev <packageRoot>` |
 | Local GUI (React + Mantine) covering create/build/validate/sim/replay/serve/deploy | `pokie [path]`, see [`studio-frontend.md`](studio-frontend.md) |
 | Generating a reel strip's symbol sequence under constraints (design-time, not runtime spin) | `ReelStripGenerator`, `ReelStripAnalyzer` |
 | Canonical, hashable, storage/audit-grade record of a completed round | `RoundArtifact`, `buildRoundArtifactFromSession`, `PokieJsonRoundArtifactProjector` |
