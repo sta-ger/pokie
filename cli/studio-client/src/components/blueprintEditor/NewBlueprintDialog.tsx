@@ -238,7 +238,10 @@ export function NewBlueprintDialog({
                             <TextInput
                                 label="Name (optional)"
                                 value={randomForm.name}
-                                onChange={(event) => setRandomForm((prev) => ({...prev, name: event.currentTarget.value}))}
+                                onChange={(event) => {
+                                    const name = event.currentTarget.value;
+                                    setRandomForm((prev) => ({...prev, name}));
+                                }}
                             />
                             <Button onClick={() => runGenerate(false)} loading={randomView.status === "loading"}>
                                 Generate
