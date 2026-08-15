@@ -1,0 +1,12 @@
+[
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-design-game-real-workflow/managed-projects-next/POKIE Projects/p6-random-name-final/blueprint.json",
+        "name": "P6 Random Name Final",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-15T19:14:56.659Z"
+    }
+]

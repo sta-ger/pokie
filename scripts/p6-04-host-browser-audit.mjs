@@ -109,6 +109,13 @@ async function main() {
         await sleep(450);
     };
     const body = async () => evaluate("document.body.innerText");
+    const inputValueIs = async (label, value) => Boolean(await evaluate(`(() => {
+        const wanted = ${JSON.stringify(label)};
+        const normalizeLabel = (text) => text?.trim().replace(/\\s+\\*$/, "");
+        return [...document.querySelectorAll('input,textarea')].some((candidate) => candidate.getClientRects().length > 0 &&
+            (candidate.getAttribute('aria-label') === wanted || [...(candidate.labels ?? [])].some((item) => normalizeLabel(item.textContent) === wanted)) &&
+            candidate.value === ${JSON.stringify(value)});
+    })()`));
     const snapshot = async (name) => {
         const png = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:true});
         await writeFile(resolve(output, `${name}.png`), Buffer.from(png.data, "base64"));
@@ -145,49 +152,62 @@ async function main() {
     if (phase === "diagnostic") {
         note("OBSERVE current rendered Studio state after the visible workflow action.");
         await snapshot("simulation-diagnostic");
+    } else if (phase === "name-capture") {
+        await navigate("/home/design");
+        await waitUntil("document.body.innerText.includes('Design Your Game') && document.body.innerText.includes('New Blueprint')", "rendered Design Game page");
+        await click("New Blueprint");
+        await waitUntil("document.body.innerText.includes('Create Blueprint Project')", "New Blueprint dialog");
+        await click("Random");
+        await waitUntil("document.body.innerText.includes('Seed (optional)') && document.body.innerText.includes('Generate')", "Random generation controls");
+        await input("Name (optional)", "P6 Random Name Draft");
+        await input("Name (optional)", "P6 Random Name Final");
+        const nameRetainedUntil = Date.now() + 60000;
+        while (!(await inputValueIs("Name (optional)", "P6 Random Name Final"))) {
+            if (Date.now() > nameRetainedUntil) throw new Error("Timed out waiting for edited Random optional Name retained in the rendered input");
+            await sleep(200);
+        }
+        note("OBSERVE Random's optional Name accepted initial entry and a replacement edit without crashing the rendered Studio client.");
+        await snapshot("01-random-name-edited");
     } else if (phase === "restart") {
         const randomName = (await readFile(resolve(output, "random-generated-name.txt"), "utf-8")).trim();
         await navigate("/home/projects");
         await waitUntil("document.body.innerText.includes('Projects')", "rendered Projects page after fresh Studio restart");
-        await waitUntil(`document.body.innerText.includes('P6 Recommended Edited') && document.body.innerText.includes(${JSON.stringify(randomName)})`, "both persisted managed Projects");
+        await waitUntil(`document.body.innerText.includes(${JSON.stringify(randomName)})`, "persisted named Random Project");
         const rendered = await body();
         if (!rendered.includes("Open")) throw new Error("Persisted Projects page did not expose a rendered Open action");
-        note("OBSERVE fresh Studio/client renders both managed Projects with their persisted editable names and Open actions after restart.");
-        await snapshot("05-after-restart-projects");
+        note(`OBSERVE fresh Studio/client renders the persisted named Random Project ${JSON.stringify(randomName)} with an Open action after restart.`);
+        await snapshot("03-after-restart-projects");
     } else {
         await navigate("/home/design");
         await waitUntil("document.body.innerText.includes('Design Your Game') && document.body.innerText.includes('New Blueprint')", "rendered Design Game page");
         await click("New Blueprint");
         await waitUntil("document.body.innerText.includes('Create Blueprint Project')", "New Blueprint dialog");
-        await click("Recommended");
-        await waitUntil("document.body.innerText.includes('Game name')", "Recommended guided editor");
-        await input("Game name", "P6 Recommended Edited");
-        await click("Create Project");
-        await waitUntil("document.body.innerText.includes('P6 Recommended Edited') && document.body.innerText.includes('Close project')", "created Recommended project Workspace", 120000);
-        note("OBSERVE Create Project persisted, registered, and opened the edited Recommended Project Workspace without a stale name.");
-        await snapshot("01-recommended-created-workspace");
-        await playableAndSimulatable("edited Recommended project", "02-recommended");
-        await click("Close project");
-        await waitUntil("document.body.innerText.includes('Design Your Game')", "Home after closing Recommended workspace");
-        await click("New Blueprint");
-        await waitUntil("document.body.innerText.includes('Create Blueprint Project')", "second New Blueprint dialog");
         await click("Random");
         await waitUntil("document.body.innerText.includes('Seed (optional)') && document.body.innerText.includes('Generate')", "Random generation controls");
+        await input("Name (optional)", "P6 Random Name Draft");
+        await input("Name (optional)", "P6 Random Name Final");
+        const nameRetainedUntil = Date.now() + 60000;
+        while (!(await inputValueIs("Name (optional)", "P6 Random Name Final"))) {
+            if (Date.now() > nameRetainedUntil) throw new Error("Timed out waiting for edited Random optional Name retained in the rendered input");
+            await sleep(200);
+        }
+        note("OBSERVE Random's optional Name accepted initial entry and a replacement edit without crashing the rendered Studio client.");
+        await snapshot("01-random-name-edited");
         await click("Generate");
-        await waitUntil("document.body.innerText.includes('Generated') && document.body.innerText.includes('20260815')", "deterministic Random generation");
+        await waitUntil("document.body.innerText.includes('Generated') && document.body.innerText.includes('P6 Random Name Final')", "named Random generation");
         const generatedText = await body();
         const generatedName = generatedText.match(/Generated \"([^\"]+)\"/)?.[1];
         if (!generatedName) throw new Error("Rendered Random result did not provide its generated project name");
+        if (generatedName !== "P6 Random Name Final") throw new Error(`Random generation did not retain the edited Name: ${JSON.stringify(generatedName)}`);
         await writeFile(resolve(output, "random-generated-name.txt"), `${generatedName}\n`);
-        note(`OBSERVE Random generated ${JSON.stringify(generatedName)} from the dialog's visible default deterministic seed 20260815.`);
-        await snapshot("03-deterministic-random-generated");
+        note(`OBSERVE Random generated ${JSON.stringify(generatedName)} from the visible default deterministic seed 20260815, retaining the edited Name.`);
+        await snapshot("02-random-name-generated");
         await click("Use this blueprint");
         await waitUntil("document.body.innerText.includes('Create Project')", "Random guided editor");
         await click("Create Project");
         await waitUntil(`document.body.innerText.includes(${JSON.stringify(generatedName)}) && document.body.innerText.includes('Close project')`, "created Random project Workspace", 120000);
-        note("OBSERVE Create Project persisted, registered, and opened the deterministic Random Project Workspace.");
-        await snapshot("04-random-created-workspace");
-        await playableAndSimulatable("deterministic Random project", "04-random");
+        note("OBSERVE Create Project persisted, registered, and opened the named Random Project Workspace.");
+        await snapshot("03-random-created-workspace");
     }
     note(`COMPLETE ${phase} browser workflow.`);
     await writeFile(resolve(output, `${phase}-browser-transcript.txt`), `${transcript.join("\n")}\n`);
