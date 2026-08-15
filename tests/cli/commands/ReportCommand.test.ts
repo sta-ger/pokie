@@ -76,10 +76,10 @@ describe("ReportCommand", () => {
         await expect(command.run(["sim.json", "--bogus"])).rejects.toThrow(/Unknown option "--bogus"/);
     });
 
-    it("throws a descriptive error when --format is not markdown or html", async () => {
+    it("throws a descriptive error when --format is not markdown, html, or json", async () => {
         const command = new ReportCommand(createStubReadFile({"sim.json": JSON.stringify(report)}));
 
-        await expect(command.run(["sim.json", "--format", "xml"])).rejects.toThrow(/--format must be "markdown" or "html"/);
+        await expect(command.run(["sim.json", "--format", "xml"])).rejects.toThrow(/--format must be "markdown", "html", or "json"/);
     });
 
     it("throws a descriptive error when --out has no value", async () => {
@@ -306,6 +306,27 @@ describe("ReportCommand outcome-source project routing", () => {
         logSpy.mockRestore();
     });
 
+    it('prints a resolved "outcomeLibrary" project\'s canonical analysis report as JSON', async () => {
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/libraries/base",
+            descriptor: {kind: "native", streaming: true, limitations: ["never re-derives the game model that produced these outcomes"]},
+            issues: [],
+            modes: [
+                {
+                    modeName: "base",
+                    analysis: {totalWeight: 1000, rtp: 0.955, hitFrequency: 0.25, zeroWinFrequency: 0.75, variance: 0.1, standardDeviation: 0.3162, maxWin: 500, maxWinProbability: 0.001, payoutDistribution: []},
+                },
+            ],
+        };
+        const command = new ReportCommand(createStubReadFile({}), undefined, undefined, stubProjectResolver(outcomeLibraryProject), stubAnalyzer(report));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/libraries/base", "--format", "json"]);
+
+        expect(JSON.parse(logSpy.mock.calls[0][0])).toEqual(report);
+        logSpy.mockRestore();
+    });
+
     it("dispatches a resolved Stake adapter directly to its canonical reader without trying to parse it as report JSON", async () => {
         const stakeAdapterProject: PokieProject = {
             type: "stakeAdapter",
@@ -365,7 +386,7 @@ describe("ReportCommand outcome-source project routing", () => {
         await expect(command.run(["missing.json"])).rejects.toThrow(/Could not read simulation report at "missing\.json"/);
     });
 
-    it("writes the rendered exact analysis to --out, same as an ordinary sim report", async () => {
+    it("writes the same canonical JSON analysis to --out for a resolved Stake adapter", async () => {
         const report: OutcomeSourceProjectReport = {
             rootPath: "/libraries/base",
             descriptor: {kind: "stakeEngine", streaming: false, limitations: ["reads every mode's own CSV/books before analyzing"]},
@@ -378,16 +399,17 @@ describe("ReportCommand outcome-source project routing", () => {
         const resolveProject = stubProjectResolver({...outcomeLibraryProject, type: "stakeAdapter", capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter});
         const outcomeSourceAnalyzer = stubAnalyzer(report);
         const command = new ReportCommand(createStubReadFile({}), writeFile, undefined, resolveProject, outcomeSourceAnalyzer);
-        jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
-        await command.run(["/stake/base", "--out", "analysis.txt"]);
+        await command.run(["/stake/base", "--format", "json", "--out", "analysis.json"]);
 
         expect(writeFile).toHaveBeenCalledTimes(1);
         const [file, contents] = writeFile.mock.calls[0];
-        expect(file).toBe("analysis.txt");
-        expect(contents).toContain('"stakeEngine" canonical outcome source');
+        expect(file).toBe("analysis.json");
+        expect(JSON.parse(contents)).toEqual(report);
+        expect(logSpy.mock.calls[0][0]).toBe(contents);
 
-        (console.log as jest.Mock).mockRestore();
+        logSpy.mockRestore();
     });
 });
 

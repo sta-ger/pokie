@@ -16,16 +16,17 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
-type ReportFormat = "markdown" | "html";
+type SimulationReportFormat = "markdown" | "html";
+type ReportFormat = SimulationReportFormat | "json";
 
 type ReportPathAlternative = {readonly error: Error};
 
-const USAGE = "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html] [--out <file>]";
+const USAGE = "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]";
 
 export class ReportCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
     private readonly writeFile: (file: string, contents: string) => void;
-    private readonly renderers: Record<ReportFormat, SimulationReportRendering>;
+    private readonly renderers: Record<SimulationReportFormat, SimulationReportRendering>;
     // Resolves project-shaped targets before attempting simulation-report JSON parsing. A resolved outcome
     // library or Stake adapter is reported through its canonical reader; all other targets retain the useful
     // simulation-report parsing diagnostic if they are not report JSON.
@@ -39,7 +40,7 @@ export class ReportCommand implements CliCommandHandling {
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
-        renderers: Record<ReportFormat, SimulationReportRendering> = {
+        renderers: Record<SimulationReportFormat, SimulationReportRendering> = {
             markdown: new MarkdownSimulationReportRenderer(),
             html: new HtmlSimulationReportRenderer(),
         },
@@ -81,7 +82,7 @@ export class ReportCommand implements CliCommandHandling {
         if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
             try {
                 const report = await this.outcomeSourceAnalyzer.analyze(project);
-                this.emit(renderOutcomeSourceReport(reportPath, report), out);
+                this.emit(format === "json" ? JSON.stringify(report, null, 4) : renderOutcomeSourceReport(reportPath, report), out);
                 return;
             } catch {
                 // Preserve the established report-file diagnostic if canonical analysis cannot run.
@@ -96,6 +97,9 @@ export class ReportCommand implements CliCommandHandling {
             throw alternative.error;
         }
 
+        if (format === "json") {
+            throw new Error(`--format json is only available for resolved outcome-source projects. ${USAGE}`);
+        }
         const renderer = this.renderers[format];
         const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
         this.emit(rendered, out);
@@ -111,9 +115,9 @@ export class ReportCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<projectOrSimulationReportJson>", "a supported outcome project or pokie sim JSON report")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--format <value>", '"markdown" or "html" (default: "markdown")', (value: string) => {
-                if (value !== "markdown" && value !== "html") {
-                    throw new Error(`--format must be "markdown" or "html". ${USAGE}`);
+            .option("--format <value>", '"markdown", "html", or "json" for outcome-source projects (default: "markdown")', (value: string) => {
+                if (value !== "markdown" && value !== "html" && value !== "json") {
+                    throw new Error(`--format must be "markdown", "html", or "json". ${USAGE}`);
                 }
                 return value as ReportFormat;
             })
@@ -165,7 +169,7 @@ export class ReportCommand implements CliCommandHandling {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) =>
-                    flag === "--format" ? `--format must be "markdown" or "html". ${USAGE}` : `--out requires a file path. ${USAGE}`,
+                    flag === "--format" ? `--format must be "markdown", "html", or "json". ${USAGE}` : `--out requires a file path. ${USAGE}`,
             });
         }
 

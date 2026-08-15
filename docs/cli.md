@@ -1049,8 +1049,9 @@ pokie report stakeengine
 ```
 
 It prints the source kind, streaming limitation(s), structural issues when present, and otherwise an exact
-per-mode summary (RTP, hit frequency, and standard deviation). `--out <file>` writes that same human-readable
-analysis; `--format` remains the simulation-report rendering option and accepts only `markdown` or `html`.
+per-mode summary (RTP, hit frequency, and standard deviation). `--format json` instead prints the canonical
+structured outcome-source analysis (`rootPath`, `descriptor`, `issues`, and per-mode `analysis`), and `--out
+<file>` writes the same payload. Without `--format json`, `--out <file>` writes the human-readable analysis.
 
 ## `pokie diff <leftProject> <rightProject>`
 
@@ -1709,14 +1710,16 @@ pokie sim ./sample-slot --rounds 10000 --out sim.json
 pokie report sim.json --format html --out report.html
 
 pokie report outcome-library-bundle
-pokie report stakeengine
+pokie report stakeengine --format json --out stake-analysis.json
 ```
 
 Options:
 
-- `--format markdown|html` — output format (default `markdown`).
-- `--out <file>` — also write the rendered report to `<file>`. Independent of `--format`: the rendered report is
-  always printed to the console; `--out` additionally saves it to disk.
+- `--format markdown|html` — simulation-report output format (default `markdown`).
+- `--format json` — for a resolved Outcome Library Bundle or Stake adapter project, print that source's canonical
+  structured analysis. It is not a simulation-report renderer.
+- `--out <file>` — also write the printed report to `<file>`. For an outcome source with `--format json`, this is
+  the same structured JSON payload printed to the console; otherwise it is the human-readable rendered report.
 
 The rendered report includes, at minimum: game id/name/version, requested rounds, actual rounds, seed, total bet,
 total win, RTP, hit frequency, max win, duration, and spins per second. The HTML output is plain semantic HTML
