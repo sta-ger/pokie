@@ -53,8 +53,7 @@ POKIE goes well beyond classic paylines:
   or build-time generated via `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
   [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing
   anything; `npx pokie create [name] --random` generates a structurally-valid `GameBlueprint` with no config file at
-  all — seeded/reproducible — ready to feed straight into `pokie build`; `npx pokie name` prints deterministic,
-  offline-generated slot game name(s) without building anything; `npx pokie inspect
+  all — seeded/reproducible — ready to feed straight into `pokie build`; `npx pokie inspect
   <packageRoot>` prints a package's provenance (game, blueprint hash, source, `pokie` version) without running it;
   `npx pokie create [name]` designs an editable Blueprint Project (a `GameBlueprint` JSON file) through an
   interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead); `npx pokie
@@ -65,11 +64,11 @@ POKIE goes well beyond classic paylines:
   report (including reproducibility info, warnings, and recommendations) as Markdown/HTML; `npx pokie diff
   <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
   (e.g. before/after a config change); `npx pokie replay <packageRoot>` best-effort replays a single round (by
-  seed + round index) as a JSON artifact; `npx pokie serve <packageRoot>` (experimental) starts a local/dev JSON
+  seed + round index) as a JSON artifact; `npx pokie serve <packageRoot>` starts a local/dev JSON
   HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx pokie client
-  <packageRoot>` (experimental) serves a universal browser preview UI talking to a running `pokie serve`; `npx
-  pokie dev <packageRoot>` (experimental) runs both together, opening a browser — all optionally as a JSON
-  file/machine-readable output; `npx pokie` (or `npx pokie studio`) (experimental) launches **POKIE Studio**, a
+  <packageRoot>` serves a universal browser preview UI talking to a running `pokie serve`; `npx
+  pokie dev <packageRoot>` runs both together, opening a browser — all optionally as a JSON
+  file/machine-readable output; `npx pokie` launches **POKIE Studio**, a
   local web app GUI for create/build/inspect/validate/sim/report/replay, opening a browser — its own Play tab
   drives a real game session entirely in-process, never a server; use `pokie serve`/`pokie dev` directly for that.
 
@@ -194,12 +193,12 @@ Or skip the individual commands and drive the same workflow from a GUI:
 npx pokie
 ```
 
-**POKIE Studio** (experimental) is a local web app covering Home (a guided Design Game flow for a new/random/
+**POKIE Studio** is a local web app covering Home (a guided Design Game flow for a new/random/
 existing blueprint, plus a Projects panel for managed and registered projects) and, once a project is open, a
 Project Dashboard (an Overview with automatic validation diagnostics, Game Model, a Play tab for driving a real
 in-process game session, Simulation, Replay, and a Build/Export tab bundling outcome-library generation, Stake
 Engine export, and remote deployment via the [External Adapter SDK](docs/external-adapter-sdk.md) as one surface)
-— see the [Studio docs](docs/cli.md#pokie--pokie-studio-experimental) for the full tour. Like `pokie serve`/
+— see the [Studio docs](docs/cli.md#pokie) for the full tour. Like `pokie serve`/
 `pokie dev`, it's a local/dev tool, not a casino backend or RGS.
 
 ## Documentation

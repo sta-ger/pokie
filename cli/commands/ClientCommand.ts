@@ -48,7 +48,7 @@ export class ClientCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Experimental: serve the universal browser preview UI for a running \"pokie serve\" API.";
+        return "Serve the universal browser preview UI for a running \"pokie serve\" API.";
     }
 
     public getCommanderCommand(): Command {
@@ -85,7 +85,7 @@ export class ClientCommand implements CliCommandHandling {
         });
         const address = await server.start();
 
-        console.log(`POKIE client preview (experimental) listening on http://${address.host}:${address.port}`);
+        console.log(`POKIE client preview listening on http://${address.host}:${address.port}`);
         console.log(
             `Talking to a pokie serve API expected at http://${resolvedApiHost}:${resolvedApiPort} — start it separately ` +
                 '(e.g. "pokie serve") or use "pokie dev" to run both together.',

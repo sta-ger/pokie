@@ -94,7 +94,7 @@ export class DevCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return 'Experimental: run "pokie serve" and "pokie client" together, opening a browser preview.';
+        return 'Run "pokie serve" and "pokie client" together, opening a browser preview.';
     }
 
     public getCommanderCommand(): Command {
@@ -149,7 +149,7 @@ export class DevCommand implements CliCommandHandling {
 
             await this.waitForHealthImpl(`http://${apiAddress.host}:${apiAddress.port}/health`);
 
-            console.log(`POKIE dev server (experimental) listening on http://${apiAddress.host}:${apiAddress.port}`);
+            console.log(`POKIE dev server listening on http://${apiAddress.host}:${apiAddress.port}`);
             console.log(`POKIE client preview listening on http://${clientAddress.host}:${clientAddress.port}`);
             console.log("This is a local/dev reference setup for a single game package — not a casino backend or RGS.");
 

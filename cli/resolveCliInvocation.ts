@@ -1,5 +1,6 @@
 import fs from "fs";
 import {findPokieProjectRoot} from "./findPokieProjectRoot.js";
+import {INTERNAL_STUDIO_COMMAND_NAME} from "./commands/InternalStudioCommand.js";
 
 // What cli/pokie.ts actually dispatches on: a command name plus the args to hand that command's
 // own run(). Kept intentionally tiny — this is a pure result value, not a class — so pokie.ts can
@@ -25,22 +26,22 @@ export function isTopLevelHelpRequest(argv: string[]): boolean {
 
 // Decides which registered command `argv` should run, and with which args — the one piece of logic
 // standing between "pokie" (no args at all), "pokie ." / "pokie <path>" (an implicit POKIE Studio
-// Project launch for that directory), an explicit "pokie studio [.|<path>]", and every existing
+// Project launch for that directory), and every explicit
 // "pokie <command> ..." invocation continuing to work unchanged. Returns undefined when none of
 // those match — an unrecognized token that also isn't an existing path — so cli/pokie.ts's existing
 // "print usage, exit 1" fallback is unaffected.
 //
 // Resolution order, first match wins:
-//   1. No args at all               -> {commandName: "studio", args: [<discovered project root>?]}
+//   1. No args at all               -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [<discovered project root>?]}
 //                                                                                          (Project if cwd is
 //                                                                                           inside one, else Home)
-//   2. First token is a known command name (including "studio" itself)
+//   2. First token is a known command name
 //                                    -> {commandName: <that name>, args: <the rest>}       (unchanged dispatch)
 //   3. First token looks like an option ("-"-prefixed, e.g. "--no-open")
-//                                    -> {commandName: "studio", args: [<discovered root>?, ...argv]}
+//                                    -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [<discovered root>?, ...argv]}
 //                                                                                          (bare Studio + flags)
 //   4. First token is an existing path (`.`, a relative dir/file, or an absolute one)
-//                                    -> {commandName: "studio", args: <all of argv>}       (Project mode)
+//                                    -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: <all of argv>} (Project mode)
 //   5. Otherwise                    -> undefined                                          (unknown command)
 //
 // Steps 1 and 3 are the *bare* Studio launches — the user named no target at all — so they discover
@@ -68,7 +69,7 @@ export function resolveCliInvocation(
 
     if (rawArgs.length === 0) {
         const discovered = findProjectRoot(workingDirectory());
-        return {commandName: "studio", args: discovered === undefined ? [] : [discovered]};
+        return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: discovered === undefined ? [] : [discovered]};
     }
 
     const [first, ...rest] = rawArgs;
@@ -79,11 +80,11 @@ export function resolveCliInvocation(
 
     if (first.startsWith("-")) {
         const discovered = findProjectRoot(workingDirectory());
-        return {commandName: "studio", args: discovered === undefined ? rawArgs : [discovered, ...rawArgs]};
+        return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: discovered === undefined ? rawArgs : [discovered, ...rawArgs]};
     }
 
     if (pathExists(first)) {
-        return {commandName: "studio", args: rawArgs};
+        return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: rawArgs};
     }
 
     return undefined;

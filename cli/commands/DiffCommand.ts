@@ -1,6 +1,11 @@
 import {Command} from "commander";
 import {
+    diffOutcomeSourceProjects,
     isSimulationReportSet,
+    OutcomeSourceDiffResult,
+    PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
     SimulationReport,
     SimulationReportDiff,
     SimulationReportDiffer,
@@ -12,7 +17,9 @@ import {
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {renderOutcomeSourceProjectDiff} from "./internal/renderOutcomeSourceProjectDiff.js";
 
 type DiffFormat = "summary" | "json";
 
@@ -23,6 +30,8 @@ type DiffOptions = {
     out?: string;
 };
 
+type OutcomeSourceDiffing = (left: PokieProject, right: PokieProject) => Promise<OutcomeSourceDiffResult>;
+
 const USAGE = "Usage: pokie diff <leftReportJson> <rightReportJson> [--format json] [--out <file>]";
 
 export class DiffCommand implements CliCommandHandling {
@@ -30,17 +39,23 @@ export class DiffCommand implements CliCommandHandling {
     private readonly writeFile: (file: string, contents: string) => void;
     private readonly differ: SimulationReportDiffing;
     private readonly setDiffer: SimulationReportSetDiffer;
+    private readonly resolveProject: ProjectResolving;
+    private readonly diffOutcomeSources: OutcomeSourceDiffing;
 
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         differ: SimulationReportDiffing = new SimulationReportDiffer(),
         setDiffer: SimulationReportSetDiffer = new SimulationReportSetDiffer(differ),
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        diffOutcomeSources: OutcomeSourceDiffing = diffOutcomeSourceProjects,
     ) {
         this.readFile = readFile;
         this.writeFile = writeFile;
         this.differ = differ;
         this.setDiffer = setDiffer;
+        this.resolveProject = resolveProject;
+        this.diffOutcomeSources = diffOutcomeSources;
     }
 
     public getName(): string {
@@ -48,16 +63,19 @@ export class DiffCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Compare two pokie sim JSON reports (see pokie sim --out) and highlight what changed.";
+        return "Compare two simulation reports or two resolved precomputed-outcome projects and highlight what changed.";
     }
 
     public getCommanderCommand(): Command {
         return this.buildCommand();
     }
 
-    public run(args: string[]): Promise<void> {
+    public async run(args: string[]): Promise<void> {
         try {
             const options = this.parseArgs(args);
+            if (await this.tryDiffOutcomeSourceProjects(options)) {
+                return;
+            }
             const left = this.readReportJson(options.leftPath);
             const right = this.readReportJson(options.rightPath);
 
@@ -81,12 +99,11 @@ export class DiffCommand implements CliCommandHandling {
                 }
             }
 
-            return Promise.resolve();
         } catch (error) {
             if (isCommanderHelpDisplay(error)) {
-                return Promise.resolve();
+                return;
             }
-            return Promise.reject(error);
+            throw error;
         }
     }
 
@@ -144,6 +161,42 @@ export class DiffCommand implements CliCommandHandling {
             this.printSetSummary(setDiff);
         }
         return json;
+    }
+
+    // Project-aware comparison is tried before treating either input as report JSON. Both sides must
+    // resolve: a report paired with an unrelated existing path remains an ordinary report-input error,
+    // while two outcome sources always use their canonical readers rather than pretending they are
+    // simulation reports. This is the public counterpart to the old format-specific diff command.
+    private async tryDiffOutcomeSourceProjects(options: DiffOptions): Promise<boolean> {
+        let left: PokieProject | undefined;
+        let right: PokieProject | undefined;
+        try {
+            [left, right] = await Promise.all([this.resolveProject.resolve(options.leftPath), this.resolveProject.resolve(options.rightPath)]);
+        } catch {
+            return false;
+        }
+        if (left === undefined || right === undefined) {
+            return false;
+        }
+
+        const result = await this.diffOutcomeSources(left, right);
+        if (!result.supported) {
+            throw new UnsupportedProjectOperationError(result.diagnostic);
+        }
+
+        const json = JSON.stringify(result.diff, null, 4);
+        if (options.out) {
+            this.writeFile(options.out, json);
+        }
+        if (options.format === "json") {
+            console.log(json);
+        } else {
+            console.log(renderOutcomeSourceProjectDiff(result.diff));
+            if (options.out) {
+                console.log(`\nDiff written to "${options.out}".`);
+            }
+        }
+        return true;
     }
 
 

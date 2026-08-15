@@ -1,4 +1,4 @@
-import {SimulationReport, SimulationReportSet} from "pokie";
+import {OutcomeSourceDiffResult, PokieProject, PROJECT_TYPE_CAPABILITIES, ProjectResolving, SimulationReport, SimulationReportSet} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -100,6 +100,44 @@ describe("DiffCommand", () => {
         const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(left), "other.json": JSON.stringify({foo: "bar"})}));
 
         await expect(command.run(["left.json", "other.json"])).rejects.toThrow(/does not look like a pokie sim report/);
+    });
+
+    it("diffs two resolved outcome projects before trying to read them as simulation reports", async () => {
+        const leftProject: PokieProject = {
+            type: "outcomeLibrary",
+            rootPath: "left-project",
+            provenance: "native",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+        };
+        const rightProject: PokieProject = {
+            type: "stakeAdapter",
+            rootPath: "right-project",
+            provenance: "native",
+            capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+        };
+        const resolveProject: ProjectResolving = {
+            resolve: jest.fn((projectPath: string) => Promise.resolve(projectPath === "left-project" ? leftProject : rightProject)),
+        };
+        const diffOutcomeSources = jest.fn(() =>
+            Promise.resolve({
+                supported: true,
+                diff: {
+                    left: {rootPath: "left-project", kind: "native", issues: []},
+                    right: {rootPath: "right-project", kind: "stakeEngine", issues: []},
+                    onlyInLeft: [],
+                    onlyInRight: [],
+                    perMode: {},
+                },
+            } as OutcomeSourceDiffResult),
+        );
+        const command = new DiffCommand(createStubReadFile({}), undefined, undefined, undefined, resolveProject, diffOutcomeSources);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["left-project", "right-project"]);
+
+        expect(diffOutcomeSources).toHaveBeenCalledWith(leftProject, rightProject);
+        expect(logSpy).toHaveBeenCalledWith('Diffing "left-project" (native) -> "right-project" (stakeEngine)');
+        logSpy.mockRestore();
     });
 
     it("prints a human-readable diff to the console by default", async () => {

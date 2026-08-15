@@ -63,7 +63,7 @@ export class ServeCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Experimental: serve a POKIE game package over local HTTP (dev/reference server, not a casino backend/RGS).";
+        return "Serve a POKIE game package over local HTTP (dev/reference server, not a casino backend/RGS).";
     }
 
     public getCommanderCommand(): Command {
@@ -103,7 +103,7 @@ export class ServeCommand implements CliCommandHandling {
         const server = this.createServer(game, {host: options.host, port: options.port});
         const address = await server.start();
 
-        console.log(`POKIE dev server (experimental) listening on http://${address.host}:${address.port}`);
+        console.log(`POKIE dev server listening on http://${address.host}:${address.port}`);
         console.log("This is a local/dev reference server for a single game package — not a casino backend or RGS.");
     }
 
@@ -156,7 +156,7 @@ export class ServeCommand implements CliCommandHandling {
         const server = this.createOutcomeSourceServer(project, options.mode, {host: options.host, port: options.port});
         const address = await server.start();
 
-        console.log(`POKIE outcome-source dev server (experimental) listening on http://${address.host}:${address.port}`);
+        console.log(`POKIE outcome-source dev server listening on http://${address.host}:${address.port}`);
         console.log("Serving draws from a native outcome library — not a casino backend or RGS.");
     }
 

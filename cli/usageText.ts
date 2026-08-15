@@ -12,6 +12,9 @@ import type {CliCommandHandling} from "./CliCommandHandling.js";
 export function buildUsageText(commands: CliCommandHandling[]): string {
     const program = new Command("pokie").helpOption(false).addHelpCommand(false).usage("<command>");
     for (const command of commands) {
+        if (command.getName().startsWith("__")) {
+            continue;
+        }
         program.command(command.getName()).description(command.getDescription());
     }
     // Disables Commander's own terminal-width line wrapping: a description wraps across several

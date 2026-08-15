@@ -1,5 +1,13 @@
 import {Command} from "commander";
-import {PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "pokie";
+import {
+    OutcomeLibraryBundleValidating,
+    OutcomeLibraryBundleValidator,
+    PokieGamePackageValidating,
+    PokieGamePackageValidationReport,
+    PokieGamePackageValidator,
+    ProjectResolving,
+    ProjectTargetResolver,
+} from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
@@ -7,7 +15,7 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 
 type ValidateFormat = "summary" | "json";
 
-const USAGE = "Usage: pokie validate <packageRoot> [--format json] [--out <file>]";
+const USAGE = "Usage: pokie validate <project> [--deep] [--format json] [--out <file>]";
 
 export class ValidateCommand implements CliCommandHandling {
     private readonly validator: PokieGamePackageValidating;
@@ -17,15 +25,21 @@ export class ValidateCommand implements CliCommandHandling {
     // passthrough so every existing caller/test keeps behaving exactly as before this boundary existed;
     // cli/pokie.ts wires the real, materializing one in.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    private readonly resolveProject: ProjectResolving;
+    private readonly outcomeLibraryValidator: OutcomeLibraryBundleValidating;
 
     constructor(
         validator: PokieGamePackageValidating = new PokieGamePackageValidator(),
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        outcomeLibraryValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
     ) {
         this.validator = validator;
         this.writeFile = writeFile;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
+        this.resolveProject = resolveProject;
+        this.outcomeLibraryValidator = outcomeLibraryValidator;
     }
 
     public getName(): string {
@@ -33,7 +47,7 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Validate a POKIE game package's contract (manifest, entry module) without playing it.";
+        return "Validate a resolved POKIE project's supported contract without running it.";
     }
 
     public getCommanderCommand(): Command {
@@ -41,7 +55,7 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     public async run(args: string[]): Promise<number> {
-        const resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string} = {};
+        const resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string; deep?: boolean} = {};
         const command = this.buildCommand(resultRef);
 
         try {
@@ -61,6 +75,10 @@ export class ValidateCommand implements CliCommandHandling {
         const packageRoot = resultRef.packageRoot!;
         const format = resultRef.format!;
         const out = resultRef.out;
+        const project = await this.resolveProject.resolve(packageRoot);
+        if (project?.type === "outcomeLibrary") {
+            return this.validateOutcomeLibrary(packageRoot, format, out, resultRef.deep ?? false);
+        }
         const resolution = await this.resolveRuntimePackageRoot(packageRoot);
         let report: PokieGamePackageValidationReport;
         try {
@@ -90,10 +108,10 @@ export class ValidateCommand implements CliCommandHandling {
     // two can never drift apart. `resultRef` is written by the action; run() supplies its own real box
     // and reads it back once parsing resolves, while getCommanderCommand() never parses this tree at
     // all, so its own default box is never read.
-    private buildCommand(resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string} = {}): Command {
+    private buildCommand(resultRef: {packageRoot?: string; format?: ValidateFormat; out?: string; deep?: boolean} = {}): Command {
         return createCommanderCliCommand("validate")
             .description(this.getDescription())
-            .argument("<packageRoot>", "an existing POKIE game package")
+            .argument("<project>", "an existing POKIE project")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--format <value>", 'only "json" is supported (default: a human-readable summary)', (value: string) => {
                 if (value !== "json") {
@@ -102,7 +120,8 @@ export class ValidateCommand implements CliCommandHandling {
                 return "json" as ValidateFormat;
             })
             .option("--out <file>", "file path to write the report to")
-            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string}) => {
+            .option("--deep", "also validate every outcome in an outcome-library project")
+            .action((root: string, excess: string[], options: {format?: ValidateFormat; out?: string; deep?: boolean}) => {
                 // An empty-string positional is "present" as far as Commander's own required-argument
                 // check is concerned, but the pre-Commander behavior this preserves treated it the same
                 // as an entirely missing one.
@@ -112,7 +131,34 @@ export class ValidateCommand implements CliCommandHandling {
                 resultRef.packageRoot = root;
                 resultRef.format = options.format ?? "summary";
                 resultRef.out = options.out;
+                resultRef.deep = options.deep ?? false;
             });
+    }
+
+    private async validateOutcomeLibrary(bundleDir: string, format: ValidateFormat, out: string | undefined, deep: boolean): Promise<number> {
+        const issues = await this.outcomeLibraryValidator.validate(bundleDir, {deep});
+        const errors = issues.filter((issue) => issue.severity === "error");
+        const json = JSON.stringify({project: bundleDir, valid: errors.length === 0, issues}, null, 4);
+        if (out) {
+            this.writeFile(out, json);
+        }
+        if (format === "json") {
+            console.log(json);
+        } else if (errors.length > 0) {
+            console.error(`"${bundleDir}" has ${errors.length} validation error(s):`);
+            for (const issue of issues) {
+                console.error(`  - ${issue.code}: ${issue.message}`);
+            }
+        } else {
+            console.log(`"${bundleDir}" is valid${deep ? " (deep check)" : ""}.`);
+            for (const issue of issues) {
+                console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
+            }
+            if (out) {
+                console.log(`\nReport written to "${out}".`);
+            }
+        }
+        return errors.length === 0 ? 0 : 1;
     }
 
     private printSummary(report: PokieGamePackageValidationReport): void {

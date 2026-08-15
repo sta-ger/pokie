@@ -83,8 +83,8 @@ export class EditCommand implements CliCommandHandling {
             '"pokie create" uses ("pokie edit <blueprint> [--out <file>]") -- every question pre-fills the ' +
             "current value and Enter preserves it, then a diff against the loaded file is shown and nothing is " +
             'written until it\'s explicitly confirmed. --out saves the result to a different file instead of ' +
-            'overwriting <blueprint> ("Save As"). Pointed at a non-Blueprint project (tsPackage/wasm/' +
-            "outcomeLibrary/stakeAdapter/parWorkbook), reports why it can't be edited here instead of running the " +
+            'overwriting <blueprint> ("Save As"). Pointed at a non-Blueprint artifact project, reports why it ' +
+            "can't be edited here instead of running the " +
             'wizard. A "generated" reelStripGeneration is left untouched -- see "pokie reel generate" for that.'
         );
     }
