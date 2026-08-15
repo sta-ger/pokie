@@ -20,11 +20,14 @@ describe("public command tree", () => {
     });
 
     it("does not label the supported browser workflows as previews", () => {
-        const supportedBrowserWorkflowDescriptions = commands
+        const supportedBrowserWorkflows = commands
             .filter((command) => command.getName() === "client" || command.getName() === "dev")
-            .map((command) => command.getDescription());
+            .flatMap((command) => [command.getDescription(), command.getCommanderCommand().helpInformation()]);
+        const topLevelBrowserWorkflowHelp = buildUsageText(commands)
+            .split("\n")
+            .filter((line) => /^\s+(client|dev)\b/.test(line));
 
-        expect(supportedBrowserWorkflowDescriptions).toHaveLength(2);
-        expect(supportedBrowserWorkflowDescriptions.join("\n")).not.toMatch(/\bpreview\b/i);
+        expect(supportedBrowserWorkflows).toHaveLength(4);
+        expect([...supportedBrowserWorkflows, ...topLevelBrowserWorkflowHelp].join("\n")).not.toMatch(/\bpreview\b/i);
     });
 });
