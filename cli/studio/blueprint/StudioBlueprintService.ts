@@ -104,6 +104,28 @@ function resolveAvailableManagedDestination(pathResolver: PokiePathResolver, bas
     };
 }
 
+// A Blueprint is the source of truth for a managed Blueprint Project.  Do not leave a partly-written
+// JSON document behind if Studio is interrupted while saving it: write a sibling temporary file and
+// rename it into place, which is atomic on the one filesystem that contains both paths.
+function writeBlueprintAtomically(targetPath: string, blueprint: unknown): void {
+    const temporaryPath = path.join(
+        path.dirname(targetPath),
+        `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`,
+    );
+    try {
+        fs.writeFileSync(temporaryPath, serializeGameBlueprint(blueprint), {flag: "wx"});
+        fs.renameSync(temporaryPath, targetPath);
+    } catch (error) {
+        try {
+            fs.unlinkSync(temporaryPath);
+        } catch {
+            // The temporary file either was never created or was already renamed.  The original error
+            // remains the useful one for the caller.
+        }
+        throw error;
+    }
+}
+
 // Drives GameBlueprintValidating/GamePackageGenerating/loadGameBlueprint/buildGameBuildInfo/
 // ParSheetImporting/ParSheetExporting — the exact same services `pokie build`/`pokie par import`/
 // `pokie par export` themselves use — directly, for the Blueprint Editor's /api/home/blueprints/*
@@ -312,7 +334,7 @@ export class StudioBlueprintService {
 
         try {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
-            fs.writeFileSync(resolved, serializeGameBlueprint(blueprint));
+            writeBlueprintAtomically(resolved, blueprint);
             return {status: "ok", path: resolved, blueprintHash: editedHash};
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
@@ -358,7 +380,7 @@ export class StudioBlueprintService {
 
         try {
             fs.mkdirSync(destination.directory, {recursive: true});
-            fs.writeFileSync(destination.targetPath, serializeGameBlueprint(blueprint));
+            writeBlueprintAtomically(destination.targetPath, blueprint);
             return {
                 status: "ok",
                 path: destination.targetPath,
@@ -368,6 +390,19 @@ export class StudioBlueprintService {
             };
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    // Called only by StudioServer when registering the just-created managed project fails.  This is
+    // deliberately narrower than a general delete API: the path came from this saveManaged() call, so
+    // rolling it back cannot remove a user-selected or pre-existing Blueprint.
+    public discardManagedSave(targetPath: string): void {
+        try {
+            fs.unlinkSync(targetPath);
+            fs.rmdirSync(path.dirname(targetPath));
+        } catch {
+            // Rollback is best effort.  The route still reports registration failure rather than a
+            // misleading success, and any empty directory is harmless.
         }
     }
 

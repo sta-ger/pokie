@@ -17,14 +17,28 @@ function statusText(view: BlueprintValidationView): string | undefined {
     return undefined;
 }
 
-export function BlueprintValidationPanel({view, onValidate}: {view: BlueprintValidationView; onValidate: () => void}) {
+export function BlueprintValidationPanel({
+    view,
+    onValidate,
+    automatic = false,
+}: {
+    view: BlueprintValidationView;
+    onValidate: () => void;
+    automatic?: boolean;
+}) {
     return (
         <PageSection legend="Validation">
-            <QuickActions>
-                <Button onClick={onValidate} loading={view.status === "loading"}>
-                    Validate
-                </Button>
-            </QuickActions>
+            {automatic ? (
+                <Text c="dimmed" size="sm" mb="sm">
+                    Checked automatically when the game model changes.
+                </Text>
+            ) : (
+                <QuickActions>
+                    <Button onClick={onValidate} loading={view.status === "loading"}>
+                        Validate
+                    </Button>
+                </QuickActions>
+            )}
             {view.status === "loading" && <LoadingState label="Validating…" />}
             {view.status === "stale" && (
                 <Text c="dimmed" mb="sm">

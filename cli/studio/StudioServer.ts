@@ -1190,11 +1190,17 @@ export class StudioServer implements StudioServerHandling {
         const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
         if (result.status === "ok") {
             const registration = await this.projectRegistrationService.registerManaged(result.path, result.name, result.sourceWorkbookPath);
+            if (registration.status !== "ok") {
+                // A managed save is not successful until its Blueprint Project is registered.  Roll the
+                // freshly-created source back so users never receive a "saved" result for an orphan that
+                // disappears from Projects after restart.
+                this.blueprintService.discardManagedSave(result.path);
+                this.sendJson(res, 500, {status: "error", error: `Could not register the Blueprint Project at "${result.path}".`});
+                return;
+            }
             // The client can render this freshly persisted row directly, instead of making its visible
-            // Projects update depend on a follow-up registry list request settling.  Keep the regular
-            // save result intact for the (theoretically unreachable) case that the just-written file
-            // does not resolve back to a recognized Project.
-            this.sendJson(res, 201, registration.status === "ok" ? {...result, registeredProject: registration.entry} : result);
+            // Projects update depend on a follow-up registry list request settling.
+            this.sendJson(res, 201, {...result, registeredProject: registration.entry});
             return;
         }
         this.sendJson(res, 200, result);

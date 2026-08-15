@@ -26,8 +26,13 @@ export type ReelStripGenerationDraftsRef = RefObject<ReelStripGenerationDrafts>;
 // {formGeneration}` on their container, without also tearing down the whole Form subtree (and any
 // in-flight request it holds, e.g. the Reel Strip Modeler's "Resolve reels") on every single field edit
 // -- see ReelStripGenerationEditor's own stale-response guard, which depends on surviving exactly that.
-export function useBlueprintEditor() {
-    const [state, setState] = useState<BlueprintEditorState>(() => createEmptyBlueprintEditorState());
+export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
+    // Design Game supplies a complete Recommended Project here; the standalone/raw editor keeps the
+    // explicit empty document it has always used.  The argument is intentionally read only for the
+    // initial state, just like React's other `useState` initializers.
+    const [state, setState] = useState<BlueprintEditorState>(() =>
+        initialBlueprint === undefined ? createEmptyBlueprintEditorState() : loadBlueprintEditorState(initialBlueprint),
+    );
     const [formGeneration, setFormGeneration] = useState(0);
     const draftsRef = useRef<ReelStripGenerationDrafts>(new Map());
 

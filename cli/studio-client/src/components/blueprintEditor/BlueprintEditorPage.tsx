@@ -1,10 +1,12 @@
 import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
-import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
+import {useNavigate} from "react-router-dom";
+import {checkBlueprintSource, loadBlueprint, openProject, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {StudioProjectRegistryView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
+import {createRecommendedBlueprint} from "../../domain/blueprintEditorState";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
 import {
@@ -169,8 +171,11 @@ export function BlueprintEditorPage({
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
 } = {}) {
     const fetchImpl = useStudioApi();
+    const navigate = useNavigate();
     const confirm = useConfirm();
-    const editor = useBlueprintEditor();
+    // Design Game opens on a real, immediately playable Recommended Project. The raw editor remains
+    // intentionally blank when used outside this guided entry point.
+    const editor = useBlueprintEditor(guided ? createRecommendedBlueprint() : undefined);
     const [mode, setMode] = useState<BlueprintMode>("form");
     const [blueprintPath, setBlueprintPath] = useState<string>();
     const overwriteConfirmedForPath = useRef<string | undefined>(undefined);
@@ -180,6 +185,7 @@ export function BlueprintEditorPage({
     // `saveView` above since that one renders inside the advanced-options Collapse and would be invisible
     // whenever this action's own result needs to be seen.
     const [managedSaveView, setManagedSaveView] = useState<BlueprintSaveView>({status: "idle"});
+    const [workspaceOpenError, setWorkspaceOpenError] = useState<string>();
     const [showManagedConflictComparison, setShowManagedConflictComparison] = useState(false);
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
@@ -607,6 +613,10 @@ export function BlueprintEditorPage({
         closeNewDialog();
     };
 
+    const handleChooseRecommended = (): void => {
+        handleUseRandomBlueprint(createRecommendedBlueprint());
+    };
+
     // New -> Generate random -> Use this blueprint: same wholesale-replace bookkeeping as Blank/Load,
     // just sourced from NewBlueprintDialog's own POST /api/home/blueprints/random call instead of a
     // starter object or a loaded file -- see StudioBlueprintService.random()'s own doc comment for why
@@ -826,6 +836,13 @@ export function BlueprintEditorPage({
     // with overwrite:true, so it never re-asks either. A successful save also clears the draft-recovery
     // slot -- the content is now safely persisted, so there's nothing left to "recover".
     const handleGuidedSave = (): void => {
+        // Validation is continuously maintained model state.  A Create/Save click against an edited
+        // or invalid model refreshes the actionable diagnostics rather than becoming a dead disabled
+        // button in a separate wizard stage.
+        if (validationView.status !== "ok" || sourceDrift !== undefined) {
+            handleValidate();
+            return;
+        }
         if (!saveGuard.begin()) {
             return;
         }
@@ -864,8 +881,14 @@ export function BlueprintEditorPage({
                     // Home keeps Projects mounted beside this editor, but Projects fetches only when
                     // visible. Give its owner the just-persisted row as well as asking it to reconcile
                     // its list, so the visible Projects update never waits on that request settling.
-                    if (!alreadyOwnsPath && "registeredProject" in raw) {
-                        onManagedProjectSaved?.(raw.registeredProject);
+                    if (!alreadyOwnsPath && "registeredProject" in raw && raw.registeredProject !== undefined) {
+                        const registeredProject = raw.registeredProject;
+                        onManagedProjectSaved?.(registeredProject);
+                        // The newly registered Blueprint Project is ready to use as-is; enter its
+                        // Workspace rather than leaving the creator at a separate build step.
+                        openProject(fetchImpl, registeredProject.location)
+                            .then(() => navigate(`/project/${encodeURIComponent(registeredProject.location)}/overview`))
+                            .catch((error: unknown) => setWorkspaceOpenError(errorMessage(error)));
                     }
                 }
             })
@@ -877,6 +900,10 @@ export function BlueprintEditorPage({
 
     const guidedProgress = describeGuidedProgress(validationView.status, sourceDrift !== undefined);
     const nextStep = describeGuidedNextStep(validationView.status, sourceDrift);
+    // Kept as internal state derivations for the non-guided editor's compatibility path.  The Project
+    // creator intentionally does not render a Configure → Validate → Build checklist.
+    void guidedProgress;
+    void nextStep;
 
     // Guided flow requires an actual successful validation *of the current revision* before allowing a
     // build -- not just "not known-invalid" (the raw editor's own, looser rule below, unchanged). Since
@@ -887,6 +914,8 @@ export function BlueprintEditorPage({
     // blocked even once a content-only revalidate reports "ok" again for the current draft.
     const guidedBuildBlocked = validationView.status !== "ok" || sourceDrift !== undefined;
     const guidedBuildBlockedMessage = describeGuidedBuildBlockedMessage(validationView.status, sourceDrift !== undefined);
+    void guidedBuildBlocked;
+    void guidedBuildBlockedMessage;
 
     const formModeContent = guided ? (
         <SectionedFormEditor
@@ -915,11 +944,9 @@ export function BlueprintEditorPage({
                 <div>
                     <Title order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
-                        Start from a blank blueprint or load an existing one, configure your game model, validate it, then build your
-                        game package.
+                        Create a Blueprint Project from the recommended playable model, a reproducible random seed, or an explicit blank.
+                        Studio checks the model automatically; saving opens its Workspace for Play and Simulation.
                     </Text>
-                    <StepProgressList steps={guidedProgress} />
-                    <NextStepCallout {...nextStep} />
                 </div>
             )}
 
@@ -945,16 +972,17 @@ export function BlueprintEditorPage({
             {guided && (
                 <div>
                     <QuickActions>
-                        <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"} disabled={validationView.status !== "ok"}>
-                            Save
+                        <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"}>
+                            {blueprintPath === undefined ? "Create Project" : "Save Project"}
                         </Button>
                     </QuickActions>
                     {validationView.status !== "ok" && (
                         <Text c="dimmed" size="sm" mb="sm">
-                            Validate your configuration successfully before saving.
+                            Studio is checking this model automatically. Create Project will show any fixes that are needed.
                         </Text>
                     )}
                     {managedSaveView.status === "ok" && <SuccessResult message={`Saved to "${managedSaveView.path}".`} />}
+                    {workspaceOpenError && <ErrorState message={`The project was saved, but its Workspace could not open: ${workspaceOpenError}`} />}
                     {managedSaveView.status === "conflict" && managedSaveView.reason === "stale" && (
                         <div>
                             <RecoveryNotice
@@ -1029,6 +1057,7 @@ export function BlueprintEditorPage({
                 onOverwrite={handleOverwrite}
                 loadView={loadView}
                 onLoad={handleLoad}
+                onChooseRecommended={handleChooseRecommended}
                 onChooseBlank={handleChooseBlank}
                 onUseRandomBlueprint={handleUseRandomBlueprint}
             />
@@ -1101,9 +1130,9 @@ export function BlueprintEditorPage({
                 />
             )}
 
-            <BlueprintValidationPanel view={validationView} onValidate={handleValidate} />
+            <BlueprintValidationPanel view={validationView} onValidate={handleValidate} automatic={guided} />
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} />
-            <BlueprintBuildPanel
+            {!guided && <BlueprintBuildPanel
                 // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current
                 // build-attempt status are this panel's own local, transient state and would otherwise
                 // survive a wholesale replace, showing a stale in-flight/error status for a blueprint
@@ -1116,9 +1145,8 @@ export function BlueprintEditorPage({
                 builtSnapshot={builtSnapshot}
                 onBuilt={handleBuilt}
                 onRestoreBuilt={handleRestoreBuilt}
-                blocked={guided ? guidedBuildBlocked : validationView.status === "invalid"}
-                blockedMessage={guided ? guidedBuildBlockedMessage : undefined}
-            />
+                blocked={validationView.status === "invalid"}
+            />}
         </div>
     );
 }
