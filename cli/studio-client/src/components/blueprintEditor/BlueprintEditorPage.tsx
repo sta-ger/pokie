@@ -377,6 +377,9 @@ export function BlueprintEditorPage({
     // effect running; every other bump still relies on this alone.
     const hasRunRevisionEffectRef = useRef(false);
     const autoValidateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    // Kept separately from the validation debounce: this one only yields a primary action until React
+    // has drained the input's preceding blur batch (see handleGuidedSave below).
+    const guidedSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => {
         const isInitialMount = !hasRunRevisionEffectRef.current;
         hasRunRevisionEffectRef.current = true;
@@ -412,6 +415,9 @@ export function BlueprintEditorPage({
         () => () => {
             if (autoValidateTimerRef.current !== undefined) {
                 clearTimeout(autoValidateTimerRef.current);
+            }
+            if (guidedSaveTimerRef.current !== undefined) {
+                clearTimeout(guidedSaveTimerRef.current);
             }
         },
         [],
@@ -858,11 +864,14 @@ export function BlueprintEditorPage({
         if (!saveGuard.begin()) {
             return;
         }
-        // Let React finish the current discrete event before taking the snapshot. A form field commits
-        // on blur, and clicking Create Project can be part of that same event batch. Reading on the
-        // next microtask makes the primary action see that just-committed revision rather than a
-        // completed validation for the previous one.
-        Promise.resolve().then(() => runGuidedSave());
+        // Let React drain the current discrete event before taking the snapshot. A form field commits
+        // on blur, and clicking Create Project can be part of that same batch. A microtask can run
+        // before React commits that batch, so yield one task to ensure this action validates the
+        // just-committed revision rather than saving a previous valid one.
+        guidedSaveTimerRef.current = setTimeout(() => {
+            guidedSaveTimerRef.current = undefined;
+            runGuidedSave();
+        }, 0);
     };
 
     const runGuidedSave = (): void => {
