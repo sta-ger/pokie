@@ -1,4 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useLocation} from "react-router-dom";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -109,6 +109,46 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         await waitFor(() =>
             expect(screen.getByTestId("location")).toHaveTextContent("/project/%2Fprojects%2Fstarter-slot%2Fblueprint.json/overview"),
         );
+    });
+
+    it("validates an immediately edited revision before saving and does not save it when invalid", async () => {
+        const validationBodies: {blueprint: {manifest: {name: string}}}[] = [];
+        const managedSaveBodies: unknown[] = [];
+        const {fetchImpl, calls} = createFakeFetch((call) => {
+            if (call.url === "/api/home/blueprints/validate") {
+                const body = JSON.parse(call.init?.body ?? "{}") as {blueprint: {manifest: {name: string}}};
+                validationBodies.push(body);
+                return body.blueprint.manifest.name.length === 0
+                    ? {
+                        ok: true,
+                        status: 200,
+                        body: {status: "invalid", errors: [{code: "missing-name", severity: "error", message: "Game name is required."}], warnings: []},
+                    }
+                    : {ok: true, status: 200, body: {status: "ok", warnings: []}};
+            }
+            if (call.url === "/api/home/blueprints/save-managed") {
+                managedSaveBodies.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 201, body: {status: "ok", path: "/projects/starter-slot/blueprint.json", name: "starter-slot", blueprintHash: "starter-hash"}};
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1), {timeout: 1500});
+        expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
+
+        const gameNameInput = screen.getByLabelText("Game name");
+        act(() => {
+            fireEvent.change(gameNameInput, {target: {value: ""}});
+            fireEvent.blur(gameNameInput);
+            fireEvent.click(screen.getByRole("button", {name: "Create Project"}));
+        });
+
+        await waitFor(() => expect(validationBodies).toHaveLength(2));
+        expect(validationBodies[0].blueprint.manifest.name).toBe("Starter Slot");
+        expect(validationBodies[1].blueprint.manifest.name).toBe("");
+        expect(managedSaveBodies).toHaveLength(0);
     });
 
     it("releases a joined stale validation so Create Project saves the edited revision", async () => {

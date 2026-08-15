@@ -883,11 +883,6 @@ export function BlueprintEditorPage({
             }
             return;
         }
-        if (validationView.status === "ok") {
-            saveGuidedProject(savedRevision);
-            return;
-        }
-
         // If the scheduled automatic validation has already started for this same revision, use its
         // result. This preserves the one-action Create flow and, crucially, gives one model revision
         // one validation request even under a slow render or a click arriving at the debounce boundary.
