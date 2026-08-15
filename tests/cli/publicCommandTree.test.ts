@@ -19,7 +19,7 @@ describe("public command tree", () => {
         expect(names).toEqual(expect.arrayContaining(["export", "generate", "import", "sample"]));
         expect(names).not.toEqual(expect.arrayContaining(["name", "outcomelibrary", "outcomesource", "par", "stakeengine", "studio"]));
         expect(help).toContain("export");
-        expect(help).not.toMatch(/pokie (name|outcomelibrary|outcomesource|par|stakeengine|studio)\b/);
+        expect(help).not.toMatch(/(pokie (name|outcomelibrary|outcomesource|par|stakeengine|studio)\b)/);
     });
 
     it("does not label the supported browser workflows as previews", () => {
