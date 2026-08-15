@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {getProjectContext} from "../api/apiClient";
+import {getProjectContext, openProject} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describeProjectHeader, type ProjectHeaderView} from "../domain/interpret/ProjectDashboard";
@@ -12,7 +12,10 @@ import {describeProjectHeader, type ProjectHeaderView} from "../domain/interpret
 const POLL_INTERVAL_MS = 500;
 const POLL_MAX_ATTEMPTS = 40;
 
-export function useProjectContext(): ProjectHeaderView {
+// `requestedProjectRoot` is taken from a project-scoped history route. It must be made current on
+// the server before any dashboard data is read: the server intentionally owns one active project,
+// while browser history may point back to an earlier one.
+export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderView {
     const fetchImpl = useStudioApi();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
 
@@ -38,13 +41,52 @@ export function useProjectContext(): ProjectHeaderView {
                 });
         };
 
-        poll(POLL_MAX_ATTEMPTS);
+        if (requestedProjectRoot === undefined) {
+            poll(POLL_MAX_ATTEMPTS);
+        } else {
+            // Do not leave the previous dashboard visible while restoring a historical route. The
+            // caller's keyed route remount already clears local state; this explicit loading header
+            // also prevents project-scoped requests until the server has accepted the requested root.
+            setHeader({status: "loading", projectRoot: requestedProjectRoot});
+            getProjectContext(fetchImpl)
+                .then((dashboard) => {
+                    if (cancelled) {
+                        return;
+                    }
+                    // The usual Home -> Project flow has already opened this exact root before
+                    // navigating. Reuse that freshly loaded context; only a historical route whose
+                    // root differs from the server's current one needs another open request.
+                    if (dashboard.status !== "empty" && dashboard.projectRoot === requestedProjectRoot) {
+                        setHeader(describeProjectHeader(dashboard));
+                        if (dashboard.status === "loading") {
+                            timeoutId = setTimeout(() => poll(POLL_MAX_ATTEMPTS - 1), POLL_INTERVAL_MS);
+                        }
+                        return;
+                    }
+                    openProject(fetchImpl, requestedProjectRoot)
+                        .then(() => {
+                            if (!cancelled) {
+                                poll(POLL_MAX_ATTEMPTS);
+                            }
+                        })
+                        .catch((error: unknown) => {
+                            if (!cancelled) {
+                                setHeader({status: "error", projectRoot: requestedProjectRoot, message: errorMessage(error)});
+                            }
+                        });
+                })
+                .catch((error: unknown) => {
+                    if (!cancelled) {
+                        setHeader({status: "error", projectRoot: requestedProjectRoot, message: errorMessage(error)});
+                    }
+                });
+        }
 
         return () => {
             cancelled = true;
             clearTimeout(timeoutId);
         };
-    }, [fetchImpl]);
+    }, [fetchImpl, requestedProjectRoot]);
 
     return header;
 }

@@ -1,0 +1,9 @@
+[2026-08-14T18:56:56Z] START fresh Studio and Chrome workflow for candidate 2472e2614ca75f5a2ebc12e75976814c3d3a7edc.
+[2026-08-14T18:57:00Z] CLICK rendered Design Game controls to generate, select, and Save a managed Blueprint.
+[2026-08-14T18:57:01Z] CLICK rendered Projects navigation; the newly saved managed row is visible (managed-save.png).
+[2026-08-14T18:57:23Z] HOST moves the exact saved Blueprint directory; relocation-integrity.txt records unchanged inode, size, mode, and SHA-256.
+[2026-08-14T18:57:24Z] CLICK rendered Design Game, then Projects; the moved row renders as (missing) with Relocate (missing-relocate.png).
+[2026-08-14T18:57:33Z] CLICK rendered Relocate, enter the moved blueprint path through the browser keyboard, and CLICK the rendered confirmation.
+[2026-08-14T18:58:05Z] OBSERVE one canonical managed row at the new location with Open and no missing marker (relocated-canonical.png; registry-after-relocation.json).
+[2026-08-14T18:59:38Z] RESTART Studio and Chrome, navigate to rendered Projects, and OBSERVE the same single relocated managed row with Open and no missing marker (restarted-canonical.png).
+[2026-08-14T18:59:39Z] PASS: managed create, missing detection, visible relocation, canonical-record preservation, and restart persistence all completed through the rendered Studio UI.

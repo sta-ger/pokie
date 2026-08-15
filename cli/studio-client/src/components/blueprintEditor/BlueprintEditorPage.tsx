@@ -2,6 +2,7 @@ import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} f
 import {useDisclosure} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
+import type {StudioProjectRegistryView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {errorMessage} from "../../domain/errorMessage";
@@ -159,7 +160,14 @@ export function BlueprintEditorPage({
     initialPath,
     initialParSheetPath,
     onDirtyChange,
-}: {guided?: boolean; initialPath?: string; initialParSheetPath?: string; onDirtyChange?: (dirty: boolean) => void} = {}) {
+    onManagedProjectSaved,
+}: {
+    guided?: boolean;
+    initialPath?: string;
+    initialParSheetPath?: string;
+    onDirtyChange?: (dirty: boolean) => void;
+    onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
+} = {}) {
     const fetchImpl = useStudioApi();
     const confirm = useConfirm();
     const editor = useBlueprintEditor();
@@ -172,6 +180,7 @@ export function BlueprintEditorPage({
     // `saveView` above since that one renders inside the advanced-options Collapse and would be invisible
     // whenever this action's own result needs to be seen.
     const [managedSaveView, setManagedSaveView] = useState<BlueprintSaveView>({status: "idle"});
+    const [showManagedConflictComparison, setShowManagedConflictComparison] = useState(false);
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
     // recovery slot (see blueprintDraftStorage.ts) -- undefined when there's nothing to recover, storage
@@ -358,6 +367,10 @@ export function BlueprintEditorPage({
     // style guard handleValidate's own isStale() uses, just keyed on this ref's identity instead of a
     // revision number, since a source-check response doesn't carry (or need) one of its own.
     const sourceVersionRef = useRef<{path: string; hash: string} | undefined>(undefined);
+    // Once drift is found, retain sourceVersionRef as the save's expected hash but stop repeatedly
+    // polling the same known-conflicted snapshot. Load or a successful Save clears this pause together
+    // with establishing a new source baseline.
+    const sourceCheckPausedRef = useRef(false);
 
     // Set once the background source-check poll below (never any other caller) confirms the persisted
     // Blueprint source `sourceVersionRef` was watching either changed externally ("changed") or has
@@ -498,6 +511,10 @@ export function BlueprintEditorPage({
             if (sourceCheckCancelledRef.current) {
                 return;
             }
+            if (sourceCheckPausedRef.current) {
+                scheduleNextCheck();
+                return;
+            }
             const watched = sourceVersionRef.current;
             if (watched === undefined) {
                 scheduleNextCheck();
@@ -509,7 +526,7 @@ export function BlueprintEditorPage({
                         return;
                     }
                     if (result.status === "changed") {
-                        sourceVersionRef.current = {path: watched.path, hash: result.blueprintHash};
+                        sourceCheckPausedRef.current = true;
                         setBuiltSnapshot(undefined);
                         setValidationView((prev) =>
                             prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev,
@@ -523,6 +540,7 @@ export function BlueprintEditorPage({
                         // No fresh hash to re-arm with, and nothing left to watch until a real
                         // reload/save re-establishes a source -- see sourceDrift's own doc comment.
                         sourceVersionRef.current = undefined;
+                        sourceCheckPausedRef.current = true;
                         setBuiltSnapshot(undefined);
                         setValidationView((prev) =>
                             prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev,
@@ -578,6 +596,7 @@ export function BlueprintEditorPage({
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
         sourceVersionRef.current = undefined;
+        sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
@@ -603,6 +622,7 @@ export function BlueprintEditorPage({
         setBlueprintPath(undefined);
         overwriteConfirmedForPath.current = undefined;
         sourceVersionRef.current = undefined;
+        sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
@@ -629,6 +649,7 @@ export function BlueprintEditorPage({
         // change detection (see sourceVersionRef's own doc comment) simply stays off for this path until
         // the next Load/Save re-establishes a known-good baseline for it.
         sourceVersionRef.current = undefined;
+        sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
@@ -662,6 +683,7 @@ export function BlueprintEditorPage({
                     // source-check poll starts watching it from here (see sourceVersionRef's own doc
                     // comment).
                     sourceVersionRef.current = {path: result.path, hash: result.blueprintHash};
+                    sourceCheckPausedRef.current = false;
                     // A fresh Load is one of the two "reload/save" actions that re-establishes trust --
                     // see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
@@ -706,6 +728,7 @@ export function BlueprintEditorPage({
         // background source-change detection stays off until a JSON Load/Save gives it a real path to
         // watch (see sourceVersionRef's own doc comment).
         sourceVersionRef.current = undefined;
+        sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
         setLoadView({status: "idle"});
         setSaveView({status: "idle"});
@@ -764,7 +787,8 @@ export function BlueprintEditorPage({
         // never get attributed as "saved" by markClean below once the response actually arrives.
         const savedRevision = editor.state.revision;
         setSaveView({status: "loading"});
-        saveBlueprint(fetchImpl, path, editor.state.blueprint, overwrite)
+        const expectedHash = sourceVersionRef.current?.path === path ? sourceVersionRef.current.hash : undefined;
+        saveBlueprint(fetchImpl, path, editor.state.blueprint, overwrite, expectedHash)
             .then((result) => {
                 setSaveView(describeSaveResult(result));
                 if (result.status === "ok") {
@@ -774,6 +798,7 @@ export function BlueprintEditorPage({
                     // This exact content is now known to match `result.path` on disk -- see
                     // sourceVersionRef's own doc comment.
                     sourceVersionRef.current = {path: result.path, hash: result.blueprintHash};
+                    sourceCheckPausedRef.current = false;
                     // A fresh Save is the other of the two "reload/save" actions that re-establishes
                     // trust -- see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
@@ -813,7 +838,13 @@ export function BlueprintEditorPage({
         // read the just-written content's own hash off `raw` for sourceVersionRef -- see its own doc
         // comment.
         const request = alreadyOwnsPath
-            ? saveBlueprint(fetchImpl, blueprintPath, editor.state.blueprint, true).then((raw) => ({raw, view: describeSaveResult(raw)}))
+            ? saveBlueprint(
+                fetchImpl,
+                blueprintPath,
+                editor.state.blueprint,
+                true,
+                sourceVersionRef.current?.path === blueprintPath ? sourceVersionRef.current.hash : undefined,
+            ).then((raw) => ({raw, view: describeSaveResult(raw)}))
             : saveManagedBlueprint(fetchImpl, editor.state.blueprint, importedFromParSheetPath).then((raw) => ({
                 raw,
                 view: describeSaveManagedResult(raw),
@@ -827,8 +858,15 @@ export function BlueprintEditorPage({
                     markClean(savedRevision);
                     clearPersistedBlueprintDraft();
                     sourceVersionRef.current = {path: view.path, hash: raw.blueprintHash};
+                    sourceCheckPausedRef.current = false;
                     // Same as runSave's own success branch -- see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
+                    // Home keeps Projects mounted beside this editor, but Projects fetches only when
+                    // visible. Give its owner the just-persisted row as well as asking it to reconcile
+                    // its list, so the visible Projects update never waits on that request settling.
+                    if (!alreadyOwnsPath && "registeredProject" in raw) {
+                        onManagedProjectSaved?.(raw.registeredProject);
+                    }
                 }
             })
             .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))
@@ -917,6 +955,37 @@ export function BlueprintEditorPage({
                         </Text>
                     )}
                     {managedSaveView.status === "ok" && <SuccessResult message={`Saved to "${managedSaveView.path}".`} />}
+                    {managedSaveView.status === "conflict" && managedSaveView.reason === "stale" && (
+                        <div>
+                            <RecoveryNotice
+                                title="Blueprint changed while you were editing"
+                                message={managedSaveView.message}
+                                actionLabel="Reload"
+                                onAction={() => handleLoad(managedSaveView.path)}
+                                secondaryActionLabel="Compare"
+                                onSecondaryAction={() => setShowManagedConflictComparison((shown) => !shown)}
+                            />
+                            {managedSaveView.canSaveAs && (
+                                <Button variant="default" size="xs" mb="sm" onClick={openAdvanced}>
+                                    Save As
+                                </Button>
+                            )}
+                            {showManagedConflictComparison && (
+                                <Text component="pre" size="xs" mb="sm" style={{whiteSpace: "pre-wrap", overflowWrap: "anywhere"}}>
+                                    {JSON.stringify(
+                                        {
+                                            currentHash: managedSaveView.currentHash,
+                                            editedHash: managedSaveView.editedHash,
+                                            currentBlueprint: managedSaveView.currentBlueprint,
+                                            editedBlueprint: managedSaveView.editedBlueprint,
+                                        },
+                                        null,
+                                        2,
+                                    )}
+                                </Text>
+                            )}
+                        </div>
+                    )}
                     {(managedSaveView.status === "failed" || managedSaveView.status === "error") && (
                         <ErrorState message={describePathActionError("The project", managedSaveView.message)} />
                     )}
@@ -936,6 +1005,7 @@ export function BlueprintEditorPage({
                 onLoad={handleLoad}
                 onSave={handleSave}
                 onOverwrite={handleOverwrite}
+                onReloadConflict={handleLoad}
                 // NewBlueprintDialog reuses these exact same handleLoad/handleSave/handleOverwrite calls
                 // for its own Load existing/dirty-confirm Save steps (see its own doc comment), which
                 // otherwise means an in-dialog load-error/save-conflict would render *twice* -- once

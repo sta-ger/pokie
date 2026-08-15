@@ -1,7 +1,17 @@
 import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
-import {renderRoutedApp} from "./testUtils/renderRoutedApp";
+import {renderHashRoutedApp, renderRoutedApp} from "./testUtils/renderRoutedApp";
+
+async function traverseBrowserHistory(direction: "back" | "forward"): Promise<void> {
+    await act(async () => {
+        const popped = new Promise<void>((resolve) => {
+            window.addEventListener("popstate", () => resolve(), {once: true});
+        });
+        window.history[direction]();
+        await popped;
+    });
+}
 
 describe("Routable Home/Project sections: refresh and direct-link", () => {
     it("a direct link to a non-default Home tab renders that tab, not the default", async () => {
@@ -83,13 +93,13 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/does-not-exist"]});
 
+        // Navigate commits from an effect.  Waiting for the final route keeps this test from ending
+        // while that state update is still pending, without incorrectly waiting for the CSS-hidden
+        // Projects panel's registry request (it deliberately does not make one until visible).
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
-        // Same reasoning as the direct-link test above: the still-mounted (CSS-hidden) Projects tab
-        // body's own ProjectsPanel kicked off its mount-time registry fetch too -- await it settling
-        // before this test ends.
-        expect(await screen.findByText("No projects yet -- import or design one below.")).toBeInTheDocument();
     });
 });
 
@@ -119,4 +129,139 @@ describe("Routable Home sections: browser back/forward", () => {
         // even the project's raised 60000ms testTimeout, same reasoning as happyPath.test.tsx's own
         // explicit timeout.
     }, 90000);
+});
+
+describe("Project-scoped browser history", () => {
+    it("keeps every Forward entry after Back restores a legacy-scoped project", async () => {
+        let currentProjectRoot = "/games/a";
+        const dashboardForCurrentProject = () => ({
+            ok: true,
+            status: 200,
+            body: {
+                status: "loaded",
+                projectRoot: currentProjectRoot,
+                game: {
+                    id: currentProjectRoot === "/games/a" ? "a" : "b",
+                    name: currentProjectRoot === "/games/a" ? "A" : "B",
+                    version: "1.0.0",
+                },
+                type: "blueprint",
+                capabilities: ["blueprint.build"],
+            },
+        });
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/open": (call) => {
+                currentProjectRoot = (JSON.parse(call.init?.body ?? "{}") as {projectRoot: string}).projectRoot;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentProjectRoot}}};
+            },
+            "/api/project/context": dashboardForCurrentProject,
+            "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, issues: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: currentProjectRoot, valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: []}),
+        });
+        const aRoute = `/project/${encodeURIComponent("/games/a")}/play`;
+        const bRoute = `/project/${encodeURIComponent("/games/b")}/play`;
+
+        window.history.replaceState(null, "", "#/project/play");
+        const {router} = renderHashRoutedApp({fetchImpl});
+
+        await screen.findByRole("heading", {name: "A"});
+        await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
+        // The router must own the replacement too: merely rewriting the native hash leaves its tracked
+        // location stale and breaks a later Forward traversal through this entry.
+        await waitFor(() => expect(router.state.location.pathname).toBe(aRoute));
+        expect(window.history.state).toMatchObject({idx: 0});
+
+        await act(() => router.navigate("/home/design"));
+        await act(() => router.navigate("/home/projects"));
+        await act(() => router.navigate(`/project/${encodeURIComponent("/games/b")}/overview`));
+        await screen.findByRole("heading", {name: "B"});
+        await act(() => router.navigate(bRoute));
+
+        await traverseBrowserHistory("back");
+        await traverseBrowserHistory("back");
+        await traverseBrowserHistory("back");
+        await traverseBrowserHistory("back");
+        await screen.findByRole("heading", {name: "A"});
+        expect(router.state.location.pathname).toBe(aRoute);
+        expect(window.location.hash).toBe(`#${aRoute}`);
+
+        await traverseBrowserHistory("forward");
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/design"));
+        await traverseBrowserHistory("forward");
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        await traverseBrowserHistory("forward");
+        await traverseBrowserHistory("forward");
+        await screen.findByRole("heading", {name: "B"});
+        expect(router.state.location.pathname).toBe(bRoute);
+        expect(window.location.hash).toBe(`#${bRoute}`);
+    });
+
+    it("upgrades a legacy unscoped entry so Back and Forward restore their own projects", async () => {
+        // Studio originally opened A at the legacy, ambiguous `/project/play` URL. The first render
+        // must replace that entry with A's scoped route before B is opened; otherwise Back finds the
+        // old URL and displays B again because the server only has one mutable current project.
+        let currentProjectRoot = "/games/a";
+        const dashboardForCurrentProject = () => ({
+            ok: true,
+            status: 200,
+            body: {
+                status: "loaded",
+                projectRoot: currentProjectRoot,
+                game: {
+                    id: currentProjectRoot === "/games/a" ? "a" : "b",
+                    name: currentProjectRoot === "/games/a" ? "A" : "B",
+                    version: "1.0.0",
+                },
+                type: "blueprint",
+                capabilities: ["blueprint.build"],
+            },
+        });
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/open": (call) => {
+                currentProjectRoot = (JSON.parse(call.init?.body ?? "{}") as {projectRoot: string}).projectRoot;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: currentProjectRoot}}};
+            },
+            "/api/project/context": dashboardForCurrentProject,
+            "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, issues: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: currentProjectRoot, valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: []}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: []}),
+        });
+        const aRoute = `/project/${encodeURIComponent("/games/a")}/play`;
+        const bRoute = `/project/${encodeURIComponent("/games/b")}/play`;
+        // The regression is specific to an externally-created browser hash entry, not a memory
+        // router's synthetic initial entry. Start from that real shape so every Back/Forward step
+        // exercises createHashRouter's native history bookkeeping.
+        window.history.replaceState(null, "", "#/project/play");
+        const {router} = renderHashRoutedApp({fetchImpl});
+
+        await screen.findByRole("heading", {name: "A"});
+        expect(screen.getByRole("button", {name: "Play"})).toHaveAttribute("aria-current", "page");
+        await waitFor(() => expect(window.location.hash).toBe(`#${aRoute}`));
+
+        await act(() => router.navigate(bRoute));
+        await screen.findByRole("heading", {name: "B"});
+
+        await traverseBrowserHistory("back");
+        await screen.findByRole("heading", {name: "A"});
+
+        await traverseBrowserHistory("forward");
+        await screen.findByRole("heading", {name: "B"});
+
+        expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init?.body ?? "{}"))).toEqual([
+            {projectRoot: "/games/b"},
+            {projectRoot: "/games/a"},
+            {projectRoot: "/games/b"},
+        ]);
+    });
 });

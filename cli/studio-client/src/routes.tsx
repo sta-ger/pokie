@@ -1,6 +1,6 @@
 import {createHashRouter, Navigate, RouterProvider} from "react-router-dom";
 import {HomePage} from "./components/home/HomePage";
-import {ProjectDashboardPage} from "./components/project/ProjectDashboardPage";
+import {LegacyProjectDashboardRoute, ProjectDashboardRoute} from "./components/project/ProjectDashboardPage";
 import {StudioLanding} from "./components/StudioLanding";
 
 // Hash routing, via the *data router* API (createHashRouter + RouterProvider) rather than the
@@ -21,7 +21,11 @@ const router = createHashRouter([
     {path: "/", element: <StudioLanding />},
     {path: "/home/:tab", element: <HomePage />},
     {path: "/project", element: <Navigate to="/project/overview" replace />},
-    {path: "/project/:tab", element: <ProjectDashboardPage />},
+    // A project opened from Home carries its root in the history entry. ProjectDashboardRoute
+    // restores that project before mounting its stateful dashboard, so Back/Forward cannot render
+    // one project's retained client state against whichever project the server was last switched to.
+    {path: "/project/:projectRoot/:tab", element: <ProjectDashboardRoute />},
+    {path: "/project/:tab", element: <LegacyProjectDashboardRoute />},
     {path: "*", element: <Navigate to="/home/design" replace />},
 ]);
 

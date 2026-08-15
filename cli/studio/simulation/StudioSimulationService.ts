@@ -20,6 +20,7 @@ import {
     WeightedOutcomeRandomSource,
 } from "pokie";
 import crypto from "crypto";
+import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
 import type {StudioSimulationJobView, StudioSimulationStatisticsView} from "./StudioSimulationJobView.js";
@@ -70,6 +71,11 @@ export class StudioSimulationService {
     // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    // A parallel simulation's worker processes can only load a package path, not reuse this
+    // process's loadGame callback. Resolve a Blueprint before constructing the runner so both the
+    // in-process and worker-thread paths receive the current materialized runtime rather than the
+    // Blueprint source path itself.
+    private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -89,6 +95,7 @@ export class StudioSimulationService {
             options: ParallelSimulationRunOptions,
         ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
+        resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -100,6 +107,7 @@ export class StudioSimulationService {
         this.workerEntryUrl = workerEntryUrl;
         this.createParallelSimulationRunner = createParallelSimulationRunner;
         this.outcomeLibraryReader = outcomeLibraryReader;
+        this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -158,12 +166,39 @@ export class StudioSimulationService {
         return record ? toStudioSimulationJobView(record) : undefined;
     }
 
+    // The project-scoped counterpart used by Studio's HTTP surface.  The service's unscoped
+    // getStatus() remains useful to its own process-level lifecycle tests and diagnostics, but a
+    // browser request is always made in the context of one canonical Project.  Treat an id from a
+    // different Project exactly like an unknown one so neither its run state nor its safe error text
+    // can leak when the user switches Projects.
+    public getStatusForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        const record = this.repository.get(id);
+        if (!record || record.projectRoot !== projectRoot) {
+            return undefined;
+        }
+        return toStudioSimulationJobView(record);
+    }
+
     // Idempotent: cancelling an already-terminal job is a no-op that still returns its (unchanged)
     // current view rather than an error — same "repeated request can't corrupt state" guarantee as
     // start(). Returns undefined only when `id` itself is unknown.
     public cancel(id: string): StudioSimulationJobView | undefined {
         const record = this.repository.get(id);
         if (!record) {
+            return undefined;
+        }
+        if (record.status === "queued" || record.status === "running") {
+            record.abortController.abort();
+        }
+        return toStudioSimulationJobView(record);
+    }
+
+    // Same Project identity boundary as getStatusForProject().  In particular, a stale Cancel
+    // request from Project A must never cancel a coincidentally-known job after Studio has moved to
+    // Project B.
+    public cancelForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        const record = this.repository.get(id);
+        if (!record || record.projectRoot !== projectRoot) {
             return undefined;
         }
         if (record.status === "queued" || record.status === "running") {
@@ -264,55 +299,62 @@ export class StudioSimulationService {
         }
         record.status = "running";
 
-        const runner = this.createParallelSimulationRunner(record.projectRoot, record.rounds, {
-            seed: record.seed,
-            workers: record.workers,
-            loadGame: this.loadGame,
-            chunkSize: this.chunkSize,
-            yieldToEventLoop: this.yieldToEventLoop,
-            signal: record.abortController.signal,
-            workerEntryUrl: this.workerEntryUrl,
-            onProgress: (roundsCompleted) => {
-                record.roundsCompleted = roundsCompleted;
-                record.durationMs = this.now() - record.startedAt;
-            },
-        });
-
-        let result;
+        let runtime;
         try {
-            result = await runner.run();
+            runtime = await this.resolveRuntimePackageRoot(record.projectRoot);
+        } catch (error) {
+            this.fail(record, error);
+            return;
+        }
+
+        try {
+            const runner = this.createParallelSimulationRunner(runtime.runtimePath, record.rounds, {
+                seed: record.seed,
+                workers: record.workers,
+                loadGame: this.loadGame,
+                chunkSize: this.chunkSize,
+                yieldToEventLoop: this.yieldToEventLoop,
+                signal: record.abortController.signal,
+                workerEntryUrl: this.workerEntryUrl,
+                onProgress: (roundsCompleted) => {
+                    record.roundsCompleted = roundsCompleted;
+                    record.durationMs = this.now() - record.startedAt;
+                },
+            });
+            const result = await runner.run();
+
+            const report: SimulationReport = this.reportBuilder.build({
+                manifest: result.manifest,
+                requestedRounds: record.rounds,
+                seed: record.seed,
+                statistics: result.statistics,
+                durationMs: record.durationMs,
+                packageRoot: record.projectRoot,
+                breakdown: result.breakdown,
+                workers: result.workers,
+                workerSeedStrategy: result.workerSeedStrategy,
+            });
+
+            record.status = "completed";
+            record.report = report;
+            record.statistics = {
+                volatility: result.statistics.volatility,
+                payoutStandardDeviation: result.statistics.payoutStandardDeviation,
+                returnStandardDeviation: result.statistics.returnStandardDeviation,
+                averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
+                rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
+                payoutHistogram: result.statistics.payoutHistogram,
+            };
+            this.markTerminal(record);
         } catch (error) {
             if (error instanceof SimulationCancelledError) {
                 this.cancelRecord(record);
                 return;
             }
             this.fail(record, error);
-            return;
+        } finally {
+            await runtime.release().catch(() => undefined);
         }
-
-        const report: SimulationReport = this.reportBuilder.build({
-            manifest: result.manifest,
-            requestedRounds: record.rounds,
-            seed: record.seed,
-            statistics: result.statistics,
-            durationMs: record.durationMs,
-            packageRoot: record.projectRoot,
-            breakdown: result.breakdown,
-            workers: result.workers,
-            workerSeedStrategy: result.workerSeedStrategy,
-        });
-
-        record.status = "completed";
-        record.report = report;
-        record.statistics = {
-            volatility: result.statistics.volatility,
-            payoutStandardDeviation: result.statistics.payoutStandardDeviation,
-            returnStandardDeviation: result.statistics.returnStandardDeviation,
-            averagePayoutConfidenceInterval95: result.statistics.averagePayoutConfidenceInterval95,
-            rtpConfidenceInterval95: result.statistics.rtpConfidenceInterval95,
-            payoutHistogram: result.statistics.payoutHistogram,
-        };
-        this.markTerminal(record);
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was

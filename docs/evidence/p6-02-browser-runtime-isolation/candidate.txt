@@ -1,0 +1,4 @@
+candidate_sha=a53f3c2a39f0fec7d24bbf3a76e362a833c5afa4
+pre-rerun git status --porcelain: clean
+v24.18.0
+Google Chrome 138.0.7204.183

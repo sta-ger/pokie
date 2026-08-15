@@ -28,7 +28,11 @@ export function resolveProjectDirectory(
     relativePath: string,
     realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
 ): ResolveProjectDirectoryResult {
-    const resolvedRoot = path.resolve(projectRoot);
+    // Blueprint, PAR workbook, and WASM Projects are represented by one source file. Their Studio
+    // sidecar artifacts still belong beside that file in its managed Project directory, not beneath
+    // an impossible "file/outcomelibrary" path. Directory-backed projects retain their own root.
+    const resolvedProjectRoot = path.resolve(projectRoot);
+    const resolvedRoot = isFile(resolvedProjectRoot) ? path.dirname(resolvedProjectRoot) : resolvedProjectRoot;
     const resolvedPath = path.resolve(resolvedRoot, relativePath);
     if (!isPathWithin(resolvedRoot, resolvedPath)) {
         return {status: "error", message: `"${relativePath}" resolves outside the project root.`};
@@ -47,6 +51,14 @@ export function resolveProjectDirectory(
     }
 
     return {status: "ok", resolvedPath};
+}
+
+function isFile(candidate: string): boolean {
+    try {
+        return fs.statSync(candidate).isFile();
+    } catch {
+        return false;
+    }
 }
 
 // Walks upward from `candidatePath` (inclusive) until `realpath` succeeds, stopping no earlier than

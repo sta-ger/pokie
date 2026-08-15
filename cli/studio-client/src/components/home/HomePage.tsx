@@ -9,6 +9,7 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DocumentationLinks} from "./DocumentationLinks";
 import {ProjectsPanel} from "./ProjectsPanel";
+import type {StudioProjectRegistryView} from "../../api/types";
 
 export type HomeTab = "design" | "projects";
 
@@ -58,6 +59,14 @@ export function HomePage() {
     const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Design Game";
     useDocumentTitle(`${activeTabLabel} · POKIE Studio`);
 
+    // Keep the address bar aligned with the fallback view too. Without this replacement an invalid
+    // direct link renders Design Game but leaves an unusable /home/:tab history entry behind.
+    useEffect(() => {
+        if (!isHomeTab(tab)) {
+            navigate("/home/design", {replace: true});
+        }
+    }, [navigate, tab]);
+
     const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
     const initialParSheetPath = location.state?.initialParSheetPath;
@@ -75,6 +84,8 @@ export function HomePage() {
     // attach/detach the listener; only flips true/false on New/Load/Save/Build, not per keystroke, so
     // this doesn't cause excess re-renders.
     const [isDesignDirty, setIsDesignDirty] = useState(false);
+    const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
+    const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
     const guardedAction = useDesignNavigationGuard(isDesignDirty);
 
     return (
@@ -90,6 +101,10 @@ export function HomePage() {
                             initialPath={initialBlueprintPath}
                             initialParSheetPath={initialParSheetPath}
                             onDirtyChange={setIsDesignDirty}
+                            onManagedProjectSaved={(registeredProject) => {
+                                setJustSavedManagedProject(registeredProject);
+                                setProjectRegistryVersion((version) => version + 1);
+                            }}
                         />
                     </div>
 
@@ -104,7 +119,11 @@ export function HomePage() {
                                 Need a new project from your terminal? Run <Code>pokie init</Code> for a ready-to-build package, or{" "}
                                 <Code>pokie create</Code> for an editable Blueprint Project -- then import it above.
                             </Text>
-                            <ProjectsPanel />
+                            <ProjectsPanel
+                                registryVersion={projectRegistryVersion}
+                                registeredProject={justSavedManagedProject}
+                                isVisible={activeTab === "projects"}
+                            />
                         </Stack>
                     </div>
 

@@ -1,14 +1,14 @@
 import {MantineProvider} from "@mantine/core";
 import {ModalsProvider} from "@mantine/modals";
 import {render, type RenderResult} from "@testing-library/react";
-import {createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
+import {createHashRouter, createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {HomePage} from "../../../../../cli/studio-client/src/components/home/HomePage";
-import {ProjectDashboardPage} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
+import {LegacyProjectDashboardRoute, ProjectDashboardRoute} from "../../../../../cli/studio-client/src/components/project/ProjectDashboardPage";
 import {StudioLanding} from "../../../../../cli/studio-client/src/components/StudioLanding";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
 
-// Mirrors routes.tsx's own route table (/home/:tab -> HomePage, /project/:tab -> ProjectDashboardPage) so
+// Mirrors routes.tsx's own route table (/home/:tab -> HomePage, /project/:projectRoot/:tab -> ProjectDashboardRoute) so
 // a real navigate(...) (e.g. from useOpenProject, or BlueprintBuildPanel's "Open in Studio") actually
 // swaps the rendered page during a test, and useParams() resolves a real `:tab` -- renderWithProviders.tsx
 // only ever renders one page element directly with no route match, which can't exercise a real cross-page
@@ -26,12 +26,27 @@ const ROUTES = [
     {path: "/", element: <StudioLanding />},
     {path: "/home/:tab", element: <HomePage />},
     {path: "/project", element: <Navigate to="/project/overview" replace />},
-    {path: "/project/:tab", element: <ProjectDashboardPage />},
+    {path: "/project/:projectRoot/:tab", element: <ProjectDashboardRoute />},
+    {path: "/project/:tab", element: <LegacyProjectDashboardRoute />},
     {path: "*", element: <Navigate to="/home/design" replace />},
 ];
 
 export function renderRoutedApp(options?: {fetchImpl?: FetchLike; initialEntries?: string[]}) {
     const router = createMemoryRouter(ROUTES, {initialEntries: options?.initialEntries ?? ["/home/design"]});
+    const result: RenderResult = render(
+        <MantineProvider>
+            <StudioApiProvider fetchImpl={options?.fetchImpl}>
+                <ModalsProvider>
+                    <RouterProvider router={router} />
+                </ModalsProvider>
+            </StudioApiProvider>
+        </MantineProvider>,
+    );
+    return {...result, router};
+}
+
+export function renderHashRoutedApp(options?: {fetchImpl?: FetchLike}) {
+    const router = createHashRouter(ROUTES);
     const result: RenderResult = render(
         <MantineProvider>
             <StudioApiProvider fetchImpl={options?.fetchImpl}>

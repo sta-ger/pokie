@@ -55,6 +55,10 @@ export class StudioStakeEngineExportService {
     private readonly stakeEngineImporter: StakeEngineImporting<string>;
     private readonly readFile: (resolvedPath: string) => string;
     private readonly realpath: (resolvedPath: string) => string;
+    // Supplied by StudioServer through its materializing Project-runtime boundary. Keeping this as a
+    // narrow hash resolver lets this service reject a stale canonical bundle without learning how a
+    // Blueprint Project is materialized or how a game is loaded.
+    private readonly resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined>;
 
     constructor(
         pokieVersion: string,
@@ -64,6 +68,7 @@ export class StudioStakeEngineExportService {
         realpath: (resolvedPath: string) => string = (resolvedPath) => fs.realpathSync(resolvedPath),
         bundleReader: OutcomeLibraryBundleReading<string> = new OutcomeLibraryBundleReader<string>(),
         stakeEngineImporter: StakeEngineImporting<string> = new StakeEngineImporter<string>(),
+        resolveCurrentConfigHash: (projectRoot: string) => Promise<string | undefined> = () => Promise.resolve(undefined),
     ) {
         this.exporter = exporter;
         this.validator = validator;
@@ -71,6 +76,7 @@ export class StudioStakeEngineExportService {
         this.realpath = realpath;
         this.bundleReader = bundleReader;
         this.stakeEngineImporter = stakeEngineImporter;
+        this.resolveCurrentConfigHash = resolveCurrentConfigHash;
     }
 
     // The exact preflight StakeEngineExporter itself runs (and aborts the whole export on) before writing
@@ -165,10 +171,24 @@ export class StudioStakeEngineExportService {
     // domain-level load-error, never a raw thrown error.
     private async loadModes(projectRoot: string, modes: readonly StudioStakeEngineExportModeInput[]): Promise<LoadModesResult> {
         const loaded: StakeEngineExportModeInput<string>[] = [];
+        let currentConfigHash: string | undefined;
+        let resolvedCurrentConfigHash = false;
         for (const mode of modes) {
             const namedSelectorMode = selectorModeName(mode.librarySelector);
             if (namedSelectorMode !== undefined && namedSelectorMode !== mode.modeName) {
                 return {status: "load-error", error: describeSelectorModeMismatch(mode.modeName, namedSelectorMode)};
+            }
+            if (mode.librarySelector.kind === "bundle" && !resolvedCurrentConfigHash) {
+                try {
+                    currentConfigHash = await this.resolveCurrentConfigHash(projectRoot);
+                    resolvedCurrentConfigHash = true;
+                } catch (error) {
+                    return {status: "load-error", error: `Could not resolve the current Project configuration: ${error instanceof Error ? error.message : String(error)}`};
+                }
+            }
+            const compatibility = await this.validateBundleConfiguration(projectRoot, mode.librarySelector, currentConfigHash);
+            if (compatibility !== undefined) {
+                return {status: "load-error", error: `mode "${mode.modeName}": ${compatibility}`};
             }
             const result = await loadOutcomeLibraryFromSelector(projectRoot, mode.librarySelector, this.bundleReader, this.stakeEngineImporter, this.readFile, this.realpath);
             if (result.status === "load-error") {
@@ -181,5 +201,35 @@ export class StudioStakeEngineExportService {
             loaded.push({modeName: mode.modeName, cost: mode.cost, library: canonicalized.library});
         }
         return {status: "ok", loaded};
+    }
+
+    // A bundle is the only selector format that records its producing Project configuration. JSON
+    // and imported Stake Engine sources have no equivalent provenance field, so they retain their
+    // existing structural validation path; canonical Studio libraries must never silently cross a
+    // Blueprint save boundary into a Stake export.
+    private async validateBundleConfiguration(
+        projectRoot: string,
+        selector: OutcomeLibrarySelector,
+        currentConfigHash: string | undefined,
+    ): Promise<string | undefined> {
+        if (selector.kind !== "bundle" || currentConfigHash === undefined) {
+            return undefined;
+        }
+        const resolved = resolveProjectDirectory(projectRoot, selector.bundleDir, this.realpath);
+        if (resolved.status === "error") {
+            return resolved.message;
+        }
+        try {
+            const manifest = await this.bundleReader.readManifest(resolved.resolvedPath);
+            if (manifest.configHash === currentConfigHash) {
+                return undefined;
+            }
+            return (
+                `outcome library "${selector.bundleDir}" was built for configuration hash "${manifest.configHash ?? "unknown"}", ` +
+                `but the current Project is "${currentConfigHash}". Regenerate the library before exporting to Stake.`
+            );
+        } catch (error) {
+            return `Could not read outcome library "${selector.bundleDir}": ${error instanceof Error ? error.message : String(error)}`;
+        }
     }
 }

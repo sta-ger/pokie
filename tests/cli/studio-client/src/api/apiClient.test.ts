@@ -37,7 +37,7 @@ import {
     validateProject,
 } from "../../../../../cli/studio-client/src/api/apiClient";
 
-type FakeCall = {url: string; init?: {method?: string; headers?: Record<string, string>; body?: string}};
+type FakeCall = {url: string; init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"}};
 
 function createFakeFetch(handler: (call: FakeCall) => {ok: boolean; status: number; body: unknown}): {
     fetchImpl: FetchLike;
@@ -77,7 +77,7 @@ describe("studio-client apiClient", () => {
     });
 
     describe("listProjectRegistry", () => {
-        it("GETs /api/home/projects/registry and returns the list", async () => {
+        it("GETs /api/home/projects/registry without using a cached list", async () => {
             const entries = [
                 {
                     location: "/a",
@@ -93,7 +93,7 @@ describe("studio-client apiClient", () => {
 
             const result = await listProjectRegistry(fetchImpl);
 
-            expect(calls).toEqual([{url: "/api/home/projects/registry", init: undefined}]);
+            expect(calls).toEqual([{url: expect.stringMatching(/^\/api\/home\/projects\/registry\?refresh=\d+$/), init: {cache: "no-store"}}]);
             expect(result).toEqual(entries);
         });
     });

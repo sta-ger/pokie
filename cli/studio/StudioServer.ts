@@ -86,6 +86,7 @@ import type {StudioRuntimeSessionView} from "./runtime/StudioRuntimeSessionView.
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "./StudioProjectRegistrationService.js";
 import {validateProjectLocationRequest, ProjectLocationRequestInput} from "./validateProjectLocationRequest.js";
 import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} from "./validateProjectRegistrationRequest.js";
+import {validateProjectRelocationRequest, ProjectRelocationRequestInput} from "./validateProjectRelocationRequest.js";
 import {validatePlaySessionRequest, PlaySessionRequestInput} from "./runtime/validatePlaySessionRequest.js";
 import {validatePlayFindSymbolWinRequest, PlayFindSymbolWinRequestInput} from "./runtime/validatePlayFindSymbolWinRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
@@ -224,10 +225,23 @@ export class StudioServer implements StudioServerHandling {
         this.gamePackageInspector = options.gamePackageInspector ?? new GamePackageInspector();
         this.gamePackageValidator = options.gamePackageValidator ?? new PokieGamePackageValidator();
         this.outcomeSourceProjectAnalyzer = options.outcomeSourceProjectAnalyzer ?? new OutcomeSourceProjectAnalyzer();
-        this.simulationService = options.simulationService ?? new StudioSimulationService(undefined, this.loadGame);
+        // Every default Project execution service loads through the same materializing boundary as
+        // Play. This makes a Blueprint save observable on the next simulation/replay/generation
+        // instead of letting those paths load an earlier package-shaped interpretation of the path.
+        const loadCurrentProjectGame: typeof loadPokieGame = async (projectRoot) => {
+            const resolution = await this.resolveRuntimePackageRoot(projectRoot);
+            try {
+                return await this.loadGame(resolution.runtimePath);
+            } finally {
+                await resolution.release();
+            }
+        };
+        this.simulationService =
+            options.simulationService ??
+            new StudioSimulationService(undefined, this.loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, this.resolveRuntimePackageRoot);
         this.replayService =
             options.replayService ??
-            new StudioReplayExecutionService(undefined, this.loadGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
+            new StudioReplayExecutionService(undefined, loadCurrentProjectGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
                 this.recordSimulationSampleReplay(record),
             );
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
@@ -235,10 +249,14 @@ export class StudioServer implements StudioServerHandling {
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.deploymentService = options.deploymentService ?? new StudioDeploymentService();
-        this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, this.loadGame);
+        this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
         this.certificationService = options.certificationService ?? new StudioCertificationService(this.pokieVersion);
         this.fairnessService = options.fairnessService ?? new StudioFairnessService();
-        this.stakeEngineExportService = options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion);
+        this.stakeEngineExportService =
+            options.stakeEngineExportService ?? new StudioStakeEngineExportService(this.pokieVersion, undefined, undefined, undefined, undefined, undefined, undefined, async (projectRoot) => {
+                const game = await loadCurrentProjectGame(projectRoot);
+                return game.getConfigHash?.();
+            });
         this.artifactBuildService = options.artifactBuildService ?? new StudioArtifactBuildService(this.pokieVersion);
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
@@ -405,6 +423,11 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "POST" && url.pathname === "/api/home/projects/registry/remove") {
             await this.handleHomeProjectRegistryRemove(req, res);
+            return;
+        }
+
+        if (method === "POST" && url.pathname === "/api/home/projects/registry/relocate") {
+            await this.handleHomeProjectRegistryRelocate(req, res);
             return;
         }
 
@@ -914,6 +937,19 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {status: "ok"});
     }
 
+    private async handleHomeProjectRegistryRelocate(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateProjectRelocationRequest((body ?? {}) as ProjectRelocationRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        this.sendJson(res, 200, await this.projectRegistrationService.relocate(validated.location, validated.newLocation));
+    }
+
     private async handleHomeOpenProject(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const body = await this.readJsonBody(req);
         let validated;
@@ -956,6 +992,13 @@ export class StudioServer implements StudioServerHandling {
         // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
+        // Opening is a first-class Project lifecycle event, not merely a recent-project hint.  Record it
+        // only after the dashboard was successfully loaded, preserving a managed entry's origin while
+        // making an ad-hoc Open as Project durable and most-recent in the same registry Home renders.
+        await this.projectRegistrationService.recordOpened(
+            dashboard.projectRoot,
+            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
+        );
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 
@@ -1110,7 +1153,13 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = this.blueprintService.save(validated.path, validated.blueprint, validated.overwrite);
+        const result = this.blueprintService.save(validated.path, validated.blueprint, validated.overwrite, validated.expectedHash);
+        if (result.status === "ok" && this.currentContext.mode === "project" && path.resolve(this.currentContext.projectRoot) === result.path) {
+            // The Dashboard retains a loaded Project snapshot for its Overview. Refresh that snapshot
+            // after an in-place Blueprint save so every Project-facing surface observes the newly
+            // authoritative source, not the pre-save dashboard model.
+            this.startProjectDashboardLoad(result.path);
+        }
         this.sendJson(res, this.statusForBlueprintSave(result.status), result);
     }
 
@@ -1140,9 +1189,15 @@ export class StudioServer implements StudioServerHandling {
 
         const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
         if (result.status === "ok") {
-            await this.projectRegistrationService.registerManaged(result.path, result.name, result.sourceWorkbookPath);
+            const registration = await this.projectRegistrationService.registerManaged(result.path, result.name, result.sourceWorkbookPath);
+            // The client can render this freshly persisted row directly, instead of making its visible
+            // Projects update depend on a follow-up registry list request settling.  Keep the regular
+            // save result intact for the (theoretically unreachable) case that the just-written file
+            // does not resolve back to a recognized Project.
+            this.sendJson(res, 201, registration.status === "ok" ? {...result, registeredProject: registration.entry} : result);
+            return;
         }
-        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+        this.sendJson(res, 200, result);
     }
 
     private async handleBlueprintBuildPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1839,7 +1894,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private handleGetSimulation(res: ServerResponse, id: string): void {
-        const job = this.simulationService.getStatus(id);
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const job = this.simulationService.getStatusForProject(this.currentContext.projectRoot, id);
         if (!job) {
             this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
             return;
@@ -1848,7 +1907,11 @@ export class StudioServer implements StudioServerHandling {
     }
 
     private handleCancelSimulation(res: ServerResponse, id: string): void {
-        const job = this.simulationService.cancel(id);
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const job = this.simulationService.cancelForProject(this.currentContext.projectRoot, id);
         if (!job) {
             this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
             return;

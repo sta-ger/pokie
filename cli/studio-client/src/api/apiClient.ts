@@ -59,7 +59,7 @@ import type {
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.
 export type FetchLike = (
     url: string,
-    init?: {method?: string; headers?: Record<string, string>; body?: string},
+    init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"},
 ) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
 
 type ProjectActionResult = {context: StudioContext; manifest: PokieGameManifest};
@@ -150,7 +150,11 @@ export async function pickNativePath(fetchImpl: FetchLike, request: NativeBrowse
 // The Projects area's own managed/registered list -- every project Studio knows about, most-recently-
 // registered/opened first (see StudioProjectRegistrationService.list()'s own doc comment).
 export async function listProjectRegistry(fetchImpl: FetchLike): Promise<StudioProjectRegistryView[]> {
-    const response = await fetchImpl("/api/home/projects/registry");
+    // This is a live registry read: after Managed Save, Import, Remove, or Relocate, its caller
+    // expects the next request to observe the just-completed mutation rather than an HTTP-cached
+    // earlier list. `cache: "no-store"` covers normal Fetch caches; the unique query also prevents
+    // an intermediary that ignores that directive from reusing an earlier registry snapshot.
+    const response = await fetchImpl(`/api/home/projects/registry?refresh=${Date.now()}`, {cache: "no-store"});
     return (await response.json()) as StudioProjectRegistryView[];
 }
 
@@ -194,6 +198,24 @@ export async function removeProjectRegistryEntry(fetchImpl: FetchLike, location:
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to remove the project from the registry"));
     }
+}
+
+// Repairs a missing entry after a project was moved outside Studio.  This is registry-only: the server
+// verifies the new location, then replaces the old record without copying or deleting either path.
+export async function relocateProjectRegistryEntry(
+    fetchImpl: FetchLike,
+    location: string,
+    newLocation: string,
+): Promise<StudioProjectRegistrationResult> {
+    const response = await fetchImpl("/api/home/projects/registry/relocate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({location, newLocation}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to relocate the project"));
+    }
+    return (await response.json()) as StudioProjectRegistrationResult;
 }
 
 // Never writes/reads anything on disk — see StudioBlueprintService.validate()'s own doc comment.
@@ -274,11 +296,12 @@ export async function saveBlueprint(
     path: string,
     blueprint: unknown,
     overwrite: boolean,
+    expectedHash?: string,
 ): Promise<StudioBlueprintSaveView> {
     const response = await fetchImpl("/api/home/blueprints/save", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({path, blueprint, overwrite}),
+        body: JSON.stringify({path, blueprint, overwrite, expectedHash}),
     });
     if (response.status === 409) {
         return (await response.json()) as StudioBlueprintSaveView;

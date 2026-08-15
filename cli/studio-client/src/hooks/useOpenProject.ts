@@ -24,7 +24,10 @@ export function useOpenProject(): (projectRoot: string) => Promise<void> {
         (projectRoot: string) =>
             guardedAction(async () => {
                 await openProject(fetchImpl, projectRoot);
-                navigate("/project");
+                // Project identity belongs in the history entry, not only in the server's mutable
+                // current-project context. This lets a Back/Forward navigation restore the project
+                // whose state the entry represents before its dashboard can become interactive.
+                navigate(`/project/${encodeURIComponent(projectRoot)}/overview`);
             }),
         [fetchImpl, navigate, guardedAction],
     );

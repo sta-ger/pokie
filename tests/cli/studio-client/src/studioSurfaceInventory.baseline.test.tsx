@@ -74,13 +74,13 @@ describe("Studio route table baseline", () => {
         expect(screen.getByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
     });
 
-    it("bare /project redirects to /project/overview, never rendering a tab-less dashboard", async () => {
+    it("bare /project resolves to a project-scoped overview, never rendering a tab-less dashboard", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project"]});
 
         await screen.findByRole("heading", {name: "My Slot"});
-        expect(router.state.location.pathname).toBe("/project/overview");
+        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fmy-slot/overview");
     });
 });
 

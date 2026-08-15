@@ -1,7 +1,14 @@
 import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
-import {useEffect, useState, type ReactNode} from "react";
+import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
-import {listProjectRegistry, previewProjectImport, ProjectOpenError, registerProjectImport, removeProjectRegistryEntry} from "../../api/apiClient";
+import {
+    listProjectRegistry,
+    previewProjectImport,
+    ProjectOpenError,
+    registerProjectImport,
+    relocateProjectRegistryEntry,
+    removeProjectRegistryEntry,
+} from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
@@ -56,7 +63,15 @@ const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
 
 // Projects registry list -- every managed/registered project Studio knows about (see
 // StudioProjectRegistrationService.list()'s own doc comment), most-recently-registered/opened first.
-export function ProjectsPanel() {
+export function ProjectsPanel({
+    registryVersion = 0,
+    registeredProject,
+    isVisible = true,
+}: {
+    registryVersion?: number;
+    registeredProject?: StudioProjectRegistryView;
+    isVisible?: boolean;
+}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
@@ -66,22 +81,30 @@ export function ProjectsPanel() {
     const [importView, setImportView] = useState<ImportView>({status: "idle"});
     const [registerName, setRegisterName] = useState("");
     const [openingLocation, setOpeningLocation] = useState<string | undefined>(undefined);
+    const [relocatingEntry, setRelocatingEntry] = useState<StudioProjectRegistryView | undefined>(undefined);
+    const [relocationLocation, setRelocationLocation] = useState("");
+    // A rendered confirmation can immediately follow a browser input event. Keep the submitted path
+    // alongside React's display state so that confirmation always uses that event's latest value, even
+    // before React has committed the controlled input's re-render.
+    const relocationLocationRef = useRef("");
+    const [relocationError, setRelocationError] = useState<string | undefined>(undefined);
     const detectGuard = useDoubleSubmitGuard();
     const registerGuard = useDoubleSubmitGuard();
     const openGuard = useDoubleSubmitGuard();
+    const relocateGuard = useDoubleSubmitGuard();
 
     // Both mutating actions below (register/remove) already receive the server's own resulting entry
     // (or, for remove, already know which location was removed) straight from their own response, so they
     // update `listView` from that directly instead of re-fetching the whole list -- one round trip, not
     // two, and the row a user just acted on updates immediately rather than waiting on a second request.
-    const upsertEntry = (entry: StudioProjectRegistryView): void => {
+    const upsertEntry = useCallback((entry: StudioProjectRegistryView): void => {
         setListView((previous) => {
             const withoutExisting = (previous.status === "loaded" ? previous.entries : []).filter(
                 (existing) => existing.location !== entry.location,
             );
             return {status: "loaded", entries: [entry, ...withoutExisting]};
         });
-    };
+    }, []);
 
     const removeEntry = (location: string): void => {
         setListView((previous) => {
@@ -93,13 +116,20 @@ export function ProjectsPanel() {
         });
     };
 
-    // `cancelled` guards against setting state from a registry fetch that resolves after this effect's
-    // own cleanup (unmount, or a `fetchImpl` change re-running it) -- without it, a fetch left in flight
-    // when a test unmounts this panel (e.g. navigating straight past Home) resolves later and trips
-    // React's "update on an unmounted component" act() warning.
+    // Home keeps this panel mounted while Design Game is visible, so a route change does not by itself
+    // remount it. Refresh whenever Projects becomes visible: an entry may have been moved outside Studio
+    // while the user was designing. `cancelled` also guards against a request settling after the panel
+    // becomes hidden or unmounts.
     useEffect(() => {
         let cancelled = false;
-        setListView({status: "loading"});
+        if (!isVisible) {
+            return () => {
+                cancelled = true;
+            };
+        }
+        // Preserve a just-saved project's optimistic row while this reconciliation request is in
+        // flight. Otherwise opening Projects immediately after Save would briefly erase that row.
+        setListView((previous) => previous.status === "loaded" ? previous : {status: "loading"});
         listProjectRegistry(fetchImpl)
             .then((entries) => {
                 if (!cancelled) {
@@ -114,7 +144,16 @@ export function ProjectsPanel() {
         return () => {
             cancelled = true;
         };
-    }, [fetchImpl]);
+    }, [fetchImpl, isVisible, registryVersion]);
+
+    // save-managed already has the canonical row the registry wrote. Render it immediately rather
+    // than waiting for the invalidating list request above; that request remains the eventual
+    // reconciliation source and the direct upsert uses the same deduplication path as Import/Relocate.
+    useEffect(() => {
+        if (registeredProject !== undefined) {
+            upsertEntry(registeredProject);
+        }
+    }, [registeredProject, upsertEntry]);
 
     const handleOpen = (entry: StudioProjectRegistryView): void => {
         if (!openGuard.begin()) {
@@ -149,6 +188,31 @@ export function ProjectsPanel() {
         if (importView.status !== "idle") {
             setImportView({status: "idle"});
         }
+    };
+
+    const handleRelocate = (): void => {
+        const newLocation = relocationLocationRef.current.trim();
+        if (relocatingEntry === undefined || newLocation.length === 0 || !relocateGuard.begin()) {
+            return;
+        }
+        setRelocationError(undefined);
+        relocateProjectRegistryEntry(fetchImpl, relocatingEntry.location, newLocation)
+            .then((result) => {
+                relocateGuard.end();
+                if (result.status !== "ok") {
+                    setRelocationError(`"${result.path}" doesn't look like a POKIE project.`);
+                    return;
+                }
+                removeEntry(relocatingEntry.location);
+                upsertEntry(result.entry);
+                setRelocatingEntry(undefined);
+                setRelocationLocation("");
+                relocationLocationRef.current = "";
+            })
+            .catch((error: unknown) => {
+                relocateGuard.end();
+                setRelocationError(errorMessage(error));
+            });
     };
 
     const handleDetect = (): void => {
@@ -272,6 +336,20 @@ export function ProjectsPanel() {
                                                         Open in Design Game
                                                     </Button>
                                                 )}
+                                                {entry.status === "missing" && (
+                                                    <Button
+                                                        variant="default"
+                                                        size="xs"
+                                                        onClick={() => {
+                                                            setRelocatingEntry(entry);
+                                                            setRelocationLocation("");
+                                                            relocationLocationRef.current = "";
+                                                            setRelocationError(undefined);
+                                                        }}
+                                                    >
+                                                        Relocate
+                                                    </Button>
+                                                )}
                                                 <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>
                                                     Remove
                                                 </Button>
@@ -282,6 +360,42 @@ export function ProjectsPanel() {
                             </Table.Tbody>
                         </Table>
                     </Table.ScrollContainer>
+                )}
+                {relocatingEntry && (
+                    <div>
+                        <Text size="sm" mt="sm" mb="xs">
+                            Relocate &quot;{relocatingEntry.name}&quot; without changing files on disk.
+                        </Text>
+                        <QuickActions>
+                            <PathInput
+                                label="New location"
+                                placeholder="/path/to/moved-project"
+                                kind="any"
+                                browseTitle="Choose the moved project"
+                                browseId="relocate-project-location"
+                                value={relocationLocation}
+                                onChange={(event) => {
+                                    relocationLocationRef.current = event.currentTarget.value;
+                                    setRelocationLocation(event.currentTarget.value);
+                                }}
+                                onPathSelected={(path) => {
+                                    relocationLocationRef.current = path;
+                                    setRelocationLocation(path);
+                                }}
+                            />
+                            <Button onClick={handleRelocate}>Relocate</Button>
+                            <Button
+                                variant="default"
+                                onClick={() => {
+                                    relocationLocationRef.current = "";
+                                    setRelocatingEntry(undefined);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                        </QuickActions>
+                        {relocationError && <ErrorState message={relocationError} />}
+                    </div>
                 )}
             </PageSection>
 

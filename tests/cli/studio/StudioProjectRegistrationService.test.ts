@@ -1,4 +1,12 @@
-import type {GameBlueprint, PokieProject, ProjectResolving} from "pokie";
+import {
+    computeGameBlueprintHash,
+    GameSessionHandling,
+    OutcomeLibraryBundleWriter,
+    PokieGame,
+    type GameBlueprint,
+    type PokieProject,
+    type ProjectResolving,
+} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -7,6 +15,13 @@ import {PokiePathResolver} from "../../../cli/paths/PokiePathResolver.js";
 import type {StudioHomeRecentProjectView} from "../../../cli/studio/home/StudioHomeRecentProjectView.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {createDefaultStudioProjectRegistrationService, StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {toStudioReplayJobView} from "../../../cli/studio/replay/toStudioReplayJobView.js";
+import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function fakeResolver(byPath: Record<string, PokieProject>): ProjectResolving {
     return {
@@ -237,6 +252,88 @@ describe("StudioProjectRegistrationService", () => {
 
             expect(await registry.list()).toEqual([]);
         });
+
+        it("removes the canonical project when the caller supplies a symlink alias", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registry-canonical-remove-"));
+            try {
+                const blueprintPath = path.join(directory, "game.json");
+                const aliasPath = path.join(directory, "game-alias.json");
+                fs.writeFileSync(
+                    blueprintPath,
+                    JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+                );
+                fs.symlinkSync(blueprintPath, aliasPath);
+                const registry = new InMemoryStudioProjectRegistry();
+                const service = new StudioProjectRegistrationService(registry);
+
+                await service.registerExternal(blueprintPath);
+                await service.remove(aliasPath);
+
+                expect(await registry.list()).toEqual([]);
+                expect(fs.existsSync(blueprintPath)).toBe(true);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+    });
+
+    describe("canonical lifecycle identity", () => {
+        it("treats relative, absolute, and symlink spellings as one project record", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registry-canonical-"));
+            try {
+                const blueprintPath = path.join(directory, "game.json");
+                const aliasPath = path.join(directory, "game-alias.json");
+                fs.writeFileSync(
+                    blueprintPath,
+                    JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+                );
+                fs.symlinkSync(blueprintPath, aliasPath);
+                const service = new StudioProjectRegistrationService(new InMemoryStudioProjectRegistry());
+
+                await service.registerExternal(path.relative(process.cwd(), blueprintPath));
+                await service.registerExternal(aliasPath);
+
+                expect(await service.list()).toEqual([expect.objectContaining({location: fs.realpathSync(blueprintPath), name: "game"})]);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("relocates a missing record without copying or deleting the moved project", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-registry-relocate-"));
+            try {
+                const oldPath = path.join(directory, "old.json");
+                const newPath = path.join(directory, "new.json");
+                fs.writeFileSync(
+                    oldPath,
+                    JSON.stringify({manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {}}),
+                );
+                const registry = new InMemoryStudioProjectRegistry();
+                const service = new StudioProjectRegistrationService(registry);
+                await service.registerManaged(oldPath, "My managed game");
+                fs.renameSync(oldPath, newPath);
+
+                expect(await service.list()).toEqual([expect.objectContaining({location: oldPath, status: "missing"})]);
+                const result = await service.relocate(oldPath, newPath);
+
+                expect(result).toEqual({status: "ok", entry: expect.objectContaining({location: newPath, name: "My managed game", origin: "managed"})});
+                expect(await service.list()).toEqual([expect.objectContaining({location: newPath, status: "ok"})]);
+                expect(fs.existsSync(newPath)).toBe(true);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("records opening an existing managed project without changing its origin", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({"/projects/sample-slot": tsPackageProject("/projects/sample-slot")});
+            const service = new StudioProjectRegistrationService(registry, resolver);
+            await service.registerManaged("/projects/sample-slot", "Old name");
+
+            await service.recordOpened("/projects/sample-slot", "Renamed game");
+
+            expect(await registry.list()).toEqual([expect.objectContaining({origin: "managed", name: "Renamed game"})]);
+        });
     });
 
     describe("resolveShowInFolderTarget", () => {
@@ -406,5 +503,427 @@ describe("StudioProjectRegistrationService", () => {
 
             expect((await registry.list()).map((e) => e.location)).toEqual([path.resolve("/projects/a")]);
         });
+    });
+});
+
+// The registry lifecycle above deliberately stays independent of Blueprint persistence. These focused
+// save tests sit beside it because both paths begin with the same Project-open snapshot: a Project's
+// configuration hash is the optimistic-concurrency token that prevents a second tab or a disk editor
+// from replacing the newer registered Project source.
+describe("Studio Blueprint Project save conflicts", () => {
+    function createService(studioRoot: string): StudioBlueprintService {
+        return new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0"));
+    }
+
+    it("never lets a stale Studio tab overwrite a newer Blueprint save", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-stale-tab-"));
+        try {
+            const filePath = path.join(directory, "game.json");
+            const initial = {manifest: {id: "game"}, rows: 3};
+            const firstTabEdit = {manifest: {id: "game"}, rows: 4};
+            const staleTabEdit = {manifest: {id: "game"}, rows: 5};
+            fs.writeFileSync(filePath, JSON.stringify(initial));
+            const service = createService(path.join(directory, "studio"));
+
+            const firstSnapshot = service.load(filePath);
+            const staleSnapshot = service.load(filePath);
+            expect(firstSnapshot.status).toBe("ok");
+            expect(staleSnapshot.status).toBe("ok");
+            if (firstSnapshot.status !== "ok" || staleSnapshot.status !== "ok") {
+                throw new Error("Expected initial Blueprint snapshots to load.");
+            }
+
+            expect(service.save(filePath, firstTabEdit, true, firstSnapshot.blueprintHash).status).toBe("ok");
+            const result = service.save(filePath, staleTabEdit, true, staleSnapshot.blueprintHash);
+
+            expect(result).toMatchObject({
+                status: "conflict",
+                reason: "stale",
+                currentBlueprint: firstTabEdit,
+                currentHash: computeGameBlueprintHash(firstTabEdit),
+                editedBlueprint: staleTabEdit,
+                editedHash: computeGameBlueprintHash(staleTabEdit),
+                expectedHash: staleSnapshot.blueprintHash,
+                canSaveAs: true,
+            });
+            expect(JSON.parse(fs.readFileSync(filePath, "utf-8"))).toEqual(firstTabEdit);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("never lets a save overwrite a Blueprint edited externally after it was loaded", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-external-edit-"));
+        try {
+            const filePath = path.join(directory, "game.json");
+            const initial = {manifest: {id: "game"}, rows: 3};
+            const externalEdit = {manifest: {id: "game"}, rows: 4};
+            const editorDraft = {manifest: {id: "game"}, rows: 5};
+            fs.writeFileSync(filePath, JSON.stringify(initial));
+            const service = createService(path.join(directory, "studio"));
+            const loaded = service.load(filePath);
+            expect(loaded.status).toBe("ok");
+            if (loaded.status !== "ok") {
+                throw new Error("Expected initial Blueprint to load.");
+            }
+
+            fs.writeFileSync(filePath, JSON.stringify(externalEdit));
+            const result = service.save(filePath, editorDraft, true, loaded.blueprintHash);
+
+            expect(result).toMatchObject({
+                status: "conflict",
+                reason: "stale",
+                currentBlueprint: externalEdit,
+                currentHash: computeGameBlueprintHash(externalEdit),
+                editedBlueprint: editorDraft,
+                editedHash: computeGameBlueprintHash(editorDraft),
+                expectedHash: loaded.blueprintHash,
+                canSaveAs: true,
+            });
+            expect(JSON.parse(fs.readFileSync(filePath, "utf-8"))).toEqual(externalEdit);
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("publishes the new persisted configuration hash for the next Project execution snapshot", () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-execution-freshness-"));
+        try {
+            const filePath = path.join(directory, "game.json");
+            const prior = {manifest: {id: "game"}, rows: 3};
+            const saved = {manifest: {id: "game"}, rows: 4};
+            fs.writeFileSync(filePath, JSON.stringify(prior));
+            const service = createService(path.join(directory, "studio"));
+            const loaded = service.load(filePath);
+            expect(loaded.status).toBe("ok");
+            if (loaded.status !== "ok") {
+                throw new Error("Expected initial Blueprint to load.");
+            }
+
+            expect(service.save(filePath, saved, true, loaded.blueprintHash)).toEqual({
+                status: "ok",
+                path: filePath,
+                blueprintHash: computeGameBlueprintHash(saved),
+            });
+            expect(service.load(filePath)).toEqual({status: "ok", path: filePath, blueprint: saved, blueprintHash: computeGameBlueprintHash(saved)});
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("retains a replay's original configuration hash after a later Blueprint save", () => {
+        const originalConfigurationHash = computeGameBlueprintHash({manifest: {id: "game"}, rows: 3});
+        const replay = toStudioReplayJobView({
+            id: "replay-1",
+            projectRoot: "/projects/game.json",
+            status: "completed",
+            round: 1,
+            startedAt: 0,
+            completedRounds: 1,
+            durationMs: 1,
+            game: {id: "game", name: "Game", version: "1.0.0"},
+            configHash: originalConfigurationHash,
+            abortController: new AbortController(),
+        });
+
+        expect(replay.configHash).toBe(originalConfigurationHash);
+        expect(replay.configHash).not.toBe(computeGameBlueprintHash({manifest: {id: "game"}, rows: 4}));
+    });
+});
+
+describe("Studio Blueprint Project execution freshness", () => {
+    it("opens a managed Blueprint, then executes and materializes its saved configuration instead of the earlier dashboard snapshot", async () => {
+        const version = "1.3.0";
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-blueprint-project-execution-"));
+        const studioRoot = path.join(directory, "studio");
+        const blueprintPath = path.join(directory, "blueprint.json");
+        const configurationA = {manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}, configuration: "A"};
+        const configurationB = {...configurationA, configuration: "B"};
+        const configurationAHash = computeGameBlueprintHash(configurationA);
+        const configurationBHash = computeGameBlueprintHash(configurationB);
+        const configurations = new Map([
+            [configurationAHash, configurationA],
+            [configurationBHash, configurationB],
+        ]);
+        let server: StudioServer | undefined;
+
+        const createGame = (configurationHash: string): PokieGame => {
+            const configuration = configurations.get(configurationHash);
+            if (configuration === undefined) {
+                throw new Error(`Unknown materialized configuration "${configurationHash}".`);
+            }
+            return {
+                getManifest: () => ({...configuration.manifest, name: `${configuration.manifest.name} ${configuration.configuration}`}),
+                getConfigHash: () => configurationHash,
+                createSession: () => {
+                    let credits = 100;
+                    return {
+                        getCreditsAmount: () => credits,
+                        setCreditsAmount: (value: number) => {
+                            credits = value;
+                        },
+                        getBet: () => 1,
+                        setBet: () => undefined,
+                        getAvailableBets: () => [1],
+                        canPlayNextGame: () => true,
+                        play: () => {
+                            credits -= 1;
+                        },
+                        getWinAmount: () => 0,
+                    } as GameSessionHandling;
+                },
+            };
+        };
+
+        const materializedHashes: string[] = [];
+        const resolveRuntimePackageRoot = (projectRoot: string) => {
+            expect(path.resolve(projectRoot)).toBe(blueprintPath);
+            const currentBlueprint = JSON.parse(fs.readFileSync(blueprintPath, "utf-8"));
+            const configurationHash = computeGameBlueprintHash(currentBlueprint);
+            materializedHashes.push(configurationHash);
+            return Promise.resolve({runtimePath: `materialized:${configurationHash}`, release: () => Promise.resolve()});
+        };
+        const loadGame = (runtimePath: string): Promise<PokieGame> => Promise.resolve(createGame(runtimePath.replace("materialized:", "")));
+
+        async function get(url: string): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url);
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        async function post(url: string, body: unknown): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        async function waitForTerminal(url: string): Promise<Record<string, unknown>> {
+            for (let attempt = 0; attempt < 200; attempt++) {
+                const response = await get(url);
+                if (response.body.status !== "queued" && response.body.status !== "running") {
+                    return response.body;
+                }
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            throw new Error(`Timed out waiting for ${url}.`);
+        }
+
+        try {
+            fs.mkdirSync(studioRoot, {recursive: true});
+            fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
+            fs.writeFileSync(path.join(studioRoot, "main.js"), "console.log('studio');");
+            fs.writeFileSync(path.join(studioRoot, "style.css"), "body {}");
+            fs.writeFileSync(blueprintPath, JSON.stringify(configurationA));
+
+            // This is a canonical Outcome Library genuinely written before the save. The fixture's
+            // outcomes predate configuration hashes, so stamp its manifest with the source hash A.
+            const bundleDir = path.join(directory, "outcomelibrary");
+            await new OutcomeLibraryBundleWriter(version).writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+            const bundleManifestPath = path.join(bundleDir, "manifest.json");
+            const bundleManifest = JSON.parse(fs.readFileSync(bundleManifestPath, "utf-8")) as Record<string, unknown>;
+            fs.writeFileSync(bundleManifestPath, JSON.stringify({...bundleManifest, configHash: configurationAHash}));
+
+            const registration = new StudioProjectRegistrationService(
+                new InMemoryStudioProjectRegistry(),
+                fakeResolver({[blueprintPath]: blueprintProject(blueprintPath)}),
+            );
+            await registration.registerManaged(blueprintPath, "Sample Slot");
+
+            let previewedConfiguration: string | undefined;
+            const artifactBuildService = new StudioArtifactBuildService(version, undefined, {
+                resolve: (projectRoot) => {
+                    const currentBlueprint = JSON.parse(fs.readFileSync(projectRoot, "utf-8")) as {configuration: string};
+                    previewedConfiguration = currentBlueprint.configuration;
+                    return Promise.resolve(blueprintProject(projectRoot));
+                },
+            });
+            const homeService = new StudioHomeService(version, undefined, loadGame, undefined, resolveRuntimePackageRoot);
+            server = new StudioServer({
+                pokieVersion: version,
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService(version, studioRoot, homeService),
+                loadGame,
+                resolveRuntimePackageRoot,
+                projectRegistrationService: registration,
+                artifactBuildService,
+            });
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const opened = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: blueprintPath});
+            expect(opened.status).toBe(200);
+            expect((opened.body.manifest as {name: string}).name).toBe("Sample Slot A");
+
+            const replayCreated = await post(`${baseUrl}/api/project/replays`, {round: 2, seed: "before-save"});
+            expect(replayCreated.status).toBe(202);
+            const replayBeforeSave = await waitForTerminal(`${baseUrl}/api/project/replays/${replayCreated.body.id}`);
+            expect(replayBeforeSave.configHash).toBe(configurationAHash);
+
+            const saved = await post(`${baseUrl}/api/home/blueprints/save`, {
+                path: blueprintPath,
+                blueprint: configurationB,
+                overwrite: true,
+                expectedHash: configurationAHash,
+            });
+            expect(saved.status).toBe(201);
+            expect(saved.body.blueprintHash).toBe(configurationBHash);
+
+            const play = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(play.status).toBe(201);
+            expect(((play.body.session as {game: {name: string}}).game.name)).toBe("Sample Slot B");
+
+            const simulationCreated = await post(`${baseUrl}/api/project/simulations`, {rounds: 2});
+            expect(simulationCreated.status).toBe(202);
+            const simulation = await waitForTerminal(`${baseUrl}/api/project/simulations/${simulationCreated.body.id}`);
+            expect(((simulation.report as {game: {name: string}}).game.name)).toBe("Sample Slot B");
+
+            const buildPreview = await post(`${baseUrl}/api/project/artifacts/preview`, {target: "tsPackage"});
+            expect(buildPreview.status).toBe(200);
+            expect(buildPreview.body.status).toBe("ok");
+            expect(previewedConfiguration).toBe("B");
+
+            const registry = await get(`${baseUrl}/api/project/outcome-libraries/registry`);
+            expect(registry.status).toBe(200);
+            expect(registry.body.buildStatus).toBe("stale");
+            expect(registry.body.configHash).toBe(configurationAHash);
+
+            const stakeExport = await post(`${baseUrl}/api/project/stakeengine/export`, {
+                modes: [{modeName: "base", librarySelector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"}, cost: 1}],
+                outDir: "stakeengine",
+            });
+            expect(stakeExport.status).toBe(200);
+            expect(stakeExport.body.status).toBe("load-error");
+            expect(stakeExport.body.error).toContain(configurationAHash);
+            expect(stakeExport.body.error).toContain(configurationBHash);
+
+            const replayAfterSave = await get(`${baseUrl}/api/project/replays/${replayCreated.body.id}`);
+            expect(replayAfterSave.body.configHash).toBe(configurationAHash);
+            expect(materializedHashes).toContain(configurationBHash);
+        } finally {
+            await server?.stop();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+});
+
+describe("Studio Project runtime state isolation", () => {
+    it("keeps sessions and failed run state behind the canonical Project opened by A → B → A navigation", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "studio-project-runtime-isolation-"));
+        const studioRoot = path.join(directory, "studio");
+        const projectA = path.join(directory, "project-a");
+        const projectB = path.join(directory, "project-b");
+        let server: StudioServer | undefined;
+
+        const gameFor = (projectRoot: string): PokieGame => {
+            const name = path.resolve(projectRoot) === projectA ? "Project A" : "Project B";
+            return {
+                getManifest: () => ({id: name.toLowerCase().replace(" ", "-"), name, version: "0.1.0"}),
+                createSession: () => {
+                    let credits = 100;
+                    return {
+                        getCreditsAmount: () => credits,
+                        setCreditsAmount: (value: number) => {
+                            credits = value;
+                        },
+                        getBet: () => 1,
+                        setBet: () => undefined,
+                        getAvailableBets: () => [1],
+                        canPlayNextGame: () => true,
+                        play: () => {
+                            credits -= 1;
+                        },
+                        getWinAmount: () => 0,
+                    } as GameSessionHandling;
+                },
+            };
+        };
+        const loadGame = (projectRoot: string): Promise<PokieGame> => Promise.resolve(gameFor(projectRoot));
+        const passthroughRuntime = (projectRoot: string) => Promise.resolve({runtimePath: projectRoot, release: () => Promise.resolve()});
+
+        async function get(url: string): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url);
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        async function post(url: string, body: unknown): Promise<{status: number; body: Record<string, unknown>}> {
+            const response = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+            return {status: response.status, body: (await response.json()) as Record<string, unknown>};
+        }
+
+        try {
+            fs.mkdirSync(studioRoot, {recursive: true});
+            fs.writeFileSync(path.join(studioRoot, "index.html"), "<html>studio</html>");
+            fs.writeFileSync(path.join(studioRoot, "main.js"), "console.log('studio');");
+            fs.writeFileSync(path.join(studioRoot, "style.css"), "body {}");
+
+            const registration = new StudioProjectRegistrationService(
+                new InMemoryStudioProjectRegistry(),
+                fakeResolver({[projectA]: tsPackageProject(projectA), [projectB]: tsPackageProject(projectB)}),
+            );
+            const homeService = new StudioHomeService("1.0.0", undefined, loadGame, undefined, passthroughRuntime);
+            const simulationService = new StudioSimulationService(undefined, () => Promise.reject(new Error("Project A run failed.")));
+            server = new StudioServer({
+                pokieVersion: "1.0.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
+                loadGame,
+                resolveRuntimePackageRoot: passthroughRuntime,
+                projectRegistrationService: registration,
+                simulationService,
+            });
+            const address = await server.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const openedA = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectA});
+            expect(openedA.status).toBe(200);
+            expect((openedA.body.context as {projectRoot: string}).projectRoot).toBe(projectA);
+
+            const aSession = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(aSession.status).toBe(201);
+            const aSessionId = (aSession.body.session as {sessionId: string}).sessionId;
+            expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(200);
+
+            const aSimulation = await post(`${baseUrl}/api/project/simulations`, {rounds: 1});
+            expect(aSimulation.status).toBe(202);
+            const aSimulationId = aSimulation.body.id as string;
+            let failedRun: Record<string, unknown> | undefined;
+            for (let attempt = 0; attempt < 20; attempt++) {
+                const status = await get(`${baseUrl}/api/project/simulations/${aSimulationId}`);
+                if (status.body.status === "failed") {
+                    failedRun = status.body;
+                    break;
+                }
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(failedRun).toMatchObject({status: "failed", error: "Project A run failed."});
+
+            const openedB = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectB});
+            expect(openedB.status).toBe(200);
+            expect((openedB.body.context as {projectRoot: string}).projectRoot).toBe(projectB);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual([]);
+            expect((await get(`${baseUrl}/api/project/simulations/${aSimulationId}`)).status).toBe(404);
+            expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(404);
+
+            const bSession = await post(`${baseUrl}/api/project/play/session`, {});
+            expect(bSession.status).toBe(201);
+            expect(((bSession.body.session as {game: {name: string}}).game.name)).toBe("Project B");
+
+            const reopenedA = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: projectA});
+            expect(reopenedA.status).toBe(200);
+            // Run history persists by its owning Project, while Play sessions intentionally do not.
+            expect((await get(`${baseUrl}/api/project/simulations/${aSimulationId}`)).body).toMatchObject({status: "failed", error: "Project A run failed."});
+            expect((await post(`${baseUrl}/api/project/play/sessions/${aSessionId}/spin`, {})).status).toBe(404);
+        } finally {
+            await server?.stop();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 });

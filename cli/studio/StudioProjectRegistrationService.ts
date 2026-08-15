@@ -1,4 +1,4 @@
-import {ProjectTargetResolver, type ProjectResolving, type ProjectType} from "pokie";
+import {ProjectTargetResolver, type PokieProject, type ProjectResolving, type ProjectType} from "pokie";
 import fs from "fs";
 import path from "path";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
@@ -75,7 +75,17 @@ export class StudioProjectRegistrationService {
     // without explanation.
     public async list(): Promise<StudioProjectRegistryView[]> {
         const entries = await this.registry.list();
-        return entries.map((entry) => ({...entry, status: this.pathExists(entry.location) ? "ok" : "missing"}));
+        const canonicalEntries = await Promise.all(entries.map(async (entry) => ({entry, location: await this.canonicalize(entry.location)})));
+        const seenLocations = new Set<string>();
+        return canonicalEntries.flatMap(({entry, location}) => {
+            // Older registry files can contain aliases written before canonical identity was introduced.
+            // Keep the most-recent row only; callers never see two records for one physical Project.
+            if (seenLocations.has(location)) {
+                return [];
+            }
+            seenLocations.add(location);
+            return [{...entry, location, status: this.pathExists(location) ? "ok" : "missing"}];
+        });
     }
 
     // `importedFromParSheetPath`, when given, records that `location`'s own managed Blueprint was Applied
@@ -95,8 +105,62 @@ export class StudioProjectRegistrationService {
         return this.register(location, "external", name);
     }
 
+    // Records the successful Open as Project transition in the same durable registry as Import and
+    // managed creation.  This is deliberately separate from registerExternal(): opening an already
+    // managed project must refresh its recency without quietly changing its origin to "external".
+    public async recordOpened(location: string, name?: string): Promise<StudioProjectRegistrationResult> {
+        const resolved = await this.resolveRecognizedProject(location);
+        if (resolved === undefined) {
+            return {status: "unrecognized", path: await this.canonicalize(location)};
+        }
+
+        const matchingEntries = await this.entriesAt(resolved.location);
+        const existing = matchingEntries[0];
+        const entry: StudioProjectRegistryEntry = {
+            location: resolved.location,
+            name: name?.trim() || existing?.name || defaultProjectName(resolved.location, resolved.project.type),
+            type: resolved.project.type,
+            capabilities: resolved.project.capabilities,
+            origin: existing?.origin ?? "external",
+            lastOpenedAt: new Date().toISOString(),
+            importedFromParSheetPath: existing?.importedFromParSheetPath,
+        };
+        await this.replace(entry, matchingEntries);
+        return {status: "ok", entry: {...entry, status: "ok"}};
+    }
+
     public async remove(location: string): Promise<void> {
-        await this.registry.remove(path.resolve(location));
+        const canonicalLocation = await this.canonicalize(location);
+        const entries = await this.entriesAt(canonicalLocation);
+        await Promise.all(entries.map((entry) => this.registry.remove(entry.location)));
+    }
+
+    // Replaces a missing registry location with a recognized Project at its new location.  Nothing is
+    // copied or deleted: this is solely the explicit "I moved it here" repair operation.  Keeping the
+    // old entry's origin, display name and PAR provenance makes relocation a registry repair rather than
+    // an accidental re-import with different semantics.
+    public async relocate(oldLocation: string, newLocation: string): Promise<StudioProjectRegistrationResult> {
+        const oldCanonicalLocation = await this.canonicalize(oldLocation);
+        const oldEntries = await this.entriesAt(oldCanonicalLocation);
+        const previous = oldEntries[0];
+        if (previous === undefined) {
+            return {status: "unrecognized", path: oldCanonicalLocation};
+        }
+
+        const resolved = await this.resolveRecognizedProject(newLocation);
+        if (resolved === undefined) {
+            return {status: "unrecognized", path: await this.canonicalize(newLocation)};
+        }
+        const destinationEntries = await this.entriesAt(resolved.location);
+        const entry: StudioProjectRegistryEntry = {
+            ...previous,
+            location: resolved.location,
+            type: resolved.project.type,
+            capabilities: resolved.project.capabilities,
+            lastOpenedAt: new Date().toISOString(),
+        };
+        await this.replace(entry, [...oldEntries, ...destinationEntries]);
+        return {status: "ok", entry: {...entry, status: "ok"}};
     }
 
     // The Import Project flow's own "detect" step — resolves `location` exactly like registerExternal
@@ -106,17 +170,16 @@ export class StudioProjectRegistrationService {
     // Blueprint Editor's own import flow instead of registering it is a decision the caller (Studio's
     // Projects UI) makes from this result, not something this service special-cases.
     public async previewImport(location: string): Promise<StudioProjectImportPreviewResult> {
-        const resolvedPath = path.resolve(location);
-        const project = await this.resolveProject.resolve(resolvedPath);
-        if (!project) {
-            return {status: "unrecognized", path: resolvedPath};
+        const resolved = await this.resolveRecognizedProject(location);
+        if (resolved === undefined) {
+            return {status: "unrecognized", path: await this.canonicalize(location)};
         }
         return {
             status: "recognized",
-            location: project.rootPath,
-            type: project.type,
-            capabilities: project.capabilities,
-            suggestedName: defaultProjectName(project.rootPath, project.type),
+            location: resolved.location,
+            type: resolved.project.type,
+            capabilities: resolved.project.capabilities,
+            suggestedName: defaultProjectName(resolved.location, resolved.project.type),
         };
     }
 
@@ -159,18 +222,17 @@ export class StudioProjectRegistrationService {
     public async describeLocation(
         location: string,
     ): Promise<{type: ProjectType; capabilities: readonly string[]; origin?: StudioProjectOrigin} | undefined> {
-        let project;
+        let resolved;
         try {
-            project = await this.resolveProject.resolve(path.resolve(location));
+            resolved = await this.resolveRecognizedProject(location);
         } catch {
             return undefined;
         }
-        if (!project) {
+        if (!resolved) {
             return undefined;
         }
-        const entries = await this.registry.list();
-        const registered = entries.find((entry) => entry.location === project.rootPath);
-        return {type: project.type, capabilities: project.capabilities, origin: registered?.origin};
+        const registered = (await this.entriesAt(resolved.location))[0];
+        return {type: resolved.project.type, capabilities: resolved.project.capabilities, origin: registered?.origin};
     }
 
     // The directory a "show in folder" action should reveal for a given entry — the entry's own
@@ -189,24 +251,60 @@ export class StudioProjectRegistrationService {
         name?: string,
         importedFromParSheetPath?: string,
     ): Promise<StudioProjectRegistrationResult> {
-        const resolvedPath = path.resolve(location);
-        const project = await this.resolveProject.resolve(resolvedPath);
-        if (!project) {
-            return {status: "unrecognized", path: resolvedPath};
+        const resolved = await this.resolveRecognizedProject(location);
+        if (resolved === undefined) {
+            return {status: "unrecognized", path: await this.canonicalize(location)};
         }
 
         const trimmedName = name?.trim();
         const entry: StudioProjectRegistryEntry = {
-            location: project.rootPath,
-            name: trimmedName && trimmedName.length > 0 ? trimmedName : defaultProjectName(project.rootPath, project.type),
-            type: project.type,
-            capabilities: project.capabilities,
+            location: resolved.location,
+            name: trimmedName && trimmedName.length > 0 ? trimmedName : defaultProjectName(resolved.location, resolved.project.type),
+            type: resolved.project.type,
+            capabilities: resolved.project.capabilities,
             origin,
             lastOpenedAt: new Date().toISOString(),
             importedFromParSheetPath,
         };
-        await this.registry.upsert(entry);
+        await this.replace(entry, await this.entriesAt(resolved.location));
         return {status: "ok", entry: {...entry, status: "ok"}};
+    }
+
+    // ProjectTargetResolver intentionally preserves the spelling it was given.  The registry cannot:
+    // relative paths, absolute paths and symlink aliases must be one identity across a restart.  A
+    // dangling/missing path has no real path to resolve, so its absolute spelling remains the stable key
+    // until a user explicitly relocates or removes it.
+    private async canonicalize(location: string): Promise<string> {
+        const absoluteLocation = path.resolve(location);
+        try {
+            return path.resolve(await fs.promises.realpath(absoluteLocation));
+        } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code;
+            if (code === "ENOENT" || code === "ENOTDIR") {
+                return absoluteLocation;
+            }
+            throw error;
+        }
+    }
+
+    private async resolveRecognizedProject(location: string): Promise<{location: string; project: PokieProject} | undefined> {
+        const canonicalLocation = await this.canonicalize(location);
+        const project = await this.resolveProject.resolve(canonicalLocation);
+        if (project === undefined) {
+            return undefined;
+        }
+        return {location: await this.canonicalize(project.rootPath), project};
+    }
+
+    private async entriesAt(canonicalLocation: string): Promise<StudioProjectRegistryEntry[]> {
+        const entries = await this.registry.list();
+        const canonicalEntries = await Promise.all(entries.map(async (entry) => ({entry, location: await this.canonicalize(entry.location)})));
+        return canonicalEntries.filter(({location}) => location === canonicalLocation).map(({entry}) => entry);
+    }
+
+    private async replace(entry: StudioProjectRegistryEntry, replacedEntries: readonly StudioProjectRegistryEntry[]): Promise<void> {
+        await Promise.all(replacedEntries.map((replaced) => this.registry.remove(replaced.location)));
+        await this.registry.upsert(entry);
     }
 }
 

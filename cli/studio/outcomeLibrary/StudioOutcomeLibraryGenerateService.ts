@@ -179,7 +179,11 @@ export class StudioOutcomeLibraryGenerateService {
                 libraryId,
                 game,
                 pokieVersion: this.pokieVersion,
-                ...(request.configHash !== undefined ? {configHash: request.configHash} : {}),
+                // A generated runtime is the authority for its configuration provenance. In
+                // particular, a Blueprint's materialized game can normalize generated reels, so a
+                // caller-provided hash is not a safe substitute for the hash that actually produced
+                // these outcomes.
+                ...(game.getConfigHash?.() !== undefined ? {configHash: game.getConfigHash()} : {}),
                 ...(request.mode !== undefined ? {betMode: request.mode} : {}),
                 ...(request.stake !== undefined ? {stake: request.stake} : {}),
                 ...(request.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: request.maxOutcomeSpaceSize} : {}),
@@ -291,11 +295,18 @@ export class StudioOutcomeLibraryGenerateService {
             return {status: "ok", bundleDir: StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR, buildStatus: "missing"};
         }
 
+        const currentConfigHash = game.getConfigHash?.();
         const classify = (manifest: OutcomeLibraryBundleManifest): "compatible" | "stale" | "wrong" => {
             if (manifest.game.id !== currentGame.id) {
                 return "wrong";
             }
             if (manifest.game.version !== currentGame.version || manifest.artifactPokieVersion !== this.pokieVersion) {
+                return "stale";
+            }
+            // Game id/version are user-authored metadata and commonly stay unchanged while a
+            // Blueprint's reels, pays, or mechanics change. A library without the current runtime's
+            // exact configuration hash therefore cannot be presented as usable for this Project.
+            if (currentConfigHash !== undefined && manifest.configHash !== currentConfigHash) {
                 return "stale";
             }
             return "compatible";

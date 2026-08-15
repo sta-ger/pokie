@@ -1,6 +1,6 @@
 import {Anchor, Button, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
@@ -152,6 +152,46 @@ function isProjectTab(value: string | undefined): value is ProjectTab {
     return ALL_PROJECT_TABS.some((tab) => tab.value === value);
 }
 
+// A route with a project root must remount the dashboard when browser history changes that root.
+// ProjectDashboardPage owns several long-lived runtime hooks, and retaining an A instance while the
+// server has already switched to B would leave A's session/run identifiers actionable against B.
+export function ProjectDashboardRoute() {
+    const {projectRoot} = useParams<{projectRoot: string}>();
+    return <ProjectDashboardPage key={projectRoot ?? "current-project"} requestedProjectRoot={projectRoot} />;
+}
+
+// Legacy `/project/:tab` links contain no project identity. Resolve the server's current project
+// in this deliberately state-free route first, then scope its *native* history entry before the
+// dashboard (and its session/run/error state) can mount. This makes every rendered project dashboard
+// derive from a project-scoped route, including direct links from older Studio versions.
+export function LegacyProjectDashboardRoute() {
+    const {tab} = useParams<{tab: string}>();
+    const navigate = useNavigate();
+    const header = useProjectContext();
+    const activeTab = isProjectTab(tab) ? tab : "overview";
+    const upgradeStartedRef = useRef(false);
+
+    // Replace the legacy entry through the data router. Native history.replaceState() changes the hash
+    // without updating createHashRouter's tracked location/key, which leaves its history index stale
+    // when the browser later traverses this entry and can strand the native Forward branch. Router-owned
+    // replacement preserves the entry's position while keeping both histories synchronized. The
+    // stateful dashboard never mounts from the ambiguous route.
+    const projectRoot = header.status === "empty" ? undefined : header.projectRoot;
+    useLayoutEffect(() => {
+        if (!upgradeStartedRef.current && projectRoot !== undefined && projectRoot !== "") {
+            upgradeStartedRef.current = true;
+            const scopedPath = `/project/${encodeURIComponent(projectRoot)}/${activeTab}`;
+            navigate(scopedPath, {replace: true});
+        }
+    }, [activeTab, navigate, projectRoot]);
+
+    if (header.status === "error" && projectRoot === "") {
+        return <ErrorState message={header.message} detail={header.errorDetail} />;
+    }
+
+    return <LoadingState label="Resolving project…" />;
+}
+
 // Whether `tab` is actually reachable for the loaded project. A tab with no `requiredCapabilities`
 // (Overview) is always supported; everything else needs the project to be resolved -- "loaded" or
 // "outcome-source" alike, the only two ProjectHeaderView statuses that carry a `capabilities` array at
@@ -206,7 +246,7 @@ function describeProjectName(header: ProjectHeaderView): string {
 // simultaneously (just hidden via CSS), so a Simulation/Replay run (or an in-flight Deployment request)
 // was never interrupted by looking at a different tab; conditionally *mounting* only the active tab's
 // hook would silently cancel that background work, which this file exists specifically to avoid.
-export function ProjectDashboardPage() {
+export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRoot?: string} = {}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const confirm = useConfirm();
@@ -217,12 +257,13 @@ export function ProjectDashboardPage() {
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
-            navigate(`/project/${value}`);
+            const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+            navigate(`${routePrefix}/${value}`);
         },
-        [navigate],
+        [navigate, requestedProjectRoot],
     );
 
-    const header = useProjectContext();
+    const header = useProjectContext(requestedProjectRoot);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
     // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
@@ -796,6 +837,7 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "play" && (
                                 <PlayTab
+                                    key={projectKey ?? "no-project"}
                                     session={play.session}
                                     sessionId={play.sessionId}
                                     onNewSession={play.newSession}
@@ -808,6 +850,7 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "simulation" && (
                                 <SimulationTab
+                                    key={projectKey ?? "no-project"}
                                     progress={simulation.progress}
                                     error={simulation.error}
                                     onRun={startRun}
@@ -846,6 +889,7 @@ export function ProjectDashboardPage() {
                             )}
                             {activeTab === "replay" && (
                                 <ReplayTab
+                                    key={projectKey ?? "no-project"}
                                     progress={replay.progress}
                                     result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
                                     error={replay.error}
@@ -881,7 +925,7 @@ export function ProjectDashboardPage() {
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab capabilities={headerCapabilities} deployment={deployment} />
+                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns
