@@ -59,6 +59,14 @@ export function HomePage() {
     const activeTabLabel = HOME_TABS.find((item) => item.value === activeTab)?.label ?? "Design Game";
     useDocumentTitle(`${activeTabLabel} · POKIE Studio`);
 
+    // Keep the address bar aligned with the fallback view too. Without this replacement an invalid
+    // direct link renders Design Game but leaves an unusable /home/:tab history entry behind.
+    useEffect(() => {
+        if (!isHomeTab(tab)) {
+            navigate("/home/design", {replace: true});
+        }
+    }, [navigate, tab]);
+
     const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
     const initialParSheetPath = location.state?.initialParSheetPath;
