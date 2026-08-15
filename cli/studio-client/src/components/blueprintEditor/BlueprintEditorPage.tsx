@@ -97,7 +97,7 @@ export function BlueprintEditorPage({
     const editor = useBlueprintEditor(guided ? createRecommendedBlueprint() : undefined);
     const [mode, setMode] = useState<BlueprintMode>("form");
     const [blueprintPath, setBlueprintPath] = useState<string>();
-    const overwriteConfirmedForPath = useRef<string | undefined>(undefined);
+    const [overwriteConfirmedForPath, setOverwriteConfirmedForPath] = useState<string>();
     const [loadView, setLoadView] = useState<BlueprintLoadView>({status: "idle"});
     const [saveView, setSaveView] = useState<BlueprintSaveView>({status: "idle"});
     // The guided flow's own prominent "Save" action (see handleGuidedSave below) -- kept separate from
@@ -504,7 +504,7 @@ export function BlueprintEditorPage({
     const captureReplaceSnapshot = () => ({
         blueprint: editor.state.blueprint,
         path: blueprintPath,
-        overwriteConfirmedForPath: overwriteConfirmedForPath.current,
+        overwriteConfirmedForPath,
         wasClean: editor.state.revision === cleanRevisionRef.current,
         builtSnapshot,
         importedFromParSheetPath,
@@ -523,7 +523,7 @@ export function BlueprintEditorPage({
         nextFormGenerationIsClean.current = true;
         editor.newBlueprint();
         setBlueprintPath(undefined);
-        overwriteConfirmedForPath.current = undefined;
+        setOverwriteConfirmedForPath(undefined);
         sourceVersionRef.current = undefined;
         sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
@@ -553,7 +553,7 @@ export function BlueprintEditorPage({
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(blueprint);
         setBlueprintPath(undefined);
-        overwriteConfirmedForPath.current = undefined;
+        setOverwriteConfirmedForPath(undefined);
         sourceVersionRef.current = undefined;
         sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
@@ -577,7 +577,7 @@ export function BlueprintEditorPage({
         nextFormGenerationIsClean.current = undoSnapshot.wasClean;
         editor.loadFrom(undoSnapshot.blueprint);
         setBlueprintPath(undoSnapshot.path);
-        overwriteConfirmedForPath.current = undoSnapshot.overwriteConfirmedForPath;
+        setOverwriteConfirmedForPath(undoSnapshot.overwriteConfirmedForPath);
         // The snapshot itself doesn't carry a content hash for `undoSnapshot.path` -- background source-
         // change detection (see sourceVersionRef's own doc comment) simply stays off for this path until
         // the next Load/Save re-establishes a known-good baseline for it.
@@ -603,7 +603,7 @@ export function BlueprintEditorPage({
                     nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
                     setBlueprintPath(result.path);
-                    overwriteConfirmedForPath.current = result.path;
+                    setOverwriteConfirmedForPath(result.path);
                     // A freshly loaded blueprint has nothing to do with whatever the *previous* draft was
                     // last built into -- see builtSnapshot's own doc comment.
                     setBuiltSnapshot(undefined);
@@ -656,7 +656,7 @@ export function BlueprintEditorPage({
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(importedBlueprint);
         setBlueprintPath(sourcePath);
-        overwriteConfirmedForPath.current = undefined;
+        setOverwriteConfirmedForPath(undefined);
         // `sourcePath` is the .xlsx workbook, not a JSON blueprint file checkBlueprintSource can read --
         // background source-change detection stays off until a JSON Load/Save gives it a real path to
         // watch (see sourceVersionRef's own doc comment).
@@ -726,7 +726,7 @@ export function BlueprintEditorPage({
                 setSaveView(describeSaveResult(result));
                 if (result.status === "ok") {
                     setBlueprintPath(result.path);
-                    overwriteConfirmedForPath.current = result.path;
+                    setOverwriteConfirmedForPath(result.path);
                     markClean(savedRevision);
                     // This exact content is now known to match `result.path` on disk -- see
                     // sourceVersionRef's own doc comment.
@@ -742,7 +742,7 @@ export function BlueprintEditorPage({
     };
 
     const handleSave = (path: string): void => {
-        runSave(path, overwriteConfirmedForPath.current === path);
+        runSave(path, overwriteConfirmedForPath === path);
     };
 
     const handleOverwrite = (path: string): void => {
@@ -760,7 +760,7 @@ export function BlueprintEditorPage({
     // slot -- the content is now safely persisted, so there's nothing left to "recover".
     const saveGuidedProject = (savedRevision: number): void => {
         setManagedSaveView({status: "loading"});
-        const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath.current === blueprintPath;
+        const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
         // Kept as `{raw, view}` pairs (rather than mapping straight to `describeSaveResult`/
         // `describeSaveManagedResult`, which drop `blueprintHash`) so the success branch below can still
         // read the just-written content's own hash off `raw` for sourceVersionRef.
@@ -781,7 +781,7 @@ export function BlueprintEditorPage({
                 setManagedSaveView(view);
                 if (view.status === "ok" && raw.status === "ok") {
                     setBlueprintPath(view.path);
-                    overwriteConfirmedForPath.current = view.path;
+                    setOverwriteConfirmedForPath(view.path);
                     markClean(savedRevision);
                     clearPersistedBlueprintDraft();
                     sourceVersionRef.current = {path: view.path, hash: raw.blueprintHash};
@@ -913,7 +913,7 @@ export function BlueprintEditorPage({
                 <div>
                     <QuickActions>
                         <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"}>
-                            {blueprintPath === undefined || overwriteConfirmedForPath.current !== blueprintPath ? "Create Project" : "Save Project"}
+                            {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create Project" : "Save Project"}
                         </Button>
                     </QuickActions>
                     {validationView.status !== "ok" && (
