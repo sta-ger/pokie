@@ -172,24 +172,18 @@ export default {
     // whose worker is killed for that is reported failed with no assertion named, which is exactly the
     // signature this lane kept producing under check:full and never when run on its own (one file alone
     // peaks at ~620-735MiB, comfortably inside the cap). package.json's test:workflows therefore runs
-    // Jest under `node --max-old-space-size=512`, which jest-worker forwards to the workers via
-    // execArgv (see ChildProcessWorker's fork options) -- verified: the worker's heap_size_limit drops
-    // from 1120MiB to 608MiB, so the whole lane's ceiling fits the container with room to spare, at no
-    // measurable wall-clock cost. --workerIdleMemoryLimit=192MB complements it by keeping the *between
-    // files* footprint flat (Jest re-measures a worker's heapUsed after each file and recycles it past
-    // the threshold; one heavy suite of this lane retains ~190-215MB, so it trips on every file that
-    // costs anything) -- but it is only checked once a file has finished, so on its own it can neither
-    // bound growth within a file nor stop V8 from deferring collection until past the cgroup limit.
+    // Jest under `node --max-old-space-size=512`. test:coverage keeps the same ceiling and additionally
+    // uses `workerIdleMemoryLimit=192MB` to recycle between-file state; that option alone cannot bound
+    // growth within a file or stop V8 from deferring collection until past the cgroup limit.
     // test:coverage (check:release) runs this same studio-client-workflows project bundled into one
     // invocation alongside the other three projects plus --coverage instrumentation -- strictly more
-    // concurrent contention than check:full's dedicated test:workflows step ever sees -- so it carries
-    // the identical pair of flags for the same reason, not just the lane run on its own.
+    // concurrent contention than check:full's dedicated test:workflows step ever sees -- so it retains
+    // its bounded-worker settings for the same reason.
     //
     // The reduced old-space ceiling lets individual workers collect early, but it cannot cap native
-    // jsdom/transform memory.  A second concurrent worker still pushes this lane over the gate
-    // container's 2GiB cgroup limit intermittently (reported by Jest as failed suites without an
-    // assertion).  `test:workflows` therefore uses one worker: one main process and one bounded worker
-    // stay below that limit, and `workerIdleMemoryLimit` still recycles retained test state between files.
+    // jsdom/transform memory. Even one worker leaves the Jest coordinator and worker alive together,
+    // which can still exceed the gate container's 2GiB cgroup limit. `test:workflows` consequently
+    // runs in-band: one bounded process executes and releases each suite before continuing.
     //
     // With that in place 60000ms is ordinary headroom: enough for a test that chains several sequential
     // findBy*/waitFor assertions to each get setupTests.ts's 15000ms asyncUtilTimeout without the whole
