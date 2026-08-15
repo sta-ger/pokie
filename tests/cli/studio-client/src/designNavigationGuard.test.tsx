@@ -99,7 +99,10 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-        expect(router.state.location.pathname).toBe("/project/overview");
+        // Legacy project links are upgraded in place after the server resolves their project identity.
+        // The confirmed Back transition still consumes exactly one history entry; its destination is
+        // merely the canonical, project-scoped form of that legacy URL.
+        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
 
         // blocker.proceed() resumes the exact transition that was blocked rather than issuing a second
         // navigate() on top of it -- so exactly one history entry was consumed: we're now at the start of
