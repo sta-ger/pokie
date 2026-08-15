@@ -33,22 +33,32 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
     const [state, setState] = useState<BlueprintEditorState>(() =>
         initialBlueprint === undefined ? createEmptyBlueprintEditorState() : loadBlueprintEditorState(initialBlueprint),
     );
+    // Form controls commit on blur. A primary action can be clicked in that same React event batch,
+    // before the component has re-rendered with the resulting state. Keep the event-time state here so
+    // that action validates and persists the just-committed field value, rather than the previous render.
+    const stateRef = useRef(state);
     const [formGeneration, setFormGeneration] = useState(0);
     const draftsRef = useRef<ReelStripGenerationDrafts>(new Map());
 
     const mutate: BlueprintMutate = useCallback((fn) => {
-        setState((prev) => withFieldUpdate(prev, fn));
+        const next = withFieldUpdate(stateRef.current, fn);
+        stateRef.current = next;
+        setState(next);
     }, []);
 
     const newBlueprint = useCallback(() => {
         draftsRef.current.clear();
-        setState((prev) => createEmptyBlueprintEditorState(prev.revision));
+        const next = createEmptyBlueprintEditorState(stateRef.current.revision);
+        stateRef.current = next;
+        setState(next);
         setFormGeneration((g) => g + 1);
     }, []);
 
     const loadFrom = useCallback((blueprint: unknown) => {
         draftsRef.current.clear();
-        setState((prev) => loadBlueprintEditorState(blueprint, prev.revision));
+        const next = loadBlueprintEditorState(blueprint, stateRef.current.revision);
+        stateRef.current = next;
+        setState(next);
         setFormGeneration((g) => g + 1);
     }, []);
 
@@ -59,9 +69,11 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
     // whether this was a wholesale replace.
     const applyJson = useCallback(
         (text: string) => {
-            const next = applyJsonText(state, text);
+            const previous = stateRef.current;
+            const next = applyJsonText(previous, text);
+            stateRef.current = next;
             setState(next);
-            if (next.blueprint !== state.blueprint) {
+            if (next.blueprint !== previous.blueprint) {
                 // A successful JSON apply is a wholesale blueprint replace exactly like New/Load -- must
                 // clear the Reel Strip Modeler's own toggle bookkeeping the same way those two do, or a
                 // reel's literal<->generated/counts<->weights memory from the *old* blueprint could
@@ -70,8 +82,10 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
                 setFormGeneration((g) => g + 1);
             }
         },
-        [state],
+        [],
     );
 
-    return {state, formGeneration, mutate, newBlueprint, loadFrom, applyJson, drafts: draftsRef};
+    const getCurrentState = useCallback(() => stateRef.current, []);
+
+    return {state, formGeneration, mutate, newBlueprint, loadFrom, applyJson, getCurrentState, drafts: draftsRef};
 }

@@ -224,14 +224,6 @@ export function BlueprintEditorPage({
         onDirtyChange?.(dirty);
     });
 
-    // Kept in sync with the latest revision on every render so handleValidate's async resolve handler
-    // can read the *current* value at response time, not the one closed over at request-send time --
-    // same pattern ReelStripGenerationEditor.tsx's own "Resolve reels" preview already uses for its own
-    // staleness guard.
-    const revisionRef = useRef(editor.state.revision);
-    useEffect(() => {
-        revisionRef.current = editor.state.revision;
-    }, [editor.state.revision]);
     // A second, independent staleness signal alongside revision: incremented once per validate request
     // that actually starts, so a request whose *response* arrives after a *newer* validate request began
     // is recognized as stale even in the (currently impossible, since validateGuard already serializes
@@ -270,12 +262,13 @@ export function BlueprintEditorPage({
         // a response for a blueprint that's since changed (an edit, New, Load, JSON Apply -- anything
         // that bumped revision) or been superseded by a newer validate request is discarded rather than
         // clobbering whatever the current, already-reset-to-idle state should be.
-        const requestedRevision = editor.state.revision;
+        const currentState = editor.getCurrentState();
+        const requestedRevision = currentState.revision;
         const requestId = ++validateRequestIdRef.current;
         activeValidationRevisionRef.current = requestedRevision;
-        const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== revisionRef.current;
+        const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== editor.getCurrentState().revision;
         setValidationView({status: "loading"});
-        validateBlueprint(fetchImpl, editor.state.blueprint)
+        validateBlueprint(fetchImpl, currentState.blueprint)
             .then((result) => {
                 if (isStale()) {
                     // A Create Project click may be waiting on this automatic check. Once an edit or
@@ -327,7 +320,7 @@ export function BlueprintEditorPage({
     // resolved check's own object identity (captured as `watched` at request-send time) as its staleness
     // guard: once a newer Load/Save/change-detection has replaced `sourceVersionRef.current` with a
     // different object, an earlier, now-late response for the *previous* one is recognized as no longer
-    // describing what's open and is discarded -- the same "requestedRevision !== revisionRef.current"-
+    // describing what's open and is discarded -- the same current-revision comparison
     // style guard handleValidate's own isStale() uses, just keyed on this ref's identity instead of a
     // revision number, since a source-check response doesn't carry (or need) one of its own.
     const sourceVersionRef = useRef<{path: string; hash: string} | undefined>(undefined);
@@ -797,7 +790,7 @@ export function BlueprintEditorPage({
     // an explicit advanced Load/Save) reuses the ordinary saveBlueprint endpoint against that exact path
     // with overwrite:true, so it never re-asks either. A successful save also clears the draft-recovery
     // slot -- the content is now safely persisted, so there's nothing left to "recover".
-    const saveGuidedProject = (savedRevision: number): void => {
+    const saveGuidedProject = (savedRevision: number, savedBlueprint: Record<string, unknown>): void => {
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
         // Kept as `{raw, view}` pairs (rather than mapping straight to `describeSaveResult`/
@@ -807,11 +800,11 @@ export function BlueprintEditorPage({
             ? saveBlueprint(
                 fetchImpl,
                 blueprintPath,
-                editor.state.blueprint,
+                savedBlueprint,
                 true,
                 sourceVersionRef.current?.path === blueprintPath ? sourceVersionRef.current.hash : undefined,
             ).then((raw) => ({raw, view: describeSaveResult(raw)}))
-            : saveManagedBlueprint(fetchImpl, editor.state.blueprint, importedFromParSheetPath).then((raw) => ({
+            : saveManagedBlueprint(fetchImpl, savedBlueprint, importedFromParSheetPath).then((raw) => ({
                 raw,
                 view: describeSaveManagedResult(raw),
             }));
@@ -854,8 +847,8 @@ export function BlueprintEditorPage({
             return;
         }
         pendingGuidedSaveRevisionRef.current = undefined;
-        if (validatedRevision === revisionRef.current && validation.status === "ok") {
-            saveGuidedProject(validatedRevision);
+        if (validatedRevision === editor.getCurrentState().revision && validation.status === "ok") {
+            saveGuidedProject(validatedRevision, editor.getCurrentState().blueprint);
             return;
         }
         saveGuard.end();
@@ -873,11 +866,12 @@ export function BlueprintEditorPage({
             return;
         }
 
-        const savedRevision = editor.state.revision;
+        const savedState = editor.getCurrentState();
+        const savedRevision = savedState.revision;
         const completedValidation = completedValidationRef.current;
         if (completedValidation?.revision === savedRevision) {
             if (completedValidation.validation.status === "ok") {
-                saveGuidedProject(savedRevision);
+                saveGuidedProject(savedRevision, savedState.blueprint);
             } else {
                 saveGuard.end();
             }
@@ -902,20 +896,20 @@ export function BlueprintEditorPage({
 
         const requestId = ++validateRequestIdRef.current;
         setValidationView({status: "loading"});
-        validateBlueprint(fetchImpl, editor.state.blueprint)
+        validateBlueprint(fetchImpl, savedState.blueprint)
             .then(describeValidation)
             .catch((error: unknown): BlueprintValidationView => ({status: "error", message: errorMessage(error)}))
             .then((validation) => {
                 // A model edit (or a newer automatic check) while this action was in flight makes this
                 // answer describe an older revision, so leave the current revision to its own automatic
                 // validation instead of saving stale content.
-                if (requestId !== validateRequestIdRef.current || savedRevision !== revisionRef.current) {
+                if (requestId !== validateRequestIdRef.current || savedRevision !== editor.getCurrentState().revision) {
                     saveGuard.end();
                     return;
                 }
                 setValidationView(validation);
                 if (validation.status === "ok") {
-                    saveGuidedProject(savedRevision);
+                    saveGuidedProject(savedRevision, savedState.blueprint);
                 } else {
                     saveGuard.end();
                 }
