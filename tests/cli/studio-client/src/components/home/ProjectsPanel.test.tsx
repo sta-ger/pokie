@@ -1,7 +1,10 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {useLocation} from "react-router-dom";
+import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // Covers the Import Project flow this step (P3-POLISH-13) added to the Projects tab -- Detect (a
 // read-only preview, never registering anything) -> Register for anything with an "open" story, or
@@ -19,6 +22,11 @@ const AUTOMATIC_VALIDATION_ROUTE = {
 async function goToProjects(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(await screen.findByRole("button", {name: "Projects"}));
     await screen.findByText("Import Project");
+}
+
+function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="location">{JSON.stringify({pathname: location.pathname, state: location.state})}</output>;
 }
 
 describe("ProjectsPanel: Import Project", () => {
@@ -49,8 +57,7 @@ describe("ProjectsPanel: Import Project", () => {
                 },
             }),
         });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
-        await goToProjects(user);
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
         await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
         await user.click(screen.getByRole("button", {name: "Detect"}));
@@ -76,21 +83,20 @@ describe("ProjectsPanel: Import Project", () => {
     it("routes a recognized PAR sheet to Design Game's own PAR Sheet Import/Export panel instead of registering it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
-            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
                 ok: true,
                 status: 200,
                 body: {status: "recognized", location: "/games/sheet.xlsx", type: "parWorkbook", capabilities: [], suggestedName: "sheet"},
             }),
-            "/api/home/blueprints/par-import": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "ok", path: "/games/sheet.xlsx", blueprint: {manifest: {id: "sheet", name: "Sheet", version: "0.1.0"}}, errors: [], warnings: []},
-            }),
         });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
-        await goToProjects(user);
+        renderWithProviders(
+            <>
+                <ProjectsPanel />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
 
         await user.type(screen.getByLabelText("Location", {exact: false}), "/games/sheet.xlsx");
         await user.click(screen.getByRole("button", {name: "Detect"}));
@@ -100,17 +106,13 @@ describe("ProjectsPanel: Import Project", () => {
 
         await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
 
-        await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
-        // BlueprintEditorPage's own initialParSheetPath auto-runs Import against the detected path --
-        // the same "arrive already on the right step" treatment initialPath gives a regular blueprint.
         await waitFor(() =>
-            expect(calls).toContainEqual(
-                expect.objectContaining({
-                    url: "/api/home/blueprints/par-import",
-                    init: expect.objectContaining({body: JSON.stringify({path: "/games/sheet.xlsx"})}),
-                }),
-            ),
+            expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
+                pathname: "/home/design",
+                state: {initialParSheetPath: "/games/sheet.xlsx"},
+            }),
         );
+        expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
     });
 
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {

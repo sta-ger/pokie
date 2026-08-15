@@ -237,6 +237,14 @@ export function BlueprintEditorPage({
     // is recognized as stale even in the (currently impossible, since validateGuard already serializes
     // validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
+    // The scheduled automatic validation may already have begun when Create Project is clicked. Keep
+    // its revision separately from the rendered view so the primary action can join that exact check
+    // instead of issuing a second request for the same model while React is committing "loading".
+    const activeValidationRevisionRef = useRef<number | undefined>(undefined);
+    // A Create Project action which joined the automatic check above owns saveGuard until that check
+    // settles. Its completion is handled by finishPendingGuidedSave below, after the shared result has
+    // passed the same revision staleness check as every automatic validation.
+    const pendingGuidedSaveRevisionRef = useRef<number | undefined>(undefined);
 
     // Declared here (rather than down among the other handlers) so the auto-validate debounce inside the
     // revision-bump effect just below can call it directly -- an equivalent ref-indirection would only
@@ -252,6 +260,7 @@ export function BlueprintEditorPage({
         // clobbering whatever the current, already-reset-to-idle state should be.
         const requestedRevision = editor.state.revision;
         const requestId = ++validateRequestIdRef.current;
+        activeValidationRevisionRef.current = requestedRevision;
         const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== revisionRef.current;
         setValidationView({status: "loading"});
         validateBlueprint(fetchImpl, editor.state.blueprint)
@@ -259,15 +268,24 @@ export function BlueprintEditorPage({
                 if (isStale()) {
                     return;
                 }
-                setValidationView(describeValidation(result));
+                const validation = describeValidation(result);
+                setValidationView(validation);
+                finishPendingGuidedSave(validation, requestedRevision);
             })
             .catch((error: unknown) => {
                 if (isStale()) {
                     return;
                 }
-                setValidationView({status: "error", message: errorMessage(error)});
+                const validation: BlueprintValidationView = {status: "error", message: errorMessage(error)};
+                setValidationView(validation);
+                finishPendingGuidedSave(validation, requestedRevision);
             })
-            .finally(() => validateGuard.end());
+            .finally(() => {
+                if (activeValidationRevisionRef.current === requestedRevision) {
+                    activeValidationRevisionRef.current = undefined;
+                }
+                validateGuard.end();
+            });
     };
 
     // Always the *latest* handleValidate closure -- kept up to date every render so the background
@@ -806,6 +824,22 @@ export function BlueprintEditorPage({
             .finally(() => saveGuard.end());
     };
 
+    // Function declaration intentionally precedes neither of its callers: handleValidate is created
+    // before saveGuidedProject for the auto-validation effect, but it only executes after this render
+    // has initialized both handlers. Keeping this completion path shared avoids a second validation
+    // request when Create Project races the automatic check on initial open.
+    function finishPendingGuidedSave(validation: BlueprintValidationView, validatedRevision: number): void {
+        if (pendingGuidedSaveRevisionRef.current !== validatedRevision) {
+            return;
+        }
+        pendingGuidedSaveRevisionRef.current = undefined;
+        if (validatedRevision === revisionRef.current && validation.status === "ok") {
+            saveGuidedProject(validatedRevision);
+            return;
+        }
+        saveGuard.end();
+    }
+
     const handleGuidedSave = (): void => {
         if (!saveGuard.begin()) {
             return;
@@ -821,6 +855,14 @@ export function BlueprintEditorPage({
         const savedRevision = editor.state.revision;
         if (validationView.status === "ok") {
             saveGuidedProject(savedRevision);
+            return;
+        }
+
+        // If the scheduled automatic validation has already started for this same revision, use its
+        // result. This preserves the one-action Create flow and, crucially, gives one model revision
+        // one validation request even under a slow render or a click arriving at the debounce boundary.
+        if (activeValidationRevisionRef.current === savedRevision) {
+            pendingGuidedSaveRevisionRef.current = savedRevision;
             return;
         }
 
