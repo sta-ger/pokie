@@ -20,7 +20,7 @@ type StudioOptions = {
     noOpen: boolean;
 };
 
-const USAGE = "Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]";
+const USAGE = "Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]";
 
 export type StudioCommandDependencies = {
     createServer?: (options: StudioServerOptions) => StudioServerHandling;

@@ -28,7 +28,7 @@ describe("public command tree", () => {
             .flatMap((command) => [command.getDescription(), command.getCommanderCommand().helpInformation()]);
         const topLevelBrowserWorkflowHelp = buildUsageText(commands)
             .split("\n")
-            .filter((line) => /^\s+(client|dev)\b/.test(line));
+            .filter((line) => (/^\s+(client|dev)\b/).test(line));
 
         expect(supportedBrowserWorkflows).toHaveLength(4);
         expect([...supportedBrowserWorkflows, ...topLevelBrowserWorkflowHelp].join("\n")).not.toMatch(/\bpreview\b/i);
