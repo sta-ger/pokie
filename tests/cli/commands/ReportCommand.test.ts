@@ -67,7 +67,7 @@ describe("ReportCommand", () => {
     it("throws when run without a report path", async () => {
         const command = new ReportCommand();
 
-        await expect(command.run([])).rejects.toThrow(/Usage: pokie report <simulationReportJson>/);
+        await expect(command.run([])).rejects.toThrow(/Usage: pokie report <projectOrSimulationReportJson>/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {
@@ -302,6 +302,35 @@ describe("ReportCommand outcome-source project routing", () => {
         expect(printed).toContain('"/libraries/base" is a "native" canonical outcome source (streaming: true).');
         expect(printed).toContain("never re-derives the game model that produced these outcomes");
         expect(printed).toContain('mode "base": rtp 95.50%, hit frequency 25.00%');
+
+        logSpy.mockRestore();
+    });
+
+    it("dispatches a resolved Stake adapter directly to its canonical reader without trying to parse it as report JSON", async () => {
+        const stakeAdapterProject: PokieProject = {
+            type: "stakeAdapter",
+            rootPath: "/stake/base",
+            capabilities: PROJECT_TYPE_CAPABILITIES.stakeAdapter,
+            provenance: "test fixture",
+        };
+        const report: OutcomeSourceProjectReport = {
+            rootPath: "/stake/base",
+            descriptor: {kind: "stakeEngine", streaming: false, limitations: ["reads the adapter's own books"]},
+            issues: [],
+            modes: [],
+        };
+        const readFile = jest.fn(() => {
+            throw new Error("report JSON should not be read");
+        });
+        const outcomeSourceAnalyzer = stubAnalyzer(report);
+        const command = new ReportCommand(readFile, undefined, undefined, stubProjectResolver(stakeAdapterProject), outcomeSourceAnalyzer);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["/stake/base"]);
+
+        expect(readFile).not.toHaveBeenCalled();
+        expect(outcomeSourceAnalyzer.calls).toEqual([stakeAdapterProject]);
+        expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain('"/stake/base" is a "stakeEngine" canonical outcome source');
 
         logSpy.mockRestore();
     });

@@ -93,25 +93,27 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
     playing it; `pokie inspect <packageRoot>`, which prints a generated package's provenance (game, blueprint
     hash, source, timestamp, `pokie` version) from `package.json`/`build-info.json` without running it; `pokie
-    report <simulationReportJson>`, which renders a `pokie sim --out` report as Markdown or
-    HTML; `pokie diff <leftReportJson> <rightReportJson>`, which compares two `pokie sim --out` reports;
+    report <projectOrSimulationReportJson>`, which renders a `pokie sim --out` report as Markdown or HTML, or
+    inspects an Outcome Library Bundle or Stake adapter project through its canonical reader; `pokie diff
+    <leftProjectOrReportJson> <rightProjectOrReportJson>`, which compares two `pokie sim --out` reports or two
+    resolved outcome-source projects;
     `pokie replay <packageRoot>`, which best-effort replays one round (by seed + round index) as a JSON artifact;
     `pokie serve <packageRoot>`, which starts a local/dev JSON HTTP server over a package — not a
     casino backend or RGS; `pokie client <packageRoot>`, a universal browser preview UI talking to
-    a running `pokie serve`; `pokie dev <packageRoot>`, which runs both together; `pokie import
-    import <input.xlsx>`, which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable,
-    paylines, available bets, win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie export
-    export <config.json>`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie reel generate
+    a running `pokie serve`; `pokie dev <packageRoot>`, which runs both together; `pokie import <input.xlsx>`,
+    which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable, paylines, available bets,
+    win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie export <config.json> --to
+    workbook`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie reel generate
     <blueprint.json>`, which runs one or every `"generated"` entry of a Blueprint Project's `reelStripGeneration`
     through `ReelStripGenerator` (the same machinery `pokie build` runs silently), previewing a deterministic
     diff by default and only pinning the result back in as a literal strip with `--apply`; `pokie export
-    export <config.json>`, which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine
-    math-sdk static file format; `pokie import <stakeDir>`, which imports one back; `pokie report <stakeDir>`, which
-    analyze <stakeDir>`, which validates and computes exact weighted statistics over any Stake Engine outcome
-    directory with no `pokie-manifest.json` required; `pokie diff <leftStakeDir> <rightStakeDir>`,
+    <config.json> --to adapter`, which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine
+    math-sdk static file format; `pokie import <stakeDir>`, which imports one back; `pokie report <stakeDir>`,
+    which validates and computes exact weighted statistics over any Stake Engine outcome directory with no
+    `pokie-manifest.json` required; `pokie diff <leftStakeDir> <rightStakeDir>`,
     which diffs two such directories' analyses (added/removed modes, aggregate metrics, event classification
     categories); `pokie
-    outcomelibrary build <config.json>`, which builds a canonical Outcome Library Bundle from one or more
+    export <config.json> --to outcomes`, which builds a canonical Outcome Library Bundle from one or more
     `WeightedOutcomeLibrary` JSON files; `pokie validate <bundleDir>`, which validates one; `pokie
     certification build <bundleDir> <config.json>`, which builds a certification/evidence bundle on top of an
     Outcome Library Bundle; `pokie certification verify <certDir>`, which verifies one against its live source
@@ -151,8 +153,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     DTOs (deliberately not a `RoundArtifact`/`WeightedOutcomeLibrary`), `StakeEngineStandaloneValidator` checks
     structure/cross-file consistency, and `StakeEngineStandaloneAnalyzer` computes `rtp`/`hitFrequency`/variance/
     payout-distribution plus a pluggable-classifier-driven event breakdown (`StakeEngineEventClassifying`) — see
-    `pokie stakeengine analyze <stakeDir>`. `StakeEngineStandaloneAnalysisDiffer` compares two such analyses
-    mode-by-mode — programmatically or via `pokie stakeengine diff <leftStakeDir> <rightStakeDir>`.
+    `pokie report <stakeDir>`. `StakeEngineStandaloneAnalysisDiffer` compares two such analyses mode-by-mode —
+    programmatically or via `pokie diff <leftStakeDir> <rightStakeDir>`.
 24. **[Outcome Library Bundle](outcome-library-bundle.md)** — the canonical, streaming-friendly on-disk
     persistence format for a `WeightedOutcomeLibrary` (a small manifest, a small per-mode index, one streaming
     JSONL outcomes file per mode), with a writer that never buffers a whole mode's outcomes as one string, a
@@ -221,8 +223,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Writing an editable Blueprint Project (GameBlueprint JSON file) | `pokie create [name]` CLI |
 | Scaffolding/merging a prepared game package in place, non-interactively | `pokie init [directory]` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |
-| Rendering a sim report as Markdown/HTML | `pokie report <simulationReportJson>` |
-| Comparing two sim reports (e.g. before/after a config change) | `pokie diff <leftReportJson> <rightReportJson>` |
+| Rendering a sim report as Markdown/HTML, or exactly analyzing a resolved outcome source | `pokie report <projectOrSimulationReportJson>` |
+| Comparing sim reports or resolved outcome sources (e.g. before/after a config change) | `pokie diff <leftProjectOrReportJson> <rightProjectOrReportJson>` |
 | Best-effort replay of a single round (by seed + round index) | `pokie replay <packageRoot>` |
 | Local/dev JSON HTTP server over a package | `pokie serve <packageRoot>` |
 | Browser preview UI for a running `pokie serve` | `pokie client <packageRoot>` |
@@ -265,8 +267,9 @@ real-user-journey evidence (Blueprint create/edit/play/find/replay/sim/build, a 
 build/sim/build, Outcome Library and Stake Engine imports, direct Blueprint Overview, and player-rendering parity
 across examples/package/Studio), and [`phase5-audit/README.md`](phase5-audit/README.md) for an independent,
 new-user audit across five personas (slot mathematician/designer, backend developer, game programmer,
-QA/debugger, integration engineer) that found and fixed real gaps in `pokie par export`/`import`'s own error
-messaging and `pokie stakeengine export`'s file-load error handling, on top of verifying and completing three
+QA/debugger, integration engineer) that found and fixed real gaps in `pokie export <config.json> --to workbook`/
+`pokie import <input.xlsx>`'s own error messaging and `pokie export <config.json> --to adapter`'s file-load error
+handling, on top of verifying and completing three
 real fixes (a `pokie reel generate --materialize` PAR-export path, a corrupt-PAR-file error message, and a
 weighted-outcome-library heap-usage safety net) already in progress when this round began, and
 [`phase5-post-audit/README.md`](phase5-post-audit/README.md) for the first step of a distinct, later campaign

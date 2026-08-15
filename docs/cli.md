@@ -450,9 +450,9 @@ it's valid (warnings included).
 
 `--target outcomeLibrary`/`stakeAdapter`/`parWorkbook`, given a `<project>` that already resolves to that same
 artifact type, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
-re-export unchanged" round trip each format's own import/export commands already exercise (see [`pokie stakeengine
-export`](#pokie-stakeengine-export-configjson)/[`import`](#pokie-stakeengine-import-stakedir) and [`pokie par
-export`](#pokie-par-import-inputxlsx--pokie-par-export-configjson) below). `--dry-run` here only prints a one-line
+re-export unchanged" round trip each format's own import/export commands already exercise (see `pokie export
+<config.json> --to adapter`/`pokie import <stakeDir>` and `pokie export <config.json> --to workbook` below).
+`--dry-run` here only prints a one-line
 "would build \<target\> from \<project\> to \<out\>" preview — there is no blueprint to validate or summarize for
 these targets, since nothing is generated, only copied.
 
@@ -731,7 +731,7 @@ lines, so you don't have to come back to this doc to remember the order.
 
 Each step is the same command documented elsewhere in this file, with the same options/failure modes —
 [`inspect`](#pokie-inspect-packageroot), [`validate`](#pokie-validate-packageroot),
-[`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-simulationreportjson),
+[`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-projectorsimulationreportjson),
 [`replay`](#pokie-replay-packageroot), and [`serve`](#pokie-serve-packageroot)/
 [`dev`](#pokie-dev-packageroot) work identically whether the package came from `pokie build` or
 `pokie init` — none of them care how a package was produced, only that it satisfies the
@@ -792,7 +792,7 @@ non-numeric cell (e.g. `"very high"`) is `parsheet-betmodes-invalid-targetrtp-ce
 treatment as an invalid `Cost Multiplier`/`Forced Free Games` cell. See
 [`pokie sim`'s `targetRtp`/`rtpDeviation`](#pokie-sim-packageroot) for where an imported value ends up being used.
 
-`pokie par export` preflights the *entire* export before writing anything: if the blueprint fails any check (see
+`pokie export <config.json> --to workbook` preflights the *entire* export before writing anything: if the blueprint fails any check (see
 below), **no file is created and an existing file at the output path is left completely untouched** — there is no
 partial write. In particular, a blueprint built around `reelStripGeneration`/`symbolWeights` instead of a literal
 `reelStrips` fails export outright (`parsheet-unsupported-reel-source`) — even when a literal `reelStrips` is
@@ -800,7 +800,7 @@ partial write. In particular, a blueprint built around `reelStripGeneration`/`sy
 blueprint into a literal `reelStrips` first (e.g. via `resolveReelStripGeneration`/`materializeReelStrips`, or by
 hand) before exporting it.
 
-### `pokie par import <input.xlsx>`
+### `pokie import <input.xlsx>`
 
 Reads `<input.xlsx>`, maps every sheet above to a `GameBlueprint`, then runs the result through the same
 [`GameBlueprintValidator`](#validation) `pokie build` uses — so an imported PAR sheet gets the exact same
@@ -816,7 +816,7 @@ Options:
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
-### `pokie par export <config.json>`
+### `pokie export <config.json> --to workbook`
 
 Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, and —
 provided it has no error-level issues from either that validation or the exporter's own preflight (unsupported
@@ -867,23 +867,23 @@ shape as [`pokie build`'s validation](#validation)):
 
 ### Provenance (`Meta` sheet)
 
-`pokie par export` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
+`pokie export <config.json> --to workbook` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
 that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
 hash of the exported blueprint. That hash is computed over a canonical field order (not the source JSON's own key
 order — see `computeBlueprintHash`), so an untouched round trip always reproduces the same hash regardless of how
 the original file's keys were ordered.
 
-`pokie par import` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
+`pokie import <input.xlsx>` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
 issue, and verifies it against the blueprint it just assembled:
 
 - no `Meta` sheet at all → `provenance` is `undefined`, and `parsheet-provenance-missing` (warning) — e.g. a
-  hand-authored PAR sheet that was never exported by `pokie par export` in the first place;
+  hand-authored PAR sheet that was never exported by `pokie export <config.json> --to workbook` in the first place;
 - `Meta` present but missing/invalid `Schema Version`/`Blueprint Hash` → `parsheet-provenance-malformed` (warning);
   no further hash/schema check is attempted;
 - a well-formed but unrecognized `Schema Version` → `parsheet-provenance-schema-mismatch` (warning);
 - a well-formed `Blueprint Hash` that doesn't match a fresh hash of the imported data →
   `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
-  `pokie par export` produced it;
+  `pokie export <config.json> --to workbook` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
 
 ## `pokie reel generate <blueprint.json>`
@@ -916,7 +916,7 @@ has a `reelStrips` entry at that index, how many positions differ from it) and w
   declared `seed` — incompatible with `--reel`/`--seed`/`--apply`) and collapse the result into a plain top-level
   `reelStrips` array with `reelStripGeneration` removed entirely. This is the same materialization `pokie build`
   performs internally when compiling a runtime module, exposed here as its own persisted output — it's the
-  documented fix for [`pokie par export`](#pokie-par-import-inputxlsx--pokie-par-export-configjson)'s
+  documented fix for `pokie export <config.json> --to workbook`'s
   `parsheet-unsupported-reel-source` error,
   since a PAR sheet workbook can only ever represent literal reels: a blueprint fresh out of
   [`pokie create --random`](#pokie-create-name---random) or `--blank` (see [`pokie create [name]`](#pokie-create-name))
@@ -1000,14 +1000,14 @@ unrecognized non-empty `--out` directory is refused outright, with nothing touch
 Imports a Stake Engine export directory (`index.json`, per-mode lookup CSV/books, and its own sibling
 `pokie-manifest.json`) back into one `WeightedOutcomeLibrary` per mode — see
 [Stake Engine Import](stake-engine-import.md) for the full lossy/lossless boundary, the events reconstruction,
-and the validation-code table. Only ever round-trips a directory `pokie stakeengine export` itself produced —
+and the validation-code table. Only ever round-trips a directory `pokie export <config.json> --to adapter` itself produced —
 `pokie-manifest.json` is required, not optional.
 
 ```
 pokie import stakeengine --out imported
 ```
 
-Writes exactly the shape `pokie stakeengine export` reads back in:
+Writes exactly the shape `pokie export <config.json> --to adapter` reads back in:
 
 ```json
 {
@@ -1031,7 +1031,7 @@ the source no longer leaves a stale `libraries/<name>.json` file.
 
 On any error-level `ValidationIssue` (see [Stake Engine Import](stake-engine-import.md#validation)), nothing is
 written and the exit code is non-zero. The result's `modes` can be fed straight back into
-`pokie stakeengine export <outDir>/config.json` — importing and re-exporting the same directory reproduces
+`pokie export <outDir>/config.json --to adapter` — importing and re-exporting the same directory reproduces
 byte-identical `index.json`/CSVs/books (see
 [The real round-trip property](stake-engine-import.md#the-real-round-trip-property)), even though the
 reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the original pre-export library (see
@@ -1039,31 +1039,22 @@ reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the 
 
 ## `pokie report <stakeDir>`
 
-Validates and computes exact weighted statistics over **any** Stake Engine outcome directory (`index.json`,
-per-mode lookup CSV, per-mode zstd-compressed JSONL books) — no `pokie-manifest.json` required, unlike
-`pokie stakeengine import`. See [Stake Engine Standalone](stake-engine-standalone.md) for the full data shapes,
-validation-code table, and pluggable event classification.
+Resolves, validates, and computes exact weighted statistics over **any** Stake Engine outcome directory
+(`index.json`, per-mode lookup CSV, per-mode zstd-compressed JSONL books) through its canonical reader — no
+`pokie-manifest.json` required. See [Stake Engine Standalone](stake-engine-standalone.md) for the full data
+shapes, validation-code table, and pluggable event classification.
 
 ```
 pokie report stakeengine
 ```
 
-Options:
-
-- `--format json` — print the machine-readable `{stakeDir, issues, analysis}` shape instead of a text summary.
-- `--out <file>` — also write that same JSON shape to a file.
-
-`analysis` is `undefined` whenever any issue is error-severity — the same "nothing built on error" contract as
-`pokie stakeengine import`. Exit code is non-zero on any error-level issue. A handful of `analysis` fields
-(`totalWeight`, `payoutDistribution[].probability`, `eventClassificationBreakdown[]`'s two frequency fields) are
-computed from a uint64 weight total and therefore serialize as either a plain JSON number or a canonical
-fixed-point decimal string when a `number` would lose precision — see
-[Stake Engine Standalone](stake-engine-standalone.md#canonical-decimal-string-semantics-stakeenginestandaloneexactdecimal)
-for the exact rule a consumer of `--format json`/`--out` needs to parse either arm correctly.
+It prints the source kind, streaming limitation(s), structural issues when present, and otherwise an exact
+per-mode summary (RTP, hit frequency, and standard deviation). `--out <file>` writes that same human-readable
+analysis; `--format` remains the simulation-report rendering option and accepts only `markdown` or `html`.
 
 ## `pokie diff <leftProject> <rightProject>`
 
-Reads and analyzes two Stake Engine outcome directories with the same pipeline `pokie stakeengine analyze` uses,
+Reads and analyzes two Stake Engine outcome directories with the same canonical-reader pipeline `pokie report` uses,
 then diffs the two resulting analyses mode-by-mode: added/removed modes, every scalar metric (`rtp`,
 `hitFrequency`, `variance`, ...), event classification categories, and the payout distribution. See
 [Diffing two analyses](stake-engine-standalone.md#diffing-two-analyses) for the full shape and why it never
@@ -1094,7 +1085,7 @@ command family's usual plain 0/1:
 Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
 small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
 disk one at a time, never materializing a full `WeightedOutcomeLibrary` in memory to do it. This is the one
-canonical bundle format both the pre-generated runtime and `pokie stakeengine export` (via a mode's
+canonical bundle format both the pre-generated runtime and `pokie export <config.json> --to adapter` (via a mode's
 `bundleDir`/`bundleModeName`) load from.
 
 ```
@@ -1149,10 +1140,11 @@ Options:
 
 Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
 
-## `pokie report <path>` / `pokie sample <path> --mode <modeName>` / `pokie diff <leftPath> <rightPath>`
+## Outcome-source project workflows: `pokie report <path>` / `pokie sample <path> --mode <modeName>` / `pokie diff <leftPath> <rightPath>`
 
-Operates directly on a resolved outcome-source project — an `outcomelibrary build` bundle or a `stakeengine
-export` directory — through its own canonical reader/selector, never `loadPokieGame` and never a re-derived
+Operates directly on a resolved outcome-source project — an Outcome Library Bundle written by `pokie export
+<config.json> --to outcomes` or a Stake adapter directory written by `pokie export <config.json> --to adapter`
+— through its own canonical reader/selector, never `loadPokieGame` and never a re-derived
 game-model calculation.
 
 ```
@@ -1163,7 +1155,7 @@ pokie diff bundle-v1 bundle-v2
 pokie diff bundle stake-export --format json --out diff.json
 ```
 
-`inspect` prints the source's own kind/streaming/limitations plus, for a structurally valid source, an exact
+`report` prints the source's own kind/streaming/limitations plus, for a structurally valid source, an exact
 per-mode analysis (every outcome's own weight, enumerated exactly — no simulation). `sample` draws exactly one
 outcome from a native outcome library's own mode through the same selector/session/server path live and
 pre-generated play already use (`WeightedOutcomeSelector` over the mode's own index) — `--seed <string>` makes
@@ -1706,14 +1698,18 @@ The legacy fixed-round `Simulation`/`SimulationConfig` class (see [Simulation](s
 unaffected by this feature — it has no concept of convergence and never will; adaptive early stop only exists on
 the `AggregateSimulationRunner`/`ParallelSimulationRunner`/`pokie sim` path.
 
-## `pokie report <simulationReportJson>`
+## `pokie report <projectOrSimulationReportJson>`
 
 Renders a JSON report produced by [`pokie sim --out`](#pokie-sim-packageroot) as a human-readable Markdown or
-HTML document.
+HTML document. When the path instead resolves to an Outcome Library Bundle or Stake adapter project, it dispatches
+to that project's canonical reader and prints its exact per-mode outcome analysis.
 
 ```
 pokie sim ./sample-slot --rounds 10000 --out sim.json
 pokie report sim.json --format html --out report.html
+
+pokie report outcome-library-bundle
+pokie report stakeengine
 ```
 
 Options:
@@ -1749,7 +1745,7 @@ be swapped in without touching `ReportCommand`.
 
 ### Rendering a `SimulationReportSet` (`pokie sim --mode all` output)
 
-`pokie report` auto-detects when `<simulationReportJson>` is a `SimulationReportSet` (has a `modes` map) instead of
+`pokie report` auto-detects when a simulation-report path is a `SimulationReportSet` (has a `modes` map) instead of
 a plain `SimulationReport`, and renders a **side-by-side comparison** instead: one column per bet mode, with rows
 for RTP (observed), RTP (target/deviation, only shown when at least one mode declared a `targetRtp`), stake/average
 bet, hit/feature rate, average payout, max win, volatility, and max win frequency — followed by each mode's own
@@ -1764,11 +1760,11 @@ rather than guessing or rendering only one mode).
 
 Failure modes:
 
-- Missing `<simulationReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw a
+- Missing `<projectOrSimulationReportJson>`, an unknown option, or an invalid `--format`/`--out` value throw a
   `Usage: pokie report ...` error.
-- A `<simulationReportJson>` that can't be read (missing file, permissions) throws
+- An unrecognized `<projectOrSimulationReportJson>` that can't be read (missing file, permissions) throws
   `Could not read simulation report at "<path>": <reason>`.
-- A `<simulationReportJson>` that isn't valid JSON throws `"<path>" is not valid JSON: <reason>`.
+- An unrecognized `<projectOrSimulationReportJson>` that isn't valid JSON throws `"<path>" is not valid JSON: <reason>`.
 - Valid JSON that doesn't look like a `SimulationReport` or `SimulationReportSet` (missing `game`/`rtp`/`rounds`/...
   or `game`/`modes`/... fields) throws `"<path>" does not look like a pokie sim report ...`.
 - A `SimulationReportSet` against a renderer without `renderSet()` throws
@@ -3106,7 +3102,7 @@ redirected; every builder they used to own is one of this tab's own cards, group
 
 - **Outcome libraries** — generates or selects the canonical `WeightedOutcomeLibrary` every other card below reads
   from (a build step in its own right, not a delivery target), the same underlying operation as
-  [`pokie outcomelibrary build`](#pokie-outcomelibrary-build-configjson).
+  `pokie export <config.json> --to outcomes`.
 - **Static export** — writes a standalone, self-contained bundle to disk (e.g. a Stake Engine export via
   [`StakeEngineExporter`](stake-engine-export.md)) — nothing is registered, nothing runs a delivery step.
 - **Build artifact** — runs the project through `pokie`'s own `ArtifactBuilderRegistry`, the exact same
@@ -3374,11 +3370,9 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 22 top-level commands this file documents (`build`/`create`/`init`/`edit`/`name`/`inspect`/`validate`/`sim`/
-`report`/`diff`/`replay`/`serve`/`client`/`dev`/`par import|export`/`reel generate`/
-`stakeengine export|import|analyze|diff`/`outcomelibrary build|validate`/
-`outcomesource inspect|sample|diff`/`certification build|verify`/`fairness seed-commit|commit|reveal|verify`/
-`studio`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
+All 20 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+`edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`reel`/`replay`/`report`/`sample`/`serve`/`sim`/
+`validate`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
 `isPokieGame`, `PokieGameContractValidationRule`). [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import/export and reel strip generation), and, once a project is open, inspection/
