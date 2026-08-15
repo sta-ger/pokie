@@ -23,10 +23,8 @@ import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {ErrorState} from "../common/ErrorState";
-import {NextStepCallout} from "../common/NextStepCallout";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
-import {StepProgressList, type StepProgressItem, type StepProgressStatus} from "../common/StepProgressList";
 import {SuccessResult} from "../common/SuccessResult";
 import {BetsList} from "./BetsList";
 import {BlueprintBuildPanel} from "./BlueprintBuildPanel";
@@ -46,19 +44,6 @@ import {SymbolsTable} from "./SymbolsTable";
 
 type BlueprintMode = "form" | "json";
 
-// The guided flow is a strict 3-stage pipeline with no way to jump ahead (there's nothing to click --
-// see StepProgressList.tsx's own doc comment) -- "Build" is only ever reachable once "Validate" has
-// actually produced an "ok" result for the *current* revision (validationView resets to "idle" on every
-// edit, see the revision-bump effect above), so it's "blocked" rather than merely "available" until then.
-const VALIDATE_STEP_STATUS: Record<BlueprintValidationView["status"], StepProgressStatus> = {
-    idle: "available",
-    stale: "current",
-    loading: "current",
-    invalid: "failed",
-    error: "failed",
-    ok: "completed",
-};
-
 // The guided Design Game editor's own auto-validate debounce (see the revision-bump effect below) --
 // long enough that a normal typing burst (several field edits/blurs in quick succession) collapses into
 // one request once the user actually pauses, short enough that the "stale" freshness state (see
@@ -74,79 +59,11 @@ const AUTO_VALIDATE_DEBOUNCE_MS = 600;
 // source itself being cleared (a New/Random/PAR-import replace, or an Undo).
 const SOURCE_CHECK_POLL_MS = 500;
 
-// `sourceDrift` overrides the Validate/Build step statuses below regardless of `status` -- a source
-// that's been confirmed changed or unreadable (see sourceDrift's own doc comment) means the currently
-// displayed validation result, even an "ok" one, no longer describes something Build can trust, and a
-// content-only revalidate can never clear that on its own (see the source-check poll's own doc comment
-// for why only an actual reload/save does).
-function describeGuidedProgress(status: BlueprintValidationView["status"], sourceDrift: boolean): StepProgressItem[] {
-    const configureStatus: StepProgressStatus = status === "idle" ? "current" : "completed";
-    const validateStatus: StepProgressStatus = sourceDrift ? "failed" : VALIDATE_STEP_STATUS[status];
-    const buildStatus: StepProgressStatus = status === "ok" && !sourceDrift ? "current" : "blocked";
-    return [
-        {id: "configure", label: "Configure", description: "Game model", status: configureStatus},
-        {id: "validate", label: "Validate", description: "Check for issues", status: validateStatus},
-        {id: "build", label: "Build", description: "Create your package", status: buildStatus},
-    ];
-}
-
-type GuidedNextStep = {tone: "info" | "success" | "warning"; title: string; description: string};
-
 // The two ways this session's background source-check poll (see the poll effect below) can find the
 // persisted Blueprint source no longer matching what this session believes it last confirmed:
 // "changed" (a hand edit, another Studio tab, a CLI command -- the file itself still exists and reads
 // fine, just isn't what was last confirmed) or "unavailable" (deleted, moved, or no longer valid JSON).
-// Both are surfaced identically everywhere below (Validate/Build step statuses, the next-step callout,
-// Build's own blocked message) except for their own distinct headline/description text.
 type SourceDrift = {kind: "changed"} | {kind: "unavailable"; message: string};
-
-function describeGuidedNextStep(status: BlueprintValidationView["status"], sourceDrift: SourceDrift | undefined): GuidedNextStep {
-    if (sourceDrift?.kind === "unavailable") {
-        return {tone: "warning", title: "Blueprint source unavailable", description: sourceDrift.message};
-    }
-    if (sourceDrift?.kind === "changed") {
-        return {
-            tone: "warning",
-            title: "Blueprint changed on disk",
-            description:
-                "The blueprint file changed outside this editor since it was opened. Reload to see the latest version, or save to overwrite it with your current changes.",
-        };
-    }
-    if (status === "ok") {
-        return {
-            tone: "success",
-            title: "Ready to build",
-            description: "Your blueprint is valid — build your package below to open it in the Project Dashboard.",
-        };
-    }
-    if (status === "invalid") {
-        return {tone: "warning", title: "Fix validation issues", description: "Resolve the errors below before building your package."};
-    }
-    if (status === "error") {
-        return {tone: "warning", title: "Validation failed", description: "Something went wrong while validating — try again."};
-    }
-    if (status === "stale") {
-        return {tone: "info", title: "Checking your changes", description: "Your blueprint changed — validating it again automatically."};
-    }
-    return {
-        tone: "info",
-        title: "Configure your game model",
-        description: "Add symbols, bets, paylines and a paytable below, then validate your configuration.",
-    };
-}
-
-// The message BlueprintBuildPanel shows under a disabled Build button in guided mode -- `sourceDrift`
-// takes priority over `status` for the same reason describeGuidedNextStep's own does (see
-// guidedBuildBlocked's own doc comment for why Build stays blocked on it regardless of `status`).
-function describeGuidedBuildBlockedMessage(status: BlueprintValidationView["status"], sourceDrift: boolean): string {
-    if (sourceDrift) {
-        return "Reload or save this blueprint to establish a current source before building.";
-    }
-    if (status === "invalid") {
-        return "Fix the validation errors above before building.";
-    }
-    return "Validate your configuration successfully before building.";
-}
 
 // `guided`/`initialPath`/`initialParSheetPath` are purely additive -- omitted (the removed "Advanced
 // Tools" raw editor's own usage), this component renders exactly as it always has. `guided` adds a step
@@ -826,34 +743,21 @@ export function BlueprintEditorPage({
         confirm(`Overwrite the blueprint at "${path}"?`, () => runSave(path, true));
     };
 
-    // The guided Design Game editor's own prominent "Save" action -- disabled below (see the Save button
-    // in the render) unless validationView.status is "ok", so a Save can never target a source the user
-    // hasn't at least seen validated (this step's own "invalid drafts ... cannot run required-valid
-    // operations" contract -- autosave above is exempt, this isn't). The *first* Save (no `blueprintPath`
+    // The guided Design Game editor's own prominent "Save" action validates the current revision as part
+    // of the same action when automatic validation has not reached it yet.  This matters for a freshly
+    // chosen Recommended/Random model: Create Project is an action, not a hidden two-click prerequisite.
+    // The *first* Save (no `blueprintPath`
     // owned yet) creates/chooses a managed Blueprint Project via saveManagedBlueprint -- the editor never
     // asks where; every Save after that (blueprintPath already owned, whether from a prior guided Save or
     // an explicit advanced Load/Save) reuses the ordinary saveBlueprint endpoint against that exact path
     // with overwrite:true, so it never re-asks either. A successful save also clears the draft-recovery
     // slot -- the content is now safely persisted, so there's nothing left to "recover".
-    const handleGuidedSave = (): void => {
-        // Validation is continuously maintained model state.  A Create/Save click against an edited
-        // or invalid model refreshes the actionable diagnostics rather than becoming a dead disabled
-        // button in a separate wizard stage.
-        if (validationView.status !== "ok" || sourceDrift !== undefined) {
-            handleValidate();
-            return;
-        }
-        if (!saveGuard.begin()) {
-            return;
-        }
-        // Captured now, at request-send time -- same reasoning as runSave's own savedRevision.
-        const savedRevision = editor.state.revision;
+    const saveGuidedProject = (savedRevision: number): void => {
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath.current === blueprintPath;
         // Kept as `{raw, view}` pairs (rather than mapping straight to `describeSaveResult`/
         // `describeSaveManagedResult`, which drop `blueprintHash`) so the success branch below can still
-        // read the just-written content's own hash off `raw` for sourceVersionRef -- see its own doc
-        // comment.
+        // read the just-written content's own hash off `raw` for sourceVersionRef.
         const request = alreadyOwnsPath
             ? saveBlueprint(
                 fetchImpl,
@@ -896,26 +800,47 @@ export function BlueprintEditorPage({
             .finally(() => saveGuard.end());
     };
 
+    const handleGuidedSave = (): void => {
+        if (!saveGuard.begin()) {
+            return;
+        }
+        // A confirmed disk conflict still requires an explicit reload/save decision. Revalidating the
+        // in-memory draft cannot make that source baseline current again.
+        if (sourceDrift !== undefined) {
+            handleValidate();
+            saveGuard.end();
+            return;
+        }
+
+        const savedRevision = editor.state.revision;
+        if (validationView.status === "ok") {
+            saveGuidedProject(savedRevision);
+            return;
+        }
+
+        const requestId = ++validateRequestIdRef.current;
+        setValidationView({status: "loading"});
+        validateBlueprint(fetchImpl, editor.state.blueprint)
+            .then(describeValidation)
+            .catch((error: unknown): BlueprintValidationView => ({status: "error", message: errorMessage(error)}))
+            .then((validation) => {
+                // A model edit (or a newer automatic check) while this action was in flight makes this
+                // answer describe an older revision, so leave the current revision to its own automatic
+                // validation instead of saving stale content.
+                if (requestId !== validateRequestIdRef.current || savedRevision !== revisionRef.current) {
+                    saveGuard.end();
+                    return;
+                }
+                setValidationView(validation);
+                if (validation.status === "ok") {
+                    saveGuidedProject(savedRevision);
+                } else {
+                    saveGuard.end();
+                }
+            });
+    };
+
     const {blueprint, revision} = editor.state;
-
-    const guidedProgress = describeGuidedProgress(validationView.status, sourceDrift !== undefined);
-    const nextStep = describeGuidedNextStep(validationView.status, sourceDrift);
-    // Kept as internal state derivations for the non-guided editor's compatibility path.  The Project
-    // creator intentionally does not render a Configure → Validate → Build checklist.
-    void guidedProgress;
-    void nextStep;
-
-    // Guided flow requires an actual successful validation *of the current revision* before allowing a
-    // build -- not just "not known-invalid" (the raw editor's own, looser rule below, unchanged). Since
-    // validationView is reset to "idle" on every revision bump (see the effect above), "ok" here can
-    // only ever mean "the current revision validated cleanly" -- warnings don't prevent it, matching
-    // BlueprintBuildPanel's own existing "warnings-only never blocks" contract. ANDed with `sourceDrift`
-    // being clear -- see its own doc comment for why a confirmed changed/unreadable source keeps Build
-    // blocked even once a content-only revalidate reports "ok" again for the current draft.
-    const guidedBuildBlocked = validationView.status !== "ok" || sourceDrift !== undefined;
-    const guidedBuildBlockedMessage = describeGuidedBuildBlockedMessage(validationView.status, sourceDrift !== undefined);
-    void guidedBuildBlocked;
-    void guidedBuildBlockedMessage;
 
     const formModeContent = guided ? (
         <SectionedFormEditor

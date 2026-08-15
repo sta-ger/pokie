@@ -1,11 +1,21 @@
 import {
+    AggregateSimulationRunner,
     BUILT_PACKAGE_FILES,
     computeGameBlueprintHash,
+    CustomLinesDefinitions,
     GameBlueprint,
+    GameSession,
+    materializeReelStrips,
     ParSheetExporting,
     ParSheetImporting,
     resolveReelStripGeneration,
+    SeededRandomNumberGenerator,
+    SymbolsCombinationsGenerator,
+    SymbolsSequence,
     ValidationIssue,
+    VideoSlotConfig,
+    VideoSlotSession,
+    VideoSlotWinCalculator,
 } from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
@@ -14,6 +24,9 @@ import path from "path";
 import {InMemoryRecentProjectsRepository} from "../../../../cli/studio/InMemoryRecentProjectsRepository.js";
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
+import {FileStudioProjectRegistry} from "../../../../cli/studio/FileStudioProjectRegistry.js";
+import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
+import {createRecommendedBlueprint} from "../../../../cli/studio-client/src/domain/blueprintEditorState.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -24,6 +37,45 @@ function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
         paytable: {A: {3: 5}, B: {3: 2}},
         ...overrides,
     };
+}
+
+function materializeForRuntime(blueprint: GameBlueprint): GameBlueprint {
+    const resolution = resolveReelStripGeneration(blueprint);
+    if (!resolution.success) {
+        throw new Error("expected a playable default to resolve every reel");
+    }
+    return materializeReelStrips(blueprint, resolution.reelStripGeneration);
+}
+
+function simulateMaterializedBlueprint(blueprint: GameBlueprint): {rtp: number; hitRate: number; volatility: number} {
+    const config = new VideoSlotConfig();
+    config.setAvailableBets(blueprint.availableBets ?? [1]);
+    config.setReelsNumber(blueprint.reels);
+    config.setReelsSymbolsNumber(blueprint.rows);
+    config.setAvailableSymbols(blueprint.symbols);
+    for (const [symbol, payouts] of Object.entries(blueprint.paytable)) {
+        for (const [matches, payout] of Object.entries(payouts)) {
+            config.getPaytable().setPayoutForSymbol(symbol, Number(matches), payout);
+        }
+    }
+    if (blueprint.paylines) {
+        // The recommended default has its own explicit lines; generated Blueprints intentionally use
+        // VideoSlotConfig's default horizontal lines, exactly as their runtime package does.
+        const lines = new CustomLinesDefinitions();
+        blueprint.paylines.forEach((line, index) => lines.setLineDefinition(String(index), line));
+        config.setLinesDefinitions(lines);
+    }
+    config.setSymbolsSequences((blueprint.reelStrips ?? []).map((strip) => new SymbolsSequence().fromArray(strip)));
+
+    const session = new VideoSlotSession(
+        config,
+        new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator("playable-default-smoke")),
+        new VideoSlotWinCalculator(config),
+        new GameSession(config),
+    );
+    session.setBet(config.getAvailableBets()[0]);
+    const statistics = new AggregateSimulationRunner(session, 10_000).run().getStatistics();
+    return {rtp: statistics.rtp, hitRate: statistics.hitCount / statistics.rounds, volatility: statistics.volatility};
 }
 
 describe("StudioBlueprintService", () => {
@@ -640,6 +692,39 @@ describe("StudioBlueprintService", () => {
 
             expect(fs.readdirSync(tmpDir)).toEqual([]);
         });
+
+        it("keeps Recommended and a seeded Random model valid, materialized, playable, and within bounded math-quality ranges", () => {
+            const service = createService();
+            const defaults: Array<{name: string; blueprint: GameBlueprint}> = [
+                {name: "Recommended", blueprint: createRecommendedBlueprint() as GameBlueprint},
+                {name: "seeded Random", blueprint: service.random(20260815, "default").blueprint as GameBlueprint},
+            ];
+
+            for (const {name, blueprint} of defaults) {
+                expect(service.validate(blueprint)).toEqual({status: "ok", warnings: []});
+                expect(blueprint.symbols.length).toBeGreaterThanOrEqual(4);
+                expect(Object.values(blueprint.paytable).some((payouts) => Object.keys(payouts).length > 0)).toBe(true);
+
+                const materialized = materializeForRuntime(blueprint);
+                expect(materialized.reelStrips).toHaveLength(materialized.reels);
+                for (const reel of materialized.reelStrips ?? []) {
+                    expect(reel.length).toBeGreaterThanOrEqual(materialized.rows);
+                    expect(reel.every((symbol) => materialized.symbols.includes(symbol))).toBe(true);
+                }
+
+                // This exercises the actual line-pay runtime's Play session and bounded 10k-round
+                // simulation path, not a second hand-written payout calculation. A hit proves the only
+                // feature each default claims today (standard line pays) is reachable.
+                const math = simulateMaterializedBlueprint(materialized);
+                expect(math.hitRate).toBeGreaterThan(0.01);
+                expect(math.hitRate).toBeLessThan(0.8);
+                expect(math.rtp).toBeGreaterThan(0.2);
+                expect(math.rtp).toBeLessThan(1.5);
+                expect(math.volatility).toBeGreaterThan(0.1);
+                expect(math.volatility).toBeLessThan(20);
+                expect(name).toMatch(/Recommended|seeded Random/);
+            }
+        });
     });
 
     describe("save", () => {
@@ -880,6 +965,28 @@ describe("StudioBlueprintService", () => {
             const written = fs.readFileSync(path.join(managedDir, "blueprint.json"), "utf-8");
             expect(written).not.toContain("in.par.xlsx");
             expect(JSON.parse(written)).toEqual(buildBlueprint());
+        });
+
+        it("registers a managed save and retains that registration after a registry restart/reload", async () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+            const saved = service.saveManaged(buildBlueprint());
+            if (saved.status !== "ok") {
+                throw new Error("expected managed Blueprint save to succeed");
+            }
+
+            const registryPath = path.join(tmpDir, "studio", "projects.json");
+            const registration = new StudioProjectRegistrationService(new FileStudioProjectRegistry(registryPath));
+            const registered = await registration.registerManaged(saved.path, saved.name);
+            expect(registered.status).toBe("ok");
+            expect((await registration.list()).map((entry) => entry.location)).toEqual([saved.path]);
+
+            // A new registration service and file-backed registry represent a Studio restart. The
+            // managed Blueprint remains visible without re-registering it.
+            const restarted = new StudioProjectRegistrationService(new FileStudioProjectRegistry(registryPath));
+            expect(await restarted.list()).toEqual([
+                expect.objectContaining({location: saved.path, name: saved.name, type: "blueprint", origin: "managed", status: "ok"}),
+            ]);
         });
     });
 
