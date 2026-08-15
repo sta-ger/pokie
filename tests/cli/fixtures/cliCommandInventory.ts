@@ -548,12 +548,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "report",
-        description: "Render a pokie sim JSON report (see pokie sim --out) as a human-readable Markdown or HTML document.",
+        description: "Render a pokie sim JSON report, or inspect a resolved outcome-library/Stake adapter project.",
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
-                positionals: ["simulationReportJson"],
+                usage: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
+                positionals: ["projectOrSimulationReportJson"],
                 options: [
                     // --format has a real seam: renderers.markdown/renderers.html are two independently swappable
                     // dependencies, and which one's render() actually fires is the observed evidence.
@@ -2019,19 +2019,19 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "report",
         kind: "invalid",
-        label: "missing <simulationReportJson>",
+        label: "missing <projectOrSimulationReportJson>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+        expectedError: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
     },
     {
         command: "report",
         kind: "invalid",
-        label: '--format must be "markdown" or "html"',
-        args: ["report.json", "--format", "json"],
+        label: '--format must be "markdown", "html", or "json"',
+        args: ["report.json", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format must be "markdown" or "html". Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]',
+            '--format must be "markdown", "html", or "json". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]',
     },
     {
         command: "report",
@@ -2337,7 +2337,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["--port", "notanumber"],
         expectedExitCode: 1,
         expectedError:
-            "--port must be a non-negative integer. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+            "--port must be a non-negative integer. Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]",
     },
     {
         command: "studio",
@@ -2826,7 +2826,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format given with no value",
         args: ["report.json", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format must be \"markdown\" or \"html\". Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+        expectedError:
+            "--format must be \"markdown\", \"html\", or \"json\". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
     },
     {
         command: "report",
@@ -2834,7 +2835,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["report.json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+        expectedError: "--out requires a file path. Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
     },
 
     // --- serve: missing-value cases ---
@@ -2998,7 +2999,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--port given with no value",
         args: ["--no-open", "--port"],
         expectedExitCode: 1,
-        expectedError: "--port must be a non-negative integer. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+        expectedError: "--port must be a non-negative integer. Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]",
     },
     {
         command: "studio",
@@ -3006,7 +3007,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--host given with no value",
         args: ["--no-open", "--host"],
         expectedExitCode: 1,
-        expectedError: "--host requires a value. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+        expectedError: "--host requires a value. Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]",
     },
 
     // --- validate: missing-value cases ---

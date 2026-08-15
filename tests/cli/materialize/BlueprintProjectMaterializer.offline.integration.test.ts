@@ -621,7 +621,7 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
         const server = await startPokieCliServer(
             pokieJsPath,
             ["serve", blueprintPath, "--port", "0"],
-            /POKIE dev server \(experimental\) listening on http:\/\/127\.0\.0\.1:(\d+)/,
+            /POKIE dev server listening on http:\/\/127\.0\.0\.1:(\d+)/,
         );
         try {
             const gameResponse = await fetch(`${server.baseUrl}/game`);
@@ -635,7 +635,7 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
         const server = await startPokieCliServer(
             pokieJsPath,
             ["dev", blueprintPath, "--port", "0", "--client-port", "0", "--no-open"],
-            /dev server \(experimental\) listening on http:\/\/127\.0\.0\.1:(\d+)/,
+            /POKIE dev server listening on http:\/\/127\.0\.0\.1:(\d+)/,
         );
         try {
             const healthResponse = await fetch(`${server.baseUrl}/health`);
