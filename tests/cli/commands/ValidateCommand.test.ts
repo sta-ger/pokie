@@ -39,10 +39,10 @@ describe("ValidateCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
-    it("throws when run without a packageRoot", async () => {
+    it("throws when run without a project", async () => {
         const command = new ValidateCommand();
 
-        await expect(command.run([])).rejects.toThrow(/Usage: pokie validate <packageRoot>/);
+        await expect(command.run([])).rejects.toThrow(/Usage: pokie validate <project>/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {

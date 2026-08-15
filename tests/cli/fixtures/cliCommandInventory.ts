@@ -93,8 +93,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         name: "build",
         description:
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- a ' +
-            "tsPackage from a GameBlueprint source, or atomically republish an already-built outcomeLibrary/" +
-            'stakeAdapter/parWorkbook artifact to a new location (for a first random game instead, see "pokie ' +
+            "tsPackage from a GameBlueprint source, or atomically republish an already-built artifact to a new " +
+            'location (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.',
         verbs: [
             {
@@ -139,7 +139,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "client",
-        description: 'Experimental: serve the universal browser preview UI for a running "pokie serve" API.',
+        description: 'Serve the universal browser UI for a running "pokie serve" API.',
         verbs: [
             {
                 verb: undefined,
@@ -218,7 +218,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "dev",
-        description: 'Experimental: run "pokie serve" and "pokie client" together, opening a browser preview.',
+        description: 'Run "pokie serve" and "pokie client" together, opening a browser UI.',
         verbs: [
             {
                 verb: undefined,
@@ -238,7 +238,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "diff",
-        description: "Compare two pokie sim JSON reports (see pokie sim --out) and highlight what changed.",
+        description: "Compare two simulation reports or two resolved precomputed-outcome projects and highlight what changed.",
         verbs: [
             {
                 verb: undefined,
@@ -262,8 +262,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             '"pokie create" uses ("pokie edit <blueprint> [--out <file>]") -- every question pre-fills the ' +
             "current value and Enter preserves it, then a diff against the loaded file is shown and nothing is " +
             "written until it's explicitly confirmed. --out saves the result to a different file instead of " +
-            'overwriting <blueprint> ("Save As"). Pointed at a non-Blueprint project (tsPackage/wasm/' +
-            "outcomeLibrary/stakeAdapter/parWorkbook), reports why it can't be edited here instead of running the " +
+            'overwriting <blueprint> ("Save As"). Pointed at a non-Blueprint artifact project, reports why it ' +
+            "can't be edited here instead of running the " +
             'wizard. A "generated" reelStripGeneration is left untouched -- see "pokie reel generate" for that.',
         verbs: [
             {
@@ -497,7 +497,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
             "by default, only pinning the result back in as a literal strip with --apply, or fully collapsing the " +
             'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left -- required by ' +
-            '"pokie par export" and any other tool that only understands literal reels) with --materialize ' +
+            '"pokie export --to workbook" and any other tool that only understands literal reels) with --materialize ' +
             '("pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] ' +
             '[--out <file>] [--format json]").',
         verbs: [
@@ -548,12 +548,12 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "report",
-        description: "Render a pokie sim JSON report (see pokie sim --out) as a human-readable Markdown or HTML document.",
+        description: "Render a pokie sim JSON report, or inspect a resolved outcome-library/Stake adapter project.",
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
-                positionals: ["simulationReportJson"],
+                usage: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
+                positionals: ["projectOrSimulationReportJson"],
                 options: [
                     // --format has a real seam: renderers.markdown/renderers.html are two independently swappable
                     // dependencies, and which one's render() actually fires is the observed evidence.
@@ -565,7 +565,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "serve",
-        description: "Experimental: serve a POKIE game package over local HTTP (dev/reference server, not a casino backend/RGS).",
+        description: "Serve a POKIE game package over local HTTP (dev/reference server, not a casino backend/RGS).",
         verbs: [
             {
                 verb: undefined,
@@ -680,11 +680,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "validate",
-        description: "Validate a POKIE game package's contract (manifest, entry module) without playing it.",
+        description: "Validate a resolved POKIE project's supported contract without running it.",
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
+                usage: "Usage: pokie validate <project> [--deep] [--format json] [--out <file>]",
                 positionals: ["packageRoot"],
                 options: [
                     // --format has no dependency seam (json vs printSummary; the "Report written" line is guarded by
@@ -2019,19 +2019,19 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
     {
         command: "report",
         kind: "invalid",
-        label: "missing <simulationReportJson>",
+        label: "missing <projectOrSimulationReportJson>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+        expectedError: "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
     },
     {
         command: "report",
         kind: "invalid",
-        label: '--format must be "markdown" or "html"',
-        args: ["report.json", "--format", "json"],
+        label: '--format must be "markdown", "html", or "json"',
+        args: ["report.json", "--format", "xml"],
         expectedExitCode: 1,
         expectedError:
-            '--format must be "markdown" or "html". Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]',
+            '--format must be "markdown", "html", or "json". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]',
     },
     {
         command: "report",
@@ -2337,7 +2337,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["--port", "notanumber"],
         expectedExitCode: 1,
         expectedError:
-            "--port must be a non-negative integer. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+            "--port must be a non-negative integer. Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]",
     },
     {
         command: "studio",
@@ -2363,7 +2363,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "missing <packageRoot>",
         args: [],
         expectedExitCode: 1,
-        expectedError: "Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
+        expectedError: "Usage: pokie validate <project> [--deep] [--format json] [--out <file>]",
     },
     {
         command: "validate",
@@ -2371,7 +2371,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format only supports json",
         args: ["pkg", "--format", "xml"],
         expectedExitCode: 1,
-        expectedError: '--format only supports "json". Usage: pokie validate <packageRoot> [--format json] [--out <file>]',
+        expectedError: '--format only supports "json". Usage: pokie validate <project> [--deep] [--format json] [--out <file>]',
     },
     {
         command: "validate",
@@ -2826,7 +2826,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format given with no value",
         args: ["report.json", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format must be \"markdown\" or \"html\". Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+        expectedError:
+            "--format must be \"markdown\", \"html\", or \"json\". Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
     },
     {
         command: "report",
@@ -2834,7 +2835,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["report.json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]",
+        expectedError: "--out requires a file path. Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]",
     },
 
     // --- serve: missing-value cases ---
@@ -2998,7 +2999,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--port given with no value",
         args: ["--no-open", "--port"],
         expectedExitCode: 1,
-        expectedError: "--port must be a non-negative integer. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+        expectedError: "--port must be a non-negative integer. Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]",
     },
     {
         command: "studio",
@@ -3006,7 +3007,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--host given with no value",
         args: ["--no-open", "--host"],
         expectedExitCode: 1,
-        expectedError: "--host requires a value. Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]",
+        expectedError: "--host requires a value. Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]",
     },
 
     // --- validate: missing-value cases ---
@@ -3016,7 +3017,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format given with no value",
         args: ["pkg", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format only supports \"json\". Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
+        expectedError: "--format only supports \"json\". Usage: pokie validate <project> [--deep] [--format json] [--out <file>]",
     },
     {
         command: "validate",
@@ -3024,7 +3025,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["pkg", "--format", "json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie validate <packageRoot> [--format json] [--out <file>]",
+        expectedError: "--out requires a file path. Usage: pokie validate <project> [--deep] [--format json] [--out <file>]",
     },
 ];
 
@@ -3054,16 +3055,11 @@ export const CLI_TOP_LEVEL_DISPATCH_CASES: CliTopLevelDispatchCase[] = [
         expectedStdoutIsUsage: true,
     },
     {
-        // No top-level "--version" flag exists today: isTopLevelHelpRequest (resolveCliInvocation.ts)
-        // only recognizes --help/-h, so "--version" instead falls through resolveCliInvocation's own
-        // step 3 (an unrecognized "-"-prefixed token) and is handed to StudioCommand as argv, which
-        // rejects it as an unknown option. Frozen here as today's actual, real behavior — a fallthrough,
-        // not a designed feature — so that a future top-level --version implementation is a visible,
-        // deliberate diff against this case instead of a silent behavior change.
-        label: "--version (no top-level flag exists yet; falls through to Studio's own unknown-option error)",
+        // No top-level "--version" flag exists today. It is not a public command and therefore gets
+        // the same usage fallback as any other unknown invocation.
+        label: "--version (no top-level flag exists yet; prints top-level usage)",
         argv: ["--version"],
         expectedExitCode: 1,
-        expectedStdoutIsUsage: false,
-        expectedStderr: 'Unknown option "--version". Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]',
+        expectedStdoutIsUsage: true,
     },
 ];

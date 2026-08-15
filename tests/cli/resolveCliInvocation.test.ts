@@ -1,7 +1,8 @@
 import path from "path";
+import {INTERNAL_STUDIO_COMMAND_NAME} from "../../cli/commands/InternalStudioCommand.js";
 import {isTopLevelHelpRequest, resolveCliInvocation} from "../../cli/resolveCliInvocation.js";
 
-const KNOWN_COMMANDS = ["build", "create", "serve", "sim", "studio", "validate"];
+const KNOWN_COMMANDS = ["build", "create", "serve", "sim", "validate"];
 
 describe("isTopLevelHelpRequest", () => {
     it.each([["--help"], ["-h"]])('recognizes "pokie %s" as a request for the CLI\'s own help', (flag) => {
@@ -29,7 +30,7 @@ describe("isTopLevelHelpRequest", () => {
     it("covers the flags that resolveCliInvocation would otherwise hand to StudioCommand", () => {
         for (const flag of ["--help", "-h"]) {
             expect(resolveCliInvocation(["node", "pokie", flag], KNOWN_COMMANDS, () => false)).toEqual({
-                commandName: "studio",
+                commandName: INTERNAL_STUDIO_COMMAND_NAME,
                 args: [flag],
             });
             expect(isTopLevelHelpRequest(["node", "pokie", flag])).toBe(true);
@@ -50,7 +51,7 @@ describe("resolveCliInvocation: Studio startup target", () => {
 
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, findProjectRoot, () => "/games/my-slot/src/generated");
 
-        expect(invocation).toEqual({commandName: "studio", args: [PROJECT_ROOT]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [PROJECT_ROOT]});
         // Discovery starts at the working directory — walking up from a nested subdirectory is
         // findPokieProjectRoot's own job, and this is the call that hands it the place to start.
         expect(findProjectRoot).toHaveBeenCalledWith("/games/my-slot/src/generated");
@@ -59,16 +60,15 @@ describe("resolveCliInvocation: Studio startup target", () => {
     it('"pokie" outside any project opens Home', () => {
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, outsideProject, () => "/tmp/elsewhere");
 
-        expect(invocation).toEqual({commandName: "studio", args: []});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
     });
 
-    it('an explicit "pokie studio" always opens Home, even from inside a project', () => {
+    it('does not retain "pokie studio" as a public alias', () => {
         const findProjectRoot = jest.fn(insideProject);
 
         const invocation = resolveCliInvocation(["node", "pokie", "studio"], KNOWN_COMMANDS, () => false, findProjectRoot, () => PROJECT_ROOT);
 
-        expect(invocation).toEqual({commandName: "studio", args: []});
-        // Naming Studio explicitly with no target *is* the answer — no discovery is even attempted.
+        expect(invocation).toBeUndefined();
         expect(findProjectRoot).not.toHaveBeenCalled();
     });
 
@@ -78,27 +78,27 @@ describe("resolveCliInvocation: Studio startup target", () => {
         for (const target of [".", "/games/other"]) {
             const invocation = resolveCliInvocation(["node", "pokie", target], KNOWN_COMMANDS, () => true, findProjectRoot, () => PROJECT_ROOT);
 
-            expect(invocation).toEqual({commandName: "studio", args: [target]});
+            expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [target]});
         }
         expect(findProjectRoot).not.toHaveBeenCalled();
     });
 
-    it('"pokie studio <path>" opens the named project', () => {
+    it('does not retain "pokie studio <path>" as a public alias', () => {
         const invocation = resolveCliInvocation(["node", "pokie", "studio", "/games/other"], KNOWN_COMMANDS, () => false, insideProject, () => PROJECT_ROOT);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["/games/other"]});
+        expect(invocation).toBeUndefined();
     });
 
     it("bare Studio flags discover a project too, so \"pokie --no-open\" matches \"pokie\"", () => {
         const invocation = resolveCliInvocation(["node", "pokie", "--no-open", "--port", "0"], KNOWN_COMMANDS, () => false, insideProject, () => PROJECT_ROOT);
 
-        expect(invocation).toEqual({commandName: "studio", args: [PROJECT_ROOT, "--no-open", "--port", "0"]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [PROJECT_ROOT, "--no-open", "--port", "0"]});
     });
 
     it("bare Studio flags outside a project stay exactly as they were", () => {
         const invocation = resolveCliInvocation(["node", "pokie", "--no-open"], KNOWN_COMMANDS, () => false, outsideProject, () => "/tmp/elsewhere");
 
-        expect(invocation).toEqual({commandName: "studio", args: ["--no-open"]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: ["--no-open"]});
     });
 });
 
@@ -106,7 +106,7 @@ describe("resolveCliInvocation", () => {
     it('resolves to studio with no args when nothing is given ("pokie") outside a project', () => {
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, () => undefined);
 
-        expect(invocation).toEqual({commandName: "studio", args: []});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
     });
 
     it('resolves "." to a studio project invocation ("pokie .")', () => {
@@ -114,7 +114,7 @@ describe("resolveCliInvocation", () => {
 
         const invocation = resolveCliInvocation(["node", "pokie", "."], KNOWN_COMMANDS, pathExists);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["."]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: ["."]});
         expect(pathExists).toHaveBeenCalledWith(".");
     });
 
@@ -123,7 +123,7 @@ describe("resolveCliInvocation", () => {
 
         const invocation = resolveCliInvocation(["node", "pokie", "./sample-slot"], KNOWN_COMMANDS, pathExists);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["./sample-slot"]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: ["./sample-slot"]});
     });
 
     it('resolves an existing absolute path to a studio project invocation ("pokie <path>")', () => {
@@ -132,7 +132,7 @@ describe("resolveCliInvocation", () => {
 
         const invocation = resolveCliInvocation(["node", "pokie", absolute], KNOWN_COMMANDS, pathExists);
 
-        expect(invocation).toEqual({commandName: "studio", args: [absolute]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [absolute]});
     });
 
     it('does not treat a non-existent path as a studio invocation ("pokie <missing-path>")', () => {
@@ -146,27 +146,27 @@ describe("resolveCliInvocation", () => {
 
         const invocation = resolveCliInvocation(["node", "pokie", "--no-open"], KNOWN_COMMANDS, pathExists);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["--no-open"]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: ["--no-open"]});
         // An option-shaped first token is never even checked against the filesystem.
         expect(pathExists).not.toHaveBeenCalled();
     });
 
-    it('resolves an explicit "pokie studio" (no path) to a home studio invocation', () => {
+    it('does not resolve an explicit "pokie studio" alias', () => {
         const invocation = resolveCliInvocation(["node", "pokie", "studio"], KNOWN_COMMANDS, () => false);
 
-        expect(invocation).toEqual({commandName: "studio", args: []});
+        expect(invocation).toBeUndefined();
     });
 
-    it('resolves "pokie studio ." to a studio project invocation', () => {
+    it('does not resolve "pokie studio ." as a Studio alias', () => {
         const invocation = resolveCliInvocation(["node", "pokie", "studio", "."], KNOWN_COMMANDS, () => false);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["."]});
+        expect(invocation).toBeUndefined();
     });
 
-    it('resolves "pokie studio <path>" to a studio project invocation', () => {
+    it('does not resolve "pokie studio <path>" as a Studio alias', () => {
         const invocation = resolveCliInvocation(["node", "pokie", "studio", "./sample-slot"], KNOWN_COMMANDS, () => false);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["./sample-slot"]});
+        expect(invocation).toBeUndefined();
     });
 
     it("dispatches an existing command unchanged, forwarding the rest of the args", () => {
@@ -200,6 +200,6 @@ describe("resolveCliInvocation", () => {
     it("uses the real filesystem by default", () => {
         const invocation = resolveCliInvocation(["node", "pokie", "."], KNOWN_COMMANDS);
 
-        expect(invocation).toEqual({commandName: "studio", args: ["."]});
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: ["."]});
     });
 });

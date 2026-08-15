@@ -121,7 +121,7 @@ describe("ClientCommand", () => {
         logSpy.mockRestore();
     });
 
-    it("opens a browser pointed at the client preview by default, same as pokie dev/pokie studio", async () => {
+    it("opens a browser pointed at the client UI by default, same as pokie dev/pokie studio", async () => {
         const stubServer = createStubServer({host: "127.0.0.1", port: 3100});
         let openedUrl: string | undefined;
         const command = new ClientCommand(() => stubServer, "/fake/client/root", (url) => {
@@ -193,7 +193,7 @@ describe("ClientCommand (integration, real PokieClientServer)", () => {
         await command.run(["./sample-slot", "--port", "0"]);
 
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        const match = printed.match(/POKIE client preview.*http:\/\/127\.0\.0\.1:(\d+)/);
+        const match = printed.match(/POKIE client UI.*http:\/\/127\.0\.0\.1:(\d+)/);
         expect(match).not.toBeNull();
         const port = Number(match![1]);
 

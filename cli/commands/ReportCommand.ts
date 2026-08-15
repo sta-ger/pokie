@@ -16,26 +16,23 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {renderOutcomeSourceReport} from "./internal/renderOutcomeSourceReport.js";
 
-type ReportFormat = "markdown" | "html";
+type SimulationReportFormat = "markdown" | "html";
+type ReportFormat = SimulationReportFormat | "json";
 
-type ReportPathAlternative = {readonly error: Error} | {readonly rendered: string};
+type ReportPathAlternative = {readonly error: Error};
 
-const USAGE = "Usage: pokie report <simulationReportJson> [--format markdown|html] [--out <file>]";
+const USAGE = "Usage: pokie report <projectOrSimulationReportJson> [--format markdown|html|json] [--out <file>]";
 
 export class ReportCommand implements CliCommandHandling {
     private readonly readFile: (file: string) => string;
     private readonly writeFile: (file: string, contents: string) => void;
-    private readonly renderers: Record<ReportFormat, SimulationReportRendering>;
-    // Consulted only once reading/parsing/shape-checking `reportPath` as a plain JSON report has already
-    // failed -- see resolveReportPathAlternative's own comment on why a resolved PokieProject (someone
-    // pointed "pokie report" at a game package/blueprint/outcome source/etc instead of a sim report)
-    // upgrades that failure into either a canonical-reader-backed analysis or a message naming what POKIE
-    // actually detected, rather than a bare "not valid JSON"/shape mismatch. Best-effort: resolve() failing
-    // too (or resolving to nothing) simply falls back to the original, unresolved error, exactly as before
-    // this existed.
+    private readonly renderers: Record<SimulationReportFormat, SimulationReportRendering>;
+    // Resolves project-shaped targets before attempting simulation-report JSON parsing. A resolved outcome
+    // library or Stake adapter is reported through its canonical reader; all other targets retain the useful
+    // simulation-report parsing diagnostic if they are not report JSON.
     private readonly resolveProject: ProjectResolving;
-    // Routes a resolved "outcomeLibrary"/"stakeAdapter" project (see resolveReportPathAlternative) through
-    // its own canonical outcome-source reader instead of ever telling its caller to "run pokie sim" first
+    // Routes a resolved "outcomeLibrary"/"stakeAdapter" project through its own canonical outcome-source
+    // reader instead of ever telling its caller to "run pokie sim" first
     // -- neither project type ever gains RUNTIME_EXECUTE_CAPABILITY, so that advice would be permanently
     // wrong for them (see OutcomeSourceProjectAnalyzer's own doc comment).
     private readonly outcomeSourceAnalyzer: OutcomeSourceProjectAnalyzing;
@@ -43,7 +40,7 @@ export class ReportCommand implements CliCommandHandling {
     constructor(
         readFile: (file: string) => string = (file) => fs.readFileSync(file, "utf-8"),
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
-        renderers: Record<ReportFormat, SimulationReportRendering> = {
+        renderers: Record<SimulationReportFormat, SimulationReportRendering> = {
             markdown: new MarkdownSimulationReportRenderer(),
             html: new HtmlSimulationReportRenderer(),
         },
@@ -62,7 +59,7 @@ export class ReportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Render a pokie sim JSON report (see pokie sim --out) as a human-readable Markdown or HTML document.";
+        return "Render a pokie sim JSON report, or inspect a resolved outcome-library/Stake adapter project.";
     }
 
     public getCommanderCommand(): Command {
@@ -81,18 +78,28 @@ export class ReportCommand implements CliCommandHandling {
         }
         const {reportPath, format, out} = parsedArgs;
 
+        const project = await this.resolveProjectSafely(reportPath);
+        if (project?.type === "outcomeLibrary" || project?.type === "stakeAdapter") {
+            try {
+                const report = await this.outcomeSourceAnalyzer.analyze(project);
+                this.emit(format === "json" ? JSON.stringify(report, null, 4) : renderOutcomeSourceReport(reportPath, report), out);
+                return;
+            } catch {
+                // Preserve the established report-file diagnostic if canonical analysis cannot run.
+            }
+        }
+
         let parsed: SimulationReport | SimulationReportSet;
         try {
             parsed = this.readReportJson(reportPath);
         } catch (error) {
-            const alternative = await this.resolveReportPathAlternative(reportPath, error instanceof Error ? error : new Error(String(error)));
-            if ("rendered" in alternative) {
-                this.emit(alternative.rendered, out);
-                return;
-            }
+            const alternative = this.resolveReportPathAlternative(reportPath, error instanceof Error ? error : new Error(String(error)), project);
             throw alternative.error;
         }
 
+        if (format === "json") {
+            throw new Error(`--format json is only available for resolved outcome-source projects. ${USAGE}`);
+        }
         const renderer = this.renderers[format];
         const rendered = isSimulationReportSet(parsed) ? this.renderSet(renderer, parsed) : renderer.render(parsed);
         this.emit(rendered, out);
@@ -106,11 +113,11 @@ export class ReportCommand implements CliCommandHandling {
     private buildCommand(resultRef: {reportPath?: string; format?: ReportFormat; out?: string} = {}): Command {
         return createCommanderCliCommand("report")
             .description(this.getDescription())
-            .argument("<simulationReportJson>", "a pokie sim JSON report (see \"pokie sim --out\")")
+            .argument("<projectOrSimulationReportJson>", "a supported outcome project or pokie sim JSON report")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--format <value>", '"markdown" or "html" (default: "markdown")', (value: string) => {
-                if (value !== "markdown" && value !== "html") {
-                    throw new Error(`--format must be "markdown" or "html". ${USAGE}`);
+            .option("--format <value>", '"markdown", "html", or "json" for outcome-source projects (default: "markdown")', (value: string) => {
+                if (value !== "markdown" && value !== "html" && value !== "json") {
+                    throw new Error(`--format must be "markdown", "html", or "json". ${USAGE}`);
                 }
                 return value as ReportFormat;
             })
@@ -162,7 +169,7 @@ export class ReportCommand implements CliCommandHandling {
                 missingArgument: USAGE,
                 unknownOption: (flag) => `Unknown option "${flag}". ${USAGE}`,
                 optionMissingArgument: (flag) =>
-                    flag === "--format" ? `--format must be "markdown" or "html". ${USAGE}` : `--out requires a file path. ${USAGE}`,
+                    flag === "--format" ? `--format must be "markdown", "html", or "json". ${USAGE}` : `--out requires a file path. ${USAGE}`,
             });
         }
 
@@ -198,33 +205,20 @@ export class ReportCommand implements CliCommandHandling {
         return parsed;
     }
 
-    // Upgrades a raw report-parsing failure into a project-aware one when `reportPath` turns out to
-    // actually resolve to a recognized PokieProject (a game package, blueprint, outcome library, ...) --
-    // see this.resolveProject's own field comment. A resolved "outcomeLibrary"/"stakeAdapter" project is
-    // routed straight through its own canonical outcome-source reader (this.outcomeSourceAnalyzer) and
-    // rendered directly -- telling its caller to "run pokie sim" first would be permanently wrong for
-    // either type, since neither ever gains RUNTIME_EXECUTE_CAPABILITY. Every other resolved type keeps the
-    // plain "wrong project type" message. Best-effort throughout: any resolver error, no resolved project at
-    // all, or a failure while analyzing an outcome-source project, falls back to `fallbackError` untouched,
-    // so an ordinary unrelated/malformed path still reports exactly the error it always has.
-    private async resolveReportPathAlternative(reportPath: string, fallbackError: Error): Promise<ReportPathAlternative> {
-        let project;
+    private async resolveProjectSafely(reportPath: string) {
         try {
-            project = await this.resolveProject.resolve(reportPath);
+            return await this.resolveProject.resolve(reportPath);
         } catch {
-            return {error: fallbackError};
+            return undefined;
         }
-        if (project === undefined) {
-            return {error: fallbackError};
-        }
+    }
 
-        if (project.type === "outcomeLibrary" || project.type === "stakeAdapter") {
-            try {
-                const report = await this.outcomeSourceAnalyzer.analyze(project);
-                return {rendered: renderOutcomeSourceReport(reportPath, report)};
-            } catch {
-                return {error: fallbackError};
-            }
+    // A source's canonical analysis is attempted before JSON parsing in run(). If it failed, retain the
+    // original parsing/read error rather than disguising the underlying source-reader failure as a result.
+    // Other recognized project types still receive a precise wrong-target diagnostic.
+    private resolveReportPathAlternative(reportPath: string, fallbackError: Error, project: Awaited<ReturnType<ProjectResolving["resolve"]>>): ReportPathAlternative {
+        if (project === undefined || project.type === "outcomeLibrary" || project.type === "stakeAdapter") {
+            return {error: fallbackError};
         }
 
         return {

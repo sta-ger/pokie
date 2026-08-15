@@ -7,19 +7,19 @@ import {CreateCommand} from "./commands/CreateCommand.js";
 import {DevCommand} from "./commands/DevCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
 import {EditCommand} from "./commands/EditCommand.js";
+import {ExportCommand} from "./commands/ExportCommand.js";
 import {FairnessCommand} from "./commands/FairnessCommand.js";
+import {GenerateCommand} from "./commands/GenerateCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
+import {ImportCommand} from "./commands/ImportCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
-import {NameCommand} from "./commands/NameCommand.js";
-import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
-import {OutcomeSourceCommand} from "./commands/OutcomeSourceCommand.js";
-import {ParCommand} from "./commands/ParCommand.js";
+import {InternalStudioCommand} from "./commands/InternalStudioCommand.js";
 import {ReelCommand} from "./commands/ReelCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
 import {ServeCommand} from "./commands/ServeCommand.js";
+import {SampleCommand} from "./commands/SampleCommand.js";
 import {SimCommand} from "./commands/SimCommand.js";
-import {StakeEngineCommand} from "./commands/StakeEngineCommand.js";
 import {StudioCommand} from "./commands/StudioCommand.js";
 import {ValidateCommand} from "./commands/ValidateCommand.js";
 import {createMaterializingRuntimePackageResolver} from "./materialize/materializeRuntimePackage.js";
@@ -58,17 +58,16 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         ),
         new DiffCommand(),
         new EditCommand(),
+        new ExportCommand(version),
         new FairnessCommand(),
+        new GenerateCommand(version),
         // withLocalPokieInstall(pokiePackageRoot): the same mechanism createMaterializingRuntimePackageResolver
         // wires into every Blueprint materialization below -- so a freshly scaffolded package's own "npm
         // install" resolves "pokie" against this exact running installation instead of the registry, even
         // when its own version has never been published.
         new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
+        new ImportCommand(version),
         new InspectCommand(),
-        new NameCommand(),
-        new OutcomeLibraryCommand(version),
-        new OutcomeSourceCommand(),
-        new ParCommand(version),
         new ReelCommand(),
         new ReplayCommand(
             undefined,
@@ -78,6 +77,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         ),
         new ReportCommand(),
         new ServeCommand(undefined, undefined, createMaterializingRuntimePackageResolver(version, SERVE_OPERATION, pokiePackageRoot)),
+        new SampleCommand(),
         new SimCommand(
             undefined,
             undefined,
@@ -86,8 +86,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             undefined,
             createMaterializingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
         ),
-        new StakeEngineCommand(version),
-        new StudioCommand(version, pokiePackageRoot, {studioRoot}),
+        new InternalStudioCommand(new StudioCommand(version, pokiePackageRoot, {studioRoot})),
         new ValidateCommand(
             undefined,
             undefined,

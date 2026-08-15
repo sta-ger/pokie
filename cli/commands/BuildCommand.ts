@@ -63,8 +63,8 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
-            "a tsPackage from a GameBlueprint source, or atomically republish an already-built outcomeLibrary/" +
-            'stakeAdapter/parWorkbook artifact to a new location (for a first random game instead, see "pokie ' +
+            "a tsPackage from a GameBlueprint source, or atomically republish an already-built artifact to a new " +
+            'location (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.'
         );
     }

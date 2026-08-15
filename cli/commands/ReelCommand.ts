@@ -64,7 +64,7 @@ export class ReelCommand implements CliCommandHandling {
             "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
             "by default, only pinning the result back in as a literal strip with --apply, or fully collapsing the " +
             'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left -- required by ' +
-            '"pokie par export" and any other tool that only understands literal reels) with --materialize ' +
+            '"pokie export --to workbook" and any other tool that only understands literal reels) with --materialize ' +
             '("pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] ' +
             '[--out <file>] [--format json]").'
         );

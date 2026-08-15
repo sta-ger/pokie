@@ -263,21 +263,13 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             expect(await contextOf([], installDir!)).toEqual({mode: "home"});
         });
 
-        it("an explicit `pokie studio` opens Home even from inside a project", async () => {
-            expect(await contextOf(["studio"], projectRoot)).toEqual({mode: "home"});
-        });
-
         it("`pokie .` opens the project it was pointed at", async () => {
             expect(await contextOf(["."], projectRoot)).toEqual({mode: "project", projectRoot});
-        });
-
-        it("`pokie studio <path>` opens the project it was pointed at", async () => {
-            expect(await contextOf(["studio", projectRoot], installDir!)).toEqual({mode: "project", projectRoot});
         });
     });
 
     // spawnSync (rather than execFileSync) so a non-zero exit is asserted on directly instead of
-    // surfacing as a thrown error, and so a "pokie --help" that wrongly reached StudioCommand — which
+    // surfacing as a thrown error, and so a "pokie --help" that wrongly reached the implicit Studio entry — which
     // would sit there serving instead of exiting — fails on the timeout rather than hanging the suite.
     it.each([["--help"], ["-h"]])("prints the general usage and the full command list for `pokie %s`, exiting 0", (flag) => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
@@ -287,24 +279,25 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stdout).toContain("Commands:");
         // A representative spread of registered commands, including the longest name, so a truncated
         // or partially-rendered list is caught rather than just "some text was printed".
-        for (const commandName of ["build", "create", "inspect", "outcomelibrary", "sim", "studio", "validate"]) {
+        for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
+        expect(result.stdout).not.toMatch(/^ {2}(name|outcomelibrary|outcomesource|par|stakeengine|studio)\b/m);
     });
 
     // Mirrors tests/cli/cliCommandInventory.contract.test.ts's own frozen "CLI top-level dispatch
     // contract" case for "--version" (see CLI_TOP_LEVEL_DISPATCH_CASES) against the real, installed
     // binary rather than an in-process dispatch() call: there is no dedicated top-level --version flag
-    // today, so it falls through resolveCliInvocation's own "-"-prefixed-token step and reaches
-    // StudioCommand as an unrecognized option, exiting 1 without ever starting a server. Proves the
+    // today, so it falls through resolveCliInvocation's own "-"-prefixed-token step and reaches the
+    // implicit Studio entry as an unrecognized option, exiting 1 without ever starting a server. Proves the
     // packaged dist behaves identically to the source under test, not just that the source does.
-    it("`pokie --version` has no dedicated top-level flag today: falls through to Studio's own unknown-option error, exiting 1", () => {
+    it("`pokie --version` has no dedicated top-level flag today: falls through to the implicit Studio entry's unknown-option error, exiting 1", () => {
         const result = spawnSync(pokieBinPath, ["--version"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
         expect(result.status).toBe(1);
         expect(result.stdout).toBe("");
         expect(result.stderr.trim()).toBe(
-            'Unknown option "--version". Usage: pokie studio [projectRoot] [--port <number>] [--host <string>] [--no-open]',
+            'Unknown option "--version". Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]',
         );
     });
 
@@ -319,42 +312,6 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stderr).toBe("");
         expect(result.stdout).toContain("Usage: pokie <command>");
         expect(result.stdout).toContain("Commands:");
-    });
-
-    it("`pokie name --json` prints machine-readable JSON from the real installed binary, distinct from its human-readable default", () => {
-        const jsonResult = spawnSync(pokieBinPath, ["name", "--json", "--count", "3", "--seed", "42"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
-        });
-        expect(jsonResult.status).toBe(0);
-        expect(jsonResult.stderr).toBe("");
-        const names = JSON.parse(jsonResult.stdout) as Array<{title: string; slug: string; packageName: string; seed: number}>;
-        expect(names).toHaveLength(3);
-        for (const name of names) {
-            expect(typeof name.title).toBe("string");
-            expect(typeof name.slug).toBe("string");
-            expect(typeof name.packageName).toBe("string");
-        }
-
-        const humanResult = spawnSync(pokieBinPath, ["name", "--count", "3", "--seed", "42"], {
-            cwd: installDir,
-            encoding: "utf-8",
-            timeout: 60000,
-        });
-        expect(humanResult.status).toBe(0);
-        expect(() => JSON.parse(humanResult.stdout)).toThrow();
-        expect(humanResult.stdout).toContain("Reproduce with: pokie name --seed 42");
-    });
-
-    it("`pokie name --count 0` rejects an invalid option value with a non-zero exit and a stderr-only message", () => {
-        const result = spawnSync(pokieBinPath, ["name", "--count", "0"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-
-        expect(result.status).toBe(1);
-        expect(result.stdout).toBe("");
-        expect(result.stderr.trim()).toBe(
-            "--count requires a positive integer. Usage: pokie name [--count <n>] [--theme <theme>] [--words <2|3>] [--seed <integer>] [--json]",
-        );
     });
 
     it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root during install (never the registry, never a manual rewrite), then is left with a portable version range, and it validates and simulates", () => {
@@ -496,7 +453,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(validate.status).toBe(0);
     });
 
-    it("runs `pokie outcomelibrary generate` against a package built by the installed binary itself, then bundles and validates the result", () => {
+    it("runs `pokie generate` against a package built by the installed binary itself, then exports and validates the result", () => {
         // Same small, hand-computable, exactly-enumerable blueprint as
         // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
         // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
@@ -526,7 +483,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
         const generate = spawnSync(
             pokieBinPath,
-            ["outcomelibrary", "generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"],
+            ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"],
             {cwd: installDir, encoding: "utf-8", timeout: 60000},
         );
         expect(generate.status).toBe(0);
@@ -538,14 +495,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const bundleConfigPath = path.join(installDir!, "outcomelibrary-bundle-config.json");
         fs.writeFileSync(bundleConfigPath, JSON.stringify({modes: [{modeName: "base", libraryPath: "outcomelibrary-base.json"}]}));
         const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
-        const bundleBuild = spawnSync(pokieBinPath, ["outcomelibrary", "build", bundleConfigPath, "--out", bundleDir], {
+        const bundleBuild = spawnSync(pokieBinPath, ["export", bundleConfigPath, "--to", "outcomes", "--out", bundleDir], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
         expect(bundleBuild.status).toBe(0);
 
-        const bundleValidate = spawnSync(pokieBinPath, ["outcomelibrary", "validate", bundleDir, "--deep"], {
+        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep"], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
