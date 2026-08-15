@@ -185,6 +185,12 @@ export default {
     // concurrent contention than check:full's dedicated test:workflows step ever sees -- so it carries
     // the identical pair of flags for the same reason, not just the lane run on its own.
     //
+    // The reduced old-space ceiling lets individual workers collect early, but it cannot cap native
+    // jsdom/transform memory.  A second concurrent worker still pushes this lane over the gate
+    // container's 2GiB cgroup limit intermittently (reported by Jest as failed suites without an
+    // assertion).  `test:workflows` therefore uses one worker: one main process and one bounded worker
+    // stay below that limit, and `workerIdleMemoryLimit` still recycles retained test state between files.
+    //
     // With that in place 60000ms is ordinary headroom: enough for a test that chains several sequential
     // findBy*/waitFor assertions to each get setupTests.ts's 15000ms asyncUtilTimeout without the whole
     // test running out of budget first; the three single heaviest tests (happyPath, HomePage's
