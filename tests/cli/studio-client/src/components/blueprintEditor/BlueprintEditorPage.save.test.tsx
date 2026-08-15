@@ -1,6 +1,7 @@
-import {screen, waitFor} from "@testing-library/react";
+import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useLocation} from "react-router-dom";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import {createFakeFetch} from "../../testUtils/fakeFetch";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
@@ -108,6 +109,59 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         await waitFor(() =>
             expect(screen.getByTestId("location")).toHaveTextContent("/project/%2Fprojects%2Fstarter-slot%2Fblueprint.json/overview"),
         );
+    });
+
+    it("releases a joined stale validation so Create Project saves the edited revision", async () => {
+        const user = userEvent.setup();
+        const validationBodies: unknown[] = [];
+        const managedSaveBodies: unknown[] = [];
+        let validationRequests = 0;
+        let resolveInitialValidation: ((response: {ok: boolean; status: number; json(): Promise<unknown>}) => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/blueprints/validate") {
+                validationBodies.push(JSON.parse(init?.body ?? "{}"));
+                validationRequests += 1;
+                if (validationRequests === 1) {
+                    return new Promise((resolve) => {
+                        resolveInitialValidation = resolve;
+                    });
+                }
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
+            }
+            if (url === "/api/home/blueprints/save-managed") {
+                managedSaveBodies.push(JSON.parse(init?.body ?? "{}"));
+                return Promise.resolve({
+                    ok: true,
+                    status: 201,
+                    json: () => Promise.resolve({status: "ok", path: "/projects/edited-slot/blueprint.json", name: "edited-slot", blueprintHash: "edited-hash"}),
+                });
+            }
+            throw new Error(`unexpected fetch to ${url}`);
+        };
+
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+
+        await waitFor(() => expect(validationRequests).toBe(1), {timeout: 1500});
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        const gameNameInput = screen.getByLabelText("Game name");
+        await user.clear(gameNameInput);
+        await user.type(gameNameInput, "Edited Slot");
+        await user.tab();
+
+        expect(resolveInitialValidation).toBeDefined();
+        await act(async () => {
+            resolveInitialValidation?.({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
+            await Promise.resolve();
+        });
+        expect(managedSaveBodies).toHaveLength(0);
+
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
+
+        await waitFor(() => expect(managedSaveBodies).toHaveLength(1));
+        expect(validationBodies.length).toBeGreaterThanOrEqual(2);
+        expect((managedSaveBodies[0] as {blueprint: {manifest: {name: string}}}).blueprint.manifest.name).toBe("Edited Slot");
+        expect((validationBodies[0] as {blueprint: {manifest: {name: string}}}).blueprint.manifest.name).toBe("Starter Slot");
+        expect((validationBodies.at(-1) as {blueprint: {manifest: {name: string}}}).blueprint.manifest.name).toBe("Edited Slot");
     });
 
     it("automatically validates the seeded Random revision after it replaces Recommended", async () => {

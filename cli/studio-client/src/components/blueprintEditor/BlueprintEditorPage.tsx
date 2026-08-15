@@ -245,6 +245,13 @@ export function BlueprintEditorPage({
     // settles. Its completion is handled by finishPendingGuidedSave below, after the shared result has
     // passed the same revision staleness check as every automatic validation.
     const pendingGuidedSaveRevisionRef = useRef<number | undefined>(undefined);
+    const releaseStalePendingGuidedSave = (validatedRevision: number): void => {
+        if (pendingGuidedSaveRevisionRef.current !== validatedRevision) {
+            return;
+        }
+        pendingGuidedSaveRevisionRef.current = undefined;
+        saveGuard.end();
+    };
 
     // Declared here (rather than down among the other handlers) so the auto-validate debounce inside the
     // revision-bump effect just below can call it directly -- an equivalent ref-indirection would only
@@ -266,18 +273,25 @@ export function BlueprintEditorPage({
         validateBlueprint(fetchImpl, editor.state.blueprint)
             .then((result) => {
                 if (isStale()) {
+                    // A Create Project click may be waiting on this automatic check. Once an edit or
+                    // newer validation has made the result stale, it must no longer own saveGuard:
+                    // retaining it would make the next primary action appear to do nothing forever.
+                    releaseStalePendingGuidedSave(requestedRevision);
                     return;
                 }
                 const validation = describeValidation(result);
                 setValidationView(validation);
+                // eslint-disable-next-line react-hooks/immutability -- the request resolves after this render initializes the shared completion handler.
                 finishPendingGuidedSave(validation, requestedRevision);
             })
             .catch((error: unknown) => {
                 if (isStale()) {
+                    releaseStalePendingGuidedSave(requestedRevision);
                     return;
                 }
                 const validation: BlueprintValidationView = {status: "error", message: errorMessage(error)};
                 setValidationView(validation);
+                // eslint-disable-next-line react-hooks/immutability -- the request resolves after this render initializes the shared completion handler.
                 finishPendingGuidedSave(validation, requestedRevision);
             })
             .finally(() => {
