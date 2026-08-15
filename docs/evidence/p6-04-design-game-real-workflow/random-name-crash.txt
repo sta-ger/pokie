@@ -1,0 +1,17 @@
+Unexpected Application Error!
+Cannot read properties of null (reading 'value')
+TypeError: Cannot read properties of null (reading 'value')
+    at http://127.0.0.1:4614/assets/index-4vxMTwCI.js:60:143111
+    at ko (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:49856)
+    at jo (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:50730)
+    at Ao (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:49885)
+    at Object.useState (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:61971)
+    at e.useState (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:1:10259)
+    at pk (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:60:140230)
+    at go (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:47556)
+    at lc (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:70160)
+    at Ec (http://127.0.0.1:4614/assets/index-4vxMTwCI.js:56:80444)
+
+💿 Hey developer 👋
+
+You can provide a way better UX than this when your app throws errors by providing your own ErrorBoundary or errorElement prop on your route.
