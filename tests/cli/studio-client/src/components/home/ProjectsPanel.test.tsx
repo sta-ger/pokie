@@ -10,6 +10,12 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 // an already-registered row and the dirty-draft guard around it -- this file is scoped to what's unique
 // to Import Project itself.
 
+// Home keeps the Design Game surface mounted while Projects is open. Its automatic validation can
+// therefore run during any of these project-only flows, so each routed fetch fixture must cover it.
+const AUTOMATIC_VALIDATION_ROUTE = {
+    "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+};
+
 async function goToProjects(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(await screen.findByRole("button", {name: "Projects"}));
     await screen.findByText("Import Project");
@@ -19,6 +25,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
                 ok: true,
@@ -69,6 +76,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("routes a recognized PAR sheet to Design Game's own PAR Sheet Import/Export panel instead of registering it", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
                 ok: true,
@@ -108,6 +116,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({ok: true, status: 200, body: {status: "unrecognized", path: "/tmp/nothing"}}),
         });
@@ -124,6 +133,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("accepts a Blueprint file path with no folder-only warning, requesting kind=any (not directory-only) for its resolved-path hint", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -172,6 +182,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -245,6 +256,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("accepts a package directory path with no file-only warning, requesting kind=any for its resolved-path hint", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -293,6 +305,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("removes a registered entry after confirming, without deleting anything on disk", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -337,6 +350,7 @@ describe("ProjectsPanel: Import Project", () => {
         const oldLocation = "/games/managed/blueprint.json";
         const newLocation = "/moved/managed/blueprint.json";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,

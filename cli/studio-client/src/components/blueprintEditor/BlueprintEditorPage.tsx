@@ -913,7 +913,7 @@ export function BlueprintEditorPage({
                 <div>
                     <QuickActions>
                         <Button onClick={handleGuidedSave} loading={managedSaveView.status === "loading"}>
-                            {blueprintPath === undefined ? "Create Project" : "Save Project"}
+                            {blueprintPath === undefined || overwriteConfirmedForPath.current !== blueprintPath ? "Create Project" : "Save Project"}
                         </Button>
                     </QuickActions>
                     {validationView.status !== "ok" && (
