@@ -80,12 +80,14 @@ export function BlueprintEditorPage({
     initialParSheetPath,
     onDirtyChange,
     onManagedProjectSaved,
+    isVisible = true,
 }: {
     guided?: boolean;
     initialPath?: string;
     initialParSheetPath?: string;
     onDirtyChange?: (dirty: boolean) => void;
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
+    isVisible?: boolean;
 } = {}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
@@ -349,7 +351,11 @@ export function BlueprintEditorPage({
         setValidationView((prev) =>
             guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"},
         );
-        if (!guided) {
+        if (!guided || !isVisible) {
+            if (autoValidateTimerRef.current !== undefined) {
+                clearTimeout(autoValidateTimerRef.current);
+                autoValidateTimerRef.current = undefined;
+            }
             return;
         }
         if (isInitialMount && initialPath) {
@@ -366,7 +372,7 @@ export function BlueprintEditorPage({
             handleValidate();
         }, AUTO_VALIDATE_DEBOUNCE_MS);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editor.state.revision]);
+    }, [editor.state.revision, isVisible]);
 
     // Cancels a pending debounced auto-validate on unmount -- a stray setTimeout firing after this page
     // is gone would call setValidationView on an unmounted component.
@@ -816,6 +822,15 @@ export function BlueprintEditorPage({
         if (validationView.status === "ok") {
             saveGuidedProject(savedRevision);
             return;
+        }
+
+        // Create Project is allowed before the scheduled automatic check gets its turn, but it must
+        // still produce exactly one validation of this revision. Cancel that pending debounce before
+        // running the action's check, rather than letting it issue a second, redundant request after
+        // this save has already completed.
+        if (autoValidateTimerRef.current !== undefined) {
+            clearTimeout(autoValidateTimerRef.current);
+            autoValidateTimerRef.current = undefined;
         }
 
         const requestId = ++validateRequestIdRef.current;

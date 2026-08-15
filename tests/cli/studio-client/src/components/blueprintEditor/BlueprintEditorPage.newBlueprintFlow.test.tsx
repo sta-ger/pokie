@@ -170,7 +170,7 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
         expect(await screen.findByText('Generated "Random Slot" (id: "random-slot") from seed 42.')).toBeInTheDocument();
-        expect(randomCalls).toEqual([{preset: "default"}]);
+        expect(randomCalls).toEqual([{preset: "default", seed: 20260815}]);
 
         await user.click(screen.getByRole("button", {name: "Use this blueprint"}));
 
@@ -227,7 +227,7 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("button", {name: "Randomize again"}));
 
         expect(await screen.findByText('Generated "Random Slot" (id: "random-slot-2") from seed 99.')).toBeInTheDocument();
-        expect(randomCalls).toEqual([{preset: "default"}, {preset: "default"}]);
+        expect(randomCalls).toEqual([{preset: "default", seed: 20260815}, {preset: "default"}]);
     });
 
     it("Load existing reuses the existing load flow and closes the dialog on success", async () => {

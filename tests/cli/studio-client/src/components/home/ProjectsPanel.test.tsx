@@ -313,8 +313,10 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await screen.findByText("A");
-        await user.click(screen.getByRole("button", {name: "Remove"}));
+        // The Recommended Design Game model remains mounted while Projects is visible and legitimately
+        // contains the symbol "A" too. Wait for this row's own visible action rather than globally
+        // querying ambiguous text from the hidden editor.
+        await user.click(await screen.findByRole("button", {name: "Remove"}));
 
         expect(await screen.findByText('Remove "A" from Projects? This only forgets it here -- nothing on disk is deleted.')).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Confirm"}));

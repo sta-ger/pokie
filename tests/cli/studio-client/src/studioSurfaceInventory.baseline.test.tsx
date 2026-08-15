@@ -518,7 +518,7 @@ describe("Design Game / Projects: path-field placeholder baseline", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        for (const label of ["Load from path", "Save to path", "Output directory (optional)"]) {
+        for (const label of ["Load from path", "Save to path"]) {
             // getAllByLabelText finds inputs on Home's other, currently-hidden (CSS display:none, still
             // mounted -- see HomePage's own "hide, don't unmount" doc comment) tab too, unlike
             // getByRole's default hidden-element filtering.
@@ -526,6 +526,9 @@ describe("Design Game / Projects: path-field placeholder baseline", () => {
                 expect(field).not.toHaveAttribute("placeholder");
             }
         }
+        // Design Game creates and opens its managed Blueprint Project directly. It no longer exposes
+        // the removed package-build destination field.
+        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
 
         // Unlike every Design Game field above, Projects' own Import Project location field does carry
         // an illustrative placeholder -- it's the one path field in this group meant to be filled with
