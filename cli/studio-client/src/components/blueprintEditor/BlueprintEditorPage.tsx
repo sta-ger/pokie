@@ -858,6 +858,14 @@ export function BlueprintEditorPage({
         if (!saveGuard.begin()) {
             return;
         }
+        // Let React finish the current discrete event before taking the snapshot. A form field commits
+        // on blur, and clicking Create Project can be part of that same event batch. Reading on the
+        // next microtask makes the primary action see that just-committed revision rather than a
+        // completed validation for the previous one.
+        Promise.resolve().then(() => runGuidedSave());
+    };
+
+    const runGuidedSave = (): void => {
         // A confirmed disk conflict still requires an explicit reload/save decision. Revalidating the
         // in-memory draft cannot make that source baseline current again.
         if (sourceDrift !== undefined) {
