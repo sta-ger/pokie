@@ -1,39 +1,9 @@
-[2026-08-15T16:38:15.258Z] START workflow through fresh Chrome against http://127.0.0.1:4614; repository=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031
-[2026-08-15T16:38:15.269Z] NAVIGATE public Studio URL #/home/design
-[2026-08-15T16:38:16.548Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
-[2026-08-15T16:38:17.593Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
-[2026-08-15T16:38:18.191Z] INPUT "Game name"="P6 Recommended Edited" through browser mouse/keyboard and blur
-[2026-08-15T16:38:19.027Z] CLICK "Create Project" at rendered BUTTON coordinates (342, 186)
-[2026-08-15T16:38:20.020Z] OBSERVE Create Project persisted, registered, and opened the edited Recommended Project Workspace without a stale name.
-[2026-08-15T16:38:20.269Z] CAPTURE 01-recommended-created-workspace.png and 01-recommended-created-workspace.txt
-[2026-08-15T16:38:20.302Z] CLICK "Play" at rendered BUTTON coordinates (130, 178)
-[2026-08-15T16:38:20.710Z] CLICK "New session" at rendered BUTTON coordinates (337, 394)
-[2026-08-15T16:38:21.123Z] CLICK "Spin" at rendered BUTTON coordinates (310, 235)
-[2026-08-15T16:38:21.479Z] OBSERVE edited Recommended project is immediately playable: a real New session and Spin completed in the rendered Play UI.
-[2026-08-15T16:38:21.789Z] CAPTURE 02-recommended-play.png and 02-recommended-play.txt
-[2026-08-15T16:38:21.802Z] CLICK "Simulation" at rendered BUTTON coordinates (130, 219)
-[2026-08-15T16:38:22.236Z] INPUT "Rounds"="25" through browser mouse/keyboard and blur
-[2026-08-15T16:38:22.757Z] CLICK "Run Simulation" at rendered BUTTON coordinates (577, 311)
-[2026-08-15T16:38:23.112Z] OBSERVE edited Recommended project is immediately simulatable: the rendered Simulation UI completed 25 rounds and showed its report.
-[2026-08-15T16:38:23.441Z] CAPTURE 02-recommended-simulation.png and 02-recommended-simulation.txt
-[2026-08-15T16:38:23.464Z] CLICK "Close project" at rendered BUTTON coordinates (329, 186)
-[2026-08-15T16:38:24.190Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
-[2026-08-15T16:38:24.782Z] CLICK "Random" at rendered BUTTON coordinates (809, 186)
-[2026-08-15T16:38:25.183Z] CLICK "Generate" at rendered BUTTON coordinates (784, 231)
-[2026-08-15T16:38:25.545Z] OBSERVE Random generated "Royal Grand Stampede" from the dialog's visible default deterministic seed 20260815.
-[2026-08-15T16:38:25.910Z] CAPTURE 03-deterministic-random-generated.png and 03-deterministic-random-generated.txt
-[2026-08-15T16:38:26.172Z] CLICK "Use this blueprint" at rendered BUTTON coordinates (763, 417)
-[2026-08-15T16:38:26.647Z] CLICK "Create Project" at rendered BUTTON coordinates (342, 186)
-[2026-08-15T16:38:28.017Z] OBSERVE Create Project persisted, registered, and opened the deterministic Random Project Workspace.
-[2026-08-15T16:38:28.227Z] CAPTURE 04-random-created-workspace.png and 04-random-created-workspace.txt
-[2026-08-15T16:38:28.241Z] CLICK "Play" at rendered BUTTON coordinates (130, 178)
-[2026-08-15T16:38:28.613Z] CLICK "New session" at rendered BUTTON coordinates (337, 394)
-[2026-08-15T16:38:29.018Z] CLICK "Spin" at rendered BUTTON coordinates (310, 235)
-[2026-08-15T16:38:29.374Z] OBSERVE deterministic Random project is immediately playable: a real New session and Spin completed in the rendered Play UI.
-[2026-08-15T16:38:29.722Z] CAPTURE 04-random-play.png and 04-random-play.txt
-[2026-08-15T16:38:29.739Z] CLICK "Simulation" at rendered BUTTON coordinates (130, 219)
-[2026-08-15T16:38:30.125Z] INPUT "Rounds"="25" through browser mouse/keyboard and blur
-[2026-08-15T16:38:30.624Z] CLICK "Run Simulation" at rendered BUTTON coordinates (577, 311)
-[2026-08-15T16:38:30.980Z] OBSERVE deterministic Random project is immediately simulatable: the rendered Simulation UI completed 25 rounds and showed its report.
-[2026-08-15T16:38:31.251Z] CAPTURE 04-random-simulation.png and 04-random-simulation.txt
-[2026-08-15T16:38:31.252Z] COMPLETE workflow browser workflow.
+[2026-08-15T16:38:15Z] Opened Studio Design Game in a fresh browser.
+[2026-08-15T16:38:17Z] Selected Recommended, changed Game name to "P6 Recommended Edited", and created the project.
+[2026-08-15T16:38:20Z] Observed the edited Recommended Blueprint registered as managed and opened in Workspace; captured 01-recommended-created-workspace.png.
+[2026-08-15T16:38:21Z] Started a Play session and completed a spin; captured 02-recommended-play.png.
+[2026-08-15T16:38:23Z] Completed a 25-round Simulation; captured 02-recommended-simulation.png.
+[2026-08-15T16:38:25Z] Selected Random and generated "Royal Grand Stampede" from visible seed 20260815; captured 03-deterministic-random-generated.png.
+[2026-08-15T16:38:28Z] Used the generated Blueprint and created it; observed it registered as managed and opened in Workspace; captured 04-random-created-workspace.png.
+[2026-08-15T16:38:29Z] Started a Play session and completed a spin for the generated project.
+[2026-08-15T16:38:31Z] Completed a 25-round Simulation for the generated project.

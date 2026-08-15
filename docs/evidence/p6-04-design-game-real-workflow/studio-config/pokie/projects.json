@@ -18,35 +18,5 @@
         ],
         "origin": "managed",
         "lastOpenedAt": "2026-08-15T16:38:19.229Z"
-    },
-    {
-        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-design-game-real-workflow/managed-projects/POKIE Projects/p6-recommended-edited-3/blueprint.json",
-        "name": "P6 Recommended Edited",
-        "type": "blueprint",
-        "capabilities": [
-            "blueprint.build"
-        ],
-        "origin": "managed",
-        "lastOpenedAt": "2026-08-15T16:37:03.712Z"
-    },
-    {
-        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-design-game-real-workflow/managed-projects/POKIE Projects/p6-recommended-edited-2/blueprint.json",
-        "name": "P6 Recommended Edited",
-        "type": "blueprint",
-        "capabilities": [
-            "blueprint.build"
-        ],
-        "origin": "managed",
-        "lastOpenedAt": "2026-08-15T16:34:05.950Z"
-    },
-    {
-        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-design-game-real-workflow/managed-projects/POKIE Projects/p6-recommended-edited/blueprint.json",
-        "name": "P6 Recommended Edited",
-        "type": "blueprint",
-        "capabilities": [
-            "blueprint.build"
-        ],
-        "origin": "managed",
-        "lastOpenedAt": "2026-08-15T16:33:30.577Z"
     }
 ]
