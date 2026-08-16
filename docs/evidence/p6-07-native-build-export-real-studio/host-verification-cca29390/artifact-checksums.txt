@@ -1,0 +1,4 @@
+60088407b378e2aaf9eadbc4baa869a543fe3b2f4b7d7f68a3264dd95d9f24a0  docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx
+ba83af968a781e608dbf36d8d448a5d3481d647643cfa4bb9ba014751fea8f7c  docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/native-par-output.xlsx
+docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx: Microsoft Excel 2007+
+docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/native-par-output.xlsx:   Microsoft Excel 2007+
