@@ -310,6 +310,18 @@ export function BlueprintEditorPage({
                     activeValidationRevisionRef.current = undefined;
                 }
                 validateGuard.end();
+                // An edit can outlive the 600ms debounce while this request still owns validateGuard.
+                // In that case the scheduled check already fired, observed the guard, and returned;
+                // re-run now so the edited revision does not remain permanently unvalidated. When the
+                // debounce is still pending it remains the single owner of that follow-up instead.
+                if (
+                    guided &&
+                    isVisible &&
+                    requestedRevision !== editor.getCurrentState().revision &&
+                    autoValidateTimerRef.current === undefined
+                ) {
+                    handleValidateRef.current();
+                }
             });
     };
 
