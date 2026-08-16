@@ -9,31 +9,12 @@ import {fileURLToPath} from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const jestPath = path.join(repositoryRoot, "node_modules", "jest", "bin", "jest.js");
-const workflowTestPaths = [
-    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx",
-    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
-    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx",
-    "tests/cli/studio-client/src/hooks/useSimulationPoll.test.tsx",
-    "tests/cli/studio-client/src/hooks/useReplayPoll.test.tsx",
-    "tests/cli/studio-client/src/integration/happyPath.test.tsx",
-    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx",
-    "tests/cli/studio-client/src/openProjectGuard.test.tsx",
-    "tests/cli/studio-client/src/designNavigationGuard.test.tsx",
-    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.validation.test.tsx",
-    "tests/cli/studio-client/src/navigationGuardModal.test.tsx",
-    "tests/cli/studio-client/src/components/home/HomePage.test.tsx",
-    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.certificationWorkflow.test.tsx",
-    "tests/cli/studio-client/src/routing.test.tsx",
-    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.parSheetImportExport.test.tsx",
-    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.provablyFairWorkflow.test.tsx",
-    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx",
-    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx",
-];
+const workflowProject = "studio-client-workflows";
 
-function executeJest(arguments_) {
+function executeJest(arguments_, options = {}) {
     const result = spawnSync(process.execPath, [...process.execArgv, jestPath, ...arguments_], {
         cwd: repositoryRoot,
-        stdio: "inherit",
+        ...options,
     });
 
     if (result.error) {
@@ -42,8 +23,13 @@ function executeJest(arguments_) {
     if (result.status !== 0) {
         process.exit(result.status ?? 1);
     }
+
+    return result;
 }
 
+const discovery = executeJest(["--selectProjects", workflowProject, "--listTests"], {encoding: "utf8"});
+const workflowTestPaths = discovery.stdout.trim().split(/\r?\n/).filter(Boolean);
+
 for (const testPath of workflowTestPaths) {
-    executeJest(["--selectProjects", "studio-client-workflows", "--runInBand", "--runTestsByPath", testPath]);
+    executeJest(["--selectProjects", workflowProject, "--runInBand", "--runTestsByPath", testPath], {stdio: "inherit"});
 }
