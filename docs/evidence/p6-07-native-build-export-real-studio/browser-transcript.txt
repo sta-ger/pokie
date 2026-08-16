@@ -1,0 +1,11 @@
+[2026-08-16T22:42:12.173Z] OBSERVE blueprint project exposes the rendered Build/Export tab.
+[2026-08-16T22:42:12.209Z] CLICK Build/Export at rendered coordinates (130,333)
+[2026-08-16T22:42:13.091Z] CAPTURE blueprint-build-export-before-picker.png/.txt
+[2026-08-16T22:42:13.787Z] CLICK Browse… at rendered coordinates (945,250)
+[2026-08-16T22:42:14.138Z] OBSERVE Studio invoked the local native folder picker.
+[2026-08-16T22:42:14.849Z] FAILED Error: Command failed: xdotool search --name Select a folder windowactivate --sync key ctrl+l type --delay 1 /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/native-directory-output key Return
+    at genericNodeError (node:internal/errors:985:15)
+    at wrappedFn (node:internal/errors:539:14)
+    at checkExecSyncError (node:child_process:925:11)
+    at execFileSync (node:child_process:961:15)
+    at file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/browser-audit.mjs:29:3

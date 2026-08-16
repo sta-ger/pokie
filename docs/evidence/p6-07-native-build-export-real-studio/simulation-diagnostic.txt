@@ -1,0 +1,15 @@
+POKIE Studio
+/
+Project
+/
+
+Overview
+
+Overview
+Game Model
+Project
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/examples/parsheets/starter.par.xlsx
+
+Close project
+"studio" is not supported for a "parWorkbook" project (missing the "runtime.execute" capability). Supported by: tsPackage.
