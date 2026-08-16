@@ -5,4 +5,4 @@ phase=reopen
 studio_url=http://127.0.0.1:46158
 devtools_url=http://127.0.0.1:9258
 studio_config=docs/evidence/p6-04-independent-host-verification-final/studio-config
-chrome_profile=docs/evidence/p6-04-independent-host-verification-final/independent-rerun-20260816/fresh-chrome-profile
+browser_client=fresh Chrome profile

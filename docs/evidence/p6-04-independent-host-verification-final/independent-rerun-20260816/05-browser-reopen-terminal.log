@@ -1,6 +1,0 @@
-[2026-08-16T10:51:28.645Z] FAILED TypeError: fetch failed
-    at Object.fetch (node:internal/deps/undici/undici:11360:11)
-    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
-    at async json (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-host-verification/browser-workflow.mjs:19:22)
-    at async connect (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-host-verification/browser-workflow.mjs:25:21)
-    at async run (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-host-verification/browser-workflow.mjs:53:17)
