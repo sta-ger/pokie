@@ -1,14 +1,41 @@
-import {screen, waitFor, within} from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import {configure, fireEvent, getConfig, screen, waitFor, within} from "@testing-library/react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+
+// This page contains a large editable model. The default Testing Library error formatter walks and
+// prints that entire accessibility tree when an assertion is stale, turning an immediate miss into a
+// many-minute CPU-bound failure. Keep the assertion message but omit the redundant full-DOM dump for
+// this file; the official workflow runner gives every file its own Jest process, and the restore keeps
+// ad-hoc combined runs isolated too.
+const defaultGetElementError = getConfig().getElementError;
+beforeAll(() => configure({getElementError: (message) => new Error(message)}));
+afterAll(() => configure({getElementError: defaultGetElementError}));
+
+function sectionTab(name: string | RegExp): HTMLElement {
+    const tab = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]')).find((candidate) => {
+        const label = candidate.textContent ?? "";
+        return typeof name === "string" ? label.includes(name) : name.test(label);
+    });
+    if (tab === undefined) {
+        throw new Error(`Section tab not found: ${String(name)}`);
+    }
+    return tab;
+}
+
+function buttonNamed(name: string): HTMLButtonElement {
+    const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find((candidate) => candidate.textContent?.includes(name));
+    if (button === undefined) {
+        throw new Error(`Button not found: ${name}`);
+    }
+    return button;
+}
 
 // Covers the guided Design Game editor's sectioned layout (SectionedFormEditor): editing across
 // multiple named sections (Game basics/Layout/Symbols/Reels/Paytable/Bets), a dirty edit surviving a
 // section switch, a validation error surfacing in its own section's badge/inline list while the bottom
 // BlueprintValidationPanel still shows the full summary, and keyboard navigation between sections.
-// happyPath.test.tsx already covers the full Design->Validate->Build->Project cross-page flow end to
-// end (via the Symbols section) -- this file focuses on what's specific to the new sectioned layout.
+// happyPath.test.tsx already covers the full Recommended -> automatic validation -> Create Project
+// cross-page flow -- this file focuses on what's specific to the sectioned editor.
 
 function okValidateFetch(): FetchLike {
     return (url, init) => {
@@ -20,44 +47,24 @@ function okValidateFetch(): FetchLike {
         if (path === "/api/home/blueprints/validate" && method === "POST") {
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
         }
-        // Direct Build Package performs P2-POLISH-09's read-only destination preflight first. Keep this
-        // destination empty so the scenario reaches the actual build and its "Open in Studio" assertion
-        // without silently bypassing the safety check.
-        if (path === "/api/home/blueprints/build-preview" && method === "POST") {
+        if (path === "/api/home/blueprints/save-managed" && method === "POST") {
             return Promise.resolve({
                 ok: true,
-                status: 200,
+                status: 201,
                 json: () =>
                     Promise.resolve({
                         status: "ok",
-                        warnings: [],
-                        manifest: {id: "sectioned", name: "Sectioned", version: "0.1.0"},
-                        reels: 5,
-                        rows: 3,
-                        symbolsCount: 1,
+                        path: "/games/sectioned/blueprint.json",
+                        name: "sectioned",
                         blueprintHash: "abc123",
-                        expectedFiles: ["build-info.json"],
-                        projectRoot: "/games/sectioned",
-                        destinationHasContent: false,
-                        createFiles: ["build-info.json"],
-                        updateFiles: [],
-                        deleteFiles: [],
-                    }),
-            });
-        }
-        if (path === "/api/home/blueprints/build" && method === "POST") {
-            return Promise.resolve({
-                ok: true,
-                status: 200,
-                json: () =>
-                    Promise.resolve({
-                        status: "ok",
-                        projectRoot: "/games/sectioned",
-                        manifest: {id: "sectioned", name: "Sectioned", version: "0.1.0"},
-                        createdFiles: ["build-info.json"],
-                        buildInfo: {blueprintHash: "abc123", pokieVersion: "1.0.0", generatedAt: new Date().toISOString(), files: []},
-                        unchanged: false,
-                        warnings: [],
+                        registeredProject: {
+                            location: "/games/sectioned/blueprint.json",
+                            name: "Sectioned",
+                            type: "blueprint",
+                            capabilities: ["runtime.execute"],
+                            origin: "managed",
+                            status: "ok",
+                        },
                     }),
             });
         }
@@ -91,61 +98,50 @@ function okValidateFetch(): FetchLike {
 }
 
 describe("Guided Design Game: sectioned layout", () => {
-    it("walks Edit (across sections) -> Validate -> Build, ending on the Project Dashboard", async () => {
-        const user = userEvent.setup();
+    it("walks across sections -> automatic validation -> Create Project, ending in Workspace", async () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
-        // "Game basics" is the default active section -- no tab click needed for it.
-        await user.type(screen.getAllByLabelText("Game id")[0], "sectioned");
-        await user.type(screen.getAllByLabelText("Game name")[0], "Sectioned");
+        // Design Game now starts from the playable Recommended model. Exercise the section controls
+        // without rebuilding that intentionally complete model field by field.
+        fireEvent.click(sectionTab("Symbols"));
+        fireEvent.click(sectionTab("Bets"));
 
-        await user.click(screen.getByRole("tab", {name: "Symbols"}));
-        await user.type(screen.getAllByLabelText("New symbol id")[0], "wild");
-        await user.click(screen.getAllByRole("button", {name: "Add symbol"})[0]);
-
-        await user.click(screen.getByRole("tab", {name: "Bets"}));
-        await user.type(screen.getAllByLabelText("New bet amount")[0], "2");
-        await user.click(screen.getAllByRole("button", {name: "Add bet"})[0]);
-
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        // P6-04 removed the explicit Validate -> Build Package sequence. The current revision becomes
+        // ready automatically and the one primary action persists and opens its managed project.
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
+        expect(screen.queryByText("Validate", {selector: "button"})).not.toBeInTheDocument();
+        expect(screen.queryByText("Build Package", {selector: "button"})).not.toBeInTheDocument();
 
         // No section shows an error/warning badge after a clean validate (StatusBadge renders nothing
         // for a "neutral"/"success" tone -- only a digit for "error"/"warning"). Domain-level tone
         // computation itself is covered by BlueprintSections.test.ts; this just checks nothing leaked
         // through to the tab row.
-        expect(within(screen.getByRole("tablist")).queryByText(/^\d+$/)).not.toBeInTheDocument();
+        const tablist = document.querySelector('[role="tablist"]');
+        expect(tablist).not.toBeNull();
+        expect(within(tablist as HTMLElement).queryByText(/^\d+$/)).not.toBeInTheDocument();
 
-        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
-        const openInStudio = await screen.findByRole("button", {name: "Open in Studio"});
-        await user.click(openInStudio);
+        fireEvent.click(buttonNamed("Create Project"));
 
-        // The draft was never saved to a source blueprint file (building a package is a distinct fact
-        // from that -- see BlueprintBuildPanel's own `onBuilt` doc comment), so it's still genuinely
-        // dirty -- same guarded-navigation confirm as every other "leave a dirty Design Game draft"
-        // exit (see openProjectGuard.test.tsx).
-        expect(await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?")).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Leave"}));
-
-        expect(await screen.findByRole("heading", {name: "Sectioned"})).toBeInTheDocument();
+        await waitFor(() => {
+            const heading = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6")).find((candidate) => candidate.textContent === "Sectioned");
+            expect(heading).toBeDefined();
+        });
     }, 60000);
 
     it("preserves an in-progress edit in one section when switching to another and back", async () => {
-        const user = userEvent.setup();
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
-        await user.click(screen.getByRole("tab", {name: /Symbols/}));
-        await user.type(screen.getAllByLabelText("New symbol id")[0], "draft-symbol");
+        fireEvent.click(sectionTab(/Symbols/));
+        fireEvent.change(screen.getByLabelText("New symbol id"), {target: {value: "draft-symbol"}});
 
-        await user.click(screen.getByRole("tab", {name: /Layout/}));
-        expect(screen.getByRole("tab", {name: /Layout/})).toHaveAttribute("aria-selected", "true");
+        fireEvent.click(sectionTab(/Layout/));
+        expect(sectionTab(/Layout/)).toHaveAttribute("aria-selected", "true");
 
-        await user.click(screen.getByRole("tab", {name: /Symbols/}));
-        expect(screen.getAllByLabelText("New symbol id")[0]).toHaveValue("draft-symbol");
+        fireEvent.click(sectionTab(/Symbols/));
+        expect(screen.getByLabelText("New symbol id")).toHaveValue("draft-symbol");
     }, 60000);
 
     it("surfaces a validation error in its own section's badge and inline list, alongside the full summary at the bottom", async () => {
-        const user = userEvent.setup();
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
             const method = init?.method ?? "GET";
@@ -168,16 +164,16 @@ describe("Guided Design Game: sectioned layout", () => {
         };
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
         await waitFor(() => expect(screen.getByText("Invalid — 1 error(s).")).toBeInTheDocument());
 
         // Exactly one section tab shows an error badge, and it's "Game basics".
-        const tablist = screen.getByRole("tablist");
-        expect(within(tablist).getAllByText("1")).toHaveLength(1);
+        const tablist = document.querySelector('[role="tablist"]');
+        expect(tablist).not.toBeNull();
+        expect(within(tablist as HTMLElement).getAllByText("1")).toHaveLength(1);
         // Exact-name match no longer works here: StatusBadge now also exposes the error count as real,
         // accessible text (see StatusBadge.tsx), so "Game basics"'s own accessible name grows to "Game
         // basics, 1 error" -- {name: /Game basics/} matches regardless.
-        expect(within(screen.getByRole("tab", {name: /Game basics/})).getByText("1")).toBeInTheDocument();
+        expect(within(sectionTab(/Game basics/)).getByText("1")).toBeInTheDocument();
 
         // "Game basics" is the default active section, so its own inline issue list is already visible
         // without switching tabs -- *and* the full, unfiltered summary at the bottom shows the same
@@ -185,65 +181,39 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(screen.getAllByText(/blueprint-manifest-invalid-id/)).toHaveLength(2);
     }, 60000);
 
-    it("exposes an explicit Compare built blueprint action once the draft diverges from the last build, without mutating either blueprint", async () => {
-        const user = userEvent.setup();
+    it("revalidates a section edit automatically without exposing the removed package-build controls", async () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
-        await user.type(screen.getAllByLabelText("Game id")[0], "sectioned");
-        await user.type(screen.getAllByLabelText("Game name")[0], "Sectioned");
-
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
+        expect(screen.queryByText("Validate", {selector: "button"})).not.toBeInTheDocument();
+        expect(screen.queryByText("Build Package", {selector: "button"})).not.toBeInTheDocument();
+        expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
 
-        await user.click(screen.getAllByRole("button", {name: "Build Package"})[0]);
-        await screen.findByRole("button", {name: "Open in Studio"});
+        // Fields commit on blur. The new revision is checked in the background and remains eligible for
+        // the single Create Project action; no build snapshot/compare state is created along the way.
+        const gameNameInput = screen.getByLabelText("Game name");
+        fireEvent.change(gameNameInput, {target: {value: "Sectioned Renamed"}});
+        fireEvent.blur(gameNameInput);
 
-        // No compare/restore action yet -- the draft still matches exactly what was just built.
-        expect(screen.queryByRole("button", {name: "Compare built blueprint"})).not.toBeInTheDocument();
-        expect(screen.getByText("Matches the last build — no unbuilt changes.")).toBeInTheDocument();
-
-        // Diverge the draft from the built snapshot. Fields here only commit onBlur (see
-        // MetadataFieldset's own `defaultValue`/`onBlur` wiring), so an explicit tab-away is needed for
-        // the typed value to actually reach the blueprint.
-        const gameNameInput = screen.getAllByLabelText("Game name")[0];
-        await user.clear(gameNameInput);
-        await user.type(gameNameInput, "Sectioned Renamed");
-        await user.tab();
-
-        const compareButton = await screen.findByRole("button", {name: "Compare built blueprint"});
-        expect(compareButton).toHaveAttribute("aria-expanded", "false");
-        // Restore/discard remain available alongside the new compare action.
-        expect(screen.getByRole("button", {name: "Restore built blueprint"})).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Discard unbuilt changes"})).toBeInTheDocument();
-
-        await user.click(compareButton);
-        expect(compareButton).toHaveAttribute("aria-expanded", "true");
-
-        const comparison = screen.getByRole("group", {name: "Comparison against the last build"});
-        expect(within(comparison).getByText("manifest")).toBeInTheDocument();
-        expect(comparison).toHaveTextContent(/"name": "Sectioned"/);
-        expect(comparison).toHaveTextContent(/"name": "Sectioned Renamed"/);
-
-        // Comparing is read-only -- neither the draft nor the built snapshot changed.
-        expect(screen.getAllByLabelText("Game name")[0]).toHaveValue("Sectioned Renamed");
-        expect(screen.getByRole("button", {name: "Restore built blueprint"})).toBeInTheDocument();
-
-        await user.click(compareButton);
-        expect(compareButton).toHaveAttribute("aria-expanded", "false");
+        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
+        expect(gameNameInput).toHaveValue("Sectioned Renamed");
+        expect(buttonNamed("Create Project")).toBeEnabled();
+        expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
     }, 60000);
 
     it("switches the active section with arrow-key keyboard navigation", async () => {
-        const user = userEvent.setup();
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
-        await user.click(screen.getByRole("tab", {name: /Game basics/}));
-        expect(screen.getByRole("tab", {name: /Game basics/})).toHaveAttribute("aria-selected", "true");
+        const basicsTab = sectionTab(/Game basics/);
+        fireEvent.click(basicsTab);
+        expect(basicsTab).toHaveAttribute("aria-selected", "true");
 
-        await user.keyboard("{ArrowRight}");
-        expect(screen.getByRole("tab", {name: /Layout/})).toHaveAttribute("aria-selected", "true");
-        expect(screen.getByRole("tab", {name: /Game basics/})).toHaveAttribute("aria-selected", "false");
+        fireEvent.keyDown(basicsTab, {key: "ArrowRight"});
+        const layoutTab = sectionTab(/Layout/);
+        expect(layoutTab).toHaveAttribute("aria-selected", "true");
+        expect(basicsTab).toHaveAttribute("aria-selected", "false");
 
-        await user.keyboard("{ArrowRight}");
-        expect(screen.getByRole("tab", {name: /Symbols/})).toHaveAttribute("aria-selected", "true");
+        fireEvent.keyDown(layoutTab, {key: "ArrowRight"});
+        expect(sectionTab(/Symbols/)).toHaveAttribute("aria-selected", "true");
     }, 60000);
 });
