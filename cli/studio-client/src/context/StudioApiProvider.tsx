@@ -16,8 +16,12 @@ export function StudioApiProvider({fetchImpl, children}: {fetchImpl?: FetchLike;
     return <StudioApiContext.Provider value={value}>{children}</StudioApiContext.Provider>;
 }
 
+export function useOptionalStudioApi(): FetchLike | undefined {
+    return useContext(StudioApiContext);
+}
+
 export function useStudioApi(): FetchLike {
-    const fetchImpl = useContext(StudioApiContext);
+    const fetchImpl = useOptionalStudioApi();
     if (fetchImpl === undefined) {
         throw new Error("useStudioApi must be used within a StudioApiProvider");
     }

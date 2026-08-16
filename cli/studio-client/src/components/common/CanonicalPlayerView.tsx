@@ -90,7 +90,9 @@ export function CanonicalPlayerView({
             image.width = 28;
             image.height = 28;
             image.style.objectFit = "contain";
-            image.onerror = () => { cell.textContent = symbolId; };
+            image.onerror = () => {
+                cell.textContent = symbolId;
+            };
             cell.textContent = "";
             cell.appendChild(image);
         });

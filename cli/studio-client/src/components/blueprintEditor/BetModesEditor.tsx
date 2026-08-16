@@ -29,11 +29,20 @@ export function BetModesEditor({blueprint, mutate}: {blueprint: Record<string, u
                                 <Table.Tr key={index}>
                                     <Table.Td><TextInput aria-label={`Bet mode ${index + 1} id`} defaultValue={mode.id} onBlur={(event) => update(index, {id: event.currentTarget.value})} /></Table.Td>
                                     <Table.Td><TextInput aria-label={`Bet mode ${index + 1} label`} defaultValue={mode.label ?? ""} onBlur={(event) => update(index, {label: event.currentTarget.value || undefined})} /></Table.Td>
-                                    <Table.Td><NumberInput aria-label={`Bet mode ${index + 1} cost multiplier`} defaultValue={mode.costMultiplier} min={0} onBlur={(event) => { const value = Number(event.currentTarget.value); update(index, {costMultiplier: Number.isFinite(value) && event.currentTarget.value !== "" ? value : undefined}); }} /></Table.Td>
-                                    <Table.Td><NumberInput aria-label={`Bet mode ${index + 1} target RTP`} defaultValue={mode.targetRtp} min={0} onBlur={(event) => { const value = Number(event.currentTarget.value); update(index, {targetRtp: Number.isFinite(value) && event.currentTarget.value !== "" ? value : undefined}); }} /></Table.Td>
+                                    <Table.Td><NumberInput aria-label={`Bet mode ${index + 1} cost multiplier`} defaultValue={mode.costMultiplier} min={0} onBlur={(event) => {
+                                        const value = Number(event.currentTarget.value);
+                                        update(index, {costMultiplier: Number.isFinite(value) && event.currentTarget.value !== "" ? value : undefined});
+                                    }} /></Table.Td>
+                                    <Table.Td><NumberInput aria-label={`Bet mode ${index + 1} target RTP`} defaultValue={mode.targetRtp} min={0} onBlur={(event) => {
+                                        const value = Number(event.currentTarget.value);
+                                        update(index, {targetRtp: Number.isFinite(value) && event.currentTarget.value !== "" ? value : undefined});
+                                    }} /></Table.Td>
                                     <Table.Td><Select aria-label={`Bet mode ${index + 1} runtime type`} value={mode.runtimeType ?? ""} data={[{value: "", label: "Metadata only"}, {value: "base", label: "Base"}, {value: "ante", label: "Ante"}, {value: "buyFeature", label: "Buy feature"}]} onChange={(value) => update(index, {runtimeType: value === "base" || value === "ante" || value === "buyFeature" ? value : undefined})} /></Table.Td>
                                     <Table.Td><Checkbox aria-label={`Bet mode ${index + 1} is default`} checked={mode.isDefault === true} onChange={(event) => update(index, {isDefault: event.currentTarget.checked || undefined})} /></Table.Td>
-                                    <Table.Td><NumberInput aria-label={`Bet mode ${index + 1} forced free games`} defaultValue={mode.forcedFreeGames} min={1} onBlur={(event) => { const value = Number(event.currentTarget.value); update(index, {forcedFreeGames: Number.isFinite(value) && event.currentTarget.value !== "" ? value : undefined}); }} /></Table.Td>
+                                    <Table.Td><NumberInput aria-label={`Bet mode ${index + 1} forced free games`} defaultValue={mode.forcedFreeGames} min={1} onBlur={(event) => {
+                                        const value = Number(event.currentTarget.value);
+                                        update(index, {forcedFreeGames: Number.isFinite(value) && event.currentTarget.value !== "" ? value : undefined});
+                                    }} /></Table.Td>
                                     <Table.Td><RowActions itemLabel={`bet mode ${index + 1}`} onDuplicate={() => mutate((b) => duplicateBetModeAt(b, index))} onRemove={() => mutate((b) => removeBetModeAt(b, index))} onMoveUp={index > 0 ? () => mutate((b) => moveBetModeAt(b, index, index - 1)) : undefined} onMoveDown={index < modes.length - 1 ? () => mutate((b) => moveBetModeAt(b, index, index + 1)) : undefined} /></Table.Td>
                                 </Table.Tr>
                             ))}

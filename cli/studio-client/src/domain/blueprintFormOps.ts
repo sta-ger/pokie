@@ -98,7 +98,7 @@ export function renameSymbol(blueprint: Record<string, unknown>, from: string, t
 export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id: string): string[] {
     const blockers: string[] = [];
     if (id in asPaytable(blueprint.paytable)) blockers.push("paytable");
-    if (Object.prototype.hasOwnProperty.call(asSymbolWeights(blueprint.symbolWeights), id)) blockers.push("symbolWeights");
+    if (Reflect.apply(Object.prototype.hasOwnProperty, asSymbolWeights(blueprint.symbolWeights), [id])) blockers.push("symbolWeights");
     asReelStrips(blueprint.reelStrips).forEach((strip, reelIndex) => {
         if (strip.includes(id)) blockers.push(`reelStrips[${reelIndex}]`);
     });
@@ -107,7 +107,7 @@ export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id
         if (entry.type === "generated") {
             for (const field of ["symbolCounts", "symbolWeights", "lockedPositions"] as const) {
                 const values = field === "lockedPositions" ? asLockedPositions(entry[field]) : asNumberRecord(entry[field]);
-                if (Object.prototype.hasOwnProperty.call(values, id) || Object.values(values).includes(id)) blockers.push(`reelStripGeneration[${reelIndex}].${field}`);
+                if (Reflect.apply(Object.prototype.hasOwnProperty, values, [id]) || Object.values(values).includes(id)) blockers.push(`reelStripGeneration[${reelIndex}].${field}`);
             }
             if (containsSymbolReference(entry.constraints, id)) blockers.push(`reelStripGeneration[${reelIndex}].constraints`);
         }
@@ -119,7 +119,7 @@ export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id
 
 function renameRecordKey(blueprint: Record<string, unknown>, field: string, from: string, to: string): void {
     const value = blueprint[field];
-    if (typeof value !== "object" || value === null || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, from)) return;
+    if (typeof value !== "object" || value === null || Array.isArray(value) || !Reflect.apply(Object.prototype.hasOwnProperty, value, [from])) return;
     const record = {...(value as Record<string, unknown>)};
     const moved = record[from];
     Reflect.deleteProperty(record, from);
@@ -135,7 +135,7 @@ function renameGeneratedReelReferences(blueprint: Record<string, unknown>, from:
         for (const field of ["symbolCounts", "symbolWeights"] as const) {
             if (next[field] !== undefined) {
                 const values = {...asNumberRecord(next[field])};
-                if (Object.prototype.hasOwnProperty.call(values, from)) {
+                if (Reflect.apply(Object.prototype.hasOwnProperty, values, [from])) {
                     values[to] = values[from];
                     Reflect.deleteProperty(values, from);
                     next[field] = values;
