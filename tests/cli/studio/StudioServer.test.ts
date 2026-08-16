@@ -2288,11 +2288,7 @@ describe("StudioServer", () => {
 
             resolveLoad(createFakeGame(manifest));
             await pendingLoad;
-            await new Promise((resolve) => {
-                setTimeout(resolve, 0);
-            });
-
-            const afterLoad = await get(`${projectBaseUrl}/api/project/context`);
+            const afterLoad = await pollUntilProjectContextSettled(`${projectBaseUrl}/api/project/context`);
             expect(afterLoad.body).toEqual({status: "loaded", projectRoot: "/tmp/sample-slot", game: manifest});
         });
 
