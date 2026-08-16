@@ -944,6 +944,22 @@ describe("StudioServer", () => {
             expect(body).toEqual({status: "selected", path: "/home/alice/games/sample-slot"});
         });
 
+        it("passes a local file destination through to the host's native Save dialog", async () => {
+            const run = jest.fn().mockResolvedValue({stdout: "/home/alice/exports/game.par.xlsx\n", stderr: ""});
+            const nativeBaseUrl = await startServerWithPicker(new StudioNativePickerService({platform: "linux", env: {DISPLAY: ":0"}, homeDir: "/home/alice"}, run));
+
+            const {status, body} = await post(`${nativeBaseUrl}/api/home/fs/native-browse`, {
+                kind: "file",
+                mode: "save",
+                startPath: "/home/alice/exports/game.par.xlsx",
+                fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
+            });
+
+            expect(status).toBe(200);
+            expect(body).toEqual({status: "selected", path: "/home/alice/exports/game.par.xlsx"});
+            expect(run).toHaveBeenCalledWith("zenity", expect.arrayContaining(["--save", "--confirm-overwrite", "--filename=/home/alice/exports/game.par.xlsx"]));
+        });
+
         it("rejects a request with an invalid kind as a 400", async () => {
             const nativeBaseUrl = await startServerWithPicker(new StudioNativePickerService({platform: "linux", env: {}, homeDir: "/home/alice"}, jest.fn()));
 
@@ -951,6 +967,15 @@ describe("StudioServer", () => {
 
             expect(status).toBe(400);
             expect((body as {error: string}).error).toContain("kind");
+        });
+
+        it("rejects a Save dialog request for a directory as a 400", async () => {
+            const nativeBaseUrl = await startServerWithPicker(new StudioNativePickerService({platform: "linux", env: {}, homeDir: "/home/alice"}, jest.fn()));
+
+            const {status, body} = await post(`${nativeBaseUrl}/api/home/fs/native-browse`, {kind: "directory", mode: "save"});
+
+            expect(status).toBe(400);
+            expect((body as {error: string}).error).toContain("save");
         });
 
         it("reports the native picker unavailable to a remote caller, without ever consulting the injected picker service, even when the server has a graphical display", async () => {

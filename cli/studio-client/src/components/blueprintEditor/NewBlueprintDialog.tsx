@@ -149,6 +149,7 @@ export function NewBlueprintDialog({
                                 browseTitle="Browse for a blueprint JSON file"
                                 browseId="new-blueprint-dialog-save-path"
                                 fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                                filePickerMode="save"
                                 value={saveAsPath}
                                 onChange={(event) => setSaveAsPath(event.currentTarget.value)}
                                 onPathSelected={setSaveAsPath}

@@ -134,7 +134,7 @@ export async function openOutputFolder(fetchImpl: FetchLike, path: string): Prom
     return (await response.json()) as StudioOpenFolderView;
 }
 
-export type NativeBrowseRequest = {kind: "directory" | "file"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
+export type NativeBrowseRequest = {kind: "directory" | "file"; mode?: "open" | "save"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
 
 // Opens the system-native folder/file dialog on the machine running Studio's server. Never throws for a
 // domain-level outcome (cancelled/unavailable/error) — StudioNativePickerResultView's own `status` field

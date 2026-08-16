@@ -103,6 +103,21 @@ describe("StudioNativePickerService", () => {
 
             expect(run).toHaveBeenCalledWith("zenity", ["--file-selection", "--file-filter=JSON files | *.json"]);
         });
+
+        it("opens zenity's native Save dialog for a file destination", async () => {
+            const run = okRun("/home/alice/exports/game.par.xlsx\n");
+            const service = new StudioNativePickerService(envFor("linux", {WAYLAND_DISPLAY: "wayland-0"}), run);
+
+            await service.pick({kind: "file", mode: "save", startPath: "/home/alice/exports/game.par.xlsx", fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}]});
+
+            expect(run).toHaveBeenCalledWith("zenity", [
+                "--file-selection",
+                "--save",
+                "--confirm-overwrite",
+                "--filename=/home/alice/exports/game.par.xlsx",
+                "--file-filter=PAR sheets | *.xlsx",
+            ]);
+        });
     });
 
     describe("pick on darwin", () => {
@@ -125,6 +140,15 @@ describe("StudioNativePickerService", () => {
             const result = await service.pick({kind: "directory"});
 
             expect(result).toEqual({status: "cancelled"});
+        });
+
+        it("uses choose file name for a native Save dialog", async () => {
+            const run = okRun("/Users/alice/game.json\n");
+            const service = new StudioNativePickerService(envFor("darwin"), run);
+
+            await service.pick({kind: "file", mode: "save"});
+
+            expect((run as jest.Mock).mock.calls[0][1][1]).toContain("choose file name");
         });
     });
 
@@ -159,6 +183,16 @@ describe("StudioNativePickerService", () => {
             const [, args] = (run as jest.Mock).mock.calls[0];
             const script = args[args.length - 1] as string;
             expect(script).toContain("$dialog.SelectedPath = 'C:\\it''s mine'");
+        });
+
+        it("uses SaveFileDialog for a file destination", async () => {
+            const run = okRun("POKIE_CANCELLED\n");
+            const service = new StudioNativePickerService(envFor("win32"), run);
+
+            await service.pick({kind: "file", mode: "save", fileFilters: [{name: "JSON files", extensions: ["json"]}]});
+
+            const [, args] = (run as jest.Mock).mock.calls[0];
+            expect((args[args.length - 1] as string)).toContain("SaveFileDialog");
         });
     });
 });

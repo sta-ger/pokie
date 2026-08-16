@@ -17,12 +17,14 @@ function Harness({
     browseId,
     relevantDirectory,
     autoDestinationPath,
+    filePickerMode,
 }: {
     kind?: "directory" | "file";
     initial?: string;
     browseId?: string;
     relevantDirectory?: string;
     autoDestinationPath?: string;
+    filePickerMode?: "open" | "save";
 }) {
     const [value, setValue] = useState(initial);
     return (
@@ -35,6 +37,7 @@ function Harness({
             browseId={browseId}
             relevantDirectory={relevantDirectory}
             autoDestinationPath={autoDestinationPath}
+            filePickerMode={filePickerMode}
         />
     );
 }
@@ -335,6 +338,23 @@ describe("PathInput", () => {
         const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
         expect(pickCall?.init?.method).toBe("POST");
         expect(getRememberedBrowseLocation("create-project-destination")).toBe("/home/alice/games/sample-slot");
+    });
+
+    it("uses the native Save dialog for a file destination", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "selected", path: "/home/alice/game.par.xlsx"}}),
+        });
+
+        renderWithProviders(<Harness kind="file" initial="" filePickerMode="save" />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByDisplayValue("/home/alice/game.par.xlsx")).toBeInTheDocument();
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toMatchObject({kind: "file", mode: "save"});
     });
 
     it("leaves the field untouched when the native picker reports cancelled", async () => {
