@@ -18,6 +18,16 @@ async function goToReelStripModeler(user: ReturnType<typeof userEvent.setup>): P
     await user.click(screen.getByRole("radio", {name: "Per-reel (Reel Strip Modeler)"}));
 }
 
+async function selectGeneratedWeights(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole("radio", {name: "Generated"}));
+    await user.click(screen.getByRole("radio", {name: "Weights"}));
+}
+
+async function addLiteralSymbol(user: ReturnType<typeof userEvent.setup>, symbol = "A"): Promise<void> {
+    await user.type(screen.getByLabelText("New symbol id for reel 1"), symbol);
+    await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
+}
+
 const LITERAL_AB_ANALYSIS = {length: 2, symbolCounts: {A: 1, B: 1}, symbolFrequencies: {A: 0.5, B: 0.5}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {}};
 
 describe("BlueprintEditorPage - Reel Strip Modeler", () => {
@@ -41,11 +51,11 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByText("Unapplied changes")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
-        expect(screen.getByText("Reel 1 has unapplied changes.")).toBeInTheDocument();
+        expect(screen.getByText("Reel 1 has unapplied changes. They are still only in the modeler draft.")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Apply"}));
 
-        expect(screen.getByText(/draft matches what's already in the blueprint/)).toBeInTheDocument();
+        expect(screen.getByText(/draft matches what's already in the Reels draft/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Apply"})).toBeDisabled();
         expect(screen.getByRole("button", {name: "Discard"})).toBeDisabled();
     });
@@ -90,17 +100,17 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
 
         expect(await screen.findByText("Generated successfully")).toBeInTheDocument();
         expect(screen.getByText(/Satisfied every constraint after 3 attempt/)).toBeInTheDocument();
         expect(screen.getByText(/minimumCircularDistance: Symbol A is too close to itself\./)).toBeInTheDocument();
 
-        // The draft actually sent (default length 1/seed 1/symbolCounts {}) -- never the shared blueprint's
+        // The draft actually sent (default length 1/seed 1/symbolWeights {}) -- never the shared blueprint's
         // own (still-literal, empty) entry for this reel, which is what "never touches the blueprint until
         // Apply" actually means at the wire level.
-        expect(lastRequestBody?.blueprint.reelStripGeneration[0]).toEqual({type: "generated", length: 1, seed: 1, symbolCounts: {}});
+        expect(lastRequestBody?.blueprint.reelStripGeneration[0]).toEqual({type: "generated", length: 1, seed: 1, symbolWeights: {}});
 
         await user.click(screen.getByRole("button", {name: "Continue to Preview stop windows"}));
 
@@ -146,7 +156,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
 
         expect(await screen.findByText("Generation failed")).toBeInTheDocument();
@@ -175,6 +185,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await addLiteralSymbol(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
 
         expect(await screen.findByText(/Paytable is empty\./)).toBeInTheDocument();
@@ -189,7 +200,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
 
         const constraintsField = screen.getByLabelText("Constraints for reel 1");
         await user.clear(constraintsField);
@@ -214,6 +225,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await addLiteralSymbol(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
         expect(await screen.findByText("Working…")).toBeInTheDocument();
 
@@ -260,6 +272,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await addLiteralSymbol(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
         expect(await screen.findByText("Working…")).toBeInTheDocument();
 
@@ -324,7 +337,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Commit or discard")}));
         await user.click(screen.getByRole("button", {name: "Discard"}));
 
-        expect(screen.getByText(/draft matches what's already in the blueprint/)).toBeInTheDocument();
+        expect(screen.getByText(/draft matches what's already in the Reels draft/)).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
         expect(screen.queryByDisplayValue("W")).not.toBeInTheDocument();
@@ -374,6 +387,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await addLiteralSymbol(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
         expect(await screen.findByText("Working…")).toBeInTheDocument();
 
@@ -414,6 +428,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await addLiteralSymbol(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
         expect(await screen.findByText("Literal strip")).toBeInTheDocument();
 
@@ -437,7 +452,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await goToReelStripModeler(user);
 
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.clear(screen.getByLabelText("Length"));
         await user.type(screen.getByLabelText("Length"), "5");
         await user.tab();
@@ -449,7 +464,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         await user.click(screen.getByRole("button", {name: stepperStep("Select reel", "Which reel")}));
         await user.click(screen.getByRole("button", {name: "Select reel 2"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.clear(screen.getByLabelText("Length"));
         await user.type(screen.getByLabelText("Length"), "9");
         await user.tab();
@@ -492,7 +507,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
 
         // Explore Generated with distinctive scalar values...
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.clear(screen.getByLabelText("Length"));
         await user.type(screen.getByLabelText("Length"), "50");
         await user.tab();
@@ -515,7 +530,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         // Toggle to Generated again -- must never resurrect the discarded 50/777 exploration.
         await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
 
         expect(screen.getByLabelText("Length")).toHaveValue("1");
         expect(screen.getByLabelText("Seed")).toHaveValue("1");
@@ -536,6 +551,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await addLiteralSymbol(user);
         await user.click(screen.getByRole("button", {name: "Check & preview"}));
         expect(await screen.findByText("Working…")).toBeInTheDocument();
 
@@ -600,7 +616,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
 
         // Explore Generated with distinctive scalar values...
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.clear(screen.getByLabelText("Length"));
         await user.type(screen.getByLabelText("Length"), "50");
         await user.tab();
@@ -639,12 +655,12 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         // Toggle to Generated on the *new* blueprint's own reel 1 -- must start fresh (default length
         // 1/seed 1), never resurrect the old (now-replaced) blueprint's discarded 50/777 exploration.
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         expect(screen.getByLabelText("Length")).toHaveValue("1");
         expect(screen.getByLabelText("Seed")).toHaveValue("1");
     });
 
-    it("computes a generated reel's own Length from its active counts/weights via Auto length", async () => {
+    it("derives a generated reel's read-only Length from active counts", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
 
@@ -666,10 +682,8 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("radio", {name: "Form", hidden: true}));
 
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        expect(screen.getByLabelText("Length")).toHaveValue("1");
-
-        await user.click(screen.getByRole("button", {name: "Set reel 1 length automatically from its own counts/weights"}));
-        expect(screen.getByLabelText("Length")).toHaveValue("5");
+        expect(screen.getByLabelText("Length (derived from counts)")).toHaveValue("5");
+        expect(screen.queryByRole("button", {name: "Set reel 1 length automatically from its own counts/weights"})).not.toBeInTheDocument();
     });
 
     it("adds a constraint preset onto a generated reel's constraints array", async () => {
@@ -679,7 +693,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
 
         await user.click(screen.getByRole("combobox", {name: "Constraint preset for reel 1"}));
         await user.keyboard("{ArrowDown}{Enter}");
@@ -695,7 +709,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await selectGeneratedWeights(user);
         await user.clear(screen.getByLabelText("Length"));
         await user.type(screen.getByLabelText("Length"), "12");
         await user.clear(screen.getByLabelText("Seed"));

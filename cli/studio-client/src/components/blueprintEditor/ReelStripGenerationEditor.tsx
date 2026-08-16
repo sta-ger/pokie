@@ -1,4 +1,4 @@
-import {Alert, Badge, Button, Group, List, NumberInput, Radio, Select, Stepper, Table, Text, TextInput, Textarea} from "@mantine/core";
+import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Table, Text, TextInput, Textarea} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {previewReelStripGeneration} from "../../api/apiClient";
@@ -64,6 +64,49 @@ function cloneRecord<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
 
+type DraftIssue = {field: string; message: string};
+
+// Keep malformed input out of the generator.  The generator's "0 attempts" result means it tried a
+// structurally valid reel and could not satisfy its constraints; using it for a bad length/count/lock
+// hid the actionable error behind a misleading generation failure.
+function validateDraftEntry(entry: Record<string, unknown>, symbols: string[]): DraftIssue[] {
+    const issues: DraftIssue[] = [];
+    const knownSymbols = new Set(symbols);
+    if (entry.type !== "generated") {
+        const strip = asStringList(entry.strip);
+        if (strip.length === 0) issues.push({field: "strip", message: "Add at least one symbol to this literal reel."});
+        strip.forEach((symbol, index) => {
+            if (symbols.length > 0 && !knownSymbols.has(symbol)) issues.push({field: `strip.${index}`, message: `"${symbol}" is not a known symbol.`});
+        });
+        return issues;
+    }
+
+    const length = entry.length;
+    if (!(typeof length === "number" && Number.isInteger(length) && length > 0)) issues.push({field: "length", message: "Length must be a positive integer."});
+    if (!(typeof entry.seed === "number" && Number.isInteger(entry.seed))) issues.push({field: "seed", message: "Seed must be an integer."});
+    const mode = getReelStripGenerationSourceMode(entry);
+    const values = asRecord(mode === "symbolCounts" ? entry.symbolCounts : entry.symbolWeights);
+    Object.entries(values).forEach(([symbol, value]) => {
+        if (symbols.length > 0 && !knownSymbols.has(symbol)) issues.push({field: `${mode}.${symbol}`, message: `"${symbol}" is not a known symbol.`});
+        const valid = mode === "symbolCounts" ? typeof value === "number" && Number.isInteger(value) && value >= 0 : typeof value === "number" && Number.isFinite(value) && value > 0;
+        if (!valid) issues.push({field: `${mode}.${symbol}`, message: mode === "symbolCounts" ? "Count must be a non-negative integer." : "Weight must be a positive, finite number."});
+    });
+    if (mode === "symbolCounts" && Object.values(values).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0) === 0) {
+        issues.push({field: "symbolCounts", message: "Counts must contain at least one occurrence."});
+    }
+    Object.entries(asRecord(entry.lockedPositions)).forEach(([position, symbol]) => {
+        const number = Number(position);
+        if (!Number.isInteger(number) || number < 0 || (typeof length === "number" && number >= length)) issues.push({field: `lockedPositions.${position}`, message: "Locked position must be inside this reel's length."});
+        if (typeof symbol !== "string" || (symbols.length > 0 && !knownSymbols.has(symbol))) issues.push({field: `lockedPositions.${position}`, message: `Locked symbol "${String(symbol)}" is not known.`});
+    });
+    if (entry.constraints !== undefined && !Array.isArray(entry.constraints)) issues.push({field: "constraints", message: "Constraints must be an array."});
+    return issues;
+}
+
+function issueFor(issues: DraftIssue[], field: string): string | undefined {
+    return issues.find((issue) => issue.field === field || issue.field.startsWith(`${field}.`))?.message;
+}
+
 // A minimal stand-in blueprint whose own reelStripGeneration array is just long enough to hold `entry`
 // at `reelIndex` (every other slot a harmless placeholder) -- lets every existing mutator below
 // (addReelStripGenerationLiteralSymbol, setReelStripGenerationLength, ...) run completely unchanged
@@ -74,7 +117,7 @@ function makeScratchBlueprint(reelIndex: number, entry: Record<string, unknown>)
     return {reelStripGeneration: Array.from({length: reelIndex + 1}, (_, i) => (i === reelIndex ? entry : {type: "literal", strip: []}))};
 }
 
-function LiteralStripEditor({reelIndex, entry, mutate}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate}) {
+function LiteralStripEditor({reelIndex, entry, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate; issues: DraftIssue[]}) {
     const strip = asStringList(entry.strip);
     const [newSymbolId, setNewSymbolId] = useState("");
 
@@ -89,6 +132,7 @@ function LiteralStripEditor({reelIndex, entry, mutate}: {reelIndex: number; entr
                                 value={symbolId}
                                 onCommit={(value) => mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value))}
                             />
+                            {issueFor(issues, `strip.${position}`) && <Text c="red" size="xs">{issueFor(issues, `strip.${position}`)}</Text>}
                             <RowActions
                                 itemLabel={`reel ${reelIndex + 1} symbol ${position + 1}`}
                                 onDuplicate={() => mutate((b) => duplicateReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
@@ -126,6 +170,7 @@ function LiteralStripEditor({reelIndex, entry, mutate}: {reelIndex: number; entr
                     Add symbol
                 </Button>
             </QuickActions>
+            {issueFor(issues, "strip") && <ErrorState message={issueFor(issues, "strip") as string} />}
         </div>
     );
 }
@@ -135,11 +180,13 @@ function SourceTable({
     entry,
     symbols,
     mutate,
+    issues,
 }: {
     reelIndex: number;
     entry: Record<string, unknown>;
     symbols: string[];
     mutate: BlueprintMutate;
+    issues: DraftIssue[];
 }) {
     const mode = getReelStripGenerationSourceMode(entry);
     const label = mode === "symbolCounts" ? "Count" : "Weight";
@@ -175,6 +222,7 @@ function SourceTable({
                                             aria-label={`${symbolId} ${label.toLowerCase()}`}
                                             step={mode === "symbolCounts" ? 1 : undefined}
                                             defaultValue={value}
+                                            error={issueFor(issues, `${mode}.${symbolId}`)}
                                             onBlur={(event) => {
                                                 const parsed = Number(event.currentTarget.value);
                                                 if (Number.isFinite(parsed)) {
@@ -194,7 +242,7 @@ function SourceTable({
             </Table.ScrollContainer>
             <QuickActions>
                 <Select aria-label="Symbol" data={symbols} value={newSymbol} onChange={setNewSymbol} />
-                <NumberInput aria-label={label} placeholder={label} step={mode === "symbolCounts" ? 1 : undefined} value={newValue} onChange={setNewValue} />
+                <NumberInput aria-label={label} placeholder={label} step={mode === "symbolCounts" ? 1 : undefined} value={newValue} onChange={setNewValue} error={issueFor(issues, mode)} />
                 <Button
                     variant="default"
                     onClick={() => {
@@ -217,11 +265,13 @@ function LockedPositions({
     entry,
     symbols,
     mutate,
+    issues,
 }: {
     reelIndex: number;
     entry: Record<string, unknown>;
     symbols: string[];
     mutate: BlueprintMutate;
+    issues: DraftIssue[];
 }) {
     const locked = asRecord(entry.lockedPositions);
     const [position, setPosition] = useState<number | string>("");
@@ -242,7 +292,7 @@ function LockedPositions({
                         {Object.entries(locked).map(([pos, symbolId]) =>
                             typeof symbolId === "string" ? (
                                 <Table.Tr key={pos}>
-                                    <Table.Td>{pos}</Table.Td>
+                                    <Table.Td>{pos}{issueFor(issues, `lockedPositions.${pos}`) && <Text c="red" size="xs">{issueFor(issues, `lockedPositions.${pos}`)}</Text>}</Table.Td>
                                     <Table.Td>{symbolId}</Table.Td>
                                     <Table.Td>
                                         <RowActions
@@ -283,7 +333,7 @@ function LockedPositions({
     );
 }
 
-function ConstraintsEditor({reelIndex, entry, mutate}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate}) {
+function ConstraintsEditor({reelIndex, entry, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate; issues: DraftIssue[]}) {
     const [error, setError] = useState<string>();
     // Bumped only when a preset is inserted programmatically -- remounts the Textarea below so its own
     // uncontrolled `defaultValue` picks up the freshly appended preset instead of silently keeping
@@ -311,6 +361,7 @@ function ConstraintsEditor({reelIndex, entry, mutate}: {reelIndex: number; entry
                 }}
             />
             {error && <ErrorState message={error} />}
+            {!error && issueFor(issues, "constraints") && <ErrorState message={issueFor(issues, "constraints") as string} />}
             <QuickActions>
                 <Select
                     aria-label={`Constraint preset for reel ${reelIndex + 1}`}
@@ -340,18 +391,161 @@ function ConstraintsEditor({reelIndex, entry, mutate}: {reelIndex: number; entry
     );
 }
 
+type StackDraft = {
+    type: "stack";
+    symbolIds?: string[];
+    minimumLength: number;
+    maximumLength?: number;
+    minimumStacks?: number;
+    maximumStacks?: number;
+    minimumSpacing?: number;
+    visibleWindowRows?: number;
+    maximumSymbolsInWindow?: number;
+};
+
+function asStackDraft(value: unknown): StackDraft | undefined {
+    if (typeof value !== "object" || value === null || Array.isArray(value) || (value as {type?: unknown}).type !== "stack") return undefined;
+    const stack = value as Record<string, unknown>;
+    return typeof stack.minimumLength === "number" ? (stack as StackDraft) : undefined;
+}
+
+function describeStackLength(stack: StackDraft): string {
+    if (stack.maximumLength === undefined) return `length ${stack.minimumLength}+`;
+    if (stack.maximumLength === stack.minimumLength) return `fixed length ${stack.minimumLength}`;
+    return `length ${stack.minimumLength}–${stack.maximumLength}`;
+}
+
+// Stacks are persisted as first-class `stack` constraints, not as a UI-only shorthand for repeated
+// sequences.  Keeping the visual editor and the raw constraints textarea side by side means presets
+// remain inspectable/editable while common stack work never requires hand-authoring JSON.
+function StackConstraintsEditor({reelIndex, entry, symbols, mutate}: {reelIndex: number; entry: Record<string, unknown>; symbols: string[]; mutate: BlueprintMutate}) {
+    const constraints = Array.isArray(entry.constraints) ? entry.constraints : [];
+    const stacks = constraints.flatMap((constraint, index) => {
+        const stack = asStackDraft(constraint);
+        return stack === undefined ? [] : [{index, stack}];
+    });
+    const [editingIndex, setEditingIndex] = useState<number>();
+    const [eligibleSymbols, setEligibleSymbols] = useState<string[]>([]);
+    const [lengthMode, setLengthMode] = useState<"fixed" | "range">("fixed");
+    const [minimumLength, setMinimumLength] = useState<number | string>(2);
+    const [maximumLength, setMaximumLength] = useState<number | string>(3);
+    const [stackCount, setStackCount] = useState<number | string>(1);
+    const [minimumSpacing, setMinimumSpacing] = useState<number | string>("");
+    const [visibleWindowRows, setVisibleWindowRows] = useState<number | string>("");
+    const [maximumSymbolsInWindow, setMaximumSymbolsInWindow] = useState<number | string>("");
+
+    const replaceConstraints = (next: unknown[]): void => mutate((blueprint) => setReelStripGenerationConstraints(blueprint, reelIndex, next));
+    const reset = (): void => {
+        setEditingIndex(undefined);
+        setEligibleSymbols([]);
+        setLengthMode("fixed");
+        setMinimumLength(2);
+        setMaximumLength(3);
+        setStackCount(1);
+        setMinimumSpacing("");
+        setVisibleWindowRows("");
+        setMaximumSymbolsInWindow("");
+    };
+    const number = (value: number | string): number | undefined => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    const save = (forbid = false): void => {
+        const min = number(minimumLength);
+        const max = lengthMode === "range" ? number(maximumLength) : min;
+        const count = number(stackCount);
+        const spacing = number(minimumSpacing);
+        const rows = number(visibleWindowRows);
+        const windowMaximum = number(maximumSymbolsInWindow);
+        if (min === undefined || min < 2 || max === undefined || max < min || (!forbid && (count === undefined || count < 1)) || (rows === undefined) !== (windowMaximum === undefined)) return;
+        const stack: StackDraft = {
+            type: "stack",
+            minimumLength: min,
+            ...(max === min ? {} : {maximumLength: max}),
+            ...(eligibleSymbols.length === 0 ? {} : {symbolIds: eligibleSymbols}),
+            ...(forbid ? {maximumStacks: 0} : {minimumStacks: count, maximumStacks: count}),
+            ...(spacing === undefined ? {} : {minimumSpacing: spacing}),
+            ...(rows === undefined ? {} : {visibleWindowRows: rows, maximumSymbolsInWindow: windowMaximum}),
+        };
+        const next = [...constraints];
+        if (editingIndex === undefined) next.push(stack);
+        else next[editingIndex] = stack;
+        replaceConstraints(next);
+        reset();
+    };
+    const edit = (index: number, stack: StackDraft): void => {
+        setEditingIndex(index);
+        setEligibleSymbols(stack.symbolIds ?? []);
+        setLengthMode(stack.maximumLength === undefined || stack.maximumLength === stack.minimumLength ? "fixed" : "range");
+        setMinimumLength(stack.minimumLength);
+        setMaximumLength(stack.maximumLength ?? stack.minimumLength);
+        setStackCount(stack.minimumStacks ?? 1);
+        setMinimumSpacing(stack.minimumSpacing ?? "");
+        setVisibleWindowRows(stack.visibleWindowRows ?? "");
+        setMaximumSymbolsInWindow(stack.maximumSymbolsInWindow ?? "");
+    };
+    const move = (from: number, to: number): void => {
+        if (to < 0 || to >= constraints.length) return;
+        const next = [...constraints];
+        [next[from], next[to]] = [next[to], next[from]];
+        replaceConstraints(next);
+    };
+
+    return (
+        <PageSection legend="Stack constraints">
+            <Text size="sm" c="dimmed" mb="xs">
+                Stacks are same-symbol runs. Add a fixed or range-length rule, choose eligible symbols, and optionally constrain spacing or what can appear together in a visible window.
+            </Text>
+            {stacks.length === 0 ? <Text size="sm" c="dimmed" mb="xs">No stack constraints yet.</Text> : (
+                <List size="sm" mb="sm">
+                    {stacks.map(({index, stack}, stackIndex) => (
+                        <List.Item key={index}>
+                            Stack {stackIndex + 1}: {stack.symbolIds?.join(", ") ?? "any symbol"}, {describeStackLength(stack)}, {stack.maximumStacks === 0 ? "no stacks allowed" : `${stack.minimumStacks ?? 0} required`}
+                            <Group gap="xs" mt={4}>
+                                <Button size="compact-xs" variant="default" onClick={() => edit(index, stack)}>Edit</Button>
+                                <Button size="compact-xs" variant="default" disabled={index === 0} onClick={() => move(index, index - 1)}>Move up</Button>
+                                <Button size="compact-xs" variant="default" disabled={index === constraints.length - 1} onClick={() => move(index, index + 1)}>Move down</Button>
+                                <Button size="compact-xs" variant="default" onClick={() => {
+                                    const next = [...constraints];
+                                    next.splice(index + 1, 0, {...stack, minimumStacks: 1, maximumStacks: 1});
+                                    replaceConstraints(next);
+                                }}>Split</Button>
+                                <Button size="compact-xs" color="red" variant="default" onClick={() => replaceConstraints(constraints.filter((_, constraintIndex) => constraintIndex !== index))}>Remove</Button>
+                            </Group>
+                        </List.Item>
+                    ))}
+                </List>
+            )}
+            <QuickActions>
+                <MultiSelect aria-label={`Eligible stack symbols for reel ${reelIndex + 1}`} placeholder="Eligible symbols (all when empty)" data={symbols} value={eligibleSymbols} onChange={setEligibleSymbols} clearable />
+                <Radio.Group aria-label={`Stack length mode for reel ${reelIndex + 1}`} value={lengthMode} onChange={(value) => setLengthMode(value as "fixed" | "range")}>
+                    <Group gap="xs"><Radio value="fixed" label="Fixed length" /><Radio value="range" label="Length range" /></Group>
+                </Radio.Group>
+                <NumberInput aria-label={`Stack minimum length for reel ${reelIndex + 1}`} label="Stack length" min={2} step={1} value={minimumLength} onChange={setMinimumLength} />
+                {lengthMode === "range" && <NumberInput aria-label={`Stack maximum length for reel ${reelIndex + 1}`} label="Maximum length" min={2} step={1} value={maximumLength} onChange={setMaximumLength} />}
+                <NumberInput aria-label={`Stack count for reel ${reelIndex + 1}`} label="Add N stacks" min={1} step={1} value={stackCount} onChange={setStackCount} />
+                <NumberInput aria-label={`Stack spacing for reel ${reelIndex + 1}`} label="Minimum spacing (optional)" min={1} step={1} value={minimumSpacing} onChange={setMinimumSpacing} />
+                <NumberInput aria-label={`Stack visible window rows for reel ${reelIndex + 1}`} label="Visible window rows (optional)" min={1} step={1} value={visibleWindowRows} onChange={setVisibleWindowRows} />
+                <NumberInput aria-label={`Maximum stack symbols visible for reel ${reelIndex + 1}`} label="Max stack symbols visible" min={0} step={1} value={maximumSymbolsInWindow} onChange={setMaximumSymbolsInWindow} />
+                <Button variant="default" onClick={() => save()}>{editingIndex === undefined ? "Add stack rule" : "Save stack rule"}</Button>
+                <Button variant="default" onClick={() => save(true)}>No stacks</Button>
+                {editingIndex !== undefined && <Button variant="subtle" onClick={reset}>Cancel stack edit</Button>}
+            </QuickActions>
+        </PageSection>
+    );
+}
+
 function GeneratedEditor({
     reelIndex,
     entry,
     symbols,
     mutate,
     drafts,
+    issues,
 }: {
     reelIndex: number;
     entry: Record<string, unknown>;
     symbols: string[];
     mutate: BlueprintMutate;
     drafts: ReelStripGenerationDraftsRef;
+    issues: DraftIssue[];
 }) {
     const sourceMode = getReelStripGenerationSourceMode(entry);
     // Bumped only by the "Auto" button below -- remounts the Length NumberInput so its own uncontrolled
@@ -359,42 +553,36 @@ function GeneratedEditor({
     // fresh key" technique ConstraintsEditor's own `textKey` uses for its preset-insert action.
     const [lengthKey, setLengthKey] = useState(0);
     const autoLength = computeReelStripGenerationAutoLength(entry);
+    const countLength = Object.values(asRecord(entry.symbolCounts)).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
+    const consumedOccurrences = (Array.isArray(entry.constraints) ? entry.constraints : []).reduce<number>((total, constraint) => {
+        const stack = asStackDraft(constraint);
+        return total + (stack === undefined ? 0 : stack.minimumLength * (stack.minimumStacks ?? 0));
+    }, 0);
 
     return (
         <div>
             <QuickActions>
-                <NumberInput
-                    key={lengthKey}
-                    label="Length"
-                    min={1}
-                    step={1}
-                    defaultValue={typeof entry.length === "number" ? entry.length : undefined}
-                    onBlur={(event) => {
-                        const value = Number(event.currentTarget.value);
-                        if (Number.isFinite(value)) {
-                            mutate((b) => setReelStripGenerationLength(b, reelIndex, value));
-                        }
-                    }}
-                />
-                <Button
-                    variant="default"
-                    size="sm"
-                    aria-label={`Set reel ${reelIndex + 1} length automatically from its own counts/weights`}
-                    disabled={autoLength === undefined}
-                    onClick={() => {
-                        if (autoLength === undefined) {
-                            return;
-                        }
-                        mutate((b) => setReelStripGenerationLength(b, reelIndex, autoLength));
-                        setLengthKey((key) => key + 1);
-                    }}
-                >
-                    Auto length
-                </Button>
+                {sourceMode === "symbolCounts" ? (
+                    <NumberInput label="Length (derived from counts)" value={countLength} readOnly description="Sum of the counts; edit counts to change length." error={issueFor(issues, "symbolCounts")} />
+                ) : (
+                    <>
+                        <NumberInput key={lengthKey} label="Length" min={1} step={1} defaultValue={typeof entry.length === "number" ? entry.length : undefined} error={issueFor(issues, "length")} onBlur={(event) => {
+                            const value = Number(event.currentTarget.value);
+                            if (Number.isFinite(value)) mutate((b) => setReelStripGenerationLength(b, reelIndex, value));
+                        }} />
+                        <Button variant="default" size="sm" aria-label={`Set reel ${reelIndex + 1} length automatically from its own counts/weights`} disabled={autoLength === undefined} onClick={() => {
+                            if (autoLength !== undefined) {
+                                mutate((b) => setReelStripGenerationLength(b, reelIndex, autoLength));
+                                setLengthKey((key) => key + 1);
+                            }
+                        }}>Auto length</Button>
+                    </>
+                )}
                 <NumberInput
                     label="Seed"
                     step={1}
                     defaultValue={typeof entry.seed === "number" ? entry.seed : undefined}
+                    error={issueFor(issues, "seed")}
                     onBlur={(event) => {
                         const value = Number(event.currentTarget.value);
                         if (Number.isFinite(value)) {
@@ -425,9 +613,11 @@ function GeneratedEditor({
                 </Group>
             </Radio.Group>
 
-            <SourceTable reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} />
-            <LockedPositions reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} />
-            <ConstraintsEditor reelIndex={reelIndex} entry={entry} mutate={mutate} />
+            <SourceTable reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} issues={issues} />
+            {sourceMode === "symbolCounts" && consumedOccurrences > 0 && <Text size="sm" c="dimmed" mt="xs">Stack rules consume at least {consumedOccurrences} counted occurrence(s).</Text>}
+            <LockedPositions reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} issues={issues} />
+            <StackConstraintsEditor reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} />
+            <ConstraintsEditor reelIndex={reelIndex} entry={entry} mutate={mutate} issues={issues} />
         </div>
     );
 }
@@ -556,6 +746,7 @@ export function ReelStripGenerationEditor({
     // primitive, same technique this app already uses for formGeneration/projectKey remounts elsewhere.
     const [draftGeneration, setDraftGeneration] = useState(0);
     const [preview, setPreview] = useState<ReelStripGenerationPreviewView>({status: "idle"});
+    const [draftIssues, setDraftIssues] = useState<DraftIssue[]>([]);
     const [stop, setStop] = useState<number | string>(0);
     const [rows, setRows] = useState<number>(defaultRows);
     const [copySourceReelIndex, setCopySourceReelIndex] = useState<string | null>(null);
@@ -627,6 +818,7 @@ export function ReelStripGenerationEditor({
             invalidatePendingPreview();
             setSelectedReelIndex(reelIndex);
             setDraftEntry(cloneRecord(entries[reelIndex]));
+            setDraftIssues([]);
             setStop(0);
             setRows(defaultRows);
             setCopySourceReelIndex(null);
@@ -655,13 +847,21 @@ export function ReelStripGenerationEditor({
             return;
         }
         invalidatePendingPreview();
+        setDraftIssues([]);
         setDraftEntry((prevEntry) => {
             if (prevEntry === undefined) {
                 return prevEntry;
             }
             const scratch = makeScratchBlueprint(selectedReelIndex, cloneRecord(prevEntry));
             fn(scratch);
-            return (scratch.reelStripGeneration as Record<string, unknown>[])[selectedReelIndex];
+            const next = (scratch.reelStripGeneration as Record<string, unknown>[])[selectedReelIndex];
+            // Counts define occurrences, therefore their sum is the only truthful generated length.
+            // Persist the derived value with the draft so preview, Build and a reopened reel all consume
+            // the same representation rather than a stale hand-entered length.
+            if (next.type === "generated" && getReelStripGenerationSourceMode(next) === "symbolCounts") {
+                next.length = Object.values(asRecord(next.symbolCounts)).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
+            }
+            return next;
         });
     };
 
@@ -677,11 +877,21 @@ export function ReelStripGenerationEditor({
         if (selectedReelIndex === undefined || draftEntry === undefined || !resolveGuard.begin()) {
             return;
         }
+        const issues = validateDraftEntry(draftEntry, symbols);
+        if (issues.length > 0) {
+            resolveGuard.end();
+            setDraftIssues(issues);
+            return;
+        }
         const requestId = ++requestIdRef.current;
         const requestedRevision = revision;
         const isStale = (): boolean => requestId !== requestIdRef.current || isStaleReelStripGenerationRequest(requestedRevision, revisionRef.current);
+        const previewEntry = cloneRecord(draftEntry);
+        if (previewEntry.type === "generated" && getReelStripGenerationSourceMode(previewEntry) === "symbolCounts") {
+            previewEntry.length = Object.values(asRecord(previewEntry.symbolCounts)).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
+        }
         const scratchEntries = [...entries];
-        scratchEntries[selectedReelIndex] = draftEntry;
+        scratchEntries[selectedReelIndex] = previewEntry;
         const previewBlueprint = {...blueprint, reelStripGeneration: scratchEntries};
 
         setPreview({status: "loading"});
@@ -708,7 +918,17 @@ export function ReelStripGenerationEditor({
         if (selectedReelIndex === undefined || draftEntry === undefined) {
             return;
         }
-        mutate((b) => applyReelStripGenerationEntry(b, selectedReelIndex, draftEntry));
+        const issues = validateDraftEntry(draftEntry, symbols);
+        if (issues.length > 0) {
+            setDraftIssues(issues);
+            setActiveStep(1);
+            return;
+        }
+        const entryToApply = cloneRecord(draftEntry);
+        if (entryToApply.type === "generated" && getReelStripGenerationSourceMode(entryToApply) === "symbolCounts") {
+            entryToApply.length = Object.values(asRecord(entryToApply.symbolCounts)).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
+        }
+        mutate((b) => applyReelStripGenerationEntry(b, selectedReelIndex, entryToApply));
     }
 
     function discardDraft(): void {
@@ -721,6 +941,7 @@ export function ReelStripGenerationEditor({
         drafts.current.delete(selectedReelIndex);
         invalidatePendingPreview();
         setDraftEntry(cloneRecord(appliedEntry));
+        setDraftIssues([]);
         setDraftGeneration((generation) => generation + 1);
     }
 
@@ -769,33 +990,12 @@ export function ReelStripGenerationEditor({
                 build&quot; itself uses, purely in memory.
             </Text>
 
-            <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Select reel" description="Which reel" aria-current={activeStep === 0 ? "step" : undefined} />
-                <Stepper.Step
-                    label="Edit or generate"
-                    description="Literal or generated"
-                    disabled={!editReachable}
-                    aria-current={activeStep === 1 ? "step" : undefined}
-                />
-                <Stepper.Step
-                    label="Inspect diagnostics"
-                    description="Validation"
-                    disabled={!diagnosticsReachable}
-                    aria-current={activeStep === 2 ? "step" : undefined}
-                />
-                <Stepper.Step
-                    label="Preview stop windows"
-                    description="Screen window"
-                    disabled={!stopWindowReachable}
-                    aria-current={activeStep === 3 ? "step" : undefined}
-                />
-                <Stepper.Step
-                    label="Apply"
-                    description="Commit or discard"
-                    disabled={!editReachable}
-                    aria-current={activeStep === 4 ? "step" : undefined}
-                />
-            </Stepper>
+            <Group gap="xs" mb="md" role="navigation" aria-label="Reel modeler workflow">
+                <Button size="xs" variant={activeStep === 0 ? "filled" : "default"} aria-label="Select reel Which reel" onClick={() => setActiveStep(0)}>Select reel</Button>
+                <Button size="xs" variant={activeStep === 1 ? "filled" : "default"} aria-label="Edit or generate Literal or generated" disabled={!editReachable} onClick={() => setActiveStep(1)}>Configure</Button>
+                <Button size="xs" variant={activeStep === 2 || activeStep === 3 ? "filled" : "default"} aria-label="Inspect diagnostics Validation" disabled={!diagnosticsReachable} onClick={() => setActiveStep(2)}>Preview</Button>
+                <Button size="xs" variant={activeStep === 4 ? "filled" : "default"} aria-label="Apply Commit or discard" disabled={!editReachable} onClick={() => setActiveStep(4)}>Done</Button>
+            </Group>
 
             {activeStep === 0 &&
                 (entries.length === 0 ? (
@@ -886,14 +1086,15 @@ export function ReelStripGenerationEditor({
                                 symbols={symbols}
                                 mutate={localMutate}
                                 drafts={drafts}
+                                issues={draftIssues}
                             />
                         ) : (
-                            <LiteralStripEditor key={`${selectedReelIndex}-${draftGeneration}`} reelIndex={selectedReelIndex} entry={draftEntry} mutate={localMutate} />
+                            <LiteralStripEditor key={`${selectedReelIndex}-${draftGeneration}`} reelIndex={selectedReelIndex} entry={draftEntry} mutate={localMutate} issues={draftIssues} />
                         )}
 
                         <QuickActions>
-                            <Button onClick={checkAndPreview} loading={preview.status === "loading"}>
-                                Check &amp; preview
+                            <Button aria-label="Check & preview" onClick={checkAndPreview} loading={preview.status === "loading"}>
+                                Preview
                             </Button>
                         </QuickActions>
                         {preview.status === "loading" && <LoadingState label="Working…" />}
@@ -926,16 +1127,30 @@ export function ReelStripGenerationEditor({
                                 Satisfied every constraint after {reelPreview.attemptsUsed} attempt(s).
                             </Alert>
                         )}
-                        {reelPreview !== undefined && reelPreview.type === "generated" && !reelPreview.success && (
-                            <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="Generation failed" mb="sm">
-                                Could not satisfy every constraint after {reelPreview.attemptsUsed} attempt(s).
-                            </Alert>
-                        )}
+                        {reelPreview !== undefined && reelPreview.type === "generated" && !reelPreview.success &&
+                            (reelPreview.attemptsUsed === 0 ? (
+                                <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} title="Invalid generated configuration" mb="sm">
+                                    Fix this reel&apos;s highlighted source, length, lock, or constraint fields before previewing it.
+                                </Alert>
+                            ) : (
+                                <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="Generation failed" mb="sm">
+                                    Could not satisfy every constraint after {reelPreview.attemptsUsed} attempt(s).
+                                </Alert>
+                            ))}
                         {reelPreview !== undefined && reelPreview.type === "generated" && <DiagnosticsList diagnostics={reelPreview.diagnostics} />}
+
+                        {reelPreview !== undefined && reelPreview.type === "generated" && !reelPreview.success && (
+                            <QuickActions>
+                                <Button onClick={() => setActiveStep(1)}>Fix configuration</Button>
+                                <Button variant="default" onClick={() => setActiveStep(1)}>Back to Configure</Button>
+                                <Button color="red" variant="default" onClick={discardDraft} disabled={!isDirty}>Discard draft</Button>
+                            </QuickActions>
+                        )}
 
                         {stopWindowReachable && (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(3)}>Continue to Preview stop windows</Button>
+                                <Button aria-label="Continue to Preview stop windows" onClick={() => setActiveStep(3)}>Open stop-window preview</Button>
+                                <Button variant="default" onClick={() => setActiveStep(1)}>Back to Configure</Button>
                             </QuickActions>
                         )}
 
@@ -972,7 +1187,8 @@ export function ReelStripGenerationEditor({
                         </PageSection>
 
                         <QuickActions>
-                            <Button onClick={() => setActiveStep(4)}>Continue to Apply</Button>
+                            <Button aria-label="Continue to Apply" onClick={() => setActiveStep(4)}>Continue to Done</Button>
+                            <Button variant="default" onClick={() => setActiveStep(2)}>Back to Preview</Button>
                         </QuickActions>
 
                         <AdvancedReelDetails draftEntry={draftEntry ?? {}} reelPreview={reelPreview} />
@@ -986,17 +1202,19 @@ export function ReelStripGenerationEditor({
                     <div>
                         <Text size="sm" mb="sm">
                             {isDirty
-                                ? `Reel ${selectedReelIndex + 1} has unapplied changes.`
-                                : `Reel ${selectedReelIndex + 1}'s draft matches what's already in the blueprint — nothing to apply.`}
+                                ? `Reel ${selectedReelIndex + 1} has unapplied changes. They are still only in the modeler draft.`
+                                : `Reel ${selectedReelIndex + 1}'s draft matches what's already in the Reels draft — nothing to apply.`}
                         </Text>
                         <QuickActions>
-                            <Button onClick={applyDraft} disabled={!isDirty}>
-                                Apply
+                            <Button aria-label="Apply" onClick={applyDraft} disabled={!isDirty}>
+                                Use changes
                             </Button>
                             <Button variant="default" color="red" onClick={discardDraft} disabled={!isDirty}>
                                 Discard
                             </Button>
+                            <Button variant="default" onClick={() => setActiveStep(2)}>Back to Preview</Button>
                         </QuickActions>
+                        {!isDirty && <Alert color="blue" variant="light" title="Modified — not saved" mt="sm">This reel is in the Reels draft. Use the common Game Model Save to persist the blueprint.</Alert>}
                     </div>
                 ))}
         </div>

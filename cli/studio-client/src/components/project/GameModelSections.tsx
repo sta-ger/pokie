@@ -90,6 +90,7 @@ export type GameModelReelsSampleControls = {
     loading: boolean;
     onConvertToGeneratedReels?: () => void;
     convertDisabled?: boolean;
+    onEditWeights?: () => void;
 };
 
 // The Edit/Save/Cancel control group a section's own PageSection legend shows -- every Edit disables the
@@ -545,9 +546,10 @@ function ReelsSection({section, sampleControls}: {section: GameModelSection<Game
                     </Text>
                     {sampleControls && (
                         <Group gap="xs" mb="sm">
-                            <Button size="xs" variant="default" loading={sampleControls.loading} onClick={sampleControls.onNewSample}>
-                                New sample
+                            <Button size="xs" variant="default" aria-label="New sample" loading={sampleControls.loading} onClick={sampleControls.onNewSample}>
+                                Another deterministic sample
                             </Button>
+                            {sampleControls.onEditWeights && <Button size="xs" variant="default" onClick={sampleControls.onEditWeights}>Edit weights</Button>}
                             {sampleControls.onConvertToGeneratedReels && (
                                 <Button
                                     size="xs"

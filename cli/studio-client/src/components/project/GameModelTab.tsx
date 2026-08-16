@@ -108,11 +108,10 @@ export function GameModelTab({
         refresh();
     }, [refresh]);
 
-    // Re-rolls the Reels section's own dynamic inspection sample with a fresh, still-reproducible seed --
-    // setting the seed alone is enough to trigger a refetch, since `refresh` (and the effect above that
-    // calls it) both depend on it.
+    // Advance the inspection seed instead of drawing one from Math.random(): the next sample is
+    // different but its visible seed remains reproducible whenever the same seed is requested again.
     const handleNewSample = useCallback(() => {
-        setSharedWeightsSampleSeed(Math.floor(Math.random() * 1_000_000));
+        setSharedWeightsSampleSeed((seed) => (seed ?? 1) + 1);
     }, []);
 
     const isDirty = editState.status === "editing" && editor.state.revision !== editState.baselineRevision;
@@ -309,6 +308,7 @@ export function GameModelTab({
                         loading: false,
                         onConvertToGeneratedReels: editable ? handleConvertToGeneratedReels : undefined,
                         convertDisabled: editState.status !== "viewing",
+                        onEditWeights: editable && editState.status === "viewing" ? () => handleEdit("reels") : undefined,
                     }}
                 />
             )}

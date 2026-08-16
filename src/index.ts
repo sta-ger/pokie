@@ -322,6 +322,7 @@ export * from "./reels/constraints/MaximumConsecutiveOccurrencesConstraint.js";
 export * from "./reels/constraints/MinimumCircularDistanceConstraint.js";
 export * from "./reels/constraints/RequiredAdjacencyConstraint.js";
 export * from "./reels/constraints/RequiredSequenceConstraint.js";
+export * from "./reels/constraints/StackConstraint.js";
 export * from "./replay/ReplayDescriptor.js";
 export * from "./replay/ReplayRecorder.js";
 export * from "./replay/ReplayRecording.js";

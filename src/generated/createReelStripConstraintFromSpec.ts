@@ -5,6 +5,7 @@ import {MaximumConsecutiveOccurrencesConstraint} from "../reels/constraints/Maxi
 import {MinimumCircularDistanceConstraint} from "../reels/constraints/MinimumCircularDistanceConstraint.js";
 import {RequiredAdjacencyConstraint} from "../reels/constraints/RequiredAdjacencyConstraint.js";
 import {RequiredSequenceConstraint} from "../reels/constraints/RequiredSequenceConstraint.js";
+import {StackConstraint} from "../reels/constraints/StackConstraint.js";
 import type {ReelStripConstraint} from "../reels/ReelStripConstraint.js";
 import type {ReelStripConstraintSpec} from "./ReelStripConstraintSpec.js";
 
@@ -31,6 +32,18 @@ export function createReelStripConstraintFromSpec(spec: ReelStripConstraintSpec)
                 spec.minimumOccurrences,
                 spec.maximumOccurrences,
                 spec.reversed,
+                spec.wrapAround,
+            );
+        case "stack":
+            return new StackConstraint(
+                spec.minimumLength,
+                spec.maximumLength,
+                spec.minimumStacks,
+                spec.maximumStacks,
+                spec.symbolIds,
+                spec.minimumSpacing,
+                spec.visibleWindowRows,
+                spec.maximumSymbolsInWindow,
                 spec.wrapAround,
             );
         default: {
