@@ -22,6 +22,10 @@ import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 // path. `project` is the full resolved PokieProject (not just `type`/`capabilities`) so a caller (see
 // StudioServer's own outcome-source sample route) can hand it straight to sampleOutcomeSourceProject
 // without re-resolving it a second time.
+//
+// "artifact" is the corresponding non-runtime state for a resolved PAR workbook. A workbook has no
+// game manifest or outcome-source reader, but it can be republished through Build/Export; routing it
+// here keeps that capability reachable without ever trying to materialize it as a runtime package.
 export type ProjectDashboardContext =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
@@ -39,6 +43,12 @@ export type ProjectDashboardContext =
           project: PokieProject;
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReport;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          project: PokieProject;
+          origin?: StudioProjectOrigin;
       }
     // `errorDetail` carries a failure's own raw technical diagnostic text, kept separate from `error`'s
     // plain-English summary -- currently only populated from a BlueprintMaterializationError's own

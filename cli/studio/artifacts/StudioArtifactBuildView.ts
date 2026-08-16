@@ -7,7 +7,13 @@ import type {ArtifactTargetType, ProjectType} from "pokie";
 // conflict (ArtifactBuildConflictError -- an existing, non-empty destination), or any other build failure
 // (e.g. an invalid blueprint for a "tsPackage" build).
 export type StudioArtifactBuildView =
-    | {readonly status: "ok"; readonly target: ArtifactTargetType; readonly outputPath: string; readonly sourceType: ProjectType}
+    | {
+          readonly status: "ok";
+          readonly target: ArtifactTargetType;
+          readonly outputPath: string;
+          readonly outputKind: "file" | "directory";
+          readonly sourceType: ProjectType;
+      }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string}
     | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string}
     | {readonly status: "error"; readonly message: string};

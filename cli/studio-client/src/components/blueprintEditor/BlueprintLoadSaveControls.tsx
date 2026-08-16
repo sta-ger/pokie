@@ -59,6 +59,7 @@ export function BlueprintLoadSaveControls({
                 browseTitle="Browse for a blueprint JSON file"
                 browseId="blueprint-save-path"
                 fileFilters={[{name: "JSON files", extensions: ["json"]}]}
+                filePickerMode="save"
                 value={savePath}
                 onChange={(event) => setSavePath(event.currentTarget.value)}
                 onPathSelected={setSavePath}

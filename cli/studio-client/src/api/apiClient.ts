@@ -36,6 +36,7 @@ import type {
     StudioNativePickerFileFilter,
     StudioNativePickerResultView,
     StudioOpenFolderView,
+    StudioRevealPathView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryRegistryView,
@@ -134,7 +135,16 @@ export async function openOutputFolder(fetchImpl: FetchLike, path: string): Prom
     return (await response.json()) as StudioOpenFolderView;
 }
 
-export type NativeBrowseRequest = {kind: "directory" | "file"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
+export async function revealOutputPath(fetchImpl: FetchLike, path: string): Promise<StudioRevealPathView> {
+    const response = await fetchImpl("/api/home/fs/reveal-path", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path}),
+    });
+    return (await response.json()) as StudioRevealPathView;
+}
+
+export type NativeBrowseRequest = {kind: "directory" | "file"; mode?: "open" | "save"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
 
 // Opens the system-native folder/file dialog on the machine running Studio's server. Never throws for a
 // domain-level outcome (cancelled/unavailable/error) — StudioNativePickerResultView's own `status` field

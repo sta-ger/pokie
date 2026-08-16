@@ -73,7 +73,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<Record<StudioArtifactTargetType, {labe
     stakeAdapter: {
         label: "Stake Engine export (republish)",
         purpose: "Republishes this project's own already-exported Stake Engine bundle to a new location -- never re-derives it from an outcome library (see the Static export group above for that).",
-        destination: "A new export directory (default: a \"stakeAdapter\" sibling of this project).",
+        destination: "A new Stake Engine export directory beside this project by default.",
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
@@ -110,7 +110,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 limits: entry.unsupportedNotes,
                 prerequisites: [],
                 locality: "local",
-                compatibility: `The exact same ArtifactBuilderRegistry conversion "pokie build <project> --target ${entry.target}" runs -- CLI and Studio always agree on what's buildable and what it writes.`,
+                compatibility: "The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.",
                 artifactTarget: entry.target,
             };
         });

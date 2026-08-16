@@ -1,13 +1,19 @@
-import type {StudioNativePickerFileFilter, StudioNativePickerKind} from "./StudioNativePickerService.js";
+import type {StudioNativePickerFileFilter, StudioNativePickerKind, StudioNativePickerMode} from "./StudioNativePickerService.js";
 
-export type NativeBrowseRequestInput = {kind?: unknown; startPath?: unknown; fileFilters?: unknown};
+export type NativeBrowseRequestInput = {kind?: unknown; mode?: unknown; startPath?: unknown; fileFilters?: unknown};
 
-export type ValidatedNativeBrowseRequest = {kind: StudioNativePickerKind; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
+export type ValidatedNativeBrowseRequest = {kind: StudioNativePickerKind; mode?: StudioNativePickerMode; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};
 
 export function validateNativeBrowseRequest(input: NativeBrowseRequestInput): ValidatedNativeBrowseRequest {
-    const {kind, startPath, fileFilters} = input;
+    const {kind, mode, startPath, fileFilters} = input;
     if (kind !== "directory" && kind !== "file") {
         throw new Error('"kind" must be either "directory" or "file".');
+    }
+    if (mode !== undefined && mode !== "open" && mode !== "save") {
+        throw new Error('"mode" must be either "open" or "save" when given.');
+    }
+    if (mode === "save" && kind !== "file") {
+        throw new Error('"mode" "save" is only valid when "kind" is "file".');
     }
     if (startPath !== undefined && typeof startPath !== "string") {
         throw new Error('"startPath" must be a string when given.');
@@ -17,6 +23,7 @@ export function validateNativeBrowseRequest(input: NativeBrowseRequestInput): Va
     }
     return {
         kind,
+        mode: mode as StudioNativePickerMode | undefined,
         startPath: startPath && startPath.trim().length > 0 ? startPath : undefined,
         fileFilters: fileFilters as StudioNativePickerFileFilter[] | undefined,
     };

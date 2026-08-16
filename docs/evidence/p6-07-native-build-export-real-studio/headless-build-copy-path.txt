@@ -1,0 +1,93 @@
+POKIE Studio
+/
+PAR sheet
+/
+
+Build/Export
+
+Overview
+Game Model
+
+ADVANCED
+
+Build/Export
+PAR sheet
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/examples/parsheets/starter.par.xlsx
+
+Close project
+
+Every applicable way this project can be built or leave Studio, grouped by what it actually does -- generating an outcome library is the source build step every other target here reads from, a static export writes a standalone bundle with nothing registered, and a remote deployment is a registered External Adapter SDK target, checked for compatibility before anything is published. Each card runs its own builder right here, against this project's own primary build mode (base) -- nothing here silently runs in the background, and nothing leaves this tab to do it.
+
+Refresh registered targets
+Outcome libraries
+
+Generates or selects the canonical outcome library every other builder below reads from -- a build step in its own right, not a delivery target.
+
+Nothing in this group yet.
+
+Static export
+
+Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.
+
+Nothing in this group yet.
+
+Build artifact
+
+Runs this project through pokie's own ArtifactBuilderRegistry -- the exact "pokie build <project> --target <target>" conversions the CLI itself offers, only ever listing a target this project's own resolved type actually supports.
+
+PAR sheet (.xlsx)
+
+LOCAL
+
+Adapter: ArtifactBuilderRegistry ("pokie build") (v--)
+
+Purpose: Republishes this project's own already-loaded PAR sheet to a new .xlsx workbook file -- never derives one from a package/blueprint.
+
+Destination: A new .xlsx file (default: "parWorkbook.xlsx" next to this project).
+
+Write / publish behavior: A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.
+
+Limits
+
+Exports an already-loaded PAR sheet model to its own .xlsx workbook format only -- does not derive a PAR sheet from a package/blueprint on its own.
+
+Compatibility: The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.
+
+Output file (optional)
+
+Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.
+
+Browse…
+
+"/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx" doesn't exist.
+
+Check the path, or use Browse to pick an existing location.
+
+Build preflight
+
+Target: PAR sheet (.xlsx)
+
+Selected destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx
+
+Resolved absolute path: /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx
+
+Output type: file
+
+Conflict state: Available
+
+Planned outputs: PAR workbook (.xlsx) file
+
+Build
+
+Built to /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx.
+
+Copy path
+
+Opening local output is unsupported from a headless or remote Studio session.
+
+Remote deployment
+
+A registered External Adapter SDK target, checked for compatibility before Publish is ever offered -- the SDK's own local-json-example demo target is deliberately never listed here (see ExportDeployTargets.ts's own doc comment); register a real target to replace this group's placeholder.
+
+Nothing in this group yet.

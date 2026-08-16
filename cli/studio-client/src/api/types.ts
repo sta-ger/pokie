@@ -74,6 +74,8 @@ export type OutcomeSourceSampleView =
 // neither type ever gains RUNTIME_EXECUTE_CAPABILITY, so there's no `game` manifest to load; `project`
 // carries the resolved project's own type/capabilities/rootPath directly (no separate optional fields,
 // unlike "loaded" -- this state is never reached without a successfully resolved project).
+// "artifact" is the equivalent state for an exchange-only PAR workbook: it has no game manifest or
+// outcome-source analysis, but its own capabilities still make Build/Export available.
 export type ProjectDashboardContext =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
@@ -91,6 +93,12 @@ export type ProjectDashboardContext =
           project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReportView;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+          origin?: StudioProjectOrigin;
       }
     // `errorDetail` -- a failed Blueprint materialization's own raw npm diagnostic, kept separate from
     // `error`'s already-curated human message (see the server's own ProjectDashboardContext doc comment) --
@@ -298,6 +306,10 @@ export type StudioDefaultLocationView = {status: "valid"; directory: string; sou
 // POST /api/home/fs/open-folder's own DTO — see cli/studio/home/StudioOpenFolderView.ts's own doc
 // comment.
 export type StudioOpenFolderView = {status: "ok"} | {status: "unavailable"; reason: string} | {status: "error"; message: string};
+
+// POST /api/home/fs/reveal-path mirrors open-folder, but accepts a file as well. The host opens the
+// file's containing directory, which is the portable "Reveal file" behavior available to Studio.
+export type StudioRevealPathView = StudioOpenFolderView;
 
 // Mirrors cli/studio/previewBuildDestination.ts's own BuildDestinationPreview — see that file's own
 // doc comment. Read-only: never the result of anything being created/modified on disk.
@@ -1168,7 +1180,7 @@ export type StudioArtifactTargetView = {
 // doc comment. Mirrors ArtifactBuilderRegistry.build()'s own outcomes exactly: a successful build's
 // outputPath/sourceType, an unsupported conversion, a destination conflict, or any other build failure.
 export type StudioArtifactBuildView =
-    | {status: "ok"; target: StudioArtifactTargetType; outputPath: string; sourceType: StudioProjectType}
+    | {status: "ok"; target: StudioArtifactTargetType; outputPath: string; outputKind: "file" | "directory"; sourceType: StudioProjectType}
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string}
     | {status: "error"; message: string};
@@ -1178,7 +1190,21 @@ export type StudioArtifactBuildView =
 // target/destination/sourceType and the same capability/conflict diagnostics a subsequent build would
 // report, computed without ever writing anything.
 export type StudioArtifactPreviewView =
-    | {status: "ok"; target: StudioArtifactTargetType; destination: string; sourceType: StudioProjectType}
+    | {
+          status: "ok";
+          target: StudioArtifactTargetType;
+          destination: string;
+          destinationKind: "file" | "directory";
+          plannedOutputs: string[];
+          sourceType: StudioProjectType;
+      }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
-    | {status: "conflict"; target: StudioArtifactTargetType; destination: string; message: string}
+    | {
+          status: "conflict";
+          target: StudioArtifactTargetType;
+          destination: string;
+          destinationKind: "file" | "directory";
+          plannedOutputs: string[];
+          message: string;
+      }
     | {status: "error"; message: string};

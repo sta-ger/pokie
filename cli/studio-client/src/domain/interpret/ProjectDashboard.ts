@@ -37,6 +37,13 @@ export type ProjectHeaderView =
           capabilities: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReportView;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          type: StudioProjectType;
+          capabilities: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
       };
 
 export function describeProjectHeader(context: ProjectDashboardContext): ProjectHeaderView {
@@ -57,6 +64,15 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
             capabilities: context.project.capabilities,
             origin: context.origin,
             report: context.report,
+        };
+    }
+    if (context.status === "artifact") {
+        return {
+            status: "artifact",
+            projectRoot: context.projectRoot,
+            type: context.project.type,
+            capabilities: context.project.capabilities,
+            origin: context.origin,
         };
     }
     return {
@@ -114,6 +130,12 @@ export const OUTCOME_SOURCE_SAMPLE_CAPABILITY: StudioProjectCapability = "outcom
 // still reach the Build/Export section (to republish itself), even though it can never generate a fresh
 // outcome library or be drawn from.
 export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stakeAdapter.exchange";
+
+// Granted only to "parWorkbook" (see PROJECT_TYPE_CAPABILITIES) -- lets Studio's Build/Export tab
+// republish an already-loaded PAR workbook through the ArtifactBuilderRegistry.  This is deliberately
+// distinct from the runtime and outcome-source capabilities: a workbook can be copied to a new .xlsx
+// destination, but it cannot be loaded as a game or treated as a canonical outcome source.
+export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWorkbook.exchange";
 
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",

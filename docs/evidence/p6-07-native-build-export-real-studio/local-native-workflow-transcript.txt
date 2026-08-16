@@ -1,0 +1,12 @@
+[2026-08-16T23:17:27.655Z] OBSERVE local Studio dashboard exposes Build/Export for starter.par.xlsx.
+[2026-08-16T23:17:27.689Z] CLICK Build/Export at visible coordinates (130, 211).
+[2026-08-16T23:17:27.955Z] OBSERVE rendered PAR-sheet artifact card and Build preflight.
+[2026-08-16T23:17:27.992Z] CLICK Browse… at visible coordinates (945, 514).
+[2026-08-16T23:17:29.102Z] OBSERVE native Save dialog window 18874372: zenity.
+[2026-08-16T23:17:29.431Z] NATIVE SAVE selected /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/native-par-output.xlsx through the visible dialog location field.
+[2026-08-16T23:17:30.904Z] CAPTURE local-after-native-save-selection.png and local-after-native-save-selection.txt.
+[2026-08-16T23:17:30.945Z] CLICK Build at visible coordinates (329, 730).
+[2026-08-16T23:17:31.207Z] OBSERVE completed PAR workbook build at /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/native-par-output.xlsx.
+[2026-08-16T23:17:31.243Z] CLICK Reveal file at visible coordinates (344, 718).
+[2026-08-16T23:17:31.494Z] CLICK Reveal file in the completed local build actions.
+[2026-08-16T23:17:31.788Z] CAPTURE local-built-and-revealed.png and local-built-and-revealed.txt.

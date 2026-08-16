@@ -28,6 +28,9 @@ type PathInputProps = TextInputProps & {
     // suggestion) -- every other caller omits it.
     defaultLocationName?: string;
     fileFilters?: StudioNativePickerFileFilter[];
+    // File controls that create an artifact use the host's native Save dialog, including a filename
+    // field and overwrite confirmation.  Existing-file controls retain the normal Open dialog.
+    filePickerMode?: "open" | "save";
     // What a blank field actually resolves to once submitted as `undefined` -- e.g. Build's own
     // "<project root>/<manifest.id>" default output directory. Resolved the same way a typed value
     // would be (relative to `relevantDirectory`/Studio's root), so the blank-field hint shows the real
@@ -101,6 +104,7 @@ export function PathInput({
     relevantDirectory,
     defaultLocationName,
     fileFilters,
+    filePickerMode = "open",
     autoDestinationPath,
     value,
     defaultValue,
@@ -164,7 +168,7 @@ export function PathInput({
             if (kind !== "any") {
                 const availability = await checkNativePickerAvailability(fetchImpl);
                 if (availability.status === "available") {
-                    const result = await pickNativePath(fetchImpl, {kind, startPath: startLocation, fileFilters});
+                    const result = await pickNativePath(fetchImpl, {kind, mode: kind === "file" ? filePickerMode : undefined, startPath: startLocation, fileFilters});
                     if (result.status === "selected") {
                         rememberAndSelect(result.path);
                         return;

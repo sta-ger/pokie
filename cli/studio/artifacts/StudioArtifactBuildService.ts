@@ -8,6 +8,30 @@ import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 // destination needs a real file extension, mirroring BuildCommand's own PAR_WORKBOOK_DEFAULT_EXTENSION.
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 
+function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
+    return target === "parWorkbook" ? "file" : "directory";
+}
+
+// This is intentionally a compact, target-level plan rather than a guessed inventory of generated
+// files. Builders remain free to evolve their internal package layouts; the preflight promises the
+// stable artifact(s) a user is choosing to create, without lying about incidental implementation files.
+function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
+    switch (target) {
+        case "tsPackage":
+            return ["Runnable TypeScript game package directory"];
+        case "outcomeLibrary":
+            return ["Outcome library bundle directory"];
+        case "stakeAdapter":
+            return ["Stake Engine export directory"];
+        case "parWorkbook":
+            return ["PAR workbook (.xlsx) file"];
+        case "wasm":
+            return ["WASM artifact"];
+        default:
+            throw new Error(`Unknown artifact target: ${target}`);
+    }
+}
+
 // The default destination when a build request omits "outDir" -- a `target`-named sibling of the
 // resolved project's own rootPath, the exact same default BuildCommand.resolveDestination() computes for
 // a bare `pokie build <project> --target <target>` (no --out). Keeping this identical means Studio's own
@@ -71,6 +95,8 @@ export class StudioArtifactBuildService {
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
         }
         const {project, destination} = resolved;
+        const destinationKind = destinationKindFor(target);
+        const plannedOutputs = plannedOutputsFor(target);
 
         if (!this.registry.supportsConversionFrom(target, project.type)) {
             return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
@@ -78,10 +104,10 @@ export class StudioArtifactBuildService {
 
         const destinationCheck = this.registry.checkDestination(target, destination);
         if (!destinationCheck.available) {
-            return {status: "conflict", target, destination, message: destinationCheck.message};
+            return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: destinationCheck.message};
         }
 
-        return {status: "ok", target, destination, sourceType: project.type};
+        return {status: "ok", target, destination, destinationKind, plannedOutputs, sourceType: project.type};
     }
 
     // Executes a real build against the active project -- resolves `projectRoot` into a PokieProject
@@ -105,7 +131,7 @@ export class StudioArtifactBuildService {
 
         try {
             const result = await this.registry.build(target, project, destination);
-            return {status: "ok", target, outputPath: result.outputPath, sourceType: project.type};
+            return {status: "ok", target, outputPath: result.outputPath, outputKind: destinationKindFor(target), sourceType: project.type};
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 return {status: "conflict", target, message: error.message};

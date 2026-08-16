@@ -91,6 +91,22 @@ describe("describeProjectHeader", () => {
             origin: "managed",
         });
     });
+
+    it("preserves an exchange-only artifact's own capability for Build/Export", () => {
+        expect(
+            describeProjectHeader({
+                status: "artifact",
+                projectRoot: "/a/sheet.xlsx",
+                project: {type: "parWorkbook", rootPath: "/a/sheet.xlsx", capabilities: ["parWorkbook.exchange"], provenance: "test workbook"},
+            }),
+        ).toEqual({
+            status: "artifact",
+            projectRoot: "/a/sheet.xlsx",
+            type: "parWorkbook",
+            capabilities: ["parWorkbook.exchange"],
+            origin: undefined,
+        });
+    });
 });
 
 describe("describeValidationSummary", () => {

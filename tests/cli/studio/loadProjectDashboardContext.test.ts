@@ -1,4 +1,7 @@
+import ExcelJS from "exceljs";
 import {PokieGame, PokieGameManifest} from "pokie";
+import fs from "fs";
+import os from "os";
 import path from "path";
 import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
 
@@ -84,5 +87,31 @@ describe("loadProjectDashboardContext", () => {
         const loadGame = jest.fn().mockRejectedValue(new Error("boom"));
 
         await expect(loadProjectDashboardContext("./broken-game", loadGame)).resolves.not.toThrow();
+    });
+
+    it("opens a PAR workbook as an exchange-only artifact without materializing or loading a runtime", async () => {
+        const loadGame = jest.fn();
+        const resolveRuntimePackageRoot = jest.fn();
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-par-dashboard-test-"));
+        const workbookPath = path.join(workDir, "sheet.xlsx");
+        const workbook = new ExcelJS.Workbook();
+        workbook.addWorksheet("Manifest");
+        workbook.addWorksheet("Symbols");
+        workbook.addWorksheet("Paytable");
+
+        try {
+            await workbook.xlsx.writeFile(workbookPath);
+            const dashboard = await loadProjectDashboardContext(workbookPath, loadGame, resolveRuntimePackageRoot);
+
+            expect(dashboard).toMatchObject({
+                status: "artifact",
+                projectRoot: workbookPath,
+                project: {type: "parWorkbook", rootPath: workbookPath, capabilities: ["parWorkbook.exchange"]},
+            });
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 });

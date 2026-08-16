@@ -461,6 +461,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/fs/reveal-path") {
+            await this.handleHomeFsRevealPath(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/validate") {
             await this.handleBlueprintValidate(req, res);
             return;
@@ -971,13 +976,13 @@ export class StudioServer implements StudioServerHandling {
         }
 
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
-        // "loaded", "outcome-source", or "error" — "empty"/"loading" are exclusively synthesized
+        // "loaded", "outcome-source", "artifact", or "error" — "empty"/"loading" are exclusively synthesized
         // elsewhere in this class. A resolved "outcomeLibrary"/"stakeAdapter" project opens straight
-        // into its own canonical-reader-backed dashboard (see ProjectDashboardContext's own doc
-        // comment) rather than failing here the way it always used to before that status existed —
-        // neither type ever gains a `game` manifest to report back.
+        // into its own canonical-reader-backed dashboard, while a PAR workbook opens as its own
+        // exchange-only artifact (see ProjectDashboardContext's own doc comment); neither carries a
+        // `game` manifest to report back.
         const dashboard = await this.homeService.openProject(validated.projectRoot);
-        if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source") {
+        if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
             const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
             // "detail" -- e.g. a failed materialization "npm install"'s own raw stderr (see
             // ProjectDashboardContext's own doc comment on "errorDetail") -- rides alongside the primary
@@ -1088,6 +1093,33 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.openFolder(validated.path);
+        this.sendJson(res, 200, {status: "ok"});
+    }
+
+    // The file counterpart to Open output folder. Opening the containing folder is deliberately used
+    // across platforms: it is the only common host operation available through openInFileManager while
+    // still taking the user directly to the produced file.
+    private async handleHomeFsRevealPath(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOpenFolderRequest((body ?? {}) as OpenFolderRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+        if (!this.isLoopbackRequest(req)) {
+            this.sendJson(res, 200, {
+                status: "unavailable",
+                reason: "Revealing a file is only available to a Studio session connecting from the same machine running its server.",
+            });
+            return;
+        }
+        if (!fs.existsSync(validated.path)) {
+            this.sendJson(res, 200, {status: "error", message: `"${validated.path}" does not exist.`});
+            return;
+        }
+        this.openFolder(fs.statSync(validated.path).isDirectory() ? validated.path : path.dirname(validated.path));
         this.sendJson(res, 200, {status: "ok"});
     }
 

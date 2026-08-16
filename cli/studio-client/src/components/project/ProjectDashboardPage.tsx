@@ -22,6 +22,7 @@ import {
     describeValidationSummary,
     OUTCOME_LIBRARY_READ_CAPABILITY,
     OUTCOME_SOURCE_SAMPLE_CAPABILITY,
+    PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     PROJECT_TYPE_LABEL,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
@@ -80,12 +81,14 @@ const OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [.
 // What Build/Export needs to be reachable at all -- either runtime-executable (able to generate/build/export
 // its own outputs) or already *is* a canonical outcome-source project ExportDeployTargets.ts's own capability-
 // driven cards already know how to read from (OUTCOME_LIBRARY_READ_CAPABILITY: republish/export an existing
-// native library; STAKE_ADAPTER_EXCHANGE_CAPABILITY: republish an existing Stake Engine export) -- see that
-// module's own canReachCanonicalOutcomeLibrary/describeExportDeployTargetCards.
+// native library; STAKE_ADAPTER_EXCHANGE_CAPABILITY: republish an existing Stake Engine export;
+// PAR_WORKBOOK_EXCHANGE_CAPABILITY: republish an existing PAR workbook through the native file-save
+// destination card) -- see that module's own describeArtifactBuildTargetCards.
 const BUILD_EXPORT_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
     ...RUNTIME_CAPABLE_CAPABILITIES,
     OUTCOME_LIBRARY_READ_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
+    PAR_WORKBOOK_EXCHANGE_CAPABILITY,
 ];
 
 // Certification builds/verifies an evidence bundle on top of an already-computed native outcome library --
@@ -130,8 +133,9 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // library does. A deep link to one of the old routes now simply falls back to Overview (see
 // isProjectTab/activeTab below) like any other unrecognized tab value, rather than being kept alive
 // merely for pre-release compatibility. Also reachable for a resolved "outcomeLibrary"/"stakeAdapter"
-// project (see BUILD_EXPORT_CAPABLE_CAPABILITIES) -- neither can generate a fresh library, but each can
-// still republish/export the canonical outcome source it already is.
+// project (see BUILD_EXPORT_CAPABLE_CAPABILITIES) -- an outcome library or Stake Engine export can
+// republish its canonical outcome source, while a PAR workbook can republish itself through its .xlsx
+// file-save card.
 //
 // "overview" carries no `requiredCapabilities` -- it's always reachable once a project is loaded, but its
 // own *content* still varies by resolved type (OverviewTab for a "loaded" project; OutcomeSourceOverview's
@@ -204,7 +208,7 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): b
         return true;
     }
     return (
-        (header.status === "loaded" || header.status === "outcome-source") &&
+        (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") &&
         tab.requiredCapabilities.some((capability) => header.capabilities.includes(capability))
     );
 }
@@ -237,6 +241,9 @@ function describeProjectName(header: ProjectHeaderView): string {
     if (header.status === "outcome-source") {
         return PROJECT_TYPE_LABEL[header.type];
     }
+    if (header.status === "artifact") {
+        return PROJECT_TYPE_LABEL[header.type];
+    }
     return "Project";
 }
 
@@ -265,12 +272,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const header = useProjectContext(requestedProjectRoot);
     const projectKey =
-        header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
-    // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
-    // own content needs "this project's resolved capabilities" without caring whether it's a "loaded"
-    // (game-backed) or "outcome-source" (canonical-reader-backed) resolution (see GameModelTab's
-    // `editable`/ExportDeployTab's `capabilities` props below).
-    const headerCapabilities = header.status === "loaded" || header.status === "outcome-source" ? header.capabilities : [];
+        header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
+            ? header.projectRoot
+            : undefined;
+    // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
+    // own content needs its capabilities without caring whether the project is game-backed, canonical-
+    // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
+    // `capabilities` props below).
+    const headerCapabilities = header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact" ? header.capabilities : [];
     // The real, canonical mode list a resolved "outcomeLibrary"/"stakeAdapter" project's own reader
     // reports (see OutcomeSourceOverview's own "Mode" table, which reads this exact same list) -- the one
     // source of truth Play/Simulation/Replay's own mode pickers below are built from, never a free-text
@@ -809,7 +818,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     <ErrorState message={header.message} detail={header.errorDetail} />
                 </div>
             )}
-            {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source") && (
+            {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
                 <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
                     {!activeTabSupported && activeTabDescriptor !== undefined && <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />}
                     {activeTabSupported && (
@@ -819,6 +828,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                             {activeTab === "overview" && header.status === "outcome-source" && (
                                 <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
+                            )}
+                            {activeTab === "overview" && header.status === "artifact" && (
+                                <Text>This {PROJECT_TYPE_LABEL[header.type].toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (
                             // GameModelTab owns all of its own fetch state locally (no page-level hook),

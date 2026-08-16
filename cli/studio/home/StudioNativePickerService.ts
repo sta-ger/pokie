@@ -5,11 +5,15 @@ import {defaultPlatformDirectoryEnvironment, PlatformDirectoryEnvironment} from 
 const execFileAsync = util.promisify(childProcess.execFile);
 
 export type StudioNativePickerKind = "directory" | "file";
+export type StudioNativePickerMode = "open" | "save";
 
 export type StudioNativePickerFileFilter = {name: string; extensions: string[]};
 
 export type StudioNativePickerRequest = {
     kind: StudioNativePickerKind;
+    // A file destination is not an existing file to open.  Keep that distinction in the host bridge so
+    // Save/Export never misleadingly opens an "Open file" dialog just because both values are paths.
+    mode?: StudioNativePickerMode;
     startPath?: string;
     fileFilters?: StudioNativePickerFileFilter[];
 };
@@ -181,8 +185,15 @@ function escapeAppleScriptString(value: string): string {
 // here.
 function buildAppleScript(request: StudioNativePickerRequest): string {
     const startClause = request.startPath ? ` default location (POSIX file "${escapeAppleScriptString(request.startPath)}")` : "";
-    const prompt = request.kind === "directory" ? "Select a folder" : "Select a file";
-    const command = request.kind === "directory" ? "choose folder" : "choose file";
+    let prompt = "Select a file";
+    let command = "choose file";
+    if (request.kind === "directory") {
+        prompt = "Select a folder";
+        command = "choose folder";
+    } else if (request.mode === "save") {
+        prompt = "Save file as";
+        command = "choose file name";
+    }
     return `set chosenItem to ${command}${startClause} with prompt "${prompt}"\nreturn POSIX path of chosenItem`;
 }
 
@@ -217,7 +228,7 @@ function buildPowerShellScript(request: StudioNativePickerRequest): string {
     }
     return [
         "Add-Type -AssemblyName System.Windows.Forms",
-        "$dialog = New-Object System.Windows.Forms.OpenFileDialog",
+        `$dialog = New-Object System.Windows.Forms.${request.mode === "save" ? "SaveFileDialog" : "OpenFileDialog"}`,
         `$dialog.Filter = '${escapePowerShellString(buildWindowsFilterString(request.fileFilters))}'`,
         startPath ? `$dialog.InitialDirectory = '${startPath}'` : "",
         "$result = $dialog.ShowDialog()",
@@ -234,9 +245,17 @@ function buildZenityArgs(request: StudioNativePickerRequest): string[] {
     const args = ["--file-selection"];
     if (request.kind === "directory") {
         args.push("--directory");
+    } else if (request.mode === "save") {
+        args.push("--save", "--confirm-overwrite");
     }
     if (request.startPath) {
-        args.push(`--filename=${request.startPath.endsWith("/") ? request.startPath : `${request.startPath}/`}`);
+        // Zenity's Save dialog accepts a full suggested filename, whereas its open/directory dialogs
+        // interpret --filename as a starting folder and need the trailing slash.
+        let initialPath = request.startPath;
+        if (request.mode !== "save" && !initialPath.endsWith("/")) {
+            initialPath = `${initialPath}/`;
+        }
+        args.push(`--filename=${initialPath}`);
     }
     for (const filter of request.fileFilters ?? []) {
         args.push(`--file-filter=${filter.name} | ${filter.extensions.map((ext) => `*.${ext}`).join(" ")}`);
@@ -248,7 +267,7 @@ function buildKdialogArgs(request: StudioNativePickerRequest): string[] {
     if (request.kind === "directory") {
         return ["--getexistingdirectory", request.startPath ?? "."];
     }
-    const args = ["--getopenfilename", request.startPath ?? "."];
+    const args = [request.mode === "save" ? "--getsavefilename" : "--getopenfilename", request.startPath ?? "."];
     if (request.fileFilters && request.fileFilters.length > 0) {
         args.push(request.fileFilters.map((filter) => `${filter.extensions.map((ext) => `*.${ext}`).join(" ")}|${filter.name}`).join("\n"));
     }

@@ -1,0 +1,12 @@
+[2026-08-16T23:18:01.909Z] OBSERVE headless Studio dashboard exposes Build/Export for starter.par.xlsx.
+[2026-08-16T23:18:01.969Z] CLICK Build/Export at visible coordinates (130, 211).
+[2026-08-16T23:18:02.230Z] OBSERVE rendered PAR-sheet artifact card and Build preflight.
+[2026-08-16T23:18:02.265Z] CLICK Output file destination input at visible coordinates (591, 514).
+[2026-08-16T23:18:02.579Z] TYPE /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx into the visible Output file destination input.
+[2026-08-16T23:18:03.185Z] CAPTURE headless-preflight.png and headless-preflight.txt.
+[2026-08-16T23:18:03.210Z] CLICK Build at visible coordinates (329, 730).
+[2026-08-16T23:18:03.472Z] OBSERVE completed PAR workbook build at /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/host-verification-cca29390/artifacts/headless-par-output.xlsx.
+[2026-08-16T23:18:03.489Z] OBSERVE Copy path and the explicit unsupported-local-output message.
+[2026-08-16T23:18:03.521Z] CLICK Copy path at visible coordinates (343, 718).
+[2026-08-16T23:18:03.773Z] CLICK Copy path in the completed headless build actions.
+[2026-08-16T23:18:04.182Z] CAPTURE headless-built-copy-path.png and headless-built-copy-path.txt.

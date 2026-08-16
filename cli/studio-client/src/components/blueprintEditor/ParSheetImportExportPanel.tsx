@@ -436,6 +436,7 @@ export function ParSheetImportExportPanel({
                                 browseTitle="Browse for a PAR sheet destination"
                                 browseId="par-sheet-export-path"
                                 fileFilters={[{name: "PAR sheets", extensions: ["xlsx"]}]}
+                                filePickerMode="save"
                                 value={exportPath}
                                 onChange={(event) => handleExportPathChange(event.currentTarget.value)}
                                 onPathSelected={handleExportPathChange}
