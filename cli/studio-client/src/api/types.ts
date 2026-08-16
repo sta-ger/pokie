@@ -74,6 +74,8 @@ export type OutcomeSourceSampleView =
 // neither type ever gains RUNTIME_EXECUTE_CAPABILITY, so there's no `game` manifest to load; `project`
 // carries the resolved project's own type/capabilities/rootPath directly (no separate optional fields,
 // unlike "loaded" -- this state is never reached without a successfully resolved project).
+// "artifact" is the equivalent state for an exchange-only PAR workbook: it has no game manifest or
+// outcome-source analysis, but its own capabilities still make Build/Export available.
 export type ProjectDashboardContext =
     | {status: "empty"}
     | {status: "loading"; projectRoot: string}
@@ -91,6 +93,12 @@ export type ProjectDashboardContext =
           project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReportView;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          project: {type: StudioProjectType; rootPath: string; capabilities: StudioProjectCapability[]; provenance: string};
+          origin?: StudioProjectOrigin;
       }
     // `errorDetail` -- a failed Blueprint materialization's own raw npm diagnostic, kept separate from
     // `error`'s already-curated human message (see the server's own ProjectDashboardContext doc comment) --

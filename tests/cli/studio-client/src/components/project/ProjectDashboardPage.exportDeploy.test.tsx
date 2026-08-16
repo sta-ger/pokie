@@ -62,6 +62,54 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
 }
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
+    it("keeps an exchange-only PAR workbook on the Build/Export path and shows its native file preflight", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "artifact",
+                    projectRoot: "/games/sheet.xlsx",
+                    project: {type: "parWorkbook", rootPath: "/games/sheet.xlsx", capabilities: ["parWorkbook.exchange"], provenance: "test workbook"},
+                },
+            }),
+            "/api/project/artifacts/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {target: "tsPackage", supported: false, unsupportedNotes: []},
+                    {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+                    {target: "stakeAdapter", supported: false, unsupportedNotes: []},
+                    {target: "parWorkbook", supported: true, unsupportedNotes: []},
+                    {target: "wasm", supported: false, unsupportedNotes: []},
+                ],
+            }),
+            "/api/project/artifacts/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    target: "parWorkbook",
+                    destination: "/games/republished-sheet.xlsx",
+                    destinationKind: "file",
+                    plannedOutputs: ["PAR workbook (.xlsx) file"],
+                    sourceType: "parWorkbook",
+                },
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "PAR sheet"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
+    });
+
     it("classifies Outcome libraries and Stake Engine Export as builder cards, never surfaces the local-json-example demo target, and falls back to the remote-deployment placeholder when nothing else is registered", async () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});

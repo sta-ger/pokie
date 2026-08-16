@@ -976,13 +976,13 @@ export class StudioServer implements StudioServerHandling {
         }
 
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
-        // "loaded", "outcome-source", or "error" — "empty"/"loading" are exclusively synthesized
+        // "loaded", "outcome-source", "artifact", or "error" — "empty"/"loading" are exclusively synthesized
         // elsewhere in this class. A resolved "outcomeLibrary"/"stakeAdapter" project opens straight
-        // into its own canonical-reader-backed dashboard (see ProjectDashboardContext's own doc
-        // comment) rather than failing here the way it always used to before that status existed —
-        // neither type ever gains a `game` manifest to report back.
+        // into its own canonical-reader-backed dashboard, while a PAR workbook opens as its own
+        // exchange-only artifact (see ProjectDashboardContext's own doc comment); neither carries a
+        // `game` manifest to report back.
         const dashboard = await this.homeService.openProject(validated.projectRoot);
-        if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source") {
+        if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
             const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
             // "detail" -- e.g. a failed materialization "npm install"'s own raw stderr (see
             // ProjectDashboardContext's own doc comment on "errorDetail") -- rides alongside the primary

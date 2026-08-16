@@ -208,7 +208,7 @@ function isTabSupported(tab: ProjectTabDescriptor, header: ProjectHeaderView): b
         return true;
     }
     return (
-        (header.status === "loaded" || header.status === "outcome-source") &&
+        (header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact") &&
         tab.requiredCapabilities.some((capability) => header.capabilities.includes(capability))
     );
 }
@@ -241,6 +241,9 @@ function describeProjectName(header: ProjectHeaderView): string {
     if (header.status === "outcome-source") {
         return PROJECT_TYPE_LABEL[header.type];
     }
+    if (header.status === "artifact") {
+        return PROJECT_TYPE_LABEL[header.type];
+    }
     return "Project";
 }
 
@@ -269,12 +272,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const header = useProjectContext(requestedProjectRoot);
     const projectKey =
-        header.status === "loaded" || header.status === "error" || header.status === "outcome-source" ? header.projectRoot : undefined;
-    // The only two ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
-    // own content needs "this project's resolved capabilities" without caring whether it's a "loaded"
-    // (game-backed) or "outcome-source" (canonical-reader-backed) resolution (see GameModelTab's
-    // `editable`/ExportDeployTab's `capabilities` props below).
-    const headerCapabilities = header.status === "loaded" || header.status === "outcome-source" ? header.capabilities : [];
+        header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
+            ? header.projectRoot
+            : undefined;
+    // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
+    // own content needs its capabilities without caring whether the project is game-backed, canonical-
+    // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
+    // `capabilities` props below).
+    const headerCapabilities = header.status === "loaded" || header.status === "outcome-source" || header.status === "artifact" ? header.capabilities : [];
     // The real, canonical mode list a resolved "outcomeLibrary"/"stakeAdapter" project's own reader
     // reports (see OutcomeSourceOverview's own "Mode" table, which reads this exact same list) -- the one
     // source of truth Play/Simulation/Replay's own mode pickers below are built from, never a free-text
@@ -813,7 +818,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     <ErrorState message={header.message} detail={header.errorDetail} />
                 </div>
             )}
-            {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source") && (
+            {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
                 <div ref={panelRef} tabIndex={-1} style={{marginTop: "1rem"}}>
                     {!activeTabSupported && activeTabDescriptor !== undefined && <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />}
                     {activeTabSupported && (
@@ -823,6 +828,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                             {activeTab === "overview" && header.status === "outcome-source" && (
                                 <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
+                            )}
+                            {activeTab === "overview" && header.status === "artifact" && (
+                                <Text>This {PROJECT_TYPE_LABEL[header.type].toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (
                             // GameModelTab owns all of its own fetch state locally (no page-level hook),

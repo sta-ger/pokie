@@ -15,9 +15,9 @@ const noDescribeLocation: ProjectLocationDescribing = () => Promise.resolve(unde
 
 // Resolves `projectRoot` to its own canonical outcome-source exact analysis when (and only when) it
 // resolves to an "outcomeLibrary"/"stakeAdapter" PokieProject -- `undefined` for every other resolved
-// type (or an unresolvable/ambiguous/unreadable location), so loadProjectDashboardContext falls straight
-// through to the ordinary loadGame path exactly as it always has. Injectable so a test never touches the
-// real filesystem/canonical readers; defaults to a real ProjectTargetResolver/OutcomeSourceProjectAnalyzer
+// type (or an unresolvable/ambiguous/unreadable location), so loadProjectDashboardContext can next check
+// for an exchange-only artifact and otherwise fall through to the ordinary loadGame path. Injectable so a
+// test never touches the real filesystem/canonical readers; defaults to a real ProjectTargetResolver/OutcomeSourceProjectAnalyzer
 // pair, mirroring ReportCommand's/OutcomeSourceCommand's own default wiring -- neither has any
 // construction-time dependency of its own, so (unlike resolveRuntimePackageRoot/describeLocation above)
 // there's no reason to default this to a no-op.
@@ -32,6 +32,16 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
     }
     const report = await new OutcomeSourceProjectAnalyzer().analyze(project);
     return {project, report};
+};
+
+// Resolves an already-built artifact that Studio can operate on without a game runtime. PAR workbooks
+// are intentionally kept separate from outcome-source projects: they have no canonical analysis to
+// report, only the `parWorkbook.exchange` capability Build/Export needs to republish the workbook.
+export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
+
+const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRoot) => {
+    const project = await new ProjectTargetResolver().resolve(projectRoot).catch(() => undefined);
+    return project?.type === "parWorkbook" ? project : undefined;
 };
 
 // Adapts loadPokieGame's throw-on-failure contract into ProjectDashboardContext's safe, typed
@@ -63,6 +73,7 @@ export async function loadProjectDashboardContext(
     resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
     describeLocation: ProjectLocationDescribing = noDescribeLocation,
     resolveOutcomeSourceProject: OutcomeSourceProjectResolving = defaultResolveOutcomeSourceProject,
+    resolveArtifactProject: ArtifactProjectResolving = defaultResolveArtifactProject,
 ): Promise<ProjectDashboardContext> {
     const resolvedRoot = path.resolve(projectRoot);
 
@@ -70,7 +81,7 @@ export async function loadProjectDashboardContext(
     // "stakeAdapter" `projectRoot` has no materialized runtime to load at all (neither type ever gains
     // RUNTIME_EXECUTE_CAPABILITY), so attempting the ordinary path below would always fail with an
     // UnsupportedProjectOperationError. `undefined` here means "not one of those two types" (or
-    // unresolvable), so every existing tsPackage/blueprint/wasm/parWorkbook caller falls straight through
+    // unresolvable), so every existing tsPackage/blueprint/wasm caller falls straight through
     // to the unchanged path below.
     const outcomeSource = await resolveOutcomeSourceProject(projectRoot).catch(() => undefined);
     if (outcomeSource !== undefined) {
@@ -81,6 +92,20 @@ export async function loadProjectDashboardContext(
             project: outcomeSource.project,
             origin: identity?.origin,
             report: outcomeSource.report,
+        };
+    }
+
+    // A PAR workbook is a directly exchangeable artifact, not a runtime package. Do this before the
+    // materializing boundary below so opening it reaches Build/Export instead of failing with the
+    // unrelated `runtime.execute` diagnostic.
+    const artifact = await resolveArtifactProject(projectRoot).catch(() => undefined);
+    if (artifact !== undefined) {
+        const identity = await describeLocation(projectRoot).catch(() => undefined);
+        return {
+            status: "artifact",
+            projectRoot: resolvedRoot,
+            project: artifact,
+            origin: identity?.origin,
         };
     }
 

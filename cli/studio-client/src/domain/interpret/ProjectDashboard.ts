@@ -37,6 +37,13 @@ export type ProjectHeaderView =
           capabilities: StudioProjectCapability[];
           origin?: StudioProjectOrigin;
           report: OutcomeSourceProjectReportView;
+      }
+    | {
+          status: "artifact";
+          projectRoot: string;
+          type: StudioProjectType;
+          capabilities: StudioProjectCapability[];
+          origin?: StudioProjectOrigin;
       };
 
 export function describeProjectHeader(context: ProjectDashboardContext): ProjectHeaderView {
@@ -57,6 +64,15 @@ export function describeProjectHeader(context: ProjectDashboardContext): Project
             capabilities: context.project.capabilities,
             origin: context.origin,
             report: context.report,
+        };
+    }
+    if (context.status === "artifact") {
+        return {
+            status: "artifact",
+            projectRoot: context.projectRoot,
+            type: context.project.type,
+            capabilities: context.project.capabilities,
+            origin: context.origin,
         };
     }
     return {
