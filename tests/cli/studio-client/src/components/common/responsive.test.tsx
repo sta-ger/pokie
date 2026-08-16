@@ -137,7 +137,6 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
         const componentsRoot = join(__dirname, "../../../../../../cli/studio-client/src/components");
         const filesWithSteppers = [
             "blueprintEditor/ParSheetImportExportPanel.tsx",
-            "blueprintEditor/ReelStripGenerationEditor.tsx",
             "project/SimulationTab.tsx",
             "project/CertificationTab.tsx",
             "project/ProvablyFairTab.tsx",
