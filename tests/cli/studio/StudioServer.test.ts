@@ -1561,7 +1561,8 @@ describe("StudioServer", () => {
 
             beforeEach(async () => {
                 managedWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-managed-work-"));
-                const managedHomeService = new StudioHomeService("1.0.0");
+                const managedLoadGame = jest.fn().mockResolvedValue(createFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
+                const managedHomeService = new StudioHomeService("1.0.0", undefined, managedLoadGame);
                 managedRegistry = new InMemoryStudioProjectRegistry();
                 // Points PokiePathResolver.resolveIndependentProjectDirectory's own "POKIE Projects/<name>"
                 // convention at this test's own temp directory instead of the real machine's Documents/Home
@@ -1636,6 +1637,37 @@ describe("StudioServer", () => {
                 const entries = await managedRegistry.list();
                 expect(entries).toHaveLength(1);
                 expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot", origin: "managed", type: "blueprint"});
+            });
+
+            it("serves only declared artwork from a reopened managed Blueprint directory", async () => {
+                const projectDirectory = path.join(managedWorkDir, "POKIE Projects", "sample-slot");
+                const reference = "assets/symbols/gold.png";
+                const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+                const saved = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: buildBlueprint({symbolArtwork: {A: reference, B: "assets/symbols/missing.png"}}),
+                });
+                expect(saved.status).toBe(201);
+                fs.mkdirSync(path.join(projectDirectory, "assets", "symbols"), {recursive: true});
+                fs.writeFileSync(path.join(projectDirectory, reference), png);
+                fs.writeFileSync(path.join(projectDirectory, "assets", "symbols", "undeclared.png"), png);
+
+                expect((await post(`${managedBaseUrl}/api/home/projects/open`, {projectRoot: projectDirectory})).status).toBe(200);
+                expect((await get(`${managedBaseUrl}/api/project/symbol-artwork`)).body).toEqual({artwork: {A: reference, B: "assets/symbols/missing.png"}});
+
+                const image = await fetch(`${managedBaseUrl}/api/project/symbol-artwork?path=${encodeURIComponent(reference)}`);
+                expect(image.status).toBe(200);
+                expect(Buffer.from(await image.arrayBuffer())).toEqual(png);
+
+                expect((await post(`${managedBaseUrl}/api/projects/close`)).status).toBe(200);
+                expect((await post(`${managedBaseUrl}/api/home/projects/open`, {projectRoot: projectDirectory})).status).toBe(200);
+                expect((await get(`${managedBaseUrl}/api/project/symbol-artwork`)).body).toEqual({artwork: {A: reference, B: "assets/symbols/missing.png"}});
+
+                const missing = await get(`${managedBaseUrl}/api/project/symbol-artwork?path=${encodeURIComponent("assets/symbols/missing.png")}`);
+                const undeclared = await get(`${managedBaseUrl}/api/project/symbol-artwork?path=${encodeURIComponent("assets/symbols/undeclared.png")}`);
+                expect(missing.status).toBe(404);
+                expect(undeclared.status).toBe(404);
+                expect(missing.body).toEqual({error: "Symbol artwork is missing or invalid."});
+                expect(undeclared.body).toEqual({error: "Symbol artwork is missing or invalid."});
             });
 
             // Mirrors BlueprintEditorPage.tsx's own handleGuidedSave: once a first save-managed call has
