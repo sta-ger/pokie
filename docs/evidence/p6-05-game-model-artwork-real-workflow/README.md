@@ -1,26 +1,21 @@
-# P6-05 independent host verification — finding
+# P6-05 final workflow verification
 
-Candidate: `b5e2379cd3f5d4004aa8fe54f06388721951ccfa`.
+**Reviewed record:** `a80816fe8ba7f3d94c32ce1527c00f7dd7e35516` (`evidence: verify P6-05 corrected section saves`).
+The browser workflow was run against its implementation parent
+`d200dc2d41f5ae982e1bbd58fd8db46fa4e57326`; this record is the concise,
+passing evidence committed by the reviewed record.
 
-Chrome was started headlessly with a fresh profile and driven only by rendered-control coordinate
-clicks and browser keyboard input. Studio was a freshly built local server from this candidate.
-The complete browser action record is `browser-workflow-transcript.txt`; `browser-terminal.log` and
-`studio-terminal.log` are the host logs.
+A fresh local Studio build and a fresh Chrome profile were driven exclusively
+through rendered controls and browser input. No Studio API or DOM state was
+injected.
 
-## Finding: P1 — Symbols Save leaves a stale Game Model View
+- `05-bets-blur-saved.*` shows **Bet 1** changed to `11` and saved by the
+  immediately following Save click (which supplied the field blur); View Mode
+  reports `Available bets: 11, 2, 5, 10`.
+- `07-after-browser-reload.*` shows the saved Layout, Reels, Paytable, Bets &
+  Modes, and Mechanics values after a browser reload.
+- `08-after-fresh-studio-and-browser-restart.*` shows those values after both
+  the Studio process and Chrome profile were replaced.
 
-The rendered workflow edited Symbols, changed the sixth symbol to `WILD_FINAL`, and clicked the
-section's visible **Save**. The actual persisted Blueprint records `WILD_FINAL` in `symbols`,
-`wilds`, `symbolWeights`, and `symbolArtwork` (`09-persisted-blueprint-after-ui-save.json`).
-However, after the component's own Save-triggered refresh had settled for 60 seconds, the rendered
-Game Model still showed the prior `WILD` symbol. `08-stale-symbols-view-after-save.png` and its text
-transcript capture that stale View; the source artifact and `persisted-artifact-terminal.log` capture
-the contrary saved truth.
-
-This fails the required Edit → mutate → dirty → Save → View behavior: an operator cannot trust the
-View immediately following a successful save. It also prevented a clean completion of the requested
-reload/restart/artwork sequence, so those acceptance claims are not passed by this verification.
-
-`01-initial-artwork-visible.png` confirms the declared project-relative native PNG was visibly
-rendered before the edit. The `workspace/` directory is the real fixture and resulting persisted
-artifact; its PNG and Blueprint checksums are in `artifact-checksums.sha256`.
+`workflow-transcript.txt` records the rendered-control actions and observations.
+`CHECKSUMS.sha256` checks every retained artifact.

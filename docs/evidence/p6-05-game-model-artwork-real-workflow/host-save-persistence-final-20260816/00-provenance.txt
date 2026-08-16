@@ -1,3 +1,0 @@
-candidate_sha=8a2314ccefe204f118180d24f0759e70c3165c01
-node=v24.18.0
-workflow=fresh-Studio-and-fresh-Chrome-rendered-control-save-persistence
