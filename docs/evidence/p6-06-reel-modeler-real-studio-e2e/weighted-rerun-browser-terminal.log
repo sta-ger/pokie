@@ -1,0 +1,53 @@
+[2026-08-16T21:00:49.779Z] START weighted: fresh local Studio and Chrome, controlled only through rendered UI.
+[2026-08-16T21:00:49.792Z] NAVIGATE public Studio URL #/project/gameModel
+[2026-08-16T21:00:50.988Z] CLICK "Edit" in "Reels"
+[2026-08-16T21:00:51.632Z] CLICK "Select reel" at rendered coordinates
+[2026-08-16T21:00:52.230Z] CLICK rendered Select for Reel 2, the existing generated symbolWeights configuration.
+[2026-08-16T21:00:52.980Z] CLICK "Preview" at rendered coordinates
+[2026-08-16T21:00:52.985Z] OBSERVE existing Reel 2 symbolWeights were resolved by the public Check & Preview workflow.
+[2026-08-16T21:00:53.389Z] CAPTURE 07-existing-per-reel-symbolweights-preview.png and 07-existing-per-reel-symbolweights-preview.txt
+[2026-08-16T21:00:54.192Z] CLICK "Back to Configure" at rendered coordinates
+[2026-08-16T21:00:55.011Z] INPUT "10 weight"="13" through browser mouse/keyboard and blur
+[2026-08-16T21:00:55.760Z] CLICK "Preview" at rendered coordinates
+[2026-08-16T21:00:56.431Z] CLICK "Done" at rendered coordinates
+[2026-08-16T21:00:56.871Z] CLICK "Use changes" at rendered coordinates
+[2026-08-16T21:00:57.294Z] CLICK radio "Symbol weights"
+[2026-08-16T21:00:58.077Z] SELECT "10" through the rendered Symbol combobox
+[2026-08-16T21:00:58.796Z] INPUT "Weight"="12" through browser mouse/keyboard and blur
+[2026-08-16T21:00:59.227Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:00.007Z] SELECT "A" through the rendered Symbol combobox
+[2026-08-16T21:01:01.185Z] INPUT "Weight"="5" through browser mouse/keyboard and blur
+[2026-08-16T21:01:01.617Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:02.395Z] SELECT "K" through the rendered Symbol combobox
+[2026-08-16T21:01:03.128Z] INPUT "Weight"="3" through browser mouse/keyboard and blur
+[2026-08-16T21:01:03.554Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:04.299Z] SELECT "Q" through the rendered Symbol combobox
+[2026-08-16T21:01:05.046Z] INPUT "Weight"="2" through browser mouse/keyboard and blur
+[2026-08-16T21:01:05.759Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:06.551Z] SELECT "J" through the rendered Symbol combobox
+[2026-08-16T21:01:07.298Z] INPUT "Weight"="10" through browser mouse/keyboard and blur
+[2026-08-16T21:01:07.740Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:08.541Z] SELECT "W" through the rendered Symbol combobox
+[2026-08-16T21:01:09.281Z] INPUT "Weight"="2" through browser mouse/keyboard and blur
+[2026-08-16T21:01:09.715Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:10.514Z] SELECT "S" through the rendered Symbol combobox
+[2026-08-16T21:01:11.215Z] INPUT "Weight"="2" through browser mouse/keyboard and blur
+[2026-08-16T21:01:11.649Z] CLICK "Add weight" at rendered coordinates
+[2026-08-16T21:01:11.649Z] OBSERVE shared-weight editing through the rendered Symbol weights editor: 10=12, A=5, K=3, Q=2, J=10, W=2, S=2.
+[2026-08-16T21:01:12.086Z] CAPTURE 08-shared-weights-edit-draft.png and 08-shared-weights-edit-draft.txt
+[2026-08-16T21:01:12.801Z] CLICK "Save" in "Reels"
+[2026-08-16T21:01:12.804Z] OBSERVE common Reels Save persisted the shared symbolWeights configuration and entered the truthful no-fixed-strip sample view.
+[2026-08-16T21:01:13.163Z] CAPTURE 09-shared-weights-saved-sample-seed-default.png and 09-shared-weights-saved-sample-seed-default.txt
+[2026-08-16T21:01:13.801Z] CLICK "Another deterministic sample" at rendered coordinates
+[2026-08-16T21:01:13.805Z] OBSERVE Another deterministic sample advanced the visible reproducible seed from the default to seed 2.
+[2026-08-16T21:01:14.092Z] CAPTURE 10-shared-weights-resampled-seed-2.png and 10-shared-weights-resampled-seed-2.txt
+[2026-08-16T21:01:14.744Z] CLICK "Analysis" at rendered coordinates
+[2026-08-16T21:01:14.747Z] OBSERVE rendered analysis exposes the shared weights to resolved-count conversion for the exact seed-2 sample.
+[2026-08-16T21:01:15.269Z] CAPTURE 10b-shared-weights-conversion-analysis.png and 10b-shared-weights-conversion-analysis.txt
+[2026-08-16T21:01:15.667Z] CLICK "Convert this sample to generated reels…" at rendered coordinates
+[2026-08-16T21:01:15.673Z] OBSERVE conversion opened the existing per-reel modeler with literal strips from the currently rendered sample; this action has not persisted until Save.
+[2026-08-16T21:01:16.046Z] CLICK "Select reel" at rendered coordinates
+[2026-08-16T21:01:16.586Z] CLICK "Select" at rendered coordinates
+[2026-08-16T21:01:17.331Z] CLICK "Preview" at rendered coordinates
+[2026-08-16T21:01:17.770Z] CAPTURE 11-converted-sample-generated-reels-draft.png and 11-converted-sample-generated-reels-draft.txt
+[2026-08-16T21:01:18.443Z] CLICK "Cancel" in "Reels"

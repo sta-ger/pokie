@@ -1,0 +1,182 @@
+POKIE Studio
+/
+P6-06 Weighted Host UI
+/
+
+Game Model
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+P6-06 Weighted Host UI
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-06-20260816214456/docs/evidence/p6-06-reel-modeler-real-studio-e2e/weighted-workspace/blueprint.json
+
+Close project
+Game basics
+Edit
+
+Id: p6-06-weighted-host-ui
+
+Name: P6-06 Weighted Host UI
+
+Version: 0.1.0
+
+Description: Isolated host-side weighted-reel Studio input.
+
+Author: (none)
+
+Layout
+Edit
+
+Reels: 5
+
+Rows: 3
+
+Win model: lines
+
+Paylines: 0
+
+Symbols
+Edit
+A
+K
+Q
+J
+10
+W · WILD
+S · SCATTER
+Reels
+Edit
+
+Generation mode: Shared symbol weights
+
+This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each session, so the views below show one reproducible, seeded sample instead of a real strip (seed 2).
+
+Another deterministic sample
+Edit weights
+Convert this sample to generated reels…
+Game window
+Full strips
+Analysis
+Shared weights → counts conversion
+
+Reproducible sample only (seed 2, sample length 36) — not the strip any real session will use; every reel independently reshuffles this same weight pool fresh each session.
+
+Symbol	Weight	Resolved count	Target proportion	Actual proportion	Deviation
+10	10	10	0.278	0.278	0.000
+A	12	12	0.333	0.333	0.000
+K	5	5	0.139	0.139	0.000
+Q	3	3	0.083	0.083	0.000
+J	2	2	0.056	0.056	0.000
+W	2	2	0.056	0.056	0.000
+S	2	2	0.056	0.056	0.000
+Reel 1 analysis
+
+36 possible stop position(s) (this reel's own length).
+
+Symbol	Count	Frequency	Min circular distance	Max circular distance	Max consecutive
+10	10	0.278	2	7	1
+S	2	0.056	2	34	1
+W	2	0.056	15	21	1
+A	12	0.333	1	7	4
+Q	3	0.083	10	16	1
+K	5	0.139	2	23	1
+J	2	0.056	1	35	2
+Reel 2 analysis
+
+36 possible stop position(s) (this reel's own length).
+
+Symbol	Count	Frequency	Min circular distance	Max circular distance	Max consecutive
+10	10	0.278	1	11	2
+Q	3	0.083	10	13	1
+A	12	0.333	1	7	3
+W	2	0.056	14	22	1
+J	2	0.056	10	26	1
+S	2	0.056	13	23	1
+K	5	0.139	4	10	1
+Reel 3 analysis
+
+36 possible stop position(s) (this reel's own length).
+
+Symbol	Count	Frequency	Min circular distance	Max circular distance	Max consecutive
+10	10	0.278	1	8	2
+K	5	0.139	2	18	1
+A	12	0.333	1	5	3
+Q	3	0.083	5	18	1
+J	2	0.056	6	30	1
+S	2	0.056	10	26	1
+W	2	0.056	6	30	1
+Reel 4 analysis
+
+36 possible stop position(s) (this reel's own length).
+
+Symbol	Count	Frequency	Min circular distance	Max circular distance	Max consecutive
+10	10	0.278	1	6	2
+A	12	0.333	1	7	3
+S	2	0.056	4	32	1
+W	2	0.056	15	21	1
+Q	3	0.083	9	17	1
+K	5	0.139	5	10	1
+J	2	0.056	12	24	1
+Reel 5 analysis
+
+36 possible stop position(s) (this reel's own length).
+
+Symbol	Count	Frequency	Min circular distance	Max circular distance	Max consecutive
+10	10	0.278	1	8	2
+Q	3	0.083	4	23	1
+A	12	0.333	1	11	6
+K	5	0.139	3	18	1
+J	2	0.056	3	33	1
+W	2	0.056	4	32	1
+S	2	0.056	13	23	1
+Paytable
+Edit
+Symbol	Match count	Payout (x bet)
+10	3	1
+10	4	2
+10	5	4
+A	3	4
+A	4	7
+A	5	14
+J	3	1
+J	4	3
+J	5	7
+K	3	3
+K	4	6
+K	5	11
+Q	3	2
+Q	4	5
+Q	5	9
+S	2	2
+S	3	5
+S	4	20
+S	5	100
+Bets & Modes
+Edit
+
+Available bets: 1, 2, 5, 10
+
+No bet modes configured.
+
+Mechanics
+Edit
+
+No mechanics/features configured.
+
+Limits
+
+Derived from Bets & Modes' own Available bets above -- edit there to change it.
+
+Bet range: 1 – 10
+
+Refresh

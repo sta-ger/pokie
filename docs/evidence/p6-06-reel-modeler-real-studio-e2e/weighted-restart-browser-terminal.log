@@ -1,0 +1,4 @@
+[2026-08-16T21:02:15.162Z] START restart: fresh local Studio and Chrome, controlled only through rendered UI.
+[2026-08-16T21:02:15.182Z] NAVIGATE public Studio URL #/project/gameModel
+[2026-08-16T21:02:15.714Z] OBSERVE replacement Studio/client renders the saved shared symbol weights with its reproducible seeded sample.
+[2026-08-16T21:02:16.069Z] CAPTURE 12-after-fresh-studio-restart-shared-weights.png and 12-after-fresh-studio-restart-shared-weights.txt

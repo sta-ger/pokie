@@ -27,3 +27,26 @@ the execution transcript. `reel-modeler-browser.mjs` is the retained browser
 driver. `p6-06-build-terminal.log` retains the initial host Node 18 attempt;
 Vite required the installed Node 24 runtime used for the successful Studio
 build and rerun.
+
+## Weighted-reel extension
+
+This extension was run against candidate `2f986a2580272d484927a52fc573dba803551e62`
+using fresh local Studio and headless Chrome processes. The retained
+`weighted-reels-browser.mjs` driver uses CDP only to find rendered controls,
+send ordinary mouse/keyboard input, read displayed text, and capture images.
+
+- `07b` visibly selects the isolated source's existing generated Reel 2 and
+  shows its per-reel **Weights** table; `07` then records its successful public
+  preview.
+- `08` records shared-weight editing through the normal Reels editor. `09`
+  shows the saved shared-weight sample at seed 1; `10` records the visible
+  deterministic resample at seed 2; and `10b` records its exact weight-to-count
+  conversion table.
+- `11` shows the seed-2 sample converted through the visible control into the
+  generated-reels draft. It was never saved; `12` is a separate fresh
+  Studio/Chrome process rendering the saved shared-weight source again.
+- `weighted-persisted-representation.json` and
+  `weighted-persisted-blueprint.sha256` capture the persisted source after the
+  shared-weight save. The weighted, per-reel, and restart browser terminal logs
+  plus their `*-weighted-browser-transcript.txt` files are the browser
+  transcript and host-process record.
