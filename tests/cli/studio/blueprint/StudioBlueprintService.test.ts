@@ -728,6 +728,30 @@ describe("StudioBlueprintService", () => {
     });
 
     describe("save", () => {
+        it("persists imported PNG artwork, reloads its metadata, removes it from presentation metadata, and safely ignores a missing asset", () => {
+            const service = createService();
+            const source = path.join(tmpDir, "gold.png");
+            fs.writeFileSync(source, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+            const imported = service.importSymbolArtwork(source);
+            expect(imported.status).toBe("ok");
+            if (imported.status !== "ok") return;
+
+            const filePath = path.join(tmpDir, "project", "blueprint.json");
+            const blueprint = {...buildBlueprint(), symbolArtwork: {A: imported.reference}} as GameBlueprint;
+            expect(service.save(filePath, blueprint, false).status).toBe("ok");
+            expect(service.load(filePath)).toMatchObject({status: "ok", blueprint: {symbolArtwork: {A: imported.reference}}});
+            expect(service.getSymbolArtwork(filePath)).toEqual({A: imported.reference});
+            expect(service.resolveSymbolArtwork(filePath, imported.reference)).toBe(path.join(path.dirname(filePath), imported.reference));
+
+            fs.unlinkSync(path.join(path.dirname(filePath), imported.reference));
+            expect(service.resolveSymbolArtwork(filePath, imported.reference)).toBeUndefined();
+            expect(service.getSymbolArtwork(filePath)).toEqual({A: imported.reference});
+
+            const withoutArtwork = {...blueprint, symbolArtwork: {}};
+            expect(service.save(filePath, withoutArtwork, true).status).toBe("ok");
+            expect(service.getSymbolArtwork(filePath)).toEqual({});
+        });
+
         it("writes a new file that doesn't exist yet", () => {
             const service = createService();
             const filePath = path.join(tmpDir, "blueprint.json");

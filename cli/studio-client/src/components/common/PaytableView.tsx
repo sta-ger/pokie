@@ -1,4 +1,5 @@
 import {Table, Text} from "@mantine/core";
+import {SymbolPresentation} from "./SymbolPresentation";
 
 // Mirrors GameBlueprint.paytable's own shape (src/generated/GameBlueprint.ts) and Paytable.toJSON's own
 // per-bet map (src/session/videoslot/paytable/Paytable.ts) collapsed to one bet's own payouts -- symbol id
@@ -40,7 +41,7 @@ export function PaytableView({paytable}: {paytable?: PaytableData}) {
                 <Table.Tbody>
                     {symbolIds.map((symbolId) => (
                         <Table.Tr key={symbolId}>
-                            <Table.Td>{symbolId}</Table.Td>
+                            <Table.Td><SymbolPresentation symbolId={symbolId} /></Table.Td>
                             {matchCounts.map((matchCount) => (
                                 <Table.Td key={matchCount}>{paytable![symbolId][matchCount] ?? "—"}</Table.Td>
                             ))}

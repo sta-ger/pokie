@@ -18,6 +18,7 @@ import {
     type LineDefinitionView,
     type PaytableView as PaytableViewData,
 } from "../../../../client/player/videoSlotRoundView";
+import {useActiveSymbolArtwork} from "./SymbolPresentation";
 
 // The one place Studio's round-inspection surfaces (Play, Replay -- recorded/recreated/simulation-
 // sampled rounds, Session Spin -- an Outcome Source draw) actually mount cli/client/player's
@@ -61,6 +62,7 @@ export function CanonicalPlayerView({
     currentModeId?: string;
     onSelectMode?: (modeId: string) => void;
 }) {
+    const artwork = useActiveSymbolArtwork();
     const gridRef = useRef<HTMLDivElement>(null);
     const winsSectionRef = useRef<HTMLDivElement>(null);
     const winsListRef = useRef<HTMLDivElement>(null);
@@ -78,13 +80,27 @@ export function CanonicalPlayerView({
         const highlights = deriveWinHighlightsFromRoundArtifactWins(wins ?? [], reelsSymbols.length);
         renderReelsGrid(gridRef.current, reelsSymbols);
         applyPersistentHighlights(gridRef.current, highlights);
+        gridRef.current.querySelectorAll<HTMLElement>(".player-cell").forEach((cell) => {
+            const symbolId = cell.textContent ?? "";
+            const reference = artwork[symbolId];
+            if (reference === undefined) return;
+            const image = document.createElement("img");
+            image.src = `/api/project/symbol-artwork?path=${encodeURIComponent(reference)}`;
+            image.alt = symbolId;
+            image.width = 28;
+            image.height = 28;
+            image.style.objectFit = "contain";
+            image.onerror = () => { cell.textContent = symbolId; };
+            cell.textContent = "";
+            cell.appendChild(image);
+        });
         if (winsSectionRef.current) {
             renderWinsSection(winsSectionRef.current, highlights.length > 0);
         }
         if (winsListRef.current) {
             renderWinHighlightsList(winsListRef.current, gridRef.current, highlights);
         }
-    }, [reelsSymbols, wins]);
+    }, [artwork, reelsSymbols, wins]);
 
     useLayoutEffect(() => {
         if (linesListRef.current && gridRef.current && lines) {

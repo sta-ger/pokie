@@ -61,6 +61,11 @@ function symbolArtworkReferences(blueprint: unknown): string[] {
     return Object.values(blueprint.symbolArtwork).filter((reference): reference is string => typeof reference === "string");
 }
 
+function symbolArtwork(blueprint: unknown): Record<string, string> {
+    if (!isPlainObject(blueprint) || !isPlainObject(blueprint.symbolArtwork)) return {};
+    return Object.fromEntries(Object.entries(blueprint.symbolArtwork).filter((entry): entry is [string, string] => typeof entry[1] === "string" && isSafeSymbolArtworkReference(entry[1])));
+}
+
 function isSafeSymbolArtworkReference(reference: string): boolean {
     const normalized = reference.replace(/\\/g, "/");
     return normalized.startsWith(`${SYMBOL_ARTWORK_DIRECTORY}/`) && !normalized.split("/").includes("..");
@@ -471,6 +476,14 @@ export class StudioBlueprintService {
         } catch {
             return undefined;
         }
+    }
+
+    // The image route exposes references only from the active Blueprint document, never a generally
+    // browsable project asset directory.  A missing/unreadable source is deliberately represented by
+    // an empty map so every Studio surface can retain its symbol-id fallback.
+    public getSymbolArtwork(blueprintPath: string): Record<string, string> {
+        const loaded = this.load(blueprintPath);
+        return loaded.status === "ok" ? symbolArtwork(loaded.blueprint) : {};
     }
 
     public materializeSymbolArtwork(blueprintPath: string, blueprint: unknown): void {

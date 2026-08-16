@@ -1,5 +1,6 @@
 import {Badge, Table, Text} from "@mantine/core";
 import type {RoundArtifactWin} from "../../api/types";
+import {SymbolPresentation} from "./SymbolPresentation";
 
 // Mirrors src/stakeengine/internal/StakeEngineImportSyntheticWinComponent.ts's own constant (documented in
 // docs/stake-engine-import.md) — the one field this whole client can key off to tell a reconstructed win
@@ -78,7 +79,7 @@ export function RoundWinsTable({wins, stake}: {wins: readonly RoundArtifactWin[]
                                     </Badge>
                                 )}
                             </Table.Td>
-                            <Table.Td>{describeWinSymbol(win)}</Table.Td>
+                            <Table.Td>{win.symbolId === undefined || win.symbolId === null ? describeWinSymbol(win) : <SymbolPresentation symbolId={String(win.symbolId)} />}</Table.Td>
                             <Table.Td>{describeWinAmount(win, stake)}</Table.Td>
                             <Table.Td>{describeWinPositions(win)}</Table.Td>
                             <Table.Td>

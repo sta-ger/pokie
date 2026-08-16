@@ -6,6 +6,7 @@ import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
+import {symbolArtworkFromBlueprint, SymbolPresentation} from "../common/SymbolPresentation";
 
 type PaytableRow = {symbolId: string; matchCount: number; payout: number};
 
@@ -31,6 +32,7 @@ export function PaytableEditor({blueprint, mutate}: {blueprint: Record<string, u
     const rows = flattenPaytable(blueprint.paytable);
     const symbols = asStringList(blueprint.symbols);
     const maxMatchCount = typeof blueprint.reels === "number" && blueprint.reels > 0 ? blueprint.reels : 1;
+    const artwork = symbolArtworkFromBlueprint(blueprint);
 
     const [newSymbol, setNewSymbol] = useState<string | null>(null);
     const [newMatchCount, setNewMatchCount] = useState<number | string>("");
@@ -51,7 +53,7 @@ export function PaytableEditor({blueprint, mutate}: {blueprint: Record<string, u
                     <Table.Tbody>
                         {rows.map((row) => (
                             <Table.Tr key={`${row.symbolId}-${row.matchCount}`}>
-                                <Table.Td>{row.symbolId}</Table.Td>
+                                <Table.Td><SymbolPresentation symbolId={row.symbolId} artwork={artwork} /></Table.Td>
                                 <Table.Td>{row.matchCount}</Table.Td>
                                 <Table.Td>
                                     <NumberInput

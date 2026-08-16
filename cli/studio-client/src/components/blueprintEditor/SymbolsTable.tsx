@@ -9,6 +9,7 @@ import {BufferedTextInput} from "../common/BufferedTextInput";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
+import {symbolArtworkFromBlueprint, SymbolPresentation} from "../common/SymbolPresentation";
 
 export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
     const fetchImpl = useStudioApi();
@@ -17,9 +18,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
     const scatters = asStringList(blueprint.scatters);
     const [newSymbolId, setNewSymbolId] = useState("");
     const [diagnostic, setDiagnostic] = useState<string>();
-    const artwork = typeof blueprint.symbolArtwork === "object" && blueprint.symbolArtwork !== null && !Array.isArray(blueprint.symbolArtwork)
-        ? blueprint.symbolArtwork as Record<string, unknown>
-        : {};
+    const artwork = symbolArtworkFromBlueprint(blueprint);
 
     const selectArtwork = async (symbolId: string): Promise<void> => {
         setDiagnostic(undefined);
@@ -88,17 +87,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                                 <Table.Td>
                                     {typeof artwork[symbolId] === "string" ? (
                                         <Group gap="xs" wrap="nowrap">
-                                            <img
-                                                src={`/api/project/symbol-artwork?path=${encodeURIComponent(artwork[symbolId])}`}
-                                                alt={`${symbolId} artwork`}
-                                                width={32}
-                                                height={32}
-                                                style={{objectFit: "contain"}}
-                                                onError={(event) => {
-                                                    event.currentTarget.style.display = "none";
-                                                    setDiagnostic(`Artwork for "${symbolId}" is missing or unreadable. The symbol will use its id until you change or remove the artwork.`);
-                                                }}
-                                            />
+                                            <SymbolPresentation symbolId={symbolId} artwork={artwork} size={32} />
                                             <Button size="xs" variant="default" onClick={() => {
                                                 selectArtwork(symbolId);
                                             }}>Change</Button>

@@ -1232,9 +1232,14 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 404, {error: "No active project artwork."});
             return;
         }
+        const artwork = this.blueprintService.getSymbolArtwork(this.currentContext.projectRoot);
         const reference = url.searchParams.get("path");
         if (reference === null) {
-            this.sendJson(res, 400, {error: '"path" is required.'});
+            this.sendJson(res, 200, {artwork});
+            return;
+        }
+        if (!Object.values(artwork).includes(reference)) {
+            this.sendJson(res, 404, {error: "Symbol artwork is missing or invalid."});
             return;
         }
         const imagePath = this.blueprintService.resolveSymbolArtwork(this.currentContext.projectRoot, reference);
