@@ -1,0 +1,21 @@
+[2026-08-16T14:46:05.744Z] START fresh Chrome against the candidate's fresh local Studio server.
+[2026-08-16T14:46:06.464Z] NAVIGATE browser address bar to public URL http://127.0.0.1:4635/#/project/gameModel
+[2026-08-16T14:46:06.475Z] OBSERVE declared project-relative PNG artwork is rendered in the visible Game Model Symbols section.
+[2026-08-16T14:46:06.853Z] CAPTURE 01-initial-artwork-visible.png and 01-initial-artwork-visible.txt
+[2026-08-16T14:46:07.272Z] CLICK "Edit" in "Game basics" section
+[2026-08-16T14:46:08.045Z] INPUT "Game name"="P6 Corrected Saved Artwork Slot" through browser keyboard
+[2026-08-16T14:46:08.449Z] CLICK "Save" in "Game basics" section
+[2026-08-16T14:46:08.464Z] OBSERVE Game basics mutation becomes dirty, validates, saves, and returns to the persisted View mode.
+[2026-08-16T14:46:08.799Z] CAPTURE 02-basics-saved.png and 02-basics-saved.txt
+[2026-08-16T14:46:09.196Z] CLICK "Edit" in "Layout" section
+[2026-08-16T14:46:10.219Z] INPUT "Rows"="4" through browser keyboard
+[2026-08-16T14:46:10.590Z] CLICK "Cancel" in "Layout" section
+[2026-08-16T14:46:10.985Z] CLICK "Confirm" at rendered coordinates
+[2026-08-16T14:46:10.985Z] CONFIRM discard in the rendered modal
+[2026-08-16T14:46:10.987Z] OBSERVE Layout mutation is discarded by the visible Cancel confirmation.
+[2026-08-16T14:46:11.371Z] CLICK "Edit" in "Symbols" section
+[2026-08-16T14:46:12.445Z] INPUT "Symbol 6 id"="WILD_FINAL" through browser keyboard
+[2026-08-16T14:46:13.110Z] CLICK "Save" in "Symbols" section
+[2026-08-16T14:47:13.232Z] FAILED Error: Timed out waiting for saved Symbols view
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/independent-rerun-20260816/browser-workflow.mjs:37:181)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/independent-rerun-20260816/browser-workflow.mjs:59:125)

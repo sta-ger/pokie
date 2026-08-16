@@ -1,0 +1,5 @@
+[2026-08-16T14:49:34.454Z] START fresh Chrome against the restarted Studio server.
+[2026-08-16T14:49:35.172Z] NAVIGATE browser address bar to http://127.0.0.1:4635/#/project/gameModel
+[2026-08-16T14:50:05.221Z] FAILED Error: Timed out waiting for persisted saved model and PNG after Studio restart
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/independent-rerun-20260816/restart-artwork-workflow.mjs:19:164)
+    at async file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/independent-rerun-20260816/restart-artwork-workflow.mjs:26:3

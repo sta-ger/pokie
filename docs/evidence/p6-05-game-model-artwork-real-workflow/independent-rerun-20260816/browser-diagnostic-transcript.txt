@@ -1,0 +1,1 @@
+Captured the rendered Studio page left after the visible Symbols Save workflow timed out. No DOM or application state was changed.
