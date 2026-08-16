@@ -1,0 +1,76 @@
+{
+    "manifest": {
+        "id": "p6-saved-artwork-slot",
+        "name": "P6 Saved Artwork Slot",
+        "version": "0.1.0",
+        "description": "A pokie build example: 5x3, wilds, scatters, weighted reels."
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": [
+        "A",
+        "K",
+        "Q",
+        "J",
+        "10",
+        "WILD_FINAL",
+        "S"
+    ],
+    "wilds": [
+        "WILD_FINAL"
+    ],
+    "scatters": [
+        "S"
+    ],
+    "paytable": {
+        "10": {
+            "3": 1,
+            "4": 2,
+            "5": 4
+        },
+        "A": {
+            "3": 4,
+            "4": 7,
+            "5": 14
+        },
+        "K": {
+            "3": 3,
+            "4": 6,
+            "5": 11
+        },
+        "Q": {
+            "3": 2,
+            "4": 5,
+            "5": 9
+        },
+        "J": {
+            "3": 1,
+            "4": 3,
+            "5": 7
+        },
+        "S": {
+            "2": 2,
+            "3": 5,
+            "4": 20,
+            "5": 100
+        }
+    },
+    "symbolWeights": {
+        "10": 12,
+        "A": 4,
+        "K": 6,
+        "Q": 8,
+        "J": 10,
+        "S": 2,
+        "WILD_FINAL": 3
+    },
+    "availableBets": [
+        1,
+        2,
+        5,
+        10
+    ],
+    "symbolArtwork": {
+        "WILD_FINAL": "assets/symbols/wild.png"
+    }
+}

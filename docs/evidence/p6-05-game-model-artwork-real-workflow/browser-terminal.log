@@ -1,0 +1,21 @@
+[2026-08-16T14:23:43.902Z] START fresh Chrome against the candidate's fresh local Studio server.
+[2026-08-16T14:23:44.614Z] NAVIGATE browser address bar to public URL http://127.0.0.1:4635/#/project/gameModel
+[2026-08-16T14:23:44.626Z] OBSERVE declared project-relative PNG artwork is rendered in the visible Game Model Symbols section.
+[2026-08-16T14:23:44.926Z] CAPTURE 01-initial-artwork-visible.png and 01-initial-artwork-visible.txt
+[2026-08-16T14:23:45.314Z] CLICK "Edit" in "Game basics" section
+[2026-08-16T14:23:46.094Z] INPUT "Game name"="P6 Saved Artwork Slot" through browser keyboard
+[2026-08-16T14:23:46.568Z] CLICK "Save" in "Game basics" section
+[2026-08-16T14:23:46.575Z] OBSERVE Game basics mutation becomes dirty, validates, saves, and returns to the persisted View mode.
+[2026-08-16T14:23:46.870Z] CAPTURE 02-basics-saved.png and 02-basics-saved.txt
+[2026-08-16T14:23:47.249Z] CLICK "Edit" in "Layout" section
+[2026-08-16T14:23:48.340Z] INPUT "Rows"="4" through browser keyboard
+[2026-08-16T14:23:48.724Z] CLICK "Cancel" in "Layout" section
+[2026-08-16T14:23:49.161Z] CLICK "Confirm" at rendered coordinates
+[2026-08-16T14:23:49.161Z] CONFIRM discard in the rendered modal
+[2026-08-16T14:23:49.167Z] OBSERVE Layout mutation is discarded by the visible Cancel confirmation.
+[2026-08-16T14:23:49.585Z] CLICK "Edit" in "Symbols" section
+[2026-08-16T14:23:50.693Z] INPUT "Symbol 6 id"="WILD_FINAL" through browser keyboard
+[2026-08-16T14:23:51.410Z] CLICK "Save" in "Symbols" section
+[2026-08-16T14:24:51.537Z] FAILED Error: Timed out waiting for saved Symbols view
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/browser-workflow.mjs:37:181)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/browser-workflow.mjs:59:125)
