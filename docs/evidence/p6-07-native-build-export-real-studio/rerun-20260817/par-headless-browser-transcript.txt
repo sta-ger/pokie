@@ -1,0 +1,13 @@
+[2026-08-16T22:59:26.458Z] OBSERVE par-headless Studio dashboard exposes Build/Export.
+[2026-08-16T22:59:26.510Z] CLICK Build/Export at visible coordinates (130, 333)
+[2026-08-16T22:59:26.773Z] OBSERVE rendered target, selected destination, resolved path, output type, conflict state, and planned outputs.
+[2026-08-16T22:59:26.796Z] CLICK Output file destination input at visible coordinates (766, 456)
+[2026-08-16T22:59:27.114Z] TYPE /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/rerun-20260817/artifacts/headless-directory-output into the visible Output file destination input.
+[2026-08-16T22:59:27.838Z] CAPTURE par-headless-preflight-typed-destination.png and par-headless-preflight-typed-destination.txt
+[2026-08-16T22:59:27.872Z] CLICK Build at visible coordinates (329, 466)
+[2026-08-16T22:59:28.135Z] OBSERVE completed Studio build output at /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/rerun-20260817/artifacts/headless-directory-output.
+[2026-08-16T22:59:28.772Z] CAPTURE par-headless-build-complete.png and par-headless-build-complete.txt
+[2026-08-16T22:59:28.777Z] OBSERVE headless Studio presents Copy path and explicitly states local output opening is unsupported.
+[2026-08-16T22:59:28.793Z] CLICK Copy path at visible coordinates (607, 457)
+[2026-08-16T22:59:29.045Z] CLICK Copy path in the rendered headless output actions.
+[2026-08-16T22:59:29.678Z] CAPTURE par-headless-copy-path-observed.png and par-headless-copy-path-observed.txt

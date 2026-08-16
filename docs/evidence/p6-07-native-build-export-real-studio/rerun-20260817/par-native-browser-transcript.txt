@@ -1,0 +1,3 @@
+[2026-08-16T22:55:42.468Z] FAILED Error: Timed out waiting for rendered text: Build/Export
+    at waitFor (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/rerun-20260817/studio-workflow.mjs:48:19)
+    at async file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-07-20260817000339/docs/evidence/p6-07-native-build-export-real-studio/rerun-20260817/studio-workflow.mjs:104:5

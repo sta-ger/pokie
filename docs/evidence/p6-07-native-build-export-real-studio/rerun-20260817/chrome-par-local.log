@@ -1,0 +1,37 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+WARNING: Some incorrect rendering might occur because the selected Vulkan device (Intel(R) HD Graphics 4000 (IVB GT2)) doesn't support base Zink requirements: have_EXT_custom_border_color 
+[2537617:2537657:0817/005405.645137:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005405.645307:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005405.645332:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005405.645408:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005405.662920:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005405.690657:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+
+DevTools listening on ws://127.0.0.1:9327/devtools/browser/b91c766f-68c7-4b58-a8d4-77be6610b726
+[2537617:2537617:0817/005405.766279:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537617:0817/005405.767462:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537657:0817/005405.767572:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537617:0817/005405.767744:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537617:0817/005405.787288:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+libva error: /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so init failed
+[2537617:2537653:0817/005408.878924:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005408.933586:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537657:0817/005408.933642:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537617:0817/005409.012326:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537653:0817/005409.012448:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537617:0817/005409.028322:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537653:0817/005409.028817:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537617:0817/005409.032072:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537654:0817/005409.032605:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537617:0817/005409.033277:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[2537617:2537653:0817/005409.034048:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[2537617:2537617:0817/005409.045899:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786921025.706774 2540144 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+[2537617:2537617:0817/005705.740750:ERROR:services/on_device_model/public/cpp/service_client.cc:36] Unexpected on_device_model service disconnect: The device's GPU is not supported.
+[2537684:2537785:0817/010043.306450:ERROR:ui/gfx/x/connection.cc:65] X connection error received.
+[2537684:2537684:0817/010043.306382:ERROR:ui/gfx/x/connection.cc:65] X connection error received.
