@@ -38,7 +38,14 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
     "/api/project/artifacts/preview": () => ({
         ok: true,
         status: 200,
-        body: {status: "ok", target: "tsPackage", destination: "/games/tsPackage", sourceType: "blueprint"},
+        body: {
+            status: "ok",
+            target: "tsPackage",
+            destination: "/games/tsPackage",
+            destinationKind: "directory",
+            plannedOutputs: ["package.json"],
+            sourceType: "blueprint",
+        },
     }),
 };
 
@@ -519,7 +526,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     return Promise.resolve({
                         ok: true,
                         status: 201,
-                        json: () => Promise.resolve({status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", sourceType: "blueprint"}),
+                        json: () => Promise.resolve({status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", outputKind: "directory", sourceType: "blueprint"}),
                     });
                 }
                 if (path === "/api/home/projects/open") {
@@ -595,21 +602,27 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         it("shows the shared registry's own resolved destination before Build is ever clicked, using the same preview endpoint a build would resolve against", async () => {
             const user = userEvent.setup();
-            let capturedPreviewTarget: string | undefined;
-            const fetchImpl: FetchLike = (url, init) => {
-                const [path] = url.split("?");
-                if (path === "/api/project/artifacts/preview") {
-                    capturedPreviewTarget = (JSON.parse(String(init?.body)) as {target: string}).target;
-                    return Promise.resolve({
+            let previewCalls = 0;
+            const routes = {
+                ...BASE_ROUTES,
+                "/api/project/artifacts/preview": () => {
+                    previewCalls += 1;
+                    return {
                         ok: true,
                         status: 200,
-                        json: () => Promise.resolve({status: "ok", target: "tsPackage", destination: "/games/tsPackage", sourceType: "blueprint"}),
-                    });
-                }
-                return fetchImplFrom(BASE_ROUTES)(url, init);
+                        body: {
+                            status: "ok",
+                            target: "tsPackage",
+                            destination: "/games/tsPackage",
+                            destinationKind: "directory",
+                            plannedOutputs: ["package.json"],
+                            sourceType: "blueprint",
+                        },
+                    };
+                },
             };
 
-            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
             await screen.findByRole("heading", {name: "A"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
@@ -617,9 +630,47 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
             // The resolved destination is already on screen -- fetched automatically, never behind its own
             // click -- before the "Build" button is ever pressed.
-            expect(await within(buildArtifactSection).findByText(/Resolved destination:/)).toBeInTheDocument();
+            expect(await within(buildArtifactSection).findByText(/Resolved absolute path:/)).toBeInTheDocument();
             expect(within(buildArtifactSection).getByText(/\/games\/tsPackage/)).toBeInTheDocument();
-            expect(capturedPreviewTarget).toBe("tsPackage");
+            expect(previewCalls).toBeGreaterThan(0);
+        });
+
+        it("uses the Stake Engine export label, not the raw target ID, in its Build preflight", async () => {
+            const user = userEvent.setup();
+            const routes = {
+                ...BASE_ROUTES,
+                "/api/project/artifacts/targets": () => ({
+                    ok: true,
+                    status: 200,
+                    body: [
+                        {target: "tsPackage", supported: false, unsupportedNotes: []},
+                        {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+                        {target: "stakeAdapter", supported: true, unsupportedNotes: []},
+                        {target: "parWorkbook", supported: false, unsupportedNotes: []},
+                        {target: "wasm", supported: false, unsupportedNotes: []},
+                    ],
+                }),
+                "/api/project/artifacts/preview": () => ({
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "ok",
+                        target: "stakeAdapter",
+                        destination: "/games/stake-engine-export",
+                        destinationKind: "directory",
+                        plannedOutputs: ["index.json"],
+                        sourceType: "stakeAdapter",
+                    },
+                }),
+            };
+
+            renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            expect(await within(buildArtifactSection).findByText("Target: Stake Engine export (republish)")).toBeInTheDocument();
+            expect(buildArtifactSection).not.toHaveTextContent("stakeAdapter");
         });
 
         it("surfaces a destination conflict from the shared registry's own preview before Build is ever clicked, never only discovered after attempting a build", async () => {
@@ -636,6 +687,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                                 status: "conflict",
                                 target: "tsPackage",
                                 destination: "/games/tsPackage",
+                                destinationKind: "directory",
+                                plannedOutputs: ["package.json"],
                                 message: '"/games/tsPackage" already exists and is not empty. Choose a different --out path or remove it first.',
                             }),
                     });

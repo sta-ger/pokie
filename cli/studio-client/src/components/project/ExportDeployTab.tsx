@@ -353,7 +353,7 @@ function TargetCard({
                             <Text size="sm" fw={600}>
                                 Build preflight
                             </Text>
-                            <Text size="sm">Target: {artifactPreview.result.target}</Text>
+                            <Text size="sm">Target: {card.label}</Text>
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
                             <Text size="sm">Output type: {artifactPreview.result.destinationKind}</Text>
