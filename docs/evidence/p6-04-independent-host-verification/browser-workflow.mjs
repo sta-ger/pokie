@@ -148,9 +148,15 @@ async function run() {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Tab", code:"Tab", windowsVirtualKeyCode:9});
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Tab", code:"Tab", windowsVirtualKeyCode:9});
             if (await activeOpenFor()) {
-                await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", windowsVirtualKeyCode:13});
-                await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13});
-                note(`KEYPRESS Enter on visible Open control for ${JSON.stringify(name)} after browser Tab traversal`);
+                const rect = await evaluate(`(() => {
+                    const node = document.activeElement;
+                    const bounds = node.getBoundingClientRect();
+                    return {x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2};
+                })()`);
+                await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:rect.x, y:rect.y});
+                await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:rect.x, y:rect.y, button:"left", buttons:1, clickCount:1});
+                await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:rect.x, y:rect.y, button:"left", buttons:0, clickCount:1});
+                note(`CLICK visible Open control for ${JSON.stringify(name)} after browser Tab traversal`);
                 await sleep(550);
                 return;
             }
@@ -180,7 +186,11 @@ async function run() {
         await nav("/home/projects");
         await wait("document.body.innerText.includes('P6 Recommended Owner') && document.body.innerText.includes('P6 Random Owner')", "persisted registered projects after restart");
         await snapshot("11-projects-after-restart");
-        await click("Open", "P6 Random Owner");
+        // The Projects table deliberately scrolls its actions horizontally on a narrow viewport.
+        // A coordinate click can therefore target an off-screen action (and produce no browser
+        // event at all). Tab to the rendered action instead: the browser scrolls it into view, then
+        // native mouse input activates the exact Random row through the same visible UI path.
+        await pressOpenFor("P6 Random Owner");
         await wait("document.body.innerText.includes('Close project')", "reopened Random workspace after restart");
         await wait("document.body.innerText.includes('P6 Random Owner')", "reopened Random Workspace identity");
         note("OBSERVE registered Random project reopened through the visible Projects UI after fresh Studio/client restart.");
