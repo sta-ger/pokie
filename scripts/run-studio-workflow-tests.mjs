@@ -21,14 +21,17 @@ function executeJest(arguments_, options = {}) {
     if (result.error) {
         throw result.error;
     }
-    if (result.status !== 0) {
-        throw new Error(`Jest exited with status ${result.status ?? 1}.`);
-    }
-
     return result;
 }
 
+function throwForFailedJest(result) {
+    if (result.status !== 0) {
+        throw new Error(`Jest exited with status ${result.status ?? 1}.`);
+    }
+}
+
 const discovery = executeJest(["--selectProjects", workflowProject, "--listTests"], {encoding: "utf8"});
+throwForFailedJest(discovery);
 // Jest writes the selected-project banner to stdout but, in some versions, writes the list of
 // discovered test paths to stderr. Read both streams and retain only real files so the banner can
 // never be mistaken for a test path.
@@ -44,7 +47,8 @@ if (workflowTestPaths.length === 0) {
 // roughly 620-735MiB while transforming and rendering; starting two at once makes their real-timer
 // interactions starve and turns otherwise-correct 60s assertions into timeouts.
 for (const testPath of workflowTestPaths) {
-    executeJest([
+    const result = executeJest([
         "--selectProjects", workflowProject, "--runInBand", "--runTestsByPath", testPath,
     ], {stdio: "inherit"});
+    throwForFailedJest(result);
 }
