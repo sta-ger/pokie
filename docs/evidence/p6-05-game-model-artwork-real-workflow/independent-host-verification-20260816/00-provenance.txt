@@ -1,0 +1,7 @@
+candidate_sha=d200dc2d41f5ae982e1bbd58fd8db46fa4e57326
+verification_type=browser_ui_rerun
+node=v24.19.0
+browser=Chrome/138.0.7204.183
+workflow=real-rendered-Studio-controls-via-CDP-mouse-and-browser-input
+api_or_dom_state_injection=none
+fresh_restart=Studio process and Chrome profile both replaced before capture 08
