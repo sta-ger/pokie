@@ -1,0 +1,25 @@
+[2026-08-16T15:21:52.797Z] START a fresh Chrome profile against this candidate's freshly built local Studio.
+[2026-08-16T15:21:53.517Z] NAVIGATE browser address bar to http://127.0.0.1:4656/#/project/gameModel
+[2026-08-16T15:21:53.879Z] CAPTURE 01-initial-game-model.png and 01-initial-game-model.txt
+[2026-08-16T15:21:54.266Z] CLICK "Edit" in "Layout" section
+[2026-08-16T15:21:55.733Z] INPUT "Rows"="4" through browser keyboard
+[2026-08-16T15:21:56.130Z] CLICK "Save" in "Layout" section
+[2026-08-16T15:21:56.136Z] OBSERVE Layout Save returned View with Rows: 4
+[2026-08-16T15:21:56.475Z] CAPTURE 02-layout-saved.png and 02-layout-saved.txt
+[2026-08-16T15:21:57.125Z] CLICK "Edit" in "Reels" section
+[2026-08-16T15:21:57.567Z] CLICK radio "Default" at rendered coordinates
+[2026-08-16T15:21:57.984Z] CLICK "Save" in "Reels" section
+[2026-08-16T15:21:57.991Z] OBSERVE Reels Save returned View with Generation mode: Default (uniform across symbols)
+[2026-08-16T15:21:58.292Z] CAPTURE 03-reels-saved.png and 03-reels-saved.txt
+[2026-08-16T15:21:58.947Z] CLICK "Edit" in "Paytable" section
+[2026-08-16T15:22:00.484Z] INPUT "A x3 payout"="5" through browser keyboard
+[2026-08-16T15:22:01.184Z] CLICK "Save" in "Paytable" section
+[2026-08-16T15:22:01.191Z] OBSERVE Paytable Save returned View with A match-count 3 payout 5
+[2026-08-16T15:22:01.488Z] CAPTURE 04-paytable-saved.png and 04-paytable-saved.txt
+[2026-08-16T15:22:02.139Z] CLICK "Edit" in "Bets & Modes" section
+[2026-08-16T15:22:03.297Z] INPUT "Bet 4"="11" through browser keyboard
+[2026-08-16T15:22:03.694Z] CLICK "Save" in "Bets & Modes" section
+[2026-08-16T15:22:33.874Z] FAILED Error: Timed out waiting for Bets & Modes Save returned View with Available bets: 1, 2, 5, 11
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-save-persistence-rerun-20260816/rendered-save-persistence.mjs:37:181)
+    at async expectSaved (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-save-persistence-rerun-20260816/rendered-save-persistence.mjs:49:71)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-save-persistence-rerun-20260816/rendered-save-persistence.mjs:66:5)

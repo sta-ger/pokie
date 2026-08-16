@@ -1,0 +1,2 @@
+candidate_sha=8a2314ccefe204f118180d24f0759e70c3165c01
+script_source=host-save-persistence-20260816/rendered-save-persistence.mjs

@@ -1,0 +1,26 @@
+[2026-08-16T15:26:37.418Z] START a fresh Chrome profile against this candidate's freshly built local Studio.
+[2026-08-16T15:26:38.138Z] NAVIGATE browser address bar to http://127.0.0.1:4658/#/project/gameModel
+[2026-08-16T15:26:38.454Z] CAPTURE 01-initial-game-model.png and 01-initial-game-model.txt
+[2026-08-16T15:26:38.846Z] CLICK "Edit" in "Layout" section
+[2026-08-16T15:26:40.364Z] INPUT "Rows"="4" through browser keyboard
+[2026-08-16T15:26:40.773Z] CLICK "Save" in "Layout" section
+[2026-08-16T15:26:40.780Z] OBSERVE Layout Save returned View with Rows: 4
+[2026-08-16T15:26:41.104Z] CAPTURE 02-layout-saved.png and 02-layout-saved.txt
+[2026-08-16T15:26:41.782Z] CLICK "Edit" in "Reels" section
+[2026-08-16T15:26:42.211Z] CLICK radio "Default" at rendered coordinates
+[2026-08-16T15:26:42.627Z] CLICK "Save" in "Reels" section
+[2026-08-16T15:26:42.634Z] OBSERVE Reels Save returned View with Generation mode: Default (uniform across symbols)
+[2026-08-16T15:26:42.993Z] CAPTURE 03-reels-saved.png and 03-reels-saved.txt
+[2026-08-16T15:26:43.672Z] CLICK "Edit" in "Paytable" section
+[2026-08-16T15:26:45.219Z] INPUT "A x3 payout"="5" through browser keyboard
+[2026-08-16T15:26:45.906Z] CLICK "Save" in "Paytable" section
+[2026-08-16T15:26:45.909Z] OBSERVE Paytable Save returned View with A match-count 3 payout 5
+[2026-08-16T15:26:46.203Z] CAPTURE 04-paytable-saved.png and 04-paytable-saved.txt
+[2026-08-16T15:26:46.891Z] CLICK "Edit" in "Bets & Modes" section
+[2026-08-16T15:26:48.040Z] INPUT "New bet amount"="11" through browser keyboard
+[2026-08-16T15:26:48.400Z] CLICK "Add bet" at rendered coordinates
+[2026-08-16T15:26:48.833Z] CLICK "Save" in "Bets & Modes" section
+[2026-08-16T15:27:18.984Z] FAILED Error: Timed out waiting for Bets & Modes Save returned View with Available bets: 1, 2, 5, 10, 11
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-save-persistence-keyboard-20260816/rendered-save-persistence.mjs:37:181)
+    at async expectSaved (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-save-persistence-keyboard-20260816/rendered-save-persistence.mjs:50:71)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-save-persistence-keyboard-20260816/rendered-save-persistence.mjs:67:5)
