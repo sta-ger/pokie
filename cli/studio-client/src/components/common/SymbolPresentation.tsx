@@ -39,5 +39,8 @@ export function SymbolPresentation({symbolId, artwork, size = 28}: {symbolId: st
     const [failedReference, setFailedReference] = useState<string>();
     const reference = artwork?.[symbolId] ?? activeArtwork[symbolId];
     if (reference === undefined || reference === failedReference) return <>{symbolId}</>;
-    return <img src={`/api/project/symbol-artwork?path=${encodeURIComponent(reference)}`} alt={symbolId} width={size} height={size} style={{objectFit: "contain", verticalAlign: "middle"}} onError={() => setFailedReference(reference)} />;
+    // Artwork can contain an older label (for example, after a symbol is renamed). Keep the canonical
+    // Blueprint id visible beside it, so View Mode always exposes the persisted model rather than making
+    // the artwork's pixels appear to be its authoritative value.
+    return <><img src={`/api/project/symbol-artwork?path=${encodeURIComponent(reference)}`} alt={symbolId} width={size} height={size} style={{objectFit: "contain", verticalAlign: "middle"}} onError={() => setFailedReference(reference)} /> {symbolId}</>;
 }

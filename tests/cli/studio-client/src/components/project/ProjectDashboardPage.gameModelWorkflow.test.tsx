@@ -282,6 +282,21 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         expect(screen.queryByText("WILD · wild")).not.toBeInTheDocument();
     });
 
+    it("keeps a saved renamed symbol's canonical id visible when its persisted PNG artwork has an older label", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: projectionWithVisibleSymbol("WILD_FINAL")}),
+            "/api/project/symbol-artwork": () => ({ok: true, status: 200, body: {artwork: {WILD_FINAL: "assets/symbols/wild.png"}}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        expect(await screen.findByText("WILD_FINAL · wild")).toBeInTheDocument();
+        expect(screen.getByRole("img", {name: "WILD_FINAL"})).toHaveAttribute("src", "/api/project/symbol-artwork?path=assets%2Fsymbols%2Fwild.png");
+    });
+
     // Covers the completeness gap this step fixes: Mechanics (GameBlueprintMechanics.freeGames) used to
     // have no field editor anywhere in Studio (see GameModelSections.tsx's own doc comment) -- this
     // proves Edit -> add free games -> set scatter symbol -> add an award -> Save really does reach the
