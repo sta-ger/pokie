@@ -20,6 +20,7 @@ import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEdit
 import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {BetsList} from "../blueprintEditor/BetsList";
+import {BetModesEditor} from "../blueprintEditor/BetModesEditor";
 import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
 import {LayoutFieldset} from "../blueprintEditor/LayoutFieldset";
 import {MetadataFieldset} from "../blueprintEditor/MetadataFieldset";
@@ -788,11 +789,8 @@ export function GameModelSections({
                 {editingBets && edit ? (
                     <>
                         <SectionValidationIssues id="bets" edit={edit} />
-                        <Text size="sm" c="dimmed" mb="xs">
-                            Bet modes (id/label/multiplier/target RTP) aren&apos;t editable in Studio yet -- edit
-                            available bet amounts below.
-                        </Text>
                         <BetsList blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <BetModesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
                     </>
                 ) : (
                     <BetsAndModesSection section={projection.betsAndModes} />

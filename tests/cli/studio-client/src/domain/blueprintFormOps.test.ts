@@ -1,5 +1,6 @@
 import {
     addBet,
+    addBetMode,
     addFreeGames,
     addPayline,
     applyPaylineSet,
@@ -9,14 +10,17 @@ import {
     applyReelStripGenerationEntry,
     computeReelStripGenerationAutoLength,
     duplicateBetAt,
+    duplicateBetModeAt,
     duplicatePaylineAt,
     duplicatePaytablePayout,
     duplicateReelStripGenerationLiteralSymbolAt,
     duplicateReelStripSymbolAt,
     duplicateSymbolAt,
     getReelGenerationMode,
+    getSymbolDeletionBlockers,
     getReelStripGenerationSourceMode,
     moveBetAt,
+    moveBetModeAt,
     movePaylineAt,
     moveReelStripGenerationLiteralSymbolAt,
     moveReelStripSymbolAt,
@@ -24,6 +28,7 @@ import {
     parseReelStripGenerationConstraintsJson,
     readFreeGames,
     removeBetAt,
+    removeBetModeAt,
     removeFreeGames,
     removeFreeGamesAward,
     removePaylineAt,
@@ -34,6 +39,7 @@ import {
     removeReelStripGenerationSymbolWeight,
     removeReelStripSymbolAt,
     removeSymbolAt,
+    renameSymbol,
     removeSymbolWeight,
     resizePaylinesToReelCount,
     resizeReelStripGenerationToReelCount,
@@ -59,6 +65,7 @@ import {
     setSymbolWeight,
     toggleScatterSymbol,
     toggleWildSymbol,
+    updateBetMode,
     type ReelStripGenerationDrafts,
 } from "../../../../../cli/studio-client/src/domain/blueprintFormOps";
 
@@ -98,6 +105,38 @@ describe("blueprintFormOps", () => {
 
             toggleScatterSymbol(b, "A");
             expect(b.scatters).toEqual(["A"]);
+            expect(b.wilds).toEqual([]);
+        });
+
+        it("renames every known symbol reference rather than leaving a broken Blueprint", () => {
+            const b: Record<string, unknown> = {
+                symbols: ["A", "S"], wilds: ["A"], scatters: ["S"], paytable: {A: {"3": 5}},
+                reelStrips: [["A", "S"]], symbolWeights: {A: 2},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 10}}},
+                reelStripGeneration: [{type: "generated", length: 2, seed: 1, symbolCounts: {A: 2}, lockedPositions: {"0": "A"}, constraints: [{type: "minimumCircularDistance", minimumDistance: 2, symbolIds: ["A"]}]}],
+            };
+
+            expect(renameSymbol(b, "A", "K")).toBeUndefined();
+
+            expect(b.symbols).toEqual(["K", "S"]);
+            expect(b.wilds).toEqual(["K"]);
+            expect(b.paytable).toEqual({K: {"3": 5}});
+            expect(b.reelStrips).toEqual([["K", "S"]]);
+            expect(b.symbolWeights).toEqual({K: 2});
+            expect(b.reelStripGeneration).toEqual([{type: "generated", length: 2, seed: 1, symbolCounts: {K: 2}, lockedPositions: {"0": "K"}, constraints: [{type: "minimumCircularDistance", minimumDistance: 2, symbolIds: ["K"]}]}]);
+            expect(b.mechanics).toEqual({freeGames: {scatterSymbol: "S", awardsByCount: {"3": 10}}});
+        });
+
+        it("blocks deletion with the exact dependent locations, but removes an unreferenced symbol", () => {
+            const b: Record<string, unknown> = {symbols: ["A", "B"], wilds: ["B"], reelStrips: [["A"]], paytable: {A: {"3": 5}}};
+
+            expect(getSymbolDeletionBlockers(b, "A")).toEqual(["paytable", "reelStrips[0]"]);
+            removeSymbolAt(b, 0);
+            expect(b.symbols).toEqual(["A", "B"]);
+
+            removeSymbolAt(b, 1);
+            expect(b.symbols).toEqual(["A"]);
+            expect(b.wilds).toEqual([]);
         });
 
         it("tolerates a missing/malformed symbols field", () => {
@@ -125,6 +164,20 @@ describe("blueprintFormOps", () => {
 
             removeBetAt(b, 0);
             expect(b.availableBets).toEqual([10, 2, 2]);
+        });
+    });
+
+    describe("betModes", () => {
+        it("adds, edits, duplicates, reorders, and removes persisted mode definitions", () => {
+            const b: Record<string, unknown> = {};
+
+            addBetMode(b);
+            updateBetMode(b, 0, {id: "base", label: "Base", runtimeType: "base", isDefault: true, costMultiplier: 1});
+            duplicateBetModeAt(b, 0);
+            moveBetModeAt(b, 1, 0);
+            removeBetModeAt(b, 1);
+
+            expect(b.betModes).toEqual([{id: "base-copy", label: "Base", runtimeType: "base", isDefault: false, costMultiplier: 1}]);
         });
     });
 

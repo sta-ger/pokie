@@ -256,6 +256,32 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         expect(gameModelCalls).toBeGreaterThanOrEqual(2);
     });
 
+    it("Edit -> mutate -> Save on Bets & Modes persists a real bet mode instead of presenting a read-only placeholder", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const bets = sectionFieldset("Bets & Modes");
+        await user.click(within(bets).getByRole("button", {name: "Edit"}));
+        await user.click(await within(bets).findByRole("button", {name: "Add bet mode"}));
+        const id = within(bets).getByLabelText("Bet mode 1 id");
+        await user.clear(id);
+        await user.type(id, "base");
+        fireEvent.blur(id);
+        await user.click(within(bets).getByRole("button", {name: "Save"}));
+
+        await within(bets).findByRole("button", {name: "Edit"});
+        const saved = calls.find((call) => call.url === "/api/home/blueprints/save");
+        expect(JSON.parse(saved!.init!.body!).blueprint.betModes).toEqual([{id: "base", label: "Mode 1"}]);
+    });
+
     it("Save runs validateBlueprint first -- an invalid draft is never written, and the errors show inline", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
