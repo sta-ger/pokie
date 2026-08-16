@@ -1,0 +1,7 @@
+[2026-08-16T10:52:08.342Z] START reopen against http://127.0.0.1:46158; inspecting rendered DOM only and using browser input events.
+[2026-08-16T10:52:08.367Z] NAVIGATE visible Studio URL #/home/projects
+[2026-08-16T10:52:09.931Z] CAPTURE 11-projects-after-restart.png/.txt and rendered input values
+[2026-08-16T10:52:10.028Z] CLICK visible Open control for "P6 Random Owner" after browser Tab traversal
+[2026-08-16T10:52:10.851Z] OBSERVE registered Random project reopened through the visible Projects UI after fresh Studio/client restart.
+[2026-08-16T10:52:11.010Z] CAPTURE 12-random-reopened.png/.txt and rendered input values
+[2026-08-16T10:52:11.010Z] COMPLETE reopen.
