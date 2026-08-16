@@ -1,2 +1,0 @@
-candidate_sha=9009f7a09c876f0acb924317898f398eea15318b
-node=v18.19.1

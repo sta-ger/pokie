@@ -1,5 +1,0 @@
-2026-08-17T00:43:40+02:00
-stager   2528563 2527420  5 00:42 ?        00:00:04 zenity --file-selection --directory --filename=/home/stager/Documents/
-     0xe00004 "zenity": ("zenity" "zenity")  819x372+0+0  +0+0
-     0xe00002 "zenity": ("zenity" "zenity")  1x1+0+0  +0+0
-     0x20000b "Sample Slot · Build/Export · POKIE Studio - Google Chrome": ("google-chrome (/tmp/p6-07-chrome-blueprint)" "Google-chrome")  1050x1080+10+10  +10+10

@@ -1,23 +1,20 @@
-# P6-07 independent host-side verification finding
+# P6-07 host verification
 
-Candidate `9009f7a09c876f0acb924317898f398eea15318b` was rebuilt with Node
-`v24.18.0` and opened through fresh local Studio and Chrome instances.
+Verified candidate: `cca29390ac54b4e55471345272fa1484b0e23ac6`
+([P6-07] open PAR workbooks for export), rebuilt with Node `v24.18.0` and
+exercised through fresh Studio and Chrome instances. The browser driver used
+only rendered controls and ordinary mouse/keyboard events.
 
-The rendered PAR workbook project (`examples/parsheets/starter.par.xlsx`) has
-only `Overview` and `Game Model` navigation.  It does **not** expose the
-`Build/Export` tab.  This makes the `parWorkbook` build card -- the only
-Build/Export card with `Output file (optional)`, a native Save dialog, and an
-XLSX output -- unreachable through Studio.
+Retained evidence:
 
-The separate blueprint run does expose Build/Export and visibly renders the
-directory card, its preflight (resolved path, output type, conflict state, and
-planned output), and its `Browse…` action.  Clicking that rendered action
-started the real local `zenity --file-selection --directory` process, recorded
-in the running-host evidence.  The required matching file-save/XLSX Build/
-Export path could not be driven because of the prior product capability gate,
-not because of a missing human or external prerequisite.
+- `local-native-workflow-transcript.txt` — open `starter.par.xlsx`, choose an
+  XLSX destination in the native Save dialog, Build, then Reveal file.
+- `local-native-save-build-reveal.{png,txt}` — representative completed local
+  build state, including the selected XLSX destination and Reveal file action.
+- `headless-workflow-transcript.txt` — type an XLSX destination, Build, then
+  Copy path in a Studio session without local-display support.
+- `headless-build-copy-path.{png,txt}` — representative completed headless
+  state, including Copy path and the explicit unsupported-local-output message.
 
-`par-workbook-rendered.txt` and `simulation-diagnostic.*` are the key rendered
-evidence.  `browser-transcript.txt` records the rendered Build/Export visit and
-the attempted native directory picker.  Terminal logs contain the fresh build
-and Studio launches.
+Generated workbooks, output trees, launch/process logs, PIDs, stale attempts,
+and superseded captures are deliberately not retained.
