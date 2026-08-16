@@ -12,12 +12,13 @@ import {BufferedTextInput} from "../common/BufferedTextInput";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
+import {symbolArtworkFromBlueprint, SymbolPresentation} from "../common/SymbolPresentation";
 
 function asReelStrips(value: unknown): string[][] {
     return Array.isArray(value) ? value.map((strip) => (Array.isArray(strip) ? strip.filter((item): item is string => typeof item === "string") : [])) : [];
 }
 
-function ReelStripFieldset({reelIndex, strip, mutate}: {reelIndex: number; strip: string[]; mutate: BlueprintMutate}) {
+function ReelStripFieldset({reelIndex, strip, mutate, artwork}: {reelIndex: number; strip: string[]; mutate: BlueprintMutate; artwork: ReturnType<typeof symbolArtworkFromBlueprint>}) {
     const [newSymbolId, setNewSymbolId] = useState("");
 
     return (
@@ -26,6 +27,7 @@ function ReelStripFieldset({reelIndex, strip, mutate}: {reelIndex: number; strip
                 {strip.map((symbolId, position) => (
                     <List.Item key={position}>
                         <Group gap="xs">
+                            <SymbolPresentation symbolId={symbolId} artwork={artwork} />
                             <BufferedTextInput
                                 aria-label={`Reel ${reelIndex + 1} symbol ${position + 1}`}
                                 value={symbolId}
@@ -71,10 +73,11 @@ function ReelStripFieldset({reelIndex, strip, mutate}: {reelIndex: number; strip
 
 export function ReelStripsEditor({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
     const strips = asReelStrips(blueprint.reelStrips);
+    const artwork = symbolArtworkFromBlueprint(blueprint);
     return (
         <div>
             {strips.map((strip, reelIndex) => (
-                <ReelStripFieldset key={reelIndex} reelIndex={reelIndex} strip={strip} mutate={mutate} />
+                <ReelStripFieldset key={reelIndex} reelIndex={reelIndex} strip={strip} mutate={mutate} artwork={artwork} />
             ))}
         </div>
     );

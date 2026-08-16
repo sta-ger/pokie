@@ -10,6 +10,11 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 // proceed(), no reset()); for guardedAction, it would leave its returned Promise permanently pending,
 // which leaves every awaiting caller (e.g. ProjectsPanel's own Open action) stuck forever too.
 const CONFIRM_TEXT = "You have unsaved changes in Design Game. Leave and lose them?";
+// The routed app keeps the complete Design Game editor mounted while Projects is visible. Its real
+// user-event/modal transitions are deliberately exercised here and can exceed the workflow lane's
+// usual 60s budget on a cgroup-limited gate worker, even though each assertion eventually observes the
+// intended state.
+const WORKFLOW_TIMEOUT_MS = 120_000;
 
 // The Projects tab's Open action only ever appears for an already-registered project (see
 // ProjectsPanel's own OPENABLE_TYPE) -- every test here seeds exactly one such row to open.
@@ -60,7 +65,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         expect(screen.getByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("clicking outside the modal does not close it", async () => {
         const user = userEvent.setup();
@@ -82,7 +87,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         expect(screen.getByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("the modal has no close button -- only Leave and Stay", async () => {
         const user = userEvent.setup();
@@ -98,7 +103,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         const dialog = screen.getByRole("dialog");
         const buttons = within(dialog).getAllByRole("button");
         expect(buttons.map((button) => button.textContent)).toEqual(["Stay", "Leave"]);
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("Stay releases the loading state and double-submit guard on the guardedAction path", async () => {
         const user = userEvent.setup();
@@ -123,7 +128,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
 
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(openButton).not.toHaveAttribute("data-loading");
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("after Stay, a subsequent open attempt completes normally", async () => {
         const user = userEvent.setup();
@@ -160,5 +165,5 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 });

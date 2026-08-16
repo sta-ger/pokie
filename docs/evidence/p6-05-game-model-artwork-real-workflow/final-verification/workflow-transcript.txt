@@ -1,0 +1,8 @@
+[2026-08-16T15:46:45Z] Started a freshly built local Studio and fresh Chrome profile against an isolated Blueprint; used rendered controls and browser input only.
+[2026-08-16T15:46:48Z] Saved Layout with Rows: 4.
+[2026-08-16T15:46:50Z] Saved Reels with Default generation.
+[2026-08-16T15:46:53Z] Saved Paytable with A x3 payout: 5.
+[2026-08-16T15:46:55Z] Edited focused Bet 1 to 11, then immediately clicked Bets & Modes Save; the click blurred the field and View Mode showed Available bets: 11, 2, 5, 10.
+[2026-08-16T15:47:00Z] Saved Mechanics with scatter S and award 3x → 8 free games.
+[2026-08-16T15:47:02Z] Browser reload retained all five saved sections; captured 07-after-browser-reload.*.
+[2026-08-16T15:47:xxZ] Replaced both the Studio process and Chrome profile; the new session retained Rows: 4, Default reels, A x3 payout: 5, Available bets: 11, 2, 5, 10, and the 3x → 8 free-games award; captured 08-after-fresh-studio-and-browser-restart.*.

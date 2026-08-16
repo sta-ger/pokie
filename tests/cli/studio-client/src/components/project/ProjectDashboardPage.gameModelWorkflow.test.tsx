@@ -1,5 +1,6 @@
 import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -56,6 +57,24 @@ function fullProjection(): GameModelProjection {
         mechanics: {status: "available", data: {}},
         limits: {status: "available", data: {minBet: 1, maxBet: 2}},
     };
+}
+
+function projectionWithVisibleSymbol(id: string): GameModelProjection {
+    const projection = fullProjection();
+    projection.symbols = {status: "available", data: [{id, isWild: true, isScatter: false}]};
+    return projection;
+}
+
+function projectionWithSampledReels(id: string): GameModelProjection {
+    const projection = projectionWithVisibleSymbol(id);
+    if (projection.reels.status === "available") {
+        projection.reels = {...projection.reels, data: {...projection.reels.data, generationMode: "symbolWeights"}};
+    }
+    return projection;
+}
+
+function jsonResponse(body: unknown) {
+    return {ok: true, status: 200, json: () => Promise.resolve(body)};
 }
 
 async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
@@ -201,6 +220,83 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         expect(gameModelCalls).toBeGreaterThanOrEqual(2);
     });
 
+    it("keeps the post-save projection when an earlier refresh resolves afterward", async () => {
+        const user = userEvent.setup();
+        let gameModelCalls = 0;
+        let resolvePreSaveRefresh: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        let resolveSave: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        const rawBlueprint = {...RAW_BLUEPRINT, symbols: ["WILD"], wilds: ["WILD"]};
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/gameModel") {
+                gameModelCalls += 1;
+                if (gameModelCalls === 1) {
+                    return Promise.resolve(jsonResponse(projectionWithSampledReels("WILD")));
+                }
+                if (gameModelCalls === 2) {
+                    return new Promise((resolve) => {
+                        resolvePreSaveRefresh = resolve;
+                    });
+                }
+                return Promise.resolve(jsonResponse(projectionWithVisibleSymbol("WILD_FINAL")));
+            }
+            if (path === "/api/home/blueprints/load") {
+                return Promise.resolve(jsonResponse({status: "ok", path: "/games/a", blueprint: rawBlueprint, blueprintHash: "h1"}));
+            }
+            if (path === "/api/home/blueprints/validate") {
+                return Promise.resolve(jsonResponse({status: "ok", warnings: []}));
+            }
+            if (path === "/api/home/blueprints/save") {
+                return new Promise((resolve) => {
+                    resolveSave = resolve;
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route !== undefined) {
+                const response = route({url, init});
+                return Promise.resolve(jsonResponse(response.body));
+            }
+            return Promise.reject(new Error(`No fake route registered for ${url}`));
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const symbols = sectionFieldset("Symbols");
+        await user.click(within(symbols).getByRole("button", {name: "Edit"}));
+        await within(symbols).findByLabelText("New symbol id");
+        await user.type(within(symbols).getByLabelText("New symbol id"), "WILD_FINAL");
+        await user.click(within(symbols).getByRole("button", {name: "Add symbol"}));
+        await user.click(within(symbols).getByRole("button", {name: "Save"}));
+        await waitFor(() => expect(resolveSave).toBeDefined());
+
+        // New sample starts a refresh while the write is pending. It describes the pre-save source
+        // and deliberately resolves last, after Save's own refresh has rendered WILD_FINAL.
+        await user.click(screen.getByRole("button", {name: "New sample"}));
+        await waitFor(() => expect(resolvePreSaveRefresh).toBeDefined());
+        resolveSave?.(jsonResponse({status: "ok", path: "/games/a", blueprintHash: "h2"}));
+
+        expect(await screen.findByText("WILD_FINAL · wild")).toBeInTheDocument();
+        resolvePreSaveRefresh?.(jsonResponse(projectionWithVisibleSymbol("WILD")));
+        await waitFor(() => expect(screen.getByText("WILD_FINAL · wild")).toBeInTheDocument());
+        expect(screen.queryByText("WILD · wild")).not.toBeInTheDocument();
+    });
+
+    it("keeps a saved renamed symbol's canonical id visible when its persisted PNG artwork has an older label", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: projectionWithVisibleSymbol("WILD_FINAL")}),
+            "/api/project/symbol-artwork": () => ({ok: true, status: 200, body: {artwork: {WILD_FINAL: "assets/symbols/wild.png"}}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        expect(await screen.findByText("WILD_FINAL · wild")).toBeInTheDocument();
+        expect(screen.getByRole("img", {name: "WILD_FINAL"})).toHaveAttribute("src", "/api/project/symbol-artwork?path=assets%2Fsymbols%2Fwild.png");
+    });
+
     // Covers the completeness gap this step fixes: Mechanics (GameBlueprintMechanics.freeGames) used to
     // have no field editor anywhere in Studio (see GameModelSections.tsx's own doc comment) -- this
     // proves Edit -> add free games -> set scatter symbol -> add an award -> Save really does reach the
@@ -254,6 +350,55 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         const savedBody = JSON.parse(saveCall!.init!.body!) as {blueprint: {mechanics?: unknown}};
         expect(savedBody.blueprint.mechanics).toEqual({freeGames: {scatterSymbol: "S", awardsByCount: {"3": 10}}});
         expect(gameModelCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    it("Edit -> mutate -> Save on Bets & Modes persists a real bet mode instead of presenting a read-only placeholder", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const bets = sectionFieldset("Bets & Modes");
+        await user.click(within(bets).getByRole("button", {name: "Edit"}));
+        await user.click(await within(bets).findByRole("button", {name: "Add bet mode"}));
+        const id = within(bets).getByLabelText("Bet mode 1 id");
+        await user.clear(id);
+        await user.type(id, "base");
+        fireEvent.blur(id);
+        await user.click(within(bets).getByRole("button", {name: "Save"}));
+
+        await within(bets).findByRole("button", {name: "Edit"});
+        const saved = calls.find((call) => call.url === "/api/home/blueprints/save");
+        expect(JSON.parse(saved!.init!.body!).blueprint.betModes).toEqual([{id: "base", label: "Mode 1"}]);
+    });
+
+    it("Save includes an available-bet edit committed by the field blur that triggered it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const bets = sectionFieldset("Bets & Modes");
+        await user.click(within(bets).getByRole("button", {name: "Edit"}));
+        await user.clear(await within(bets).findByLabelText("Bet 1"));
+        await user.type(within(bets).getByLabelText("Bet 1"), "11");
+        await user.click(within(bets).getByRole("button", {name: "Save"}));
+
+        await within(bets).findByRole("button", {name: "Edit"});
+        const saved = calls.find((call) => call.url === "/api/home/blueprints/save");
+        expect(JSON.parse(saved!.init!.body!).blueprint.availableBets).toEqual([11]);
     });
 
     it("Save runs validateBlueprint first -- an invalid draft is never written, and the errors show inline", async () => {

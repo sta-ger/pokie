@@ -1,5 +1,5 @@
 import {Button} from "@mantine/core";
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {getGameModel, loadBlueprint, saveBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {GameModelProjection} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -82,12 +82,26 @@ export function GameModelTab({
     const [sharedWeightsSampleSeed, setSharedWeightsSampleSeed] = useState<number>();
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
+    // A refresh can be started from several independent paths (mount, New sample, an explicit
+    // Refresh, or post-save). Only the newest projection is still representative once another one
+    // starts; otherwise an older response can land after Save and put View Mode back on its old
+    // server projection.
+    const refreshRequestIdRef = useRef(0);
 
     const refresh = useCallback(() => {
+        const requestId = ++refreshRequestIdRef.current;
         setState({status: "loading"});
         getGameModel(fetchImpl, sharedWeightsSampleSeed)
-            .then((projection) => setState({status: "loaded", projection}))
-            .catch((error: unknown) => setState({status: "error", message: errorMessage(error)}));
+            .then((projection) => {
+                if (requestId === refreshRequestIdRef.current) {
+                    setState({status: "loaded", projection});
+                }
+            })
+            .catch((error: unknown) => {
+                if (requestId === refreshRequestIdRef.current) {
+                    setState({status: "error", message: errorMessage(error)});
+                }
+            });
     }, [fetchImpl, sharedWeightsSampleSeed]);
 
     useEffect(() => {
@@ -221,7 +235,10 @@ export function GameModelTab({
             return;
         }
         const {section, baselineRevision} = editState;
-        const blueprintToSave = editor.state.blueprint;
+        // A field's blur and this primary action can occur in the same React event batch. Read the
+        // editor's event-time state so Save includes that just-committed field value rather than the
+        // previous render's snapshot.
+        const blueprintToSave = editor.getCurrentState().blueprint;
         setEditError(undefined);
         setEditState({status: "saving", section, baselineRevision});
         setValidationView({status: "loading"});

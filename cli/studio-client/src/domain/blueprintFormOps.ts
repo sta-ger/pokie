@@ -36,12 +36,132 @@ export function addSymbol(blueprint: Record<string, unknown>, id: string): void 
 
 export function setSymbolAt(blueprint: Record<string, unknown>, index: number, id: string): void {
     const symbols = [...asStringArray(blueprint.symbols)];
-    symbols[index] = id;
-    blueprint.symbols = symbols;
+    const previousId = symbols[index];
+    if (previousId === undefined || previousId === id) {
+        symbols[index] = id;
+        blueprint.symbols = symbols;
+        return;
+    }
+    renameSymbol(blueprint, previousId, id);
 }
 
 export function removeSymbolAt(blueprint: Record<string, unknown>, index: number): void {
+    const id = asStringArray(blueprint.symbols)[index];
+    if (id === undefined || getSymbolDeletionBlockers(blueprint, id).length > 0) {
+        return;
+    }
     blueprint.symbols = removeAt(asStringArray(blueprint.symbols), index);
+    for (const field of ["wilds", "scatters"] as const) {
+        blueprint[field] = asStringArray(blueprint[field]).filter((symbolId) => symbolId !== id);
+    }
+}
+
+// Symbol ids are foreign keys throughout a Blueprint, rather than display-only labels.  Keep the
+// rename in one place so editing Symbols cannot leave a reel, paytable, generated-reel config, or
+// free-games trigger pointing to the old id.  Invalid target ids deliberately do nothing: the
+// component reports the returned diagnostic and the existing value remains the persisted truth.
+export function renameSymbol(blueprint: Record<string, unknown>, from: string, to: string): string | undefined {
+    const symbols = asStringArray(blueprint.symbols);
+    if (to.trim().length === 0) {
+        return "A symbol id cannot be empty.";
+    }
+    if (from !== to && symbols.includes(to)) {
+        return `Cannot rename "${from}" to "${to}": that symbol id already exists.`;
+    }
+    if (!symbols.includes(from)) {
+        return `Cannot rename "${from}": the symbol no longer exists.`;
+    }
+
+    blueprint.symbols = symbols.map((id) => (id === from ? to : id));
+    for (const field of ["wilds", "scatters"] as const) {
+        blueprint[field] = asStringArray(blueprint[field]).map((id) => (id === from ? to : id));
+    }
+    renameRecordKey(blueprint, "paytable", from, to);
+    renameRecordKey(blueprint, "symbolWeights", from, to);
+    renameRecordKey(blueprint, "symbolArtwork", from, to);
+    if (Array.isArray(blueprint.reelStrips)) {
+        blueprint.reelStrips = asReelStrips(blueprint.reelStrips).map((strip) => strip.map((id) => (id === from ? to : id)));
+    }
+    renameGeneratedReelReferences(blueprint, from, to);
+    const mechanics = asMechanics(blueprint.mechanics);
+    const freeGames = asFreeGames(mechanics.freeGames);
+    if (freeGames?.scatterSymbol === from) {
+        mechanics.freeGames = {...freeGames, scatterSymbol: to};
+        blueprint.mechanics = mechanics;
+    }
+    return undefined;
+}
+
+// Deleting a referenced symbol is intentionally blocked, not guessed at.  Renaming is safe because
+// every known reference can be updated; deletion would require inventing replacement reel symbols or
+// payout semantics.  Membership-only references are removed automatically by removeSymbolAt().
+export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id: string): string[] {
+    const blockers: string[] = [];
+    if (id in asPaytable(blueprint.paytable)) blockers.push("paytable");
+    if (Reflect.apply(Object.prototype.hasOwnProperty, asSymbolWeights(blueprint.symbolWeights), [id])) blockers.push("symbolWeights");
+    asReelStrips(blueprint.reelStrips).forEach((strip, reelIndex) => {
+        if (strip.includes(id)) blockers.push(`reelStrips[${reelIndex}]`);
+    });
+    asReelStripGenerationEntries(blueprint.reelStripGeneration).forEach((entry, reelIndex) => {
+        if (entry.type === "literal" && asStringArray(entry.strip).includes(id)) blockers.push(`reelStripGeneration[${reelIndex}].strip`);
+        if (entry.type === "generated") {
+            for (const field of ["symbolCounts", "symbolWeights", "lockedPositions"] as const) {
+                const values = field === "lockedPositions" ? asLockedPositions(entry[field]) : asNumberRecord(entry[field]);
+                if (Reflect.apply(Object.prototype.hasOwnProperty, values, [id]) || Object.values(values).includes(id)) blockers.push(`reelStripGeneration[${reelIndex}].${field}`);
+            }
+            if (containsSymbolReference(entry.constraints, id)) blockers.push(`reelStripGeneration[${reelIndex}].constraints`);
+        }
+    });
+    const freeGames = asFreeGames(asMechanics(blueprint.mechanics).freeGames);
+    if (freeGames?.scatterSymbol === id) blockers.push("mechanics.freeGames.scatterSymbol");
+    return blockers;
+}
+
+function renameRecordKey(blueprint: Record<string, unknown>, field: string, from: string, to: string): void {
+    const value = blueprint[field];
+    if (typeof value !== "object" || value === null || Array.isArray(value) || !Reflect.apply(Object.prototype.hasOwnProperty, value, [from])) return;
+    const record = {...(value as Record<string, unknown>)};
+    const moved = record[from];
+    Reflect.deleteProperty(record, from);
+    record[to] = moved;
+    blueprint[field] = record;
+}
+
+function renameGeneratedReelReferences(blueprint: Record<string, unknown>, from: string, to: string): void {
+    if (!Array.isArray(blueprint.reelStripGeneration)) return;
+    blueprint.reelStripGeneration = asReelStripGenerationEntries(blueprint.reelStripGeneration).map((entry) => {
+        if (entry.type === "literal") return {...entry, strip: asStringArray(entry.strip).map((id) => (id === from ? to : id))};
+        const next = {...entry};
+        for (const field of ["symbolCounts", "symbolWeights"] as const) {
+            if (next[field] !== undefined) {
+                const values = {...asNumberRecord(next[field])};
+                if (Reflect.apply(Object.prototype.hasOwnProperty, values, [from])) {
+                    values[to] = values[from];
+                    Reflect.deleteProperty(values, from);
+                    next[field] = values;
+                }
+            }
+        }
+        const locked = asLockedPositions(next.lockedPositions);
+        if (Object.values(locked).includes(from)) {
+            next.lockedPositions = Object.fromEntries(Object.entries(locked).map(([position, id]) => [position, id === from ? to : id]));
+        }
+        if (next.constraints !== undefined) next.constraints = replaceSymbolReference(next.constraints, from, to);
+        return next;
+    });
+}
+
+function containsSymbolReference(value: unknown, id: string): boolean {
+    if (typeof value === "string") return value === id;
+    if (Array.isArray(value)) return value.some((item) => containsSymbolReference(item, id));
+    return typeof value === "object" && value !== null && Object.entries(value).some(([key, item]) => key !== "type" && (key === id || containsSymbolReference(item, id)));
+}
+
+function replaceSymbolReference(value: unknown, from: string, to: string): unknown {
+    if (typeof value === "string") return value === from ? to : value;
+    if (Array.isArray(value)) return value.map((item) => replaceSymbolReference(item, from, to));
+    if (typeof value !== "object" || value === null) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key === from ? to : key, key === "type" ? item : replaceSymbolReference(item, from, to)]));
 }
 
 // A duplicated symbol id can never collide with an existing one (GameBlueprintValidator rejects
@@ -71,7 +191,16 @@ export function moveSymbolAt(blueprint: Record<string, unknown>, fromIndex: numb
 
 function toggleMembership(blueprint: Record<string, unknown>, field: "wilds" | "scatters", id: string): void {
     const list = asStringArray(blueprint[field]);
-    blueprint[field] = list.includes(id) ? list.filter((existing) => existing !== id) : [...list, id];
+    if (list.includes(id)) {
+        blueprint[field] = list.filter((existing) => existing !== id);
+        return;
+    }
+    // GameBlueprintValidator deliberately rejects a wild/scatter overlap: neither the generator nor
+    // the runtime has an unambiguous special-symbol precedence.  Selecting one kind therefore clears
+    // the other rather than creating a draft that can never be saved.
+    const opposite = field === "wilds" ? "scatters" : "wilds";
+    blueprint[opposite] = asStringArray(blueprint[opposite]).filter((existing) => existing !== id);
+    blueprint[field] = [...list, id];
 }
 
 export function toggleWildSymbol(blueprint: Record<string, unknown>, id: string): void {
@@ -111,6 +240,58 @@ export function duplicateBetAt(blueprint: Record<string, unknown>, index: number
 
 export function moveBetAt(blueprint: Record<string, unknown>, fromIndex: number, toIndex: number): void {
     blueprint.availableBets = moveItem(asNumberArray(blueprint.availableBets), fromIndex, toIndex);
+}
+
+// ---- Bet modes ----
+
+export type BlueprintBetMode = {
+    id: string;
+    label?: string;
+    costMultiplier?: number;
+    targetRtp?: number;
+    runtimeType?: "base" | "ante" | "buyFeature";
+    isDefault?: boolean;
+    forcedFreeGames?: number;
+};
+
+function asBetModes(value: unknown): BlueprintBetMode[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter((mode): mode is BlueprintBetMode => typeof mode === "object" && mode !== null && !Array.isArray(mode)).map((mode) => ({...(mode as BlueprintBetMode)}));
+}
+
+export function addBetMode(blueprint: Record<string, unknown>): void {
+    const modes = asBetModes(blueprint.betModes);
+    const ids = new Set(modes.map((mode) => mode.id));
+    let number = 1;
+    while (ids.has(`mode-${number}`)) number++;
+    blueprint.betModes = [...modes, {id: `mode-${number}`, label: `Mode ${number}`}];
+}
+
+export function updateBetMode(blueprint: Record<string, unknown>, index: number, update: Partial<BlueprintBetMode>): void {
+    const modes = asBetModes(blueprint.betModes);
+    if (modes[index] === undefined) return;
+    modes[index] = {...modes[index], ...update};
+    blueprint.betModes = modes;
+}
+
+export function removeBetModeAt(blueprint: Record<string, unknown>, index: number): void {
+    blueprint.betModes = removeAt(asBetModes(blueprint.betModes), index);
+}
+
+export function duplicateBetModeAt(blueprint: Record<string, unknown>, index: number): void {
+    const modes = asBetModes(blueprint.betModes);
+    const source = modes[index];
+    if (source === undefined) return;
+    const existing = new Set(modes.map((mode) => mode.id));
+    let suffix = 2;
+    let id = `${source.id}-copy`;
+    while (existing.has(id)) id = `${source.id}-copy-${suffix++}`;
+    modes.splice(index + 1, 0, {...source, id, isDefault: false});
+    blueprint.betModes = modes;
+}
+
+export function moveBetModeAt(blueprint: Record<string, unknown>, fromIndex: number, toIndex: number): void {
+    blueprint.betModes = moveItem(asBetModes(blueprint.betModes), fromIndex, toIndex);
 }
 
 // ---- Paylines ----

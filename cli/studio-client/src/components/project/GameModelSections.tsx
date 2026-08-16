@@ -20,6 +20,7 @@ import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEdit
 import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
 import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {BetsList} from "../blueprintEditor/BetsList";
+import {BetModesEditor} from "../blueprintEditor/BetModesEditor";
 import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
 import {LayoutFieldset} from "../blueprintEditor/LayoutFieldset";
 import {MetadataFieldset} from "../blueprintEditor/MetadataFieldset";
@@ -31,6 +32,7 @@ import {SymbolsTable} from "../blueprintEditor/SymbolsTable";
 import {EmptyState} from "../common/EmptyState";
 import {IssueList} from "../common/IssueList";
 import {PageSection} from "../common/PageSection";
+import {SymbolPresentation} from "../common/SymbolPresentation";
 
 // GameModelSections offers Edit on "basics"/"layout"/"symbols"/"reels"/"paytable"/"bets" (the
 // BlueprintSectionId values with an existing, canonical field editor to reuse from the guided Design
@@ -197,7 +199,7 @@ function SymbolsSection({section}: {section: GameModelSection<GameModelSymbol[]>
         <Group gap="xs">
             {section.data.map((symbol) => (
                 <Badge key={symbol.id} variant="outline">
-                    {symbol.id}
+                    <SymbolPresentation symbolId={symbol.id} />
                     {symbol.isWild ? " · wild" : ""}
                     {symbol.isScatter ? " · scatter" : ""}
                 </Badge>
@@ -230,7 +232,7 @@ function PaytableSection({section}: {section: GameModelProjection["paytable"]}) 
                 <Table.Tbody>
                     {section.data.map((row) => (
                         <Table.Tr key={`${row.symbolId}-${row.matchCount}`}>
-                            <Table.Td>{row.symbolId}</Table.Td>
+                            <Table.Td><SymbolPresentation symbolId={row.symbolId} /></Table.Td>
                             <Table.Td>{row.matchCount}</Table.Td>
                             <Table.Td>{row.payout}</Table.Td>
                         </Table.Tr>
@@ -352,7 +354,7 @@ function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; r
                                                 "—"
                                             ) : (
                                                 <Badge variant={cell.isWild || cell.isScatter ? "filled" : "outline"} color={describeGameWindowCellColor(cell)}>
-                                                    {cell.symbolId}
+                                                    <SymbolPresentation symbolId={cell.symbolId} />
                                                 </Badge>
                                             )}
                                         </Table.Td>
@@ -404,7 +406,7 @@ function ReelPositionsTable({reel}: {reel: GameModelResolvedReel}) {
                     {reel.positions.map((position) => (
                         <Table.Tr key={position.index}>
                             <Table.Td>{position.index}</Table.Td>
-                            <Table.Td>{position.symbolId}</Table.Td>
+                            <Table.Td><SymbolPresentation symbolId={position.symbolId} /></Table.Td>
                             <Table.Td>{describeSpecialCell(position)}</Table.Td>
                             <Table.Td>{position.stackSize > 1 ? `${position.stackSize}×` : "—"}</Table.Td>
                             <Table.Td>{position.locked ? "Locked" : "—"}</Table.Td>
@@ -788,11 +790,8 @@ export function GameModelSections({
                 {editingBets && edit ? (
                     <>
                         <SectionValidationIssues id="bets" edit={edit} />
-                        <Text size="sm" c="dimmed" mb="xs">
-                            Bet modes (id/label/multiplier/target RTP) aren&apos;t editable in Studio yet -- edit
-                            available bet amounts below.
-                        </Text>
                         <BetsList blueprint={edit.blueprint} mutate={edit.mutate} />
+                        <BetModesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
                     </>
                 ) : (
                     <BetsAndModesSection section={projection.betsAndModes} />

@@ -15,6 +15,7 @@ import type {
     StudioBlueprintRandomView,
     StudioBlueprintSaveManagedView,
     StudioBlueprintSaveView,
+    StudioSymbolArtworkImportView,
     StudioBlueprintValidationView,
     StudioBuildPreviewView,
     StudioBuildResult,
@@ -145,6 +146,18 @@ export async function pickNativePath(fetchImpl: FetchLike, request: NativeBrowse
         body: JSON.stringify(request),
     });
     return (await response.json()) as StudioNativePickerResultView;
+}
+
+export async function importSymbolArtwork(fetchImpl: FetchLike, sourcePath: string): Promise<StudioSymbolArtworkImportView> {
+    const response = await fetchImpl("/api/home/blueprints/symbol-artwork/import", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sourcePath}),
+    });
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to import symbol artwork"));
+    }
+    return (await response.json()) as StudioSymbolArtworkImportView;
 }
 
 // The Projects area's own managed/registered list -- every project Studio knows about, most-recently-
