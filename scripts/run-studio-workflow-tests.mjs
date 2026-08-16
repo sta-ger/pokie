@@ -3,6 +3,7 @@
 // transform state that the otherwise shared in-band process eventually reaches its 512MiB old-space
 // cap before the final suite, even though each suite completes in isolation.
 import {spawnSync} from "node:child_process";
+import {existsSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
@@ -28,7 +29,16 @@ function executeJest(arguments_, options = {}) {
 }
 
 const discovery = executeJest(["--selectProjects", workflowProject, "--listTests"], {encoding: "utf8"});
-const workflowTestPaths = discovery.stdout.trim().split(/\r?\n/).filter(Boolean);
+// Jest writes the selected-project banner to stdout but, in some versions, writes the list of
+// discovered test paths to stderr. Read both streams and retain only real files so the banner can
+// never be mistaken for a test path.
+const workflowTestPaths = [discovery.stdout, discovery.stderr]
+    .flatMap((output) => output.trim().split(/\r?\n/))
+    .filter((testPath) => existsSync(testPath));
+
+if (workflowTestPaths.length === 0) {
+    throw new Error(`No ${workflowProject} test files were discovered.`);
+}
 
 for (const testPath of workflowTestPaths) {
     executeJest(["--selectProjects", workflowProject, "--runInBand", "--runTestsByPath", testPath], {stdio: "inherit"});
