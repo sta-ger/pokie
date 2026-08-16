@@ -4,11 +4,11 @@ import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient
 import {renderRoutedApp} from "../testUtils/renderRoutedApp";
 
 // Exercises the full human-centered happy path end to end, across a real cross-page navigation: land on
-// Home's default "Design Game" tab -> edit the game model -> validate -> build -> auto-navigate into
-// the Project Dashboard -> run a simulation -> its own Review step auto-opens the resulting report.
+// Home's default "Design Game" tab -> start from its validated Recommended model -> create and open a
+// managed Blueprint Project -> run a simulation -> its own Review step auto-opens the resulting report.
 // Every screen/hook/API call used here is the app's real, already-tested production code -- this test
 // only wires a fake fetch across the whole scenario, it doesn't re-implement any of it.
-describe("Studio happy path: create/open -> configure -> validate -> build -> simulate -> report", () => {
+describe("Studio happy path: recommended model -> create project -> simulate -> report", () => {
     // This is the longest test in the suite (many sequential steps plus two real-timer simulation-poll
     // waits) -- even the project's raised 60000ms global testTimeout leaves too little headroom under
     // concurrent Jest workers (these real-timer tests are wall-clock-bound, so CPU starvation from a
@@ -35,44 +35,24 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
             if (path === "/api/home/blueprints/validate" && method === "POST") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
             }
-            // Direct Build Package performs P2-POLISH-09's read-only destination preflight first.
-            // Keep this happy-path destination empty so the scenario reaches the actual build and its
-            // existing Open in Studio assertion without silently bypassing the safety check.
-            if (path === "/api/home/blueprints/build-preview" && method === "POST") {
+            if (path === "/api/home/blueprints/save-managed" && method === "POST") {
                 return Promise.resolve({
                     ok: true,
-                    status: 200,
+                    status: 201,
                     json: () =>
                         Promise.resolve({
                             status: "ok",
-                            warnings: [],
-                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                            reels: 5,
-                            rows: 3,
-                            symbolsCount: 3,
-                            blueprintHash: "abc123",
-                            expectedFiles: ["build-info.json"],
-                            projectRoot: "/games/sample-slot",
-                            destinationHasContent: false,
-                            createFiles: ["build-info.json"],
-                            updateFiles: [],
-                            deleteFiles: [],
-                        }),
-                });
-            }
-            if (path === "/api/home/blueprints/build" && method === "POST") {
-                return Promise.resolve({
-                    ok: true,
-                    status: 200,
-                    json: () =>
-                        Promise.resolve({
-                            status: "ok",
-                            projectRoot: "/games/sample-slot",
-                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
-                            createdFiles: ["build-info.json"],
-                            buildInfo: {blueprintHash: "abc123", pokieVersion: "1.0.0", generatedAt: new Date().toISOString(), files: []},
-                            unchanged: false,
-                            warnings: [],
+                            path: "/projects/starter-slot/blueprint.json",
+                            name: "starter-slot",
+                            blueprintHash: "starter-hash",
+                            registeredProject: {
+                                location: "/projects/starter-slot/blueprint.json",
+                                name: "Starter Slot",
+                                type: "blueprint",
+                                capabilities: ["runtime.execute"],
+                                origin: "managed",
+                                status: "ok",
+                            },
                         }),
                 });
             }
@@ -82,8 +62,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            context: {mode: "project", projectRoot: "/games/sample-slot"},
-                            manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            context: {mode: "project", projectRoot: "/projects/starter-slot"},
+                            manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
                         }),
                 });
             }
@@ -94,8 +74,8 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     json: () =>
                         Promise.resolve({
                             status: "loaded",
-                            projectRoot: "/games/sample-slot",
-                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            projectRoot: "/projects/starter-slot",
+                            game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
                             type: "blueprint",
                             capabilities: ["blueprint.build"],
                         }),
@@ -107,9 +87,9 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            packageRoot: "/games/sample-slot",
+                            packageRoot: "/projects/starter-slot",
                             valid: true,
-                            packageJson: {name: "sample-slot", version: "0.1.0"},
+                            packageJson: {name: "starter-slot", version: "0.1.0"},
                             buildInfo: {
                                 blueprintHash: "abc123",
                                 source: "in-memory-blueprint",
@@ -126,9 +106,9 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
                     status: 200,
                     json: () =>
                         Promise.resolve({
-                            packageRoot: "/games/sample-slot",
+                            packageRoot: "/projects/starter-slot",
                             valid: true,
-                            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                            game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
                             errors: [],
                             warnings: [],
                             suggestions: [],
@@ -222,50 +202,36 @@ describe("Studio happy path: create/open -> configure -> validate -> build -> si
 
         renderRoutedApp({fetchImpl, initialEntries: ["/"]});
 
-        // 1. Land on Home's default "Design Game" tab -- the guided open-or-create + configure entry.
+        // 1. Land on Home's default "Design Game" tab. It starts from a playable Recommended model.
         // Awaited rather than immediate: "/" resolves the server mode first, so Home appears a tick later.
         expect(await screen.findByRole("heading", {name: "Design Your Game"})).toBeInTheDocument();
+        expect(screen.getByLabelText("Game name")).toHaveValue("Starter Slot");
 
-        // 2. Configure the game model -- add a symbol. The guided editor's own fields are split into
-        // named sections (SectionedFormEditor) -- Symbols is one of them, so it needs its own tab click
-        // first.
-        await user.click(screen.getByRole("tab", {name: "Symbols"}));
-        await user.type(screen.getByLabelText("New symbol id"), "wild");
-        await user.click(screen.getByRole("button", {name: "Add symbol"}));
-
-        // 3. Validate.
-        await user.click(screen.getByRole("button", {name: "Validate"}));
+        // 2. Automatic validation makes the Recommended model ready without a Configure -> Validate ->
+        // Build sequence or an artifact destination.
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
+        expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
 
-        // 4. Build.
-        await user.click(screen.getByRole("button", {name: "Build Package"}));
-        const openInStudio = await screen.findByRole("button", {name: "Open in Studio"});
+        // 3. Create atomically persists/registers the managed Blueprint Project and opens its Workspace.
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
 
-        // 5. Building's success action lands us in the Project Dashboard (the same "Open in Studio"
-        // bridge the app already uses everywhere a build succeeds) -- via the same guarded-navigation
-        // confirm every other "leave a dirty Design Game draft" exit uses (see openProjectGuard.test.tsx):
-        // the symbol added in step 2 was never saved to a source blueprint file, and building a package is
-        // a distinct fact from that (see BlueprintBuildPanel's own `onBuilt` doc comment), so the draft is
-        // still genuinely dirty here.
-        await user.click(openInStudio);
-        expect(await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?")).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Leave"}));
-        expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
-
-        // 6. Overview validates automatically as soon as the project loads (no separate "Validate"
+        // 4. Overview validates automatically as soon as the project loads (no separate "Validate"
         // section/click any more -- see OverviewTab's own automatic diagnostics).
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
 
-        // 7. Head to Simulation and run it.
+        // 5. Head to Simulation and run it.
         await user.click(screen.getByRole("button", {name: "Simulation"}));
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
-        // 8. Let it complete -- Simulation's own Review step auto-advances the instant the run goes
+        // 6. Let it complete -- Simulation's own Review step auto-advances the instant the run goes
         // terminal (see SimulationTab's own doc comment on its activeStep effect), no separate
         // "open the report" step needed.
         await waitFor(() => expect(simulationPollCount).toBeGreaterThanOrEqual(2), {timeout: 5000});
 
-        // 9. The report renders right there on Simulation's own Review step.
+        // 7. The report renders right there on Simulation's own Review step.
         await waitFor(() => expect(screen.getByText("RTP")).toBeInTheDocument());
         expect(screen.getByText("95.00%")).toBeInTheDocument();
     }, 90000);
