@@ -37,7 +37,7 @@ export function useActiveSymbolArtwork(enabled = true): SymbolArtwork {
         return () => {
             active = false;
         };
-    }, [fetchImpl]);
+    }, [enabled, fetchImpl]);
     return artwork;
 }
 

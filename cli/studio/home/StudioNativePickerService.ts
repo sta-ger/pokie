@@ -185,8 +185,15 @@ function escapeAppleScriptString(value: string): string {
 // here.
 function buildAppleScript(request: StudioNativePickerRequest): string {
     const startClause = request.startPath ? ` default location (POSIX file "${escapeAppleScriptString(request.startPath)}")` : "";
-    const prompt = request.kind === "directory" ? "Select a folder" : request.mode === "save" ? "Save file as" : "Select a file";
-    const command = request.kind === "directory" ? "choose folder" : request.mode === "save" ? "choose file name" : "choose file";
+    let prompt = "Select a file";
+    let command = "choose file";
+    if (request.kind === "directory") {
+        prompt = "Select a folder";
+        command = "choose folder";
+    } else if (request.mode === "save") {
+        prompt = "Save file as";
+        command = "choose file name";
+    }
     return `set chosenItem to ${command}${startClause} with prompt "${prompt}"\nreturn POSIX path of chosenItem`;
 }
 
@@ -244,7 +251,11 @@ function buildZenityArgs(request: StudioNativePickerRequest): string[] {
     if (request.startPath) {
         // Zenity's Save dialog accepts a full suggested filename, whereas its open/directory dialogs
         // interpret --filename as a starting folder and need the trailing slash.
-        args.push(`--filename=${request.mode === "save" ? request.startPath : request.startPath.endsWith("/") ? request.startPath : `${request.startPath}/`}`);
+        let initialPath = request.startPath;
+        if (request.mode !== "save" && !initialPath.endsWith("/")) {
+            initialPath = `${initialPath}/`;
+        }
+        args.push(`--filename=${initialPath}`);
     }
     for (const filter of request.fileFilters ?? []) {
         args.push(`--file-filter=${filter.name} | ${filter.extensions.map((ext) => `*.${ext}`).join(" ")}`);
