@@ -1,5 +1,0 @@
-[2026-08-16T20:53:51.234Z] START weighted: fresh local Studio and Chrome, controlled only through rendered UI.
-[2026-08-16T20:53:51.252Z] NAVIGATE public Studio URL #/project/gameModel
-[2026-08-16T20:53:52.518Z] CLICK "Edit" in "Reels"
-[2026-08-16T20:53:53.167Z] CLICK "Select reel" at rendered coordinates
-[2026-08-16T20:53:53.767Z] CLICK rendered Select for Reel 2, the existing generated symbolWeights configuration.

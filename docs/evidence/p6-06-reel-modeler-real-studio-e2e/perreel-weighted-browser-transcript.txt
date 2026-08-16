@@ -1,7 +1,0 @@
-[2026-08-16T21:03:18.421Z] START perreel: fresh local Studio and Chrome, controlled only through rendered UI.
-[2026-08-16T21:03:18.445Z] NAVIGATE public Studio URL #/project/gameModel
-[2026-08-16T21:03:19.642Z] CLICK "Edit" in "Reels"
-[2026-08-16T21:03:20.284Z] CLICK "Select reel" at rendered coordinates
-[2026-08-16T21:03:20.889Z] CLICK rendered Select for Reel 2, the existing generated symbolWeights configuration.
-[2026-08-16T21:03:20.894Z] OBSERVE the existing Reel 2 per-reel Weights editor and its persisted weight rows through visible Studio controls.
-[2026-08-16T21:03:21.465Z] CAPTURE 07b-existing-per-reel-symbolweights-config.png and 07b-existing-per-reel-symbolweights-config.txt
