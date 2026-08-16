@@ -115,6 +115,12 @@ export const OUTCOME_SOURCE_SAMPLE_CAPABILITY: StudioProjectCapability = "outcom
 // outcome library or be drawn from.
 export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: StudioProjectCapability = "stakeAdapter.exchange";
 
+// Granted only to "parWorkbook" (see PROJECT_TYPE_CAPABILITIES) -- lets Studio's Build/Export tab
+// republish an already-loaded PAR workbook through the ArtifactBuilderRegistry.  This is deliberately
+// distinct from the runtime and outcome-source capabilities: a workbook can be copied to a new .xlsx
+// destination, but it cannot be loaded as a game or treated as a canonical outcome source.
+export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: StudioProjectCapability = "parWorkbook.exchange";
+
 export const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",
     tsPackage: "Package",

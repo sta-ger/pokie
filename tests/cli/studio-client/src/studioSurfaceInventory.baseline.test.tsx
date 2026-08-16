@@ -188,6 +188,29 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         expect(tabButtons.map((button) => button.textContent)).toEqual(["Overview", "Game Model", "Build/Export", "Certification"]);
     });
 
+    it("lists Build/Export for a PAR workbook project, making its native .xlsx save destination card reachable from Studio", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/my-slot.par.xlsx",
+                    game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
+                    type: "parWorkbook",
+                    capabilities: ["parWorkbook.exchange"],
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "My Slot"});
+
+        const nav = screen.getByRole("navigation", {name: "Sections"});
+        expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual(["Overview", "Game Model", "Build/Export"]);
+    });
+
     it("shows a diagnostic instead of the Simulation workflow when deep-linking to an operation a read-only/package-exchange project's own capabilities don't support", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
