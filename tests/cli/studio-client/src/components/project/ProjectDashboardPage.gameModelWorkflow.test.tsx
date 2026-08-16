@@ -378,6 +378,29 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         expect(JSON.parse(saved!.init!.body!).blueprint.betModes).toEqual([{id: "base", label: "Mode 1"}]);
     });
 
+    it("Save includes an available-bet edit committed by the field blur that triggered it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: RAW_BLUEPRINT, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const bets = sectionFieldset("Bets & Modes");
+        await user.click(within(bets).getByRole("button", {name: "Edit"}));
+        await user.clear(await within(bets).findByLabelText("Bet 1"));
+        await user.type(within(bets).getByLabelText("Bet 1"), "11");
+        await user.click(within(bets).getByRole("button", {name: "Save"}));
+
+        await within(bets).findByRole("button", {name: "Edit"});
+        const saved = calls.find((call) => call.url === "/api/home/blueprints/save");
+        expect(JSON.parse(saved!.init!.body!).blueprint.availableBets).toEqual([11]);
+    });
+
     it("Save runs validateBlueprint first -- an invalid draft is never written, and the errors show inline", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

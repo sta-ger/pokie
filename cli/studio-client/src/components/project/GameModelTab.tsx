@@ -235,7 +235,10 @@ export function GameModelTab({
             return;
         }
         const {section, baselineRevision} = editState;
-        const blueprintToSave = editor.state.blueprint;
+        // A field's blur and this primary action can occur in the same React event batch. Read the
+        // editor's event-time state so Save includes that just-committed field value rather than the
+        // previous render's snapshot.
+        const blueprintToSave = editor.getCurrentState().blueprint;
         setEditError(undefined);
         setEditState({status: "saving", section, baselineRevision});
         setValidationView({status: "loading"});
