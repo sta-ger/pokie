@@ -491,6 +491,16 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/blueprints/symbol-artwork/import") {
+            await this.handleSymbolArtworkImport(req, res);
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/symbol-artwork") {
+            this.handleSymbolArtwork(res, url);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/build-preview") {
             await this.handleBlueprintBuildPreview(req, res);
             return;
@@ -1204,6 +1214,36 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, result);
+    }
+
+    private async handleSymbolArtworkImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        const sourcePath = (body as {sourcePath?: unknown} | null)?.sourcePath;
+        if (typeof sourcePath !== "string" || sourcePath.trim().length === 0) {
+            this.sendJson(res, 400, {error: '"sourcePath" must be a non-empty string.'});
+            return;
+        }
+        const result = this.blueprintService.importSymbolArtwork(sourcePath);
+        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+    }
+
+    private handleSymbolArtwork(res: ServerResponse, url: URL): void {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 404, {error: "No active project artwork."});
+            return;
+        }
+        const reference = url.searchParams.get("path");
+        if (reference === null) {
+            this.sendJson(res, 400, {error: '"path" is required.'});
+            return;
+        }
+        const imagePath = this.blueprintService.resolveSymbolArtwork(this.currentContext.projectRoot, reference);
+        if (imagePath === undefined) {
+            this.sendJson(res, 404, {error: "Symbol artwork is missing or invalid."});
+            return;
+        }
+        res.writeHead(200, {"Content-Type": "image/png", "Cache-Control": "no-store"});
+        res.end(fs.readFileSync(imagePath));
     }
 
     private async handleBlueprintBuildPreview(req: IncomingMessage, res: ServerResponse): Promise<void> {

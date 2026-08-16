@@ -1,5 +1,7 @@
 import {Button, Checkbox, Group, Table, Text, TextInput} from "@mantine/core";
 import {useState} from "react";
+import {importSymbolArtwork, pickNativePath} from "../../api/apiClient";
+import {useStudioApi} from "../../context/StudioApiProvider";
 import {asStringList} from "../../domain/asStringList";
 import {addSymbol, duplicateSymbolAt, getSymbolDeletionBlockers, moveSymbolAt, removeSymbolAt, renameSymbol, toggleScatterSymbol, toggleWildSymbol} from "../../domain/blueprintFormOps";
 import type {BlueprintMutate} from "../../hooks/useBlueprintEditor";
@@ -9,11 +11,40 @@ import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
 
 export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
+    const fetchImpl = useStudioApi();
     const symbols = asStringList(blueprint.symbols);
     const wilds = asStringList(blueprint.wilds);
     const scatters = asStringList(blueprint.scatters);
     const [newSymbolId, setNewSymbolId] = useState("");
     const [diagnostic, setDiagnostic] = useState<string>();
+    const artwork = typeof blueprint.symbolArtwork === "object" && blueprint.symbolArtwork !== null && !Array.isArray(blueprint.symbolArtwork)
+        ? blueprint.symbolArtwork as Record<string, unknown>
+        : {};
+
+    const selectArtwork = async (symbolId: string): Promise<void> => {
+        setDiagnostic(undefined);
+        try {
+            const picked = await pickNativePath(fetchImpl, {kind: "file", fileFilters: [{name: "PNG image", extensions: ["png"]}]});
+            if (picked.status === "cancelled") return;
+            if (picked.status !== "selected") {
+                setDiagnostic(picked.status === "error" ? `Could not select artwork: ${picked.message}` : picked.reason);
+                return;
+            }
+            const imported = await importSymbolArtwork(fetchImpl, picked.path);
+            if (imported.status === "error") {
+                setDiagnostic(imported.error);
+                return;
+            }
+            mutate((draft) => {
+                const current = typeof draft.symbolArtwork === "object" && draft.symbolArtwork !== null && !Array.isArray(draft.symbolArtwork)
+                    ? draft.symbolArtwork as Record<string, unknown>
+                    : {};
+                draft.symbolArtwork = {...current, [symbolId]: imported.reference};
+            });
+        } catch (error) {
+            setDiagnostic(error instanceof Error ? error.message : String(error));
+        }
+    };
 
     return (
         <PageSection legend="Symbols">
@@ -24,6 +55,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                             <Table.Th>Symbol id</Table.Th>
                             <Table.Th>Wild</Table.Th>
                             <Table.Th>Scatter</Table.Th>
+                            <Table.Th>Artwork</Table.Th>
                             <Table.Th />
                         </Table.Tr>
                     </Table.Thead>
@@ -52,6 +84,38 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                                             mutate((b) => toggleWildSymbol(b, symbolId));
                                         }}
                                     />
+                                </Table.Td>
+                                <Table.Td>
+                                    {typeof artwork[symbolId] === "string" ? (
+                                        <Group gap="xs" wrap="nowrap">
+                                            <img
+                                                src={`/api/project/symbol-artwork?path=${encodeURIComponent(artwork[symbolId])}`}
+                                                alt={`${symbolId} artwork`}
+                                                width={32}
+                                                height={32}
+                                                style={{objectFit: "contain"}}
+                                                onError={(event) => {
+                                                    event.currentTarget.style.display = "none";
+                                                    setDiagnostic(`Artwork for "${symbolId}" is missing or unreadable. The symbol will use its id until you change or remove the artwork.`);
+                                                }}
+                                            />
+                                            <Button size="xs" variant="default" onClick={() => {
+                                                selectArtwork(symbolId);
+                                            }}>Change</Button>
+                                            <Button size="xs" color="red" variant="subtle" onClick={() => mutate((draft) => {
+                                                const current = typeof draft.symbolArtwork === "object" && draft.symbolArtwork !== null && !Array.isArray(draft.symbolArtwork)
+                                                    ? {...draft.symbolArtwork as Record<string, unknown>}
+                                                    : {};
+                                                Reflect.deleteProperty(current, symbolId);
+                                                if (Object.keys(current).length === 0) Reflect.deleteProperty(draft, "symbolArtwork");
+                                                else draft.symbolArtwork = current;
+                                            })}>Remove</Button>
+                                        </Group>
+                                    ) : (
+                                        <Button size="xs" variant="default" onClick={() => {
+                                            selectArtwork(symbolId);
+                                        }}>Select PNG</Button>
+                                    )}
                                 </Table.Td>
                                 <Table.Td>
                                     <Checkbox

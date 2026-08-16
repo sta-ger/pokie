@@ -24,6 +24,7 @@ import {
     ValidationIssue,
 } from "pokie";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import {PokiePathResolver} from "../../paths/PokiePathResolver.js";
 import {isPathWithin} from "../isPathWithin.js";
@@ -47,6 +48,22 @@ const outsideStudioRootMessage = (rawPath: string): string =>
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_SYMBOL_ARTWORK_BYTES = 5 * 1024 * 1024;
+const SYMBOL_ARTWORK_DIRECTORY = "assets/symbols";
+
+function symbolArtworkReferences(blueprint: unknown): string[] {
+    if (!isPlainObject(blueprint) || !isPlainObject(blueprint.symbolArtwork)) {
+        return [];
+    }
+    return Object.values(blueprint.symbolArtwork).filter((reference): reference is string => typeof reference === "string");
+}
+
+function isSafeSymbolArtworkReference(reference: string): boolean {
+    const normalized = reference.replace(/\\/g, "/");
+    return normalized.startsWith(`${SYMBOL_ARTWORK_DIRECTORY}/`) && !normalized.split("/").includes("..");
 }
 
 // saveManaged()'s own directory-name policy -- the blueprint's own manifest.id when it's already a
@@ -148,6 +165,7 @@ export class StudioBlueprintService {
     private readonly randomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly variantRandomBlueprintGenerator: RandomGameBlueprintGenerating;
     private readonly pathResolver: PokiePathResolver;
+    private readonly stagedArtwork = new Map<string, string>();
 
     constructor(
         pokieVersion: string,
@@ -334,6 +352,7 @@ export class StudioBlueprintService {
 
         try {
             fs.mkdirSync(path.dirname(resolved), {recursive: true});
+            this.materializeSymbolArtwork(resolved, blueprint);
             writeBlueprintAtomically(resolved, blueprint);
             return {status: "ok", path: resolved, blueprintHash: editedHash};
         } catch (error) {
@@ -380,6 +399,7 @@ export class StudioBlueprintService {
 
         try {
             fs.mkdirSync(destination.directory, {recursive: true});
+            this.materializeSymbolArtwork(destination.targetPath, blueprint);
             writeBlueprintAtomically(destination.targetPath, blueprint);
             return {
                 status: "ok",
@@ -403,6 +423,72 @@ export class StudioBlueprintService {
         } catch {
             // Rollback is best effort.  The route still reports registration failure rather than a
             // misleading success, and any empty directory is harmless.
+        }
+    }
+
+    // Imports are deliberately staged outside the Blueprint: the document records only this stable,
+    // project-relative reference.  The next save copies the staged PNG beside that document, so moving
+    // the project keeps the artwork portable and no absolute picker path leaks into game data.
+    public importSymbolArtwork(sourcePath: string): {status: "ok"; reference: string} | {status: "error"; error: string} {
+        try {
+            const source = path.resolve(sourcePath);
+            const stat = fs.statSync(source);
+            if (!stat.isFile()) {
+                return {status: "error", error: "Selected artwork is not a file."};
+            }
+            if (stat.size > MAX_SYMBOL_ARTWORK_BYTES) {
+                return {status: "error", error: `PNG artwork must be ${MAX_SYMBOL_ARTWORK_BYTES / (1024 * 1024)} MB or smaller.`};
+            }
+            const image = fs.readFileSync(source);
+            if (path.extname(source).toLowerCase() !== ".png" || !image.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+                return {status: "error", error: "Selected artwork must be a valid PNG file."};
+            }
+            const safeName = path.basename(source, path.extname(source)).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "symbol";
+            const reference = `${SYMBOL_ARTWORK_DIRECTORY}/${safeName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+            const staged = path.join(os.tmpdir(), "pokie-studio-symbol-artwork", path.basename(reference));
+            fs.mkdirSync(path.dirname(staged), {recursive: true});
+            fs.copyFileSync(source, staged);
+            this.stagedArtwork.set(reference, staged);
+            return {status: "ok", reference};
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    public resolveSymbolArtwork(blueprintPath: string, reference: string): string | undefined {
+        if (!isSafeSymbolArtworkReference(reference)) {
+            return undefined;
+        }
+        const resolved = path.resolve(path.dirname(blueprintPath), reference);
+        if (!isPathWithin(path.dirname(blueprintPath), resolved)) {
+            return undefined;
+        }
+        try {
+            const stat = fs.statSync(resolved);
+            return stat.isFile() && stat.size <= MAX_SYMBOL_ARTWORK_BYTES && fs.readFileSync(resolved).subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+                ? resolved
+                : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    public materializeSymbolArtwork(blueprintPath: string, blueprint: unknown): void {
+        for (const reference of symbolArtworkReferences(blueprint)) {
+            if (!isSafeSymbolArtworkReference(reference)) {
+                continue;
+            }
+            const staged = this.stagedArtwork.get(reference);
+            if (staged === undefined || !fs.existsSync(staged)) {
+                continue;
+            }
+            const destination = path.resolve(path.dirname(blueprintPath), reference);
+            if (!isPathWithin(path.dirname(blueprintPath), destination)) {
+                continue;
+            }
+            fs.mkdirSync(path.dirname(destination), {recursive: true});
+            fs.copyFileSync(staged, destination);
+            this.stagedArtwork.delete(reference);
         }
     }
 

@@ -78,6 +78,7 @@ export function renameSymbol(blueprint: Record<string, unknown>, from: string, t
     }
     renameRecordKey(blueprint, "paytable", from, to);
     renameRecordKey(blueprint, "symbolWeights", from, to);
+    renameRecordKey(blueprint, "symbolArtwork", from, to);
     if (Array.isArray(blueprint.reelStrips)) {
         blueprint.reelStrips = asReelStrips(blueprint.reelStrips).map((strip) => strip.map((id) => (id === from ? to : id)));
     }

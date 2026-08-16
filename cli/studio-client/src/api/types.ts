@@ -484,6 +484,10 @@ export type StudioBlueprintSaveManagedView =
     | {status: "unavailable"; error: string}
     | {status: "error"; error: string};
 
+// A selected PNG is staged by Studio until the Blueprint is saved. The Blueprint itself receives only
+// `reference` (for example `assets/symbols/wild-a1b2.png`), never the absolute picker path.
+export type StudioSymbolArtworkImportView = {status: "ok"; reference: string} | {status: "error"; error: string};
+
 // Read from (or written to) a PAR sheet's own "Meta" sheet — never fed back into GameBlueprint fields,
 // purely informational (see cli/studio/blueprint/StudioParSheetImportView.ts's own doc comment).
 export type ParSheetProvenance = {
