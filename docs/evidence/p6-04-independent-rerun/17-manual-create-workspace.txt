@@ -1,0 +1,36 @@
+POKIE Studio
+/
+P6 Recommended Owner
+/
+
+Overview
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+P6 Recommended Owner
+
+/home/stager/Documents/POKIE Projects/p6-recommended-owner/blueprint.json
+
+Close project
+ID	p6-recommended-owner
+Version	0.1.0
+Type	Blueprint
+Origin	Managed
+Location	/home/stager/Documents/POKIE Projects/p6-recommended-owner/blueprint.json
+Editable	Editable — this project's Blueprint source file can be edited directly.
+Capabilities	
+BUILD FROM BLUEPRINT SOURCE
+Validation
+
+Valid — no issues found.
+
+Re-check project

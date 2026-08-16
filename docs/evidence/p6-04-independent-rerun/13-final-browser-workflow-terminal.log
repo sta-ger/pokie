@@ -1,0 +1,24 @@
+[2026-08-16T09:57:21.705Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
+[2026-08-16T09:57:21.726Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T09:57:23.254Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
+[2026-08-16T09:57:24.457Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
+[2026-08-16T09:57:25.315Z] INPUT "Game name"="P6 Recommended Owner" using rendered browser input
+[2026-08-16T09:58:39.154Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
+[2026-08-16T09:58:39.166Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T09:58:40.506Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
+[2026-08-16T09:58:41.608Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
+[2026-08-16T09:58:42.654Z] INPUT "Game name"="P6 Recommended Owner" using rendered browser input
+[2026-08-16T10:00:33.448Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
+[2026-08-16T10:00:33.460Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T10:00:34.779Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
+[2026-08-16T10:00:35.863Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
+[2026-08-16T10:00:37.311Z] FAILED Error: Visible input "Game name" did not receive browser focus; active=undefined
+    at input (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-rerun/browser-workflow.mjs:103:43)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-rerun/browser-workflow.mjs:156:5)
+[2026-08-16T10:01:13.631Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
+[2026-08-16T10:01:13.644Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T10:01:14.996Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
+[2026-08-16T10:01:16.100Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
+[2026-08-16T10:01:17.523Z] FAILED Error: Visible input "Game name" did not receive browser focus; active=undefined
+    at input (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-rerun/browser-workflow.mjs:109:43)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-rerun/browser-workflow.mjs:162:5)

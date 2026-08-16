@@ -1,0 +1,12 @@
+[
+    {
+        "location": "/home/stager/Documents/POKIE Projects/p6-recommended-owner/blueprint.json",
+        "name": "P6 Recommended Owner",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-16T10:04:02.789Z"
+    }
+]
