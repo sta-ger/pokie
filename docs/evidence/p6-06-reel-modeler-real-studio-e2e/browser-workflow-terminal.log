@@ -1,0 +1,28 @@
+[2026-08-16T20:45:03.912Z] START workflow: fresh local Studio and Chrome, controlled only through rendered UI.
+[2026-08-16T20:45:03.922Z] NAVIGATE public Studio URL #/project/gameModel
+[2026-08-16T20:45:04.723Z] CAPTURE 01-initial-reels-view.png and 01-initial-reels-view.txt
+[2026-08-16T20:45:05.466Z] CLICK "Edit" in "Reels"
+[2026-08-16T20:45:06.159Z] CLICK "Select reel" at rendered coordinates
+[2026-08-16T20:45:06.690Z] CLICK "Select" at rendered coordinates
+[2026-08-16T20:45:07.465Z] CLICK "Preview" at rendered coordinates
+[2026-08-16T20:45:07.471Z] OBSERVE Reel 1's pre-existing literal strip previewed through the rendered modeler workflow.
+[2026-08-16T20:45:07.882Z] CAPTURE 02-literal-preview.png and 02-literal-preview.txt
+[2026-08-16T20:45:08.616Z] CLICK "Select reel" at rendered coordinates
+[2026-08-16T20:45:09.448Z] CLICK rendered Select for Reel 4 (existing generated/counts configuration)
+[2026-08-16T20:45:10.650Z] INPUT "A count"="-1" through browser mouse/keyboard and blur
+[2026-08-16T20:45:11.445Z] CLICK "Preview" at rendered coordinates
+[2026-08-16T20:45:11.447Z] OBSERVE malformed count stayed in the local modeler draft and produced the actionable inline structural diagnostic.
+[2026-08-16T20:45:12.012Z] CAPTURE 03-invalid-count-inline-diagnostic.png and 03-invalid-count-inline-diagnostic.txt
+[2026-08-16T20:45:13.215Z] INPUT "A count"="5" through browser mouse/keyboard and blur
+[2026-08-16T20:45:14.005Z] CLICK "Add stack rule" at rendered coordinates
+[2026-08-16T20:45:14.011Z] OBSERVE the recovered count and UI-authored stack rule are rendered together in the generated/counts draft.
+[2026-08-16T20:45:14.624Z] CAPTURE 04-counts-and-stack-draft.png and 04-counts-and-stack-draft.txt
+[2026-08-16T20:45:15.371Z] CLICK "Preview" at rendered coordinates
+[2026-08-16T20:45:15.385Z] OBSERVE Check & Preview resolved the recovered generated/counts reel and displayed its diagnostics.
+[2026-08-16T20:45:16.153Z] CLICK "Open stop-window preview" at rendered coordinates
+[2026-08-16T20:45:16.633Z] CAPTURE 05-generated-preview-and-stop-window.png and 05-generated-preview-and-stop-window.txt
+[2026-08-16T20:45:17.353Z] CLICK "Continue to Done" at rendered coordinates
+[2026-08-16T20:45:18.125Z] CLICK "Use changes" at rendered coordinates
+[2026-08-16T20:45:18.849Z] CLICK "Save" in "Reels"
+[2026-08-16T20:45:18.856Z] OBSERVE Done/Use changes only applied the local reel draft; the common Reels Save persisted the whole blueprint and returned View Mode.
+[2026-08-16T20:45:19.170Z] CAPTURE 05b-common-save-complete.png and 05b-common-save-complete.txt

@@ -1,0 +1,6 @@
+[2026-08-16T20:46:15.087Z] START restart: fresh local Studio and Chrome, controlled only through rendered UI.
+[2026-08-16T20:46:15.105Z] NAVIGATE public Studio URL #/project/gameModel
+[2026-08-16T20:46:16.406Z] CLICK "Edit" in "Reels"
+[2026-08-16T20:46:17.085Z] CLICK "Select reel" at rendered coordinates
+[2026-08-16T20:46:17.998Z] OBSERVE restarted Studio rendered the saved generated/counts reel and its stack constraint through the public Game Model editor.
+[2026-08-16T20:46:18.601Z] CAPTURE 06-after-fresh-studio-restart.png and 06-after-fresh-studio-restart.txt

@@ -1,0 +1,29 @@
+{
+  "type": "generated",
+  "length": 35,
+  "symbolCounts": {
+    "10": 7,
+    "A": 5,
+    "K": 5,
+    "Q": 7,
+    "J": 9,
+    "W": 1,
+    "S": 1
+  },
+  "seed": 7,
+  "lockedPositions": {
+    "0": "W"
+  },
+  "constraints": [
+    {
+      "type": "maximumConsecutiveOccurrences",
+      "maximumConsecutive": 2
+    },
+    {
+      "type": "stack",
+      "minimumLength": 2,
+      "minimumStacks": 1,
+      "maximumStacks": 1
+    }
+  ]
+}
