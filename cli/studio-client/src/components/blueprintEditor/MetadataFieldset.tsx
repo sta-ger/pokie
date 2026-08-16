@@ -81,7 +81,12 @@ export function MetadataFieldset({
                     <TextInput
                         label="Game name"
                         defaultValue={readManifest("name")}
-                        onBlur={(event) => setName(event.currentTarget.value)}
+                        // Name drives the managed project's identity.  Keep the editor's event-time
+                        // state current while typing so a Create Project click in the same React batch
+                        // cannot validate and save the preceding, still-valid name before its blur is
+                        // committed.  The other metadata fields remain blur-committed because they do
+                        // not participate in that primary-action identity path.
+                        onChange={(event) => setName(event.currentTarget.value)}
                         error={fieldErrorMessage(issues, "manifest.name")}
                     />
                     <FieldWarningText message={fieldWarningMessage(issues, "manifest.name")} />
