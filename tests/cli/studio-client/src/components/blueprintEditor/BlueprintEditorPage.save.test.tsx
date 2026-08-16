@@ -184,9 +184,13 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         await waitFor(() => expect(validationRequests).toBe(1), {timeout: 1500});
         await user.click(screen.getByRole("button", {name: "Create Project"}));
         const gameNameInput = screen.getByLabelText("Game name");
-        await user.clear(gameNameInput);
-        await user.type(gameNameInput, "Edited Slot");
-        await user.tab();
+        // This regression covers the revision boundary, not per-keystroke behavior. A single native
+        // change event models the completed manual edit while avoiding eleven full editor rerenders
+        // that can starve this timing-sensitive stale-request test under the two-worker gate.
+        act(() => {
+            fireEvent.change(gameNameInput, {target: {value: "Edited Slot"}});
+            fireEvent.blur(gameNameInput);
+        });
 
         expect(resolveInitialValidation).toBeDefined();
         await act(async () => {
