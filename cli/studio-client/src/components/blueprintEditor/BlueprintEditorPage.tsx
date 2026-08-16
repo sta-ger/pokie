@@ -19,7 +19,7 @@ import {
     type BlueprintValidationView,
 } from "../../domain/interpret/BlueprintEditor";
 import type {BuiltBlueprintSnapshot} from "../../domain/interpret/Home";
-import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
+import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {ErrorState} from "../common/ErrorState";
@@ -238,6 +238,13 @@ export function BlueprintEditorPage({
         blueprint: Record<string, unknown>;
         validation: BlueprintValidationView;
     } | undefined>(undefined);
+    // Clear a completed result at the event boundary too. React may batch a field change and the
+    // following Create Project click, so waiting for the revision effect would leave the preceding
+    // valid result observable by that click.
+    const mutateBlueprint: BlueprintMutate = (mutate) => {
+        completedValidationRef.current = undefined;
+        editor.mutate(mutate);
+    };
     // The scheduled automatic validation may already have begun when Create Project is clicked. Keep
     // its revision separately from the rendered view so the primary action can join that exact check
     // instead of issuing a second request for the same model while React is committing "loading".
@@ -946,20 +953,20 @@ export function BlueprintEditorPage({
         <SectionedFormEditor
             key={editor.formGeneration}
             blueprint={blueprint}
-            mutate={editor.mutate}
+            mutate={mutateBlueprint}
             drafts={editor.drafts}
             revision={revision}
             validationView={validationView}
         />
     ) : (
         <div key={editor.formGeneration}>
-            <MetadataFieldset blueprint={blueprint} mutate={editor.mutate} />
-            <LayoutFieldset blueprint={blueprint} mutate={editor.mutate} />
-            <SymbolsTable blueprint={blueprint} mutate={editor.mutate} />
-            <BetsList blueprint={blueprint} mutate={editor.mutate} />
-            <PaylinesEditor blueprint={blueprint} mutate={editor.mutate} />
-            <PaytableEditor blueprint={blueprint} mutate={editor.mutate} />
-            <ReelGenerationModeSelector blueprint={blueprint} mutate={editor.mutate} drafts={editor.drafts} revision={revision} />
+            <MetadataFieldset blueprint={blueprint} mutate={mutateBlueprint} />
+            <LayoutFieldset blueprint={blueprint} mutate={mutateBlueprint} />
+            <SymbolsTable blueprint={blueprint} mutate={mutateBlueprint} />
+            <BetsList blueprint={blueprint} mutate={mutateBlueprint} />
+            <PaylinesEditor blueprint={blueprint} mutate={mutateBlueprint} />
+            <PaytableEditor blueprint={blueprint} mutate={mutateBlueprint} />
+            <ReelGenerationModeSelector blueprint={blueprint} mutate={mutateBlueprint} drafts={editor.drafts} revision={revision} />
         </div>
     );
 
