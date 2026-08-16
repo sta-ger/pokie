@@ -11,12 +11,12 @@ function asArtwork(value: unknown): SymbolArtwork {
 // Project artwork is intentionally optional: non-Blueprint projects and a missing/corrupt file still
 // present the symbol's real id.  The image endpoint independently verifies that a requested reference
 // belongs to the active Blueprint, so this client-side map is presentation metadata, not authorization.
-export function useActiveSymbolArtwork(): SymbolArtwork {
+export function useActiveSymbolArtwork(enabled = true): SymbolArtwork {
     const fetchImpl = useOptionalStudioApi();
     const [artwork, setArtwork] = useState<SymbolArtwork>({});
     useEffect(() => {
         let active = true;
-        if (fetchImpl === undefined) {
+        if (!enabled || fetchImpl === undefined) {
             return () => {
                 active = false;
             };
@@ -46,7 +46,10 @@ export function symbolArtworkFromBlueprint(blueprint: Record<string, unknown>): 
 }
 
 export function SymbolPresentation({symbolId, artwork, size = 28}: {symbolId: string; artwork?: SymbolArtwork; size?: number}) {
-    const activeArtwork = useActiveSymbolArtwork();
+    // Blueprint-editor callers provide their in-memory artwork map, which is authoritative for that
+    // unsaved draft. Do not also request project artwork: it can be stale and turns a local preview
+    // into an unrelated network request.
+    const activeArtwork = useActiveSymbolArtwork(artwork === undefined);
     const [failedReference, setFailedReference] = useState<string>();
     const reference = artwork?.[symbolId] ?? activeArtwork[symbolId];
     if (reference === undefined || reference === failedReference) {
