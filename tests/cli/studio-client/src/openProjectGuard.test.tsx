@@ -10,6 +10,10 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 // the navigation exactly once with no second confirmation, and a failed call must never leave the
 // router-level guard's one-shot bypass stuck "on" for some later, unrelated navigation.
 const CONFIRM_TEXT = "You have unsaved changes in Design Game. Leave and lose them?";
+// These cover real guarded Home -> Project transitions with the full editor still mounted. The
+// cgroup-limited workflow lane can need more than 60s to drive that DOM, without changing the
+// observable guard behavior being asserted.
+const WORKFLOW_TIMEOUT_MS = 120_000;
 
 // The Projects tab's Open action only ever appears for an already-registered project (see
 // ProjectsPanel's own OPENABLE_TYPE) -- every test here seeds exactly one such row to open.
@@ -82,7 +86,7 @@ describe("useOpenProject: guarded side effects", () => {
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeUndefined();
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("Confirm calls the open-project API exactly once and navigates exactly once", async () => {
         const user = userEvent.setup();
@@ -106,7 +110,7 @@ describe("useOpenProject: guarded side effects", () => {
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
         expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("a failed open-project call keeps Home's URL and draft, without leaving the guard bypassed", async () => {
         const user = userEvent.setup();
@@ -138,7 +142,7 @@ describe("useOpenProject: guarded side effects", () => {
         await act(() => router.navigate("/project/overview"));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("browser Back/Forward and a direct route navigation are still blocked while dirty", async () => {
         const user = userEvent.setup();
@@ -159,7 +163,7 @@ describe("useOpenProject: guarded side effects", () => {
         await act(() => router.navigate("/project/overview"));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 
     it("switching Home's own tabs never shows a confirmation, even while dirty", async () => {
         const user = userEvent.setup();
@@ -175,5 +179,5 @@ describe("useOpenProject: guarded side effects", () => {
         await user.click(screen.getByRole("button", {name: "Design Game"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
-    }, 60000);
+    }, WORKFLOW_TIMEOUT_MS);
 });
