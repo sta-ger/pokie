@@ -80,7 +80,7 @@ export function MetadataFieldset({
                 <div>
                     <TextInput
                         label="Game name"
-                        defaultValue={readManifest("name")}
+                        value={readManifest("name")}
                         // Name drives the managed project's identity.  Keep the editor's event-time
                         // state current while typing so a Create Project click in the same React batch
                         // cannot validate and save the preceding, still-valid name before its blur is
