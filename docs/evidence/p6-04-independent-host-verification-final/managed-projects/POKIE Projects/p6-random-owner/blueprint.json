@@ -1,0 +1,85 @@
+{
+    "manifest": {
+        "id": "p6-random-owner",
+        "name": "P6 Random Owner",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 20260816)."
+    },
+    "reels": 3,
+    "rows": 4,
+    "symbols": [
+        "10",
+        "9",
+        "7",
+        "Q",
+        "A",
+        "K"
+    ],
+    "paytable": {
+        "7": {
+            "3": 4
+        },
+        "9": {
+            "3": 5
+        },
+        "10": {
+            "3": 6
+        },
+        "Q": {
+            "3": 3
+        },
+        "A": {
+            "3": 2
+        },
+        "K": {
+            "3": 1
+        }
+    },
+    "availableBets": [
+        1,
+        2,
+        5,
+        10
+    ],
+    "reelStripGeneration": [
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 3,
+                "9": 2,
+                "10": 1,
+                "Q": 4,
+                "A": 5,
+                "K": 6
+            },
+            "seed": 1340828743
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 3,
+                "9": 2,
+                "10": 1,
+                "Q": 4,
+                "A": 5,
+                "K": 6
+            },
+            "seed": 1781631579
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 3,
+                "9": 2,
+                "10": 1,
+                "Q": 4,
+                "A": 5,
+                "K": 6
+            },
+            "seed": 9517233
+        }
+    ]
+}

@@ -1,0 +1,12 @@
+[
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-host-verification/managed-projects/POKIE Projects/p6-recommended-owner/blueprint.json",
+        "name": "P6 Recommended Owner",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-16T10:22:50.659Z"
+    }
+]

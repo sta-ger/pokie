@@ -1,0 +1,38 @@
+[
+  {
+    "label": "Game id",
+    "value": "starter-slot"
+  },
+  {
+    "label": "Game name",
+    "value": "Starter Slot"
+  },
+  {
+    "label": "Version",
+    "value": "0.1.0"
+  },
+  {
+    "label": "Description (optional)",
+    "value": ""
+  },
+  {
+    "label": "Author (optional)",
+    "value": ""
+  },
+  {
+    "label": "Seed (optional)",
+    "value": "20260816"
+  },
+  {
+    "label": "Default",
+    "value": "default"
+  },
+  {
+    "label": "Variant",
+    "value": "variant"
+  },
+  {
+    "label": "Name (optional)",
+    "value": "P6 Random Owner"
+  }
+]

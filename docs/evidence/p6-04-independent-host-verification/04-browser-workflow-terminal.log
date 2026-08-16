@@ -1,0 +1,30 @@
+[2026-08-16T10:22:43.008Z] START workflow against http://127.0.0.1:46156; inspecting rendered DOM only and using browser input events.
+[2026-08-16T10:22:43.030Z] NAVIGATE visible Studio URL #/home/design
+[2026-08-16T10:22:44.490Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342,263)
+[2026-08-16T10:22:45.657Z] CLICK "Recommended" at rendered BUTTON coordinates (248,153)
+[2026-08-16T10:22:47.957Z] FOCUS "Game name" reached with rendered browser Tab traversal after pointer focus was unavailable
+[2026-08-16T10:22:48.432Z] TYPE "Game name"="P6 Recommended Owner" with browser key events; rendered field retained it
+[2026-08-16T10:22:49.414Z] CAPTURE 02-recommended-owned-before-create.png/.txt and rendered input values
+[2026-08-16T10:22:49.607Z] CLICK "Create Project" at rendered BUTTON coordinates (342,77)
+[2026-08-16T10:22:50.865Z] OBSERVE manual Recommended Name ownership persisted to the opened Workspace.
+[2026-08-16T10:22:50.992Z] CAPTURE 03-recommended-workspace.png/.txt and rendered input values
+[2026-08-16T10:22:51.024Z] CLICK "Play" at rendered BUTTON coordinates (130,178)
+[2026-08-16T10:22:51.621Z] CLICK "New session" at rendered BUTTON coordinates (337,395)
+[2026-08-16T10:22:52.233Z] CLICK "Spin" at rendered BUTTON coordinates (310,215)
+[2026-08-16T10:22:52.790Z] OBSERVE Recommended is immediately playable through New session then Spin.
+[2026-08-16T10:22:53.100Z] CAPTURE 04-recommended-play.png/.txt and rendered input values
+[2026-08-16T10:22:53.121Z] CLICK "Simulation" at rendered BUTTON coordinates (130,219)
+[2026-08-16T10:22:53.926Z] TYPE "Rounds"="25" with browser key events; rendered field retained it
+[2026-08-16T10:22:53.985Z] CLICK "Run Simulation" at rendered BUTTON coordinates (577,276)
+[2026-08-16T10:22:54.540Z] OBSERVE Recommended simulation completed 25 rounds in rendered UI.
+[2026-08-16T10:22:54.791Z] CAPTURE 04-recommended-simulation.png/.txt and rendered input values
+[2026-08-16T10:22:54.819Z] CLICK "Close project" at rendered BUTTON coordinates (329,98)
+[2026-08-16T10:22:55.652Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342,202)
+[2026-08-16T10:22:56.242Z] CLICK "Random" at rendered BUTTON coordinates (472,153)
+[2026-08-16T10:22:57.050Z] TYPE "Seed (optional)"="20260816" with browser key events; rendered field retained it
+[2026-08-16T10:22:57.259Z] TYPE "Name (optional)"="P6 Random Owner" with browser key events; rendered field retained it
+[2026-08-16T10:22:57.420Z] CAPTURE 06-random-seed-name.png/.txt and rendered input values
+[2026-08-16T10:22:57.443Z] CLICK "Generate" at rendered BUTTON coordinates (447,198)
+[2026-08-16T10:22:57.997Z] OBSERVE deterministic Random used visible seed 20260816 and manual Name.
+[2026-08-16T10:22:58.169Z] CAPTURE 07-random-generated.png/.txt and rendered input values
+[2026-08-16T10:22:58.324Z] CLICK "Use this blueprint" at rendered BUTTON coordinates (426,383)

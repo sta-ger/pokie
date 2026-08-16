@@ -1,0 +1,22 @@
+[
+  {
+    "label": "Game id",
+    "value": "p6-random-owner"
+  },
+  {
+    "label": "Game name",
+    "value": "P6 Random Owner"
+  },
+  {
+    "label": "Version",
+    "value": "0.1.0"
+  },
+  {
+    "label": "Description (optional)",
+    "value": "Randomly generated video slot (seed 20260816)."
+  },
+  {
+    "label": "Author (optional)",
+    "value": ""
+  }
+]
