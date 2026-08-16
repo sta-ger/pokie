@@ -1,0 +1,194 @@
+docs/evidence/p6-04-independent-host-verification-final/managed-projects/POKIE Projects/p6-recommended-owner/blueprint.json
+f66ca21f6b0d03bf1c662bb2368416793fe08e45bccd747c149ad624ab1a9d48  docs/evidence/p6-04-independent-host-verification-final/managed-projects/POKIE Projects/p6-recommended-owner/blueprint.json
+docs/evidence/p6-04-independent-host-verification-final/managed-projects/POKIE Projects/p6-random-owner/blueprint.json
+e2903bb59a5c5709f14136d85d549f2b7fb2ba91e0081b1db19b3a17e3dcbaa8  docs/evidence/p6-04-independent-host-verification-final/managed-projects/POKIE Projects/p6-random-owner/blueprint.json
+docs/evidence/p6-04-independent-host-verification-final/studio-config/pokie/projects.json
+d05958c7aebe0820100e5a59275f485d37729bcbc362327215b48e8060fd62ad  docs/evidence/p6-04-independent-host-verification-final/studio-config/pokie/projects.json
+
+--- recommended manifest ---
+{
+    "manifest": {
+        "id": "p6-recommended-owner",
+        "name": "P6 Recommended Owner",
+        "version": "0.1.0"
+    },
+    "reels": 5,
+    "rows": 3,
+    "symbols": [
+        "A",
+        "K",
+        "Q",
+        "J"
+    ],
+    "paylines": [
+        [
+            0,
+            0,
+            0,
+            0,
+            0
+        ],
+        [
+            1,
+            1,
+            1,
+            1,
+            1
+        ],
+        [
+            2,
+            2,
+            2,
+            2,
+            2
+        ]
+    ],
+    "paytable": {
+        "A": {
+            "3": 10,
+            "4": 20,
+            "5": 40
+        },
+        "K": {
+            "3": 6,
+            "4": 12,
+            "5": 24
+        },
+        "Q": {
+            "3": 4,
+            "4": 8,
+            "5": 16
+        },
+        "J": {
+            "3": 2,
+            "4": 4,
+            "5": 8
+        }
+    },
+    "reelStrips": [
+        [
+            "A",
+            "A",
+            "A",
+            "A",
+            "K",
+            "K",
+            "K",
+            "K",
+            "K",
+            "K",
+            "Q",
+            "Q",
+            "Q",
+            "Q",
+            "Q",
+            "Q",
+            "Q",
+            "Q",
+            "J",
+
+--- random manifest ---
+{
+    "manifest": {
+        "id": "p6-random-owner",
+        "name": "P6 Random Owner",
+        "version": "0.1.0",
+        "description": "Randomly generated video slot (seed 20260816)."
+    },
+    "reels": 3,
+    "rows": 4,
+    "symbols": [
+        "10",
+        "9",
+        "7",
+        "Q",
+        "A",
+        "K"
+    ],
+    "paytable": {
+        "7": {
+            "3": 4
+        },
+        "9": {
+            "3": 5
+        },
+        "10": {
+            "3": 6
+        },
+        "Q": {
+            "3": 3
+        },
+        "A": {
+            "3": 2
+        },
+        "K": {
+            "3": 1
+        }
+    },
+    "availableBets": [
+        1,
+        2,
+        5,
+        10
+    ],
+    "reelStripGeneration": [
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 3,
+                "9": 2,
+                "10": 1,
+                "Q": 4,
+                "A": 5,
+                "K": 6
+            },
+            "seed": 1340828743
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 3,
+                "9": 2,
+                "10": 1,
+                "Q": 4,
+                "A": 5,
+                "K": 6
+            },
+            "seed": 1781631579
+        },
+        {
+            "type": "generated",
+            "length": 21,
+            "symbolWeights": {
+                "7": 3,
+                "9": 2,
+                "10": 1,
+                "Q": 4,
+                "A": 5,
+                "K": 6
+
+--- registry ---
+[
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-host-verification-final/managed-projects/POKIE Projects/p6-random-owner/blueprint.json",
+        "name": "P6 Random Owner",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-16T10:24:43.046Z"
+    },
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-independent-host-verification-final/managed-projects/POKIE Projects/p6-recommended-owner/blueprint.json",
+        "name": "P6 Recommended Owner",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-16T10:24:29.685Z"
+    }
+]

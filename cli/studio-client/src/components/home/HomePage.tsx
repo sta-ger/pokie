@@ -101,6 +101,7 @@ export function HomePage() {
                             initialPath={initialBlueprintPath}
                             initialParSheetPath={initialParSheetPath}
                             onDirtyChange={setIsDesignDirty}
+                            isVisible={activeTab === "design"}
                             onManagedProjectSaved={(registeredProject) => {
                                 setJustSavedManagedProject(registeredProject);
                                 setProjectRegistryVersion((version) => version + 1);

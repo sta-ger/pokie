@@ -11,6 +11,15 @@ function toRecordCopy(value: unknown): Record<string, unknown> {
 
 type ManifestField = "id" | "name" | "version" | "description" | "author";
 
+function deriveIdFromName(name: string): string {
+    const derived = name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    return derived || "blueprint";
+}
+
 // `legend` defaults to "Metadata" (the raw/non-guided editor's own, unchanged label) -- the guided
 // Design Game editor's "Game basics" section overrides it, so this component's own default behavior
 // stays exactly what it was before reels/rows moved out to LayoutFieldset. `issues` defaults to `[]` for
@@ -41,6 +50,21 @@ export function MetadataFieldset({
         });
     };
 
+    // A project's initial id is a deterministic convenience derived from its Name.  Once somebody
+    // types a different Game id it is theirs: later Name edits never overwrite that explicit choice.
+    const setName = (value: string): void => {
+        mutate((b) => {
+            const nextManifest = toRecordCopy(b.manifest);
+            const previousName = typeof nextManifest.name === "string" ? nextManifest.name : "";
+            const previousId = typeof nextManifest.id === "string" ? nextManifest.id : "";
+            nextManifest.name = value;
+            if (previousId.length === 0 || previousId === deriveIdFromName(previousName)) {
+                nextManifest.id = deriveIdFromName(value);
+            }
+            b.manifest = nextManifest;
+        });
+    };
+
     return (
         <PageSection legend={legend}>
             <SimpleGrid cols={{base: 1, sm: 2}} spacing="sm">
@@ -56,8 +80,13 @@ export function MetadataFieldset({
                 <div>
                     <TextInput
                         label="Game name"
-                        defaultValue={readManifest("name")}
-                        onBlur={(event) => setManifestField("name", event.currentTarget.value)}
+                        value={readManifest("name")}
+                        // Name drives the managed project's identity.  Keep the editor's event-time
+                        // state current while typing so a Create Project click in the same React batch
+                        // cannot validate and save the preceding, still-valid name before its blur is
+                        // committed.  The other metadata fields remain blur-committed because they do
+                        // not participate in that primary-action identity path.
+                        onChange={(event) => setName(event.currentTarget.value)}
                         error={fieldErrorMessage(issues, "manifest.name")}
                     />
                     <FieldWarningText message={fieldWarningMessage(issues, "manifest.name")} />

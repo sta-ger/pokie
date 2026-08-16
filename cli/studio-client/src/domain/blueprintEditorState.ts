@@ -31,6 +31,34 @@ const STARTER_BLUEPRINT: Record<string, unknown> = {
     availableBets: [1],
 };
 
+// The first-class Project creation default.  Unlike STARTER_BLUEPRINT (which intentionally remains
+// blank for the explicit Blank choice), this is a complete playable model: paylines, symbols,
+// paytable, bets and literal, already-materialized reels are all present before a creator changes
+// anything. Keeping the reels literal makes this first project ready for Play/Simulation without a
+// separate reel-generation step.
+export function createRecommendedBlueprint(): Record<string, unknown> {
+    const reelStrip = ["A", "A", "A", "A", "K", "K", "K", "K", "K", "K", "Q", "Q", "Q", "Q", "Q", "Q", "Q", "Q", "J", "J", "J", "J", "J", "J", "J", "J", "J", "J"];
+    return {
+        manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+        reels: 5,
+        rows: 3,
+        symbols: ["A", "K", "Q", "J"],
+        availableBets: [1, 2, 5],
+        paylines: [
+            [0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1],
+            [2, 2, 2, 2, 2],
+        ],
+        paytable: {
+            A: {"3": 10, "4": 20, "5": 40},
+            K: {"3": 6, "4": 12, "5": 24},
+            Q: {"3": 4, "4": 8, "5": 16},
+            J: {"3": 2, "4": 4, "5": 8},
+        },
+        reelStrips: Array.from({length: 5}, () => [...reelStrip]),
+    };
+}
+
 // `fromRevision` is the *previous* state's own revision (0 for the very first state of a session) --
 // the result's revision is always `fromRevision + 1`, continuing the same session-wide monotonic
 // sequence rather than restarting it, so a mid-session "New Blueprint" still invalidates anything

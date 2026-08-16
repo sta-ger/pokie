@@ -1,0 +1,33 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[1989407:1989449:0816/115714.915186:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1989407:1989449:0816/115714.915364:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1989407:1989449:0816/115714.915442:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1989407:1989449:0816/115714.915811:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1989407:1989449:0816/115714.938184:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+[1989407:1989449:0816/115714.968694:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+libva error: /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so init failed
+
+DevTools listening on ws://127.0.0.1:9227/devtools/browser/53dbd46a-58e9-45c3-abd8-4e99ed0e180d
+[1989407:1989407:0816/115715.107063:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1989407:1989407:0816/115715.110135:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1989407:1989449:0816/115715.110296:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1989407:1989449:0816/115715.110335:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1989407:1989407:0816/115715.110478:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1989407:1989407:0816/115715.153548:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1989407:1989407:0816/115715.154027:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786874237.470705 1989446 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[1989407:1989450:0816/115718.893587:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1989407:1989450:0816/115747.224107:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+Created TensorFlow Lite XNNPACK delegate for CPU.
+Attempting to use a delegate that only supports static-sized tensors with a graph that has dynamic-sized tensors (tensor#58 is a dynamic-sized tensor).
+[1989407:1989450:0816/115848.072698:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786874414.983713 1993847 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+[1989407:1989407:0816/120015.018350:ERROR:services/on_device_model/public/cpp/service_client.cc:36] Unexpected on_device_model service disconnect: The device's GPU is not supported.
+[1989407:1989450:0816/120042.971286:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT

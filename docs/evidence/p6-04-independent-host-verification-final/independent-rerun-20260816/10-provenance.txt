@@ -1,0 +1,8 @@
+candidate_sha=010f1c13c96cacb7b326e3deadcd71ce340ecb64
+candidate_head=010f1c1
+workflow=docs/evidence/p6-04-independent-host-verification/browser-workflow.mjs
+phase=reopen
+studio_url=http://127.0.0.1:46158
+devtools_url=http://127.0.0.1:9258
+studio_config=docs/evidence/p6-04-independent-host-verification-final/studio-config
+browser_client=fresh Chrome profile

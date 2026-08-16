@@ -48,6 +48,7 @@ export function NewBlueprintDialog({
     onOverwrite,
     loadView,
     onLoad,
+    onChooseRecommended,
     onChooseBlank,
     onUseRandomBlueprint,
 }: {
@@ -60,6 +61,7 @@ export function NewBlueprintDialog({
     onOverwrite: (path: string) => void;
     loadView: BlueprintLoadView;
     onLoad: (path: string) => void;
+    onChooseRecommended: () => void;
     onChooseBlank: () => void;
     onUseRandomBlueprint: (blueprint: unknown) => void;
 }) {
@@ -77,7 +79,9 @@ export function NewBlueprintDialog({
             setSavingToProceed(false);
             setSaveAsPath("");
             setLoadPath("");
-            setRandomForm({seed: "", preset: "default", name: ""});
+            // A visible seed makes Random reproducible. A creator can deliberately choose another,
+            // but the default never produces an unrepeatable project by accident.
+            setRandomForm({seed: "20260815", preset: "default", name: ""});
             setRandomView({status: "idle"});
         }
         // Only re-seeds this dialog's own steps/forms the moment it actually opens -- `isDirty` moving
@@ -133,7 +137,7 @@ export function NewBlueprintDialog({
     };
 
     return (
-        <Modal opened={opened} onClose={onClose} title={<Title order={4}>New blueprint</Title>} size="md">
+        <Modal opened={opened} onClose={onClose} title={<Title order={4}>Create Blueprint Project</Title>} size="md">
             <Stack gap="sm">
                 {step === "confirmDirty" && (
                     <Stack gap="sm">
@@ -182,8 +186,16 @@ export function NewBlueprintDialog({
 
                 {step === "choose" && (
                     <Stack gap="sm">
-                        <Text size="sm">Start from a blank blueprint, generate a random one, or load an existing file.</Text>
+                        <Text size="sm">Choose a playable project to start with, or explicitly begin from a blank blueprint.</Text>
                         <Group>
+                            <Button
+                                onClick={() => {
+                                    onChooseRecommended();
+                                    onClose();
+                                }}
+                            >
+                                Recommended
+                            </Button>
                             <Button
                                 variant="default"
                                 onClick={() => {
@@ -193,8 +205,8 @@ export function NewBlueprintDialog({
                             >
                                 Blank
                             </Button>
-                            <Button variant="default" onClick={() => setStep("random")}>
-                                Generate random
+                            <Button variant="default" aria-label="Generate random" onClick={() => setStep("random")}>
+                                Random
                             </Button>
                             <Button variant="default" onClick={() => setStep("load")}>
                                 Load existing
@@ -226,7 +238,10 @@ export function NewBlueprintDialog({
                             <TextInput
                                 label="Name (optional)"
                                 value={randomForm.name}
-                                onChange={(event) => setRandomForm((prev) => ({...prev, name: event.currentTarget.value}))}
+                                onChange={(event) => {
+                                    const name = event.currentTarget.value;
+                                    setRandomForm((prev) => ({...prev, name}));
+                                }}
                             />
                             <Button onClick={() => runGenerate(false)} loading={randomView.status === "loading"}>
                                 Generate

@@ -1,20 +1,21 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
-import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
+import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // Covers the guided Design Game editor's PAR Apply -> first Save lifecycle end to end: applying a PAR
 // sheet import must not leave the imported .xlsx workbook as the draft's own authoritative editable
 // source -- the first guided Save has to create a real managed Blueprint Project (via
 // POST /api/home/blueprints/save-managed) and record the workbook only as that project's own provenance,
 // visibly labelled "Imported from PAR" (see BlueprintEditorPage.tsx's own importedFromParSheetPath doc
-// comment). Mirrors BlueprintEditorPage.parSheetImportExport.test.tsx's own fixtures/conventions, just
-// exercised through the guided route (`/home/design`) instead of the non-guided default.
+// comment). Mirrors BlueprintEditorPage.parSheetImportExport.test.tsx's own fixtures/conventions while
+// keeping the assertion focused on the guided editor's primary action.
 
 const IMPORT_URL = "/api/home/blueprints/par-import";
 const VALIDATE_URL = "/api/home/blueprints/validate";
 const SAVE_MANAGED_URL = "/api/home/blueprints/save-managed";
-const REGISTRY_URL = "/api/home/projects/registry";
+const OPEN_PROJECT_URL = "/api/home/projects/open";
 
 const IMPORTED_BLUEPRINT = {
     manifest: {id: "imported-game", name: "Imported Game", version: "0.2.0"},
@@ -59,18 +60,10 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
     it("saves the imported blueprint as a managed Blueprint Project, recording the workbook only as provenance, and shows an 'Imported from PAR' label", async () => {
         const user = userEvent.setup();
         const saveManagedBodies: Array<{blueprint: unknown; sourceWorkbookPath?: string}> = [];
-        const registryRequestStates: boolean[] = [];
-        let managedProjectSaved = false;
+        const savedProjects: unknown[] = [];
+        const openedProjectLocations: string[] = [];
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === REGISTRY_URL) {
-                registryRequestStates.push(managedProjectSaved);
-                // The refresh request intentionally never settles. The saved row must nevertheless
-                // be visible as soon as the save response arrives, rather than after this list call.
-                return managedProjectSaved ? new Promise<never>(() => {
-                    // Intentionally left pending to exercise optimistic registry reconciliation.
-                }) : jsonResponse([]);
-            }
             if (path === IMPORT_URL) {
                 return jsonResponse({status: "ok", path: "/games/in.par.xlsx", blueprint: IMPORTED_BLUEPRINT, errors: [], warnings: []});
             }
@@ -80,7 +73,6 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
             if (path === SAVE_MANAGED_URL) {
                 const body = JSON.parse((init?.body as string | undefined) ?? "{}") as {blueprint: unknown; sourceWorkbookPath?: string};
                 saveManagedBodies.push(body);
-                managedProjectSaved = true;
                 return jsonResponse({
                     status: "ok",
                     path: "/POKIE Projects/imported-game/blueprint.json",
@@ -90,35 +82,33 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
                     registeredProject: REGISTERED_PROJECT,
                 });
             }
+            if (path === OPEN_PROJECT_URL) {
+                openedProjectLocations.push(JSON.parse((init?.body as string | undefined) ?? "{}").projectRoot as string);
+                return jsonResponse({context: {status: "loaded"}, manifest: IMPORTED_BLUEPRINT.manifest});
+            }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        renderWithProviders(<BlueprintEditorPage guided onManagedProjectSaved={(project) => savedProjects.push(project)} />, {fetchImpl});
         await applyParImport(user);
 
         // The freshly-applied draft already shows its own provenance before it's ever saved.
         expect(screen.getByText("Imported from PAR")).toBeInTheDocument();
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
 
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
-        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
-
-        await user.click(screen.getAllByRole("button", {name: "Save"})[0]);
+        // Design Game validates as part of its single primary action; it deliberately has no
+        // separate Configure -> Validate -> Save sequence.
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
 
         await waitFor(() => expect(saveManagedBodies).toHaveLength(1));
         expect(saveManagedBodies[0].sourceWorkbookPath).toBe("/games/in.par.xlsx");
         expect(await screen.findByText('Saved to "/POKIE Projects/imported-game/blueprint.json".')).toBeInTheDocument();
 
         // The label survives the save -- this project's identity, not a one-request-only fact.
-        expect(screen.getAllByText("Imported from PAR")).toHaveLength(2);
+        expect(screen.getByText("Imported from PAR")).toBeInTheDocument();
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
-
-        // Projects fetches only when visible. Its reconciliation request is still pending, but the
-        // server-returned registry row must appear immediately without a reload.
-        await user.click(screen.getByRole("button", {name: "Projects"}));
-        await waitFor(() => expect(registryRequestStates).toEqual([true]));
-        expect(screen.getByText("imported-game")).toBeInTheDocument();
-        expect(screen.getByText("Managed")).toBeInTheDocument();
+        expect(savedProjects).toEqual([REGISTERED_PROJECT]);
+        expect(openedProjectLocations).toEqual([REGISTERED_PROJECT.location]);
     });
 
     it("does not show the 'Imported from PAR' label, and never sends sourceWorkbookPath, for an ordinary first Save with no PAR import behind it", async () => {
@@ -126,9 +116,6 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
         const saveManagedBodies: Array<{blueprint: unknown; sourceWorkbookPath?: string}> = [];
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === REGISTRY_URL) {
-                return jsonResponse([]);
-            }
             if (path === VALIDATE_URL) {
                 return jsonResponse({status: "ok", warnings: []});
             }
@@ -140,12 +127,10 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
         expect(screen.queryByText("Imported from PAR")).not.toBeInTheDocument();
 
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
-        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
-        await user.click(screen.getAllByRole("button", {name: "Save"})[0]);
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
 
         await waitFor(() => expect(saveManagedBodies).toHaveLength(1));
         expect(saveManagedBodies[0].sourceWorkbookPath).toBeUndefined();

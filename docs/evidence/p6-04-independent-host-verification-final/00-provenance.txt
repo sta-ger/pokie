@@ -1,0 +1,3 @@
+candidate_sha=152af9be3dc1544abfef5ce7795a7f4bba682899
+build_node=v24.18.0
+recorder=docs/evidence/p6-04-independent-host-verification/browser-workflow.mjs

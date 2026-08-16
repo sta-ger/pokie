@@ -1,0 +1,48 @@
+[2026-08-16T10:24:22.269Z] START workflow against http://127.0.0.1:46157; inspecting rendered DOM only and using browser input events.
+[2026-08-16T10:24:22.296Z] NAVIGATE visible Studio URL #/home/design
+[2026-08-16T10:24:23.732Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342,263)
+[2026-08-16T10:24:24.926Z] CLICK "Recommended" at rendered BUTTON coordinates (248,153)
+[2026-08-16T10:24:27.204Z] FOCUS "Game name" reached with rendered browser Tab traversal after pointer focus was unavailable
+[2026-08-16T10:24:27.548Z] TYPE "Game name"="P6 Recommended Owner" with browser key events; rendered field retained it
+[2026-08-16T10:24:28.599Z] CAPTURE 02-recommended-owned-before-create.png/.txt and rendered input values
+[2026-08-16T10:24:28.778Z] CLICK "Create Project" at rendered BUTTON coordinates (342,77)
+[2026-08-16T10:24:30.013Z] OBSERVE manual Recommended Name ownership persisted to the opened Workspace.
+[2026-08-16T10:24:30.174Z] CAPTURE 03-recommended-workspace.png/.txt and rendered input values
+[2026-08-16T10:24:30.205Z] CLICK "Play" at rendered BUTTON coordinates (130,178)
+[2026-08-16T10:24:30.802Z] CLICK "New session" at rendered BUTTON coordinates (337,395)
+[2026-08-16T10:24:31.427Z] CLICK "Spin" at rendered BUTTON coordinates (310,215)
+[2026-08-16T10:24:31.984Z] OBSERVE Recommended is immediately playable through New session then Spin.
+[2026-08-16T10:24:32.228Z] CAPTURE 04-recommended-play.png/.txt and rendered input values
+[2026-08-16T10:24:32.243Z] CLICK "Simulation" at rendered BUTTON coordinates (130,219)
+[2026-08-16T10:24:33.050Z] TYPE "Rounds"="25" with browser key events; rendered field retained it
+[2026-08-16T10:24:33.110Z] CLICK "Run Simulation" at rendered BUTTON coordinates (577,276)
+[2026-08-16T10:24:33.666Z] OBSERVE Recommended simulation completed 25 rounds in rendered UI.
+[2026-08-16T10:24:33.874Z] CAPTURE 04-recommended-simulation.png/.txt and rendered input values
+[2026-08-16T10:24:33.897Z] CLICK "Close project" at rendered BUTTON coordinates (329,98)
+[2026-08-16T10:24:34.723Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342,202)
+[2026-08-16T10:24:35.311Z] CLICK "Random" at rendered BUTTON coordinates (472,153)
+[2026-08-16T10:24:36.152Z] TYPE "Seed (optional)"="20260816" with browser key events; rendered field retained it
+[2026-08-16T10:24:36.413Z] TYPE "Name (optional)"="P6 Random Owner" with browser key events; rendered field retained it
+[2026-08-16T10:24:36.560Z] CAPTURE 06-random-seed-name.png/.txt and rendered input values
+[2026-08-16T10:24:36.596Z] CLICK "Generate" at rendered BUTTON coordinates (447,198)
+[2026-08-16T10:24:37.152Z] OBSERVE deterministic Random used visible seed 20260816 and manual Name.
+[2026-08-16T10:24:37.391Z] CAPTURE 07-random-generated.png/.txt and rendered input values
+[2026-08-16T10:24:37.549Z] CLICK "Use this blueprint" at rendered BUTTON coordinates (426,383)
+[2026-08-16T10:24:38.430Z] CAPTURE 08-random-before-create.png/.txt and rendered input values
+[2026-08-16T10:24:38.455Z] CLICK "Create Project" at rendered BUTTON coordinates (342,69)
+[2026-08-16T10:24:43.085Z] OBSERVE seeded Random persisted, registered, and opened in Workspace.
+[2026-08-16T10:24:43.247Z] CAPTURE 09-random-workspace.png/.txt and rendered input values
+[2026-08-16T10:24:43.279Z] CLICK "Play" at rendered BUTTON coordinates (130,178)
+[2026-08-16T10:24:43.887Z] CLICK "New session" at rendered BUTTON coordinates (337,395)
+[2026-08-16T10:24:44.504Z] CLICK "Spin" at rendered BUTTON coordinates (310,215)
+[2026-08-16T10:24:45.058Z] OBSERVE Random is immediately playable through New session then Spin.
+[2026-08-16T10:24:45.334Z] CAPTURE 10-random-play.png/.txt and rendered input values
+[2026-08-16T10:24:45.363Z] CLICK "Simulation" at rendered BUTTON coordinates (130,219)
+[2026-08-16T10:24:46.143Z] TYPE "Rounds"="25" with browser key events; rendered field retained it
+[2026-08-16T10:24:46.201Z] CLICK "Run Simulation" at rendered BUTTON coordinates (577,276)
+[2026-08-16T10:24:46.757Z] OBSERVE Random simulation completed 25 rounds in rendered UI.
+[2026-08-16T10:24:46.966Z] CAPTURE 10-random-simulation.png/.txt and rendered input values
+[2026-08-16T10:24:46.981Z] CLICK "Close project" at rendered BUTTON coordinates (329,98)
+[2026-08-16T10:24:47.561Z] CLICK "Projects" at rendered BUTTON coordinates (130,137)
+[2026-08-16T10:24:48.333Z] CAPTURE 11-projects-before-restart.png/.txt and rendered input values
+[2026-08-16T10:24:48.333Z] COMPLETE workflow.

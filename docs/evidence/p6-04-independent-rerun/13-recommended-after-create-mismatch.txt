@@ -1,0 +1,36 @@
+POKIE Studio
+/
+Starter Slot
+/
+
+Overview
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+Starter Slot
+
+/home/stager/Documents/POKIE Projects/starter-slot-2/blueprint.json
+
+Close project
+ID	starter-slot
+Version	0.1.0
+Type	Blueprint
+Origin	Managed
+Location	/home/stager/Documents/POKIE Projects/starter-slot-2/blueprint.json
+Editable	Editable — this project's Blueprint source file can be edited directly.
+Capabilities	
+BUILD FROM BLUEPRINT SOURCE
+Validation
+
+Valid — no issues found.
+
+Re-check project

@@ -458,51 +458,18 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
 
-    it("Design Game: a failed Build Package call is turned into output-directory-specific inline remediation, never the raw server error text", async () => {
-        const user = userEvent.setup();
-        const {fetchImpl} = createRoutedFakeFetch({
+    it("Design Game automatically validates its Recommended starting blueprint without exposing the removed Validate-to-Build flow", async () => {
+        const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
-            // Matches StudioBlueprintService.build()'s own GamePackageGenerator.generate() rejection
-            // shape for an output directory it can't write to -- reported as a 200 {status: "error"}
-            // domain result, never an HTTP-level failure (see StudioServer's own handleBlueprintBuild).
-            // P2-POLISH-09 first performs the same read-only destination preview used by Build Preview
-            // before allowing a write. Model that successful, empty-destination preflight explicitly so
-            // this test still reaches the Build Package domain failure it is intended to cover.
-            "/api/home/blueprints/build-preview": () => ({
-                ok: true,
-                status: 200,
-                body: {
-                    status: "ok",
-                    warnings: [],
-                    manifest: {id: "my-slot", name: "My Slot", version: "1.0.0"},
-                    reels: 5,
-                    rows: 3,
-                    symbolsCount: 3,
-                    blueprintHash: "sha256:preview",
-                    expectedFiles: [],
-                    projectRoot: "/no/such/dir",
-                    destinationHasContent: false,
-                    createFiles: [],
-                    updateFiles: [],
-                    deleteFiles: [],
-                },
-            }),
-            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: "ENOENT: no such file or directory, mkdir '/no/such/dir'"}}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await user.click(screen.getByRole("button", {name: "Validate"}));
-        await waitFor(() => expect(screen.getByText("Ready to build")).toBeInTheDocument());
-
-        await user.type(screen.getByLabelText("Output directory (optional)"), "./no/such/dir");
-        await user.click(screen.getByRole("button", {name: "Build Package"}));
-
-        const alerts = await screen.findAllByRole("alert");
-        expect(alerts.some((alert) => alert.textContent === "The output directory could not be found. Check the path and try again.")).toBe(
-            true,
-        );
-        expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/blueprints/validate")).toBe(true));
+        expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
     });
 
 });
@@ -518,7 +485,7 @@ describe("Design Game / Projects: path-field placeholder baseline", () => {
         const {fetchImpl} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        for (const label of ["Load from path", "Save to path", "Output directory (optional)"]) {
+        for (const label of ["Load from path", "Save to path"]) {
             // getAllByLabelText finds inputs on Home's other, currently-hidden (CSS display:none, still
             // mounted -- see HomePage's own "hide, don't unmount" doc comment) tab too, unlike
             // getByRole's default hidden-element filtering.
@@ -526,6 +493,9 @@ describe("Design Game / Projects: path-field placeholder baseline", () => {
                 expect(field).not.toHaveAttribute("placeholder");
             }
         }
+        // Design Game creates and opens its managed Blueprint Project directly. It no longer exposes
+        // the removed package-build destination field.
+        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
 
         // Unlike every Design Game field above, Projects' own Import Project location field does carry
         // an illustrative placeholder -- it's the one path field in this group meant to be filled with

@@ -153,13 +153,13 @@ describe("BlueprintEditorPage - New flow", () => {
         expect(await screen.findByRole("button", {name: "Blank"})).toBeInTheDocument();
     });
 
-    it("generates a random blueprint with seed/provenance, and Use this blueprint applies it and offers Undo", async () => {
+    it("uses an entered random name to generate and apply a blueprint, then offers Undo", async () => {
         const user = userEvent.setup();
         const randomCalls: unknown[] = [];
         const {fetchImpl} = createFakeFetch((call) => {
             if (call.url === RANDOM_URL) {
                 randomCalls.push(JSON.parse(call.init?.body ?? "{}"));
-                return {ok: true, status: 200, body: randomBlueprintBody()};
+                return {ok: true, status: 200, body: randomBlueprintBody({id: "named-random-slot", name: "Named Random Slot"})};
             }
             throw new Error(`unexpected fetch to ${call.url}`);
         });
@@ -167,15 +167,17 @@ describe("BlueprintEditorPage - New flow", () => {
 
         await user.click(screen.getByRole("button", {name: "New Blueprint"}));
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
+        await user.type(screen.getByLabelText("Name (optional)"), "Named Random Slot");
         await user.click(screen.getByRole("button", {name: "Generate"}));
 
-        expect(await screen.findByText('Generated "Random Slot" (id: "random-slot") from seed 42.')).toBeInTheDocument();
-        expect(randomCalls).toEqual([{preset: "default"}]);
+        expect(await screen.findByText('Generated "Named Random Slot" (id: "named-random-slot") from seed 42.')).toBeInTheDocument();
+        expect(randomCalls).toEqual([{preset: "default", seed: 20260815, name: "Named Random Slot"}]);
 
         await user.click(screen.getByRole("button", {name: "Use this blueprint"}));
 
         await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-        expect(screen.getByLabelText("Game id")).toHaveValue("random-slot");
+        expect(screen.getByLabelText("Game id")).toHaveValue("named-random-slot");
+        expect(screen.getByLabelText("Game name")).toHaveValue("Named Random Slot");
         expect(await screen.findByText("Replaced the current blueprint.")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Undo"}));
@@ -227,7 +229,7 @@ describe("BlueprintEditorPage - New flow", () => {
         await user.click(screen.getByRole("button", {name: "Randomize again"}));
 
         expect(await screen.findByText('Generated "Random Slot" (id: "random-slot-2") from seed 99.')).toBeInTheDocument();
-        expect(randomCalls).toEqual([{preset: "default"}, {preset: "default"}]);
+        expect(randomCalls).toEqual([{preset: "default", seed: 20260815}, {preset: "default"}]);
     });
 
     it("Load existing reuses the existing load flow and closes the dialog on success", async () => {

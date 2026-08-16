@@ -1,0 +1,12 @@
+[
+    {
+        "location": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031/docs/evidence/p6-04-rerun-152af9b-final2/managed-projects/POKIE Projects/starter-slot/blueprint.json",
+        "name": "Starter Slot",
+        "type": "blueprint",
+        "capabilities": [
+            "blueprint.build"
+        ],
+        "origin": "managed",
+        "lastOpenedAt": "2026-08-16T09:29:11.021Z"
+    }
+]

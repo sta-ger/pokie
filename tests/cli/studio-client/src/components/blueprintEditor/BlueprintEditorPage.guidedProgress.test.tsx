@@ -1,17 +1,12 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
-// The guided Design Game flow shows a read-only StepProgressList (Configure -> Validate -> Build)
-// instead of a Mantine Stepper -- there is nothing to click ahead to, since `stepIndex`/status is purely
-// derived from `validationView` (see BlueprintEditorPage.tsx's own doc comment and
-// StepProgressList.tsx's). This covers the state transitions and the aria-current/aria-disabled
-// semantics that replace Mantine's own (button-only, non-existent-for-a-non-interactive-flow) affordance.
-
-function fetchWithValidateResult(validateJson: unknown): FetchLike {
+function fetchWithValidateResult(validateJson: unknown, onRequest?: (path: string) => void): FetchLike {
     return (url, init) => {
         const [path] = url.split("?");
+        onRequest?.(path);
         const method = init?.method ?? "GET";
         if (path === "/api/home/projects/registry") {
             return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
@@ -23,59 +18,52 @@ function fetchWithValidateResult(validateJson: unknown): FetchLike {
     };
 }
 
-function progressItem(label: string): HTMLElement {
-    const list = screen.getByRole("list", {name: "Progress"});
-    return within(list).getByText(label, {exact: false}).closest("li") as HTMLElement;
-}
-
-describe("Guided Design Game: read-only progress list", () => {
-    it("has no clickable step buttons -- unlike the interactive Steppers elsewhere in Studio", () => {
+describe("Guided Design Game: automatic validation", () => {
+    it("opens with the recommended playable model and checks it automatically", async () => {
         renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
-        // The progress list's items are plain <li>s, not <button>s (Mantine's Stepper.Step always
-        // renders a <button>, even with no onStepClick) -- the only buttons on the page are real actions
-        // (New/Load/Save/Validate/Build/...).
-        expect(within(screen.getByRole("list", {name: "Progress"})).queryAllByRole("button")).toHaveLength(0);
+
+        expect(screen.getByLabelText("Game id")).toHaveValue("starter-slot");
+        expect(screen.getByLabelText("Game name")).toHaveValue("Starter Slot");
+        expect(screen.getByRole("button", {name: "Create Project"})).toBeInTheDocument();
+
+        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
     });
 
-    it("starts idle: Configure is current, Validate is available, Build is blocked", () => {
+    it("does not expose the removed Configure-to-Validate-to-Build workflow", () => {
         renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
-        expect(progressItem("Configure")).toHaveAttribute("aria-current", "step");
-        expect(progressItem("Validate")).not.toHaveAttribute("aria-current");
-        expect(progressItem("Validate")).not.toHaveAttribute("aria-disabled");
-        expect(progressItem("Build")).toHaveAttribute("aria-disabled", "true");
+
+        expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: /Build Package|Build/})).not.toBeInTheDocument();
+        expect(screen.queryByRole("list", {name: "Progress"})).not.toBeInTheDocument();
     });
 
-    it("after an invalid validation: Configure completed, Validate is current and failed, Build stays blocked", async () => {
+    it("makes Create Project surface automatic validation errors without trying to save", async () => {
         const user = userEvent.setup();
+        const requests: string[] = [];
         renderRoutedApp({
-            fetchImpl: fetchWithValidateResult({
-                status: "invalid",
-                errors: [{code: "blueprint-manifest-invalid-id", severity: "error", message: '"manifest.id" must be a non-empty string.'}],
-                warnings: [],
-            }),
+            fetchImpl: fetchWithValidateResult(
+                {
+                    status: "invalid",
+                    errors: [
+                        {
+                            code: "blueprint-manifest-invalid-id",
+                            severity: "error",
+                            message: '"manifest.id" must be a non-empty string.',
+                            path: "manifest.id",
+                        },
+                    ],
+                    warnings: [],
+                },
+                (path) => requests.push(path),
+            ),
             initialEntries: ["/home/design"],
         });
 
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
+
         await waitFor(() => expect(screen.getByText("Invalid — 1 error(s).")).toBeInTheDocument());
-
-        expect(progressItem("Configure")).not.toHaveAttribute("aria-current");
-        expect(progressItem("Configure").textContent).toContain("completed");
-        expect(progressItem("Validate")).toHaveAttribute("aria-current", "step");
-        expect(progressItem("Validate").textContent).toContain("failed");
-        expect(progressItem("Build")).toHaveAttribute("aria-disabled", "true");
-    });
-
-    it("after a successful validation: Configure and Validate are completed, Build becomes current and unblocked", async () => {
-        const user = userEvent.setup();
-        renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
-
-        await user.click(screen.getAllByRole("button", {name: "Validate"})[0]);
-        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
-
-        expect(progressItem("Configure").textContent).toContain("completed");
-        expect(progressItem("Validate").textContent).toContain("completed");
-        expect(progressItem("Build")).toHaveAttribute("aria-current", "step");
-        expect(progressItem("Build")).not.toHaveAttribute("aria-disabled");
+        expect(screen.getByLabelText("Game id")).toHaveAttribute("aria-invalid", "true");
+        expect(requests).toContain("/api/home/blueprints/validate");
+        expect(requests).not.toContain("/api/home/blueprints/save-managed");
     });
 });

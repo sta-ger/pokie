@@ -1,0 +1,16 @@
+[2026-08-15T19:14:47.598Z] START workflow through fresh Chrome against http://127.0.0.1:4614; repository=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031
+[2026-08-15T19:14:47.618Z] NAVIGATE public Studio URL #/home/design
+[2026-08-15T19:14:48.904Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 263)
+[2026-08-15T19:14:49.401Z] CLICK "Random" at rendered BUTTON coordinates (472, 155)
+[2026-08-15T19:14:49.846Z] INPUT "Name (optional)"="P6 Random Name Draft" through browser mouse/keyboard and blur
+[2026-08-15T19:14:50.382Z] INPUT "Name (optional)"="P6 Random Name Final" through browser mouse/keyboard and blur
+[2026-08-15T19:14:50.845Z] OBSERVE Random's optional Name accepted initial entry and a replacement edit without crashing the rendered Studio client.
+[2026-08-15T19:14:51.074Z] CAPTURE 01-random-name-edited.png and 01-random-name-edited.txt
+[2026-08-15T19:14:51.104Z] CLICK "Generate" at rendered BUTTON coordinates (447, 200)
+[2026-08-15T19:14:51.466Z] OBSERVE Random generated "P6 Random Name Final" from the visible default deterministic seed 20260815, retaining the edited Name.
+[2026-08-15T19:14:52.263Z] CAPTURE 02-random-name-generated.png and 02-random-name-generated.txt
+[2026-08-15T19:14:52.604Z] CLICK "Use this blueprint" at rendered BUTTON coordinates (426, 386)
+[2026-08-15T19:14:53.038Z] CLICK "Create Project" at rendered BUTTON coordinates (342, 130)
+[2026-08-15T19:14:56.844Z] OBSERVE Create Project persisted, registered, and opened the named Random Project Workspace.
+[2026-08-15T19:14:56.972Z] CAPTURE 03-random-created-workspace.png and 03-random-created-workspace.txt
+[2026-08-15T19:14:56.972Z] COMPLETE workflow browser workflow.

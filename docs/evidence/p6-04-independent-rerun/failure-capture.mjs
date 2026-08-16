@@ -1,0 +1,26 @@
+// Rendered-state capture after the real Create Project action; no DOM mutation.
+import {writeFile} from "node:fs/promises";
+import {resolve} from "node:path";
+import WebSocket from "ws";
+const output = resolve("docs/evidence/p6-04-independent-rerun");
+const log = [];
+const note = (message) => { const line = `[${new Date().toISOString()}] ${message}`; log.push(line); process.stdout.write(`${line}\n`); };
+const targets = await (await fetch("http://127.0.0.1:9225/json/list")).json();
+const target = targets.find((item) => item.type === "page" && item.url.includes("127.0.0.1:46147"));
+if (!target) throw new Error("No rendered Studio page found");
+const socket = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise((resolveOpen, reject) => { socket.once("open", resolveOpen); socket.once("error", reject); });
+let sequence = 0;
+const pending = new Map();
+socket.on("message", (raw) => { const result = JSON.parse(raw); if (result.id && pending.has(result.id)) { const task = pending.get(result.id); pending.delete(result.id); result.error ? task.reject(new Error(JSON.stringify(result.error))) : task.resolve(result.result); } });
+const send = (method, params = {}) => new Promise((resolveSend, reject) => { const id = ++sequence; pending.set(id, {resolve:resolveSend, reject}); socket.send(JSON.stringify({id, method, params})); });
+await send("Page.enable");
+await send("Runtime.enable");
+const evaluate = async (expression) => (await send("Runtime.evaluate", {expression, returnByValue:true})).result.value;
+const text = await evaluate("document.body.innerText");
+const screenshot = await send("Page.captureScreenshot", {format:"png", captureBeyondViewport:true});
+note(`OBSERVE rendered Workspace after visible Create Project: ${JSON.stringify(text.includes("Starter Slot") ? "Starter Slot" : "missing Starter Slot")} is rendered; manually entered P6 Recommended Owner rendered=${text.includes("P6 Recommended Owner")}.`);
+await writeFile(resolve(output, "13-recommended-after-create-mismatch.png"), Buffer.from(screenshot.data, "base64"));
+await writeFile(resolve(output, "13-recommended-after-create-mismatch.txt"), `${text}\n`);
+await writeFile(resolve(output, "failure-capture-browser-transcript.txt"), `${log.join("\n")}\n`);
+socket.close();

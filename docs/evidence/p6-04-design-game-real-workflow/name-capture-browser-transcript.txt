@@ -1,0 +1,9 @@
+[2026-08-15T19:17:16.792Z] START name-capture through fresh Chrome against http://127.0.0.1:4614; repository=/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-04-20260815135031
+[2026-08-15T19:17:16.812Z] NAVIGATE public Studio URL #/home/design
+[2026-08-15T19:17:18.111Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 263)
+[2026-08-15T19:17:18.608Z] CLICK "Random" at rendered BUTTON coordinates (472, 155)
+[2026-08-15T19:17:19.017Z] INPUT "Name (optional)"="P6 Random Name Draft" through browser mouse/keyboard and blur
+[2026-08-15T19:17:19.542Z] INPUT "Name (optional)"="P6 Random Name Final" through browser mouse/keyboard and blur
+[2026-08-15T19:17:20.001Z] OBSERVE Random's optional Name accepted initial entry and a replacement edit without crashing the rendered Studio client.
+[2026-08-15T19:17:20.190Z] CAPTURE 01-random-name-edited.png and 01-random-name-edited.txt
+[2026-08-15T19:17:20.190Z] COMPLETE name-capture browser workflow.

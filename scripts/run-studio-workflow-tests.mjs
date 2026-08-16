@@ -1,24 +1,21 @@
 #!/usr/bin/env node
-// Run the three largest jsdom workflow suites in fresh Node processes. They retain enough DOM and
-// transform state that running them after another workflow suite can exceed the gate's 2GiB cgroup
-// limit even with Jest's old-space cap. All other workflow suites safely share one in-band process.
+// Run every jsdom workflow suite in a fresh Node process. These suites retain enough DOM and
+// transform state that the otherwise shared in-band process eventually reaches its 512MiB old-space
+// cap before the final suite, even though each suite completes in isolation.
 import {spawnSync} from "node:child_process";
+import {existsSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const jestPath = path.join(repositoryRoot, "node_modules", "jest", "bin", "jest.js");
-const isolatedTestPaths = new Set([
-    "tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx",
-    "tests/cli/studio-client/src/designNavigationGuard.test.tsx",
-    "tests/cli/studio-client/src/routing.test.tsx",
-]);
+const workflowProject = "studio-client-workflows";
 
-function executeJest(arguments_) {
+function executeJest(arguments_, options = {}) {
     const result = spawnSync(process.execPath, [...process.execArgv, jestPath, ...arguments_], {
         cwd: repositoryRoot,
-        stdio: "inherit",
+        ...options,
     });
 
     if (result.error) {
@@ -27,10 +24,22 @@ function executeJest(arguments_) {
     if (result.status !== 0) {
         process.exit(result.status ?? 1);
     }
+
+    return result;
 }
 
-for (const testPath of isolatedTestPaths) {
-    executeJest(["--selectProjects", "studio-client-workflows", "--runInBand", "--runTestsByPath", testPath]);
+const discovery = executeJest(["--selectProjects", workflowProject, "--listTests"], {encoding: "utf8"});
+// Jest writes the selected-project banner to stdout but, in some versions, writes the list of
+// discovered test paths to stderr. Read both streams and retain only real files so the banner can
+// never be mistaken for a test path.
+const workflowTestPaths = [discovery.stdout, discovery.stderr]
+    .flatMap((output) => output.trim().split(/\r?\n/))
+    .filter((testPath) => existsSync(testPath));
+
+if (workflowTestPaths.length === 0) {
+    throw new Error(`No ${workflowProject} test files were discovered.`);
 }
 
-executeJest(["--selectProjects", "studio-client-workflows", "--runInBand", "--testPathIgnorePatterns", ...isolatedTestPaths]);
+for (const testPath of workflowTestPaths) {
+    executeJest(["--selectProjects", workflowProject, "--runInBand", "--runTestsByPath", testPath], {stdio: "inherit"});
+}

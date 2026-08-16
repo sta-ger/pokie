@@ -1,0 +1,15 @@
+[2026-08-16T09:50:46.139Z] FAILED TypeError: fetch failed
+[2026-08-16T09:51:24.979Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
+[2026-08-16T09:51:24.991Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T09:51:26.458Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
+[2026-08-16T09:51:27.530Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
+[2026-08-16T09:51:28.432Z] INPUT "Game name"="P6 Recommended Owner" using rendered browser input
+[2026-08-16T09:51:29.494Z] CAPTURE 04-recommended-owned-before-create.png, 04-recommended-owned-before-create.txt, and rendered input values
+[2026-08-16T09:51:29.520Z] CLICK "Create Project" at rendered BUTTON coordinates (342, 186)
+[2026-08-16T09:52:16.377Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
+[2026-08-16T09:52:16.387Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T09:52:17.833Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
+[2026-08-16T09:52:19.185Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
+[2026-08-16T09:52:20.010Z] INPUT "Game name"="P6 Recommended Owner" using rendered browser input
+[2026-08-16T09:52:21.067Z] CAPTURE 04-recommended-owned-before-create.png, 04-recommended-owned-before-create.txt, and rendered input values
+[2026-08-16T09:52:21.084Z] CLICK "Create Project" at rendered BUTTON coordinates (342, 186)

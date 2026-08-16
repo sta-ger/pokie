@@ -1,7 +1,10 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {useLocation} from "react-router-dom";
+import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // Covers the Import Project flow this step (P3-POLISH-13) added to the Projects tab -- Detect (a
 // read-only preview, never registering anything) -> Register for anything with an "open" story, or
@@ -10,15 +13,27 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 // an already-registered row and the dirty-draft guard around it -- this file is scoped to what's unique
 // to Import Project itself.
 
+// Home keeps the Design Game surface mounted while Projects is open. Its automatic validation can
+// therefore run during any of these project-only flows, so each routed fetch fixture must cover it.
+const AUTOMATIC_VALIDATION_ROUTE = {
+    "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+};
+
 async function goToProjects(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(await screen.findByRole("button", {name: "Projects"}));
     await screen.findByText("Import Project");
+}
+
+function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="location">{JSON.stringify({pathname: location.pathname, state: location.state})}</output>;
 }
 
 describe("ProjectsPanel: Import Project", () => {
     it("detects a recognized package, prefills the suggested name, and Register adds it to the list", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
                 ok: true,
@@ -42,8 +57,7 @@ describe("ProjectsPanel: Import Project", () => {
                 },
             }),
         });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
-        await goToProjects(user);
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
         await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
         await user.click(screen.getByRole("button", {name: "Detect"}));
@@ -75,14 +89,14 @@ describe("ProjectsPanel: Import Project", () => {
                 status: 200,
                 body: {status: "recognized", location: "/games/sheet.xlsx", type: "parWorkbook", capabilities: [], suggestedName: "sheet"},
             }),
-            "/api/home/blueprints/par-import": () => ({
-                ok: true,
-                status: 200,
-                body: {status: "ok", path: "/games/sheet.xlsx", blueprint: {manifest: {id: "sheet", name: "Sheet", version: "0.1.0"}}, errors: [], warnings: []},
-            }),
         });
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
-        await goToProjects(user);
+        renderWithProviders(
+            <>
+                <ProjectsPanel />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
 
         await user.type(screen.getByLabelText("Location", {exact: false}), "/games/sheet.xlsx");
         await user.click(screen.getByRole("button", {name: "Detect"}));
@@ -92,22 +106,19 @@ describe("ProjectsPanel: Import Project", () => {
 
         await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
 
-        await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
-        // BlueprintEditorPage's own initialParSheetPath auto-runs Import against the detected path --
-        // the same "arrive already on the right step" treatment initialPath gives a regular blueprint.
         await waitFor(() =>
-            expect(calls).toContainEqual(
-                expect.objectContaining({
-                    url: "/api/home/blueprints/par-import",
-                    init: expect.objectContaining({body: JSON.stringify({path: "/games/sheet.xlsx"})}),
-                }),
-            ),
+            expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
+                pathname: "/home/design",
+                state: {initialParSheetPath: "/games/sheet.xlsx"},
+            }),
         );
+        expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
     });
 
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({ok: true, status: 200, body: {status: "unrecognized", path: "/tmp/nothing"}}),
         });
@@ -124,6 +135,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("accepts a Blueprint file path with no folder-only warning, requesting kind=any (not directory-only) for its resolved-path hint", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -172,6 +184,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("registers an imported Blueprint file and Open lands it on its Studio project workspace, same as a package", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -245,6 +258,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("accepts a package directory path with no file-only warning, requesting kind=any for its resolved-path hint", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/fs/browse": () => ({
                 ok: true,
@@ -293,6 +307,7 @@ describe("ProjectsPanel: Import Project", () => {
     it("removes a registered entry after confirming, without deleting anything on disk", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,
@@ -313,8 +328,10 @@ describe("ProjectsPanel: Import Project", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await goToProjects(user);
 
-        await screen.findByText("A");
-        await user.click(screen.getByRole("button", {name: "Remove"}));
+        // The Recommended Design Game model remains mounted while Projects is visible and legitimately
+        // contains the symbol "A" too. Wait for this row's own visible action rather than globally
+        // querying ambiguous text from the hidden editor.
+        await user.click(await screen.findByRole("button", {name: "Remove"}));
 
         expect(await screen.findByText('Remove "A" from Projects? This only forgets it here -- nothing on disk is deleted.')).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Confirm"}));
@@ -335,6 +352,7 @@ describe("ProjectsPanel: Import Project", () => {
         const oldLocation = "/games/managed/blueprint.json";
         const newLocation = "/moved/managed/blueprint.json";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({
                 ok: true,
                 status: 200,

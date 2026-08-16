@@ -1,0 +1,23 @@
+mkdir: cannot create directory ‘/.local’: Permission denied
+touch: cannot touch '/.local/share/applications/mimeapps.list': No such file or directory
+[1515876:1515899:0815/211711.302440:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515899:0815/211711.302847:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515899:0815/211711.302965:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515899:0815/211711.303109:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515899:0815/211711.321390:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515899:0815/211711.340205:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+MESA-INTEL: warning: Ivy Bridge Vulkan support is incomplete
+
+DevTools listening on ws://127.0.0.1:9224/devtools/browser/db8b8027-d2d6-40d5-9b7c-b426135b3b57
+libva error: /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so init failed
+[1515876:1515876:0815/211711.456791:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1515876:1515876:0815/211711.458345:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1515876:1515876:0815/211711.458701:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1515876:1515899:0815/211711.459022:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515899:0815/211711.459053:ERROR:dbus/bus.cc:408] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[1515876:1515876:0815/211711.501317:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[1515876:1515876:0815/211711.501752:ERROR:dbus/object_proxy.cc:590] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1786821433.814060 1515896 voice_transcription.cc:58] Registering VoiceTranscriptionCapability
+[1515876:1515900:0815/211715.755359:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[1515876:1515900:0815/211715.760997:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR

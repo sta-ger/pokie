@@ -1,0 +1,3 @@
+rendered game-name before { x: 1128.5, y: 502.46875, v: 'Starter Slot' }
+focused { tag: 'INPUT', labels: [ 'Game name' ] }
+rendered game-name after { name: 'P6 Recommended Owner', id: 'starter-slot' }

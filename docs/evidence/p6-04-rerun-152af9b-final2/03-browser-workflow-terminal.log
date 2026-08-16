@@ -1,0 +1,10 @@
+[2026-08-16T09:29:04.926Z] START workflow; Studio=http://127.0.0.1:46146; this script queries only rendered controls and drives browser input.
+[2026-08-16T09:29:04.936Z] NAVIGATE public Studio URL #/home/design
+[2026-08-16T09:29:06.252Z] CLICK "New Blueprint" at rendered BUTTON (342,263)
+[2026-08-16T09:29:07.332Z] CLICK "Recommended" at rendered BUTTON (248,155)
+[2026-08-16T09:29:08.377Z] INPUT "Game name"="P6 Recommended Owner" through browser mouse/keyboard
+[2026-08-16T09:29:08.885Z] OBSERVE manually owned Recommended name "P6 Recommended Owner" entered through the rendered editor (the native uncontrolled id display remained "starter-slot" before persistence; the saved blueprint is checked separately).
+[2026-08-16T09:29:09.193Z] CAPTURE 02-recommended-owned-identity.png and 02-recommended-owned-identity.txt
+[2026-08-16T09:29:09.425Z] SCROLL rendered page to bring control into viewport
+[2026-08-16T09:29:10.100Z] CLICK "Create Project" at rendered BUTTON (342,206)
+exit_code=143

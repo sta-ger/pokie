@@ -1,0 +1,42 @@
+POKIE Studio
+Design Game
+Projects
+Design Your Game
+
+Create a Blueprint Project from the recommended playable model, a reproducible random seed, or an explicit blank. Studio checks the model automatically; saving opens its Workspace for Play and Simulation.
+
+Create Project
+
+Show advanced options (JSON mode, load/save by path)
+
+New Blueprint
+Game basics
+valid
+Layout
+valid
+Symbols
+valid
+Reels
+valid
+Paytable
+valid
+Bets
+valid
+Game basics
+Game id
+Game name
+Version
+Description (optional)
+Author (optional)
+Validation
+
+Checked automatically when the game model changes.
+
+Valid — no issues found.
+
+Game Model preview
+Preview Game Model
+Documentation
+Docs index
+Getting started
+CLI reference

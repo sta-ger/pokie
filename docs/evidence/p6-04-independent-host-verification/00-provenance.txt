@@ -1,0 +1,4 @@
+candidate_sha=152af9be3dc1544abfef5ce7795a7f4bba682899
+build_node=Running node v24.18.0 (npm v11.16.0)
+v24.18.0
+source_status=matches candidate outside evidence
