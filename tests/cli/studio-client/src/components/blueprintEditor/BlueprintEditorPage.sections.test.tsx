@@ -128,7 +128,7 @@ describe("Guided Design Game: sectioned layout", () => {
         });
     }, 60000);
 
-    it("preserves an in-progress edit in one section when switching to another and back", async () => {
+    it("preserves an in-progress edit in one section when switching to another and back", () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
         fireEvent.click(sectionTab(/Symbols/));
@@ -201,7 +201,7 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
     }, 60000);
 
-    it("switches the active section with arrow-key keyboard navigation", async () => {
+    it("switches the active section with arrow-key keyboard navigation", () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
         const basicsTab = sectionTab(/Game basics/);
