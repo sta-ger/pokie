@@ -7,7 +7,21 @@ import type {ArtifactTargetType, ProjectType} from "pokie";
 // expensive) build work itself. There is no "error" status distinct from build()'s own: a preview never
 // touches anything a resolve/capability/destination-availability check wouldn't already have to.
 export type StudioArtifactPreviewView =
-    | {readonly status: "ok"; readonly target: ArtifactTargetType; readonly destination: string; readonly sourceType: ProjectType}
+    | {
+          readonly status: "ok";
+          readonly target: ArtifactTargetType;
+          readonly destination: string;
+          readonly destinationKind: "file" | "directory";
+          readonly plannedOutputs: readonly string[];
+          readonly sourceType: ProjectType;
+      }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string}
-    | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly destination: string; readonly message: string}
+    | {
+          readonly status: "conflict";
+          readonly target: ArtifactTargetType;
+          readonly destination: string;
+          readonly destinationKind: "file" | "directory";
+          readonly plannedOutputs: readonly string[];
+          readonly message: string;
+      }
     | {readonly status: "error"; readonly message: string};

@@ -299,6 +299,10 @@ export type StudioDefaultLocationView = {status: "valid"; directory: string; sou
 // comment.
 export type StudioOpenFolderView = {status: "ok"} | {status: "unavailable"; reason: string} | {status: "error"; message: string};
 
+// POST /api/home/fs/reveal-path mirrors open-folder, but accepts a file as well. The host opens the
+// file's containing directory, which is the portable "Reveal file" behavior available to Studio.
+export type StudioRevealPathView = StudioOpenFolderView;
+
 // Mirrors cli/studio/previewBuildDestination.ts's own BuildDestinationPreview — see that file's own
 // doc comment. Read-only: never the result of anything being created/modified on disk.
 export type BuildDestinationPreview = {
@@ -1168,7 +1172,7 @@ export type StudioArtifactTargetView = {
 // doc comment. Mirrors ArtifactBuilderRegistry.build()'s own outcomes exactly: a successful build's
 // outputPath/sourceType, an unsupported conversion, a destination conflict, or any other build failure.
 export type StudioArtifactBuildView =
-    | {status: "ok"; target: StudioArtifactTargetType; outputPath: string; sourceType: StudioProjectType}
+    | {status: "ok"; target: StudioArtifactTargetType; outputPath: string; outputKind: "file" | "directory"; sourceType: StudioProjectType}
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string}
     | {status: "error"; message: string};
@@ -1178,7 +1182,21 @@ export type StudioArtifactBuildView =
 // target/destination/sourceType and the same capability/conflict diagnostics a subsequent build would
 // report, computed without ever writing anything.
 export type StudioArtifactPreviewView =
-    | {status: "ok"; target: StudioArtifactTargetType; destination: string; sourceType: StudioProjectType}
+    | {
+          status: "ok";
+          target: StudioArtifactTargetType;
+          destination: string;
+          destinationKind: "file" | "directory";
+          plannedOutputs: string[];
+          sourceType: StudioProjectType;
+      }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
-    | {status: "conflict"; target: StudioArtifactTargetType; destination: string; message: string}
+    | {
+          status: "conflict";
+          target: StudioArtifactTargetType;
+          destination: string;
+          destinationKind: "file" | "directory";
+          plannedOutputs: string[];
+          message: string;
+      }
     | {status: "error"; message: string};

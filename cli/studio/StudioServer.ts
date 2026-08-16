@@ -461,6 +461,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (method === "POST" && url.pathname === "/api/home/fs/reveal-path") {
+            await this.handleHomeFsRevealPath(req, res);
+            return;
+        }
+
         if (method === "POST" && url.pathname === "/api/home/blueprints/validate") {
             await this.handleBlueprintValidate(req, res);
             return;
@@ -1088,6 +1093,33 @@ export class StudioServer implements StudioServerHandling {
         }
 
         this.openFolder(validated.path);
+        this.sendJson(res, 200, {status: "ok"});
+    }
+
+    // The file counterpart to Open output folder. Opening the containing folder is deliberately used
+    // across platforms: it is the only common host operation available through openInFileManager while
+    // still taking the user directly to the produced file.
+    private async handleHomeFsRevealPath(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validateOpenFolderRequest((body ?? {}) as OpenFolderRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+        if (!this.isLoopbackRequest(req)) {
+            this.sendJson(res, 200, {
+                status: "unavailable",
+                reason: "Revealing a file is only available to a Studio session connecting from the same machine running its server.",
+            });
+            return;
+        }
+        if (!fs.existsSync(validated.path)) {
+            this.sendJson(res, 200, {status: "error", message: `"${validated.path}" does not exist.`});
+            return;
+        }
+        this.openFolder(fs.statSync(validated.path).isDirectory() ? validated.path : path.dirname(validated.path));
         this.sendJson(res, 200, {status: "ok"});
     }
 

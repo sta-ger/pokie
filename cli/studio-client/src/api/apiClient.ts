@@ -36,6 +36,7 @@ import type {
     StudioNativePickerFileFilter,
     StudioNativePickerResultView,
     StudioOpenFolderView,
+    StudioRevealPathView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioOutcomeLibraryGenerateResultView,
     StudioOutcomeLibraryRegistryView,
@@ -132,6 +133,15 @@ export async function openOutputFolder(fetchImpl: FetchLike, path: string): Prom
         body: JSON.stringify({path}),
     });
     return (await response.json()) as StudioOpenFolderView;
+}
+
+export async function revealOutputPath(fetchImpl: FetchLike, path: string): Promise<StudioRevealPathView> {
+    const response = await fetchImpl("/api/home/fs/reveal-path", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({path}),
+    });
+    return (await response.json()) as StudioRevealPathView;
 }
 
 export type NativeBrowseRequest = {kind: "directory" | "file"; mode?: "open" | "save"; startPath?: string; fileFilters?: StudioNativePickerFileFilter[]};

@@ -2,11 +2,13 @@ import {useEffect, useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
 import {
     buildArtifact,
+    checkNativePickerAvailability,
     exportStakeEngine,
     generateOutcomeLibrary,
     listArtifactTargets,
     openOutputFolder,
     previewArtifact,
+    revealOutputPath,
     registerProjectImport,
 } from "../../api/apiClient";
 import type {
@@ -40,6 +42,7 @@ import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
+import {PathInput} from "../common/PathInput";
 
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
     outcomeLibrary: {
@@ -162,9 +165,14 @@ function TargetCard({
     artifactPreview,
     artifactBuildRun,
     onBuildArtifact,
+    artifactDestination,
+    onArtifactDestinationChange,
     onOpenAsProject,
     onAddToProjects,
     addedToProjects,
+    onRevealOutput,
+    outputActionsUnavailable,
+    onCopyPath,
 }: {
     card: ExportDeployTargetCard;
     defaultModeName: string;
@@ -180,9 +188,14 @@ function TargetCard({
     artifactPreview: ArtifactPreviewRunView;
     artifactBuildRun: ArtifactBuildRunView;
     onBuildArtifact: (target: StudioArtifactTargetType) => void;
+    artifactDestination: string;
+    onArtifactDestinationChange: (target: StudioArtifactTargetType, destination: string) => void;
     onOpenAsProject: (projectRoot: string) => void;
     onAddToProjects: (projectRoot: string) => void;
     addedToProjects: boolean;
+    onRevealOutput: (path: string) => void;
+    outputActionsUnavailable: boolean;
+    onCopyPath: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const staticExportSource = resolveOutcomeLibrarySource();
@@ -318,21 +331,36 @@ function TargetCard({
 
             {card.kind === "buildArtifact" && card.artifactTarget && (
                 <>
+                    <PathInput
+                        label={card.artifactTarget === "parWorkbook" ? "Output file (optional)" : "Output directory (optional)"}
+                        description="Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default."
+                        kind={card.artifactTarget === "parWorkbook" ? "file" : "directory"}
+                        filePickerMode={card.artifactTarget === "parWorkbook" ? "save" : "open"}
+                        fileFilters={card.artifactTarget === "parWorkbook" ? [{name: "Excel workbooks", extensions: ["xlsx"]}] : undefined}
+                        browseTitle={card.artifactTarget === "parWorkbook" ? "Choose a PAR workbook destination" : "Choose an artifact output directory"}
+                        browseId={`artifact-${card.artifactTarget}-destination`}
+                        value={artifactDestination}
+                        onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
+                        onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
+                    />
                     {artifactPreview.status === "loading" && (
                         <Text size="sm" c="dimmed" mt={4}>
                             Checking destination…
                         </Text>
                     )}
-                    {artifactPreview.status === "ok" && (
-                        <Text size="sm" mt={4}>
-                            <Text span fw={600}>
-                                Resolved destination:
-                            </Text>{" "}
-                            {artifactPreview.result.destination}
-                        </Text>
-                    )}
-                    {artifactPreview.status === "conflict" && (
-                        <ErrorState message={`${artifactPreview.result.destination}: ${artifactPreview.result.message}`} />
+                    {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
+                        <div style={{marginTop: "0.5rem"}}>
+                            <Text size="sm" fw={600}>
+                                Build preflight
+                            </Text>
+                            <Text size="sm">Target: {artifactPreview.result.target}</Text>
+                            <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
+                            <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
+                            <Text size="sm">Output type: {artifactPreview.result.destinationKind}</Text>
+                            <Text size="sm">Conflict state: {artifactPreview.status === "ok" ? "Available" : "Conflict — build will not overwrite it"}</Text>
+                            <Text size="sm">Planned outputs: {artifactPreview.result.plannedOutputs.join("; ")}</Text>
+                            {artifactPreview.status === "conflict" && <ErrorState message={artifactPreview.result.message} />}
+                        </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
                         <ErrorState message={artifactPreview.message} />
@@ -347,15 +375,36 @@ function TargetCard({
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
-                                    Open as Project
-                                </Button>
-                                <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
-                                    {addedToProjects ? "Added to Projects" : "Add to Projects"}
-                                </Button>
-                                <Button size="xs" variant="default" onClick={() => onOpenFolder(artifactBuildRun.result.outputPath)}>
-                                    Open output folder
-                                </Button>
+                                {artifactBuildRun.result.outputKind === "directory" && (
+                                    <>
+                                        <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
+                                            Open as Project
+                                        </Button>
+                                        <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
+                                            {addedToProjects ? "Added to Projects" : "Add to Projects"}
+                                        </Button>
+                                    </>
+                                )}
+                                {outputActionsUnavailable ? (
+                                    <>
+                                        <Button size="xs" variant="default" onClick={() => onCopyPath(artifactBuildRun.result.outputPath)}>
+                                            Copy path
+                                        </Button>
+                                        <Text size="xs" c="dimmed">Opening local output is unsupported from a headless or remote Studio session.</Text>
+                                    </>
+                                ) : (
+                                    <Button
+                                        size="xs"
+                                        variant="default"
+                                        onClick={() =>
+                                            artifactBuildRun.result.outputKind === "directory"
+                                                ? onOpenFolder(artifactBuildRun.result.outputPath)
+                                                : onRevealOutput(artifactBuildRun.result.outputPath)
+                                        }
+                                    >
+                                        {artifactBuildRun.result.outputKind === "directory" ? "Open output folder" : "Reveal file"}
+                                    </Button>
+                                )}
                             </QuickActions>
                         </>
                     )}
@@ -460,12 +509,13 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     // destination/conflict this reports must already be on screen before Build is ever clicked, not only
     // once a build attempt itself hits it.
     const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewRunView>>({});
+    const [artifactDestinations, setArtifactDestinations] = useState<Record<string, string>>({});
     useEffect(() => {
         let cancelled = false;
         const supportedTargets = artifactTargets.filter((entry) => entry.supported).map((entry) => entry.target);
         supportedTargets.forEach((target) => {
             setArtifactPreviews((previews) => ({...previews, [target]: {status: "loading"}}));
-            previewArtifact(fetchImpl, target)
+            previewArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
                 .then((view) => {
                     if (!cancelled) {
                         setArtifactPreviews((previews) => ({...previews, [target]: toArtifactPreviewRunView(view)}));
@@ -483,7 +533,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         return () => {
             cancelled = true;
         };
-    }, [artifactTargets, fetchImpl]);
+    }, [artifactTargets, artifactDestinations, fetchImpl]);
 
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
@@ -495,6 +545,25 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     const [artifactActionError, setArtifactActionError] = useState<string>();
 
     const [openFolderError, setOpenFolderError] = useState<string>();
+    const [outputActionsUnavailable, setOutputActionsUnavailable] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        checkNativePickerAvailability(fetchImpl)
+            .then((view) => {
+                if (!cancelled) {
+                    setOutputActionsUnavailable(view.status === "unavailable");
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setOutputActionsUnavailable(true);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
 
     function handleOpenFolder(path: string): void {
         setOpenFolderError(undefined);
@@ -502,11 +571,34 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             .then((view) => {
                 if (view.status === "unavailable") {
                     setOpenFolderError(view.reason);
+                    setOutputActionsUnavailable(true);
                 } else if (view.status === "error") {
                     setOpenFolderError(view.message);
                 }
             })
             .catch((error: unknown) => setOpenFolderError(errorMessage(error)));
+    }
+
+    function handleRevealOutput(path: string): void {
+        setOpenFolderError(undefined);
+        revealOutputPath(fetchImpl, path)
+            .then((view) => {
+                if (view.status === "unavailable") {
+                    setOpenFolderError(view.reason);
+                    setOutputActionsUnavailable(true);
+                } else if (view.status === "error") {
+                    setOpenFolderError(view.message);
+                }
+            })
+            .catch((error: unknown) => setOpenFolderError(errorMessage(error)));
+    }
+
+    function copyOutputPath(path: string): void {
+        if (navigator.clipboard !== undefined) {
+            navigator.clipboard.writeText(path).catch(() => setOpenFolderError("Couldn't copy the output path. Select and copy it from the build result instead."));
+            return;
+        }
+        setOpenFolderError("Clipboard access is unavailable. Select and copy the output path from the build result instead.");
     }
 
     function handleGenerateOutcomeLibrary(): void {
@@ -610,7 +702,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             return;
         }
         setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running"}}));
-        buildArtifact(fetchImpl, target)
+        buildArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
             .then((view) => {
                 if (view.status === "ok") {
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result: view}}));
@@ -705,9 +797,16 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                             artifactPreview={artifactPreview}
                                             artifactBuildRun={artifactBuildRun}
                                             onBuildArtifact={handleBuildArtifact}
+                                            artifactDestination={card.artifactTarget === undefined ? "" : artifactDestinations[card.artifactTarget] ?? ""}
+                                            onArtifactDestinationChange={(target, destination) =>
+                                                setArtifactDestinations((destinations) => ({...destinations, [target]: destination}))
+                                            }
                                             onOpenAsProject={handleOpenArtifactAsProject}
                                             onAddToProjects={handleAddArtifactToProjects}
                                             addedToProjects={addedToProjects}
+                                            onRevealOutput={handleRevealOutput}
+                                            outputActionsUnavailable={outputActionsUnavailable}
+                                            onCopyPath={copyOutputPath}
                                         />
                                     );
                                 })
