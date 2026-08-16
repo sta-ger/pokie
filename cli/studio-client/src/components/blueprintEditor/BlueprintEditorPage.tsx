@@ -1,6 +1,6 @@
 import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} from "@mantine/core";
 import {useDisclosure} from "@mantine/hooks";
-import {useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {checkBlueprintSource, loadBlueprint, openProject, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {StudioProjectRegistryView} from "../../api/types";
@@ -43,6 +43,11 @@ import {SectionedFormEditor} from "./SectionedFormEditor";
 import {SymbolsTable} from "./SymbolsTable";
 
 type BlueprintMode = "form" | "json";
+type DebouncedCallbackTimer = {
+    schedule: (callback: () => void, delayMs: number) => void;
+    cancel: () => void;
+    isScheduled: () => boolean;
+};
 
 // The guided Design Game editor's own auto-validate debounce (see the revision-bump effect below) --
 // long enough that a normal typing burst (several field edits/blurs in quick succession) collapses into
@@ -50,6 +55,29 @@ type BlueprintMode = "form" | "json";
 // BlueprintValidationView's own doc comment) never lingers long enough to read as broken. Only ever
 // scheduled in guided mode -- the raw/non-guided editor keeps its existing manual-only "Validate" button.
 const AUTO_VALIDATE_DEBOUNCE_MS = 600;
+
+function useDebouncedCallbackTimer(): DebouncedCallbackTimer {
+    const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const cancel = useCallback((): void => {
+        if (timerRef.current !== undefined) {
+            clearTimeout(timerRef.current);
+            timerRef.current = undefined;
+        }
+    }, []);
+    const schedule = useCallback(
+        (callback: () => void, delayMs: number): void => {
+            cancel();
+            timerRef.current = setTimeout(() => {
+                timerRef.current = undefined;
+                callback();
+            }, delayMs);
+        },
+        [cancel],
+    );
+    const isScheduled = useCallback((): boolean => timerRef.current !== undefined, []);
+    useEffect(() => cancel, [cancel]);
+    return {schedule, cancel, isScheduled};
+}
 
 // The guided editor's own background check for the opened Blueprint source changing *externally* (see
 // sourceVersionRef's own doc comment below) -- same 500ms interval useSimulationPoll/useReplayPoll/
@@ -249,6 +277,7 @@ export function BlueprintEditorPage({
     // its revision separately from the rendered view so the primary action can join that exact check
     // instead of issuing a second request for the same model while React is committing "loading".
     const activeValidationRevisionRef = useRef<number | undefined>(undefined);
+    const autoValidateTimer = useDebouncedCallbackTimer();
     // A Create Project action which joined the automatic check above owns saveGuard until that check
     // settles. Its completion is handled by finishPendingGuidedSave below, after the shared result has
     // passed the same revision staleness check as every automatic validation.
@@ -318,7 +347,7 @@ export function BlueprintEditorPage({
                     guided &&
                     isVisible &&
                     requestedRevision !== editor.getCurrentState().revision &&
-                    autoValidateTimerRef.current === undefined
+                    !autoValidateTimer.isScheduled()
                 ) {
                     handleValidateRef.current();
                 }
@@ -399,7 +428,6 @@ export function BlueprintEditorPage({
     // comments) purely to avoid a one-frame stale-validation flash between their own replace and this
     // effect running; every other bump still relies on this alone.
     const hasRunRevisionEffectRef = useRef(false);
-    const autoValidateTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     // Kept separately from the validation debounce: this one only yields a primary action until React
     // has drained the input's preceding blur batch (see handleGuidedSave below).
     const guidedSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -410,25 +438,17 @@ export function BlueprintEditorPage({
             guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"},
         );
         if (!guided || !isVisible) {
-            if (autoValidateTimerRef.current !== undefined) {
-                clearTimeout(autoValidateTimerRef.current);
-                autoValidateTimerRef.current = undefined;
-            }
-            return;
+            autoValidateTimer.cancel();
+            return undefined;
         }
         if (isInitialMount && initialPath) {
-            return;
+            return undefined;
         }
         if (!isInitialMount) {
             savePersistedBlueprintDraft(editor.state.blueprint, importedFromParSheetPath);
         }
-        if (autoValidateTimerRef.current !== undefined) {
-            clearTimeout(autoValidateTimerRef.current);
-        }
-        autoValidateTimerRef.current = setTimeout(() => {
-            autoValidateTimerRef.current = undefined;
-            handleValidate();
-        }, AUTO_VALIDATE_DEBOUNCE_MS);
+        autoValidateTimer.schedule(handleValidate, AUTO_VALIDATE_DEBOUNCE_MS);
+        return autoValidateTimer.cancel;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.state.revision, isVisible]);
 
@@ -436,9 +456,6 @@ export function BlueprintEditorPage({
     // is gone would call setValidationView on an unmounted component.
     useEffect(
         () => () => {
-            if (autoValidateTimerRef.current !== undefined) {
-                clearTimeout(autoValidateTimerRef.current);
-            }
             if (guidedSaveTimerRef.current !== undefined) {
                 clearTimeout(guidedSaveTimerRef.current);
             }
@@ -932,10 +949,7 @@ export function BlueprintEditorPage({
         // still produce exactly one validation of this revision. Cancel that pending debounce before
         // running the action's check, rather than letting it issue a second, redundant request after
         // this save has already completed.
-        if (autoValidateTimerRef.current !== undefined) {
-            clearTimeout(autoValidateTimerRef.current);
-            autoValidateTimerRef.current = undefined;
-        }
+        autoValidateTimer.cancel();
 
         const requestId = ++validateRequestIdRef.current;
         setValidationView({status: "loading"});
