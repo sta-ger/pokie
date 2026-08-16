@@ -375,16 +375,12 @@ function TargetCard({
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
                             <QuickActions>
-                                {artifactBuildRun.result.outputKind === "directory" && (
-                                    <>
-                                        <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
-                                            Open as Project
-                                        </Button>
-                                        <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
-                                            {addedToProjects ? "Added to Projects" : "Add to Projects"}
-                                        </Button>
-                                    </>
-                                )}
+                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
+                                    Open as Project
+                                </Button>
+                                <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
+                                    {addedToProjects ? "Added to Projects" : "Add to Projects"}
+                                </Button>
                                 {outputActionsUnavailable ? (
                                     <>
                                         <Button size="xs" variant="default" onClick={() => onCopyPath(artifactBuildRun.result.outputPath)}>

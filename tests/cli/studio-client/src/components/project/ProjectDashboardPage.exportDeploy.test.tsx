@@ -619,6 +619,102 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await waitFor(() => expect(capturedOpenProjectRoot).toBe("/games/tsPackage"));
         });
 
+        it("keeps PAR workbook project actions actionable for the built file while retaining its file reveal action", async () => {
+            const user = userEvent.setup();
+            let capturedOpenProjectRoot: string | undefined;
+            let capturedRegisterLocation: string | undefined;
+            let capturedRevealPath: string | undefined;
+            const routes = {
+                ...BASE_ROUTES,
+                "/api/project/context": () => ({
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "artifact",
+                        projectRoot: "/games/sheet.xlsx",
+                        project: {type: "parWorkbook", rootPath: "/games/sheet.xlsx", capabilities: ["parWorkbook.exchange"], provenance: "test workbook"},
+                    },
+                }),
+                "/api/project/artifacts/targets": () => ({
+                    ok: true,
+                    status: 200,
+                    body: [
+                        {target: "tsPackage", supported: false, unsupportedNotes: []},
+                        {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+                        {target: "stakeAdapter", supported: false, unsupportedNotes: []},
+                        {target: "parWorkbook", supported: true, unsupportedNotes: []},
+                        {target: "wasm", supported: false, unsupportedNotes: []},
+                    ],
+                }),
+                "/api/project/artifacts/preview": () => ({
+                    ok: true,
+                    status: 200,
+                    body: {
+                        status: "ok",
+                        target: "parWorkbook",
+                        destination: "/games/republished-sheet.xlsx",
+                        destinationKind: "file",
+                        plannedOutputs: ["PAR workbook (.xlsx) file"],
+                        sourceType: "parWorkbook",
+                    },
+                }),
+            };
+            const fetchImpl: FetchLike = (url, init) => {
+                const [path] = url.split("?");
+                if (path === "/api/project/artifacts/build") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 201,
+                        json: () =>
+                            Promise.resolve({
+                                status: "ok",
+                                target: "parWorkbook",
+                                outputPath: "/games/republished-sheet.xlsx",
+                                outputKind: "file",
+                                sourceType: "parWorkbook",
+                            }),
+                    });
+                }
+                if (path === "/api/home/fs/native-browse/availability") {
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "available"})});
+                }
+                if (path === "/api/home/fs/reveal-path") {
+                    capturedRevealPath = (JSON.parse(String(init?.body)) as {path: string}).path;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+                }
+                if (path === "/api/home/projects/registry/register") {
+                    capturedRegisterLocation = (JSON.parse(String(init?.body)) as {location: string}).location;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+                }
+                if (path === "/api/home/projects/open") {
+                    capturedOpenProjectRoot = (JSON.parse(String(init?.body)) as {projectRoot: string}).projectRoot;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", context: {mode: "project", projectRoot: "/games/republished-sheet.xlsx"}})});
+                }
+                return fetchImplFrom(routes)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "PAR sheet"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            await user.click(await within(buildArtifactSection).findByRole("button", {name: "Build"}));
+
+            expect(await within(buildArtifactSection).findByRole("button", {name: "Open as Project"})).toBeEnabled();
+            expect(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"})).toBeEnabled();
+            expect(within(buildArtifactSection).getByRole("button", {name: "Reveal file"})).toBeEnabled();
+
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"}));
+            expect(await within(buildArtifactSection).findByRole("button", {name: "Added to Projects"})).toBeDisabled();
+            expect(capturedRegisterLocation).toBe("/games/republished-sheet.xlsx");
+
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Reveal file"}));
+            await waitFor(() => expect(capturedRevealPath).toBe("/games/republished-sheet.xlsx"));
+
+            await user.click(within(buildArtifactSection).getByRole("button", {name: "Open as Project"}));
+            await waitFor(() => expect(capturedOpenProjectRoot).toBe("/games/republished-sheet.xlsx"));
+        });
+
         it("reports a conflict from the shared registry inline, never as a silent no-op", async () => {
             const user = userEvent.setup();
             const fetchImpl: FetchLike = (url, init) => {
