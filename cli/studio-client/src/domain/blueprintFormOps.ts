@@ -791,6 +791,11 @@ export function setReelStripGenerationSourceMode(
             }
             next.symbolWeights = draft.inactiveSymbolWeights ?? {};
             Reflect.deleteProperty(next, "symbolCounts");
+            // Counts derive their length, including an empty table's zero. Weights instead require an
+            // explicit, valid length, so give a newly switched empty reel a usable starting value.
+            if (!(typeof next.length === "number" && Number.isInteger(next.length) && next.length > 0)) {
+                next.length = 1;
+            }
         }
         return next;
     });
