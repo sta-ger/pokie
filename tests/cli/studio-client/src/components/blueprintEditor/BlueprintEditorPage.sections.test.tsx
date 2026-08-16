@@ -131,6 +131,9 @@ describe("Guided Design Game: sectioned layout", () => {
     it("preserves an in-progress edit in one section when switching to another and back", () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
+        // Heavy inactive panels are absent until first visit, then remain mounted to preserve local
+        // uncommitted values across later section switches.
+        expect(screen.queryByLabelText("New symbol id")).not.toBeInTheDocument();
         fireEvent.click(sectionTab(/Symbols/));
         fireEvent.change(screen.getByLabelText("New symbol id"), {target: {value: "draft-symbol"}});
 

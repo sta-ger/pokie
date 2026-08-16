@@ -1,5 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
@@ -10,9 +9,9 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 // the navigation exactly once with no second confirmation, and a failed call must never leave the
 // router-level guard's one-shot bypass stuck "on" for some later, unrelated navigation.
 const CONFIRM_TEXT = "You have unsaved changes in Design Game. Leave and lose them?";
-// These cover real guarded Home -> Project transitions with the full editor still mounted. The
-// cgroup-limited workflow lane can need more than 60s to drive that DOM, without changing the
-// observable guard behavior being asserted.
+// These cover real guarded Home -> Project transitions with the visited editor sections still mounted.
+// Keep a conservative ceiling for a contended gate worker; the setup itself uses single change/click
+// events because character-by-character input is outside this suite's contract.
 const WORKFLOW_TIMEOUT_MS = 120_000;
 
 // The Projects tab's Open action only ever appears for an already-registered project (see
@@ -37,17 +36,19 @@ function registryRoute() {
     };
 }
 
-async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+function dirtyTheDesignDraft(): void {
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
     // alone doesn't dirty the blueprint -- "Add symbol" actually mutates it.
-    await user.click(screen.getByRole("tab", {name: "Symbols"}));
-    await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
-    await user.click(screen.getByRole("button", {name: "Add symbol"}));
+    fireEvent.click(screen.getByRole("tab", {name: "Symbols"}));
+    // These assertions start at the committed draft mutation; character-by-character typing is covered
+    // elsewhere and only repeats ten full jsdom interaction cycles here.
+    fireEvent.change(screen.getByLabelText("New symbol id"), {target: {value: "wild-draft"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
-async function openViaProjectsRegistry(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    await user.click(screen.getByRole("button", {name: "Projects"}));
-    await user.click(await screen.findByRole("button", {name: "Open"}));
+async function openViaProjectsRegistry(): Promise<void> {
+    fireEvent.click(screen.getByRole("button", {name: "Projects"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Open"}));
 }
 
 function createProjectDashboardFetchRoutes() {
@@ -66,7 +67,6 @@ function createProjectDashboardFetchRoutes() {
 
 describe("useOpenProject: guarded side effects", () => {
     it("Cancel never calls the open-project API", async () => {
-        const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...registryRoute(),
             "/api/home/projects/open": () => ({
@@ -77,11 +77,11 @@ describe("useOpenProject: guarded side effects", () => {
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
-        await openViaProjectsRegistry(user);
+        dirtyTheDesignDraft();
+        await openViaProjectsRegistry();
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Stay"}));
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
 
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeUndefined();
@@ -89,7 +89,6 @@ describe("useOpenProject: guarded side effects", () => {
     }, WORKFLOW_TIMEOUT_MS);
 
     it("Confirm calls the open-project API exactly once and navigates exactly once", async () => {
-        const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...registryRoute(),
             "/api/home/projects/open": () => ({
@@ -101,11 +100,11 @@ describe("useOpenProject: guarded side effects", () => {
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
-        await openViaProjectsRegistry(user);
+        dirtyTheDesignDraft();
+        await openViaProjectsRegistry();
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Leave"}));
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
         expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`);
@@ -113,18 +112,17 @@ describe("useOpenProject: guarded side effects", () => {
     }, WORKFLOW_TIMEOUT_MS);
 
     it("a failed open-project call keeps Home's URL and draft, without leaving the guard bypassed", async () => {
-        const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...registryRoute(),
             "/api/home/projects/open": () => ({ok: false, status: 500, body: {error: "boom"}}),
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
-        await openViaProjectsRegistry(user);
+        dirtyTheDesignDraft();
+        await openViaProjectsRegistry();
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Leave"}));
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
 
         // The raw "boom" server message is never rendered verbatim -- see [P2-POLISH-04]'s
         // describePathActionError, which turns it into subject-specific status + remediation copy.
@@ -133,7 +131,7 @@ describe("useOpenProject: guarded side effects", () => {
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(router.state.location.pathname).toBe("/home/projects");
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
-        await user.click(screen.getByRole("button", {name: "Design Game"}));
+        fireEvent.click(screen.getByRole("button", {name: "Design Game"}));
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
 
         // The failed attempt must not leave the router-level one-shot bypass stuck "on" -- a later,
@@ -145,19 +143,18 @@ describe("useOpenProject: guarded side effects", () => {
     }, WORKFLOW_TIMEOUT_MS);
 
     it("browser Back/Forward and a direct route navigation are still blocked while dirty", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...registryRoute(),
             ...createProjectDashboardFetchRoutes(),
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
         expect(router.state.location.pathname).toBe("/home/design");
-        await user.click(screen.getByRole("button", {name: "Stay"}));
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
 
         await act(() => router.navigate("/project/overview"));
@@ -165,18 +162,17 @@ describe("useOpenProject: guarded side effects", () => {
         expect(router.state.location.pathname).toBe("/home/design");
     }, WORKFLOW_TIMEOUT_MS);
 
-    it("switching Home's own tabs never shows a confirmation, even while dirty", async () => {
-        const user = userEvent.setup();
+    it("switching Home's own tabs never shows a confirmation, even while dirty", () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...registryRoute(),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
-        await user.click(screen.getByRole("button", {name: "Projects"}));
+        fireEvent.click(screen.getByRole("button", {name: "Projects"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Design Game"}));
+        fireEvent.click(screen.getByRole("button", {name: "Design Game"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, WORKFLOW_TIMEOUT_MS);

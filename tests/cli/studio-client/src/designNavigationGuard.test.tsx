@@ -1,5 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 
@@ -25,23 +24,24 @@ function createProjectFetch() {
     });
 }
 
-async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+function dirtyTheDesignDraft(): void {
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first. Typing
     // alone doesn't dirty the blueprint (the field is just local uncommitted input state until "Add
     // symbol" actually mutates the blueprint) -- same setup HomePage.test.tsx's own dirty-confirm test
     // uses. There is exactly one BlueprintEditorPage instance on Home (the guided Design Game tab's own).
-    await user.click(screen.getByRole("tab", {name: "Symbols"}));
-    await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
-    await user.click(screen.getByRole("button", {name: "Add symbol"}));
+    fireEvent.click(screen.getByRole("tab", {name: "Symbols"}));
+    // This suite exercises the navigation guard, not character-by-character input. One change event
+    // avoids ten full jsdom interaction cycles through the Studio editor.
+    fireEvent.change(screen.getByLabelText("New symbol id"), {target: {value: "wild-draft"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
 describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
     it("blocks browser Back navigation away from Home while the Design Game draft is dirty", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createProjectFetch();
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         await act(() => router.navigate(-1));
 
@@ -52,11 +52,10 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
     }, 60000);
 
     it("blocks a direct navigation to /project/* while the Design Game draft is dirty", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createProjectFetch();
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         await act(() => router.navigate("/project/overview"));
 
@@ -66,16 +65,15 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
     }, 60000);
 
     it("Cancel keeps the current URL and preserves the dirty draft", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createProjectFetch();
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         await act(() => router.navigate(-1));
         await screen.findByText(CONFIRM_TEXT);
 
-        await user.click(screen.getByRole("button", {name: "Stay"}));
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
 
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(router.state.location.pathname).toBe("/home/design");
@@ -83,20 +81,17 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 
-    // Many sequential real userEvent interactions plus a real cross-page navigation -- under Jest's
-    // parallel/contended workers this can exceed the project's default testTimeout, same reasoning as
-    // happyPath.test.tsx's own explicit timeout.
+    // A real cross-page navigation still needs enough headroom for a contended gate worker.
     it("Confirm performs the originally blocked navigation exactly once", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createProjectFetch();
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         await act(() => router.navigate(-1));
         await screen.findByText(CONFIRM_TEXT);
 
-        await user.click(screen.getByRole("button", {name: "Leave"}));
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
         // Legacy project links are upgraded in place after the server resolves their project identity.
@@ -112,27 +107,24 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         await waitFor(() => expect(screen.getByRole("button", {name: "Design Game"})).toHaveAttribute("aria-current", "page"));
     }, 60000);
 
-    // Many sequential real userEvent interactions -- same reasoning as above.
-    it("switching Home's own tabs never prompts, even while the draft is dirty", async () => {
-        const user = userEvent.setup();
+    it("switching Home's own tabs never prompts, even while the draft is dirty", () => {
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
-        await user.click(screen.getByRole("button", {name: "Projects"}));
+        fireEvent.click(screen.getByRole("button", {name: "Projects"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
 
-        await user.click(screen.getByRole("button", {name: "Design Game"}));
+        fireEvent.click(screen.getByRole("button", {name: "Design Game"}));
         expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
         expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
     }, 60000);
 
     it("registers a native beforeunload listener only while the draft is dirty", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
@@ -143,7 +135,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
 
         expect(addSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(false);
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         await waitFor(() => expect(addSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(true));
 
@@ -153,9 +145,9 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // "New Blueprint" now opens the New flow's own dirty-confirm gate first (see
         // NewBlueprintDialog's own doc comment) -- Discard then Blank resets the draft back to clean,
         // same end state the direct reset used to reach in one click.
-        await user.click(screen.getByRole("button", {name: "New Blueprint"}));
-        await user.click(await screen.findByRole("button", {name: "Discard"}));
-        await user.click(await screen.findByRole("button", {name: "Blank"}));
+        fireEvent.click(screen.getByRole("button", {name: "New Blueprint"}));
+        fireEvent.click(await screen.findByRole("button", {name: "Discard"}));
+        fireEvent.click(await screen.findByRole("button", {name: "Blank"}));
 
         await waitFor(() => expect(removeSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(true));
         expect(addSpy.mock.calls.some(([type]) => type === "beforeunload")).toBe(false);
@@ -172,14 +164,13 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
     // `hashchange` listener that closes it, independent of whichever router (Memory/Hash) is mounted
     // above, since the listener operates on the native `window` object directly.
     it("blocks a raw hash edit that bypasses the router's own tracked history", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         window.location.hash = "#/home/design";
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
 
         window.location.hash = "#/project/overview";
 
@@ -187,7 +178,7 @@ describe("useDesignNavigationGuard: centralized dirty-navigation guard", () => {
         // Reverted immediately, same as useBlocker restoring the address bar for transitions it can track.
         expect(window.location.hash).toBe("#/home/design");
 
-        await user.click(screen.getByRole("button", {name: "Leave"}));
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
         await waitFor(() => expect(window.location.hash).toBe("#/project/overview"));
     }, 60000);
 });

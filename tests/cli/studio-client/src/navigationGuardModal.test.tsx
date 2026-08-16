@@ -1,4 +1,4 @@
-import {act, screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "./testUtils/fakeFetch";
 import {renderRoutedApp} from "./testUtils/renderRoutedApp";
@@ -10,10 +10,9 @@ import {renderRoutedApp} from "./testUtils/renderRoutedApp";
 // proceed(), no reset()); for guardedAction, it would leave its returned Promise permanently pending,
 // which leaves every awaiting caller (e.g. ProjectsPanel's own Open action) stuck forever too.
 const CONFIRM_TEXT = "You have unsaved changes in Design Game. Leave and lose them?";
-// The routed app keeps the complete Design Game editor mounted while Projects is visible. Its real
-// user-event/modal transitions are deliberately exercised here and can exceed the workflow lane's
-// usual 60s budget on a cgroup-limited gate worker, even though each assertion eventually observes the
-// intended state.
+// The routed app keeps the visited Design Game sections mounted while Projects is visible. Keep a
+// conservative file-local ceiling for a contended gate worker; setup uses one change/click event per
+// state transition so it does not multiply full-DOM user-event work.
 const WORKFLOW_TIMEOUT_MS = 120_000;
 
 // The Projects tab's Open action only ever appears for an already-registered project (see
@@ -38,11 +37,13 @@ function registryRoute() {
     };
 }
 
-async function dirtyTheDesignDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+function dirtyTheDesignDraft(): void {
     // Symbols is one of SectionedFormEditor's own sections -- needs its own tab click first.
-    await user.click(screen.getByRole("tab", {name: "Symbols"}));
-    await user.type(screen.getByLabelText("New symbol id"), "wild-draft");
-    await user.click(screen.getByRole("button", {name: "Add symbol"}));
+    fireEvent.click(screen.getByRole("tab", {name: "Symbols"}));
+    // Modal behavior does not depend on per-character keyboard events. Avoid ten expensive user-event
+    // cycles through the full editor before every test.
+    fireEvent.change(screen.getByLabelText("New symbol id"), {target: {value: "wild-draft"}});
+    fireEvent.click(screen.getByRole("button", {name: "Add symbol"}));
 }
 
 describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
@@ -53,7 +54,7 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
         await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
@@ -68,19 +69,18 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
     }, WORKFLOW_TIMEOUT_MS);
 
     it("clicking outside the modal does not close it", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...registryRoute(),
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
         await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
         const overlay = document.querySelector(".mantine-Overlay-root");
         expect(overlay).not.toBeNull();
-        await user.click(overlay as Element);
+        fireEvent.click(overlay as Element);
 
         await new Promise((resolve) => {
             setTimeout(resolve, 100);
@@ -90,13 +90,12 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
     }, WORKFLOW_TIMEOUT_MS);
 
     it("the modal has no close button -- only Leave and Stay", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...registryRoute(),
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview", "/home/design"]});
 
-        await dirtyTheDesignDraft(user);
+        dirtyTheDesignDraft();
         await act(() => router.navigate(-1));
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
@@ -106,7 +105,6 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
     }, WORKFLOW_TIMEOUT_MS);
 
     it("Stay releases the loading state and double-submit guard on the guardedAction path", async () => {
-        const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...registryRoute(),
             "/api/home/projects/open": () => ({
@@ -117,21 +115,20 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
-        await user.click(screen.getByRole("button", {name: "Projects"}));
+        dirtyTheDesignDraft();
+        fireEvent.click(screen.getByRole("button", {name: "Projects"}));
         const openButton = await screen.findByRole("button", {name: "Open"});
-        await user.click(openButton);
+        fireEvent.click(openButton);
 
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Stay"}));
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
 
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
         expect(openButton).not.toHaveAttribute("data-loading");
     }, WORKFLOW_TIMEOUT_MS);
 
     it("after Stay, a subsequent open attempt completes normally", async () => {
-        const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...registryRoute(),
             "/api/home/projects/open": () => ({
@@ -151,17 +148,17 @@ describe("Confirm modal: cannot be dismissed except via Leave/Stay", () => {
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
-        await dirtyTheDesignDraft(user);
-        await user.click(screen.getByRole("button", {name: "Projects"}));
+        dirtyTheDesignDraft();
+        fireEvent.click(screen.getByRole("button", {name: "Projects"}));
         const openButton = await screen.findByRole("button", {name: "Open"});
-        await user.click(openButton);
+        fireEvent.click(openButton);
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Stay"}));
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
         await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
 
-        await user.click(openButton);
+        fireEvent.click(openButton);
         expect(await screen.findByText(CONFIRM_TEXT)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Leave"}));
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
 
         await waitFor(() => expect(calls.find((call) => call.url === "/api/home/projects/open")).toBeDefined());
         expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -183,7 +183,7 @@ describe("HomePage", () => {
         // Symbols is one of the guided editor's own SectionedFormEditor sections, so it needs its own tab
         // click before its panel -- and with it the "New symbol id" field -- exists.
         await user.click(screen.getByRole("tab", {name: "Symbols"}));
-        await user.type(guidedSection().getByLabelText("New symbol id"), "wild-draft");
+        fireEvent.change(guidedSection().getByLabelText("New symbol id"), {target: {value: "wild-draft"}});
 
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
         await expectActiveSection("Projects");
@@ -246,7 +246,7 @@ describe("HomePage", () => {
         // genuinely dirty. Symbols is one of SectionedFormEditor's own sections, so it needs its own tab
         // click first.
         await user.click(screen.getByRole("tab", {name: "Symbols"}));
-        await user.type(guidedSection().getByLabelText("New symbol id"), "wild-draft");
+        fireEvent.change(guidedSection().getByLabelText("New symbol id"), {target: {value: "wild-draft"}});
         await user.click(guidedSection().getByRole("button", {name: "Add symbol"}));
 
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));

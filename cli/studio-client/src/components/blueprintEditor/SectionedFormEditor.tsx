@@ -50,6 +50,15 @@ export function SectionedFormEditor({
     validationView: BlueprintValidationView;
 }) {
     const [activeSection, setActiveSection] = useState<BlueprintSectionId>("basics");
+    // Mantine's keepMounted mode preserves local field state, but mounting every heavy editor panel on
+    // first paint makes even the basic screen pay for Reels, Paytable, and the remaining hidden forms.
+    // Mount each section on first visit and keep it from then on: startup stays small without losing an
+    // in-progress local input when the user switches away and back.
+    const [visitedSections, setVisitedSections] = useState<ReadonlySet<BlueprintSectionId>>(() => new Set(["basics"]));
+    const activateSection = (section: BlueprintSectionId): void => {
+        setActiveSection(section);
+        setVisitedSections((visited) => visited.has(section) ? visited : new Set([...visited, section]));
+    };
 
     const basicsTabRef = useRef<HTMLButtonElement>(null);
     const layoutTabRef = useRef<HTMLButtonElement>(null);
@@ -79,7 +88,7 @@ export function SectionedFormEditor({
         if (!firstErrorSection) {
             return;
         }
-        setActiveSection(firstErrorSection.id);
+        activateSection(firstErrorSection.id);
         tabRefs[firstErrorSection.id].current?.focus();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [validationView]);
@@ -98,7 +107,7 @@ export function SectionedFormEditor({
             <IssueList title="Errors" issues={unclassified.filter((issue) => issue.severity === "error")} />
             <IssueList title="Warnings" issues={unclassified.filter((issue) => issue.severity !== "error")} />
 
-            <Tabs value={activeSection} onChange={(value) => setActiveSection(value as BlueprintSectionId)} keepMounted keepMountedMode="display-none">
+            <Tabs value={activeSection} onChange={(value) => activateSection(value as BlueprintSectionId)} keepMounted keepMountedMode="display-none">
                 <ScrollArea type="auto" scrollbarSize={6}>
                     <Tabs.List style={{flexWrap: "nowrap"}}>
                         {BLUEPRINT_SECTIONS.map((section) => (
@@ -115,49 +124,61 @@ export function SectionedFormEditor({
                 </ScrollArea>
 
                 <Tabs.Panel value="basics">
-                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.basics)} />
-                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.basics)} />
-                    <MetadataFieldset
-                        blueprint={blueprint}
-                        mutate={mutate}
-                        legend="Game basics"
-                        issues={[...classifiedErrors.bySection.basics, ...classifiedWarnings.bySection.basics]}
-                    />
+                    {visitedSections.has("basics") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.basics)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.basics)} />
+                        <MetadataFieldset
+                            blueprint={blueprint}
+                            mutate={mutate}
+                            legend="Game basics"
+                            issues={[...classifiedErrors.bySection.basics, ...classifiedWarnings.bySection.basics]}
+                        />
+                    </>}
                 </Tabs.Panel>
 
                 <Tabs.Panel value="layout">
-                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.layout)} />
-                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.layout)} />
-                    <LayoutFieldset
-                        blueprint={blueprint}
-                        mutate={mutate}
-                        issues={[...classifiedErrors.bySection.layout, ...classifiedWarnings.bySection.layout]}
-                    />
-                    <PaylinesEditor blueprint={blueprint} mutate={mutate} />
+                    {visitedSections.has("layout") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.layout)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.layout)} />
+                        <LayoutFieldset
+                            blueprint={blueprint}
+                            mutate={mutate}
+                            issues={[...classifiedErrors.bySection.layout, ...classifiedWarnings.bySection.layout]}
+                        />
+                        <PaylinesEditor blueprint={blueprint} mutate={mutate} />
+                    </>}
                 </Tabs.Panel>
 
                 <Tabs.Panel value="symbols">
-                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.symbols)} />
-                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.symbols)} />
-                    <SymbolsTable blueprint={blueprint} mutate={mutate} />
+                    {visitedSections.has("symbols") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.symbols)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.symbols)} />
+                        <SymbolsTable blueprint={blueprint} mutate={mutate} />
+                    </>}
                 </Tabs.Panel>
 
                 <Tabs.Panel value="reels">
-                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.reels)} />
-                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.reels)} />
-                    <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} revision={revision} />
+                    {visitedSections.has("reels") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.reels)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.reels)} />
+                        <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} revision={revision} />
+                    </>}
                 </Tabs.Panel>
 
                 <Tabs.Panel value="paytable">
-                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.paytable)} />
-                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.paytable)} />
-                    <PaytableEditor blueprint={blueprint} mutate={mutate} />
+                    {visitedSections.has("paytable") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.paytable)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.paytable)} />
+                        <PaytableEditor blueprint={blueprint} mutate={mutate} />
+                    </>}
                 </Tabs.Panel>
 
                 <Tabs.Panel value="bets">
-                    <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.bets)} />
-                    <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.bets)} />
-                    <BetsList blueprint={blueprint} mutate={mutate} />
+                    {visitedSections.has("bets") && <>
+                        <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.bets)} />
+                        <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.bets)} />
+                        <BetsList blueprint={blueprint} mutate={mutate} />
+                    </>}
                 </Tabs.Panel>
             </Tabs>
         </div>
