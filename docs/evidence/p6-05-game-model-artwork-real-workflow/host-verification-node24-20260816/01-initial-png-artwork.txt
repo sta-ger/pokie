@@ -1,0 +1,145 @@
+POKIE Studio
+/
+P6 Node24 Host Verification Slot
+/
+
+Game Model
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+P6 Node24 Host Verification Slot
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-verification-node24-20260816/workspace/blueprint.json
+
+Close project
+Game basics
+Edit
+
+Id: p6-saved-artwork-slot
+
+Name: P6 Node24 Host Verification Slot
+
+Version: 0.1.0
+
+Description: A pokie build example: 5x3, wilds, scatters, weighted reels.
+
+Author: (none)
+
+Layout
+Edit
+
+Reels: 5
+
+Rows: 3
+
+Win model: lines
+
+Paylines: 0
+
+Symbols
+Edit
+A
+K
+Q
+J
+10
+ WILD_OLD · WILD
+S · SCATTER
+Reels
+Edit
+
+Generation mode: Shared symbol weights
+
+This mode has no single fixed strip — every reel reshuffles the same weight pool fresh each session, so the views below show one reproducible, seeded sample instead of a real strip (seed 1).
+
+New sample
+Convert this sample to generated reels…
+Game window
+Full strips
+Analysis
+
+5 reel column(s) × 3 row(s) (row 0 on top) -- every reel wraps back to its own start once it runs past its own end. Move the stop position below to see every window this configuration can show. Wild/scatter symbols are highlighted.
+
+‹ Prev stop
+Next stop ›
+J
+	
+Q
+	
+ WILD_OLD
+	
+J
+	
+A
+
+
+ WILD_OLD
+	
+J
+	
+S
+	
+Q
+	
+J
+
+
+K
+	
+J
+	
+10
+	
+K
+	
+Q
+Paytable
+Edit
+Symbol	Match count	Payout (x bet)
+10	3	1
+10	4	2
+10	5	4
+A	3	4
+A	4	7
+A	5	14
+J	3	1
+J	4	3
+J	5	7
+K	3	3
+K	4	6
+K	5	11
+Q	3	2
+Q	4	5
+Q	5	9
+S	2	2
+S	3	5
+S	4	20
+S	5	100
+Bets & Modes
+Edit
+
+Available bets: 1, 2, 5, 10
+
+No bet modes configured.
+
+Mechanics
+Edit
+
+No mechanics/features configured.
+
+Limits
+
+Derived from Bets & Modes' own Available bets above -- edit there to change it.
+
+Bet range: 1 – 10
+
+Refresh

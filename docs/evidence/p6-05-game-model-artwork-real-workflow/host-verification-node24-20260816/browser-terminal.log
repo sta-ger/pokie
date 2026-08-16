@@ -1,0 +1,46 @@
+[2026-08-16T15:07:51.595Z] START workflow against fresh Studio http://127.0.0.1:4647 and fresh Chrome http://127.0.0.1:9247.
+[2026-08-16T15:07:52.313Z] NAVIGATE browser address bar to public URL http://127.0.0.1:4647/#/project/gameModel
+[2026-08-16T15:07:52.324Z] OBSERVE initial declared project-relative PNG is rendered in visible Symbols View.
+[2026-08-16T15:07:52.629Z] CAPTURE 01-initial-png-artwork.png and 01-initial-png-artwork.txt
+[2026-08-16T15:07:53.018Z] CLICK "Edit" in "Game basics" section
+[2026-08-16T15:07:53.835Z] INPUT "Game name"="P6 Host Verification Saved Artwork Slot" through browser keyboard
+[2026-08-16T15:07:54.307Z] CLICK "Save" in "Game basics" section
+[2026-08-16T15:07:54.314Z] OBSERVE Game basics edits dirty, validate, save, and return to View.
+[2026-08-16T15:07:54.620Z] CAPTURE 02-basics-save.png and 02-basics-save.txt
+[2026-08-16T15:07:55.000Z] CLICK "Edit" in "Layout" section
+[2026-08-16T15:07:56.083Z] INPUT "Rows"="4" through browser keyboard
+[2026-08-16T15:07:56.458Z] CLICK "Cancel" in "Layout" section
+[2026-08-16T15:07:56.903Z] CLICK "Confirm" at rendered coordinates
+[2026-08-16T15:07:56.903Z] CONFIRM visible discard modal
+[2026-08-16T15:07:56.908Z] OBSERVE Layout Cancel discarded the visible row mutation.
+[2026-08-16T15:07:57.332Z] CLICK "Edit" in "Symbols" section
+[2026-08-16T15:07:58.399Z] INPUT "Symbol 6 id"="WILD_FINAL" through browser keyboard
+[2026-08-16T15:07:59.128Z] CLICK "Save" in "Symbols" section
+[2026-08-16T15:09:09.144Z] OBSERVE visible Symbols Save retains WILD_FINAL and the renamed symbol's PNG after 70-second refresh settle.
+[2026-08-16T15:09:09.553Z] CAPTURE 03-symbol-save-after-settle.png and 03-symbol-save-after-settle.txt
+[2026-08-16T15:09:10.248Z] CLICK "Edit" in "Symbols" section
+[2026-08-16T15:09:11.282Z] INPUT "New symbol id"="FALLBACK" through browser keyboard
+[2026-08-16T15:09:11.783Z] CLICK "Add symbol" at rendered coordinates
+[2026-08-16T15:09:12.463Z] CLICK "Save" in "Symbols" section
+[2026-08-16T15:09:12.467Z] OBSERVE a saved symbol without declared artwork falls back to its visible canonical id, not a broken image.
+[2026-08-16T15:09:12.818Z] CAPTURE 04-png-fallback.png and 04-png-fallback.txt
+[2026-08-16T15:09:13.465Z] CLICK "Edit" in "Reels" section
+[2026-08-16T15:09:13.871Z] CLICK radio "Reel strips" at rendered coordinates
+[2026-08-16T15:09:14.233Z] CLICK "Cancel" in "Reels" section
+[2026-08-16T15:09:14.680Z] CLICK "Confirm" at rendered coordinates
+[2026-08-16T15:09:14.680Z] CONFIRM visible discard modal
+[2026-08-16T15:09:15.319Z] CLICK "Edit" in "Paytable" section
+[2026-08-16T15:09:16.446Z] INPUT "A x3 payout"="5" through browser keyboard
+[2026-08-16T15:09:17.112Z] CLICK "Cancel" in "Paytable" section
+[2026-08-16T15:09:17.593Z] CLICK "Confirm" at rendered coordinates
+[2026-08-16T15:09:17.593Z] CONFIRM visible discard modal
+[2026-08-16T15:09:18.285Z] CLICK "Edit" in "Bets & Modes" section
+[2026-08-16T15:09:18.748Z] CLICK aria action "Duplicate bet 1" at rendered coordinates
+[2026-08-16T15:09:19.136Z] CLICK "Cancel" in "Bets & Modes" section
+[2026-08-16T15:09:19.567Z] CLICK "Confirm" at rendered coordinates
+[2026-08-16T15:09:19.567Z] CONFIRM visible discard modal
+[2026-08-16T15:09:19.989Z] CLICK "Edit" in "Mechanics" section
+[2026-08-16T15:09:20.350Z] CLICK "Add free games" at rendered coordinates
+[2026-08-16T15:10:50.384Z] FAILED Error: Timed out waiting for Mechanics editor mutation
+    at wait (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-verification-20260816/rendered-workflow.mjs:38:176)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-05-20260816145527/docs/evidence/p6-05-game-model-artwork-real-workflow/host-verification-20260816/rendered-workflow.mjs:84:77)

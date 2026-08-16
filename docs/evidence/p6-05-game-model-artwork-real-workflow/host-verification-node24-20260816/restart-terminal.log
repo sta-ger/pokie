@@ -1,0 +1,4 @@
+[2026-08-16T15:11:57.179Z] START restart against fresh Studio http://127.0.0.1:4648 and fresh Chrome http://127.0.0.1:9248.
+[2026-08-16T15:11:57.898Z] NAVIGATE browser address bar to public URL http://127.0.0.1:4648/#/project/gameModel
+[2026-08-16T15:11:57.906Z] OBSERVE fresh Studio and fresh Chrome render the persisted renamed symbol and its declared PNG.
+[2026-08-16T15:11:58.222Z] CAPTURE 08-after-studio-restart.png and 08-after-studio-restart.txt

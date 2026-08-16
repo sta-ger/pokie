@@ -1,0 +1,10 @@
+candidate_sha=e404d4ad26d298864c8105e89b42b4a1a21cc809
+build_node=/home/stager/.nvm/versions/node/v24.18.0/bin/node
+build_node_version=v24.18.0
+studio_first=http://127.0.0.1:4647
+chrome_first_debug_port=9247
+studio_restart=http://127.0.0.1:4648
+chrome_restart_debug_port=9248
+browser_driver=rendered controls + coordinate mouse + browser keyboard only
+state_injection=none
+private_studio_api_calls=none

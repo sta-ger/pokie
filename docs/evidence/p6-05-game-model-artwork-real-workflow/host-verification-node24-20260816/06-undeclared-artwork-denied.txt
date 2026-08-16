@@ -1,0 +1,1 @@
+{"error":"Symbol artwork is missing or invalid."}
