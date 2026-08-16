@@ -1,4 +1,4 @@
-import {Alert, Badge, Button, Group, List, NumberInput, Radio, Select, Table, Text, TextInput, Textarea} from "@mantine/core";
+import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Table, Text, TextInput, Textarea} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {previewReelStripGeneration} from "../../api/apiClient";
@@ -391,6 +391,147 @@ function ConstraintsEditor({reelIndex, entry, mutate, issues}: {reelIndex: numbe
     );
 }
 
+type StackDraft = {
+    type: "stack";
+    symbolIds?: string[];
+    minimumLength: number;
+    maximumLength?: number;
+    minimumStacks?: number;
+    maximumStacks?: number;
+    minimumSpacing?: number;
+    visibleWindowRows?: number;
+    maximumSymbolsInWindow?: number;
+};
+
+function asStackDraft(value: unknown): StackDraft | undefined {
+    if (typeof value !== "object" || value === null || Array.isArray(value) || (value as {type?: unknown}).type !== "stack") return undefined;
+    const stack = value as Record<string, unknown>;
+    return typeof stack.minimumLength === "number" ? (stack as StackDraft) : undefined;
+}
+
+function describeStackLength(stack: StackDraft): string {
+    if (stack.maximumLength === undefined) return `length ${stack.minimumLength}+`;
+    if (stack.maximumLength === stack.minimumLength) return `fixed length ${stack.minimumLength}`;
+    return `length ${stack.minimumLength}–${stack.maximumLength}`;
+}
+
+// Stacks are persisted as first-class `stack` constraints, not as a UI-only shorthand for repeated
+// sequences.  Keeping the visual editor and the raw constraints textarea side by side means presets
+// remain inspectable/editable while common stack work never requires hand-authoring JSON.
+function StackConstraintsEditor({reelIndex, entry, symbols, mutate}: {reelIndex: number; entry: Record<string, unknown>; symbols: string[]; mutate: BlueprintMutate}) {
+    const constraints = Array.isArray(entry.constraints) ? entry.constraints : [];
+    const stacks = constraints.flatMap((constraint, index) => {
+        const stack = asStackDraft(constraint);
+        return stack === undefined ? [] : [{index, stack}];
+    });
+    const [editingIndex, setEditingIndex] = useState<number>();
+    const [eligibleSymbols, setEligibleSymbols] = useState<string[]>([]);
+    const [lengthMode, setLengthMode] = useState<"fixed" | "range">("fixed");
+    const [minimumLength, setMinimumLength] = useState<number | string>(2);
+    const [maximumLength, setMaximumLength] = useState<number | string>(3);
+    const [stackCount, setStackCount] = useState<number | string>(1);
+    const [minimumSpacing, setMinimumSpacing] = useState<number | string>("");
+    const [visibleWindowRows, setVisibleWindowRows] = useState<number | string>("");
+    const [maximumSymbolsInWindow, setMaximumSymbolsInWindow] = useState<number | string>("");
+
+    const replaceConstraints = (next: unknown[]): void => mutate((blueprint) => setReelStripGenerationConstraints(blueprint, reelIndex, next));
+    const reset = (): void => {
+        setEditingIndex(undefined);
+        setEligibleSymbols([]);
+        setLengthMode("fixed");
+        setMinimumLength(2);
+        setMaximumLength(3);
+        setStackCount(1);
+        setMinimumSpacing("");
+        setVisibleWindowRows("");
+        setMaximumSymbolsInWindow("");
+    };
+    const number = (value: number | string): number | undefined => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    const save = (forbid = false): void => {
+        const min = number(minimumLength);
+        const max = lengthMode === "range" ? number(maximumLength) : min;
+        const count = number(stackCount);
+        const spacing = number(minimumSpacing);
+        const rows = number(visibleWindowRows);
+        const windowMaximum = number(maximumSymbolsInWindow);
+        if (min === undefined || min < 2 || max === undefined || max < min || (!forbid && (count === undefined || count < 1)) || (rows === undefined) !== (windowMaximum === undefined)) return;
+        const stack: StackDraft = {
+            type: "stack",
+            minimumLength: min,
+            ...(max === min ? {} : {maximumLength: max}),
+            ...(eligibleSymbols.length === 0 ? {} : {symbolIds: eligibleSymbols}),
+            ...(forbid ? {maximumStacks: 0} : {minimumStacks: count, maximumStacks: count}),
+            ...(spacing === undefined ? {} : {minimumSpacing: spacing}),
+            ...(rows === undefined ? {} : {visibleWindowRows: rows, maximumSymbolsInWindow: windowMaximum}),
+        };
+        const next = [...constraints];
+        if (editingIndex === undefined) next.push(stack);
+        else next[editingIndex] = stack;
+        replaceConstraints(next);
+        reset();
+    };
+    const edit = (index: number, stack: StackDraft): void => {
+        setEditingIndex(index);
+        setEligibleSymbols(stack.symbolIds ?? []);
+        setLengthMode(stack.maximumLength === undefined || stack.maximumLength === stack.minimumLength ? "fixed" : "range");
+        setMinimumLength(stack.minimumLength);
+        setMaximumLength(stack.maximumLength ?? stack.minimumLength);
+        setStackCount(stack.minimumStacks ?? 1);
+        setMinimumSpacing(stack.minimumSpacing ?? "");
+        setVisibleWindowRows(stack.visibleWindowRows ?? "");
+        setMaximumSymbolsInWindow(stack.maximumSymbolsInWindow ?? "");
+    };
+    const move = (from: number, to: number): void => {
+        if (to < 0 || to >= constraints.length) return;
+        const next = [...constraints];
+        [next[from], next[to]] = [next[to], next[from]];
+        replaceConstraints(next);
+    };
+
+    return (
+        <PageSection legend="Stack constraints">
+            <Text size="sm" c="dimmed" mb="xs">
+                Stacks are same-symbol runs. Add a fixed or range-length rule, choose eligible symbols, and optionally constrain spacing or what can appear together in a visible window.
+            </Text>
+            {stacks.length === 0 ? <Text size="sm" c="dimmed" mb="xs">No stack constraints yet.</Text> : (
+                <List size="sm" mb="sm">
+                    {stacks.map(({index, stack}, stackIndex) => (
+                        <List.Item key={index}>
+                            Stack {stackIndex + 1}: {stack.symbolIds?.join(", ") ?? "any symbol"}, {describeStackLength(stack)}, {stack.maximumStacks === 0 ? "no stacks allowed" : `${stack.minimumStacks ?? 0} required`}
+                            <Group gap="xs" mt={4}>
+                                <Button size="compact-xs" variant="default" onClick={() => edit(index, stack)}>Edit</Button>
+                                <Button size="compact-xs" variant="default" disabled={index === 0} onClick={() => move(index, index - 1)}>Move up</Button>
+                                <Button size="compact-xs" variant="default" disabled={index === constraints.length - 1} onClick={() => move(index, index + 1)}>Move down</Button>
+                                <Button size="compact-xs" variant="default" onClick={() => {
+                                    const next = [...constraints];
+                                    next.splice(index + 1, 0, {...stack, minimumStacks: 1, maximumStacks: 1});
+                                    replaceConstraints(next);
+                                }}>Split</Button>
+                                <Button size="compact-xs" color="red" variant="default" onClick={() => replaceConstraints(constraints.filter((_, constraintIndex) => constraintIndex !== index))}>Remove</Button>
+                            </Group>
+                        </List.Item>
+                    ))}
+                </List>
+            )}
+            <QuickActions>
+                <MultiSelect aria-label={`Eligible stack symbols for reel ${reelIndex + 1}`} placeholder="Eligible symbols (all when empty)" data={symbols} value={eligibleSymbols} onChange={setEligibleSymbols} clearable />
+                <Radio.Group aria-label={`Stack length mode for reel ${reelIndex + 1}`} value={lengthMode} onChange={(value) => setLengthMode(value as "fixed" | "range")}>
+                    <Group gap="xs"><Radio value="fixed" label="Fixed length" /><Radio value="range" label="Length range" /></Group>
+                </Radio.Group>
+                <NumberInput aria-label={`Stack minimum length for reel ${reelIndex + 1}`} label="Stack length" min={2} step={1} value={minimumLength} onChange={setMinimumLength} />
+                {lengthMode === "range" && <NumberInput aria-label={`Stack maximum length for reel ${reelIndex + 1}`} label="Maximum length" min={2} step={1} value={maximumLength} onChange={setMaximumLength} />}
+                <NumberInput aria-label={`Stack count for reel ${reelIndex + 1}`} label="Add N stacks" min={1} step={1} value={stackCount} onChange={setStackCount} />
+                <NumberInput aria-label={`Stack spacing for reel ${reelIndex + 1}`} label="Minimum spacing (optional)" min={1} step={1} value={minimumSpacing} onChange={setMinimumSpacing} />
+                <NumberInput aria-label={`Stack visible window rows for reel ${reelIndex + 1}`} label="Visible window rows (optional)" min={1} step={1} value={visibleWindowRows} onChange={setVisibleWindowRows} />
+                <NumberInput aria-label={`Maximum stack symbols visible for reel ${reelIndex + 1}`} label="Max stack symbols visible" min={0} step={1} value={maximumSymbolsInWindow} onChange={setMaximumSymbolsInWindow} />
+                <Button variant="default" onClick={() => save()}>{editingIndex === undefined ? "Add stack rule" : "Save stack rule"}</Button>
+                <Button variant="default" onClick={() => save(true)}>No stacks</Button>
+                {editingIndex !== undefined && <Button variant="subtle" onClick={reset}>Cancel stack edit</Button>}
+            </QuickActions>
+        </PageSection>
+    );
+}
+
 function GeneratedEditor({
     reelIndex,
     entry,
@@ -413,6 +554,10 @@ function GeneratedEditor({
     const [lengthKey, setLengthKey] = useState(0);
     const autoLength = computeReelStripGenerationAutoLength(entry);
     const countLength = Object.values(asRecord(entry.symbolCounts)).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
+    const consumedOccurrences = (Array.isArray(entry.constraints) ? entry.constraints : []).reduce<number>((total, constraint) => {
+        const stack = asStackDraft(constraint);
+        return total + (stack === undefined ? 0 : stack.minimumLength * (stack.minimumStacks ?? 0));
+    }, 0);
 
     return (
         <div>
@@ -469,7 +614,9 @@ function GeneratedEditor({
             </Radio.Group>
 
             <SourceTable reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} issues={issues} />
+            {sourceMode === "symbolCounts" && consumedOccurrences > 0 && <Text size="sm" c="dimmed" mt="xs">Stack rules consume at least {consumedOccurrences} counted occurrence(s).</Text>}
             <LockedPositions reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} issues={issues} />
+            <StackConstraintsEditor reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} />
             <ConstraintsEditor reelIndex={reelIndex} entry={entry} mutate={mutate} issues={issues} />
         </div>
     );
@@ -991,6 +1138,14 @@ export function ReelStripGenerationEditor({
                                 </Alert>
                             ))}
                         {reelPreview !== undefined && reelPreview.type === "generated" && <DiagnosticsList diagnostics={reelPreview.diagnostics} />}
+
+                        {reelPreview !== undefined && reelPreview.type === "generated" && !reelPreview.success && (
+                            <QuickActions>
+                                <Button onClick={() => setActiveStep(1)}>Fix configuration</Button>
+                                <Button variant="default" onClick={() => setActiveStep(1)}>Back to Configure</Button>
+                                <Button color="red" variant="default" onClick={discardDraft} disabled={!isDirty}>Discard draft</Button>
+                            </QuickActions>
+                        )}
 
                         {stopWindowReachable && (
                             <QuickActions>

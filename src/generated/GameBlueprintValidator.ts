@@ -9,6 +9,7 @@ const REEL_STRIP_CONSTRAINT_TYPES = [
     "requiredAdjacency",
     "forbiddenSequence",
     "requiredSequence",
+    "stack",
 ];
 const REEL_STRIP_ROUNDING_POLICIES = ["floor", "round", "ceil"];
 const REEL_STRIP_TIE_BREAK_POLICIES = ["symbol-id", "declared-order", "largest-weight-first"];
@@ -1217,12 +1218,38 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                         message: `"${path}.maximumOccurrences" must be >= "${path}.minimumOccurrences".`,
                     });
                 }
+                return;
+            case "stack":
+                this.requirePositiveInteger(c.minimumLength, `${path}.minimumLength`, issues);
+                this.validateOptionalNonNegativeInteger(c.maximumLength, `${path}.maximumLength`, issues);
+                this.validateOptionalNonNegativeInteger(c.minimumStacks, `${path}.minimumStacks`, issues);
+                this.validateOptionalNonNegativeInteger(c.maximumStacks, `${path}.maximumStacks`, issues);
+                this.validateOptionalSymbolIds(c.symbolIds, `${path}.symbolIds`, symbolSet, symbolsValid, issues);
+                this.requireOptionalPositiveInteger(c.minimumSpacing, `${path}.minimumSpacing`, issues);
+                this.requireOptionalPositiveInteger(c.visibleWindowRows, `${path}.visibleWindowRows`, issues);
+                this.validateOptionalNonNegativeInteger(c.maximumSymbolsInWindow, `${path}.maximumSymbolsInWindow`, issues);
+                this.validateOptionalBoolean(c.wrapAround, `${path}.wrapAround`, issues);
+                if (typeof c.minimumLength === "number" && typeof c.maximumLength === "number" && c.maximumLength < c.minimumLength) {
+                    issues.push({code: "blueprint-reelstripgeneration-invalid-stack-range", severity: "error", message: `"${path}.maximumLength" must be >= "${path}.minimumLength".`});
+                }
+                if (typeof c.minimumStacks === "number" && typeof c.maximumStacks === "number" && c.maximumStacks < c.minimumStacks) {
+                    issues.push({code: "blueprint-reelstripgeneration-invalid-stack-occurrences", severity: "error", message: `"${path}.maximumStacks" must be >= "${path}.minimumStacks".`});
+                }
+                if ((c.visibleWindowRows === undefined) !== (c.maximumSymbolsInWindow === undefined)) {
+                    issues.push({code: "blueprint-reelstripgeneration-invalid-stack-window", severity: "error", message: `"${path}.visibleWindowRows" and "${path}.maximumSymbolsInWindow" must be set together.`});
+                }
         }
     }
 
     private requirePositiveInteger(value: unknown, path: string, issues: ValidationIssue[]): void {
         if (!(typeof value === "number" && Number.isInteger(value) && value > 0)) {
             issues.push({code: "blueprint-reelstripgeneration-invalid-constraint-field", severity: "error", message: `"${path}" must be a positive integer.`});
+        }
+    }
+
+    private requireOptionalPositiveInteger(value: unknown, path: string, issues: ValidationIssue[]): void {
+        if (value !== undefined) {
+            this.requirePositiveInteger(value, path, issues);
         }
     }
 

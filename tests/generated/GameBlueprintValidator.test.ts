@@ -50,6 +50,17 @@ describe("GameBlueprintValidator", () => {
         expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
     });
 
+    it("accepts persisted stack constraints and reports malformed stack ranges inline", () => {
+        const blueprint = validBlueprint();
+        blueprint.reelStripGeneration = new Array(5).fill({type: "generated", length: 6, seed: 1, symbolCounts: {A: 3, K: 3}, constraints: [{type: "stack", symbolIds: ["A"], minimumLength: 2, maximumLength: 3, minimumStacks: 1, maximumStacks: 1, minimumSpacing: 3, visibleWindowRows: 3, maximumSymbolsInWindow: 2}]});
+
+        expect(codesOf(validator.validate(blueprint))).not.toContain("blueprint-reelstripgeneration-invalid-stack-range");
+        const firstReel = blueprint.reelStripGeneration![0];
+        if (firstReel.type !== "generated") throw new Error("Expected generated reel fixture.");
+        (firstReel.constraints![0] as {maximumLength: number}).maximumLength = 1;
+        expect(codesOf(validator.validate(blueprint))).toContain("blueprint-reelstripgeneration-invalid-stack-range");
+    });
+
     it("rejects a non-object blueprint", () => {
         expect(codesOf(validator.validate(null))).toEqual(["blueprint-not-object"]);
         expect(codesOf(validator.validate([1, 2]))).toEqual(["blueprint-not-object"]);

@@ -18,4 +18,19 @@ export type ReelStripConstraintSpec =
           maximumOccurrences?: number;
           reversed?: boolean;
           wrapAround?: boolean;
+      }
+    // A stack is a maximal run of an eligible symbol.  This is intentionally a constraint rather
+    // than generator-only metadata: a generated strip and a literal strip can therefore be
+    // inspected against the exact same, persisted rule.
+    | {
+          type: "stack";
+          symbolIds?: string[];
+          minimumLength: number;
+          maximumLength?: number;
+          minimumStacks?: number;
+          maximumStacks?: number;
+          minimumSpacing?: number;
+          visibleWindowRows?: number;
+          maximumSymbolsInWindow?: number;
+          wrapAround?: boolean;
       };
