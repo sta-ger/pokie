@@ -24,14 +24,10 @@ function executeJest(arguments_, options = {}) {
     return result;
 }
 
-function throwForFailedJest(result) {
-    if (result.status !== 0) {
-        throw new Error(`Jest exited with status ${result.status ?? 1}.`);
-    }
-}
-
 const discovery = executeJest(["--selectProjects", workflowProject, "--listTests"], {encoding: "utf8"});
-throwForFailedJest(discovery);
+if (discovery.status !== 0) {
+    throw new Error(`Jest discovery exited with status ${discovery.status ?? 1}.`);
+}
 // Jest writes the selected-project banner to stdout but, in some versions, writes the list of
 // discovered test paths to stderr. Read both streams and retain only real files so the banner can
 // never be mistaken for a test path.
@@ -45,10 +41,21 @@ if (workflowTestPaths.length === 0) {
 
 // Each suite needs a fresh process, but it must run alone. A single jsdom workflow suite can retain
 // roughly 620-735MiB while transforming and rendering; starting two at once makes their real-timer
-// interactions starve and turns otherwise-correct 60s assertions into timeouts.
+// interactions starve and turns otherwise-correct 60s assertions into timeouts. Continue after a
+// failed file so one official run reports the whole workflow failure set.
+const failedTestPaths = [];
 for (const testPath of workflowTestPaths) {
     const result = executeJest([
         "--selectProjects", workflowProject, "--runInBand", "--runTestsByPath", testPath,
     ], {stdio: "inherit"});
-    throwForFailedJest(result);
+    if (result.status !== 0) {
+        const relativePath = path.relative(repositoryRoot, testPath).split(path.sep).join("/");
+        failedTestPaths.push(relativePath);
+        console.error(`POKIE_FAILING_TEST_FILE: ${relativePath}`);
+    }
+}
+
+if (failedTestPaths.length > 0) {
+    console.error(`POKIE_WORKFLOW_FAILURES: ${failedTestPaths.join(", ")}`);
+    process.exitCode = 1;
 }
