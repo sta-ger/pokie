@@ -1,0 +1,30 @@
+{
+  "resolved": "file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-08-20260817015826/docs/evidence/p6-08-canonical-player-runtime-parity/generated-package/node_modules/pokie/dist/cli/client/player/index.js",
+  "exports": [
+    "applyPersistentHighlights",
+    "clearConnectionError",
+    "deriveAvailableBetModeIds",
+    "deriveAvailableBets",
+    "deriveBetModeId",
+    "deriveFeatureCounters",
+    "deriveLineDefinitions",
+    "derivePaytableView",
+    "deriveTotalWin",
+    "deriveWinHighlights",
+    "deriveWinHighlightsFromRoundArtifactWins",
+    "highlightHoverColor",
+    "highlightPersistentColor",
+    "isVideoSlotRoundResponse",
+    "renderBetInfo",
+    "renderConnectionError",
+    "renderFeatureCounters",
+    "renderLineDefinitionsList",
+    "renderModeInfo",
+    "renderPaytable",
+    "renderPlayerRound",
+    "renderReelsGrid",
+    "renderWinHighlightsList",
+    "renderWinsSection"
+  ],
+  "renderPlayerRound": "function"
+}

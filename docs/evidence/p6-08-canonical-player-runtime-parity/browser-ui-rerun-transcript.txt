@@ -1,0 +1,19 @@
+[2026-08-17T01:27:23.232Z] START fresh-rendered browser workflow: client=http://127.0.0.1:4512, studio=http://127.0.0.1:4611
+[2026-08-17T01:27:23.246Z] NAVIGATE generated package npm start Player UI: http://127.0.0.1:4512
+[2026-08-17T01:27:23.944Z] CLICK "Spin" at rendered BUTTON coordinates (75, 345)
+[2026-08-17T01:27:24.375Z] CLICK "Paytable" at rendered SUMMARY coordinates (383, 199)
+[2026-08-17T01:27:24.954Z] CAPTURE 20-generated-package-npm-start-player.png and 20-generated-package-npm-start-player.txt
+[2026-08-17T01:27:24.957Z] OBSERVE generated package npm start rendered 9 Player cells, bet/credits/win/multiplier, paylines, and paytable through pokie/client/player.
+[2026-08-17T01:27:24.971Z] NAVIGATE Studio Play UI: http://127.0.0.1:4611/#/project/play
+[2026-08-17T01:27:25.522Z] INPUT Studio Play Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T01:27:25.924Z] CLICK "New session" at rendered BUTTON coordinates (337, 439)
+[2026-08-17T01:27:26.400Z] CLICK "Spin" at rendered BUTTON coordinates (310, 259)
+[2026-08-17T01:27:27.069Z] CAPTURE 21-studio-play-seeded-round.png and 21-studio-play-seeded-round.txt
+[2026-08-17T01:27:27.071Z] OBSERVE Studio Play seed "fixture-round" visibly produced the 3x3 A/C/A | A/A/C | A/A/A round and total win 5.00.
+[2026-08-17T01:27:27.073Z] NAVIGATE Studio Replay UI: http://127.0.0.1:4611/#/project/replay
+[2026-08-17T01:27:27.638Z] INPUT Studio Replay Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T01:27:28.063Z] CLICK "Load" at rendered BUTTON coordinates (531, 295)
+[2026-08-17T01:27:28.708Z] CLICK "Run again" at rendered BUTTON coordinates (329, 387)
+[2026-08-17T01:27:29.525Z] CAPTURE 22-studio-replay-seeded-round.png and 22-studio-replay-seeded-round.txt
+[2026-08-17T01:27:29.530Z] ASSERT Studio Play and Replay visibly match the expected seeded 3x3 grid and A-line 5.00 win.
+[2026-08-17T01:27:29.530Z] OBSERVE generated package Player UI exposes no rendered seed/session-creation control; it creates its own unseeded session on load, so the seeded Studio round cannot be selected through that public Player UI.

@@ -1,0 +1,22 @@
+Usage: build [options] <project> [excess...]
+
+Build an artifact from a resolved POKIE project ("pokie build <project> --target
+<artifact>") -- a tsPackage from a GameBlueprint source, or atomically republish
+an already-built artifact to a new location (for a first random game instead,
+see "pokie create --random"). --dry-run validates and previews without writing
+anything.
+
+Arguments:
+  project              a path pokie resolves to a POKIE project (see
+                       docs/cli.md#pokie-build-project)
+  excess               rejected if present -- this command takes no further
+                       positionals
+
+Options:
+  --target <artifact>  --target must be one of: tsPackage, outcomeLibrary,
+                       stakeAdapter, parWorkbook, wasm.
+  --out <path>         where to write the built artifact (default: a
+                       <target>-named sibling of <project>)
+  --dry-run            validate and preview without writing anything
+  -h, --help           Display help for this command.
+

@@ -1,0 +1,47 @@
+[
+  {
+    "cell": "0:0",
+    "text": "C",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "1:0",
+    "text": "B",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "2:0",
+    "text": "A",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "0:1",
+    "text": "C",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "1:1",
+    "text": "B",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "2:1",
+    "text": "C",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "0:2",
+    "text": "A",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "1:2",
+    "text": "C",
+    "color": "rgba(0, 0, 0, 0)"
+  },
+  {
+    "cell": "2:2",
+    "text": "A",
+    "color": "rgba(0, 0, 0, 0)"
+  }
+]
