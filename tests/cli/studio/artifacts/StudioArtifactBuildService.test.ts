@@ -2,6 +2,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {localPokieDependencyRunner} from "../../../testUtils/offlinePokieDependencyOverride.js";
+import {prepareExactCodeFirstPackage} from "../../../testUtils/prepareExactCodeFirstPackage.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -209,6 +211,54 @@ describe("StudioArtifactBuildService", () => {
                 reusedCompatibleProject: true,
             });
             expect(fs.existsSync(requestedOutcomeDir)).toBe(false);
+        });
+
+        it("uses the same registry Outcome reuse and Stake flow for a real pokie init code-first package", async () => {
+            const packageRoot = path.join(workDir, "code-first-package");
+            const outcomeDir = path.join(workDir, "outcomes");
+            const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+            const stakeDir = path.join(workDir, "stake");
+            await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
+
+            expect(await service.listTargets(packageRoot)).toEqual(expect.arrayContaining([
+                expect.objectContaining({target: "outcomeLibrary", supported: true}),
+                expect.objectContaining({target: "stakeAdapter", supported: true}),
+                expect.objectContaining({target: "parWorkbook", supported: false}),
+            ]));
+            await expect(service.build(packageRoot, "outcomeLibrary", outcomeDir)).resolves.toMatchObject({
+                status: "ok",
+                sourceType: "tsPackage",
+                outputPath: outcomeDir,
+            });
+            await expect(service.build(packageRoot, "outcomeLibrary", reusedOutcomeDir)).resolves.toEqual({
+                status: "ok",
+                target: "outcomeLibrary",
+                outputPath: outcomeDir,
+                outputKind: "directory",
+                sourceType: "tsPackage",
+                requestedDestinationPath: reusedOutcomeDir,
+                reusedCompatibleProject: true,
+            });
+            await expect(service.build(packageRoot, "stakeAdapter", stakeDir)).resolves.toMatchObject({
+                status: "ok",
+                sourceType: "tsPackage",
+                outputPath: stakeDir,
+            });
+            expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes).toEqual([
+                expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
+                expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
+            ]);
+            expect(JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")).modes).toEqual([
+                expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
+                expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),
+            ]);
+            await expect(service.build(packageRoot, "parWorkbook", path.join(workDir, "unsupported.xlsx"))).resolves.toEqual(
+                expect.objectContaining({
+                    status: "unsupported",
+                    target: "parWorkbook",
+                    message: expect.stringContaining('"parWorkbook" cannot be built from a "tsPackage" project. Supported sources: parWorkbook.'),
+                }),
+            );
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {
