@@ -31,7 +31,7 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("outcomeLibrary");
 
         expect(descriptor.requiredSourceCapability).toBe(OUTCOME_LIBRARY_READ_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["outcomeLibrary"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "outcomeLibrary"]);
     });
 
     it("reports the true required source capability and supported sources for a Stake artifact export", () => {
@@ -59,7 +59,7 @@ describe("ArtifactBuilderRegistry", () => {
         const outcomeLibraryNotes = registry.describe("outcomeLibrary").unsupportedNotes.join(" ");
         const stakeAdapterNotes = registry.describe("stakeAdapter").unsupportedNotes.join(" ");
 
-        expect(outcomeLibraryNotes).toMatch(/never re-derives or recovers the game model/);
+        expect(outcomeLibraryNotes).toMatch(/never recovers a game model/);
         expect(stakeAdapterNotes).toMatch(/never re-derives or recovers the game model/);
     });
 
@@ -159,9 +159,9 @@ describe("ArtifactBuilderRegistry", () => {
 
             try {
                 await registry.build("stakeAdapter", blueprintProject, firstStakeDir);
-                const indexPath = path.join(workDir, ".pokie", "outcome-library-registry.json");
-                const registered = JSON.parse(fs.readFileSync(indexPath, "utf-8")) as string[];
-                const libraryDir = path.join(workDir, registered[0]);
+                const managedRoot = path.join(workDir, ".pokie", "outcome-libraries");
+                const [managedLibrary] = fs.readdirSync(managedRoot);
+                const libraryDir = path.join(managedRoot, managedLibrary);
                 const manifestBeforeReuse = fs.readFileSync(path.join(libraryDir, "manifest.json"), "utf-8");
 
                 await registry.build("stakeAdapter", blueprintProject, secondStakeDir);
@@ -203,7 +203,7 @@ describe("ArtifactBuilderRegistry", () => {
                 await expect(registry.build("stakeAdapter", project, stakeDir)).rejects.toThrow(/fix it in Game Model and retry/i);
 
                 writeBlueprint(3);
-                await expect(registry.build("stakeAdapter", project, stakeDir)).resolves.toEqual({outputPath: stakeDir});
+                await expect(registry.build("stakeAdapter", project, stakeDir)).resolves.toMatchObject({outputPath: stakeDir, prerequisiteProjectRoots: [expect.any(String)]});
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

@@ -34,7 +34,7 @@ describe("StudioArtifactBuildService", () => {
     }
 
     describe("listTargets", () => {
-        it("reports every ArtifactBuilderRegistry target, marking only tsPackage supported for a blueprint project", async () => {
+        it("reports the registry-owned Blueprint -> Outcome -> Stake targets as supported", async () => {
             const blueprintPath = writeBlueprintFile();
 
             const targets = await service.listTargets(blueprintPath);
@@ -42,8 +42,8 @@ describe("StudioArtifactBuildService", () => {
             expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry]));
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
-            expect(byTarget.get("outcomeLibrary")?.supported).toBe(false);
-            expect(byTarget.get("stakeAdapter")?.supported).toBe(false);
+            expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
+            expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
             expect(byTarget.get("parWorkbook")?.supported).toBe(false);
             expect(byTarget.get("wasm")?.supported).toBe(false);
         });
@@ -84,16 +84,16 @@ describe("StudioArtifactBuildService", () => {
             expect(result.destination).toBe(explicitOut);
         });
 
-        it("reports an unsupported conversion, with the same message build() itself reports, instead of ever checking a destination", async () => {
+        it("previews the registry-owned Blueprint -> Stake hand-off without writing", async () => {
             const blueprintPath = writeBlueprintFile();
 
             const result = await service.preview(blueprintPath, "stakeAdapter");
 
-            expect(result.status).toBe("unsupported");
-            if (result.status !== "unsupported") {
-                throw new Error("expected unsupported");
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
             }
-            expect(result.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+            expect(result.sourceType).toBe("blueprint");
         });
 
         it("reports a conflict for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
@@ -152,16 +152,22 @@ describe("StudioArtifactBuildService", () => {
             expect(result.outputPath).toBe(explicitOut);
         });
 
-        it("reports an unsupported conversion instead of ever invoking a builder", async () => {
+        it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {
             const blueprintPath = writeBlueprintFile();
+            const registeredProjects: string[] = [];
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, async (projectRoot) => {
+                registeredProjects.push(projectRoot);
+            });
 
             const result = await service.build(blueprintPath, "stakeAdapter");
 
-            expect(result.status).toBe("unsupported");
-            if (result.status !== "unsupported") {
-                throw new Error("expected unsupported");
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
             }
-            expect(result.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+            expect(fs.existsSync(path.join(result.outputPath, "index.json"))).toBe(true);
+            expect(registeredProjects).toHaveLength(1);
+            expect(fs.existsSync(path.join(registeredProjects[0], "manifest.json"))).toBe(true);
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {

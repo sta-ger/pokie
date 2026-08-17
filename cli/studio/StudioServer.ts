@@ -258,8 +258,15 @@ export class StudioServer implements StudioServerHandling {
                 const game = await loadCurrentProjectGame(projectRoot);
                 return game.getConfigHash?.();
             });
-        this.artifactBuildService = options.artifactBuildService ?? new StudioArtifactBuildService(this.pokieVersion);
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
+        this.artifactBuildService =
+            options.artifactBuildService ??
+            new StudioArtifactBuildService(this.pokieVersion, undefined, undefined, async (projectRoot) => {
+                const registered = await this.projectRegistrationService.registerExternal(projectRoot);
+                if (registered.status !== "ok") {
+                    throw new Error(`Generated Outcome Library at "${projectRoot}" could not be registered as a Studio Project.`);
+                }
+            });
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};

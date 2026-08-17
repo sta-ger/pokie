@@ -63,6 +63,7 @@ export class StudioArtifactBuildService {
         pokieVersion: string,
         registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
     ) {
         this.registry = registry;
         this.resolveProject = resolveProject;
@@ -131,6 +132,10 @@ export class StudioArtifactBuildService {
 
         try {
             const result = await this.registry.build(target, project, destination);
+            // A Blueprint -> Stake request may have caused the registry to create/open its canonical
+            // Outcome Project.  Register that exact resolved path with Studio's authoritative Projects
+            // registry before reporting success; no Studio-only outcome-path index is maintained here.
+            await Promise.all((result.prerequisiteProjectRoots ?? []).map((projectRoot) => this.registerManagedProject(projectRoot)));
             return {status: "ok", target, outputPath: result.outputPath, outputKind: destinationKindFor(target), sourceType: project.type};
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {

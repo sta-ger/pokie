@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import fs from "fs";
 import path from "path";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
@@ -29,12 +28,10 @@ import {WaysWinCalculator} from "../session/videoslot/wincalculator/WaysWinCalcu
 import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWinCalculator.js";
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
-import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import {generateExactWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import type {PokieProject} from "./PokieProject.js";
-import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
+import {ProjectTargetResolver} from "./ProjectTargetResolver.js";
+import type {ProjectResolving} from "./ProjectResolving.js";
 
-const REGISTRY_INDEX_PATH = path.join(".pokie", "outcome-library-registry.json");
 const GENERATED_RUNTIME = {
     BetModeDefinition,
     BetModesConfig,
@@ -65,13 +62,17 @@ const GENERATED_RUNTIME = {
 export class BlueprintStakeOutcomeLibraryWorkflow {
     private readonly validator = new GameBlueprintValidator();
     private readonly reader = new OutcomeLibraryBundleReader();
-    private readonly writer: OutcomeLibraryBundleWriter;
 
-    constructor(private readonly pokieVersion: string, private readonly loadBlueprint: (filePath: string) => unknown) {
-        this.writer = new OutcomeLibraryBundleWriter(pokieVersion);
-    }
+    constructor(
+        private readonly pokieVersion: string,
+        private readonly loadBlueprint: (filePath: string) => unknown,
+        private readonly resolveProject: ProjectResolving = new ProjectTargetResolver(),
+    ) {}
 
-    public async resolveOrGenerate(source: PokieProject): Promise<PokieProject> {
+    // Plans/reuses the deterministic managed Outcome Project, but deliberately never writes a bundle itself.
+    // The supplied callback is ArtifactBuilderRegistry.build("outcomeLibrary", ...), making the registry's
+    // OutcomeLibraryArtifactBuilder the sole Blueprint -> Outcome materialization/publish boundary.
+    public async resolveOrGenerate(source: PokieProject, buildOutcome: (destinationPath: string) => Promise<unknown>): Promise<PokieProject> {
         const blueprint = this.validateAndMaterialize(source.rootPath);
         const game = this.loadMaterializedGame(blueprint);
         const configHash = game.getConfigHash?.();
@@ -80,29 +81,14 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         }
 
         const projectDir = path.dirname(source.rootPath);
-        const compatible = await this.findCompatible(projectDir, game, configHash);
+        const bundleDir = path.join(projectDir, ".pokie", "outcome-libraries", crypto.createHash("sha256").update(configHash).digest("hex"));
+        const compatible = await this.findCompatible(bundleDir, game, configHash);
         if (compatible !== undefined) {
-            return this.outcomeProject(compatible, "compatible registered outcome library");
+            return this.openOutcomeProject(compatible, "compatible managed outcome library");
         }
 
-        const relativeBundleDir = path.join(".pokie", "outcome-libraries", crypto.createHash("sha256").update(configHash).digest("hex"));
-        const bundleDir = path.join(projectDir, relativeBundleDir);
-        const generated = await generateExactWeightedOutcomeLibrary({
-            libraryId: `${game.getManifest().id}-base`,
-            game,
-            pokieVersion: this.pokieVersion,
-            configHash,
-        });
-        const written = await this.writer.writeToDirectory(
-            [{modeName: "base", libraryId: generated.library.libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
-            bundleDir,
-        );
-        const errors = written.issues.filter((issue) => issue.severity === "error");
-        if (errors.length > 0 || written.manifest === undefined) {
-            throw new Error(`Could not register the generated Outcome Library: ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
-        }
-        this.record(projectDir, relativeBundleDir);
-        return this.outcomeProject(bundleDir, "generated and registered outcome library");
+        await buildOutcome(bundleDir);
+        return this.openOutcomeProject(bundleDir, "generated managed outcome library");
     }
 
     private validateAndMaterialize(blueprintPath: string): GameBlueprint {
@@ -138,48 +124,28 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         return module.exports as PokieGame;
     }
 
-    private async findCompatible(projectDir: string, game: PokieGame, configHash: string): Promise<string | undefined> {
-        for (const relativeBundleDir of this.discoveredBundleDirs(projectDir)) {
-            const bundleDir = path.resolve(projectDir, relativeBundleDir);
-            try {
-                const manifest = await this.reader.readManifest(bundleDir);
-                if (
-                    manifest.game.id === game.getManifest().id &&
-                    manifest.game.version === game.getManifest().version &&
-                    manifest.configHash === configHash &&
-                    manifest.artifactPokieVersion === this.pokieVersion
-                ) {
-                    return bundleDir;
-                }
-            } catch {
-                // A discovery index is an aid, not an authority.  A stale/removed/malformed entry simply
-                // cannot satisfy this Blueprint's exact compatibility key.
+    private async findCompatible(bundleDir: string, game: PokieGame, configHash: string): Promise<string | undefined> {
+        try {
+            const manifest = await this.reader.readManifest(bundleDir);
+            if (
+                manifest.game.id === game.getManifest().id &&
+                manifest.game.version === game.getManifest().version &&
+                manifest.configHash === configHash &&
+                manifest.artifactPokieVersion === this.pokieVersion
+            ) {
+                return bundleDir;
             }
+        } catch {
+            // The deterministic managed location has not yet been built, or no longer contains a valid bundle.
         }
         return undefined;
     }
 
-    private discoveredBundleDirs(projectDir: string): string[] {
-        const indexPath = path.join(projectDir, REGISTRY_INDEX_PATH);
-        let indexed: string[] = [];
-        try {
-            const parsed: unknown = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
-            if (Array.isArray(parsed)) indexed = parsed.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
-        } catch {
-            // No registry (or a damaged discovery aid) must not prevent a new deterministic build.
+    private async openOutcomeProject(rootPath: string, provenance: string): Promise<PokieProject> {
+        const resolved = await this.resolveProject.resolve(rootPath);
+        if (resolved?.type !== "outcomeLibrary") {
+            throw new Error(`Generated Outcome Library at "${rootPath}" could not be opened as a managed Outcome Project.`);
         }
-        return Array.from(new Set(["outcomelibrary", ...indexed]));
-    }
-
-    private record(projectDir: string, relativeBundleDir: string): void {
-        const indexPath = path.join(projectDir, REGISTRY_INDEX_PATH);
-        const entries = this.discoveredBundleDirs(projectDir);
-        if (entries.includes(relativeBundleDir)) return;
-        fs.mkdirSync(path.dirname(indexPath), {recursive: true});
-        fs.writeFileSync(indexPath, JSON.stringify([...entries.filter((entry) => entry !== "outcomelibrary"), relativeBundleDir], null, 4) + "\n", "utf-8");
-    }
-
-    private outcomeProject(rootPath: string, provenance: string): PokieProject {
-        return {type: "outcomeLibrary", rootPath, capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary, provenance} as PokieProject;
+        return {...resolved, provenance: `${provenance}; ${resolved.provenance}`} as PokieProject;
     }
 }

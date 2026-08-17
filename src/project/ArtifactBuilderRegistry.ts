@@ -48,8 +48,8 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "and a built package cannot itself be converted into any other target type.",
     ],
     outcomeLibrary: [
-        "Packages already-computed weighted outcomes into a bundle -- never re-derives or recovers the game " +
-            "model/blueprint that produced those outcomes; that recovery is not supported by any builder.",
+        "Republishes an existing weighted-outcome bundle, or materializes/generates one from a Blueprint through the registry; " +
+            "it never recovers a game model from an existing bundle.",
     ],
     stakeAdapter: [
         "Exports an already-computed canonical outcome library (or, for a Blueprint, first resolves or generates and registers its compatible canonical outcome library) into Stake " +
@@ -75,7 +75,9 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
         throw new Error(`ArtifactBuilderRegistry has no OPERATION_REQUIRED_CAPABILITY entry for "${operation}".`);
     }
 
-    const supportedSources = ALL_PROJECT_TYPES.filter((type) => PROJECT_TYPE_CAPABILITIES[type].includes(requiredSourceCapability));
+    const supportedSources = ALL_PROJECT_TYPES.filter(
+        (type) => PROJECT_TYPE_CAPABILITIES[type].includes(requiredSourceCapability) || (target === "outcomeLibrary" && type === "blueprint"),
+    );
 
     return {
         target,
@@ -153,10 +155,17 @@ export class ArtifactBuilderRegistry {
     // is never a second, differently-worded "not supported" statement.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         if (target === "stakeAdapter" && source.type === "blueprint") {
-            return this.blueprintStakeWorkflow.resolveOrGenerate(source).then((outcomeLibrary) => this.build("stakeAdapter", outcomeLibrary, destinationPath));
+            return this.blueprintStakeWorkflow
+                .resolveOrGenerate(source, (outcomeDestination) => this.build("outcomeLibrary", source, outcomeDestination))
+                .then((outcomeLibrary) =>
+                    this.build("stakeAdapter", outcomeLibrary, destinationPath).then((result) => ({
+                        ...result,
+                        prerequisiteProjectRoots: [outcomeLibrary.rootPath],
+                    })),
+                );
         }
         const descriptor = this.describe(target);
-        const diagnostic = describeUnsupportedProjectOperation(source, descriptor.operation);
+        const diagnostic = target === "outcomeLibrary" && source.type === "blueprint" ? undefined : describeUnsupportedProjectOperation(source, descriptor.operation);
         if (diagnostic !== undefined) {
             return Promise.reject(new Error(diagnostic.message));
         }
