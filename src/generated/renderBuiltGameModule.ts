@@ -156,10 +156,9 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     // The CommonJS runtime file is loaded directly, so it must remain plain JavaScript. Only the
     // TypeScript source needs an explicit empty-array type under strict checking.
     const sequencesDeclaration = format === "ts" ? "const sequences: unknown[] = [];" : "const sequences = [];";
-    const exactEnumerationSessionExport = freeGames
-        ? ""
-        : betModeWiring
-          ? `
+    let exactEnumerationSessionExport = "";
+    if (!freeGames && betModeWiring) {
+        exactEnumerationSessionExport = `
     createExactEnumerationSession(${combinationsGeneratorParam}) {
         const config = createConfig();
 ${winCalculatorDeclaration}        const session = new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
@@ -171,12 +170,14 @@ ${winCalculatorDeclaration}        const session = new VideoSlotSession(config, 
 ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
     betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""
 });
-    },`
-          : `
+    },`;
+    } else if (!freeGames) {
+        exactEnumerationSessionExport = `
     createExactEnumerationSession(${combinationsGeneratorParam}) {
         const config = createConfig();
 ${winCalculatorDeclaration}        return new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
     },`;
+    }
 
     // The only two lines that differ between "dist/index.js" (format "cjs") and "src/index.ts"
     // (format "ts"): a type-only "GameBlueprint" import (erased at compile time -- adds nothing to
