@@ -1,7 +1,0 @@
-Build summary:
-  artifact root    /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/invalid-retry/outcome
-  target           outcomeLibrary
-  source           /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/invalid-retry/p6-11-invalid.blueprint.json
-
-Artifact "outcomeLibrary" built in "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/invalid-retry/outcome".
-"docs/evidence/P6-11/artifacts/invalid-retry/outcome" is valid (deep check).
