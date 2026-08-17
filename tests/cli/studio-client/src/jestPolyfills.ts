@@ -40,6 +40,13 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     };
 }
 
+// Mantine scrolls the active Combobox option into view after opening it. jsdom intentionally has no
+// layout engine and therefore does not implement this DOM method; a no-op keeps the real option
+// selection interaction usable in workflow tests without pretending to calculate layout.
+if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = () => undefined;
+}
+
 // react-router's data router (createHashRouter/createMemoryRouter + RouterProvider -- needed for
 // useBlocker, see useDesignNavigationGuard) builds Fetch API Request objects internally on every
 // navigation, even with zero loaders/actions defined. jsdom doesn't provide these globals; `undici` is
