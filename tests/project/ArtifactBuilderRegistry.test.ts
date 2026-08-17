@@ -8,7 +8,7 @@ import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
-    STAKE_ADAPTER_EXCHANGE_CAPABILITY,
+    STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
 import type {PokieProject} from "../../src/project/PokieProject.js";
@@ -37,8 +37,8 @@ describe("ArtifactBuilderRegistry", () => {
     it("reports the true required source capability and supported sources for a Stake artifact export", () => {
         const descriptor = registry.describe("stakeAdapter");
 
-        expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXCHANGE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["stakeAdapter"]);
+        expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXPORT_CAPABILITY);
+        expect(descriptor.supportedSources).toEqual(["outcomeLibrary", "stakeAdapter"]);
     });
 
     it("reports the true required source capability and supported sources for a PAR export", () => {

@@ -50,9 +50,9 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "model/blueprint that produced those outcomes; that recovery is not supported by any builder.",
     ],
     stakeAdapter: [
-        "Exports already-computed weighted outcomes into Stake Engine's own book-line format -- never " +
-            "re-derives or recovers the game model/blueprint that produced those outcomes; that recovery is not " +
-            "supported by any builder.",
+        "Exports an already-computed canonical outcome library (or republishes a Stake Engine export) into Stake " +
+            "Engine's own book-line format -- never re-derives or recovers the game model/blueprint that produced " +
+            "those outcomes; that recovery is not supported by any builder.",
     ],
     parWorkbook: [
         "Exports an already-loaded PAR sheet model to its own .xlsx workbook format only -- does not derive a " +

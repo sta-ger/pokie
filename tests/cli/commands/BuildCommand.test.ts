@@ -168,6 +168,22 @@ describe("BuildCommand", () => {
         );
     });
 
+    it("uses the same registry path for the Outcome Library → Stake prerequisite hand-off", async () => {
+        const project = {
+            type: "outcomeLibrary",
+            rootPath: "/project/outcomes",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            provenance: "canonical outcome bundle",
+        } as PokieProject;
+        const builder = stubBuilder("stakeAdapter", {outputPath: "/project/stake"});
+        const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+        const exitCode = await command.run(["/project/outcomes", "--target", "stakeAdapter", "--out", "/project/stake"]);
+
+        expect(exitCode).toBe(0);
+        expect(builder.calledWith).toEqual({source: project, destinationPath: "/project/stake"});
+    });
+
     describe("tsPackage from a blueprint source", () => {
         it("leaves validation to the registry builder, reading the blueprint only for its success summary", async () => {
             const loadBlueprint = jest.fn().mockReturnValue(rawBlueprint);
