@@ -61,12 +61,12 @@ export class StudioArtifactBuildService {
 
     constructor(
         pokieVersion: string,
-        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
-        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        registry?: ArtifactBuilderRegistry,
+        resolveProject?: ProjectResolving,
         private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
     ) {
-        this.registry = registry;
-        this.resolveProject = resolveProject;
+        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion);
+        this.resolveProject = resolveProject ?? new ProjectTargetResolver();
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own

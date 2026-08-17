@@ -62,12 +62,19 @@ const GENERATED_RUNTIME = {
 export class BlueprintStakeOutcomeLibraryWorkflow {
     private readonly validator = new GameBlueprintValidator();
     private readonly reader = new OutcomeLibraryBundleReader();
+    private readonly pokieVersion: string;
+    private readonly loadBlueprint: (filePath: string) => unknown;
+    private readonly resolveProject: ProjectResolving;
 
     constructor(
-        private readonly pokieVersion: string,
-        private readonly loadBlueprint: (filePath: string) => unknown,
-        private readonly resolveProject: ProjectResolving = new ProjectTargetResolver(),
-    ) {}
+        pokieVersion: string,
+        loadBlueprint: (filePath: string) => unknown,
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+    ) {
+        this.pokieVersion = pokieVersion;
+        this.loadBlueprint = loadBlueprint;
+        this.resolveProject = resolveProject;
+    }
 
     // Plans/reuses the deterministic managed Outcome Project, but deliberately never writes a bundle itself.
     // The supplied callback is ArtifactBuilderRegistry.build("outcomeLibrary", ...), making the registry's

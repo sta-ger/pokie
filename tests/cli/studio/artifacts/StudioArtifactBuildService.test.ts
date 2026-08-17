@@ -155,8 +155,9 @@ describe("StudioArtifactBuildService", () => {
         it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {
             const blueprintPath = writeBlueprintFile();
             const registeredProjects: string[] = [];
-            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, async (projectRoot) => {
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, (projectRoot) => {
                 registeredProjects.push(projectRoot);
+                return Promise.resolve();
             });
 
             const result = await service.build(blueprintPath, "stakeAdapter");
