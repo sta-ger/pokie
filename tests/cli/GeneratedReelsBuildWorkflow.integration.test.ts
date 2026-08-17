@@ -152,13 +152,9 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
         const badBlueprintPath = path.join(workDir, "unsatisfiable.blueprint.json");
         fs.writeFileSync(badBlueprintPath, JSON.stringify(blueprint));
 
-        const exitCode = await new BuildCommand("1.3.0").run([badBlueprintPath, "--target", "tsPackage", "--out", outDir]);
-
-        expect(exitCode).toBe(1);
+        await expect(new BuildCommand("1.3.0").run([badBlueprintPath, "--target", "tsPackage", "--out", outDir])).rejects.toThrow(
+            /could not generate its reel strips: reel 1 .* maximum-circular-distance/,
+        );
         expect(fs.existsSync(outDir)).toBe(false);
-        const printedErrors = (console.error as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
-        expect(printedErrors).toContain("could not generate its reel strips");
-        expect(printedErrors).toContain("reel 1");
-        expect(printedErrors).toContain("maximum-circular-distance");
     });
 });

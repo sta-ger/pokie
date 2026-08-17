@@ -74,7 +74,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "tsPackage",
             rootPath: projectRoot,
-            capabilities: ["runtime.execute"],
+            capabilities: ["runtime.execute", "outcomeLibrary.generate", "stakeAdapter.export"],
             provenance: expect.stringContaining("pokie.entry"),
         });
     });
@@ -89,7 +89,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "stakeAdapter",
             rootPath: stakeDir,
-            capabilities: ["stakeAdapter.exchange", "outcomeSource.read"],
+            capabilities: ["stakeAdapter.exchange", "stakeAdapter.export", "outcomeSource.read"],
             provenance: expect.stringContaining("pokie-manifest.json"),
         });
     });
@@ -104,7 +104,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "outcomeLibrary",
             rootPath: bundleDir,
-            capabilities: ["outcomeLibrary.read", "outcomeSource.read", "outcomeSource.sample"],
+            capabilities: ["outcomeLibrary.read", "outcomeLibrary.generate", "outcomeSource.read", "outcomeSource.sample", "stakeAdapter.export"],
             provenance: expect.stringContaining("manifest.json"),
         });
     });
@@ -170,7 +170,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "blueprint",
             rootPath: blueprintFile,
-            capabilities: ["blueprint.build"],
+            capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"],
             provenance: expect.stringContaining("manifest"),
         });
     });
