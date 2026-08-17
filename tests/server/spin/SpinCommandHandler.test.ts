@@ -14,6 +14,7 @@ import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
 import {StakeAmountDetermining} from "../../../src/session/StakeAmountDetermining.js";
 import {BetModeSelecting} from "../../../src/session/videoslot/betmode/BetModeSelecting.js";
 import {ForcingBetModeSelectionRejectedError} from "../../../src/session/videoslot/betmode/ForcingBetModeSelectionRejectedError.js";
+import {WinEvaluationResult} from "../../../src/session/videoslot/winevaluation/WinEvaluationResult.js";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
@@ -140,6 +141,52 @@ function createFakeGameWithSelectableBetMode(): PokieGame {
     return {
         getManifest: () => manifest,
         createSession: () => createFakeSessionWithSelectableBetMode(),
+    };
+}
+
+// Models the real mode lifecycle the full-capture path must preserve: ante is persistent, while
+// buyFeature determines this spin's 50x stake then resets to base before capture runs.
+function createFakeVideoSlotSessionWithModeLifecycle():
+    GameSessionHandling & BetModeSelecting & {getStakeAmount(): number; getSymbolsCombination(): {toMatrix(): string[][]}; getWinEvaluationResult(): WinEvaluationResult<string>} {
+    let credits = 1000;
+    const bet = 5;
+    let round = 0;
+    let betModeId = "base";
+    const stakeMultiplierByMode: Record<string, number> = {base: 1, ante: 1.25, buyFeature: 50};
+    const getStakeAmount = (): number => bet * stakeMultiplierByMode[betModeId];
+
+    return {
+        getCreditsAmount: () => credits,
+        setCreditsAmount: (value: number) => {
+            credits = value;
+        },
+        getBet: () => bet,
+        setBet: () => undefined,
+        getAvailableBets: () => [bet],
+        canPlayNextGame: () => credits >= getStakeAmount(),
+        getStakeAmount,
+        play: () => {
+            credits -= getStakeAmount();
+            round++;
+            if (betModeId === "buyFeature") {
+                betModeId = "base";
+            }
+        },
+        getWinAmount: () => 0,
+        getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
+        getWinEvaluationResult: () => new WinEvaluationResult<string>(),
+        getBetModeId: () => betModeId,
+        getAvailableBetModeIds: () => ["base", "ante", "buyFeature"],
+        setBetMode: (modeId: string) => {
+            betModeId = modeId;
+        },
+    };
+}
+
+function createFakeGameWithModeLifecycle(): PokieGame {
+    return {
+        getManifest: () => manifest,
+        createSession: () => createFakeVideoSlotSessionWithModeLifecycle(),
     };
 }
 
@@ -950,6 +997,37 @@ describe("SpinCommandHandler", () => {
     });
 
     describe("bet mode selection (handle()'s fifth parameter)", () => {
+        it("captures base, persistent ante, and one-shot buyFeature provenance with the stake charged for each completed round", async () => {
+            const sessionRepository = new InMemorySessionRepository();
+            const wallet = new InMemoryWallet();
+            const handler = new SpinCommandHandler(
+                createFakeGameWithModeLifecycle(),
+                sessionRepository,
+                wallet,
+                undefined,
+                undefined,
+                false,
+                undefined,
+                true,
+                "full",
+                "9.9.9",
+            );
+            await createSpinnableSession(sessionRepository, wallet, "session-1", 1000);
+
+            const base = await handler.handle("session-1");
+            const ante = await handler.handle("session-1", undefined, undefined, undefined, "ante");
+            const buyFeature = await handler.handle("session-1", undefined, undefined, undefined, "buyFeature");
+            const postBuyNormal = await handler.handle("session-1");
+
+            expect(base).toMatchObject({status: "played", state: {roundArtifact: {betMode: "base", stake: 5}}});
+            expect(ante).toMatchObject({status: "played", state: {roundArtifact: {betMode: "ante", stake: 6.25}}});
+            expect(buyFeature).toMatchObject({status: "played", state: {roundArtifact: {betMode: "buyFeature", stake: 250}}});
+            // buyFeature reset the live selector during play(), so its artifact must still retain
+            // buyFeature while the next normal round is charged and recorded as base.
+            expect(postBuyNormal).toMatchObject({status: "played", state: {roundArtifact: {betMode: "base", stake: 5}}});
+            await expect(wallet.getBalance("session-1")).resolves.toBe(733.75);
+        });
+
         it("applies a caller-supplied mode via session.setBetMode() before playing, when it's one of the session's own getAvailableBetModeIds()", async () => {
             const game = createFakeGameWithSelectableBetMode();
             const sessionRepository = new InMemorySessionRepository();
