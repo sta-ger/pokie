@@ -1,0 +1,5 @@
+# SHA-256 inputs are UTF-8, with no trailing newline.
+screen-json [["A","C","A"],["A","A","C"],["A","A","A"]]
+screen-sha256 dd72c66734bdd23c4bdfd5b7b950b1c347e0dc1cada1d78110de23f2131e704c
+round-input fixture-round|1|1.00|5.00|5.00x|[["A","C","A"],["A","A","C"],["A","A","A"]]
+round-sha256 2886f22c3b1f140045a60e27abd6c66903fa26cd85dcfe8ec6e7ef97e8273dd7
