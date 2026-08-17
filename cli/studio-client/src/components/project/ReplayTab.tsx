@@ -557,7 +557,6 @@ export function ReplayTab({
                                                     component="button"
                                                     type="button"
                                                     onClick={() => inspectSpin(entry)}
-                                                    aria-label={`Round ${entry.studioRound ?? "?"} in session ${entry.sessionId}`}
                                                     aria-current={isSelectedSpin(entry) ? "true" : undefined}
                                                     style={{
                                                         overflowWrap: "anywhere",
