@@ -1,7 +1,7 @@
 /**
  * @jest-environment jsdom
  */
-import {readFileSync} from "node:fs";
+import {existsSync, readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import * as canonicalPlayer from "../../../../cli/client/player/index.js";
 import {
@@ -31,6 +31,14 @@ import {
     type VideoSlotRoundResponse,
     type WinHighlight,
 } from "../../../../cli/client/player/videoSlotRoundView.js";
+
+// pokie-examples is a separately checked-out companion project.  The canonical-player
+// reachability assertions below run whenever that companion is provided, while this
+// repository's standalone test suite remains runnable from an isolated worktree.
+const pokieExamplesRoot = process.env.POKIE_EXAMPLES_PATH
+    ? resolve(process.env.POKIE_EXAMPLES_PATH)
+    : resolve(process.cwd(), "..", "pokie-examples");
+const pokieExamplesAvailable = existsSync(pokieExamplesRoot);
 
 // The one place this repo's own fast Jest environment renders the canonical player's DOM half --
 // videoSlotRoundView.test.ts already covers the pure derive* functions this module is built on top
@@ -290,29 +298,27 @@ describe("renderPlayerRound", () => {
 });
 
 describe("canonical Player source reachability", () => {
-    it("makes the dev client, Studio, and pokie-examples invoke the barrel's single round entrypoint", () => {
+    it("makes the dev client and Studio invoke the barrel's single round entrypoint", () => {
         const devClient = readFileSync(resolve(process.cwd(), "cli/client/main.ts"), "utf8");
         const studio = readFileSync(
             resolve(process.cwd(), "cli/studio-client/src/components/common/CanonicalPlayerView.tsx"),
             "utf8",
         );
-        const examplesUiPath = process.env.POKIE_EXAMPLES_PATH
-            ? resolve(process.env.POKIE_EXAMPLES_PATH, "src/ui/ui.ts")
-            : resolve(process.cwd(), "..", "pokie-examples", "src/ui/ui.ts");
-        const examplesRoot = process.env.POKIE_EXAMPLES_PATH
-            ? resolve(process.env.POKIE_EXAMPLES_PATH)
-            : resolve(process.cwd(), "..", "pokie-examples");
-        const examplesUi = readFileSync(examplesUiPath, "utf8");
-        const fixturePage = readFileSync(resolve(examplesRoot, "fixture-slot.html"), "utf8");
-        const fixtureEntry = readFileSync(resolve(examplesRoot, "src/fixture-slot.ts"), "utf8");
-        const fixtureGame = readFileSync(resolve(examplesRoot, "src/games/fixture-slot/index.ts"), "utf8");
-        const examplesIndex = readFileSync(resolve(examplesRoot, "index.html"), "utf8");
 
         expect(devClient).toContain('from "./player/index.js"');
         expect(devClient).toContain("renderPlayerRound(");
         expect(studio).toContain('from "../../../../client/player"');
         expect(studio).toContain("renderPlayerRound(");
         expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
+    });
+
+    (pokieExamplesAvailable ? it : it.skip)("makes pokie-examples invoke the barrel's single round entrypoint", () => {
+        const examplesUi = readFileSync(resolve(pokieExamplesRoot, "src/ui/ui.ts"), "utf8");
+        const fixturePage = readFileSync(resolve(pokieExamplesRoot, "fixture-slot.html"), "utf8");
+        const fixtureEntry = readFileSync(resolve(pokieExamplesRoot, "src/fixture-slot.ts"), "utf8");
+        const fixtureGame = readFileSync(resolve(pokieExamplesRoot, "src/games/fixture-slot/index.ts"), "utf8");
+        const examplesIndex = readFileSync(resolve(pokieExamplesRoot, "index.html"), "utf8");
+
         expect(examplesUi).toContain('from "pokie/client/player"');
         expect(examplesUi).toContain("renderPlayerRound(");
         // The public examples index exposes a real navigation control to the fixture page; that
@@ -341,21 +347,13 @@ describe("canonical Player source reachability", () => {
         }
     });
 
-    it("publishes the canonical Player barrel for package consumers without a workspace alias", () => {
+    it("publishes the canonical Player barrel", () => {
         const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
             version: string;
             exports: Record<string, {types: string; default: string}>;
             files: string[];
         };
         const exportedPlayer = packageJson.exports["./client/player"];
-        const examplesRoot = process.env.POKIE_EXAMPLES_PATH
-            ? resolve(process.env.POKIE_EXAMPLES_PATH)
-            : resolve(process.cwd(), "..", "pokie-examples");
-        const examplesPackage = JSON.parse(readFileSync(resolve(examplesRoot, "package.json"), "utf8")) as {
-            dependencies: Record<string, string>;
-        };
-        const examplesViteConfig = readFileSync(resolve(examplesRoot, "vite.config.js"), "utf8");
-        const examplesTsconfig = readFileSync(resolve(examplesRoot, "tsconfig.json"), "utf8");
 
         expect(exportedPlayer).toEqual({
             types: "./dist/cli/client/player/index.d.ts",
@@ -363,6 +361,16 @@ describe("canonical Player source reachability", () => {
         });
         expect(packageJson.files).toContain("dist/");
         expect(canonicalPlayer.renderPlayerRound).toBe(renderPlayerRound);
+    });
+
+    (pokieExamplesAvailable ? it : it.skip)("makes the package-consumer example resolve the Player barrel without a workspace alias", () => {
+        const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {version: string};
+        const examplesPackage = JSON.parse(readFileSync(resolve(pokieExamplesRoot, "package.json"), "utf8")) as {
+            dependencies: Record<string, string>;
+        };
+        const examplesViteConfig = readFileSync(resolve(pokieExamplesRoot, "vite.config.js"), "utf8");
+        const examplesTsconfig = readFileSync(resolve(pokieExamplesRoot, "tsconfig.json"), "utf8");
+
         expect(examplesPackage.dependencies.pokie).toBe(`^${packageJson.version}`);
         expect(examplesViteConfig).not.toContain("/workspace");
         expect(examplesViteConfig).not.toContain("pokieClientPlayerPath");
