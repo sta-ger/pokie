@@ -1,0 +1,31 @@
+POKIE Studio
+/
+P6-09 Mode Semantics
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+P6-09 Mode Semantics
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/artifacts/mode-semantics-game
+
+Close project
+
+Play prepares this project (materializing a Blueprint into a runnable package first if needed) and creates a real session directly in Studio's own backend -- no server, host, port, or separate API to set up.
+
+Start Play
+
+Show advanced details (seed)
+
+New Play session

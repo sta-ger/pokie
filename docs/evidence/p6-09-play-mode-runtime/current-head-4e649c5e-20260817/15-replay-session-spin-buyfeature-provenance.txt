@@ -1,0 +1,106 @@
+POKIE Studio
+/
+P6-09 Mode Semantics
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+P6-09 Mode Semantics
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/artifacts/mode-semantics-game
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Refresh
+All sessions
+0bf58189-d3a8-4271-bc27-d4ebabc94917
+Round 4 in session 0bf58189-d3a8-4271-bc27-d4ebabc94917 — credits 948.75, win 0, 8/17/2026, 10:09:26 AM
+Round 3 in session 0bf58189-d3a8-4271-bc27-d4ebabc94917 — credits 949.75, win 0, 8/17/2026, 10:09:25 AM
+Round 2 in session 0bf58189-d3a8-4271-bc27-d4ebabc94917 — credits 999.75, win 2, 8/17/2026, 10:09:23 AM
+Round 1 in session 0bf58189-d3a8-4271-bc27-d4ebabc94917 — credits 999, win 0, 8/17/2026, 10:09:21 AM
+Loaded replay
+Source	Recorded -- Play tab spin
+Identities	session 0bf58189-d3a8-4271-bc27-d4ebabc94917, round 3
+Seed	(no seed was given for this session)
+Version / hash	p6-09-mode-semantics v1.0.0
+Timestamp	8/17/2026, 10:09:25 AM
+Completeness	Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.
+Inspectable	
+AVAILABLE
+This round's data is loaded and ready to inspect.
+Reproducible	
+UNAVAILABLE
+This is a live spin's actual recorded result -- there's nothing to reproduce it against.
+Comparable	
+UNAVAILABLE
+A fresh forward replay with no prior recorded result to compare against.
+Exportable	
+AVAILABLE
+Ready to download as JSON.
+Source	Play tab
+Operation	Spin
+Game	P6-09 Mode Semantics (id: "p6-09-mode-semantics", v1.0.0)
+Pokie version	1.3.0
+Bet mode	buyFeature
+Stake	50.00
+K
+J
+9
+	
+10
+J
+A
+	
+A
+10
+J
+	
+A
+9
+J
+	
+10
+A
+9
+Credits
+949.75
+Total win
+0.00 (0.00x)
+Bet: 1123451020304050100
+Mode: buyFeaturebaseantebuyFeature
+Round detail
+
+No wins on this step.
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+Snapshot captured for this round — see Advanced details for the full before/after state.
+
+Show advanced details (raw JSON, debug data)
+
+Download JSON
+Recent replays
+Refresh
+
+No replays run yet.
