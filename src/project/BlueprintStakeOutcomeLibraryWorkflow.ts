@@ -25,6 +25,10 @@ import {VideoSlotWinCalculator} from "../session/videoslot/wincalculator/VideoSl
 import {WaysWinCalculator} from "../session/videoslot/wincalculator/WaysWinCalculator.js";
 import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWinCalculator.js";
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
+import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
+import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
+import {generateExactWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 
@@ -60,26 +64,27 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     private readonly pokieVersion: string;
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
+    private readonly writer: OutcomeLibraryBundleWriting;
 
     constructor(
         pokieVersion: string,
         loadBlueprint: (filePath: string) => unknown,
         managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(),
+        writer: OutcomeLibraryBundleWriting = new OutcomeLibraryBundleWriter(pokieVersion),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
         this.managedOutcomeProjects = managedOutcomeProjects;
+        this.writer = writer;
     }
 
-    // Plans/reuses an authoritative managed Outcome Project, but deliberately never writes a bundle itself.
-    // The supplied callback is ArtifactBuilderRegistry's raw OutcomeLibraryArtifactBuilder invocation, making
-    // this lifecycle the single validation -> generation -> registration -> reopen boundary for both direct
-    // Blueprint -> Outcome and Blueprint -> Stake requests.
+    // Plans/reuses an authoritative managed Outcome Project. This is the only Blueprint -> Outcome writer:
+    // validate/materialize, exact generation, bundle verification and registration/reopen stay in this one
+    // lifecycle for both direct Blueprint -> Outcome and Blueprint -> Stake requests.
     public async resolveOrGenerate(
         source: PokieProject,
         destinationPath: string | ((compatibility: OutcomeProjectCompatibility) => string),
-        buildOutcome: (destinationPath: string) => Promise<unknown>,
-    ): Promise<PokieProject> {
+    ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
         const blueprint = this.validateAndMaterialize(source.rootPath);
         const game = this.loadMaterializedGame(blueprint);
         const configHash = game.getConfigHash?.();
@@ -95,12 +100,36 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         };
         const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
         if (compatible !== undefined) {
-            return compatible;
+            return {project: compatible, reused: true};
         }
 
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
-        await buildOutcome(bundleDir);
-        return this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
+        assertArtifactDestinationAvailable(bundleDir, "directory");
+        await this.generateBundle(source.rootPath, game, configHash, bundleDir);
+        return {project: await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility), reused: false};
+    }
+
+    private async generateBundle(blueprintPath: string, game: PokieGame, configHash: string, destinationPath: string): Promise<void> {
+        const generated = await generateExactWeightedOutcomeLibrary({
+            libraryId: `${game.getManifest().id}-base`,
+            game,
+            pokieVersion: this.pokieVersion,
+            configHash,
+        });
+        const result = await this.writer.writeToDirectory(
+            [{
+                modeName: "base",
+                libraryId: generated.library.libraryId,
+                schemaVersion: generated.library.schemaVersion,
+                outcomes: generated.library.outcomes,
+                generator: generated.diagnostics,
+            }],
+            destinationPath,
+        );
+        const errors = result.issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0 || result.manifest === undefined) {
+            throw new Error(`Could not build Outcome Library from Blueprint "${blueprintPath}": ${errors.map((issue) => issue.message).join("; ")}`);
+        }
     }
 
     private validateAndMaterialize(blueprintPath: string): GameBlueprint {

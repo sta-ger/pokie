@@ -221,6 +221,15 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(stake.prerequisiteProjectRoots).toEqual([outcomeDir]);
                 expect(stake.managedProjectRoots).toEqual([outcomeDir]);
                 expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
+
+                const alternateOutcomeDir = path.join(workDir, "requested-but-reused-outcome");
+                await expect(registry.build("outcomeLibrary", blueprintProject, alternateOutcomeDir)).resolves.toEqual({
+                    outputPath: outcomeDir,
+                    requestedDestinationPath: alternateOutcomeDir,
+                    reusedCompatibleProject: true,
+                    managedProjectRoots: [outcomeDir],
+                });
+                expect(fs.existsSync(alternateOutcomeDir)).toBe(false);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

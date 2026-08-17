@@ -168,6 +168,13 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
         expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(true);
 
+        const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", reusedOutcomeDir])).toBe(0);
+        expect(fs.existsSync(reusedOutcomeDir)).toBe(false);
+        expect((console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n")).toContain(
+            `reused compatible Outcome Project "${outcomeDir}" instead of writing "${reusedOutcomeDir}"`,
+        );
+
         expect(await new ValidateCommand().run([outcomeDir])).toBe(0);
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
         expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});

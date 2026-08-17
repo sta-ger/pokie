@@ -13,6 +13,15 @@ function outcomeLibraryProjectOf(rootPath: string): PokieProject {
     } as PokieProject;
 }
 
+function blueprintProjectOf(rootPath: string): PokieProject {
+    return {
+        type: "blueprint",
+        rootPath,
+        capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+        provenance: "test fixture",
+    } as PokieProject;
+}
+
 describe("OutcomeLibraryArtifactBuilder", () => {
     let sourceDir: string;
     let destinationDir: string;
@@ -56,5 +65,14 @@ describe("OutcomeLibraryArtifactBuilder", () => {
 
         await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(ArtifactBuildConflictError);
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
+    });
+
+    it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {
+        const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
+
+        await expect(builder.build(blueprintProjectOf(path.join(sourceDir, "game.blueprint.json")), destinationDir)).rejects.toThrow(
+            /Blueprint conversion must use ArtifactBuilderRegistry\.build\("outcomeLibrary"/,
+        );
+        expect(fs.existsSync(destinationDir)).toBe(false);
     });
 });

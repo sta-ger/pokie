@@ -192,8 +192,8 @@ export class ArtifactBuilderRegistry {
         }
         if (target === "stakeAdapter" && source.type === "blueprint") {
             return this.blueprintStakeWorkflow
-                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), (outcomeDestination) => this.buildOutcomeBundle(source, outcomeDestination))
-                .then((outcomeLibrary) =>
+                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility))
+                .then(({project: outcomeLibrary}) =>
                     this.build("stakeAdapter", outcomeLibrary, destinationPath).then((result) => ({
                         ...result,
                         prerequisiteProjectRoots: [outcomeLibrary.rootPath],
@@ -221,17 +221,14 @@ export class ArtifactBuilderRegistry {
         const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
             source,
             destinationPath,
-            (outcomeDestination) => this.buildOutcomeBundle(source, outcomeDestination),
         );
-        return {outputPath: outcomeLibrary.rootPath, managedProjectRoots: [outcomeLibrary.rootPath]};
-    }
-
-    private buildOutcomeBundle(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
-        const builder = this.builders.get("outcomeLibrary");
-        if (builder === undefined) {
-            return Promise.reject(new Error('"outcomeLibrary" has no builder implemented yet.'));
-        }
-        return builder.build(source, destinationPath);
+        return {
+            outputPath: outcomeLibrary.project.rootPath,
+            ...(outcomeLibrary.reused
+                ? {requestedDestinationPath: destinationPath, reusedCompatibleProject: true}
+                : {}),
+            managedProjectRoots: [outcomeLibrary.project.rootPath],
+        };
     }
 
 }

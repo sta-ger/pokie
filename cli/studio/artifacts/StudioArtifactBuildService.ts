@@ -150,7 +150,19 @@ export class StudioArtifactBuildService {
                 ...(result.managedProjectRoots ?? []),
             ]);
             await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(projectRoot)));
-            return {status: "ok", target, outputPath: result.outputPath, outputKind: destinationKindFor(target), sourceType: project.type};
+            return {
+                status: "ok",
+                target,
+                outputPath: result.outputPath,
+                outputKind: destinationKindFor(target),
+                sourceType: project.type,
+                ...(result.reusedCompatibleProject
+                    ? {
+                        requestedDestinationPath: result.requestedDestinationPath,
+                        reusedCompatibleProject: true,
+                    }
+                    : {}),
+            };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 return {status: "conflict", target, message: error.message};

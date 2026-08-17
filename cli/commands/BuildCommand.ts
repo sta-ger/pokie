@@ -268,7 +268,16 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  target           ${target}`);
         console.log(`  source           ${project.rootPath}`);
 
-        console.log(`\nArtifact "${target}" built in "${result.outputPath}".`);
+        if (result.reusedCompatibleProject) {
+            console.log(`  requested root   ${result.requestedDestinationPath}`);
+            console.log("  outcome project  reused compatible registered project");
+        }
+
+        console.log(
+            result.reusedCompatibleProject
+                ? `\nArtifact "${target}" reused compatible Outcome Project "${result.outputPath}" instead of writing "${result.requestedDestinationPath}".`
+                : `\nArtifact "${target}" built in "${result.outputPath}".`,
+        );
 
         return 0;
     }

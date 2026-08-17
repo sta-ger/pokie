@@ -4,6 +4,11 @@
 // only fixes what a future implementation must report.
 export type ArtifactBuildResult = {
     readonly outputPath: string;
+    // A direct Blueprint -> Outcome request may reuse an already registered compatible project instead of
+    // producing a second bundle at its requested destination. Both values make that different destination
+    // explicit to CLI and Studio callers; outputPath is always the actual opened project root.
+    readonly requestedDestinationPath?: string;
+    readonly reusedCompatibleProject?: boolean;
     // Registry-owned prerequisite Projects created or opened while producing this artifact.  Consumers
     // that maintain a Project registry (Studio) use this to register/open the actual Outcome Project,
     // instead of trying to rediscover a private path index after the Stake export has completed.
