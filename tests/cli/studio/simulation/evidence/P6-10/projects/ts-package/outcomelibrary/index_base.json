@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 2,
+    "modeName": "base",
+    "libraryId": "p6-10-finite-slot-base",
+    "librarySchemaVersion": 1,
+    "libraryHash": "sha256:701de171b969313d9137e463f435837353463e0e95ffc285cae019814e0beb2a",
+    "outcomeCount": 4,
+    "totalWeight": 6,
+    "outcomesFile": "outcomes_base.jsonl",
+    "entries": [
+        {
+            "id": "outcome-127f1e7107ee8c1b",
+            "weight": 1,
+            "byteOffset": 0,
+            "byteLength": 478,
+            "recordHash": "sha256:c05e4903545fdeac1ba4d320532418a8130c4ac42c71c63756b0469a09412ec7"
+        },
+        {
+            "id": "outcome-5d52fbab29e92341",
+            "weight": 2,
+            "byteOffset": 479,
+            "byteLength": 478,
+            "recordHash": "sha256:444535f53eb993c5b694dfa64b4bc1363e56989cc0d4d345cb23ce30eb9e38eb"
+        },
+        {
+            "id": "outcome-92d7fefe2949e936",
+            "weight": 2,
+            "byteOffset": 958,
+            "byteLength": 898,
+            "recordHash": "sha256:7206d004dd05233add6b91f3e3d5e5581edbb39b2bfb57cbf62d6268cebc8be7"
+        },
+        {
+            "id": "outcome-9463456bc3a94969",
+            "weight": 1,
+            "byteOffset": 1857,
+            "byteLength": 478,
+            "recordHash": "sha256:653f86125c9af83daceaa1af5e4c80eafd8e87bc1171c26b63eff1355c61c724"
+        }
+    ]
+}
