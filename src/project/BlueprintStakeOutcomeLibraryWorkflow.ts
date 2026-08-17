@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
 import {materializeReelStrips} from "../generated/materializeReelStrips.js";
@@ -126,14 +127,14 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         // The generated package contains only require("pokie") plus its generated module body.  Supplying
         // the live public runtime namespace executes exactly that generated artifact contract without a
         // caller having to install a throw-away node_modules tree solely to generate outcomes.
-        new Function("require", "module", "exports", renderBuiltGameModule(blueprint, this.pokieVersion))(
-            (name: string) => {
+        vm.runInNewContext(renderBuiltGameModule(blueprint, this.pokieVersion), {
+            require: (name: string) => {
                 if (name !== "pokie") throw new Error(`Generated Blueprint requested unsupported module "${name}".`);
                 return GENERATED_RUNTIME;
             },
             module,
-            module.exports,
-        );
+            exports: module.exports,
+        });
         return module.exports as PokieGame;
     }
 
