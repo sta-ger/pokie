@@ -8,7 +8,7 @@ npm package — see [`docs/README.md`](README.md) for the library's own API refe
 | Command | What it runs | Coverage | When to use it |
 |---|---|---|---|
 | `npm test` / `npm run check:fast` | Unit + component tests only (`pokie` + `studio-client-components` Jest projects) | off | Everyday dev loop |
-| `npm run check:full` | `check:fast` + a full `tsc --noEmit` typecheck + `pokie-integration` + `studio-client-workflows` | off | Before opening a PR |
+| `npm run check:full` | `check:fast` + root and Studio-client TypeScript checks + `pokie-integration` + `studio-client-workflows` | off | Before opening a PR |
 | `npm run check:release` | lint + typecheck + every test **with coverage** + the real `npm pack`/install smoke test (`pokie-packaging`) | on | Pre-publish gate (`.github/workflows/publish.yml` runs this instead of `npm test`) |
 | `npm run test:integration` | Just the `pokie-integration` lane | off | Iterating on integration/server/worker tests specifically |
 | `npm run test:workflows` | Just the `studio-client-workflows` lane | off | Iterating on the heavy Studio workflow/navigation-guard/poll-hook tests specifically |

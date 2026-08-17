@@ -27,7 +27,7 @@
     "scripts": {
         "generate-barrels": "node generate-barrels.js",
         "lint": "eslint . --ext .ts,.tsx",
-        "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+        "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client",
         "pretest": "npm run lint",
         "test": "jest --selectProjects pokie pokie-examples studio-client-components --maxWorkers=2",
         "test:integration": "jest --selectProjects pokie-integration --maxWorkers=2",
