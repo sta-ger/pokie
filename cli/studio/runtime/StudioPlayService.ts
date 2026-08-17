@@ -259,17 +259,21 @@ export class StudioPlayService {
     // has produced a genuine result -- the one choke point every Play tab round (runtime or
     // outcomeSource) passes through, so StudioRoundRecorder never needs a second call site to stay
     // complete.
-    public async spin(sessionId: string, operation: StudioRoundOperation = "spin"): Promise<StudioPlaySpinResult> {
+    public async spin(sessionId: string, operation?: StudioRoundOperation, bet?: number, mode?: string): Promise<StudioPlaySpinResult> {
         if (this.active === undefined || sessionId !== this.currentSessionId) {
             return {status: "not-found"};
         }
         const active = this.active;
+        const actualOperation = operation ?? "spin";
 
         let result: StudioPlaySpinResult;
         if (active.kind === "outcomeSource") {
             result = await this.spinOutcomeSource(sessionId, active);
         } else {
-            const handled = await active.spinHandler.handle(sessionId);
+            // These are submitted together with a manual Spin, so the canonical SpinCommandHandler
+            // applies them immediately before this exact round.  Scenario searches deliberately omit
+            // them: they continue from the session state the player already selected.
+            const handled = await active.spinHandler.handle(sessionId, undefined, undefined, bet, mode);
             if (handled.status === "not-found") {
                 result = {status: "not-found"};
             } else if (handled.status === "blocked") {
@@ -299,7 +303,7 @@ export class StudioPlayService {
         if (result.status === "ok") {
             this.roundRecorder.record(result.session, {
                 source: active.kind === "outcomeSource" ? "play-outcome-source" : "play",
-                operation,
+                operation: actualOperation,
                 projectRoot: active.projectRoot,
                 seed: active.seed,
                 modeName: active.kind === "outcomeSource" ? active.modeName : undefined,

@@ -1,0 +1,8 @@
+[2026-08-17T07:49:07.792Z] START fresh real-browser Studio Play rerun against http://127.0.0.1:4919; no API calls or DOM/state injection.
+[2026-08-17T07:49:07.807Z] NAVIGATE rendered Studio Play route
+[2026-08-17T07:49:08.354Z] CAPTURE 10-play-start: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:49:08.389Z] CLICK "New Play session" at rendered BUTTON coordinates (377, 396)
+[2026-08-17T07:49:08.751Z] OBSERVE active rendered modes: base
+[2026-08-17T07:49:11.578Z] FAILED Error: Rendered control "Spin" remains outside viewport
+    at clickLocated (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:53:58)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:80:5)

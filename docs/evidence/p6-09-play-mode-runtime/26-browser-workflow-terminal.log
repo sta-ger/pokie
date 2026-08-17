@@ -1,0 +1,17 @@
+[2026-08-17T07:50:45.115Z] START fresh real-browser Studio Play rerun against http://127.0.0.1:4919; no API calls or DOM/state injection.
+[2026-08-17T07:50:45.135Z] NAVIGATE rendered Studio Play route
+[2026-08-17T07:50:45.860Z] CAPTURE 10-play-start: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:50:45.910Z] CLICK "New Play session" at rendered BUTTON coordinates (377, 351)
+[2026-08-17T07:50:46.273Z] OBSERVE active rendered modes: base
+[2026-08-17T07:50:46.350Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:50:46.736Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T07:50:47.102Z] ASSERT base Play spin: completed artifact preserves Bet mode=base and Stake=1.00; live selector=base.
+[2026-08-17T07:50:47.525Z] CAPTURE 11-play-base-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:50:47.553Z] CLICK "Bet mode" at rendered INPUT coordinates (459, 446)
+[2026-08-17T07:50:47.958Z] CLICK "ante" at rendered BUTTON coordinates (434, 1272)
+[2026-08-17T07:50:48.310Z] SELECT Bet mode="ante" through rendered combobox and option
+[2026-08-17T07:50:48.378Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:50:48.757Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T07:50:49.124Z] FAILED Error: ante Play spin: expected artifact Bet mode=ante, Stake=1.25; rendered rows={"Game":"P6-09 Mode Semantics (id: \"p6-09-mode-semantics\", v1.0.0)","Pokie version":"1.3.0","Bet mode":"base","Stake":"1.00"}
+    at assertRound (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:72:204)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:88:5)

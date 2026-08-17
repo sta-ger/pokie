@@ -1,5 +1,5 @@
 import type {RoundArtifactWin} from "../../api/types";
-import type {FeatureCounter, PaytableView} from "../../../../client/player";
+import type {FeatureCounter, LineDefinitionView, PaytableView} from "../../../../client/player";
 import {CanonicalPlayerView} from "./CanonicalPlayerView";
 
 // The shared "screen, with whatever won on it highlighted" presentation every round-inspection surface
@@ -24,6 +24,7 @@ export function GameScreenView({
     payoutMultiplier,
     paytable,
     featureCounters,
+    lines,
     availableBets,
     currentBet,
     availableModeIds,
@@ -36,6 +37,7 @@ export function GameScreenView({
     payoutMultiplier?: number;
     paytable?: PaytableView;
     featureCounters?: FeatureCounter[];
+    lines?: LineDefinitionView[];
     availableBets?: number[];
     currentBet?: number;
     availableModeIds?: string[];
@@ -50,6 +52,7 @@ export function GameScreenView({
             payoutMultiplier={payoutMultiplier}
             paytable={paytable}
             featureCounters={featureCounters}
+            lines={lines}
             availableBets={availableBets}
             currentBet={currentBet}
             availableModeIds={availableModeIds}

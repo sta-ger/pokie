@@ -1,0 +1,167 @@
+npm warn cli npm v11.16.0 does not support Node.js v18.19.1. This version of npm supports the following node versions: `^20.17.0 || >=22.9.0`. You can find the latest version at https://nodejs.org/.
+
+> pokie@1.3.0 build-cli
+> tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js
+
+cli/build/applyBlueprintNameOverride.ts(1,34): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/build/buildRandomReelStripGeneration.ts(1,44): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/build/createBlankGameBlueprint.ts(1,34): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/build/createStarterGameBlueprint.ts(1,34): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/BuildCommand.ts(14,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/CertificationCommand.ts(18,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ClientCommand.ts(2,86): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/CreateCommand.ts(11,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/DevCommand.ts(11,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/DiffCommand.ts(17,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/DiffCommand.ts(338,70): error TS18046: 'componentDiff' is of type 'unknown'.
+cli/commands/DiffCommand.ts(339,70): error TS18046: 'componentDiff' is of type 'unknown'.
+cli/commands/DiffCommand.ts(340,77): error TS18046: 'componentDiff' is of type 'unknown'.
+cli/commands/DiffCommand.ts(341,77): error TS18046: 'componentDiff' is of type 'unknown'.
+cli/commands/DiffCommand.ts(342,77): error TS18046: 'componentDiff' is of type 'unknown'.
+cli/commands/EditCommand.ts(13,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/FairnessCommand.ts(18,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/InitCommand.ts(4,109): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/InspectCommand.ts(2,88): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/NameCommand.ts(9,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/OutcomeLibraryCommand.ts(24,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/OutcomeLibraryCommand.ts(403,79): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(403,108): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(408,88): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(410,75): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(410,104): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(416,95): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(416,116): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(435,100): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(435,121): error TS18046: 'error' is of type 'unknown'.
+cli/commands/OutcomeLibraryCommand.ts(514,63): error TS2345: Argument of type '([key, entry]: [any, any]) => [any, { grid: any; weight: any; }]' is not assignable to parameter of type '(value: unknown, index: number, array: unknown[]) => [any, { grid: any; weight: any; }]'.
+  Types of parameters '__0' and 'value' are incompatible.
+    Type 'unknown' is not assignable to type '[any, any]'.
+cli/commands/OutcomeSourceCommand.ts(18,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ParCommand.ts(16,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ReelCommand.ts(11,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ReplayCommand.ts(12,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ReportCommand.ts(13,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ServeCommand.ts(14,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/SimCommand.ts(24,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/SimCommand.ts(566,55): error TS18046: 'component' is of type 'unknown'.
+cli/commands/SimCommand.ts(566,81): error TS18046: 'component' is of type 'unknown'.
+cli/commands/SimCommand.ts(567,42): error TS18046: 'component' is of type 'unknown'.
+cli/commands/SimCommand.ts(568,43): error TS18046: 'component' is of type 'unknown'.
+cli/commands/SimCommand.ts(568,97): error TS18046: 'component' is of type 'unknown'.
+cli/commands/SimCommand.ts(580,53): error TS18046: 'pool' is of type 'unknown'.
+cli/commands/SimCommand.ts(580,87): error TS18046: 'pool' is of type 'unknown'.
+cli/commands/SimCommand.ts(581,42): error TS18046: 'pool' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(27,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/StakeEngineCommand.ts(480,63): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(510,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(511,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(512,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(513,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(514,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(515,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(516,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(517,74): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(518,17): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(519,82): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(522,36): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(526,36): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(528,100): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(531,17): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StakeEngineCommand.ts(533,39): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/StudioCommand.ts(2,32): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/ValidateCommand.ts(10,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(1,72): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(53,65): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(54,65): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(55,65): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(56,58): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(57,58): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/internal/renderOutcomeSourceProjectDiff.ts(58,65): error TS18046: 'modeDiff' is of type 'unknown'.
+cli/commands/internal/renderOutcomeSourceReport.ts(1,42): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/commands/internal/streamJsonlOutcomes.ts(3,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/findPokieProjectRoot.ts(2,38): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/materialize/BlueprintProjectMaterializer.ts(19,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/materialize/UnsupportedProjectOperationError.ts(1,58): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/materialize/materializeRuntimePackage.ts(1,144): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/prepare/GamePackagePreparer.ts(3,69): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/prepare/PackageCommandRunner.ts(5,57): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/prepare/PreparationResult.ts(1,38): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/prepare/PreparationState.ts(1,38): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/registerCliCommands.ts(1,99): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/scaffold/GamePackageCreator.ts(3,72): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/scaffold/GamePackageMerger.ts(3,89): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/scaffold/ScaffoldResult.ts(1,33): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/scaffold/renderEntryModule.ts(1,33): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/scaffold/renderGameModule.ts(1,33): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/scaffold/renderPackageReadme.ts(1,33): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/FileStudioProjectRegistry.ts(1,35): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/ProjectDashboardContext.ts(1,93): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/StudioProjectImportPreviewResult.ts(1,53): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/StudioProjectRegistrationService.ts(1,97): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/StudioProjectRegistryEntry.ts(1,53): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/StudioServer.ts(22,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/StudioServerHandling.ts(1,42): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/StudioServerOptions.ts(1,111): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/artifacts/StudioArtifactBuildService.ts(1,142): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/artifacts/StudioArtifactBuildService.ts(137,62): error TS18046: 'error' is of type 'unknown'.
+cli/studio/artifacts/StudioArtifactBuildView.ts(1,52): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/artifacts/StudioArtifactPreviewView.ts(1,52): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/artifacts/StudioArtifactTargetView.ts(1,39): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/artifacts/validateArtifactBuildRequest.ts(1,39): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/StudioBlueprintRandomView.ts(1,50): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/StudioBlueprintService.ts(25,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/StudioBlueprintValidationView.ts(1,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/StudioParSheetExportView.ts(1,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/StudioParSheetImportView.ts(1,56): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/StudioReelStripGenerationView.ts(1,86): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/blueprint/buildProjectGameModel.ts(1,146): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/certification/StudioCertificationBuildView.ts(1,73): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/certification/StudioCertificationService.ts(7,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/certification/StudioCertificationSourceValidateView.ts(1,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/StudioDeploymentRunView.ts(1,106): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/StudioDeploymentService.ts(12,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/StudioDeploymentStageSummary.ts(1,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/StudioDeploymentTargetSummary.ts(1,81): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/computeDeploymentStages.ts(1,62): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/loadWeightedOutcomeLibraryFromProjectFile.ts(1,43): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/resolveCurrentBuildModeIds.ts(1,45): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/deployment/toStudioDeploymentRunView.ts(1,45): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/fairness/StudioFairnessConfigureView.ts(1,69): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/fairness/StudioFairnessGenerateView.ts(1,39): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/fairness/StudioFairnessService.ts(12,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/fairness/StudioFairnessService.ts(99,54): error TS18046: 'error' is of type 'unknown'.
+cli/studio/fairness/StudioFairnessService.ts(99,80): error TS18046: 'error' is of type 'unknown'.
+cli/studio/fairness/StudioFairnessVerifyView.ts(1,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/home/StudioBuildPreviewView.ts(1,59): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/home/StudioBuildResult.ts(1,74): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/home/StudioHomeService.ts(1,29): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/loadProjectDashboardContext.ts(1,142): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateEstimateView.ts(1,72): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.ts(1,72): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.ts(17,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.ts(132,55): error TS18046: 'error' is of type 'unknown'.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.ts(195,21): error TS18046: 'error' is of type 'unknown'.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.ts(196,59): error TS18046: 'error' is of type 'unknown'.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.ts(198,59): error TS18046: 'error' is of type 'unknown'.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.ts(198,83): error TS18046: 'error' is of type 'unknown'.
+cli/studio/outcomeLibrary/StudioOutcomeLibraryRegistryView.ts(1,72): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/outcomeLibrary/loadOutcomeLibraryFromSelector.ts(1,111): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/previewBuildDestination.ts(1,35): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/replay/StudioReplayExecutionService.ts(27,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/replay/StudioReplayJobRecord.ts(1,51): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/replay/StudioReplayJobView.ts(1,37): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/replay/buildReplayDownload.ts(1,37): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/runtime/StudioPlayService.ts(38,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/runtime/StudioRuntimeSessionView.ts(1,38): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/simulation/StudioSimulationJobRecord.ts(1,51): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/simulation/StudioSimulationJobView.ts(1,37): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/simulation/StudioSimulationService.ts(21,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/simulation/buildSimulationReportDownload.ts(1,123): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/simulation/validateSimulationRequest.ts(1,38): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/stakeengine/StudioStakeEngineExportService.ts(13,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/stakeengine/StudioStakeEngineExportValidateView.ts(1,36): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/stakeengine/StudioStakeEngineExportView.ts(1,57): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/stakeengine/canonicalizeOutcomeIdsForStakeEngine.ts(1,101): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/studio/stakeengine/canonicalizeOutcomeIdsForStakeEngine.ts(53,23): error TS18046: 'error' is of type 'unknown'.
+cli/wizard/GameBlueprintWizard.ts(7,8): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.
+cli/wizard/WizardResult.ts(1,34): error TS2307: Cannot find module 'pokie' or its corresponding type declarations.

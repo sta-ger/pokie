@@ -1,5 +1,6 @@
 import {Alert, Table, Text} from "@mantine/core";
 import {IconCircleCheck} from "@tabler/icons-react";
+import {useState} from "react";
 import type {StudioRuntimeSessionView} from "../../api/types";
 import {describeRoundArtifact} from "../../domain/interpret/Replay";
 import {describeRuntimeScreen, extractAdditionalRoundFields} from "../../domain/interpret/Runtime";
@@ -8,6 +9,9 @@ import {CodeBlock} from "./CodeBlock";
 import {GameScreenView} from "./GameScreenView";
 import {PageSection} from "./PageSection";
 import {RoundArtifactInspector} from "./RoundArtifactInspector";
+import {RoundWinsTable} from "./RoundWinsTable";
+import {FeatureStateView} from "./FeatureStateView";
+import {describeRoundPresentation} from "./roundPresentation";
 
 function formatFieldValue(value: unknown): string {
     if (typeof value === "string") {
@@ -34,14 +38,55 @@ function formatFieldValue(value: unknown): string {
 // returned -- see extractAdditionalRoundFields's own doc comment) only when no artifact was captured
 // (debug mode off, or a non-video-slot session that never builds one).
 export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
+    const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     if (session.debug?.artifact) {
+        const artifact = describeRoundArtifact(session.debug.artifact);
+        const presentation = describeRoundPresentation(session.debug.stateBefore, session.debug.stateAfter, artifact.betMode);
         return (
-            <RoundArtifactInspector
-                artifact={describeRoundArtifact(session.debug.artifact)}
-                credits={session.credits}
-                stateBefore={session.debug.stateBefore}
-                stateAfter={session.debug.stateAfter}
-            />
+            <div>
+                {artifact.totalWin > 0 ? (
+                    <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title="Round complete" mb="md">
+                        You won {artifact.totalWin.toFixed(2)}.
+                    </Alert>
+                ) : (
+                    <Text size="sm" c="dimmed" mb="md">
+                        Round complete — no win this round.
+                    </Text>
+                )}
+
+                {/* The player-facing result is first: static configuration comes from the captured
+                    session/Game Model, balance from the session, and this round's screen/wins/mode from
+                    the immutable RoundArtifact.  The full inspector remains available below without
+                    displacing normal play behind provenance or JSON. */}
+                <GameScreenView
+                    screen={artifact.screen}
+                    wins={artifact.wins}
+                    credits={session.credits}
+                    totalWin={artifact.totalWin}
+                    payoutMultiplier={artifact.payoutMultiplier}
+                    paytable={presentation.paytable}
+                    featureCounters={presentation.featureCounters}
+                    lines={presentation.lines}
+                    availableBets={presentation.availableBets}
+                    currentBet={presentation.currentBet ?? artifact.stake}
+                    availableModeIds={presentation.availableModeIds}
+                    currentModeId={presentation.currentModeId}
+                />
+                <FeatureStateView events={artifact.featureEvents ?? []} />
+                <RoundWinsTable wins={artifact.wins} stake={artifact.stake} />
+
+                <details onToggle={(event) => setArtifactInspectorOpen(event.currentTarget.open)}>
+                    <summary>Inspect round artifact</summary>
+                    {artifactInspectorOpen && (
+                        <RoundArtifactInspector
+                            artifact={artifact}
+                            credits={session.credits}
+                            stateBefore={session.debug.stateBefore}
+                            stateAfter={session.debug.stateAfter}
+                        />
+                    )}
+                </details>
+            </div>
         );
     }
 

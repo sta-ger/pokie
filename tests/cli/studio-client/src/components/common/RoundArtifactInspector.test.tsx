@@ -366,21 +366,24 @@ describe("Cross-surface round presentation parity", () => {
         });
     }
 
-    it("RoundSummary (Session Spin) renders a captured round through RoundArtifactInspector, showing the same screen/win/position detail a direct RoundArtifactInspector render of the identical artifact shows", () => {
+    it("RoundSummary keeps the player result primary and the full RoundArtifactInspector expandable", () => {
         const artifact = winningArtifact();
 
         const direct = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} credits={1005} />);
         const viaSummary = renderWithMantine(<RoundSummary session={sessionWithArtifact(artifact)} />);
 
-        // Each render mounts into the shared document.body, so scope every query to its own container --
-        // otherwise a text query bound to either render's own result would ambiguously match both trees
-        // at once instead of proving each renders it independently.
-        for (const container of [direct.container, viaSummary.container]) {
-            expect(within(container).getByText("R0P0")).toBeTruthy();
-            expect(within(container).getByText("cherry")).toBeTruthy();
-            expect(within(container).getByText("12.50 (2.50x stake)")).toBeTruthy();
-            expect(within(container).getByText("2")).toBeTruthy();
-        }
+        expect(within(direct.container).getByText("R0P0")).toBeTruthy();
+        expect(within(direct.container).getByText("cherry")).toBeTruthy();
+        expect(within(direct.container).getByText("12.50 (2.50x stake)")).toBeTruthy();
+        expect(within(direct.container).getByText("2")).toBeTruthy();
+
+        // Session Play puts the screen, balance and actual win before forensic data.  The artifact
+        // inspector is not mounted until the reader explicitly opens it, so it cannot duplicate the
+        // primary grid or make provenance/JSON the first thing a player sees.
+        expect(within(viaSummary.container).getByText("R0P0")).toBeTruthy();
+        expect(within(viaSummary.container).getByRole("button", {name: "line: cherry, win: 12.5"})).toBeTruthy();
+        expect(within(viaSummary.container).getByText("Inspect round artifact")).toBeTruthy();
+        expect(within(viaSummary.container).queryByText("Full artifact")).toBeNull();
     });
 
     it("RoundSummary falls back to the flat balance/bet/win summary -- never a crash -- when this round's session captured no artifact (debug mode off, or a non-video-slot session)", () => {
@@ -580,7 +583,7 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
         expect(within(lemonRow).getByText("—")).toBeTruthy();
     });
 
-    it("RoundSummary (Session Spin) shows the same win-hover payline trace and paytable-unavailable state a direct RoundArtifactInspector render of the identical artifact shows", () => {
+    it("RoundSummary preserves the primary win-hover payline trace without mounting the secondary inspector", () => {
         const artifact = winningArtifactWithDefinition();
 
         const direct = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} />);
@@ -606,8 +609,9 @@ describe("PaylineOverlay / WinningPositionsOverlay / PaytableView (via RoundArti
             for (const cherryCell of cherryCells) {
                 expect((cherryCell as HTMLElement).style.backgroundColor).toBe("rgb(0, 255, 0)");
             }
-            expect(within(container).getByText(/Paytable unavailable/)).toBeTruthy();
         }
+        expect(within(direct.container).getByText(/Paytable unavailable/)).toBeTruthy();
+        expect(within(viaSummary.container).getByText("Inspect round artifact")).toBeTruthy();
     });
 
     function winningArtifactWithDefinition(): RoundArtifactJson {

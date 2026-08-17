@@ -451,6 +451,9 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const creditTransactionId = `${roundId}:${attemptId}:credit`;
 
         const stakeAmount = determineStakeAmount(session, session.getBet());
+        // Capture the selected mode before play(): a forcing one-shot mode resets itself during its
+        // successful play, but this completed round must retain the mode that determined its stake.
+        const betMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
         const startedAt = new Date().toISOString();
 
         // Every checkpoint() call below is a no-op unless requestId is defined — SpinOperationLog is
@@ -505,6 +508,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
                             // when it doesn't.
                             ...(this.game.getConfigHash ? {configHash: this.game.getConfigHash()} : {}),
                         },
+                        betMode,
                         stake: stakeAmount,
                         command: "spin",
                         credits: newBalance,

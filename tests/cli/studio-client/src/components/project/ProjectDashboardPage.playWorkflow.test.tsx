@@ -39,7 +39,7 @@ describe("ProjectDashboardPage - Play", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
 
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
         await screen.findByRole("button", {name: "Spin"});
         expect(calls.some((call) => call.url === "/api/project/play/session")).toBe(true);
@@ -59,8 +59,9 @@ describe("ProjectDashboardPage - Play", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
 
-        await user.type(await screen.findByLabelText("Seed (optional)"), "my-seed");
-        await user.click(screen.getByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "Show advanced details (seed)"}));
+        await user.type(screen.getByLabelText("Seed (optional)"), "my-seed");
+        await user.click(screen.getByRole("button", {name: "New Play session"}));
 
         await screen.findByRole("button", {name: "Spin"});
         const createCall = calls.find((call) => call.url === "/api/project/play/session");
@@ -77,12 +78,12 @@ describe("ProjectDashboardPage - Play", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
 
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
         expect(
             await screen.findByText("This session couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
         ).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "New session"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
     }, 30000);
 
     // Spinning renders the real round straight through the shared RoundSummary/GameScreenView chain the
@@ -114,7 +115,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
 
         await waitFor(() => expect(screen.getByText("cherry")).toBeInTheDocument());
@@ -129,6 +130,45 @@ describe("ProjectDashboardPage - Play", () => {
         // rendering, not a Mantine <Table> cell.
         expect(screen.getByText("cherry")).toHaveAttribute("data-cell");
         expect(screen.getByText("cherry").closest(".player-grid")).not.toBeNull();
+    }, 30000);
+
+    it("submits the canonical session's selected bet and runtime mode with Spin", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    session: sessionFor({bet: 1, availableBets: [1, 5], availableBetModeIds: ["base", "ante", "buyFeature"], betModeId: "base"}),
+                },
+            }),
+            "/api/project/play/sessions/sess-1/spin": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    // A consumed buyFeature reports the returned persistent session mode, while the
+                    // exact completed round's buy identity comes from its RoundArtifact.
+                    session: sessionFor({bet: 5, availableBets: [1, 5], availableBetModeIds: ["base", "ante", "buyFeature"], betModeId: "base", win: 0, debug: {artifactUnavailableReason: "fixture"}}),
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+
+        await user.click(await screen.findByRole("combobox", {name: "Bet"}));
+        fireEvent.click(screen.getByRole("option", {name: "5.00", hidden: true}));
+        await user.click(screen.getByRole("combobox", {name: "Bet mode"}));
+        fireEvent.click(screen.getByRole("option", {name: "buyFeature", hidden: true}));
+        await user.click(screen.getByRole("button", {name: "Spin"}));
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/spin")).toBe(true));
+        const spinCall = calls.find((call) => call.url === "/api/project/play/sessions/sess-1/spin");
+        expect(spinCall?.init?.body).toBe(JSON.stringify({bet: 5, mode: "buyFeature"}));
     }, 30000);
 
     it("Reset discards the current session and creates a fresh one, clearing the previous round", async () => {
@@ -159,11 +199,11 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
         await waitFor(() => expect(screen.getByText(/Round complete/)).toBeInTheDocument());
 
-        await user.click(screen.getByRole("button", {name: "Reset"}));
+        await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
         await waitFor(() => expect(screen.getByText(/No round played yet/)).toBeInTheDocument());
         expect(createCalls).toBe(2);
@@ -197,7 +237,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Find any win"}));
 
         await waitFor(() => expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument());
@@ -231,7 +271,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
         const chooser = await screen.findByRole("combobox", {name: "Symbol"});
         await user.click(chooser);
@@ -297,7 +337,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Find free games"}));
 
         // The round returned by find-free-games renders through the exact same RoundArtifactInspector
@@ -320,14 +360,14 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
         expect(await screen.findByRole("button", {name: "Find symbol win"})).toBeDisabled();
     }, 30000);
 });
 
 // One fixture round (a real, already-computed RoundArtifact -- Studio never recomputes a win from a
-// screen) rendered two ways: through Play's own real workflow (New session -> Spin, driven through the
+// screen) rendered two ways: through Play's own real workflow (New Play session -> Spin, driven through the
 // fetch-mocked API the same way every other test in this file drives it) and directly through
 // RoundArtifactInspector, the exact same component RoundSummary (Play, Session Spin), ReplayTab
 // (recorded/recreated/simulation-sampled rounds) and OutcomeSourceOverview (Outcome Library "Draw an
@@ -411,7 +451,7 @@ describe("canonical player parity: Play renders the same fixture round Replay/Ou
 
         const routed = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToPlayTab(user);
-        await user.click(await screen.findByRole("button", {name: "New session"}));
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));
         await waitFor(() => expect(within(routed.container).getByText("12.50 (2.50x stake)")).toBeInTheDocument());
 

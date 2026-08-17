@@ -1,0 +1,34 @@
+[2026-08-17T08:09:20.103Z] START fresh real-browser Studio Play rerun against http://127.0.0.1:4919; no API calls or DOM/state injection.
+[2026-08-17T08:09:20.125Z] NAVIGATE rendered Studio Play route
+[2026-08-17T08:09:20.823Z] CAPTURE 10-play-start: screenshot, rendered transcript, and rendered table values
+[2026-08-17T08:09:20.868Z] CLICK "New Play session" at rendered BUTTON coordinates (377, 351)
+[2026-08-17T08:09:21.228Z] OBSERVE active rendered modes: base
+[2026-08-17T08:09:21.299Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T08:09:21.679Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T08:09:22.044Z] ASSERT base Play spin: completed artifact preserves Bet mode=base and Stake=1.00; live selector=base.
+[2026-08-17T08:09:22.452Z] CAPTURE 11-play-base-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T08:09:22.479Z] CLICK "Bet mode" at rendered LABEL coordinates (331, 368)
+[2026-08-17T08:09:22.919Z] CLICK Bet mode option "ante" at rendered DIV coordinates (459, 527)
+[2026-08-17T08:09:23.270Z] SELECT Bet mode="ante" through rendered combobox and option
+[2026-08-17T08:09:23.328Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T08:09:23.708Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1494)
+[2026-08-17T08:09:24.072Z] ASSERT ante Play spin: completed artifact preserves Bet mode=ante and Stake=1.25; live selector=ante.
+[2026-08-17T08:09:24.552Z] CAPTURE 12-play-ante-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T08:09:24.574Z] CLICK "Bet mode" at rendered LABEL coordinates (331, 368)
+[2026-08-17T08:09:25.022Z] CLICK Bet mode option "buyFeature" at rendered DIV coordinates (459, 561)
+[2026-08-17T08:09:25.373Z] SELECT Bet mode="buyFeature" through rendered combobox and option
+[2026-08-17T08:09:25.449Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T08:09:25.831Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T08:09:26.194Z] ASSERT buyFeature Play spin: completed artifact preserves Bet mode=buyFeature and Stake=50.00; live selector=base.
+[2026-08-17T08:09:26.661Z] CAPTURE 13-play-buyfeature-provenance-and-reset: screenshot, rendered transcript, and rendered table values
+[2026-08-17T08:09:26.690Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T08:09:27.073Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T08:09:27.436Z] ASSERT post-buy normal Play spin: completed artifact preserves Bet mode=base and Stake=1.00; live selector=base.
+[2026-08-17T08:09:27.912Z] CAPTURE 14-play-post-buy-normal-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T08:09:27.934Z] CLICK "Replay" at rendered BUTTON coordinates (130, 292)
+[2026-08-17T08:09:28.415Z] CLICK "Session Spin" at rendered LABEL coordinates (602, 287)
+[2026-08-17T08:09:28.821Z] CLICK "Refresh" at rendered BUTTON coordinates (313, 336)
+[2026-08-17T08:09:29.270Z] CLICK Session Spin Round 3 (the completed buyFeature round) at rendered BUTTON coordinates (671, 452)
+[2026-08-17T08:09:29.631Z] ASSERT Replay Session Spin preserves the selected completed buyFeature artifact's Bet mode=buyFeature and Stake=50.00.
+[2026-08-17T08:09:30.119Z] CAPTURE 15-replay-session-spin-buyfeature-provenance: screenshot, rendered transcript, and rendered table values
+[2026-08-17T08:09:30.120Z] PASS: base, ante, one-shot buyFeature, subsequent normal spin, and Replay Session Spin provenance were all exercised through the visible Studio UI.

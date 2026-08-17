@@ -781,8 +781,18 @@ export async function createPlaySession(fetchImpl: FetchLike, seed?: string | nu
     return {status: "error", message: body.error};
 }
 
-export async function spinPlaySession(fetchImpl: FetchLike, sessionId: string): Promise<PlaySpinResult> {
-    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {method: "POST"});
+export async function spinPlaySession(fetchImpl: FetchLike, sessionId: string, bet?: number, mode?: string): Promise<PlaySpinResult> {
+    const body: Record<string, unknown> = {};
+    if (bet !== undefined) {
+        body.bet = bet;
+    }
+    if (mode !== undefined) {
+        body.mode = mode;
+    }
+    const response = await fetchImpl(`/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {
+        method: "POST",
+        ...(Object.keys(body).length > 0 ? {headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {}),
+    });
     return readPlaySpinResult(response);
 }
 

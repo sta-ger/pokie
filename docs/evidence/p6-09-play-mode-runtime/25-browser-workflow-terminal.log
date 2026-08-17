@@ -1,0 +1,10 @@
+[2026-08-17T07:50:28.033Z] START fresh real-browser Studio Play rerun against http://127.0.0.1:4919; no API calls or DOM/state injection.
+[2026-08-17T07:50:28.049Z] NAVIGATE rendered Studio Play route
+[2026-08-17T07:50:28.734Z] CAPTURE 10-play-start: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:50:28.764Z] CLICK "New Play session" at rendered BUTTON coordinates (377, 351)
+[2026-08-17T07:50:29.127Z] OBSERVE active rendered modes: base
+[2026-08-17T07:50:29.196Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:50:29.566Z] FAILED Error: Rendered control "Inspect round artifact" not found: ["POKIE Studio","P6-09 Mode Semantics","Overview","Game Model","Play","Simulation","Replay","Build/Export","Certification","Fairness","Close project","Bet","Bet mode","Spin","Find any win","Find symbol win","Find free games","Symbol","Show advanced details (seed)","Reset Play session","1","2","3","4","5","10","20","30","40","50","100","base","ante","buyFeature"]
+    at clickLocated (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:47:31)
+    at async openInspector (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:65:22)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:83:5)
