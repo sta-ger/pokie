@@ -1,0 +1,18 @@
+{
+  "status": "finding",
+  "finding_id": "p6-08-canonical-player-runtime-parity",
+  "severity": "P1",
+  "root_cause": "The normal npm build/prepack lifecycle fails ESLint's no-nested-ternary rule at cli/studio-client/src/components/common/roundPresentation.ts:47:21, preventing a standard candidate package build.",
+  "browser_parity": "passed",
+  "evidence": [
+    "01-candidate-build-terminal.log",
+    "03-candidate-build-cli-node24-terminal.log",
+    "13-browser-workflow-complete-terminal.log",
+    "browser-transcript.txt",
+    "20-generated-package-npm-start-player.png",
+    "21-studio-play-seeded-round.png",
+    "22-studio-replay-seeded-round.png",
+    "23-pokie-examples-fixture-round.png",
+    "cross-surface-grid-comparison.json"
+  ]
+}
