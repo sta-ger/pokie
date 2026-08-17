@@ -225,7 +225,20 @@ export class BuildCommand implements CliCommandHandling {
             return 0;
         }
 
-        const result = await this.registry.build("tsPackage", project, out);
+        let result: {readonly outputPath: string};
+        try {
+            result = await this.registry.build("tsPackage", project, out);
+        } catch (error) {
+            // Reel-strip constraints are an authored Blueprint condition, not an invocation failure.
+            // The registry remains the only build path; this CLI boundary merely turns its structured
+            // build diagnostic back into the conventional nonzero command result callers receive.
+            if (isReelStripGenerationFailure(error)) {
+                console.error(error.message);
+                console.error(`\n${PROJECT_HINT}`);
+                return 1;
+            }
+            throw error;
+        }
 
         // Reading provenance for the CLI summary happens only after the registry has produced the package;
         // it is not part of the Project -> Artifact execution path above.
@@ -303,4 +316,8 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  would generate   ${buildInfo.files!.join(", ")}`);
         console.log(`  destination      ${destination}`);
     }
+}
+
+function isReelStripGenerationFailure(error: unknown): error is Error {
+    return error instanceof Error && error.message.includes("could not generate its reel strips:");
 }
