@@ -13,11 +13,11 @@
 //     Library) work with. Studio's own
 //     cli/studio-client/src/components/common/CanonicalPlayerView.tsx (the single "screen, with wins"
 //     entrypoint every one of those surfaces renders through, via GameScreenView -- see its own doc
-//     comment) calls this exact adapter and then mounts this module's own renderReelsGrid/
-//     applyPersistentHighlights/renderWinHighlightsList directly, the same functions this repo's own
-//     cli/client/main.ts and pokie-examples mount -- never a second, independently-rendered player.
+//     comment) calls this exact adapter and then mounts this module's own renderPlayerRound entrypoint,
+//     the same entrypoint this repo's own cli/client/main.ts and pokie-examples mount -- never a second,
+//     independently-rendered player.
 //
-// Studio mounts this module's own DOM functions directly, via refs (CanonicalPlayerView), rather than
+// Studio mounts this module's own DOM entrypoint directly, via refs (CanonicalPlayerView), rather than
 // re-implementing the same grid/highlight rendering as a themed React/Mantine table -- so the *rendering*
 // itself, not just the highlight derivation, is one shared implementation, proven by
 // tests/cli/client/player/renderPlayer.test.ts's "canonical player fixture round parity" suite and

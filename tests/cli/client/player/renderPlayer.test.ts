@@ -1,6 +1,8 @@
 /**
  * @jest-environment jsdom
  */
+import {readFileSync} from "node:fs";
+import {resolve} from "node:path";
 import {
     applyPersistentHighlights,
     clearConnectionError,
@@ -10,6 +12,7 @@ import {
     renderLineDefinitionsList,
     renderModeInfo,
     renderPaytable,
+    renderPlayerRound,
     renderReelsGrid,
     renderWinHighlightsList,
     renderWinsSection,
@@ -208,6 +211,80 @@ describe("renderBetInfo / renderModeInfo", () => {
         const anteButton = Array.from(el.querySelectorAll("button")).find((b) => b.textContent === "ante") as HTMLButtonElement;
         anteButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
         expect(onSelectMode).toHaveBeenCalledWith("ante");
+    });
+});
+
+describe("renderPlayerRound", () => {
+    function createElements() {
+        return {
+            gridContainer: document.createElement("div"),
+            winsSection: document.createElement("section"),
+            winsList: document.createElement("div"),
+            linesList: document.createElement("div"),
+            features: document.createElement("dl"),
+            betInfo: document.createElement("div"),
+            modeInfo: document.createElement("div"),
+            paytableHead: document.createElement("tr"),
+            paytableBody: document.createElement("tbody"),
+        };
+    }
+
+    it("renders the complete computed round through one entrypoint and clears disabled sections on the next round", () => {
+        const elements = createElements();
+        const selectBet = jest.fn();
+        const selectMode = jest.fn();
+
+        renderPlayerRound(elements, {
+            reelsSymbols: [["A", "K"], ["Q"]],
+            highlights: [{id: "line:0", kind: "line", label: "Line: 0, win: 12", winAmount: 12, positions: [[0, 0]], paylinePositions: [[0, 0], [1, 0]]}],
+            featureCounters: [{label: "FG num", value: 2}],
+            lines: [{lineId: "0", definition: [0, 0]}],
+            paytable: {multipliers: [3], rows: [{symbolId: "A", amounts: [12]}]},
+            availableBets: [10, 20],
+            currentBet: 10,
+            onSelectBet: selectBet,
+            availableModeIds: ["base", "ante"],
+            currentModeId: "base",
+            onSelectMode: selectMode,
+            artworkUrlForSymbol: (symbol) => (symbol === "A" ? "/artwork/A.png" : undefined),
+        });
+
+        expect(elements.gridContainer.querySelector('[data-cell="0:0"] img')?.getAttribute("src")).toBe("/artwork/A.png");
+        const image = elements.gridContainer.querySelector('[data-cell="0:0"] img') as HTMLImageElement;
+        image.dispatchEvent(new Event("error"));
+        expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("A");
+        expect(elements.winsSection.hidden).toBe(false);
+        expect(elements.winsList.textContent).toContain("Line: 0, win: 12");
+        expect(elements.features.textContent).toContain("FG num2");
+        expect(elements.linesList.textContent).toContain("Line: 0");
+        expect(elements.paytableBody.textContent).toContain("A12");
+        expect(elements.betInfo.querySelectorAll("button")).toHaveLength(2);
+        expect(elements.modeInfo.querySelectorAll("button")).toHaveLength(2);
+
+        renderPlayerRound(elements, {reelsSymbols: [["B"]], highlights: []});
+
+        expect(elements.winsSection.hidden).toBe(true);
+        expect(elements.winsList.children).toHaveLength(0);
+        expect(elements.features.hidden).toBe(true);
+        expect(elements.linesList.children).toHaveLength(0);
+        expect(elements.paytableHead.children).toHaveLength(0);
+        expect(elements.paytableBody.children).toHaveLength(0);
+        expect(elements.betInfo.children).toHaveLength(0);
+        expect(elements.modeInfo.children).toHaveLength(0);
+        expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("B");
+    });
+});
+
+describe("canonical Player source reachability", () => {
+    it("makes both client transports invoke the barrel's single round entrypoint", () => {
+        const devClient = readFileSync(resolve(process.cwd(), "cli/client/main.ts"), "utf8");
+        const studio = readFileSync(resolve(process.cwd(), "cli/studio-client/src/components/common/CanonicalPlayerView.tsx"), "utf8");
+
+        expect(devClient).toContain('from "./player/index.js"');
+        expect(devClient).toContain("renderPlayerRound(");
+        expect(studio).toContain('from "../../../../client/player"');
+        expect(studio).toContain("renderPlayerRound(");
+        expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
     });
 });
 

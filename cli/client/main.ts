@@ -2,18 +2,10 @@ import {FetchLike, spin} from "./apiClient.js";
 import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButton} from "./dom.js";
 import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
 import {
-    applyPersistentHighlights,
     clearConnectionError,
-    renderBetInfo,
     renderConnectionError,
-    renderFeatureCounters,
-    renderLineDefinitionsList,
-    renderModeInfo,
-    renderPaytable,
-    renderReelsGrid,
-    renderWinHighlightsList,
-    renderWinsSection,
-} from "./player/renderPlayer.js";
+    renderPlayerRound,
+} from "./player/index.js";
 import {
     deriveAvailableBetModeIds,
     deriveAvailableBets,
@@ -164,18 +156,33 @@ function renderVideoSlotRound(
     selectedMode: string | undefined,
     onSelectMode: (modeId: string) => void,
 ): void {
-    renderReelsGrid(elements.playerGridContainer, response.reelsSymbols);
-
     const highlights = deriveWinHighlights(response);
-    applyPersistentHighlights(elements.playerGridContainer, highlights);
-    renderWinsSection(elements.playerWinsSection, highlights.length > 0);
-    renderWinHighlightsList(elements.playerWinsList, elements.playerGridContainer, highlights);
-
-    renderFeatureCounters(elements.playerFeatures, deriveFeatureCounters(response));
-    renderBetInfo(elements.playerBetInfo, staticView.availableBets, selectedBet, onSelectBet);
-    renderModeInfo(elements.playerModeInfo, staticView.availableBetModeIds, selectedMode, onSelectMode);
-    renderLineDefinitionsList(elements.playerLinesList, elements.playerGridContainer, staticView.lines);
-    renderPaytable(elements.playerPaytableHead, elements.playerPaytableBody, staticView.paytable);
+    renderPlayerRound(
+        {
+            gridContainer: elements.playerGridContainer,
+            winsSection: elements.playerWinsSection,
+            winsList: elements.playerWinsList,
+            linesList: elements.playerLinesList,
+            features: elements.playerFeatures,
+            betInfo: elements.playerBetInfo,
+            modeInfo: elements.playerModeInfo,
+            paytableHead: elements.playerPaytableHead,
+            paytableBody: elements.playerPaytableBody,
+        },
+        {
+            reelsSymbols: response.reelsSymbols,
+            highlights,
+            featureCounters: deriveFeatureCounters(response),
+            lines: staticView.lines,
+            paytable: staticView.paytable,
+            availableBets: staticView.availableBets,
+            currentBet: selectedBet,
+            onSelectBet,
+            availableModeIds: staticView.availableBetModeIds,
+            currentModeId: selectedMode,
+            onSelectMode,
+        },
+    );
 }
 
 function render(
