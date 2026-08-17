@@ -1,7 +1,0 @@
-
-> fixture-slot@0.1.0 start
-> pokie dev . --port 4711 --client-port 4712 --no-open
-
-POKIE dev server listening on http://127.0.0.1:4711
-POKIE client UI listening on http://127.0.0.1:4712
-This is a local/dev reference setup for a single game package — not a casino backend or RGS.

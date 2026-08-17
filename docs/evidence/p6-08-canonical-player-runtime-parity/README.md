@@ -8,11 +8,10 @@ normal Player workflow; no DOM or application-state injection is used.
 
 The representative surfaces below use the shared `renderPlayerRound` entrypoint:
 generated package Player, Studio Play, Studio Replay, and the public examples
-fixture page. The focused parity tests cross-check the fixture response before
-rendering and exercise the public examples Play control.
+fixture page.
 
-- `runtime-transcript.txt` — generated Player, Studio Play/Replay, and CLI
-  observations.
-- `pokie-examples-browser-transcript.txt` — fresh rendered examples workflow.
+- `fixture-slot.blueprint.json` — minimal deterministic fixture input.
+- `runtime-transcript.txt` — concise generated Player, Studio Play/Replay,
+  public examples, and CLI observations.
 - `20-` through `23-*.png` — one representative screenshot per surface.
-- `parity-checksums.txt` — round and screenshot checksums.
+- `parity-checksums.txt` — fixture, round, and screenshot checksums.

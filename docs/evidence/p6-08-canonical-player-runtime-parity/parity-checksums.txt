@@ -1,4 +1,5 @@
 round-input fixture-round|1|1|1004|5|5x|[["A","C","A"],["A","A","C"],["A","A","A"]]
+fixture-slot.blueprint.json sha256:b163d9e3d5afb70726dcf36cec8786804ec2a3aaa671a9bfb23f52b118d02efe
 20-generated-package-npm-start-player.png sha256:acedb5477a12720502f14bbfe1b63b11e7c14096a965e868ab1a7b1408fe31e9
 21-studio-play-seeded-round.png sha256:2c0d28907186b025fabc992c5889beeac38f5892c5eba87281fec9bf68afdd0b
 22-studio-replay-seeded-round.png sha256:06f831476751824ea08ae21908d9db9b6b84904a25f1c0b71dec17b3dbb20b2e
