@@ -35,7 +35,11 @@ export type ProjectCapabilities = readonly ProjectCapability[];
 // PreGeneratedOutcomeSourcing-style draw-by-draw serving contract, so it stays read-only — see that
 // capability's own doc comment.
 export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapabilities>> = {
-    blueprint: [BLUEPRINT_BUILD_CAPABILITY],
+    // A Blueprint can request Stake output through ArtifactBuilderRegistry's prerequisite workflow: it
+    // resolves a compatible registered Outcome Library or materializes/generates/registers one first.
+    // The capability means that registry-owned workflow is reachable; it does not permit a caller to
+    // bypass the registry and export a Blueprint directly with StakeEngineExporter.
+    blueprint: [BLUEPRINT_BUILD_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
     tsPackage: [RUNTIME_EXECUTE_CAPABILITY],
     // A canonical outcome library is also the sole native source for a new Stake Engine export.  Grant the
     // narrow export capability here rather than teaching a CLI/Studio caller to bypass ArtifactBuilderRegistry and

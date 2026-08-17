@@ -22,6 +22,8 @@ import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import type {ProjectType} from "./ProjectType.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
+import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
+import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -50,7 +52,7 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "model/blueprint that produced those outcomes; that recovery is not supported by any builder.",
     ],
     stakeAdapter: [
-        "Exports an already-computed canonical outcome library (or republishes a Stake Engine export) into Stake " +
+        "Exports an already-computed canonical outcome library (or, for a Blueprint, first resolves or generates and registers its compatible canonical outcome library) into Stake " +
             "Engine's own book-line format -- never re-derives or recovers the game model/blueprint that produced " +
             "those outcomes; that recovery is not supported by any builder.",
     ],
@@ -105,12 +107,14 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
 // ArtifactBuilder already wired to POKIE's own already-atomic per-target writers (GamePackageGenerator,
 // OutcomeLibraryBundleWriter, StakeEngineImporter/StakeEngineExporter, ParSheetImporter/ParSheetExporter) --
 // see each builder's own doc comment for exactly what it reads/writes. Every builder here is deliberately a
-// same-type republish (blueprint->tsPackage is the one true "build from a different source" conversion; every
-// other target only republishes an already-built artifact of its own type, per this registry's own tested
-// supportedSources) -- see UNSUPPORTED_NOTES for what each target's build explicitly does NOT promise.
+// same-type republish (blueprint->tsPackage is the direct conversion; blueprint->stakeAdapter is the one
+// registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back to the
+// Stake builder; every other target only republishes an already-built artifact of its own type) -- see
+// UNSUPPORTED_NOTES for what each target's build explicitly does NOT promise.
 export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
+    private readonly blueprintStakeWorkflow: BlueprintStakeOutcomeLibraryWorkflow;
 
     constructor(pokieVersion = "0.0.0", builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder> = buildDefaultBuilders(pokieVersion)) {
         const descriptors = new Map<ArtifactTargetType, ArtifactBuildTargetDescriptor>();
@@ -119,6 +123,7 @@ export class ArtifactBuilderRegistry {
         }
         this.descriptors = descriptors;
         this.builders = builders;
+        this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint);
     }
 
     public listTargets(): readonly ArtifactTargetType[] {
@@ -147,6 +152,9 @@ export class ArtifactBuilderRegistry {
     // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
     // is never a second, differently-worded "not supported" statement.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+        if (target === "stakeAdapter" && source.type === "blueprint") {
+            return this.blueprintStakeWorkflow.resolveOrGenerate(source).then((outcomeLibrary) => this.build("stakeAdapter", outcomeLibrary, destinationPath));
+        }
         const descriptor = this.describe(target);
         const diagnostic = describeUnsupportedProjectOperation(source, descriptor.operation);
         if (diagnostic !== undefined) {

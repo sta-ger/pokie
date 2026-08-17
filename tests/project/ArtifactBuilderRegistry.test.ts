@@ -38,7 +38,7 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("stakeAdapter");
 
         expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXPORT_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["outcomeLibrary", "stakeAdapter"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "outcomeLibrary", "stakeAdapter"]);
     });
 
     it("reports the true required source capability and supported sources for a PAR export", () => {
@@ -131,6 +131,82 @@ describe("ArtifactBuilderRegistry", () => {
             await expect(withoutBuilders.build("tsPackage", projectOf("blueprint"), "/out/my-game")).rejects.toThrow(
                 /"tsPackage" has no builder implemented yet/,
             );
+        });
+
+        it("resolves a Blueprint's registered Outcome Library prerequisite before exporting Stake, and reuses it deterministically", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-stake-registry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const firstStakeDir = path.join(workDir, "stake-one");
+            const secondStakeDir = path.join(workDir, "stake-two");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "registry-slot", name: "Registry Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A"], ["A"], ["A"]],
+                    availableBets: [1],
+                }),
+            );
+            const blueprintProject: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+
+            try {
+                await registry.build("stakeAdapter", blueprintProject, firstStakeDir);
+                const indexPath = path.join(workDir, ".pokie", "outcome-library-registry.json");
+                const registered = JSON.parse(fs.readFileSync(indexPath, "utf-8")) as string[];
+                const libraryDir = path.join(workDir, registered[0]);
+                const manifestBeforeReuse = fs.readFileSync(path.join(libraryDir, "manifest.json"), "utf-8");
+
+                await registry.build("stakeAdapter", blueprintProject, secondStakeDir);
+
+                expect(fs.existsSync(path.join(firstStakeDir, "index.json"))).toBe(true);
+                expect(fs.existsSync(path.join(secondStakeDir, "index.json"))).toBe(true);
+                expect(fs.readFileSync(path.join(libraryDir, "manifest.json"), "utf-8")).toBe(manifestBeforeReuse);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("returns a Game Model fix route for an invalid Blueprint and lets the same Stake request succeed after retry", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-stake-retry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const stakeDir = path.join(workDir, "stake");
+            const project = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const writeBlueprint = (reels: number) =>
+                fs.writeFileSync(
+                    blueprintPath,
+                    JSON.stringify({
+                        manifest: {id: "retry-slot", name: "Retry Slot", version: "1.0.0"},
+                        reels,
+                        rows: 1,
+                        symbols: ["A"],
+                        paytable: {A: {2: 1, 3: 2}},
+                        reelStrips: [["A"], ["A"], ["A"]],
+                        availableBets: [1],
+                    }),
+                );
+
+            try {
+                writeBlueprint(0);
+                await expect(registry.build("stakeAdapter", project, stakeDir)).rejects.toThrow(/fix it in Game Model and retry/i);
+
+                writeBlueprint(3);
+                await expect(registry.build("stakeAdapter", project, stakeDir)).resolves.toEqual({outputPath: stakeDir});
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
         });
     });
 
