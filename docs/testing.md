@@ -11,6 +11,7 @@ npm package — see [`docs/README.md`](README.md) for the library's own API refe
 | `npm run check:full` | `check:fast` + root and Studio-client TypeScript checks + `pokie-integration` + `studio-client-workflows` | off | Before opening a PR |
 | `npm run check:release` | lint + typecheck + every test **with coverage** + the real `npm pack`/install smoke test (`pokie-packaging`) | on | Pre-publish gate (`.github/workflows/publish.yml` runs this instead of `npm test`) |
 | `npm run test:integration` | Just the `pokie-integration` lane | off | Iterating on integration/server/worker tests specifically |
+| `npm run test:targeted -- <files...>` | Exact named files across all Jest projects, serially | off | Verifying one bounded correction set that spans unit/component/workflow projects |
 | `npm run test:workflows` | Just the `studio-client-workflows` lane | off | Iterating on the heavy Studio workflow/navigation-guard/poll-hook tests specifically |
 | `npm run test:coverage` | `pokie` + `studio-client-components` + `pokie-integration` + `studio-client-workflows`, with `--coverage` | on | Checking coverage without also paying for the packaging smoke test |
 | `npm run test:packaging` | Just `tests/packaging/npmPackSmoke.test.ts` (real `npm pack` → install → spawn) | n/a | Verifying the published package boundary in isolation |
