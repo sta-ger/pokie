@@ -30,6 +30,7 @@ function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDesc
         round: 42,
         totalBet: 420,
         totalWin: 100,
+        credits: 680,
         screen: [
             ["cherry", "lemon"],
             ["bell", "seven"],
@@ -159,6 +160,7 @@ describe("describeReplayResult", () => {
             seed: "demo",
             totalBet: 420,
             totalWin: 100,
+            credits: 680,
             screen: [
                 ["cherry", "lemon"],
                 ["bell", "seven"],

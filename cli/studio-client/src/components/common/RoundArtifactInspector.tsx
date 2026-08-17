@@ -11,6 +11,7 @@ import {type PaytableData, PaytableView} from "./PaytableView";
 import {QuickActions} from "./QuickActions";
 import {RoundDetailsTable} from "./RoundDetailsTable";
 import {RoundWinsTable} from "./RoundWinsTable";
+import {describeRoundPresentation} from "./roundPresentation";
 
 const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
     screen: "Visible screen",
@@ -83,18 +84,16 @@ export function RoundArtifactInspector({
     // is only ever supplied by a caller that actually has a live session to read it from (Session Spin).
     // Undefined elsewhere, in which case the row is simply omitted rather than shown as "0" or "unknown".
     credits?: number;
-    // The game's own payout table -- same story as `credits`: not part of RoundArtifact itself (see
-    // PaytableView's own doc comment), only ever suppliable by a caller that has one independently. No
-    // current caller does (Play/Replay/Outcome Source never fetch a blueprint alongside a round), so
-    // this is always undefined today and PaytableView renders its own explicit "unavailable" state --
-    // this prop exists so a future caller that does have one doesn't need RoundArtifactInspector itself
-    // to change.
+    // Optional explicit payout table for an artifact-only import.  Studio's live Play/Replay paths
+    // normally obtain their authoritative table from the captured serializer initialPayload through
+    // describeRoundPresentation below; an import without that snapshot can still supply one directly.
     paytable?: PaytableData;
 }) {
     const [stepIndex, setStepIndex] = useState(0);
 
     const step = artifact.steps[stepIndex] ?? artifact.steps[0];
     const hasMultipleSteps = artifact.steps.length > 1;
+    const presentation = describeRoundPresentation(stateBefore, stateAfter, artifact.betMode);
 
     return (
         <div>
@@ -142,9 +141,21 @@ export function RoundArtifactInspector({
                 </Alert>
             )}
 
-            <RoundDetailsTable artifact={artifact} credits={credits} />
+            <RoundDetailsTable artifact={artifact} />
 
-            <GameScreenView screen={artifact.screen} wins={artifact.wins} />
+            <GameScreenView
+                screen={artifact.screen}
+                wins={artifact.wins}
+                credits={credits}
+                totalWin={artifact.totalWin}
+                payoutMultiplier={artifact.payoutMultiplier}
+                paytable={presentation.paytable}
+                featureCounters={presentation.featureCounters}
+                availableBets={presentation.availableBets}
+                currentBet={presentation.currentBet}
+                availableModeIds={presentation.availableModeIds}
+                currentModeId={presentation.currentModeId}
+            />
 
             <PageSection legend={hasMultipleSteps ? `Step ${stepIndex + 1} of ${artifact.steps.length}` : "Round detail"}>
                 {hasMultipleSteps && (
@@ -170,9 +181,11 @@ export function RoundArtifactInspector({
                 <FeatureStateView events={step.featureEvents ?? []} />
             </PageSection>
 
-            <PageSection legend="Paytable">
-                <PaytableView paytable={paytable} />
-            </PageSection>
+            {presentation.paytable === undefined && (
+                <PageSection legend="Paytable">
+                    <PaytableView paytable={paytable} />
+                </PageSection>
+            )}
 
             <PageSection legend="State before / after">
                 {stateBefore === undefined && stateAfter === undefined ? (

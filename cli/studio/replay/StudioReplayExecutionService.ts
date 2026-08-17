@@ -270,8 +270,10 @@ export class StudioReplayExecutionService {
         // mislabeling the job id as one.
         const sessionId = this.createId();
         let session: GameSessionHandling;
+        let playerCredits: number;
         try {
             session = game.createSession(context);
+            playerCredits = session.getCreditsAmount();
             // A replay reconstructs a specific round, not risk of ruin — same reasoning as
             // ReplayRecorder itself: a bankroll large enough that reaching `round` is never cut short
             // by running out of credits mid-replay.
@@ -316,6 +318,7 @@ export class StudioReplayExecutionService {
                     totalBet += session.getBet();
                     session.play();
                     totalWin += session.getWinAmount();
+                    playerCredits = playerCredits - session.getBet() + session.getWinAmount();
 
                     if (isFinalPlay) {
                         stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);
@@ -341,6 +344,7 @@ export class StudioReplayExecutionService {
             round: record.round,
             totalBet,
             totalWin,
+            credits: playerCredits,
             screen: captureScreen(session),
             timestamp: record.startedAt,
             durationMs: record.durationMs,

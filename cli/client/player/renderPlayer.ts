@@ -14,6 +14,53 @@ import {
 
 type CellElement = HTMLElement & {baseColor: string};
 
+// The complete DOM contract of one Player surface.  Hosts own only these mounting points and the
+// transport that supplies PlayerRoundView; this module owns the ordering and rendering of every
+// player-specific section.  Keeping that composition here prevents an examples app, the dev client
+// and Studio from each growing a subtly different "screen with wins" implementation.
+export type PlayerRoundElements = {
+    credits?: HTMLElement;
+    totalWin?: HTMLElement;
+    payoutMultiplier?: HTMLElement;
+    gridContainer: HTMLElement;
+    winsSection: HTMLElement;
+    winsList: HTMLElement;
+    linesList: HTMLElement;
+    features: HTMLElement;
+    betInfo: HTMLElement;
+    modeInfo: HTMLElement;
+    paytableHead: HTMLElement;
+    paytableBody: HTMLElement;
+};
+
+export type PlayerRoundView = {
+    // Round-level facts are rendered here with the grid and its individual wins, rather than being
+    // independently composed by each host surface.  Undefined is an honest unavailable value, not 0.
+    credits?: number;
+    totalWin?: number;
+    payoutMultiplier?: number;
+    creditsLabel?: string;
+    totalWinLabel?: string;
+    payoutMultiplierLabel?: string;
+    payoutMultiplierSuffix?: string;
+    formatTotalWin?: (value: number) => string;
+    formatPayoutMultiplier?: (value: number) => string;
+    reelsSymbols: string[][];
+    highlights: WinHighlight[];
+    featureCounters?: FeatureCounter[];
+    lines?: LineDefinitionView[];
+    paytable?: PaytableView;
+    availableBets?: number[];
+    currentBet?: number;
+    onSelectBet?: (bet: number) => void;
+    availableModeIds?: string[];
+    currentModeId?: string;
+    onSelectMode?: (modeId: string) => void;
+    // An artwork URL is deliberately presentation-only: an unavailable image restores the symbol
+    // text and never changes a round's already-computed result.
+    artworkUrlForSymbol?: (symbolId: string) => string | undefined;
+};
+
 function cellId(reelIndex: number, rowIndex: number): string {
     return `${rowIndex}:${reelIndex}`;
 }
@@ -32,7 +79,11 @@ function clearChildren(el: HTMLElement): void {
 // handles both a uniform grid (every reel the same height) and a jagged one (reels of different
 // heights) without a separate code path, since reels never need to line up row-for-row here. Mirrors
 // pokie-examples' own drawReelsSymbols.
-export function renderReelsGrid(container: HTMLElement, reelsSymbols: string[][]): void {
+export function renderReelsGrid(
+    container: HTMLElement,
+    reelsSymbols: string[][],
+    artworkUrlForSymbol?: (symbolId: string) => string | undefined,
+): void {
     clearChildren(container);
     const table = document.createElement("table");
     table.className = "player-grid";
@@ -46,6 +97,21 @@ export function renderReelsGrid(container: HTMLElement, reelsSymbols: string[][]
             cell.className = "player-cell";
             cell.textContent = symbol;
             cell.baseColor = "";
+            const artworkUrl = artworkUrlForSymbol?.(symbol);
+            if (artworkUrl !== undefined) {
+                const image = document.createElement("img");
+                image.className = "player-symbol-artwork";
+                image.src = artworkUrl;
+                image.alt = symbol;
+                image.width = 28;
+                image.height = 28;
+                image.style.objectFit = "contain";
+                image.onerror = () => {
+                    cell.textContent = symbol;
+                };
+                cell.textContent = "";
+                cell.appendChild(image);
+            }
             td.appendChild(cell);
         });
         tr.appendChild(td);
@@ -295,6 +361,43 @@ export function renderModeInfo(el: HTMLElement, availableModeIds: string[], curr
         currentModeId,
         onSelectMode,
     );
+}
+
+function renderRoundValue(
+    el: HTMLElement | undefined,
+    value: number | undefined,
+    label = "",
+    suffix = "",
+    format: (value: number) => string = String,
+): void {
+    if (el !== undefined) {
+        el.textContent = value === undefined ? "—" : `${label}${format(value)}${suffix}`;
+    }
+}
+
+// The single presentation entrypoint used by all user-facing game surfaces.  The input is already
+// computed transport data (or its structural adapter), so this function performs no game math.
+// Empty/undefined optional data is rendered as an empty section, which also prevents stale details
+// from a preceding round from surviving when a feature or selector is not applicable.
+export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRoundView): void {
+    renderRoundValue(elements.credits, view.credits, view.creditsLabel);
+    renderRoundValue(elements.totalWin, view.totalWin, view.totalWinLabel, "", view.formatTotalWin);
+    renderRoundValue(
+        elements.payoutMultiplier,
+        view.payoutMultiplier,
+        view.payoutMultiplierLabel,
+        view.payoutMultiplierSuffix,
+        view.formatPayoutMultiplier,
+    );
+    renderReelsGrid(elements.gridContainer, view.reelsSymbols, view.artworkUrlForSymbol);
+    applyPersistentHighlights(elements.gridContainer, view.highlights);
+    renderWinsSection(elements.winsSection, view.highlights.length > 0);
+    renderWinHighlightsList(elements.winsList, elements.gridContainer, view.highlights);
+    renderFeatureCounters(elements.features, view.featureCounters ?? []);
+    renderBetInfo(elements.betInfo, view.availableBets ?? [], view.currentBet, view.onSelectBet ?? (() => undefined));
+    renderModeInfo(elements.modeInfo, view.availableModeIds ?? [], view.currentModeId, view.onSelectMode ?? (() => undefined));
+    renderLineDefinitionsList(elements.linesList, elements.gridContainer, view.lines ?? []);
+    renderPaytable(elements.paytableHead, elements.paytableBody, view.paytable);
 }
 
 // A short, readable message plus the raw technical detail (an Error's message/stack, or a response

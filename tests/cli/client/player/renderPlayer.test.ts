@@ -1,6 +1,9 @@
 /**
  * @jest-environment jsdom
  */
+import {existsSync, readFileSync} from "node:fs";
+import {resolve} from "node:path";
+import * as canonicalPlayer from "../../../../cli/client/player/index.js";
 import {
     applyPersistentHighlights,
     clearConnectionError,
@@ -10,6 +13,7 @@ import {
     renderLineDefinitionsList,
     renderModeInfo,
     renderPaytable,
+    renderPlayerRound,
     renderReelsGrid,
     renderWinHighlightsList,
     renderWinsSection,
@@ -21,11 +25,20 @@ import {
     deriveFeatureCounters,
     deriveLineDefinitions,
     derivePaytableView,
+    deriveTotalWin,
     deriveWinHighlights,
     deriveWinHighlightsFromRoundArtifactWins,
     type VideoSlotRoundResponse,
     type WinHighlight,
 } from "../../../../cli/client/player/videoSlotRoundView.js";
+
+// pokie-examples is a separately checked-out companion project.  The canonical-player
+// reachability assertions below run whenever that companion is provided, while this
+// repository's standalone test suite remains runnable from an isolated worktree.
+const pokieExamplesRoot = process.env.POKIE_EXAMPLES_PATH
+    ? resolve(process.env.POKIE_EXAMPLES_PATH)
+    : resolve(process.cwd(), "..", "pokie-examples");
+const pokieExamplesAvailable = existsSync(pokieExamplesRoot);
 
 // The one place this repo's own fast Jest environment renders the canonical player's DOM half --
 // videoSlotRoundView.test.ts already covers the pure derive* functions this module is built on top
@@ -211,6 +224,161 @@ describe("renderBetInfo / renderModeInfo", () => {
     });
 });
 
+describe("renderPlayerRound", () => {
+    function createElements() {
+        return {
+            credits: document.createElement("div"),
+            totalWin: document.createElement("div"),
+            payoutMultiplier: document.createElement("div"),
+            gridContainer: document.createElement("div"),
+            winsSection: document.createElement("section"),
+            winsList: document.createElement("div"),
+            linesList: document.createElement("div"),
+            features: document.createElement("dl"),
+            betInfo: document.createElement("div"),
+            modeInfo: document.createElement("div"),
+            paytableHead: document.createElement("tr"),
+            paytableBody: document.createElement("tbody"),
+        };
+    }
+
+    it("renders the complete computed round through one entrypoint and clears disabled sections on the next round", () => {
+        const elements = createElements();
+        const selectBet = jest.fn();
+        const selectMode = jest.fn();
+
+        renderPlayerRound(elements, {
+            credits: 88,
+            totalWin: 12,
+            payoutMultiplier: 1.2,
+            reelsSymbols: [["A", "K"], ["Q"]],
+            highlights: [{id: "line:0", kind: "line", label: "Line: 0, win: 12", winAmount: 12, positions: [[0, 0]], paylinePositions: [[0, 0], [1, 0]]}],
+            featureCounters: [{label: "FG num", value: 2}],
+            lines: [{lineId: "0", definition: [0, 0]}],
+            paytable: {multipliers: [3], rows: [{symbolId: "A", amounts: [12]}]},
+            availableBets: [10, 20],
+            currentBet: 10,
+            onSelectBet: selectBet,
+            availableModeIds: ["base", "ante"],
+            currentModeId: "base",
+            onSelectMode: selectMode,
+            artworkUrlForSymbol: (symbol) => (symbol === "A" ? "/artwork/A.png" : undefined),
+        });
+
+        expect(elements.gridContainer.querySelector('[data-cell="0:0"] img')?.getAttribute("src")).toBe("/artwork/A.png");
+        const image = elements.gridContainer.querySelector('[data-cell="0:0"] img') as HTMLImageElement;
+        image.dispatchEvent(new Event("error"));
+        expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("A");
+        expect(elements.credits.textContent).toBe("88");
+        expect(elements.totalWin.textContent).toBe("12");
+        expect(elements.payoutMultiplier.textContent).toBe("1.2");
+        expect(elements.winsSection.hidden).toBe(false);
+        expect(elements.winsList.textContent).toContain("Line: 0, win: 12");
+        expect(elements.features.textContent).toContain("FG num2");
+        expect(elements.linesList.textContent).toContain("Line: 0");
+        expect(elements.paytableBody.textContent).toContain("A12");
+        expect(elements.betInfo.querySelectorAll("button")).toHaveLength(2);
+        expect(elements.modeInfo.querySelectorAll("button")).toHaveLength(2);
+
+        renderPlayerRound(elements, {reelsSymbols: [["B"]], highlights: []});
+
+        expect(elements.winsSection.hidden).toBe(true);
+        expect(elements.winsList.children).toHaveLength(0);
+        expect(elements.features.hidden).toBe(true);
+        expect(elements.linesList.children).toHaveLength(0);
+        expect(elements.paytableHead.children).toHaveLength(0);
+        expect(elements.paytableBody.children).toHaveLength(0);
+        expect(elements.betInfo.children).toHaveLength(0);
+        expect(elements.modeInfo.children).toHaveLength(0);
+        expect(elements.credits.textContent).toBe("—");
+        expect(elements.totalWin.textContent).toBe("—");
+        expect(elements.payoutMultiplier.textContent).toBe("—");
+        expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("B");
+    });
+});
+
+describe("canonical Player source reachability", () => {
+    it("makes the dev client and Studio invoke the barrel's single round entrypoint", () => {
+        const devClient = readFileSync(resolve(process.cwd(), "cli/client/main.ts"), "utf8");
+        const studio = readFileSync(
+            resolve(process.cwd(), "cli/studio-client/src/components/common/CanonicalPlayerView.tsx"),
+            "utf8",
+        );
+
+        expect(devClient).toContain('from "./player/index.js"');
+        expect(devClient).toContain("renderPlayerRound(");
+        expect(studio).toContain('from "../../../../client/player"');
+        expect(studio).toContain("renderPlayerRound(");
+        expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
+    });
+
+    (pokieExamplesAvailable ? it : it.skip)("makes pokie-examples invoke the barrel's single round entrypoint", () => {
+        const examplesUi = readFileSync(resolve(pokieExamplesRoot, "src/ui/ui.ts"), "utf8");
+        const fixturePage = readFileSync(resolve(pokieExamplesRoot, "fixture-slot.html"), "utf8");
+        const fixtureEntry = readFileSync(resolve(pokieExamplesRoot, "src/fixture-slot.ts"), "utf8");
+        const fixtureGame = readFileSync(resolve(pokieExamplesRoot, "src/games/fixture-slot/index.ts"), "utf8");
+        const examplesIndex = readFileSync(resolve(pokieExamplesRoot, "index.html"), "utf8");
+
+        expect(examplesUi).toContain('from "pokie/client/player"');
+        expect(examplesUi).toContain("renderPlayerRound(");
+        // The public examples index exposes a real navigation control to the fixture page; that
+        // page boots the normal initializeUi() Player workflow, whose rendered Play control runs a
+        // genuine seeded VideoSlotSession.  This intentionally proves source reachability through
+        // the same canonical renderer rather than an automation-only DOM/state injection route.
+        expect(examplesIndex).toContain('href="fixture-slot.html"');
+        expect(fixturePage).toContain('src="/src/fixture-slot.ts"');
+        expect(fixtureEntry).toContain("initializeUi(");
+        expect(fixtureEntry).toContain("createFixtureSession");
+        expect(fixtureGame).toContain('FIXTURE_SEED = "fixture-round"');
+        expect(fixtureGame).toContain("new VideoSlotSession(");
+        expect(fixtureGame).toContain("new SymbolsCombinationsGenerator(");
+        for (const legacyRenderer of [
+            "renderReelsGrid(",
+            "applyPersistentHighlights(",
+            "renderWinsSection(",
+            "renderWinHighlightsList(",
+            "renderFeatureCounters(",
+            "renderBetInfo(",
+            "renderModeInfo(",
+            "renderLineDefinitionsList(",
+            "renderPaytable(",
+        ]) {
+            expect(examplesUi).not.toContain(legacyRenderer);
+        }
+    });
+
+    it("publishes the canonical Player barrel", () => {
+        const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
+            version: string;
+            exports: Record<string, {types: string; default: string}>;
+            files: string[];
+        };
+        const exportedPlayer = packageJson.exports["./client/player"];
+
+        expect(exportedPlayer).toEqual({
+            types: "./dist/cli/client/player/index.d.ts",
+            default: "./dist/cli/client/player/index.js",
+        });
+        expect(packageJson.files).toContain("dist/");
+        expect(canonicalPlayer.renderPlayerRound).toBe(renderPlayerRound);
+    });
+
+    (pokieExamplesAvailable ? it : it.skip)("makes the package-consumer example resolve the Player barrel without a workspace alias", () => {
+        const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {version: string};
+        const examplesPackage = JSON.parse(readFileSync(resolve(pokieExamplesRoot, "package.json"), "utf8")) as {
+            dependencies: Record<string, string>;
+        };
+        const examplesViteConfig = readFileSync(resolve(pokieExamplesRoot, "vite.config.js"), "utf8");
+        const examplesTsconfig = readFileSync(resolve(pokieExamplesRoot, "tsconfig.json"), "utf8");
+
+        expect(examplesPackage.dependencies.pokie).toBe(`^${packageJson.version}`);
+        expect(examplesViteConfig).not.toContain("/workspace");
+        expect(examplesViteConfig).not.toContain("pokieClientPlayerPath");
+        expect(examplesTsconfig).not.toContain("/workspace");
+        expect(examplesTsconfig).not.toContain('"paths"');
+    });
+});
+
 describe("renderConnectionError / clearConnectionError", () => {
     it("unhides the container, sets the readable message and technical detail, and wires the retry button", () => {
         const container = document.createElement("div");
@@ -278,11 +446,14 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         betModeId: "base",
     };
 
-    // Mirrors renderVideoSlotRound()/renderRound() exactly: grid, then win highlights/list, then feature
-    // counters, bet/mode info, line definitions and paytable -- never a client-side recomputation of
+    // Mirrors renderVideoSlotRound()/renderRound() exactly: their inputs are adapted from the response,
+    // then the canonical entrypoint owns every Player section without client-side recomputation of
     // FIXTURE_RESPONSE's own already-computed winningLines/totalWin.
     function renderFixtureRound() {
         const gridContainer = document.createElement("div");
+        const credits = document.createElement("div");
+        const totalWin = document.createElement("div");
+        const payoutMultiplier = document.createElement("div");
         const winsSection = document.createElement("div");
         const winsList = document.createElement("div");
         const linesList = document.createElement("div");
@@ -292,23 +463,42 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         const paytableHead = document.createElement("tr");
         const paytableBody = document.createElement("tbody");
 
-        renderReelsGrid(gridContainer, FIXTURE_RESPONSE.reelsSymbols as string[][]);
         const highlights = deriveWinHighlights(FIXTURE_RESPONSE);
-        applyPersistentHighlights(gridContainer, highlights);
-        renderWinsSection(winsSection, highlights.length > 0);
-        renderWinHighlightsList(winsList, gridContainer, highlights);
-        renderFeatureCounters(features, deriveFeatureCounters(FIXTURE_RESPONSE));
-        renderBetInfo(betInfo, deriveAvailableBets(FIXTURE_RESPONSE.availableBets), FIXTURE_RESPONSE.bet as number, () => undefined);
-        renderModeInfo(
-            modeInfo,
-            deriveAvailableBetModeIds(FIXTURE_RESPONSE.availableBetModeIds),
-            deriveBetModeId(FIXTURE_RESPONSE.betModeId),
-            () => undefined,
+        const winAmount = deriveTotalWin(FIXTURE_RESPONSE);
+        renderPlayerRound(
+            {credits, totalWin, payoutMultiplier, gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody},
+            {
+                credits: 87.5,
+                totalWin: winAmount,
+                payoutMultiplier: 2.5,
+                reelsSymbols: FIXTURE_RESPONSE.reelsSymbols as string[][],
+                highlights,
+                featureCounters: deriveFeatureCounters(FIXTURE_RESPONSE),
+                lines: deriveLineDefinitions(FIXTURE_RESPONSE.linesDefinitions),
+                paytable: derivePaytableView(FIXTURE_RESPONSE.paytable),
+                availableBets: deriveAvailableBets(FIXTURE_RESPONSE.availableBets),
+                currentBet: FIXTURE_RESPONSE.bet as number,
+                onSelectBet: () => undefined,
+                availableModeIds: deriveAvailableBetModeIds(FIXTURE_RESPONSE.availableBetModeIds),
+                currentModeId: deriveBetModeId(FIXTURE_RESPONSE.betModeId),
+                onSelectMode: () => undefined,
+            },
         );
-        renderLineDefinitionsList(linesList, gridContainer, deriveLineDefinitions(FIXTURE_RESPONSE.linesDefinitions));
-        renderPaytable(paytableHead, paytableBody, derivePaytableView(FIXTURE_RESPONSE.paytable));
 
-        return {gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody};
+        return {
+            credits,
+            totalWin,
+            payoutMultiplier,
+            gridContainer,
+            winsSection,
+            winsList,
+            linesList,
+            features,
+            betInfo,
+            modeInfo,
+            paytableHead,
+            paytableBody,
+        };
     }
 
     it("presents orientation, win highlighting, paytable, bets/modes and navigation consistently for the one fixture round", () => {
@@ -330,6 +520,9 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         expect(nonWinningCell.style.backgroundColor).toBe("");
         expect(view.winsSection.hidden).toBe(false);
         expect(view.winsList.querySelector("button")?.textContent).toBe("Line: 0, win: 12.5");
+        expect(view.credits.textContent).toBe("87.5");
+        expect(view.totalWin.textContent).toBe("12.5");
+        expect(view.payoutMultiplier.textContent).toBe("2.5");
 
         // Paytable, straight off the response's own bet-keyed table.
         expect(view.paytableHead.textContent).toBe("Symbol23");

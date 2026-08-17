@@ -1,0 +1,27 @@
+[2026-08-17T06:38:17.717Z] START fresh visible-browser rerun; candidate client=http://127.0.0.1:4812; Studio=http://127.0.0.1:4813; public examples=http://127.0.0.1:5176; seed=fixture-round.
+[2026-08-17T06:38:17.728Z] NAVIGATE generated package npm start Player UI: http://127.0.0.1:4812
+[2026-08-17T06:38:18.269Z] INPUT generated Player session seed="fixture-round" through rendered browser input
+[2026-08-17T06:38:18.643Z] CLICK "Start new session" at rendered BUTTON coordinates (643, 138)
+[2026-08-17T06:38:19.247Z] CLICK "Spin" at rendered BUTTON coordinates (75, 345)
+[2026-08-17T06:38:19.674Z] CLICK "Paytable" at rendered SUMMARY coordinates (383, 361)
+[2026-08-17T06:38:20.310Z] CAPTURE 20-generated-package-npm-start-player: screenshot, rendered text, and rendered grid
+[2026-08-17T06:38:20.314Z] ASSERT generated package Player: fixture grid, highlighted A-line, complete paytable A=5/B=3/C=1, post-round Credits 1004, win 5, and its five-times multiple are visibly rendered.
+[2026-08-17T06:38:20.328Z] NAVIGATE Studio Play UI: http://127.0.0.1:4813/#/project/play
+[2026-08-17T06:38:20.870Z] INPUT Studio Play Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T06:38:21.294Z] CLICK "New session" at rendered BUTTON coordinates (337, 464)
+[2026-08-17T06:38:21.776Z] CLICK "Spin" at rendered BUTTON coordinates (310, 284)
+[2026-08-17T06:38:22.481Z] CAPTURE 21-studio-play-seeded-round: screenshot, rendered text, and rendered grid
+[2026-08-17T06:38:22.484Z] OBSERVE Studio Play acceptance failure: Studio Play: missing visible ["Paytable","Win multiple"]
+[2026-08-17T06:38:22.486Z] NAVIGATE Studio Replay UI: http://127.0.0.1:4813/#/project/replay
+[2026-08-17T06:38:23.031Z] INPUT Studio Replay Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T06:38:23.462Z] CLICK "Load" at rendered BUTTON coordinates (531, 295)
+[2026-08-17T06:38:24.101Z] CLICK "Run again" at rendered BUTTON coordinates (329, 287)
+[2026-08-17T06:38:24.962Z] CAPTURE 22-studio-replay-seeded-round: screenshot, rendered text, and rendered grid
+[2026-08-17T06:38:24.973Z] OBSERVE Studio Replay acceptance failure: Studio Replay: missing visible ["Paytable","Win multiple"]
+[2026-08-17T06:38:25.015Z] NAVIGATE public pokie-examples index: http://127.0.0.1:5176
+[2026-08-17T06:38:26.517Z] CLICK "Open deterministic round" at rendered A coordinates (136, 402)
+[2026-08-17T06:38:27.097Z] CLICK "Play" at rendered BUTTON coordinates (131, 382)
+[2026-08-17T06:38:27.699Z] CLICK "Paytable" at rendered BUTTON coordinates (383, 466)
+[2026-08-17T06:38:28.309Z] CAPTURE 23-pokie-examples-fixture-round: screenshot, rendered text, and rendered grid
+[2026-08-17T06:38:28.316Z] ASSERT public pokie-examples Fixture Slot: fixture grid, highlighted A-line, complete paytable A=5/B=3/C=1, post-round Credits 1004, win 5, and its five-times multiple are visibly rendered.
+[2026-08-17T06:38:28.323Z] COMPLETE: all four public rendered surfaces were exercised; individual acceptance assertions and observations are recorded above. No DOM/state injection or application API call was used.

@@ -43,6 +43,9 @@ export type ExpectedReplayState =
           seed?: string;
           artifact?: RoundArtifactJson;
           artifactWarnings: string[];
+          // A stored/pasted Studio replay descriptor can carry the player-facing post-round balance.
+          // It stays optional for portable artifacts produced by older/other replay tools.
+          credits?: number;
           stateBefore?: unknown;
           stateAfter?: unknown;
           // Whatever this record's own identity/timing is known to be -- a stored replay job's session/job
@@ -742,22 +745,23 @@ export function ReplayTab({
                                                 </Table.Tr>
                                             )}
                                             <Table.Tr>
-                                                <Table.Th>Credits</Table.Th>
-                                                <Table.Td>{selectedSpin.credits ?? "—"}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
                                                 <Table.Th>Bet</Table.Th>
                                                 <Table.Td>{selectedSpin.bet ?? "—"}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Win</Table.Th>
-                                                <Table.Td>{selectedSpin.win ?? 0}</Table.Td>
                                             </Table.Tr>
                                         </Table.Tbody>
                                     </Table>
 
                                     {selectedSpin.screen ? (
-                                        <GameScreenView screen={describeRuntimeScreen(selectedSpin.screen) ?? []} />
+                                        <GameScreenView
+                                            screen={describeRuntimeScreen(selectedSpin.screen) ?? []}
+                                            credits={selectedSpin.credits}
+                                            totalWin={selectedSpin.win}
+                                            payoutMultiplier={
+                                                selectedSpin.win !== undefined && selectedSpin.bet !== undefined && selectedSpin.bet !== 0
+                                                    ? selectedSpin.win / selectedSpin.bet
+                                                    : undefined
+                                            }
+                                        />
                                     ) : (
                                         <Text size="sm" c="dimmed">
                                             No screen available.
@@ -847,6 +851,7 @@ export function ReplayTab({
                                     {expected.artifact && expected.artifactWarnings.length === 0 && (
                                         <RoundArtifactInspector
                                             artifact={describeRoundArtifact(expected.artifact)}
+                                            credits={expected.credits}
                                             stateBefore={expected.stateBefore}
                                             stateAfter={expected.stateAfter}
                                         />
@@ -999,6 +1004,7 @@ export function ReplayTab({
                                     comparison={findMethod === "artifact" ? comparison : undefined}
                                     stateBefore={result.stateBefore}
                                     stateAfter={result.stateAfter}
+                                    credits={result.credits}
                                 />
                             )}
                             {jobLoaded && !active && result && !result.artifact && (

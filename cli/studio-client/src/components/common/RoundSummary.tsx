@@ -86,21 +86,20 @@ export function RoundSummary({session}: {session: StudioRuntimeSessionView}) {
                         <Table.Td>{session.studioRound ?? "—"}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Credits</Table.Th>
-                        <Table.Td>{session.credits !== undefined ? session.credits.toFixed(2) : "—"}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
                         <Table.Th>Bet</Table.Th>
                         <Table.Td>{session.bet !== undefined ? session.bet.toFixed(2) : "—"}</Table.Td>
-                    </Table.Tr>
-                    <Table.Tr>
-                        <Table.Th>Win</Table.Th>
-                        <Table.Td>{session.win !== undefined ? session.win.toFixed(2) : "—"}</Table.Td>
                     </Table.Tr>
                 </Table.Tbody>
             </Table>
 
-            {session.screen && <GameScreenView screen={describeRuntimeScreen(session.screen) ?? []} />}
+            {session.screen && (
+                <GameScreenView
+                    screen={describeRuntimeScreen(session.screen) ?? []}
+                    credits={session.credits}
+                    totalWin={session.win}
+                    payoutMultiplier={session.win !== undefined && session.bet !== undefined && session.bet !== 0 ? session.win / session.bet : undefined}
+                />
+            )}
 
             {hasAdditional && (
                 <PageSection legend="Additional round data">

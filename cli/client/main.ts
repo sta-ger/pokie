@@ -2,18 +2,10 @@ import {FetchLike, spin} from "./apiClient.js";
 import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButton} from "./dom.js";
 import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
 import {
-    applyPersistentHighlights,
     clearConnectionError,
-    renderBetInfo,
     renderConnectionError,
-    renderFeatureCounters,
-    renderLineDefinitionsList,
-    renderModeInfo,
-    renderPaytable,
-    renderReelsGrid,
-    renderWinHighlightsList,
-    renderWinsSection,
-} from "./player/renderPlayer.js";
+    renderPlayerRound,
+} from "./player/index.js";
 import {
     deriveAvailableBetModeIds,
     deriveAvailableBets,
@@ -37,8 +29,13 @@ type Elements = {
     bet: HTMLElement;
     credits: HTMLElement;
     win: HTMLElement;
+    payoutMultiplier: HTMLElement;
     screen: HTMLElement;
     spinButton: HTMLButtonElement;
+    sessionSeed: HTMLInputElement;
+    sessionId: HTMLInputElement;
+    startSessionButton: HTMLButtonElement;
+    restoreSessionButton: HTMLButtonElement;
     rawJson: HTMLElement;
     stagesSection: HTMLElement;
     stageLabel: HTMLElement;
@@ -92,8 +89,13 @@ function queryElements(): Elements {
         bet: requireElement("bet"),
         credits: requireElement("credits"),
         win: requireElement("win"),
+        payoutMultiplier: requireElement("payout-multiplier"),
         screen: requireElement("screen"),
         spinButton: requireElement("spin-button"),
+        sessionSeed: requireElement("session-seed"),
+        sessionId: requireElement("session-id"),
+        startSessionButton: requireElement("start-session-button"),
+        restoreSessionButton: requireElement("restore-session-button"),
         rawJson: requireElement("raw-json"),
         stagesSection: requireElement("stages-section"),
         stageLabel: requireElement("stage-label"),
@@ -136,7 +138,22 @@ async function fetchConfig(fetchImpl: FetchLike): Promise<{apiBaseUrl: string}> 
 // Studio's own "normal game mode" (the Play tab) never embeds this player at all any more; it drives a
 // session directly in Studio's own backend instead (see StudioPlayService's own doc comment).
 function readPreferredSessionId(): string | undefined {
-    return new URLSearchParams(window.location.search).get("session") ?? undefined;
+    const sessionId = new URLSearchParams(window.location.search).get("session")?.trim();
+    return sessionId && sessionId.length > 0 ? sessionId : undefined;
+}
+
+function readSessionSeed(elements: Elements): string | undefined {
+    const seed = elements.sessionSeed.value;
+    return seed.trim().length > 0 ? seed : undefined;
+}
+
+function readSessionId(elements: Elements): string | undefined {
+    const sessionId = elements.sessionId.value.trim();
+    return sessionId.length > 0 ? sessionId : undefined;
+}
+
+function renderSessionId(elements: Elements, sessionId: string): void {
+    elements.sessionId.value = sessionId;
 }
 
 // paytable/linesDefinitions/availableBets only ever appear on a VideoSlotInitialNetworkData payload
@@ -163,19 +180,43 @@ function renderVideoSlotRound(
     onSelectBet: (bet: number) => void,
     selectedMode: string | undefined,
     onSelectMode: (modeId: string) => void,
+    credits: number,
 ): void {
-    renderReelsGrid(elements.playerGridContainer, response.reelsSymbols);
-
     const highlights = deriveWinHighlights(response);
-    applyPersistentHighlights(elements.playerGridContainer, highlights);
-    renderWinsSection(elements.playerWinsSection, highlights.length > 0);
-    renderWinHighlightsList(elements.playerWinsList, elements.playerGridContainer, highlights);
-
-    renderFeatureCounters(elements.playerFeatures, deriveFeatureCounters(response));
-    renderBetInfo(elements.playerBetInfo, staticView.availableBets, selectedBet, onSelectBet);
-    renderModeInfo(elements.playerModeInfo, staticView.availableBetModeIds, selectedMode, onSelectMode);
-    renderLineDefinitionsList(elements.playerLinesList, elements.playerGridContainer, staticView.lines);
-    renderPaytable(elements.playerPaytableHead, elements.playerPaytableBody, staticView.paytable);
+    const totalWin = typeof response.totalWin === "number" ? response.totalWin : undefined;
+    const bet = typeof response.bet === "number" ? response.bet : selectedBet;
+    renderPlayerRound(
+        {
+            credits: elements.credits,
+            totalWin: elements.win,
+            payoutMultiplier: elements.payoutMultiplier,
+            gridContainer: elements.playerGridContainer,
+            winsSection: elements.playerWinsSection,
+            winsList: elements.playerWinsList,
+            linesList: elements.playerLinesList,
+            features: elements.playerFeatures,
+            betInfo: elements.playerBetInfo,
+            modeInfo: elements.playerModeInfo,
+            paytableHead: elements.playerPaytableHead,
+            paytableBody: elements.playerPaytableBody,
+        },
+        {
+            credits,
+            totalWin,
+            payoutMultiplier: totalWin !== undefined && bet !== undefined && bet !== 0 ? totalWin / bet : undefined,
+            reelsSymbols: response.reelsSymbols,
+            highlights,
+            featureCounters: deriveFeatureCounters(response),
+            lines: staticView.lines,
+            paytable: staticView.paytable,
+            availableBets: staticView.availableBets,
+            currentBet: selectedBet,
+            onSelectBet,
+            availableModeIds: staticView.availableBetModeIds,
+            currentModeId: selectedMode,
+            onSelectMode,
+        },
+    );
 }
 
 function render(
@@ -190,13 +231,39 @@ function render(
     onSelectMode: (modeId: string) => void,
 ): void {
     elements.gameTitle.textContent = `${response.game.name} — POKIE client preview`;
-    renderRoundView(elements, extractKnownRoundView(response));
+    const roundView = extractKnownRoundView(response);
+    renderRoundView({bet: elements.bet, screen: elements.screen}, roundView);
 
     const isVideoSlot = isVideoSlotRoundResponse(response);
     elements.playerSection.hidden = !isVideoSlot;
     elements.screen.hidden = isVideoSlot;
     if (isVideoSlot) {
-        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode);
+        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode, roundView.credits);
+    } else {
+        renderPlayerRound(
+            {
+                credits: elements.credits,
+                totalWin: elements.win,
+                payoutMultiplier: elements.payoutMultiplier,
+                gridContainer: elements.playerGridContainer,
+                winsSection: elements.playerWinsSection,
+                winsList: elements.playerWinsList,
+                linesList: elements.playerLinesList,
+                features: elements.playerFeatures,
+                betInfo: elements.playerBetInfo,
+                modeInfo: elements.playerModeInfo,
+                paytableHead: elements.playerPaytableHead,
+                paytableBody: elements.playerPaytableBody,
+            },
+            {
+                credits: roundView.credits,
+                totalWin: roundView.win,
+                payoutMultiplier:
+                    roundView.win !== undefined && roundView.bet !== undefined && roundView.bet !== 0 ? roundView.win / roundView.bet : undefined,
+                reelsSymbols: [],
+                highlights: [],
+            },
+        );
     }
 
     renderRawJson(elements.rawJson, response);
@@ -252,7 +319,7 @@ function showSpinError(elements: Elements, error: unknown, onRetry: () => void, 
     elements.spinReconnectButton.onclick = onReconnect;
 }
 
-async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
+async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId?: string, seed?: string): Promise<void> {
     clearConnectionError(elements.connectionError);
     elements.spinError.hidden = true;
 
@@ -260,7 +327,8 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
         renderStatus(elements.status, "Connecting…");
         const {apiBaseUrl} = await fetchConfig(fetchImpl);
 
-        let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl, readPreferredSessionId());
+        let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl, preferredSessionId ?? readPreferredSessionId(), seed);
+        renderSessionId(elements, current.sessionId);
         let stageIndex = 0;
         const staticView = deriveStaticVideoSlotView(current);
         let selectedBet = typeof current.bet === "number" ? current.bet : staticView.availableBets[0];
@@ -292,12 +360,25 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
         renderStatus(elements.status, `Connected to ${apiBaseUrl}`);
         rerender();
         elements.spinButton.disabled = false;
+        elements.startSessionButton.onclick = () => {
+            clearSessionId(window.localStorage);
+            boot(elements, fetchImpl, undefined, readSessionSeed(elements)).catch((error: unknown) => console.error(error));
+        };
+        elements.restoreSessionButton.onclick = () => {
+            const sessionId = readSessionId(elements);
+            if (sessionId === undefined) {
+                renderStatus(elements.status, "Enter a session ID to restore it.");
+                return;
+            }
+            boot(elements, fetchImpl, sessionId).catch((error: unknown) => console.error(error));
+        };
 
         const attemptSpin = (): void => {
             elements.spinButton.disabled = true;
             spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet, selectedMode)
                 .then((response) => {
                     current = response;
+                    renderSessionId(elements, current.sessionId);
                     stageIndex = 0;
                     selectedBet = typeof current.bet === "number" ? current.bet : selectedBet;
                     selectedMode = deriveBetModeId((current as VideoSlotRoundResponse).betModeId) ?? selectedMode;
@@ -316,7 +397,7 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
     } catch (error) {
         renderStatus(elements.status, "Unable to connect.");
         showConnectionError(elements, error, () => {
-            boot(elements, fetchImpl).catch((retryError: unknown) => console.error(retryError));
+            boot(elements, fetchImpl, preferredSessionId, seed).catch((retryError: unknown) => console.error(retryError));
         });
     }
 }
@@ -327,7 +408,7 @@ async function boot(elements: Elements, fetchImpl: FetchLike): Promise<void> {
 // would already recover from.
 function reconnect(elements: Elements, fetchImpl: FetchLike): void {
     clearSessionId(window.localStorage);
-    boot(elements, fetchImpl).catch((error: unknown) => console.error(error));
+    boot(elements, fetchImpl, undefined, readSessionSeed(elements)).catch((error: unknown) => console.error(error));
 }
 
 async function main(): Promise<void> {

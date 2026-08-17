@@ -11,7 +11,8 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 // multi-project run, every other project included) if a listed root doesn't exist on disk. Detect
 // availability up front so absence degrades to "this one project matches zero tests" instead of
 // crashing every project's test run.
-const pokieExamplesAvailable = existsSync(path.join(configDir, "..", "pokie-examples"));
+const pokieExamplesRoot = process.env.POKIE_EXAMPLES_PATH ?? path.join(configDir, "..", "pokie-examples");
+const pokieExamplesAvailable = existsSync(pokieExamplesRoot);
 
 // Integration/workflow/server/worker/filesystem-heavy test files that get their own slower
 // "pokie-integration" project instead of running in the default fast "pokie" lane. Kept as one
@@ -132,12 +133,9 @@ const sourceTestModuleNameMapper = {
 };
 
 // pokie-examples is a separate sibling checkout (see this repo's own package.json "./client/player"
-// export and pokie-examples' own vite.config.js alias, which this mirrors for tests) -- its own
-// tests live outside this config's rootDir entirely, so this project needs its own `roots` to have
-// Jest discover them at all. "pokie"/"pokie/client/player" resolve the same way pokie-examples'
-// own vite.config.js/tsconfig.json resolve them: straight to this repo's own source, not a built
-// npm package, so a test here always exercises the exact same code the "pokie" project's own tests
-// (tests/cli/client/player/videoSlotRoundView.test.ts) do.
+// export) -- its own tests live outside this config's rootDir entirely, so this project needs its
+// own `roots` to have Jest discover them at all. This mapper is test-only TS source wiring; Vite
+// and TypeScript use the published `pokie/client/player` package export in production.
 const pokieExamplesModuleNameMapper = {
     "^pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
     "^pokie$": "<rootDir>/src/index.ts",
@@ -145,7 +143,7 @@ const pokieExamplesModuleNameMapper = {
 };
 
 const pokieExamplesTransform = {
-    "^.+\\.ts$": ["ts-jest", {tsconfig: "../pokie-examples/tsconfig.test.json"}],
+    "^.+\\.ts$": ["ts-jest", {tsconfig: path.join(pokieExamplesRoot, "tsconfig.test.json")}],
 };
 
 // Coverage options only take effect at the top level under a multi-project ("projects") config --
@@ -237,7 +235,7 @@ export default {
             // Fall back to this repo's own (always-present) rootDir with a testMatch that can
             // never match anything real, rather than pointing `roots` at a directory that doesn't
             // exist -- see pokieExamplesAvailable above.
-            roots: pokieExamplesAvailable ? ["<rootDir>/../pokie-examples"] : ["<rootDir>"],
+            roots: pokieExamplesAvailable ? [pokieExamplesRoot] : ["<rootDir>"],
             ...(pokieExamplesAvailable
                 ? {}
                 : {testMatch: ["<rootDir>/__pokie_examples_unavailable__/*.test.ts"]}),

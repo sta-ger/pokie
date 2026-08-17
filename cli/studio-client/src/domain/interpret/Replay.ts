@@ -84,6 +84,7 @@ export type ReplayResultView = {
     seed: string | null;
     totalBet: number;
     totalWin: number;
+    credits?: number;
     // Cell-level display strings, reel-major (screen[reelIndex][rowIndex], same orientation as
     // RoundArtifact.screen -- see ScreenTable's own doc comment), or undefined for a session without
     // getSymbolsCombination() (ReplayDescriptor.screen === null — see ReplayRecorder's own doc
@@ -123,6 +124,7 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         seed: descriptor.seed,
         totalBet: descriptor.totalBet,
         totalWin: descriptor.totalWin,
+        credits: descriptor.credits,
         screen: descriptor.screen ? descriptor.screen.map((row) => row.map(formatScreenCell)) : undefined,
         timestamp: descriptor.timestamp,
         durationMs: descriptor.durationMs,

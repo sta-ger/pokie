@@ -540,6 +540,10 @@ export type SimulationReportBreakdownComponent = {
     rounds: number;
     totalBet: number;
     totalWin: number;
+    // Studio Replay's player-facing balance after the target round.  Replays execute with an
+    // intentionally unlimited internal bankroll, so this ledger value is the original session's
+    // observable balance rather than that implementation detail.
+    credits?: number;
     rtp: number;
     hitFrequency: number;
     maxWin: number;
@@ -707,6 +711,9 @@ export type ReplayDescriptor = {
     round: number;
     totalBet: number;
     totalWin: number;
+    // The player-facing balance after the replayed round. Optional because older replay descriptors
+    // did not persist it, while Studio's replay executor includes it for current sessions.
+    credits?: number;
     screen: unknown[][] | null;
     timestamp: number;
     durationMs: number;

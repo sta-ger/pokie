@@ -1,4 +1,5 @@
 import type {RoundArtifactWin} from "../../api/types";
+import type {FeatureCounter, PaytableView} from "../../../../client/player";
 import {CanonicalPlayerView} from "./CanonicalPlayerView";
 
 // The shared "screen, with whatever won on it highlighted" presentation every round-inspection surface
@@ -15,6 +16,44 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 // and ProjectDashboardPage.playWorkflow.test.tsx's own "canonical player parity" suite (through Play's
 // real session/spin workflow, proving it reaches the exact same cli/client/player DOM functions
 // tests/cli/client/player/renderPlayer.test.ts's own fixture-round test calls directly).
-export function GameScreenView({screen, wins}: {screen: string[][]; wins?: readonly RoundArtifactWin[]}) {
-    return <CanonicalPlayerView reelsSymbols={screen} wins={wins} />;
+export function GameScreenView({
+    screen,
+    wins,
+    credits,
+    totalWin,
+    payoutMultiplier,
+    paytable,
+    featureCounters,
+    availableBets,
+    currentBet,
+    availableModeIds,
+    currentModeId,
+}: {
+    screen: string[][];
+    wins?: readonly RoundArtifactWin[];
+    credits?: number;
+    totalWin?: number;
+    payoutMultiplier?: number;
+    paytable?: PaytableView;
+    featureCounters?: FeatureCounter[];
+    availableBets?: number[];
+    currentBet?: number;
+    availableModeIds?: string[];
+    currentModeId?: string;
+}) {
+    return (
+        <CanonicalPlayerView
+            reelsSymbols={screen}
+            wins={wins}
+            credits={credits}
+            totalWin={totalWin}
+            payoutMultiplier={payoutMultiplier}
+            paytable={paytable}
+            featureCounters={featureCounters}
+            availableBets={availableBets}
+            currentBet={currentBet}
+            availableModeIds={availableModeIds}
+            currentModeId={currentModeId}
+        />
+    );
 }

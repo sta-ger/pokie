@@ -1,0 +1,16 @@
+[2026-08-17T03:34:17.815Z] START fresh visible-browser rerun; candidate client=http://127.0.0.1:4812; Studio=http://127.0.0.1:4813; public examples=http://127.0.0.1:5176; seed=fixture-round.
+[2026-08-17T03:34:17.825Z] NAVIGATE generated package npm start Player UI: http://127.0.0.1:4812
+[2026-08-17T03:34:18.363Z] INPUT generated Player session seed="fixture-round" through rendered browser input
+[2026-08-17T03:34:18.738Z] CLICK "Start new session" at rendered BUTTON coordinates (643, 138)
+[2026-08-17T03:34:19.333Z] CLICK "Spin" at rendered BUTTON coordinates (75, 345)
+[2026-08-17T03:34:19.754Z] CLICK "Paytable" at rendered SUMMARY coordinates (383, 361)
+[2026-08-17T03:34:20.393Z] CAPTURE 20-generated-package-npm-start-player: screenshot, rendered text, and rendered grid
+[2026-08-17T03:34:20.396Z] ASSERT generated package Player: fixture grid, highlighted A-line, complete paytable A=5/B=3/C=1, post-round Credits 1004, win 5, and its five-times multiple are visibly rendered.
+[2026-08-17T03:34:20.436Z] NAVIGATE Studio Play UI: http://127.0.0.1:4813/#/project/play
+[2026-08-17T03:34:20.985Z] INPUT Studio Play Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T03:34:21.398Z] CLICK "New session" at rendered BUTTON coordinates (337, 464)
+[2026-08-17T03:34:21.880Z] CLICK "Spin" at rendered BUTTON coordinates (310, 284)
+[2026-08-17T03:34:22.575Z] CAPTURE 21-studio-play-seeded-round: screenshot, rendered text, and rendered grid
+[2026-08-17T03:34:22.583Z] FAILED Error: Studio Play: rendered Paytable unavailable
+    at assertSurface (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-08-20260817015826/docs/evidence/p6-08-canonical-player-runtime-parity/host-verification-independent-20260817/browser-ui-rerun.mjs:46:339)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-08-20260817015826/docs/evidence/p6-08-canonical-player-runtime-parity/host-verification-independent-20260817/browser-ui-rerun.mjs:60:52)

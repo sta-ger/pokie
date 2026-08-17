@@ -1,34 +1,22 @@
 import {Table} from "@mantine/core";
 import {useLayoutEffect, useRef} from "react";
 import {
-    applyPersistentHighlights,
-    renderBetInfo,
-    renderFeatureCounters,
-    renderLineDefinitionsList,
-    renderModeInfo,
-    renderPaytable,
-    renderReelsGrid,
-    renderWinHighlightsList,
-    renderWinsSection,
-} from "../../../../client/player/renderPlayer";
-import {
     deriveWinHighlightsFromRoundArtifactWins,
+    renderPlayerRound,
     type FeatureCounter,
     type GenericRoundArtifactWin,
     type LineDefinitionView,
     type PaytableView as PaytableViewData,
-} from "../../../../client/player/videoSlotRoundView";
+} from "../../../../client/player";
 import {useActiveSymbolArtwork} from "./SymbolPresentation";
 
 // The one place Studio's round-inspection surfaces (Play, Replay -- recorded/recreated/simulation-
 // sampled rounds, Session Spin -- an Outcome Source draw) actually mount cli/client/player's
-// own DOM functions, via refs -- not a second, independently-maintained React/Mantine re-presentation of
-// the same screen/wins/paytable/bets/modes/features data (see this repo's own cli/client/main.ts and
-// pokie-examples' src/ui/ui.ts for the two other consumers of that exact same module -- see
-// cli/client/player/index.ts's own doc comment). Every render* call below is the literal function a
-// browser-side game client calls; React's own job here is only mounting the container elements those
-// functions render into and re-invoking them (idempotent -- each clears its own container first) when
-// props change, never re-implementing what they draw. Only a win's own already-computed
+// own renderPlayerRound entrypoint, via refs -- not a second, independently-maintained React/Mantine
+// re-presentation of the same screen/wins/paytable/bets/modes/features data (see this repo's own
+// cli/client/main.ts and pokie-examples' src/ui/ui.ts for the two other consumers of that exact module).
+// React only mounts Player's container elements and re-invokes that idempotent entrypoint when props
+// change; it never composes individual player sections. Only a win's own already-computed
 // winningPositions/metadata.definition are read (via deriveWinHighlightsFromRoundArtifactWins) -- no win,
 // line, or feature outcome is calculated here.
 //
@@ -49,6 +37,9 @@ export function CanonicalPlayerView({
     availableModeIds,
     currentModeId,
     onSelectMode,
+    credits,
+    totalWin,
+    payoutMultiplier,
 }: {
     reelsSymbols: string[][];
     wins?: readonly GenericRoundArtifactWin[];
@@ -61,6 +52,9 @@ export function CanonicalPlayerView({
     availableModeIds?: string[];
     currentModeId?: string;
     onSelectMode?: (modeId: string) => void;
+    credits?: number;
+    totalWin?: number;
+    payoutMultiplier?: number;
 }) {
     const artwork = useActiveSymbolArtwork();
     const gridRef = useRef<HTMLDivElement>(null);
@@ -72,90 +66,99 @@ export function CanonicalPlayerView({
     const modeInfoRef = useRef<HTMLDivElement>(null);
     const paytableHeadRef = useRef<HTMLTableRowElement>(null);
     const paytableBodyRef = useRef<HTMLTableSectionElement>(null);
+    const creditsRef = useRef<HTMLElement>(null);
+    const totalWinRef = useRef<HTMLSpanElement>(null);
+    const payoutMultiplierRef = useRef<HTMLSpanElement>(null);
 
     useLayoutEffect(() => {
-        if (!gridRef.current) {
+        if (
+            !gridRef.current ||
+            !winsSectionRef.current ||
+            !winsListRef.current ||
+            !linesListRef.current ||
+            !featuresRef.current ||
+            !betInfoRef.current ||
+            !modeInfoRef.current ||
+            !paytableHeadRef.current ||
+            !paytableBodyRef.current ||
+            (credits !== undefined && !creditsRef.current) ||
+            (totalWin !== undefined && !totalWinRef.current) ||
+            (payoutMultiplier !== undefined && !payoutMultiplierRef.current)
+        ) {
             return;
         }
         const highlights = deriveWinHighlightsFromRoundArtifactWins(wins ?? [], reelsSymbols.length);
-        renderReelsGrid(gridRef.current, reelsSymbols);
-        applyPersistentHighlights(gridRef.current, highlights);
-        gridRef.current.querySelectorAll<HTMLElement>(".player-cell").forEach((cell) => {
-            const symbolId = cell.textContent ?? "";
-            const reference = artwork[symbolId];
-            if (reference === undefined) return;
-            const image = document.createElement("img");
-            image.src = `/api/project/symbol-artwork?path=${encodeURIComponent(reference)}`;
-            image.alt = symbolId;
-            image.width = 28;
-            image.height = 28;
-            image.style.objectFit = "contain";
-            image.onerror = () => {
-                cell.textContent = symbolId;
-            };
-            cell.textContent = "";
-            cell.appendChild(image);
-        });
-        if (winsSectionRef.current) {
-            renderWinsSection(winsSectionRef.current, highlights.length > 0);
-        }
-        if (winsListRef.current) {
-            renderWinHighlightsList(winsListRef.current, gridRef.current, highlights);
-        }
-    }, [artwork, reelsSymbols, wins]);
-
-    useLayoutEffect(() => {
-        if (linesListRef.current && gridRef.current && lines) {
-            renderLineDefinitionsList(linesListRef.current, gridRef.current, lines);
-        }
-    }, [lines]);
-
-    useLayoutEffect(() => {
-        if (featuresRef.current && featureCounters) {
-            renderFeatureCounters(featuresRef.current, featureCounters);
-        }
-    }, [featureCounters]);
-
-    useLayoutEffect(() => {
-        if (betInfoRef.current && availableBets) {
-            renderBetInfo(betInfoRef.current, availableBets, currentBet, onSelectBet ?? (() => undefined));
-        }
-    }, [availableBets, currentBet, onSelectBet]);
-
-    useLayoutEffect(() => {
-        if (modeInfoRef.current && availableModeIds) {
-            renderModeInfo(modeInfoRef.current, availableModeIds, currentModeId, onSelectMode ?? (() => undefined));
-        }
-    }, [availableModeIds, currentModeId, onSelectMode]);
-
-    useLayoutEffect(() => {
-        if (paytableHeadRef.current && paytableBodyRef.current && paytable) {
-            renderPaytable(paytableHeadRef.current, paytableBodyRef.current, paytable);
-        }
-    }, [paytable]);
+        renderPlayerRound(
+            {
+                ...(creditsRef.current ? {credits: creditsRef.current} : {}),
+                ...(totalWinRef.current ? {totalWin: totalWinRef.current} : {}),
+                ...(payoutMultiplierRef.current ? {payoutMultiplier: payoutMultiplierRef.current} : {}),
+                gridContainer: gridRef.current,
+                winsSection: winsSectionRef.current,
+                winsList: winsListRef.current,
+                linesList: linesListRef.current,
+                features: featuresRef.current,
+                betInfo: betInfoRef.current,
+                modeInfo: modeInfoRef.current,
+                paytableHead: paytableHeadRef.current,
+                paytableBody: paytableBodyRef.current,
+            },
+            {
+                credits,
+                totalWin,
+                payoutMultiplier,
+                formatTotalWin: (value) => value.toFixed(2),
+                formatPayoutMultiplier: (value) => value.toFixed(2),
+                reelsSymbols,
+                highlights,
+                featureCounters,
+                lines,
+                paytable,
+                availableBets,
+                currentBet,
+                onSelectBet,
+                availableModeIds,
+                currentModeId,
+                onSelectMode,
+                artworkUrlForSymbol: (symbolId) => {
+                    const reference = artwork[symbolId];
+                    return reference === undefined ? undefined : `/api/project/symbol-artwork?path=${encodeURIComponent(reference)}`;
+                },
+            },
+        );
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, wins]);
 
     return (
         <div>
             <Table.ScrollContainer minWidth={200}>
                 <div ref={gridRef} />
             </Table.ScrollContainer>
+            <dl hidden={credits === undefined && totalWin === undefined && payoutMultiplier === undefined}>
+                {credits !== undefined && <><dt>Credits</dt><dd ref={creditsRef} /></>}
+                {totalWin !== undefined && (
+                    <>
+                        <dt>Total win</dt>
+                        <dd>
+                            <span ref={totalWinRef} /> {payoutMultiplier !== undefined && <span>(<span ref={payoutMultiplierRef} />x)</span>}
+                        </dd>
+                    </>
+                )}
+            </dl>
             <div ref={winsSectionRef} hidden>
                 <div ref={winsListRef} />
             </div>
-            {lines !== undefined && lines.length > 0 && <div ref={linesListRef} />}
-            {featureCounters !== undefined && featureCounters.length > 0 && <dl ref={featuresRef} />}
-            {availableBets !== undefined && availableBets.length > 0 && <div ref={betInfoRef} />}
-            {availableModeIds !== undefined && availableModeIds.length > 0 && <div ref={modeInfoRef} />}
-            {paytable !== undefined && (
-                <Table.ScrollContainer minWidth={200}>
-                    <Table withColumnBorders>
-                        <Table.Thead>
-                            <tr ref={paytableHeadRef} />
-                        </Table.Thead>
-                        <tbody ref={paytableBodyRef} />
-                    </Table>
-                </Table.ScrollContainer>
-            )}
+            <div ref={linesListRef} hidden={lines === undefined || lines.length === 0} />
+            <dl ref={featuresRef} hidden={featureCounters === undefined || featureCounters.length === 0} />
+            <div ref={betInfoRef} hidden={availableBets === undefined || availableBets.length === 0} />
+            <div ref={modeInfoRef} hidden={availableModeIds === undefined || availableModeIds.length === 0} />
+            <Table.ScrollContainer minWidth={200} hidden={paytable === undefined}>
+                <Table withColumnBorders>
+                    <Table.Thead>
+                        <tr ref={paytableHeadRef} />
+                    </Table.Thead>
+                    <tbody ref={paytableBodyRef} />
+                </Table>
+            </Table.ScrollContainer>
         </div>
     );
 }
