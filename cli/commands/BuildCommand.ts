@@ -46,17 +46,22 @@ export class BuildCommand implements CliCommandHandling {
 
     constructor(
         pokieVersion: string,
-        loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
-        validator: GameBlueprintValidating = new GameBlueprintValidator(),
-        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        loadBlueprint?: (filePath: string) => unknown,
+        validator?: GameBlueprintValidating,
+        resolveProject?: ProjectResolving,
         registry?: ArtifactBuilderRegistry,
-        managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(resolveProject),
+        managedOutcomeProjects?: ManagedOutcomeProjectServicing,
     ) {
+        const projectResolver = resolveProject ?? new ProjectTargetResolver();
         this.pokieVersion = pokieVersion;
-        this.loadBlueprint = loadBlueprint;
-        this.validator = validator;
-        this.resolveProject = resolveProject;
-        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects);
+        this.loadBlueprint = loadBlueprint ?? loadGameBlueprint;
+        this.validator = validator ?? new GameBlueprintValidator();
+        this.resolveProject = projectResolver;
+        this.registry = registry ?? new ArtifactBuilderRegistry(
+            pokieVersion,
+            undefined,
+            managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver),
+        );
     }
 
     public getName(): string {

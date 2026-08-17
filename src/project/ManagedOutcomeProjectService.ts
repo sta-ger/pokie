@@ -34,11 +34,16 @@ type RegistryDocument = {readonly projects: readonly RegisteredOutcomeProject[]}
 // verified and they are written into this registry; the workflow itself never treats a path as registered.
 export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServicing {
     private readonly reader = new OutcomeLibraryBundleReader();
+    private readonly resolveProject: ProjectResolving;
+    private readonly onRegistered: (project: PokieProject) => Promise<void>;
 
     constructor(
-        private readonly resolveProject: ProjectResolving = new ProjectTargetResolver(),
-        private readonly onRegistered: (project: PokieProject) => Promise<void> = () => Promise.resolve(),
-    ) {}
+        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        onRegistered: (project: PokieProject) => Promise<void> = () => Promise.resolve(),
+    ) {
+        this.resolveProject = resolveProject;
+        this.onRegistered = onRegistered;
+    }
 
     public async findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
         const document = await this.readRegistry(sourceRootPath);
