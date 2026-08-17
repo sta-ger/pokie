@@ -3,6 +3,7 @@
  */
 import {readFileSync} from "node:fs";
 import {resolve} from "node:path";
+import * as canonicalPlayer from "../../../../cli/client/player/index.js";
 import {
     applyPersistentHighlights,
     clearConnectionError,
@@ -320,6 +321,35 @@ describe("canonical Player source reachability", () => {
         ]) {
             expect(examplesUi).not.toContain(legacyRenderer);
         }
+    });
+
+    it("publishes the canonical Player barrel for package consumers without a workspace alias", () => {
+        const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
+            version: string;
+            exports: Record<string, {types: string; default: string}>;
+            files: string[];
+        };
+        const exportedPlayer = packageJson.exports["./client/player"];
+        const examplesRoot = process.env.POKIE_EXAMPLES_PATH
+            ? resolve(process.env.POKIE_EXAMPLES_PATH)
+            : resolve(process.cwd(), "..", "pokie-examples");
+        const examplesPackage = JSON.parse(readFileSync(resolve(examplesRoot, "package.json"), "utf8")) as {
+            dependencies: Record<string, string>;
+        };
+        const examplesViteConfig = readFileSync(resolve(examplesRoot, "vite.config.js"), "utf8");
+        const examplesTsconfig = readFileSync(resolve(examplesRoot, "tsconfig.json"), "utf8");
+
+        expect(exportedPlayer).toEqual({
+            types: "./dist/cli/client/player/index.d.ts",
+            default: "./dist/cli/client/player/index.js",
+        });
+        expect(packageJson.files).toContain("dist/");
+        expect(canonicalPlayer.renderPlayerRound).toBe(renderPlayerRound);
+        expect(examplesPackage.dependencies.pokie).toBe(`^${packageJson.version}`);
+        expect(examplesViteConfig).not.toContain("/workspace");
+        expect(examplesViteConfig).not.toContain("pokieClientPlayerPath");
+        expect(examplesTsconfig).not.toContain("/workspace");
+        expect(examplesTsconfig).not.toContain('"paths"');
     });
 });
 
