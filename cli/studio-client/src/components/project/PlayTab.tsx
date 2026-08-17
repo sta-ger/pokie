@@ -1,10 +1,13 @@
 import {Button, Select, Text, TextInput} from "@mantine/core";
 import {ReactNode, useEffect, useState} from "react";
+import {deriveAvailableBetModeIds, deriveAvailableBets, deriveBetModeId} from "../../../../client/player";
 import {describeRuntimeActionError} from "../../domain/runtimeActionError";
 import type {PlaySessionView} from "../../hooks/usePlaySession";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
+import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RoundSummary} from "../common/RoundSummary";
 
@@ -30,7 +33,7 @@ export function PlayTab({
     session: PlaySessionView;
     sessionId: string | undefined;
     onNewSession: (seed?: string, modeName?: string) => void;
-    onSpin: () => void;
+    onSpin: (bet?: number, mode?: string) => void;
     onFindAnyWin: () => void;
     onFindSymbolWin: (symbolId: string) => void;
     // The canonical shared "custom scenario" control -- StudioPlayService.findFreeGames()'s own doc
@@ -47,6 +50,8 @@ export function PlayTab({
     const [seed, setSeed] = useState("");
     const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
+    const [selectedBet, setSelectedBet] = useState<string | null>(null);
+    const [selectedBetMode, setSelectedBetMode] = useState<string | null>(null);
     // Defaults the picker to the first real mode the moment the list becomes available -- PlayTab mounts
     // before the project header's own outcome-source report necessarily has, so availableModes can go
     // from undefined to populated after this component's own first render, not just at mount.
@@ -60,6 +65,25 @@ export function PlayTab({
     // StudioPlayService.buildSessionView()'s own doc comment) -- undefined until the first "ok" response,
     // never a placeholder/invented list in the meantime.
     const availableSymbols = session.status === "ok" ? session.session.availableSymbols : undefined;
+    const activeSession = session.status === "ok" ? session.session : undefined;
+    // These values are the session serializer's direct projection of the canonical Project/Game Model;
+    // Play never invents a bet or a mode from an artifact/result.  They are refreshed from the returned
+    // session after every spin, which is particularly important for a consumed one-shot buyFeature.
+    const availableBets = deriveAvailableBets(activeSession?.availableBets);
+    const availableBetModes = deriveAvailableBetModeIds(activeSession?.availableBetModeIds);
+    const currentBet = typeof activeSession?.bet === "number" ? activeSession.bet : undefined;
+    const currentBetMode = deriveBetModeId(activeSession?.betModeId);
+
+    useEffect(() => {
+        if (currentBet !== undefined) {
+            setSelectedBet(String(currentBet));
+        }
+    }, [currentBet, activeSession?.sessionId]);
+    useEffect(() => {
+        if (currentBetMode !== undefined) {
+            setSelectedBetMode(currentBetMode);
+        }
+    }, [currentBetMode, activeSession?.sessionId]);
 
     // "no-active-project"/"not-found" are already plain, specific messages -- shown as-is. "error"/
     // "blocked" carry the underlying server's own raw text (a caught exception's message, or a game's
@@ -93,7 +117,7 @@ export function PlayTab({
         <Select
             aria-label="Outcome library mode"
             label="Outcome library mode"
-            description="Which real mode of this outcome library New session/Reset draws against."
+            description="Which real outcome-library mode a new Play session draws against. This is separate from a game's runtime bet mode."
             data={availableModes}
             value={selectedMode}
             onChange={setSelectedMode}
@@ -111,15 +135,19 @@ export function PlayTab({
                     needed) and creates a real session directly in Studio&apos;s own backend -- no server,
                     host, port, or separate API to set up.
                 </Text>
-                {modeField}
-                {seedField}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
-                <QuickActions>
-                    <Button loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
-                        New session
-                    </Button>
-                </QuickActions>
+                <PageSection legend="Start Play">
+                    {modeField}
+                    <AdvancedDisclosure detail="seed">
+                        {seedField}
+                    </AdvancedDisclosure>
+                    <QuickActions>
+                        <Button loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
+                            New Play session
+                        </Button>
+                    </QuickActions>
+                </PageSection>
             </div>
         );
     }
@@ -140,43 +168,89 @@ export function PlayTab({
 
     return (
         <div>
-            <QuickActions>
-                <Button loading={loading} onClick={onSpin}>
-                    Spin
-                </Button>
-                <Button variant="default" loading={loading} onClick={onFindAnyWin}>
-                    Find any win
-                </Button>
-                <Button
-                    variant="default"
-                    loading={loading}
-                    disabled={!selectedSymbol}
-                    onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
-                >
-                    Find symbol win
-                </Button>
-                <Button variant="default" loading={loading} onClick={onFindFreeGames}>
-                    Find free games
-                </Button>
-                <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
-                    Reset
-                </Button>
-            </QuickActions>
-            {modeField}
-            {seedField}
-            {availableSymbols !== undefined && availableSymbols.length > 0 && (
+            <PageSection legend="Play">
+                {availableBets.length > 0 && (
+                    <Select
+                        aria-label="Bet"
+                        label="Bet"
+                        description="Available bets come from this session's game model."
+                        data={availableBets.map((bet) => ({value: String(bet), label: bet.toFixed(2)}))}
+                        value={selectedBet}
+                        onChange={setSelectedBet}
+                        allowDeselect={false}
+                        mb="sm"
+                        style={{maxWidth: 240}}
+                    />
+                )}
+                {availableBetModes.length > 0 && (
+                    <Select
+                        aria-label="Bet mode"
+                        label="Bet mode"
+                        description="A buy-feature mode applies to this spin only; after a successful purchase, the returned session shows its persistent mode."
+                        data={availableBetModes}
+                        value={selectedBetMode}
+                        onChange={setSelectedBetMode}
+                        allowDeselect={false}
+                        mb="sm"
+                        style={{maxWidth: 320}}
+                    />
+                )}
+                <QuickActions>
+                    <Button loading={loading} onClick={() => onSpin(selectedBet === null ? undefined : Number(selectedBet), selectedBetMode ?? undefined)}>
+                        Spin
+                    </Button>
+                </QuickActions>
+            </PageSection>
+
+            <PageSection legend="Scenarios">
+                <Text size="sm" c="dimmed" mb="sm">
+                    Scenario searches use real settled spins and leave their final round in this Play session.
+                </Text>
+                <QuickActions>
+                    <Button variant="default" loading={loading} onClick={onFindAnyWin}>
+                        Find any win
+                    </Button>
+                    <Button
+                        variant="default"
+                        loading={loading}
+                        disabled={!selectedSymbol}
+                        onClick={() => selectedSymbol !== null && onFindSymbolWin(selectedSymbol)}
+                    >
+                        Find symbol win
+                    </Button>
+                    <Button variant="default" loading={loading} onClick={onFindFreeGames}>
+                        Find free games
+                    </Button>
+                </QuickActions>
                 <Select
                     aria-label="Symbol"
                     label="Symbol"
-                    description="The symbol Find symbol win searches for -- a real spin's own already-computed win, never predicted."
-                    placeholder="Choose a symbol"
-                    data={availableSymbols}
+                    description={
+                        availableSymbols !== undefined && availableSymbols.length > 0
+                            ? "The symbol Find symbol win searches for in a real, already-evaluated win."
+                            : "Find symbol win is unavailable because this game does not expose selectable symbols."
+                    }
+                    placeholder={availableSymbols !== undefined && availableSymbols.length > 0 ? "Choose a symbol" : "No symbols available"}
+                    data={availableSymbols ?? []}
                     value={selectedSymbol}
                     onChange={setSelectedSymbol}
+                    disabled={availableSymbols === undefined || availableSymbols.length === 0}
                     mb="sm"
                     style={{maxWidth: 240}}
                 />
-            )}
+            </PageSection>
+
+            <PageSection legend="Session">
+                {modeField}
+                <AdvancedDisclosure detail="seed">
+                    {seedField}
+                </AdvancedDisclosure>
+                <QuickActions>
+                    <Button variant="default" loading={loading} onClick={() => onNewSession(seed.trim() || undefined, selectedMode ?? undefined)}>
+                        Reset Play session
+                    </Button>
+                </QuickActions>
+            </PageSection>
 
             {errorNotice}
 

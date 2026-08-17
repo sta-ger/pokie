@@ -34,4 +34,22 @@ describe("describeRoundPresentation", () => {
     it("keeps an artifact-only import honest when no captured session data is available", () => {
         expect(describeRoundPresentation(undefined, undefined)).toEqual({});
     });
+
+    it("reads the saved Studio Play capture's immutable initial payload", () => {
+        // This is the same shape Studio sends to Play after a real spin; static player data lives in
+        // the captured session state rather than being reconstructed from the round artifact.
+        const stateAfter = {
+            initialPayload: {
+                availableBets: [1, 5],
+                availableBetModeIds: ["base", "buy-feature"],
+                paytable: {1: {A: {3: 5}}},
+            },
+        };
+        expect(describeRoundPresentation(undefined, stateAfter, "buy-feature")).toMatchObject({
+            availableBets: [1, 5],
+            availableModeIds: ["base", "buy-feature"],
+            currentModeId: "buy-feature",
+            paytable: {rows: [{symbolId: "A", amounts: [5]}]},
+        });
+    });
 });

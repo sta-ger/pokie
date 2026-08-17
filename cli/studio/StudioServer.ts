@@ -88,6 +88,7 @@ import {validateProjectLocationRequest, ProjectLocationRequestInput} from "./val
 import {validateProjectRegistrationRequest, ProjectRegistrationRequestInput} from "./validateProjectRegistrationRequest.js";
 import {validateProjectRelocationRequest, ProjectRelocationRequestInput} from "./validateProjectRelocationRequest.js";
 import {validatePlaySessionRequest, PlaySessionRequestInput} from "./runtime/validatePlaySessionRequest.js";
+import {validatePlaySpinRequest, PlaySpinRequestInput} from "./runtime/validatePlaySpinRequest.js";
 import {validatePlayFindSymbolWinRequest, PlayFindSymbolWinRequestInput} from "./runtime/validatePlayFindSymbolWinRequest.js";
 import {buildSimulationReportDownload, isReportDownloadFormat} from "./simulation/buildSimulationReportDownload.js";
 import {StudioSimulationService} from "./simulation/StudioSimulationService.js";
@@ -642,7 +643,7 @@ export class StudioServer implements StudioServerHandling {
 
         const playSpinSessionId = this.matchPlaySpinRoute(url.pathname);
         if (playSpinSessionId !== undefined && method === "POST") {
-            await this.handlePlaySpin(res, playSpinSessionId);
+            await this.handlePlaySpin(req, res, playSpinSessionId);
             return;
         }
 
@@ -2260,13 +2261,22 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {status: "failed", error: result.error});
     }
 
-    private async handlePlaySpin(res: ServerResponse, sessionId: string): Promise<void> {
+    private async handlePlaySpin(req: IncomingMessage, res: ServerResponse, sessionId: string): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
 
-        const result = await this.playService.spin(sessionId);
+        const body = await this.readJsonBody(req);
+        let validated;
+        try {
+            validated = validatePlaySpinRequest((body ?? {}) as PlaySpinRequestInput);
+        } catch (error) {
+            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
+
+        const result = await this.playService.spin(sessionId, "spin", validated.bet, validated.mode);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;

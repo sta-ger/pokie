@@ -90,8 +90,8 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         [fetchImpl, sessionId, onRoundRecorded],
     );
 
-    const spin = useCallback(() => {
-        runSpinAction((sid) => spinPlaySession(fetchImpl, sid));
+    const spin = useCallback((bet?: number, mode?: string) => {
+        runSpinAction((sid) => spinPlaySession(fetchImpl, sid, bet, mode));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 

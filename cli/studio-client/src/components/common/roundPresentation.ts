@@ -3,8 +3,10 @@ import {
     deriveAvailableBets,
     deriveBetModeId,
     deriveFeatureCounters,
+    deriveLineDefinitions,
     derivePaytableView,
     type FeatureCounter,
+    type LineDefinitionView,
     type PaytableView,
 } from "../../../../client/player";
 
@@ -20,6 +22,7 @@ export type RoundPresentation = {
     availableModeIds?: string[];
     currentModeId?: string;
     featureCounters?: FeatureCounter[];
+    lines?: LineDefinitionView[];
 };
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -53,10 +56,15 @@ export function describeRoundPresentation(stateBefore: unknown, stateAfter: unkn
         availableBets: deriveAvailableBets(initial.availableBets),
         currentBet: currentBet(round, initial),
         availableModeIds: deriveAvailableBetModeIds(initial.availableBetModeIds),
+        // A RoundArtifact records the mode that evaluated this specific round.  This must win over
+        // stateAfter: a buyFeature mode intentionally reverts the live session to its default as soon
+        // as its one-shot purchase succeeds, while the completed round truthfully remains a buy.
         currentModeId:
+            artifactBetMode ??
             deriveBetModeId(round?.roundPayload && asRecord(round.roundPayload)?.betModeId) ??
             deriveBetModeId(initial.betModeId) ??
             artifactBetMode,
         featureCounters: deriveFeatureCounters(asRecord(round?.roundPayload) ?? initial),
+        lines: deriveLineDefinitions(initial.linesDefinitions),
     };
 }

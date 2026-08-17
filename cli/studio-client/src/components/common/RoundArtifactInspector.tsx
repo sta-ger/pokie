@@ -151,6 +151,7 @@ export function RoundArtifactInspector({
                 payoutMultiplier={artifact.payoutMultiplier}
                 paytable={presentation.paytable}
                 featureCounters={presentation.featureCounters}
+                lines={presentation.lines}
                 availableBets={presentation.availableBets}
                 currentBet={presentation.currentBet}
                 availableModeIds={presentation.availableModeIds}

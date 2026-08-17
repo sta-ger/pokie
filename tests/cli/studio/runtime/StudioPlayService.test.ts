@@ -291,6 +291,37 @@ describe("StudioPlayService", () => {
         expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
     });
 
+    it("applies Play's selected bet and runtime mode to the exact SpinCommandHandler round", async () => {
+        const session = createFakeVideoSlotSession(undefined) as GameSessionHandling & VideoSlotSessionHandling<string> & {
+            getBetModeId(): string;
+            getAvailableBetModeIds(): string[];
+            setBetMode(mode: string): void;
+        };
+        let selectedBet = 1;
+        let selectedMode = "base";
+        session.getBet = () => selectedBet;
+        session.setBet = (bet) => {
+            selectedBet = bet;
+        };
+        session.getAvailableBets = () => [1, 5];
+        session.getBetModeId = () => selectedMode;
+        session.getAvailableBetModeIds = () => ["base", "ante", "buyFeature"];
+        session.setBetMode = (mode) => {
+            selectedMode = mode;
+        };
+        const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+        const created = await service.newSession("/fake/project");
+        if (created.status !== "ok") {
+            throw new Error("expected ok");
+        }
+
+        const result = await service.spin(created.session.sessionId, "spin", 5, "ante");
+
+        expect(result).toMatchObject({status: "ok"});
+        expect(selectedBet).toBe(5);
+        expect(selectedMode).toBe("ante");
+    });
+
     it("keeps the settled win when a serializer's round payload carries a stale win", async () => {
         const service = new StudioPlayService(fakeLoadGameWithStaleSerializedWin());
         const created = await service.newSession("/fake/project");
