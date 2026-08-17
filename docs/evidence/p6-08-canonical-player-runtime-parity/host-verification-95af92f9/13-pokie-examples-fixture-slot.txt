@@ -1,0 +1,42 @@
+Fixture Slot — deterministic Player round
+← All examples
+A
+C
+A
+	
+A
+A
+C
+	
+A
+A
+A
+Credits: 1004
+Win: 5
+Win multiple: 5x
+Bet: 1
+1
+2
+3
+4
+5
+10
+20
+30
+40
+50
+100
+Play Win
+Simulations
+Symbol "A" x 3
+Symbol "B" x 3
+Symbol "C" x 3
+Winning lines
+Line: 1, win: 5
+Lines definitions
+Line: 0Line: 1Line: 2
+Paytable
+Symbol	3
+A	5
+B	3
+C	1

@@ -1,0 +1,75 @@
+{
+  "fixture": {
+    "seed": "fixture-round",
+    "round": 1,
+    "expectedGrid": [
+      "A",
+      "C",
+      "A",
+      "A",
+      "A",
+      "C",
+      "A",
+      "A",
+      "A"
+    ]
+  },
+  "surfaces": [
+    {
+      "name": "10-generated-package-player",
+      "grid": [
+        "A",
+        "C",
+        "A",
+        "A",
+        "A",
+        "C",
+        "A",
+        "A",
+        "A"
+      ]
+    },
+    {
+      "name": "11-studio-play",
+      "grid": [
+        "A",
+        "C",
+        "A",
+        "A",
+        "A",
+        "C",
+        "A",
+        "A",
+        "A"
+      ]
+    },
+    {
+      "name": "12-studio-replay",
+      "grid": [
+        "A",
+        "C",
+        "A",
+        "A",
+        "A",
+        "C",
+        "A",
+        "A",
+        "A"
+      ]
+    },
+    {
+      "name": "13-pokie-examples-fixture-slot",
+      "grid": [
+        "A",
+        "C",
+        "A",
+        "A",
+        "A",
+        "C",
+        "A",
+        "A",
+        "A"
+      ]
+    }
+  ]
+}

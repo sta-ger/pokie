@@ -1,0 +1,49 @@
+Fixture Slot — POKIE client preview
+
+Connected to http://127.0.0.1:4711
+
+Session seed (optional)
+Start new session
+Session ID
+Restore session
+Bet: 1
+1
+2
+3
+4
+5
+10
+20
+30
+40
+50
+100
+A
+C
+A
+	
+A
+A
+C
+	
+A
+A
+A
+Winning lines
+Line: 1, win: 5
+Lines definitions
+Paytable
+Symbol	3
+A	5
+B	3
+C	1
+Bet
+1
+Credits
+1004
+Win
+5
+Win multiple
+5
+Spin
+Raw response
