@@ -1,5 +1,3 @@
-import crypto from "crypto";
-import path from "path";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -27,10 +25,8 @@ import {VideoSlotWinCalculator} from "../session/videoslot/wincalculator/VideoSl
 import {WaysWinCalculator} from "../session/videoslot/wincalculator/WaysWinCalculator.js";
 import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWinCalculator.js";
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
-import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import type {PokieProject} from "./PokieProject.js";
-import {ProjectTargetResolver} from "./ProjectTargetResolver.js";
-import type {ProjectResolving} from "./ProjectResolving.js";
+import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 
 const GENERATED_RUNTIME = {
     BetModeDefinition,
@@ -61,22 +57,21 @@ const GENERATED_RUNTIME = {
 // calculation or Stake export path hidden in a CLI/Studio caller.
 export class BlueprintStakeOutcomeLibraryWorkflow {
     private readonly validator = new GameBlueprintValidator();
-    private readonly reader = new OutcomeLibraryBundleReader();
     private readonly pokieVersion: string;
     private readonly loadBlueprint: (filePath: string) => unknown;
-    private readonly resolveProject: ProjectResolving;
+    private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
 
     constructor(
         pokieVersion: string,
         loadBlueprint: (filePath: string) => unknown,
-        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
-        this.resolveProject = resolveProject;
+        this.managedOutcomeProjects = managedOutcomeProjects;
     }
 
-    // Plans/reuses the deterministic managed Outcome Project, but deliberately never writes a bundle itself.
+    // Plans/reuses an authoritative managed Outcome Project, but deliberately never writes a bundle itself.
     // The supplied callback is ArtifactBuilderRegistry.build("outcomeLibrary", ...), making the registry's
     // OutcomeLibraryArtifactBuilder the sole Blueprint -> Outcome materialization/publish boundary.
     public async resolveOrGenerate(source: PokieProject, buildOutcome: (destinationPath: string) => Promise<unknown>): Promise<PokieProject> {
@@ -87,15 +82,20 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             throw new Error(`Blueprint "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
         }
 
-        const projectDir = path.dirname(source.rootPath);
-        const bundleDir = path.join(projectDir, ".pokie", "outcome-libraries", crypto.createHash("sha256").update(configHash).digest("hex"));
-        const compatible = await this.findCompatible(bundleDir, game, configHash);
+        const compatibility = {
+            gameId: game.getManifest().id,
+            gameVersion: game.getManifest().version,
+            configHash,
+            pokieVersion: this.pokieVersion,
+        };
+        const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
         if (compatible !== undefined) {
-            return this.openOutcomeProject(compatible, "compatible managed outcome library");
+            return compatible;
         }
 
+        const bundleDir = this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility);
         await buildOutcome(bundleDir);
-        return this.openOutcomeProject(bundleDir, "generated managed outcome library");
+        return this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
     }
 
     private validateAndMaterialize(blueprintPath: string): GameBlueprint {
@@ -131,28 +131,4 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         return module.exports as PokieGame;
     }
 
-    private async findCompatible(bundleDir: string, game: PokieGame, configHash: string): Promise<string | undefined> {
-        try {
-            const manifest = await this.reader.readManifest(bundleDir);
-            if (
-                manifest.game.id === game.getManifest().id &&
-                manifest.game.version === game.getManifest().version &&
-                manifest.configHash === configHash &&
-                manifest.artifactPokieVersion === this.pokieVersion
-            ) {
-                return bundleDir;
-            }
-        } catch {
-            // The deterministic managed location has not yet been built, or no longer contains a valid bundle.
-        }
-        return undefined;
-    }
-
-    private async openOutcomeProject(rootPath: string, provenance: string): Promise<PokieProject> {
-        const resolved = await this.resolveProject.resolve(rootPath);
-        if (resolved?.type !== "outcomeLibrary") {
-            throw new Error(`Generated Outcome Library at "${rootPath}" could not be opened as a managed Outcome Project.`);
-        }
-        return {...resolved, provenance: `${provenance}; ${resolved.provenance}`} as PokieProject;
-    }
 }

@@ -163,6 +163,13 @@ describe("ArtifactBuilderRegistry", () => {
                 const [managedLibrary] = fs.readdirSync(managedRoot);
                 const libraryDir = path.join(managedRoot, managedLibrary);
                 const manifestBeforeReuse = fs.readFileSync(path.join(libraryDir, "manifest.json"), "utf-8");
+                const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf-8")) as {
+                    projects: {rootPath: string; gameId: string; gameVersion: string; configHash: string}[];
+                };
+
+                expect(managedRegistry.projects).toEqual([
+                    expect.objectContaining({rootPath: libraryDir, gameId: "registry-slot", gameVersion: "1.0.0", configHash: expect.any(String)}),
+                ]);
 
                 await registry.build("stakeAdapter", blueprintProject, secondStakeDir);
 

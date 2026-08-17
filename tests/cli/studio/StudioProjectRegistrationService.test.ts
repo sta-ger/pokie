@@ -377,7 +377,7 @@ describe("StudioProjectRegistrationService", () => {
 
             expect(result).toEqual({
                 status: "ok",
-                entry: expect.objectContaining({location: blueprintPath, type: "blueprint", origin: "external", capabilities: ["blueprint.build"]}),
+                entry: expect.objectContaining({location: blueprintPath, type: "blueprint", origin: "external", capabilities: ["blueprint.build", "stakeAdapter.export"]}),
             });
         });
 

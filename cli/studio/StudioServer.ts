@@ -3,6 +3,7 @@ import {
     GamePackageInspectionReport,
     GamePackageInspector,
     loadPokieGame,
+    ManagedOutcomeProjectService,
     OutcomeSourceProjectAnalyzer,
     OutcomeSourceProjectAnalyzing,
     PokieDevServerAddress,
@@ -261,12 +262,18 @@ export class StudioServer implements StudioServerHandling {
         this.projectRegistrationService = options.projectRegistrationService ?? createDefaultStudioProjectRegistrationService();
         this.artifactBuildService =
             options.artifactBuildService ??
-            new StudioArtifactBuildService(this.pokieVersion, undefined, undefined, async (projectRoot) => {
-                const registered = await this.projectRegistrationService.registerExternal(projectRoot);
-                if (registered.status !== "ok") {
-                    throw new Error(`Generated Outcome Library at "${projectRoot}" could not be registered as a Studio Project.`);
-                }
-            });
+            new StudioArtifactBuildService(
+                this.pokieVersion,
+                undefined,
+                undefined,
+                undefined,
+                new ManagedOutcomeProjectService(undefined, async (project) => {
+                    const registered = await this.projectRegistrationService.registerManaged(project.rootPath, path.basename(project.rootPath));
+                    if (registered.status !== "ok") {
+                        throw new Error(`Generated Outcome Library at "${project.rootPath}" could not be registered as a Studio Project.`);
+                    }
+                }),
+            );
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];
         this.currentContext = options.initialContext ?? {mode: "home"};

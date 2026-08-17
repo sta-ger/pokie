@@ -23,6 +23,7 @@ import type {ProjectType} from "./ProjectType.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
+import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
@@ -118,14 +119,18 @@ export class ArtifactBuilderRegistry {
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
     private readonly blueprintStakeWorkflow: BlueprintStakeOutcomeLibraryWorkflow;
 
-    constructor(pokieVersion = "0.0.0", builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder> = buildDefaultBuilders(pokieVersion)) {
+    constructor(
+        pokieVersion = "0.0.0",
+        builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder> = buildDefaultBuilders(pokieVersion),
+        managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(),
+    ) {
         const descriptors = new Map<ArtifactTargetType, ArtifactBuildTargetDescriptor>();
         for (const target of Object.keys(TARGET_OPERATION) as ArtifactTargetType[]) {
             descriptors.set(target, buildDescriptor(target));
         }
         this.descriptors = descriptors;
         this.builders = builders;
-        this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint);
+        this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, managedOutcomeProjects);
     }
 
     public listTargets(): readonly ArtifactTargetType[] {

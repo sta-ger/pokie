@@ -1,4 +1,13 @@
-import {ArtifactBuildConflictError, ArtifactBuilderRegistry, ArtifactTargetType, PokieProject, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    ArtifactBuilderRegistry,
+    ArtifactTargetType,
+    ManagedOutcomeProjectService,
+    ManagedOutcomeProjectServicing,
+    PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
+} from "pokie";
 import path from "path";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
@@ -64,9 +73,10 @@ export class StudioArtifactBuildService {
         registry?: ArtifactBuilderRegistry,
         resolveProject?: ProjectResolving,
         private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
+        managedOutcomeProjects?: ManagedOutcomeProjectServicing,
     ) {
-        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion);
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
+        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own

@@ -1,0 +1,129 @@
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
+import type {PokieProject} from "./PokieProject.js";
+import type {ProjectResolving} from "./ProjectResolving.js";
+import {ProjectTargetResolver} from "./ProjectTargetResolver.js";
+
+// The immutable identity a generated Outcome Project must retain.  This is intentionally narrower
+// than a source path: a Blueprint may move, whereas game id/version/configuration are what make an
+// Outcome bundle safe to use for a Stake export.
+export type OutcomeProjectCompatibility = {
+    readonly gameId: string;
+    readonly gameVersion: string;
+    readonly configHash: string;
+    readonly pokieVersion: string;
+};
+
+// The authoritative lifecycle boundary for a Blueprint's managed Outcome Project.  ArtifactBuilderRegistry
+// owns the conversion, while this service owns discovery, registration and reopening.  CLI and Studio inject
+// the same service contract; neither surface is allowed to maintain a private "generated outcome" index.
+export interface ManagedOutcomeProjectServicing {
+    findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined>;
+    allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string;
+    registerAndOpen(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject>;
+}
+
+type RegisteredOutcomeProject = OutcomeProjectCompatibility & {readonly rootPath: string};
+type RegistryDocument = {readonly projects: readonly RegisteredOutcomeProject[]};
+
+// A compact, source-adjacent managed-project registry.  Keeping it under .pokie makes a CLI invocation and a
+// Studio invocation over the same Blueprint discover exactly the same authoritative records without requiring
+// either UI process to be alive.  Older deterministic bundles are adopted only after their manifest has been
+// verified and they are written into this registry; the workflow itself never treats a path as registered.
+export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServicing {
+    private readonly reader = new OutcomeLibraryBundleReader();
+
+    constructor(
+        private readonly resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        private readonly onRegistered: (project: PokieProject) => Promise<void> = () => Promise.resolve(),
+    ) {}
+
+    public async findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
+        const document = await this.readRegistry(sourceRootPath);
+        for (const entry of document.projects) {
+            if (!sameCompatibility(entry, compatibility)) continue;
+            const project = await this.openIfCompatible(entry.rootPath, compatibility);
+            if (project !== undefined) return project;
+        }
+
+        // One-time adoption for output created before managed-project registration existed.  This keeps an
+        // upgrade from re-generating a valid library, but crucially promotes it into the registry first.
+        const legacyRoot = this.allocateRoot(sourceRootPath, compatibility);
+        const legacyProject = await this.openIfCompatible(legacyRoot, compatibility);
+        if (legacyProject === undefined) return undefined;
+        await this.register(sourceRootPath, legacyRoot, compatibility);
+        await this.onRegistered(legacyProject);
+        return legacyProject;
+    }
+
+    public allocateRoot(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): string {
+        return path.join(
+            path.dirname(sourceRootPath),
+            ".pokie",
+            "outcome-libraries",
+            crypto.createHash("sha256").update(compatibility.configHash).digest("hex"),
+        );
+    }
+
+    public async registerAndOpen(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject> {
+        const project = await this.openIfCompatible(rootPath, compatibility);
+        if (project === undefined) {
+            throw new Error(`Generated Outcome Library at "${rootPath}" could not be opened as a compatible managed Outcome Project.`);
+        }
+        await this.register(sourceRootPath, rootPath, compatibility);
+        await this.onRegistered(project);
+        return project;
+    }
+
+    private async openIfCompatible(rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
+        try {
+            const manifest = await this.reader.readManifest(rootPath);
+            if (
+                manifest.game.id !== compatibility.gameId ||
+                manifest.game.version !== compatibility.gameVersion ||
+                manifest.configHash !== compatibility.configHash ||
+                manifest.artifactPokieVersion !== compatibility.pokieVersion
+            ) return undefined;
+            const project = await this.resolveProject.resolve(rootPath);
+            return project?.type === "outcomeLibrary" ? project : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    private async register(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<void> {
+        const document = await this.readRegistry(sourceRootPath);
+        const canonicalRoot = path.resolve(rootPath);
+        const projects = [...document.projects.filter((entry) => path.resolve(entry.rootPath) !== canonicalRoot), {...compatibility, rootPath: canonicalRoot}];
+        const registryPath = this.registryPath(sourceRootPath);
+        await fs.promises.mkdir(path.dirname(registryPath), {recursive: true});
+        const temporaryPath = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
+        await fs.promises.writeFile(temporaryPath, JSON.stringify({projects}, undefined, 2), "utf-8");
+        await fs.promises.rename(temporaryPath, registryPath);
+    }
+
+    private async readRegistry(sourceRootPath: string): Promise<RegistryDocument> {
+        try {
+            const parsed = JSON.parse(await fs.promises.readFile(this.registryPath(sourceRootPath), "utf-8")) as RegistryDocument;
+            return Array.isArray(parsed.projects) ? parsed : {projects: []};
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return {projects: []};
+            throw error;
+        }
+    }
+
+    private registryPath(sourceRootPath: string): string {
+        return path.join(path.dirname(sourceRootPath), ".pokie", "managed-outcome-projects.json");
+    }
+}
+
+function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProjectCompatibility): boolean {
+    return (
+        left.gameId === right.gameId &&
+        left.gameVersion === right.gameVersion &&
+        left.configHash === right.configHash &&
+        left.pokieVersion === right.pokieVersion
+    );
+}

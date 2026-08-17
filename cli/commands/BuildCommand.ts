@@ -7,6 +7,8 @@ import {
     GameBlueprintValidating,
     GameBlueprintValidator,
     loadGameBlueprint,
+    ManagedOutcomeProjectService,
+    ManagedOutcomeProjectServicing,
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
@@ -47,13 +49,14 @@ export class BuildCommand implements CliCommandHandling {
         loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
-        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
+        registry?: ArtifactBuilderRegistry,
+        managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(resolveProject),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
         this.validator = validator;
         this.resolveProject = resolveProject;
-        this.registry = registry;
+        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects);
     }
 
     public getName(): string {
