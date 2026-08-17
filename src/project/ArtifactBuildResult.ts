@@ -8,4 +8,8 @@ export type ArtifactBuildResult = {
     // that maintain a Project registry (Studio) use this to register/open the actual Outcome Project,
     // instead of trying to rediscover a private path index after the Stake export has completed.
     readonly prerequisiteProjectRoots?: readonly string[];
+    // Managed projects created or reopened as this artifact's actual result.  A direct Blueprint -> Outcome
+    // request returns its registered Outcome Project here; Stake keeps using prerequisiteProjectRoots for
+    // backward-compatible callers that display its generated prerequisite separately.
+    readonly managedProjectRoots?: readonly string[];
 };

@@ -41,8 +41,9 @@ import type {PokieProject} from "./PokieProject.js";
 // loaded (OutcomeLibraryBundleReader.readLibrary, the same reader loadWeightedOutcomeLibraryFromBundle wraps),
 // and the result is streamed straight into OutcomeLibraryBundleWriter -- a WeightedOutcomeLibrary's own
 // "outcomes" array is already exactly the Iterable<WeightedOutcomeInput> shape OutcomeLibraryBundleModeInput
-// expects, so no field mapping happens here. A Blueprint source is the one additive case: it is validated,
-// materialized and generated here so ArtifactBuilderRegistry remains the sole Project -> Outcome writer.
+// expects, so no field mapping happens here. A Blueprint source is the raw materialization callback used only
+// by ArtifactBuilderRegistry's managed Outcome lifecycle: the registry validates, resolves/reuses, registers,
+// and reopens the project around this atomic writer, so CLI and Studio never expose an unregistered bundle.
 export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
     public readonly target = "outcomeLibrary";
     public readonly destinationKind = "directory";

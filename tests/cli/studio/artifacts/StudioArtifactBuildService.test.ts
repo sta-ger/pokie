@@ -171,6 +171,25 @@ describe("StudioArtifactBuildService", () => {
             expect(fs.existsSync(path.join(registeredProjects[0], "manifest.json"))).toBe(true);
         });
 
+        it("builds Blueprint -> Outcome through the shared registry and registers the opened Outcome Project", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const registeredProjects: string[] = [];
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, (projectRoot) => {
+                registeredProjects.push(projectRoot);
+                return Promise.resolve();
+            });
+
+            const result = await service.build(blueprintPath, "outcomeLibrary");
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.outputPath).toBe(path.join(workDir, "outcomeLibrary"));
+            expect(registeredProjects).toEqual([result.outputPath]);
+            expect(fs.existsSync(path.join(result.outputPath, "manifest.json"))).toBe(true);
+        });
+
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {
             const blueprintPath = writeBlueprintFile();
             const destination = path.join(workDir, "tsPackage");

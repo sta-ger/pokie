@@ -181,6 +181,51 @@ describe("ArtifactBuilderRegistry", () => {
             }
         });
 
+        it("registers and reopens a direct Blueprint Outcome Project before Stake reuses that exact record", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-outcome-registry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const outcomeDir = path.join(workDir, "direct-outcome");
+            const stakeDir = path.join(workDir, "stake");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "direct-outcome-slot", name: "Direct Outcome Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A"], ["A"], ["A"]],
+                    availableBets: [1],
+                }),
+            );
+            const blueprintProject: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+
+            try {
+                const outcome = await registry.build("outcomeLibrary", blueprintProject, outcomeDir);
+                expect(outcome).toEqual({outputPath: outcomeDir, managedProjectRoots: [outcomeDir]});
+                expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
+
+                const managedRegistry = JSON.parse(fs.readFileSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"), "utf-8")) as {
+                    projects: {rootPath: string; gameId: string; gameVersion: string; configHash: string}[];
+                };
+                expect(managedRegistry.projects).toEqual([
+                    expect.objectContaining({rootPath: outcomeDir, gameId: "direct-outcome-slot", gameVersion: "1.0.0", configHash: expect.any(String)}),
+                ]);
+
+                const stake = await registry.build("stakeAdapter", blueprintProject, stakeDir);
+                expect(stake.prerequisiteProjectRoots).toEqual([outcomeDir]);
+                expect(stake.managedProjectRoots).toEqual([outcomeDir]);
+                expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("returns a Game Model fix route for an invalid Blueprint and lets the same Stake request succeed after retry", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-stake-retry-test-"));
             const blueprintPath = path.join(workDir, "game.blueprint.json");
@@ -211,6 +256,45 @@ describe("ArtifactBuilderRegistry", () => {
 
                 writeBlueprint(3);
                 await expect(registry.build("stakeAdapter", project, stakeDir)).resolves.toMatchObject({outputPath: stakeDir, prerequisiteProjectRoots: [expect.any(String)]});
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("leaves no direct Outcome bundle behind for an invalid Blueprint and succeeds after Game Model retry", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-blueprint-outcome-retry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const outcomeDir = path.join(workDir, "outcome");
+            const project = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const writeBlueprint = (reels: number) =>
+                fs.writeFileSync(
+                    blueprintPath,
+                    JSON.stringify({
+                        manifest: {id: "outcome-retry-slot", name: "Outcome Retry Slot", version: "1.0.0"},
+                        reels,
+                        rows: 1,
+                        symbols: ["A"],
+                        paytable: {A: {2: 1, 3: 2}},
+                        reelStrips: [["A"], ["A"], ["A"]],
+                        availableBets: [1],
+                    }),
+                );
+
+            try {
+                writeBlueprint(0);
+                await expect(registry.build("outcomeLibrary", project, outcomeDir)).rejects.toThrow(/fix it in Game Model and retry/i);
+                expect(fs.existsSync(outcomeDir)).toBe(false);
+
+                writeBlueprint(3);
+                await expect(registry.build("outcomeLibrary", project, outcomeDir)).resolves.toEqual({
+                    outputPath: outcomeDir,
+                    managedProjectRoots: [outcomeDir],
+                });
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

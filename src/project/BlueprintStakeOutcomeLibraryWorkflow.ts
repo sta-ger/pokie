@@ -26,7 +26,7 @@ import {WaysWinCalculator} from "../session/videoslot/wincalculator/WaysWinCalcu
 import {ClusterWinCalculator} from "../session/videoslot/wincalculator/ClusterWinCalculator.js";
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
 import type {PokieProject} from "./PokieProject.js";
-import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
+import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 
 const GENERATED_RUNTIME = {
     BetModeDefinition,
@@ -72,9 +72,14 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     }
 
     // Plans/reuses an authoritative managed Outcome Project, but deliberately never writes a bundle itself.
-    // The supplied callback is ArtifactBuilderRegistry.build("outcomeLibrary", ...), making the registry's
-    // OutcomeLibraryArtifactBuilder the sole Blueprint -> Outcome materialization/publish boundary.
-    public async resolveOrGenerate(source: PokieProject, buildOutcome: (destinationPath: string) => Promise<unknown>): Promise<PokieProject> {
+    // The supplied callback is ArtifactBuilderRegistry's raw OutcomeLibraryArtifactBuilder invocation, making
+    // this lifecycle the single validation -> generation -> registration -> reopen boundary for both direct
+    // Blueprint -> Outcome and Blueprint -> Stake requests.
+    public async resolveOrGenerate(
+        source: PokieProject,
+        destinationPath: string | ((compatibility: OutcomeProjectCompatibility) => string),
+        buildOutcome: (destinationPath: string) => Promise<unknown>,
+    ): Promise<PokieProject> {
         const blueprint = this.validateAndMaterialize(source.rootPath);
         const game = this.loadMaterializedGame(blueprint);
         const configHash = game.getConfigHash?.();
@@ -93,7 +98,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             return compatible;
         }
 
-        const bundleDir = this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility);
+        const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
         await buildOutcome(bundleDir);
         return this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
     }

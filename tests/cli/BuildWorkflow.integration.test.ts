@@ -144,6 +144,44 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         }
     });
 
+    it("registers a direct Outcome build before its analysis, sampling, Replay, and Stake continuation", async () => {
+        const finiteBlueprintPath = path.join(workDir, "finite-outcome.blueprint.json");
+        fs.writeFileSync(
+            finiteBlueprintPath,
+            JSON.stringify({
+                manifest: {id: "finite-outcome-slot", name: "Finite Outcome Slot", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [["A", "A", "B"], ["A", "B"]],
+                availableBets: [1],
+            }),
+        );
+        const outcomeDir = path.join(workDir, "outcomes");
+        const stakeDir = path.join(workDir, "stake");
+        const reportFile = path.join(workDir, "outcomes-report.json");
+        const sampleFile = path.join(workDir, "outcomes-sample.json");
+        const replayFile = path.join(workDir, "outcomes-replay.json");
+
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", outcomeDir])).toBe(0);
+        expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(true);
+
+        expect(await new ValidateCommand().run([outcomeDir])).toBe(0);
+        await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
+        expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});
+
+        await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "25", "--seed", "direct-outcome", "--out", sampleFile]);
+        expect(JSON.parse(fs.readFileSync(sampleFile, "utf-8"))).toMatchObject({modeName: "base", statistics: {rounds: 25}});
+
+        await new ReplayCommand().run([outcomeDir, "--mode", "base", "--seed", "direct-outcome", "--round", "2", "--out", replayFile]);
+        expect(JSON.parse(fs.readFileSync(replayFile, "utf-8"))).toMatchObject({round: 2, seed: "direct-outcome"});
+
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "stakeAdapter", "--out", stakeDir])).toBe(0);
+        expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
+    });
+
     it("refuses to rebuild into the same --out once it's already populated -- there is no rebuild/merge recognition", async () => {
         const first = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
         expect(first).toBe(0);

@@ -118,6 +118,7 @@ export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
     private readonly blueprintStakeWorkflow: BlueprintStakeOutcomeLibraryWorkflow;
+    private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
 
     constructor(
         pokieVersion = "0.0.0",
@@ -130,6 +131,7 @@ export class ArtifactBuilderRegistry {
         }
         this.descriptors = descriptors;
         this.builders = builders;
+        this.managedOutcomeProjects = managedOutcomeProjects;
         this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, managedOutcomeProjects);
     }
 
@@ -159,18 +161,22 @@ export class ArtifactBuilderRegistry {
     // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
     // is never a second, differently-worded "not supported" statement.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+        if (target === "outcomeLibrary" && source.type === "blueprint") {
+            return this.buildManagedOutcomeFromBlueprint(source, destinationPath);
+        }
         if (target === "stakeAdapter" && source.type === "blueprint") {
             return this.blueprintStakeWorkflow
-                .resolveOrGenerate(source, (outcomeDestination) => this.build("outcomeLibrary", source, outcomeDestination))
+                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), (outcomeDestination) => this.buildOutcomeBundle(source, outcomeDestination))
                 .then((outcomeLibrary) =>
                     this.build("stakeAdapter", outcomeLibrary, destinationPath).then((result) => ({
                         ...result,
                         prerequisiteProjectRoots: [outcomeLibrary.rootPath],
+                        managedProjectRoots: [outcomeLibrary.rootPath],
                     })),
                 );
         }
         const descriptor = this.describe(target);
-        const diagnostic = target === "outcomeLibrary" && source.type === "blueprint" ? undefined : describeUnsupportedProjectOperation(source, descriptor.operation);
+        const diagnostic = describeUnsupportedProjectOperation(source, descriptor.operation);
         if (diagnostic !== undefined) {
             return Promise.reject(new Error(diagnostic.message));
         }
@@ -182,6 +188,23 @@ export class ArtifactBuilderRegistry {
             );
         }
 
+        return builder.build(source, destinationPath);
+    }
+
+    private async buildManagedOutcomeFromBlueprint(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+        const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
+            source,
+            destinationPath,
+            (outcomeDestination) => this.buildOutcomeBundle(source, outcomeDestination),
+        );
+        return {outputPath: outcomeLibrary.rootPath, managedProjectRoots: [outcomeLibrary.rootPath]};
+    }
+
+    private buildOutcomeBundle(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+        const builder = this.builders.get("outcomeLibrary");
+        if (builder === undefined) {
+            return Promise.reject(new Error('"outcomeLibrary" has no builder implemented yet.'));
+        }
         return builder.build(source, destinationPath);
     }
 

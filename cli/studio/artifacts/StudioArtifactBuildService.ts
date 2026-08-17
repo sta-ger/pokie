@@ -142,10 +142,14 @@ export class StudioArtifactBuildService {
 
         try {
             const result = await this.registry.build(target, project, destination);
-            // A Blueprint -> Stake request may have caused the registry to create/open its canonical
-            // Outcome Project.  Register that exact resolved path with Studio's authoritative Projects
-            // registry before reporting success; no Studio-only outcome-path index is maintained here.
-            await Promise.all((result.prerequisiteProjectRoots ?? []).map((projectRoot) => this.registerManagedProject(projectRoot)));
+            // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
+            // the registry generated or reopened. Register it with Studio before reporting success; no
+            // Studio-only outcome-path index is maintained here.
+            const managedProjectRoots = new Set([
+                ...(result.prerequisiteProjectRoots ?? []),
+                ...(result.managedProjectRoots ?? []),
+            ]);
+            await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(projectRoot)));
             return {status: "ok", target, outputPath: result.outputPath, outputKind: destinationKindFor(target), sourceType: project.type};
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
