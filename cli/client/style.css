@@ -33,6 +33,17 @@ section {
     margin-bottom: 1rem;
 }
 
+#session-controls {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: max-content minmax(12rem, 1fr) max-content;
+    align-items: center;
+}
+
+#session-controls input {
+    min-width: 0;
+}
+
 .screen {
     margin-bottom: 1rem;
 }
@@ -188,6 +199,10 @@ pre {
 }
 
 @media (max-width: 480px) {
+    #session-controls {
+        grid-template-columns: 1fr;
+    }
+
     .player-cell {
         height: 2.25rem;
         min-width: 2.25rem;

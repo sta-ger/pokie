@@ -39,6 +39,28 @@ describe("ensureSession", () => {
         expect(loadSessionId(storage)).toBe("new-session");
     });
 
+    it("starts a new seeded session instead of restoring a previously saved unseeded session", async () => {
+        const storage = createInMemoryStorage("old-session");
+        const requestedUrls: string[] = [];
+        const requestedBodies: Array<string | undefined> = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            requestedUrls.push(url);
+            requestedBodies.push(init?.body);
+            return Promise.resolve({
+                ok: true,
+                status: 201,
+                json: () => Promise.resolve({sessionId: "seeded-session", game: {id: "g", name: "G", version: "1.0.0"}, credits: 1000}),
+            });
+        };
+
+        const result = await ensureSession(fetchImpl, storage, "http://api.test", undefined, "fixture-round");
+
+        expect(requestedUrls).toEqual(["http://api.test/sessions"]);
+        expect(requestedBodies).toEqual([JSON.stringify({seed: "fixture-round"})]);
+        expect(result.sessionId).toBe("seeded-session");
+        expect(loadSessionId(storage)).toBe("seeded-session");
+    });
+
     it("restores the stored session via GET when it still exists on the server", async () => {
         const storage = createInMemoryStorage("existing-session");
         const fetchImpl: FetchLike = (url) => {

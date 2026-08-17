@@ -21,6 +21,14 @@
             </details>
             <button id="connection-retry-button" type="button">Retry</button>
         </section>
+        <section id="session-controls" aria-label="Session controls">
+            <label for="session-seed">Session seed (optional)</label>
+            <input id="session-seed" type="text" autocomplete="off" placeholder="e.g. fixture-round" />
+            <button id="start-session-button" type="button">Start new session</button>
+            <label for="session-id">Session ID</label>
+            <input id="session-id" type="text" autocomplete="off" placeholder="Paste a session ID to restore" />
+            <button id="restore-session-button" type="button">Restore session</button>
+        </section>
         <section id="round-view">
             <div id="player-section" hidden>
                 <div id="player-bet-info" class="player-bet-info"></div>

@@ -9,13 +9,22 @@ import type {SessionResponse} from "./types.js";
 // second, unrelated one this player would otherwise create on its own), it's tried first, ahead of
 // whatever storage already has. Otherwise falls back to storage's own remembered sessionId. Either way,
 // a 404/unknown id is treated as stale (cleared) rather than fatal, falling back to creating a fresh
-// session.
+// session. Supplying a `seed` instead is an explicit request for a *new* deterministic session, so it
+// deliberately takes precedence over storage rather than silently restoring an unrelated old session.
 export async function ensureSession(
     fetchImpl: FetchLike,
     storage: StorageLike,
     apiBaseUrl: string,
     preferredSessionId?: string,
+    seed?: string | number,
 ): Promise<SessionResponse> {
+    if (seed !== undefined) {
+        clearSessionId(storage);
+        const created = await createSession(fetchImpl, apiBaseUrl, seed);
+        saveSessionId(storage, created.sessionId);
+        return created;
+    }
+
     const existingId = preferredSessionId ?? loadSessionId(storage);
     if (existingId !== null && existingId !== undefined) {
         const restored = await getSession(fetchImpl, apiBaseUrl, existingId);
