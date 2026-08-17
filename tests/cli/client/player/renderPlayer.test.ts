@@ -24,6 +24,7 @@ import {
     deriveFeatureCounters,
     deriveLineDefinitions,
     derivePaytableView,
+    deriveTotalWin,
     deriveWinHighlights,
     deriveWinHighlightsFromRoundArtifactWins,
     type VideoSlotRoundResponse,
@@ -407,7 +408,7 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         const paytableBody = document.createElement("tbody");
 
         const highlights = deriveWinHighlights(FIXTURE_RESPONSE);
-        const winAmount = typeof FIXTURE_RESPONSE.totalWin === "number" ? FIXTURE_RESPONSE.totalWin : undefined;
+        const winAmount = deriveTotalWin(FIXTURE_RESPONSE);
         renderPlayerRound(
             {credits, totalWin, payoutMultiplier, gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody},
             {
