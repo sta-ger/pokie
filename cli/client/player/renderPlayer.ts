@@ -19,6 +19,9 @@ type CellElement = HTMLElement & {baseColor: string};
 // player-specific section.  Keeping that composition here prevents an examples app, the dev client
 // and Studio from each growing a subtly different "screen with wins" implementation.
 export type PlayerRoundElements = {
+    credits?: HTMLElement;
+    totalWin?: HTMLElement;
+    payoutMultiplier?: HTMLElement;
     gridContainer: HTMLElement;
     winsSection: HTMLElement;
     winsList: HTMLElement;
@@ -31,6 +34,17 @@ export type PlayerRoundElements = {
 };
 
 export type PlayerRoundView = {
+    // Round-level facts are rendered here with the grid and its individual wins, rather than being
+    // independently composed by each host surface.  Undefined is an honest unavailable value, not 0.
+    credits?: number;
+    totalWin?: number;
+    payoutMultiplier?: number;
+    creditsLabel?: string;
+    totalWinLabel?: string;
+    payoutMultiplierLabel?: string;
+    payoutMultiplierSuffix?: string;
+    formatTotalWin?: (value: number) => string;
+    formatPayoutMultiplier?: (value: number) => string;
     reelsSymbols: string[][];
     highlights: WinHighlight[];
     featureCounters?: FeatureCounter[];
@@ -349,11 +363,32 @@ export function renderModeInfo(el: HTMLElement, availableModeIds: string[], curr
     );
 }
 
+function renderRoundValue(
+    el: HTMLElement | undefined,
+    value: number | undefined,
+    label = "",
+    suffix = "",
+    format: (value: number) => string = String,
+): void {
+    if (el !== undefined) {
+        el.textContent = value === undefined ? "—" : `${label}${format(value)}${suffix}`;
+    }
+}
+
 // The single presentation entrypoint used by all user-facing game surfaces.  The input is already
 // computed transport data (or its structural adapter), so this function performs no game math.
 // Empty/undefined optional data is rendered as an empty section, which also prevents stale details
 // from a preceding round from surviving when a feature or selector is not applicable.
 export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRoundView): void {
+    renderRoundValue(elements.credits, view.credits, view.creditsLabel);
+    renderRoundValue(elements.totalWin, view.totalWin, view.totalWinLabel, "", view.formatTotalWin);
+    renderRoundValue(
+        elements.payoutMultiplier,
+        view.payoutMultiplier,
+        view.payoutMultiplierLabel,
+        view.payoutMultiplierSuffix,
+        view.formatPayoutMultiplier,
+    );
     renderReelsGrid(elements.gridContainer, view.reelsSymbols, view.artworkUrlForSymbol);
     applyPersistentHighlights(elements.gridContainer, view.highlights);
     renderWinsSection(elements.winsSection, view.highlights.length > 0);

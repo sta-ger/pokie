@@ -29,6 +29,7 @@ type Elements = {
     bet: HTMLElement;
     credits: HTMLElement;
     win: HTMLElement;
+    payoutMultiplier: HTMLElement;
     screen: HTMLElement;
     spinButton: HTMLButtonElement;
     rawJson: HTMLElement;
@@ -84,6 +85,7 @@ function queryElements(): Elements {
         bet: requireElement("bet"),
         credits: requireElement("credits"),
         win: requireElement("win"),
+        payoutMultiplier: requireElement("payout-multiplier"),
         screen: requireElement("screen"),
         spinButton: requireElement("spin-button"),
         rawJson: requireElement("raw-json"),
@@ -155,10 +157,16 @@ function renderVideoSlotRound(
     onSelectBet: (bet: number) => void,
     selectedMode: string | undefined,
     onSelectMode: (modeId: string) => void,
+    credits: number,
 ): void {
     const highlights = deriveWinHighlights(response);
+    const totalWin = typeof response.totalWin === "number" ? response.totalWin : undefined;
+    const bet = typeof response.bet === "number" ? response.bet : selectedBet;
     renderPlayerRound(
         {
+            credits: elements.credits,
+            totalWin: elements.win,
+            payoutMultiplier: elements.payoutMultiplier,
             gridContainer: elements.playerGridContainer,
             winsSection: elements.playerWinsSection,
             winsList: elements.playerWinsList,
@@ -170,6 +178,9 @@ function renderVideoSlotRound(
             paytableBody: elements.playerPaytableBody,
         },
         {
+            credits,
+            totalWin,
+            payoutMultiplier: totalWin !== undefined && bet !== undefined && bet !== 0 ? totalWin / bet : undefined,
             reelsSymbols: response.reelsSymbols,
             highlights,
             featureCounters: deriveFeatureCounters(response),
@@ -197,13 +208,39 @@ function render(
     onSelectMode: (modeId: string) => void,
 ): void {
     elements.gameTitle.textContent = `${response.game.name} — POKIE client preview`;
-    renderRoundView(elements, extractKnownRoundView(response));
+    const roundView = extractKnownRoundView(response);
+    renderRoundView({bet: elements.bet, screen: elements.screen}, roundView);
 
     const isVideoSlot = isVideoSlotRoundResponse(response);
     elements.playerSection.hidden = !isVideoSlot;
     elements.screen.hidden = isVideoSlot;
     if (isVideoSlot) {
-        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode);
+        renderVideoSlotRound(elements, response, staticView, selectedBet, onSelectBet, selectedMode, onSelectMode, roundView.credits);
+    } else {
+        renderPlayerRound(
+            {
+                credits: elements.credits,
+                totalWin: elements.win,
+                payoutMultiplier: elements.payoutMultiplier,
+                gridContainer: elements.playerGridContainer,
+                winsSection: elements.playerWinsSection,
+                winsList: elements.playerWinsList,
+                linesList: elements.playerLinesList,
+                features: elements.playerFeatures,
+                betInfo: elements.playerBetInfo,
+                modeInfo: elements.playerModeInfo,
+                paytableHead: elements.playerPaytableHead,
+                paytableBody: elements.playerPaytableBody,
+            },
+            {
+                credits: roundView.credits,
+                totalWin: roundView.win,
+                payoutMultiplier:
+                    roundView.win !== undefined && roundView.bet !== undefined && roundView.bet !== 0 ? roundView.win / roundView.bet : undefined,
+                reelsSymbols: [],
+                highlights: [],
+            },
+        );
     }
 
     renderRawJson(elements.rawJson, response);

@@ -15,6 +15,18 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 // and ProjectDashboardPage.playWorkflow.test.tsx's own "canonical player parity" suite (through Play's
 // real session/spin workflow, proving it reaches the exact same cli/client/player DOM functions
 // tests/cli/client/player/renderPlayer.test.ts's own fixture-round test calls directly).
-export function GameScreenView({screen, wins}: {screen: string[][]; wins?: readonly RoundArtifactWin[]}) {
-    return <CanonicalPlayerView reelsSymbols={screen} wins={wins} />;
+export function GameScreenView({
+    screen,
+    wins,
+    credits,
+    totalWin,
+    payoutMultiplier,
+}: {
+    screen: string[][];
+    wins?: readonly RoundArtifactWin[];
+    credits?: number;
+    totalWin?: number;
+    payoutMultiplier?: number;
+}) {
+    return <CanonicalPlayerView reelsSymbols={screen} wins={wins} credits={credits} totalWin={totalWin} payoutMultiplier={payoutMultiplier} />;
 }

@@ -742,22 +742,23 @@ export function ReplayTab({
                                                 </Table.Tr>
                                             )}
                                             <Table.Tr>
-                                                <Table.Th>Credits</Table.Th>
-                                                <Table.Td>{selectedSpin.credits ?? "—"}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
                                                 <Table.Th>Bet</Table.Th>
                                                 <Table.Td>{selectedSpin.bet ?? "—"}</Table.Td>
-                                            </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Win</Table.Th>
-                                                <Table.Td>{selectedSpin.win ?? 0}</Table.Td>
                                             </Table.Tr>
                                         </Table.Tbody>
                                     </Table>
 
                                     {selectedSpin.screen ? (
-                                        <GameScreenView screen={describeRuntimeScreen(selectedSpin.screen) ?? []} />
+                                        <GameScreenView
+                                            screen={describeRuntimeScreen(selectedSpin.screen) ?? []}
+                                            credits={selectedSpin.credits}
+                                            totalWin={selectedSpin.win}
+                                            payoutMultiplier={
+                                                selectedSpin.win !== undefined && selectedSpin.bet !== undefined && selectedSpin.bet !== 0
+                                                    ? selectedSpin.win / selectedSpin.bet
+                                                    : undefined
+                                            }
+                                        />
                                     ) : (
                                         <Text size="sm" c="dimmed">
                                             No screen available.

@@ -10,12 +10,10 @@ export function renderStatus(el: HTMLElement, text: string): void {
 }
 
 export function renderRoundView(
-    elements: {bet: HTMLElement; credits: HTMLElement; win: HTMLElement; screen: HTMLElement},
+    elements: {bet: HTMLElement; screen: HTMLElement},
     view: KnownRoundView,
 ): void {
     elements.bet.textContent = view.bet !== undefined ? String(view.bet) : "—";
-    elements.credits.textContent = String(view.credits);
-    elements.win.textContent = view.win !== undefined ? String(view.win) : "—";
     renderScreen(elements.screen, view.screen);
 }
 

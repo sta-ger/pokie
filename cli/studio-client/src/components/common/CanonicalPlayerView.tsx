@@ -37,6 +37,9 @@ export function CanonicalPlayerView({
     availableModeIds,
     currentModeId,
     onSelectMode,
+    credits,
+    totalWin,
+    payoutMultiplier,
 }: {
     reelsSymbols: string[][];
     wins?: readonly GenericRoundArtifactWin[];
@@ -49,6 +52,9 @@ export function CanonicalPlayerView({
     availableModeIds?: string[];
     currentModeId?: string;
     onSelectMode?: (modeId: string) => void;
+    credits?: number;
+    totalWin?: number;
+    payoutMultiplier?: number;
 }) {
     const artwork = useActiveSymbolArtwork();
     const gridRef = useRef<HTMLDivElement>(null);
@@ -60,6 +66,9 @@ export function CanonicalPlayerView({
     const modeInfoRef = useRef<HTMLDivElement>(null);
     const paytableHeadRef = useRef<HTMLTableRowElement>(null);
     const paytableBodyRef = useRef<HTMLTableSectionElement>(null);
+    const creditsRef = useRef<HTMLElement>(null);
+    const totalWinRef = useRef<HTMLSpanElement>(null);
+    const payoutMultiplierRef = useRef<HTMLSpanElement>(null);
 
     useLayoutEffect(() => {
         if (
@@ -71,13 +80,19 @@ export function CanonicalPlayerView({
             !betInfoRef.current ||
             !modeInfoRef.current ||
             !paytableHeadRef.current ||
-            !paytableBodyRef.current
+            !paytableBodyRef.current ||
+            (credits !== undefined && !creditsRef.current) ||
+            (totalWin !== undefined && !totalWinRef.current) ||
+            (payoutMultiplier !== undefined && !payoutMultiplierRef.current)
         ) {
             return;
         }
         const highlights = deriveWinHighlightsFromRoundArtifactWins(wins ?? [], reelsSymbols.length);
         renderPlayerRound(
             {
+                ...(creditsRef.current ? {credits: creditsRef.current} : {}),
+                ...(totalWinRef.current ? {totalWin: totalWinRef.current} : {}),
+                ...(payoutMultiplierRef.current ? {payoutMultiplier: payoutMultiplierRef.current} : {}),
                 gridContainer: gridRef.current,
                 winsSection: winsSectionRef.current,
                 winsList: winsListRef.current,
@@ -89,6 +104,11 @@ export function CanonicalPlayerView({
                 paytableBody: paytableBodyRef.current,
             },
             {
+                credits,
+                totalWin,
+                payoutMultiplier,
+                formatTotalWin: (value) => value.toFixed(2),
+                formatPayoutMultiplier: (value) => value.toFixed(2),
                 reelsSymbols,
                 highlights,
                 featureCounters,
@@ -106,13 +126,24 @@ export function CanonicalPlayerView({
                 },
             },
         );
-    }, [artwork, availableBets, availableModeIds, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, reelsSymbols, wins]);
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, wins]);
 
     return (
         <div>
             <Table.ScrollContainer minWidth={200}>
                 <div ref={gridRef} />
             </Table.ScrollContainer>
+            <dl hidden={credits === undefined && totalWin === undefined && payoutMultiplier === undefined}>
+                {credits !== undefined && <><dt>Credits</dt><dd ref={creditsRef} /></>}
+                {totalWin !== undefined && (
+                    <>
+                        <dt>Total win</dt>
+                        <dd>
+                            <span ref={totalWinRef} /> {payoutMultiplier !== undefined && <span>(<span ref={payoutMultiplierRef} />x)</span>}
+                        </dd>
+                    </>
+                )}
+            </dl>
             <div ref={winsSectionRef} hidden>
                 <div ref={winsListRef} />
             </div>

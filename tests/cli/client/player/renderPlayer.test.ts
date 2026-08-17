@@ -217,6 +217,9 @@ describe("renderBetInfo / renderModeInfo", () => {
 describe("renderPlayerRound", () => {
     function createElements() {
         return {
+            credits: document.createElement("div"),
+            totalWin: document.createElement("div"),
+            payoutMultiplier: document.createElement("div"),
             gridContainer: document.createElement("div"),
             winsSection: document.createElement("section"),
             winsList: document.createElement("div"),
@@ -235,6 +238,9 @@ describe("renderPlayerRound", () => {
         const selectMode = jest.fn();
 
         renderPlayerRound(elements, {
+            credits: 88,
+            totalWin: 12,
+            payoutMultiplier: 1.2,
             reelsSymbols: [["A", "K"], ["Q"]],
             highlights: [{id: "line:0", kind: "line", label: "Line: 0, win: 12", winAmount: 12, positions: [[0, 0]], paylinePositions: [[0, 0], [1, 0]]}],
             featureCounters: [{label: "FG num", value: 2}],
@@ -253,6 +259,9 @@ describe("renderPlayerRound", () => {
         const image = elements.gridContainer.querySelector('[data-cell="0:0"] img') as HTMLImageElement;
         image.dispatchEvent(new Event("error"));
         expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("A");
+        expect(elements.credits.textContent).toBe("88");
+        expect(elements.totalWin.textContent).toBe("12");
+        expect(elements.payoutMultiplier.textContent).toBe("1.2");
         expect(elements.winsSection.hidden).toBe(false);
         expect(elements.winsList.textContent).toContain("Line: 0, win: 12");
         expect(elements.features.textContent).toContain("FG num2");
@@ -271,6 +280,9 @@ describe("renderPlayerRound", () => {
         expect(elements.paytableBody.children).toHaveLength(0);
         expect(elements.betInfo.children).toHaveLength(0);
         expect(elements.modeInfo.children).toHaveLength(0);
+        expect(elements.credits.textContent).toBe("—");
+        expect(elements.totalWin.textContent).toBe("—");
+        expect(elements.payoutMultiplier.textContent).toBe("—");
         expect(elements.gridContainer.querySelector('[data-cell="0:0"]')?.textContent).toBe("B");
     });
 });
@@ -382,6 +394,9 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
     // FIXTURE_RESPONSE's own already-computed winningLines/totalWin.
     function renderFixtureRound() {
         const gridContainer = document.createElement("div");
+        const credits = document.createElement("div");
+        const totalWin = document.createElement("div");
+        const payoutMultiplier = document.createElement("div");
         const winsSection = document.createElement("div");
         const winsList = document.createElement("div");
         const linesList = document.createElement("div");
@@ -393,8 +408,11 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
 
         const highlights = deriveWinHighlights(FIXTURE_RESPONSE);
         renderPlayerRound(
-            {gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody},
+            {credits, totalWin, payoutMultiplier, gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody},
             {
+                credits: 87.5,
+                totalWin: FIXTURE_RESPONSE.totalWin,
+                payoutMultiplier: 2.5,
                 reelsSymbols: FIXTURE_RESPONSE.reelsSymbols as string[][],
                 highlights,
                 featureCounters: deriveFeatureCounters(FIXTURE_RESPONSE),
@@ -410,6 +428,9 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         );
 
         return {
+            credits,
+            totalWin,
+            payoutMultiplier,
             gridContainer,
             winsSection,
             winsList,
@@ -441,6 +462,9 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         expect(nonWinningCell.style.backgroundColor).toBe("");
         expect(view.winsSection.hidden).toBe(false);
         expect(view.winsList.querySelector("button")?.textContent).toBe("Line: 0, win: 12.5");
+        expect(view.credits.textContent).toBe("87.5");
+        expect(view.totalWin.textContent).toBe("12.5");
+        expect(view.payoutMultiplier.textContent).toBe("2.5");
 
         // Paytable, straight off the response's own bet-keyed table.
         expect(view.paytableHead.textContent).toBe("Symbol23");

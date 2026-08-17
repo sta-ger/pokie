@@ -142,9 +142,15 @@ export function RoundArtifactInspector({
                 </Alert>
             )}
 
-            <RoundDetailsTable artifact={artifact} credits={credits} />
+            <RoundDetailsTable artifact={artifact} />
 
-            <GameScreenView screen={artifact.screen} wins={artifact.wins} />
+            <GameScreenView
+                screen={artifact.screen}
+                wins={artifact.wins}
+                credits={credits}
+                totalWin={artifact.totalWin}
+                payoutMultiplier={artifact.payoutMultiplier}
+            />
 
             <PageSection legend={hasMultipleSteps ? `Step ${stepIndex + 1} of ${artifact.steps.length}` : "Round detail"}>
                 {hasMultipleSteps && (
