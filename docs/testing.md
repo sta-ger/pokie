@@ -23,6 +23,12 @@ exist, just behind their own commands (`test:coverage`, `test:packaging`, both f
 `check:fast`/`check:full`/`check:release` are all genuinely green — nothing is documented here as a
 known-red gate; see "Fixed in this pass" below for what previously was.
 
+`check:full` runs its unit, typecheck, integration, and workflow lanes sequentially but does not
+stop after the first failed lane. It returns non-zero after every lane has reported, allowing one
+official run to provide the complete bounded correction set. The workflow runner likewise keeps
+each memory-heavy file in its own process while continuing through the remaining files after an
+assertion failure.
+
 ### Why five Jest projects
 
 - **`pokie`** — the default fast lane: unit/component tests for individual classes, transpile-only

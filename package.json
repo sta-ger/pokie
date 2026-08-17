@@ -37,7 +37,7 @@
         "test:report": "node scripts/report-test-timings.mjs",
         "bench": "node --expose-gc ./node_modules/jest/bin/jest.js --selectProjects pokie-benchmarks --runInBand",
         "check:fast": "npm test",
-        "check:full": "npm test && npm run typecheck && npm run test:integration && npm run test:workflows",
+        "check:full": "node scripts/run-full-check.mjs",
         "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
         "build-esm": "npm run generate-barrels && tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
         "build-cjs": "npm run generate-barrels && tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
