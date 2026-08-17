@@ -252,9 +252,9 @@ export class BuildCommand implements CliCommandHandling {
         return 0;
     }
 
-// Every remaining target is dispatched to the shared registry. A Blueprint -> Outcome request is the one
-// managed lifecycle exception: the requested destination is generated, verified, registered and reopened as
-// the canonical Outcome Project before this method reports it; Blueprint -> Stake then reuses that record.
+    // Every remaining target is dispatched to the shared registry. A Blueprint -> Outcome request is the one
+    // managed lifecycle exception: the requested destination is generated, verified, registered and reopened as
+    // the canonical Outcome Project before this method reports it; Blueprint -> Stake then reuses that record.
     private async buildArtifact(target: ArtifactTargetType, project: PokieProject, out: string, dryRun: boolean): Promise<number> {
         if (dryRun) {
             console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
