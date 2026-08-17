@@ -578,6 +578,21 @@ export type SimulationReport = {
     warnings?: string[];
     recommendations?: string[];
     breakdown?: {components: Record<string, SimulationReportBreakdownComponent>};
+    averageBet?: number;
+    averagePayout?: number;
+    volatility?: number;
+    payoutHistogram?: Record<string, number>;
+    maxWinFrequency?: number;
+    stopReason?: "maxRounds" | "sessionStopped" | "converged";
+    convergence?: {
+        minRounds: number;
+        rtpTolerance: number;
+        checkIntervalRounds: number;
+        stableChecks: number;
+        checksPerformed: number;
+        consecutiveStableChecks: number;
+        achievedRtpHalfWidth: number;
+    };
 };
 
 // The extra volatility/standard-deviation/confidence-interval fields Studio surfaces alongside the

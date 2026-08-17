@@ -25,8 +25,12 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         </Table.Td>
                     </Table.Tr>
                     <Table.Tr>
-                        <Table.Th>Rounds</Table.Th>
-                        <Table.Td>{view.rounds === view.requestedRounds ? view.rounds : `${view.rounds} (requested ${view.requestedRounds})`}</Table.Td>
+                        <Table.Th>Requested rounds</Table.Th>
+                        <Table.Td>{view.requestedRounds}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Actual rounds</Table.Th>
+                        <Table.Td>{view.rounds}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Seed</Table.Th>
@@ -57,6 +61,18 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                         <Table.Td>{view.maxWin.toFixed(2)}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
+                        <Table.Th>Max win frequency</Table.Th>
+                        <Table.Td>{view.maxWinFrequency === undefined ? "—" : `${(view.maxWinFrequency * 100).toFixed(4)}%`}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Average payout</Table.Th>
+                        <Table.Td>{view.averagePayout === undefined ? "—" : view.averagePayout.toFixed(2)}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
+                        <Table.Th>Stop reason</Table.Th>
+                        <Table.Td>{view.stopReason ?? "Fixed requested rounds"}</Table.Td>
+                    </Table.Tr>
+                    <Table.Tr>
                         <Table.Th>Duration</Table.Th>
                         <Table.Td>
                             {view.durationMs}ms ({view.spinsPerSecond} spins/s)
@@ -76,6 +92,21 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
                             <Table.Th>Average payout 95% confidence interval</Table.Th>
                             <Table.Td>{formatConfidenceInterval(view.averagePayoutConfidenceInterval95)}</Table.Td>
                         </Table.Tr>
+                        {view.convergence && (
+                            <>
+                                <Table.Tr>
+                                    <Table.Th>Adaptive checks</Table.Th>
+                                    <Table.Td>
+                                        {view.convergence.checksPerformed} performed; {view.convergence.consecutiveStableChecks}/
+                                        {view.convergence.stableChecks} stable
+                                    </Table.Td>
+                                </Table.Tr>
+                                <Table.Tr>
+                                    <Table.Th>Achieved RTP half-width</Table.Th>
+                                    <Table.Td>{(view.convergence.achievedRtpHalfWidth * 100).toFixed(3)} pp</Table.Td>
+                                </Table.Tr>
+                            </>
+                        )}
                     </Table.Tbody>
                 </Table>
                 {view.recommendations.length > 0 && (

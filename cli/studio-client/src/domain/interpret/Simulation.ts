@@ -60,6 +60,19 @@ export type SimulationReportView = {
     rtp: number;
     hitFrequency: number;
     maxWin: number;
+    averageBet?: number;
+    averagePayout?: number;
+    maxWinFrequency?: number;
+    stopReason?: "maxRounds" | "sessionStopped" | "converged";
+    convergence?: {
+        minRounds: number;
+        rtpTolerance: number;
+        checkIntervalRounds: number;
+        stableChecks: number;
+        checksPerformed: number;
+        consecutiveStableChecks: number;
+        achievedRtpHalfWidth: number;
+    };
     durationMs: number;
     spinsPerSecond: number;
     workers: number;
@@ -92,6 +105,11 @@ export function describeSimulationReport(
         rtp: report.rtp,
         hitFrequency: report.hitFrequency,
         maxWin: report.maxWin,
+        averageBet: report.averageBet,
+        averagePayout: report.averagePayout,
+        maxWinFrequency: report.maxWinFrequency,
+        stopReason: report.stopReason,
+        convergence: report.convergence,
         durationMs: report.durationMs,
         spinsPerSecond: report.spinsPerSecond,
         workers: report.workers ?? 1,

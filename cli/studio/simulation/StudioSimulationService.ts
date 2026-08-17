@@ -323,6 +323,13 @@ export class StudioSimulationService {
             });
             const result = await runner.run();
 
+            // The runner is the authority on both the final number of rounds and why it stopped.
+            // Capture its final duration before building the immutable report: the last progress
+            // callback can precede runner cleanup, so using its older value made a completed
+            // one-chunk run look instantaneous and dropped adaptive-stop metadata in Studio.
+            record.roundsCompleted = result.statistics.rounds;
+            record.durationMs = this.now() - record.startedAt;
+
             const report: SimulationReport = this.reportBuilder.build({
                 manifest: result.manifest,
                 requestedRounds: record.rounds,
@@ -333,6 +340,8 @@ export class StudioSimulationService {
                 breakdown: result.breakdown,
                 workers: result.workers,
                 workerSeedStrategy: result.workerSeedStrategy,
+                stopReason: result.stopReason,
+                convergence: result.convergence,
             });
 
             record.status = "completed";

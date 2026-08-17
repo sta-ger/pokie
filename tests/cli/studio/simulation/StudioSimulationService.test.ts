@@ -205,6 +205,7 @@ describe("StudioSimulationService", () => {
         expect(job.roundsCompleted).toBe(12);
         expect(job.report?.rounds).toBe(12);
         expect(job.report?.requestedRounds).toBe(100);
+        expect(job.report?.stopReason).toBe("sessionStopped");
     });
 
     it("fails the job with a safe error message (no stack trace) when loading the game throws", async () => {
@@ -712,4 +713,3 @@ describe("StudioSimulationService (integration, real loadPokieGame + fixture gam
         expect(base.rounds + freeGames.rounds).toBe(job.report!.rounds);
     });
 });
-
