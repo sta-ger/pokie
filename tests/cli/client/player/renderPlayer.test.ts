@@ -276,15 +276,37 @@ describe("renderPlayerRound", () => {
 });
 
 describe("canonical Player source reachability", () => {
-    it("makes both client transports invoke the barrel's single round entrypoint", () => {
+    it("makes the dev client, Studio, and pokie-examples invoke the barrel's single round entrypoint", () => {
         const devClient = readFileSync(resolve(process.cwd(), "cli/client/main.ts"), "utf8");
-        const studio = readFileSync(resolve(process.cwd(), "cli/studio-client/src/components/common/CanonicalPlayerView.tsx"), "utf8");
+        const studio = readFileSync(
+            resolve(process.cwd(), "cli/studio-client/src/components/common/CanonicalPlayerView.tsx"),
+            "utf8",
+        );
+        const examplesUiPath = process.env.POKIE_EXAMPLES_PATH
+            ? resolve(process.env.POKIE_EXAMPLES_PATH, "src/ui/ui.ts")
+            : resolve(process.cwd(), "..", "pokie-examples", "src/ui/ui.ts");
+        const examplesUi = readFileSync(examplesUiPath, "utf8");
 
         expect(devClient).toContain('from "./player/index.js"');
         expect(devClient).toContain("renderPlayerRound(");
         expect(studio).toContain('from "../../../../client/player"');
         expect(studio).toContain("renderPlayerRound(");
         expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
+        expect(examplesUi).toContain('from "pokie/client/player"');
+        expect(examplesUi).toContain("renderPlayerRound(");
+        for (const legacyRenderer of [
+            "renderReelsGrid(",
+            "applyPersistentHighlights(",
+            "renderWinsSection(",
+            "renderWinHighlightsList(",
+            "renderFeatureCounters(",
+            "renderBetInfo(",
+            "renderModeInfo(",
+            "renderLineDefinitionsList(",
+            "renderPaytable(",
+        ]) {
+            expect(examplesUi).not.toContain(legacyRenderer);
+        }
     });
 });
 
@@ -355,8 +377,8 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         betModeId: "base",
     };
 
-    // Mirrors renderVideoSlotRound()/renderRound() exactly: grid, then win highlights/list, then feature
-    // counters, bet/mode info, line definitions and paytable -- never a client-side recomputation of
+    // Mirrors renderVideoSlotRound()/renderRound() exactly: their inputs are adapted from the response,
+    // then the canonical entrypoint owns every Player section without client-side recomputation of
     // FIXTURE_RESPONSE's own already-computed winningLines/totalWin.
     function renderFixtureRound() {
         const gridContainer = document.createElement("div");
@@ -369,23 +391,35 @@ describe("canonical player fixture round parity (dev client / pokie-examples)", 
         const paytableHead = document.createElement("tr");
         const paytableBody = document.createElement("tbody");
 
-        renderReelsGrid(gridContainer, FIXTURE_RESPONSE.reelsSymbols as string[][]);
         const highlights = deriveWinHighlights(FIXTURE_RESPONSE);
-        applyPersistentHighlights(gridContainer, highlights);
-        renderWinsSection(winsSection, highlights.length > 0);
-        renderWinHighlightsList(winsList, gridContainer, highlights);
-        renderFeatureCounters(features, deriveFeatureCounters(FIXTURE_RESPONSE));
-        renderBetInfo(betInfo, deriveAvailableBets(FIXTURE_RESPONSE.availableBets), FIXTURE_RESPONSE.bet as number, () => undefined);
-        renderModeInfo(
-            modeInfo,
-            deriveAvailableBetModeIds(FIXTURE_RESPONSE.availableBetModeIds),
-            deriveBetModeId(FIXTURE_RESPONSE.betModeId),
-            () => undefined,
+        renderPlayerRound(
+            {gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody},
+            {
+                reelsSymbols: FIXTURE_RESPONSE.reelsSymbols as string[][],
+                highlights,
+                featureCounters: deriveFeatureCounters(FIXTURE_RESPONSE),
+                lines: deriveLineDefinitions(FIXTURE_RESPONSE.linesDefinitions),
+                paytable: derivePaytableView(FIXTURE_RESPONSE.paytable),
+                availableBets: deriveAvailableBets(FIXTURE_RESPONSE.availableBets),
+                currentBet: FIXTURE_RESPONSE.bet as number,
+                onSelectBet: () => undefined,
+                availableModeIds: deriveAvailableBetModeIds(FIXTURE_RESPONSE.availableBetModeIds),
+                currentModeId: deriveBetModeId(FIXTURE_RESPONSE.betModeId),
+                onSelectMode: () => undefined,
+            },
         );
-        renderLineDefinitionsList(linesList, gridContainer, deriveLineDefinitions(FIXTURE_RESPONSE.linesDefinitions));
-        renderPaytable(paytableHead, paytableBody, derivePaytableView(FIXTURE_RESPONSE.paytable));
 
-        return {gridContainer, winsSection, winsList, linesList, features, betInfo, modeInfo, paytableHead, paytableBody};
+        return {
+            gridContainer,
+            winsSection,
+            winsList,
+            linesList,
+            features,
+            betInfo,
+            modeInfo,
+            paytableHead,
+            paytableBody,
+        };
     }
 
     it("presents orientation, win highlighting, paytable, bets/modes and navigation consistently for the one fixture round", () => {
