@@ -1,0 +1,57 @@
+POKIE Studio
+/
+Outcome library
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Outcome library
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/blueprint-ui/outcomeLibrary
+
+Close project
+Play
+Spin
+Scenarios
+
+Scenario searches use real settled spins and leave their final round in this Play session.
+
+Find any win
+Find symbol win
+Find free games
+Symbol
+
+Find symbol win is unavailable because this game does not expose selectable symbols.
+
+Session
+Outcome library mode
+
+Which real outcome-library mode a new Play session draws against. This is separate from a game's runtime bet mode.
+
+Show advanced details (seed)
+
+Reset Play session
+
+Round complete — no win this round.
+
+B
+
+A
+Credits
+-1
+Total win
+0.00 (0.00x)
+
+No wins on this step.
+
+Inspect round artifact

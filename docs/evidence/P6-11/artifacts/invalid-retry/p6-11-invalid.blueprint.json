@@ -1,0 +1,9 @@
+{
+  "manifest": {"id": "p6-11-retry-slot", "name": "P6-11 Retry Slot", "version": "1.0.0"},
+  "reels": 2,
+  "rows": 1,
+  "symbols": ["A", "B"],
+  "paytable": {"A": {"2": 5}},
+  "reelStrips": [["A", "B"], ["A", "B"]],
+  "availableBets": [1]
+}

@@ -1,0 +1,71 @@
+Validating "P6-11 Code First" (id: "p6-11-code-first", v1.0.0) at "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first"
+  valid           yes
+
+No issues found.
+Simulated "P6-11 Code First" (id: "p6-11-code-first", v1.0.0)
+  rounds          20
+  seed            p6-11
+  workers         1
+  total bet       20.00
+  total win       0.00
+  rtp             0.00%
+  hit frequency   0.00%
+  average payout  0.00
+  max win         0.00
+  volatility      0.00
+  max win freq.   100.0000%
+  duration        13ms (1538 spins/s)
+
+Breakdown:
+  base          rounds 20, rtp 0.00%, contribution 0.00 pp, hit frequency 0.00%, max win 0.00
+
+Report written to "../code-first-sim.json".
+Build summary:
+  artifact root    /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first-outcome
+  target           outcomeLibrary
+  source           /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first
+
+Artifact "outcomeLibrary" built in "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first-outcome".
+Build summary:
+  artifact root    /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first-outcome
+  target           outcomeLibrary
+  source           /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first
+  requested root   ../code-first-requested-but-reused
+  outcome project  reused compatible registered project
+
+Artifact "outcomeLibrary" reused compatible Outcome Project "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first-outcome" instead of writing "../code-first-requested-but-reused".
+Build summary:
+  artifact root    ../code-first-stake
+  target           stakeAdapter
+  source           /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first
+
+Artifact "stakeAdapter" built in "../code-first-stake".
+{
+  "outcomeModes": [
+    {
+      "modeName": "base",
+      "betMode": "base",
+      "stake": 1
+    },
+    {
+      "modeName": "ante",
+      "betMode": "ante",
+      "stake": 2
+    }
+  ],
+  "stakeModes": [
+    {
+      "name": "base",
+      "betMode": "base",
+      "stake": 1,
+      "cost": 1
+    },
+    {
+      "name": "ante",
+      "betMode": "ante",
+      "stake": 2,
+      "cost": 2
+    }
+  ],
+  "alternateDestinationExists": false
+}

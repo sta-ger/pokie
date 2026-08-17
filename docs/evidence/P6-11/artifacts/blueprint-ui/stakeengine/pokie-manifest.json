@@ -1,0 +1,31 @@
+{
+    "schemaVersion": 1,
+    "generatedBy": "pokie stakeengine export",
+    "pokieVersion": "1.3.0",
+    "generatedAt": "2026-08-17T16:11:54.401Z",
+    "game": {
+        "id": "p6-11-outcome-slot",
+        "name": "P6-11 Outcome Slot",
+        "version": "1.0.0"
+    },
+    "configHash": "sha256:43670b05794c69f11e53645e854d63f82b9327d5b954c84ddd2e070dad795055",
+    "modes": [
+        {
+            "name": "base",
+            "betMode": "base",
+            "stake": 1,
+            "cost": 1,
+            "outcomeCount": 4,
+            "libraryId": "p6-11-outcome-slot-base",
+            "libraryHash": "sha256:28e0133e20f791d138a048fcb7628e817b353d3608e054431614d38a1eac3ad1",
+            "events": "books_base.jsonl.zst",
+            "weights": "lookup_base.csv"
+        }
+    ],
+    "files": [
+        "lookup_base.csv",
+        "books_base.jsonl.zst",
+        "index.json",
+        "pokie-manifest.json"
+    ]
+}

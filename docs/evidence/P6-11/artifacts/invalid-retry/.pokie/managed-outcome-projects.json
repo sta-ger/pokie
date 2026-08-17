@@ -1,0 +1,11 @@
+{
+  "projects": [
+    {
+      "gameId": "p6-11-retry-slot",
+      "gameVersion": "1.0.0",
+      "configHash": "sha256:7191a949c220794c3ddcd9d204e7d0a32236851398d9f12e8df96e4ffb70fc66",
+      "pokieVersion": "1.3.0",
+      "rootPath": "/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/invalid-retry/outcome"
+    }
+  ]
+}

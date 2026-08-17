@@ -1,0 +1,65 @@
+{
+    "schemaVersion": 1,
+    "generatedBy": "pokie outcomelibrary build",
+    "pokieVersion": "1.3.0",
+    "generatedAt": "2026-08-17T16:01:18.144Z",
+    "game": {
+        "id": "p6-11-retry-slot",
+        "name": "P6-11 Retry Slot",
+        "version": "1.0.0"
+    },
+    "configHash": "sha256:7191a949c220794c3ddcd9d204e7d0a32236851398d9f12e8df96e4ffb70fc66",
+    "artifactPokieVersion": "1.3.0",
+    "modes": [
+        {
+            "modeName": "base",
+            "betMode": "base",
+            "stake": 1,
+            "libraryId": "p6-11-retry-slot-base",
+            "libraryHash": "sha256:fb6cbd8c14f06ace44da7582304c526e8402700339a80669257e482c8b14598b",
+            "outcomeCount": 4,
+            "totalWeight": 4,
+            "analysis": {
+                "totalWeight": 4,
+                "rtp": 1.25,
+                "hitFrequency": 0.25,
+                "zeroWinFrequency": 0.75,
+                "variance": 4.6875,
+                "standardDeviation": 2.165063509461097,
+                "maxWin": 5,
+                "maxWinProbability": 0.25,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.75
+                    },
+                    {
+                        "payoutMultiplier": 5,
+                        "probability": 0.25
+                    }
+                ]
+            },
+            "indexFile": "index_base.json",
+            "outcomesFile": "outcomes_base.jsonl",
+            "generator": {
+                "algorithm": "pokie-exact-reel-enumeration-v1",
+                "strategy": "exact",
+                "totalOutcomeSpaceSize": 4,
+                "sampledRawCount": 4,
+                "pokieVersion": "1.3.0",
+                "game": {
+                    "id": "p6-11-retry-slot",
+                    "name": "P6-11 Retry Slot",
+                    "version": "1.0.0"
+                },
+                "configHash": "sha256:7191a949c220794c3ddcd9d204e7d0a32236851398d9f12e8df96e4ffb70fc66",
+                "generatedAt": "2026-08-17T16:01:18.127Z"
+            }
+        }
+    ],
+    "files": [
+        "index_base.json",
+        "outcomes_base.jsonl",
+        "manifest.json"
+    ]
+}

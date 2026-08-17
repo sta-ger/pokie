@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 2,
+    "modeName": "ante",
+    "libraryId": "p6-11-code-first-ante",
+    "librarySchemaVersion": 1,
+    "libraryHash": "sha256:c5c3c6917533df317e1f7d2f9f3400d944c9635c511add2bf40f57ea5a32cdc5",
+    "outcomeCount": 4,
+    "totalWeight": 6,
+    "outcomesFile": "outcomes_ante.jsonl",
+    "entries": [
+        {
+            "id": "outcome-127f1e7107ee8c1b",
+            "weight": 1,
+            "byteOffset": 0,
+            "byteLength": 431,
+            "recordHash": "sha256:a768451f6dc913b328c423dc07bf84b377d085243af692d8b4e3be7b7b32ecb3"
+        },
+        {
+            "id": "outcome-5d52fbab29e92341",
+            "weight": 2,
+            "byteOffset": 432,
+            "byteLength": 431,
+            "recordHash": "sha256:09eccfdf182645e01238b22b9bfff65f83db8e577e05d049320ba938e45e9ae0"
+        },
+        {
+            "id": "outcome-92d7fefe2949e936",
+            "weight": 2,
+            "byteOffset": 864,
+            "byteLength": 431,
+            "recordHash": "sha256:7de2a1864add8eb597c45ff4a8cf1f92ed9e4ea438a9ee163f8496ac2cbdc3d8"
+        },
+        {
+            "id": "outcome-9463456bc3a94969",
+            "weight": 1,
+            "byteOffset": 1296,
+            "byteLength": 431,
+            "recordHash": "sha256:72f5032b2687b8d5421697a99d4908adf0f5087d2d6e1ee1fd79058565f66163"
+        }
+    ]
+}

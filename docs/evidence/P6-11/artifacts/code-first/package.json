@@ -1,0 +1,21 @@
+{
+    "name": "code-first",
+    "version": "1.0.0",
+    "main": "./dist/index.js",
+    "exports": "./dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "pokie dev .",
+        "server": "pokie serve .",
+        "client": "pokie client ."
+    },
+    "dependencies": {
+        "pokie": "file:../../../../.."
+    },
+    "devDependencies": {
+        "typescript": "^5.0.4"
+    },
+    "pokie": {
+        "entry": "./dist/index.js"
+    }
+}

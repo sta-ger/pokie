@@ -1,0 +1,104 @@
+{
+    "schemaVersion": 1,
+    "generatedBy": "pokie outcomelibrary build",
+    "pokieVersion": "1.3.0",
+    "generatedAt": "2026-08-17T16:14:27.621Z",
+    "game": {
+        "id": "p6-11-code-first",
+        "name": "P6-11 Code First",
+        "version": "1.0.0"
+    },
+    "configHash": "sha256:p6-11-code-first-v1",
+    "artifactPokieVersion": "1.3.0",
+    "modes": [
+        {
+            "modeName": "base",
+            "betMode": "base",
+            "stake": 1,
+            "libraryId": "p6-11-code-first-base",
+            "libraryHash": "sha256:21646aa592bd90be1e4cea3d6776dd4c8f8129daf9a52b274c3cb41142b75045",
+            "outcomeCount": 4,
+            "totalWeight": 6,
+            "analysis": {
+                "totalWeight": 6,
+                "rtp": 0,
+                "hitFrequency": 0,
+                "zeroWinFrequency": 1,
+                "variance": 0,
+                "standardDeviation": 0,
+                "maxWin": 0,
+                "maxWinProbability": 0.9999999999999999,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.9999999999999999
+                    }
+                ]
+            },
+            "indexFile": "index_base.json",
+            "outcomesFile": "outcomes_base.jsonl",
+            "generator": {
+                "algorithm": "pokie-exact-reel-enumeration-v1",
+                "strategy": "exact",
+                "totalOutcomeSpaceSize": 6,
+                "sampledRawCount": 6,
+                "pokieVersion": "1.3.0",
+                "game": {
+                    "id": "p6-11-code-first",
+                    "name": "P6-11 Code First",
+                    "version": "1.0.0"
+                },
+                "configHash": "sha256:p6-11-code-first-v1",
+                "generatedAt": "2026-08-17T16:14:27.572Z"
+            }
+        },
+        {
+            "modeName": "ante",
+            "betMode": "ante",
+            "stake": 2,
+            "libraryId": "p6-11-code-first-ante",
+            "libraryHash": "sha256:c5c3c6917533df317e1f7d2f9f3400d944c9635c511add2bf40f57ea5a32cdc5",
+            "outcomeCount": 4,
+            "totalWeight": 6,
+            "analysis": {
+                "totalWeight": 6,
+                "rtp": 0,
+                "hitFrequency": 0,
+                "zeroWinFrequency": 1,
+                "variance": 0,
+                "standardDeviation": 0,
+                "maxWin": 0,
+                "maxWinProbability": 0.9999999999999999,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.9999999999999999
+                    }
+                ]
+            },
+            "indexFile": "index_ante.json",
+            "outcomesFile": "outcomes_ante.jsonl",
+            "generator": {
+                "algorithm": "pokie-exact-reel-enumeration-v1",
+                "strategy": "exact",
+                "totalOutcomeSpaceSize": 6,
+                "sampledRawCount": 6,
+                "pokieVersion": "1.3.0",
+                "game": {
+                    "id": "p6-11-code-first",
+                    "name": "P6-11 Code First",
+                    "version": "1.0.0"
+                },
+                "configHash": "sha256:p6-11-code-first-v1",
+                "generatedAt": "2026-08-17T16:14:27.573Z"
+            }
+        }
+    ],
+    "files": [
+        "index_base.json",
+        "outcomes_base.jsonl",
+        "index_ante.json",
+        "outcomes_ante.jsonl",
+        "manifest.json"
+    ]
+}

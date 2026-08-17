@@ -1,0 +1,61 @@
+{
+    "game": {
+        "id": "p6-11-code-first",
+        "name": "P6-11 Code First",
+        "version": "1.0.0"
+    },
+    "requestedRounds": 20,
+    "rounds": 20,
+    "seed": "p6-11",
+    "totalBet": 20,
+    "totalWin": 0,
+    "rtp": 0,
+    "hitFrequency": 0,
+    "maxWin": 0,
+    "durationMs": 13,
+    "spinsPerSecond": 1538,
+    "workers": 1,
+    "averageBet": 1,
+    "averagePayout": 0,
+    "volatility": 0,
+    "payoutHistogram": {
+        "0": 20
+    },
+    "maxWinFrequency": 1,
+    "stopReason": "maxRounds",
+    "breakdown": {
+        "components": {
+            "base": {
+                "rounds": 20,
+                "totalBet": 20,
+                "totalWin": 0,
+                "rtp": 0,
+                "hitFrequency": 0,
+                "maxWin": 0,
+                "contribution": 0
+            }
+        }
+    },
+    "reproducibility": {
+        "game": {
+            "id": "p6-11-code-first",
+            "name": "P6-11 Code First",
+            "version": "1.0.0"
+        },
+        "seed": "p6-11",
+        "requestedRounds": 20,
+        "actualRounds": 20,
+        "command": "pokie sim /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-11-20260817140254/docs/evidence/P6-11/artifacts/code-first --rounds 20 --seed p6-11",
+        "workerSeedStrategy": "identity (single worker uses the original seed unchanged)"
+    },
+    "warnings": [
+        "Requested rounds (20) is low — RTP/hit-frequency estimates may be noisy.",
+        "Hit frequency is 0 — no round produced a win.",
+        "Max win is 0 — no round produced a payout."
+    ],
+    "recommendations": [
+        "Increase --rounds (e.g. 10000+) for more stable RTP/hit-frequency estimates.",
+        "Use \"pokie diff\" to compare this report against a previous run after changing the game's math.",
+        "Save this report as JSON via --out to keep a record you can diff or replay against later."
+    ]
+}
