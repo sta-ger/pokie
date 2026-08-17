@@ -983,7 +983,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText(/there's nothing to reproduce it against/)).toBeInTheDocument();
         expect(screen.getByRole("row", {name: /Reproducible/})).toHaveTextContent("Unavailable");
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
-        expect(screen.getByRole("cell", {name: "sess-2"})).toBeInTheDocument();
+        expect(screen.getByRole("cell", {name: "session sess-2, request req-2"})).toBeInTheDocument();
 
         // Raw state before/after now lives under Advanced details, not shown unconditionally -- the
         // region is mounted-but-hidden (see AdvancedDisclosure's own doc comment), so this checks
@@ -1018,11 +1018,10 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
         await user.click(await screen.findByRole("button", {name: /Round 7 in session sess-lookup/}));
 
-        // The spin's own recorded round/session/request identity is shown as-is -- a lookup, never a
-        // fresh execution summary (no "Replay session"/"Replay job"/"Reproducibility" rows exist here at
-        // all, since nothing was reproduced).
-        expect(screen.getByRole("cell", {name: "sess-lookup"})).toBeInTheDocument();
-        expect(screen.getByRole("cell", {name: /Round 7 in session sess-lookup/})).toBeInTheDocument();
+        // The persistent Loaded replay card shows the spin's own recorded session/round/request identity
+        // once, rather than repeating its session id through the row list. This remains a lookup, never a
+        // fresh execution summary (no "Replay session"/"Replay job"/"Reproducibility" rows exist here).
+        expect(screen.getByRole("cell", {name: "session sess-lookup, round 7, request req-lookup"})).toBeInTheDocument();
         expect(screen.getByRole("cell", {name: "req-lookup"})).toBeInTheDocument();
         expect(screen.queryByText("Replay session")).not.toBeInTheDocument();
         expect(screen.queryByText("Replay job")).not.toBeInTheDocument();
@@ -1257,14 +1256,15 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByRole("button", {name: /Round 2 in session sess-1/})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
 
-        // Narrowing to sess-1 hides sess-2's round entirely, but keeps both of sess-1's own rounds.
-        await user.click(screen.getByRole("radio", {name: "sess-1"}));
+        // The picker uses compact labels in first-seen order: Session 2 is sess-1 here. Narrowing it
+        // hides sess-2's round entirely, but keeps both of sess-1's own rounds.
+        await user.click(screen.getByRole("radio", {name: "Session 2"}));
         expect(screen.getByRole("button", {name: /Round 2 in session sess-1/})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /session sess-2/})).not.toBeInTheDocument();
 
         // Narrowing to sess-2 shows only its own round, hiding sess-1's entirely.
-        await user.click(screen.getByRole("radio", {name: "sess-2"}));
+        await user.click(screen.getByRole("radio", {name: "Session 1"}));
         expect(screen.getByRole("button", {name: /Round 1 in session sess-2/})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /session sess-1/})).not.toBeInTheDocument();
 
@@ -1304,7 +1304,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
         await screen.findByRole("button", {name: /Round 1 in session sess-1/});
 
-        await user.click(screen.getByRole("radio", {name: "sess-1"}));
+        await user.click(screen.getByRole("radio", {name: "Session 1"}));
         expect(screen.queryByRole("button", {name: /session sess-2/})).not.toBeInTheDocument();
 
         // Two "Refresh" buttons exist on this page (Session Spin's own, and Recent Replays' further
@@ -1315,7 +1315,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Still filtered to sess-1 after the refresh -- the newly arrived round shows up, sess-2 stays hidden.
         expect(screen.getByRole("button", {name: /Round 1 in session sess-1/})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /session sess-2/})).not.toBeInTheDocument();
-        expect(screen.getByRole("radio", {name: "sess-1"})).toBeChecked();
+        expect(screen.getByRole("radio", {name: "Session 1"})).toBeChecked();
     }, 60000);
 
     it("shows truthful per-entry source (live vs. pre-generated) in both the recent list and Inspect, unaffected by the session filter", async () => {
@@ -1354,7 +1354,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         // Narrow to just the pre-generated (imported) session and inspect it -- its Source row must say
         // "Pre-generated outcome library", never mislabeled as a live spin just because most spins are live.
-        await user.click(screen.getByRole("radio", {name: "sess-imported"}));
+        await user.click(screen.getByRole("radio", {name: "Session 2"}));
         expect(screen.queryByRole("button", {name: /session sess-live/})).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: /session sess-imported/}));
         expect(screen.getByText("Pre-generated outcome library")).toBeInTheDocument();
@@ -1363,7 +1363,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Switch the filter to the live session (the picker stays visible, no navigation needed) and
         // confirm its own Source is truthfully reported too, distinct from the imported one above.
         await user.click(screen.getByRole("radio", {name: "All sessions"}));
-        await user.click(screen.getByRole("radio", {name: "sess-live"}));
+        await user.click(screen.getByRole("radio", {name: "Session 1"}));
         expect(screen.queryByRole("button", {name: /session sess-imported/})).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: /session sess-live/}));
         expect(screen.getByText("Live spin")).toBeInTheDocument();
