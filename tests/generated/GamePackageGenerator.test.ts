@@ -139,8 +139,9 @@ describe("GamePackageGenerator", () => {
         const source = fs.readFileSync(path.join(result.projectRoot, "src", "index.ts"), "utf-8");
         const distIndexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
 
-        expect(source).toContain('import type {GameBlueprint, PokieGameContext} from "pokie";');
+        expect(source).toContain('import type {GameBlueprint, PokieGameContext} from "pokie" with { "resolution-mode": "require" };');
         expect(source).toContain("const blueprint: GameBlueprint = ");
+        expect(source).toContain("const sequences: unknown[] = [];");
         expect(source).toContain("module.exports = {");
         // Both files embed the exact same blueprint data and manifest -- a real "npm run build" of
         // src/index.ts would reproduce an equivalent dist/index.js, not a different game.

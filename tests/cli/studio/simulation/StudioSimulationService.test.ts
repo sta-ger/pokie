@@ -6,11 +6,15 @@ import {
     PokieGameManifest,
     PokieProject,
     ProjectTargetResolver,
+    PROJECT_TYPE_CAPABILITIES,
+    SIM_OPERATION,
 } from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
+import {BlueprintMaterializationError} from "../../../../cli/materialize/BlueprintMaterializationError.js";
+import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";
 import {StudioSimulationService} from "../../../../cli/studio/simulation/StudioSimulationService.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
@@ -149,6 +153,142 @@ describe("StudioSimulationService", () => {
         expect(Object.keys(job.statistics?.payoutHistogram ?? {}).length).toBeGreaterThan(0);
     });
 
+    it("materializes a Blueprint through its build capability before the package simulation runner loads it", async () => {
+        const blueprintPath = "/projects/sample-slot.blueprint.json";
+        const runtimePath = "/runtime-cache/sample-slot";
+        const blueprintProject: PokieProject = {
+            type: "blueprint",
+            rootPath: blueprintPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            provenance: "test Blueprint",
+        };
+        const release = jest.fn(() => Promise.resolve());
+        const materialize = jest.fn(() => Promise.resolve({runtimePath, ownsRuntimePath: true, release}));
+        const resolveProject = {resolve: jest.fn(() => Promise.resolve(blueprintProject))};
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject,
+            materializer: {materialize},
+        });
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(),
+            loadGame,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            resolveRuntimePackageRoot,
+        );
+
+        const result = service.start(blueprintPath, {rounds: 5});
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, result.job.id);
+
+        expect(job.status).toBe("completed");
+        expect(resolveProject.resolve).toHaveBeenCalledWith(blueprintPath);
+        expect(materialize).toHaveBeenCalledWith(blueprintProject);
+        expect(loadGame).toHaveBeenCalledWith(runtimePath);
+        expect(loadGame).not.toHaveBeenCalledWith(blueprintPath);
+        expect(release).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a retryable Blueprint materialization failure without exposing npm output", async () => {
+        const blueprintPath = "/projects/broken.blueprint.json";
+        const blueprintProject: PokieProject = {
+            type: "blueprint",
+            rootPath: blueprintPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            provenance: "test Blueprint",
+        };
+        const materialize = jest.fn(() =>
+            Promise.reject(
+                new BlueprintMaterializationError(
+                    "dependencies",
+                    "Could not install this Blueprint's runtime dependencies.",
+                    "npm ERR! ENOTDIR: not a directory, open '/very/technical/path/package.json'",
+                ),
+            ),
+        );
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject: {resolve: jest.fn(() => Promise.resolve(blueprintProject))},
+            materializer: {materialize},
+        });
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(),
+            loadGame,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            resolveRuntimePackageRoot,
+        );
+
+        const result = service.start(blueprintPath, {rounds: 5});
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, result.job.id);
+
+        expect(job.status).toBe("failed");
+        expect(job.error).toContain("could not prepare a runnable runtime");
+        expect(job.error).toContain("Fix the Blueprint or its local npm setup, then retry");
+        expect(job.error).not.toContain("ENOTDIR");
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("reports a project with no runtime capability as unsupported instead of loading it as a package", async () => {
+        const wasmPath = "/projects/component.wasm";
+        const wasmProject: PokieProject = {
+            type: "wasm",
+            rootPath: wasmPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.wasm,
+            provenance: "test WASM component",
+        };
+        const materialize = jest.fn();
+        const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject: {resolve: jest.fn(() => Promise.resolve(wasmProject))},
+            materializer: {materialize},
+        });
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const service = new StudioSimulationService(
+            new InMemoryStudioSimulationRepository(),
+            loadGame,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            resolveRuntimePackageRoot,
+        );
+
+        const result = service.start(wasmPath, {rounds: 5});
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, result.job.id);
+
+        expect(job.status).toBe("failed");
+        expect(job.error).toContain('"sim" is not supported for a "wasm" project');
+        expect(job.error).toContain('missing the "runtime.execute" capability');
+        expect(job.error).not.toContain("ENOTDIR");
+        expect(materialize).not.toHaveBeenCalled();
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
     it("has no breakdown when the session doesn't implement StakeAmountDetermining/getSimulationCategory", async () => {
         const service = new StudioSimulationService(
             new InMemoryStudioSimulationRepository(),
@@ -205,6 +345,7 @@ describe("StudioSimulationService", () => {
         expect(job.roundsCompleted).toBe(12);
         expect(job.report?.rounds).toBe(12);
         expect(job.report?.requestedRounds).toBe(100);
+        expect(job.report?.stopReason).toBe("sessionStopped");
     });
 
     it("fails the job with a safe error message (no stack trace) when loading the game throws", async () => {
@@ -712,4 +853,3 @@ describe("StudioSimulationService (integration, real loadPokieGame + fixture gam
         expect(base.rounds + freeGames.rounds).toBe(job.report!.rounds);
     });
 });
-

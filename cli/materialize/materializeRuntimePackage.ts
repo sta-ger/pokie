@@ -1,4 +1,12 @@
-import {describeUnsupportedProjectOperation, PokieOperation, PokieProject, ProjectMaterializing, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {
+    BLUEPRINT_BUILD_CAPABILITY,
+    describeUnsupportedProjectOperation,
+    PokieOperation,
+    PokieProject,
+    ProjectMaterializing,
+    ProjectResolving,
+    ProjectTargetResolver,
+} from "pokie";
 import {withLocalPokieInstall} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
@@ -31,7 +39,7 @@ export type MaterializingRuntimePackageResolverDependencies = {
 
 // The one place every CLI runtime operation that loads a POKIE game package should cross from "a
 // caller-given path" to "a real, loadable runtime" -- resolves the given path via ProjectResolving and,
-// only for a resolved "blueprint" PokieProject, materializes it into a real, built-and-installed runtime
+// for a project that grants BLUEPRINT_BUILD_CAPABILITY, materializes it into a real, built-and-installed runtime
 // via BlueprintProjectMaterializer (see that class's own doc comment for what "materialized" means)
 // before the operation ever touches loadPokieGame. A resolved "tsPackage" already has everything
 // `operation` needs, so it passes straight through (its own rootPath, not the caller's raw string --
@@ -77,7 +85,11 @@ export function createMaterializingRuntimePackageResolver(
             return {runtimePath: packageRoot, release: noRelease};
         }
 
-        if (project.type === "blueprint") {
+        // A Blueprint is runnable only after it exercises its build capability. This is intentionally
+        // capability-based rather than a second, local type switch: the resolver has already made the
+        // authoritative decision about what this project can do, and simulation must receive the
+        // resulting package runtime rather than the Blueprint JSON path.
+        if (project.capabilities.includes(BLUEPRINT_BUILD_CAPABILITY)) {
             const materialized = await materializer.materialize(project);
             return {runtimePath: materialized.runtimePath, release: materialized.release};
         }

@@ -1,0 +1,21 @@
+URL: http://127.0.0.1:4590/#/project/%2Fhome%2Fstager%2FWork%2Fsta-ger%2Fagents%2Fworktrees%2Fpokie-phase-6-final-polishing%2Ftask_P6-10-20260817105038%2Ftests%2Fcli%2Fstudio%2Fsimulation%2Fevidence%2FP6-10%2Fprojects%2Fts-package%2Fstakeengine/simulation
+
+POKIE Studio
+/
+Stake Engine export
+/
+
+Simulation
+
+Overview
+Game Model
+
+ADVANCED
+
+Build/Export
+Stake Engine export
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-10-20260817105038/tests/cli/studio/simulation/evidence/P6-10/projects/ts-package/stakeengine
+
+Close project
+"Simulation" isn't available for this project -- it requires: Build from Blueprint source or Run in-process (simulate, replay, play) or Draw/sample/replay real outcomes.

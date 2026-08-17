@@ -1,0 +1,248 @@
+{
+    "schemaVersion": 1,
+    "libraryId": "p6-10-finite-slot",
+    "outcomes": [
+        {
+            "id": "outcome-127f1e7107ee8c1b",
+            "weight": 1,
+            "artifact": {
+                "schemaVersion": 1,
+                "roundId": "outcome-127f1e7107ee8c1b",
+                "provenance": {
+                    "game": {
+                        "id": "p6-10-finite-slot",
+                        "name": "P6-10 Finite Slot",
+                        "version": "1.0.0"
+                    },
+                    "pokieVersion": "1.3.0"
+                },
+                "betMode": "base",
+                "stake": 1,
+                "totalWin": 0,
+                "payoutMultiplier": 0,
+                "screen": [
+                    [
+                        "B"
+                    ],
+                    [
+                        "B"
+                    ]
+                ],
+                "steps": [
+                    {
+                        "index": 0,
+                        "screen": [
+                            [
+                                "B"
+                            ],
+                            [
+                                "B"
+                            ]
+                        ],
+                        "totalWin": 0,
+                        "wins": []
+                    }
+                ],
+                "wins": []
+            }
+        },
+        {
+            "id": "outcome-5d52fbab29e92341",
+            "weight": 2,
+            "artifact": {
+                "schemaVersion": 1,
+                "roundId": "outcome-5d52fbab29e92341",
+                "provenance": {
+                    "game": {
+                        "id": "p6-10-finite-slot",
+                        "name": "P6-10 Finite Slot",
+                        "version": "1.0.0"
+                    },
+                    "pokieVersion": "1.3.0"
+                },
+                "betMode": "base",
+                "stake": 1,
+                "totalWin": 0,
+                "payoutMultiplier": 0,
+                "screen": [
+                    [
+                        "A"
+                    ],
+                    [
+                        "B"
+                    ]
+                ],
+                "steps": [
+                    {
+                        "index": 0,
+                        "screen": [
+                            [
+                                "A"
+                            ],
+                            [
+                                "B"
+                            ]
+                        ],
+                        "totalWin": 0,
+                        "wins": []
+                    }
+                ],
+                "wins": []
+            }
+        },
+        {
+            "id": "outcome-92d7fefe2949e936",
+            "weight": 2,
+            "artifact": {
+                "schemaVersion": 1,
+                "roundId": "outcome-92d7fefe2949e936",
+                "provenance": {
+                    "game": {
+                        "id": "p6-10-finite-slot",
+                        "name": "P6-10 Finite Slot",
+                        "version": "1.0.0"
+                    },
+                    "pokieVersion": "1.3.0"
+                },
+                "betMode": "base",
+                "stake": 1,
+                "totalWin": 5,
+                "payoutMultiplier": 5,
+                "screen": [
+                    [
+                        "A"
+                    ],
+                    [
+                        "A"
+                    ]
+                ],
+                "steps": [
+                    {
+                        "index": 0,
+                        "screen": [
+                            [
+                                "A"
+                            ],
+                            [
+                                "A"
+                            ]
+                        ],
+                        "totalWin": 5,
+                        "wins": [
+                            {
+                                "type": "line",
+                                "id": "0",
+                                "symbolId": "A",
+                                "winAmount": 5,
+                                "winningPositions": [
+                                    [
+                                        0,
+                                        0
+                                    ],
+                                    [
+                                        1,
+                                        0
+                                    ]
+                                ],
+                                "multiplierBreakdown": [],
+                                "metadata": {
+                                    "definition": [
+                                        0,
+                                        0
+                                    ],
+                                    "pattern": [
+                                        1,
+                                        1
+                                    ],
+                                    "symbolsPositions": [
+                                        0,
+                                        1
+                                    ],
+                                    "wildSymbolsPositions": []
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "wins": [
+                    {
+                        "type": "line",
+                        "id": "0",
+                        "symbolId": "A",
+                        "winAmount": 5,
+                        "winningPositions": [
+                            [
+                                0,
+                                0
+                            ],
+                            [
+                                1,
+                                0
+                            ]
+                        ],
+                        "multiplierBreakdown": [],
+                        "metadata": {
+                            "definition": [
+                                0,
+                                0
+                            ],
+                            "pattern": [
+                                1,
+                                1
+                            ],
+                            "symbolsPositions": [
+                                0,
+                                1
+                            ],
+                            "wildSymbolsPositions": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "outcome-9463456bc3a94969",
+            "weight": 1,
+            "artifact": {
+                "schemaVersion": 1,
+                "roundId": "outcome-9463456bc3a94969",
+                "provenance": {
+                    "game": {
+                        "id": "p6-10-finite-slot",
+                        "name": "P6-10 Finite Slot",
+                        "version": "1.0.0"
+                    },
+                    "pokieVersion": "1.3.0"
+                },
+                "betMode": "base",
+                "stake": 1,
+                "totalWin": 0,
+                "payoutMultiplier": 0,
+                "screen": [
+                    [
+                        "B"
+                    ],
+                    [
+                        "A"
+                    ]
+                ],
+                "steps": [
+                    {
+                        "index": 0,
+                        "screen": [
+                            [
+                                "B"
+                            ],
+                            [
+                                "A"
+                            ]
+                        ],
+                        "totalWin": 0,
+                        "wins": []
+                    }
+                ],
+                "wins": []
+            }
+        }
+    ]
+}

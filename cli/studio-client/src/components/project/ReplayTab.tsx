@@ -248,6 +248,39 @@ export function ReplayTab({
         }
     }, [recentSpins, spinSessionFilter]);
 
+    // A recorded spin is a member of one runtime session, even when the picker is showing every
+    // session interleaved. Keep the inspector's navigation in that session so Previous/Next always
+    // means adjacent rounds rather than a surprising jump into another player's session.
+    const loadedSpins = recentSpins.status === "loaded" ? recentSpins.entries : [];
+    const spinSessionIds = Array.from(new Set(loadedSpins.map((entry) => entry.sessionId)));
+    const describeSpinSession = (sessionId: string): string => `Session ${spinSessionIds.indexOf(sessionId) + 1}`;
+    const filteredSpins = spinSessionFilter === "all" ? loadedSpins : loadedSpins.filter((entry) => entry.sessionId === spinSessionFilter);
+    const selectedSessionSpins = selectedSpin
+        ? loadedSpins
+            .filter((entry) => entry.sessionId === selectedSpin.sessionId)
+            .slice()
+            .sort((left, right) => (left.studioRound ?? 0) - (right.studioRound ?? 0))
+        : [];
+    const selectedSpinIndex = selectedSpin
+        ? selectedSessionSpins.findIndex(
+            (entry) =>
+                entry.sessionId === selectedSpin.sessionId &&
+                  (entry.studioRound ?? entry.studioRequestId) === (selectedSpin.studioRound ?? selectedSpin.studioRequestId),
+        )
+        : -1;
+
+    function inspectSpin(entry: StudioRuntimeSessionView): void {
+        setSelectedSpin(entry);
+        markLoaded("spin", false);
+    }
+
+    function isSelectedSpin(entry: StudioRuntimeSessionView): boolean {
+        return (
+            selectedSpin?.sessionId === entry.sessionId &&
+            (selectedSpin.studioRound ?? selectedSpin.studioRequestId) === (entry.studioRound ?? entry.studioRequestId)
+        );
+    }
+
     // Gated on `jobLoaded` (not just `progress !== undefined`) so a prior target's still-active or
     // terminal job is never presented as the currently loaded target's state -- see `jobLoaded`'s own
     // doc comment above.
@@ -493,8 +526,12 @@ export function ReplayTab({
                                 onChange={setSpinSessionFilter}
                                 data={[
                                     {label: "All sessions", value: "all"},
-                                    ...Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))).map((sessionId) => ({
-                                        label: sessionId,
+                                    ...spinSessionIds.map((sessionId) => ({
+                                        // The inspector's Loaded replay card is the one persistent
+                                        // place that exposes the full session UUID. Repeating it in a
+                                        // filter and every round row made the actual round/scenario
+                                        // information hard to scan.
+                                        label: describeSpinSession(sessionId),
                                         value: sessionId,
                                     })),
                                 ]}
@@ -502,10 +539,6 @@ export function ReplayTab({
                                 aria-label="Filter by session"
                             />
                             {(() => {
-                                const filteredSpins =
-                                    spinSessionFilter === "all"
-                                        ? recentSpins.entries
-                                        : recentSpins.entries.filter((entry) => entry.sessionId === spinSessionFilter);
                                 return filteredSpins.length === 0 ? (
                                     <EmptyState message="No spins recorded for the selected session." />
                                 ) : (
@@ -525,16 +558,22 @@ export function ReplayTab({
                                                 <Anchor
                                                     component="button"
                                                     type="button"
-                                                    onClick={() => {
-                                                        setSelectedSpin(entry);
-                                                        markLoaded("spin", false);
+                                                    onClick={() => inspectSpin(entry)}
+                                                    aria-current={isSelectedSpin(entry) ? "true" : undefined}
+                                                    style={{
+                                                        overflowWrap: "anywhere",
+                                                        whiteSpace: "normal",
+                                                        textAlign: "left",
+                                                        fontWeight: isSelectedSpin(entry) ? 700 : undefined,
                                                     }}
-                                                    style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                                 >
-                                                    Round {entry.studioRound ?? "?"} in session {entry.sessionId} — credits{" "}
-                                                    {entry.credits ?? "—"}, win {entry.win ?? 0}
-                                                    {entry.studioRequestId ? `, request ${entry.studioRequestId}` : ""}
-                                                    {entry.studioRecordedAt ? `, ${new Date(entry.studioRecordedAt).toLocaleString()}` : ""}
+                                                    {describeSpinSession(entry.sessionId)} — Round {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
+                                                    win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
+                                                    {isSelectedSpin(entry) && (
+                                                        <Badge size="xs" variant="light" ml={6}>
+                                                                Selected
+                                                        </Badge>
+                                                    )}
                                                 </Anchor>
                                             </List.Item>
                                         ))}
@@ -647,6 +686,32 @@ export function ReplayTab({
 
                     {findMethod === "spin" && selectedSpin && (
                         <div>
+                            <PageSection legend="Round inspector">
+                                <Group gap="xs" mb="xs">
+                                    <Badge variant="light">Selected</Badge>
+                                    <Text size="sm" fw={600}>
+                                        Round {selectedSpinIndex + 1} of {selectedSessionSpins.length}
+                                    </Text>
+                                </Group>
+                                <QuickActions>
+                                    <Button
+                                        variant="default"
+                                        size="xs"
+                                        disabled={selectedSpinIndex <= 0}
+                                        onClick={() => inspectSpin(selectedSessionSpins[selectedSpinIndex - 1]!)}
+                                    >
+                                        Previous
+                                    </Button>
+                                    <Button
+                                        variant="default"
+                                        size="xs"
+                                        disabled={selectedSpinIndex < 0 || selectedSpinIndex >= selectedSessionSpins.length - 1}
+                                        onClick={() => inspectSpin(selectedSessionSpins[selectedSpinIndex + 1]!)}
+                                    >
+                                        Next
+                                    </Button>
+                                </QuickActions>
+                            </PageSection>
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
                             {selectedSpin.debug?.artifact ? (
@@ -701,16 +766,11 @@ export function ReplayTab({
                                                     {selectedSpin.game.name} (id: &quot;{selectedSpin.game.id}&quot;, v{selectedSpin.game.version})
                                                 </Table.Td>
                                             </Table.Tr>
-                                            <Table.Tr>
-                                                <Table.Th>Session</Table.Th>
-                                                <Table.Td style={{overflowWrap: "anywhere"}}>{selectedSpin.sessionId}</Table.Td>
-                                            </Table.Tr>
                                             {selectedSpin.studioRound !== undefined && (
                                                 <Table.Tr>
                                                     <Table.Th>Round</Table.Th>
                                                     <Table.Td>
-                                                        Round {selectedSpin.studioRound} in session {selectedSpin.sessionId} -- this session&apos;s own
-                                                        round count, not a global one.
+                                                        {selectedSpin.studioRound} — this session&apos;s own round count, not a global one.
                                                     </Table.Td>
                                                 </Table.Tr>
                                             )}

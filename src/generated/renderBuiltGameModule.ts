@@ -153,6 +153,9 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     // below), "cjs" format stays annotation-free. Shared by both functions since they need the exact
     // same type.
     const contextParam = format === "ts" ? "context?: PokieGameContext" : "context";
+    // The CommonJS runtime file is loaded directly, so it must remain plain JavaScript. Only the
+    // TypeScript source needs an explicit empty-array type under strict checking.
+    const sequencesDeclaration = format === "ts" ? "const sequences: unknown[] = [];" : "const sequences = [];";
     const exactEnumerationSessionExport = freeGames
         ? ""
         : `
@@ -172,7 +175,10 @@ ${winCalculatorDeclaration}        return new VideoSlotSession(config, combinati
     // "any" either way, so this never depends on "pokie"'s own exported method signatures) and the
     // final "module.exports" -- is byte-identical in both, so a real "npm run build" here reproduces
     // an equivalent, working dist/index.js.
-    const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "pokie";\n\n` : "";
+    // Built packages compile as CommonJS, while Pokie's package exports separate ESM and CommonJS
+    // declarations. Pin the erased type import to the CommonJS condition so Node16 resolution does
+    // not reject it as an ESM type import from a CommonJS generated module.
+    const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "pokie" with { "resolution-mode": "require" };\n\n` : "";
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -246,7 +252,7 @@ function createConfig(${contextParam}) {
     if (blueprint.reelStrips) {
         config.setSymbolsSequences(blueprint.reelStrips.map((strip) => new SymbolsSequence().fromArray(strip)));
     } else if (blueprint.symbolWeights) {
-        const sequences = [];
+        ${sequencesDeclaration}
         for (let i = 0; i < blueprint.reels; i++) {
             sequences.push(new SymbolsSequence().fromNumbersOfSymbols(blueprint.symbolWeights).shuffle(reelStripRng));
         }

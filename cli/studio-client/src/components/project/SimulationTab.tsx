@@ -277,6 +277,11 @@ export function SimulationTab({
                                         Compare with another run
                                     </Button>
                                 )}
+                                {outcome.kind !== "completed" && (
+                                    <Button variant="default" onClick={() => setActiveStep(0)}>
+                                        Back to configuration
+                                    </Button>
+                                )}
                                 <Button variant="default" onClick={onRetry}>
                                     Repeat simulation
                                 </Button>

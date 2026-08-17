@@ -118,4 +118,68 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         expect(screen.getByText("1004")).toBeInTheDocument();
         expect(screen.queryByText(/Paytable unavailable/i)).toBeNull();
     });
+
+    it("keeps one selected session's round inspector navigable without repeating its session id in every row", async () => {
+        const user = userEvent.setup();
+        const spins = [
+            {
+                sessionId: "session-1",
+                game: {id: "slot", name: "Slot", version: "1.0.0"},
+                win: 2,
+                studioRound: 1,
+                studioRecordedAt: "2026-08-17T10:00:00.000Z",
+                studioSource: "play" as const,
+                studioOperation: "spin" as const,
+            },
+            {
+                sessionId: "session-1",
+                game: {id: "slot", name: "Slot", version: "1.0.0"},
+                win: 8,
+                studioRound: 2,
+                studioRecordedAt: "2026-08-17T10:01:00.000Z",
+                studioSource: "play" as const,
+                studioOperation: "find-any-win" as const,
+            },
+        ];
+
+        render(
+            <MantineProvider>
+                <ReplayTab
+                    progress={undefined}
+                    result={undefined}
+                    error={undefined}
+                    onRun={() => undefined}
+                    onCancel={() => undefined}
+                    onRetry={() => undefined}
+                    listView={{status: "empty"}}
+                    listError={undefined}
+                    onRefreshList={() => undefined}
+                    onInspectStored={() => Promise.resolve()}
+                    onCompareStored={() => undefined}
+                    expected={{status: "empty"}}
+                    onLoadExpectedFromPaste={() => undefined}
+                    onClearExpected={() => undefined}
+                    comparison={undefined}
+                    recentSpins={{status: "loaded", entries: spins}}
+                    recentSpinsError={undefined}
+                    onRefreshRecentSpins={() => undefined}
+                    recentRuns={{status: "empty"}}
+                    recentRunsError={undefined}
+                    onRefreshRecentRuns={() => undefined}
+                    currentGame={{id: "slot", version: "1.0.0"}}
+                />
+            </MantineProvider>,
+        );
+
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        const firstRound = screen.getByRole("button", {name: /Session 1.*Round 1.*Spin.*win 2.*2026/i});
+        expect(firstRound).not.toHaveTextContent("session-1");
+        await user.click(firstRound);
+        expect(screen.getByText("Round 1 of 2")).toBeInTheDocument();
+        expect(screen.getAllByText("Selected")).toHaveLength(2);
+
+        await user.click(screen.getByRole("button", {name: "Next"}));
+        expect(screen.getByText("Round 2 of 2")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: /Session 1.*Round 2.*Find any win.*win 8.*2026/i})).toHaveAttribute("aria-current", "true");
+    });
 });

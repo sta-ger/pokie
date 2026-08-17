@@ -1,0 +1,50 @@
+{
+    "schemaVersion": 1,
+    "generatedBy": "pokie outcomelibrary build",
+    "pokieVersion": "1.3.0",
+    "generatedAt": "2026-08-17T09:19:29.632Z",
+    "game": {
+        "id": "p6-10-finite-slot",
+        "name": "P6-10 Finite Slot",
+        "version": "1.0.0"
+    },
+    "artifactPokieVersion": "1.3.0",
+    "modes": [
+        {
+            "modeName": "base",
+            "betMode": "base",
+            "stake": 1,
+            "libraryId": "p6-10-finite-slot",
+            "libraryHash": "sha256:46b486b875abd7accbddf21b6f71441b36f5cee0d7b76956a8846c1de90c9b10",
+            "outcomeCount": 4,
+            "totalWeight": 6,
+            "analysis": {
+                "totalWeight": 6,
+                "rtp": 1.6666666666666665,
+                "hitFrequency": 0.3333333333333333,
+                "zeroWinFrequency": 0.6666666666666667,
+                "variance": 5.555555555555555,
+                "standardDeviation": 2.3570226039551585,
+                "maxWin": 5,
+                "maxWinProbability": 0.3333333333333333,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "probability": 0.6666666666666666
+                    },
+                    {
+                        "payoutMultiplier": 5,
+                        "probability": 0.3333333333333333
+                    }
+                ]
+            },
+            "indexFile": "index_base.json",
+            "outcomesFile": "outcomes_base.jsonl"
+        }
+    ],
+    "files": [
+        "index_base.json",
+        "outcomes_base.jsonl",
+        "manifest.json"
+    ]
+}

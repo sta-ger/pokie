@@ -20,6 +20,7 @@ import {
     WeightedOutcomeRandomSource,
 } from "pokie";
 import crypto from "crypto";
+import {BlueprintMaterializationError} from "../../materialize/BlueprintMaterializationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
@@ -303,7 +304,7 @@ export class StudioSimulationService {
         try {
             runtime = await this.resolveRuntimePackageRoot(record.projectRoot);
         } catch (error) {
-            this.fail(record, error);
+            this.fail(record, this.describeRuntimePreparationFailure(error));
             return;
         }
 
@@ -323,6 +324,15 @@ export class StudioSimulationService {
             });
             const result = await runner.run();
 
+            // The runner is the authority on both the final number of rounds and why it stopped.
+            // Capture its final duration before building the immutable report: the last progress
+            // callback can precede runner cleanup, so using its older value made a completed
+            // one-chunk run look instantaneous and dropped adaptive-stop metadata in Studio.
+            const finalRoundsCompleted = result.statistics.rounds;
+            const finalDurationMs = this.now() - record.startedAt;
+            record.roundsCompleted = finalRoundsCompleted;
+            record.durationMs = finalDurationMs;
+
             const report: SimulationReport = this.reportBuilder.build({
                 manifest: result.manifest,
                 requestedRounds: record.rounds,
@@ -333,6 +343,8 @@ export class StudioSimulationService {
                 breakdown: result.breakdown,
                 workers: result.workers,
                 workerSeedStrategy: result.workerSeedStrategy,
+                stopReason: result.stopReason,
+                convergence: result.convergence,
             });
 
             record.status = "completed";
@@ -461,6 +473,20 @@ export class StudioSimulationService {
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
         this.markTerminal(record);
+    }
+
+    // BlueprintMaterializationError.details may contain npm's full stderr. A simulation job only
+    // exposes one primary error line, so keep that technical output out of this surface and tell the
+    // user what they can actually do next. The dashboard-load path can still expose details separately
+    // where it has an expandable diagnostic field.
+    private describeRuntimePreparationFailure(error: unknown): Error {
+        if (error instanceof BlueprintMaterializationError) {
+            return new Error(
+                `Simulation could not prepare a runnable runtime from this Blueprint (${error.phase} step). ` +
+                    "Fix the Blueprint or its local npm setup, then retry the simulation.",
+            );
+        }
+        return error instanceof Error ? error : new Error(String(error));
     }
 
     private cancelRecord(record: StudioSimulationJobRecord): void {
