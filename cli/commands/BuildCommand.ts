@@ -174,53 +174,54 @@ export class BuildCommand implements CliCommandHandling {
         return path.join(path.dirname(rootPath), siblingName);
     }
 
-    // The rich, well-known "pokie build" path: a GameBlueprint source built into a runnable tsPackage. Kept as
-    // its own method (rather than folded into buildArtifact) because only this conversion has a blueprint to
-    // validate/preview before ever reaching ArtifactBuilderRegistry.build() -- every other target already has
-    // nothing to validate beyond "does the resolved project support it" (checked in execute() above).
+    // The rich, well-known "pokie build" path: a GameBlueprint source built into a runnable tsPackage. The
+    // actual build always goes straight through ArtifactBuilderRegistry: TsPackageArtifactBuilder owns the
+    // load -> validate -> materialize reels -> generate sequence, so the CLI must not run a second, subtly
+    // different copy before calling the registry. Dry runs are intentionally read-only previews and therefore
+    // retain their own validation/materialization probe without producing an artifact.
     private async buildTsPackageFromBlueprint(project: PokieProject, out: string, dryRun: boolean): Promise<number> {
-        const blueprint = this.loadBlueprint(project.rootPath);
-        const issues = this.validator.validate(blueprint);
-        const errors = issues.filter((issue) => issue.severity === "error");
-        const warnings = issues.filter((issue) => issue.severity !== "error");
-
-        for (const issue of warnings) {
-            console.log(`  warning  ${issue.code}: ${issue.message}`);
-        }
-
-        if (errors.length > 0) {
-            console.error(`Blueprint "${project.rootPath}" has ${errors.length} error(s):`);
-            for (const issue of errors) {
-                console.error(`  - ${issue.code}: ${issue.message}`);
-            }
-            console.error(`\n${PROJECT_HINT}`);
-            return 1;
-        }
-
-        // Runs every "generated" reel of reelStripGeneration (if the blueprint has one) through the real
-        // ReelStripGenerator -- validate() above only checked its shape, not whether each reel's constraints
-        // are satisfiable. A literal-reelStrips (or neither) blueprint is unaffected.
-        const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
-        if (!resolution.success) {
-            console.error(`Blueprint "${project.rootPath}" could not generate its reel strips:`);
-            for (const reel of resolution.reels.filter((candidate) => !candidate.success)) {
-                console.error(`  - reel ${reel.reelIndex} (seed ${reel.seed}): failed after ${reel.attemptsUsed} attempt(s)`);
-                const lastDiagnostic = reel.diagnostics[reel.diagnostics.length - 1];
-                for (const violation of lastDiagnostic?.violations ?? []) {
-                    console.error(`      ${violation.constraintId}: ${violation.message}`);
-                }
-            }
-            console.error(`\n${PROJECT_HINT}`);
-            return 1;
-        }
-
         if (dryRun) {
+            const blueprint = this.loadBlueprint(project.rootPath);
+            const issues = this.validator.validate(blueprint);
+            const errors = issues.filter((issue) => issue.severity === "error");
+            const warnings = issues.filter((issue) => issue.severity !== "error");
+
+            for (const issue of warnings) {
+                console.log(`  warning  ${issue.code}: ${issue.message}`);
+            }
+
+            if (errors.length > 0) {
+                console.error(`Blueprint "${project.rootPath}" has ${errors.length} error(s):`);
+                for (const issue of errors) {
+                    console.error(`  - ${issue.code}: ${issue.message}`);
+                }
+                console.error(`\n${PROJECT_HINT}`);
+                return 1;
+            }
+
+            const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
+            if (!resolution.success) {
+                console.error(`Blueprint "${project.rootPath}" could not generate its reel strips:`);
+                for (const reel of resolution.reels.filter((candidate) => !candidate.success)) {
+                    console.error(`  - reel ${reel.reelIndex} (seed ${reel.seed}): failed after ${reel.attemptsUsed} attempt(s)`);
+                    const lastDiagnostic = reel.diagnostics[reel.diagnostics.length - 1];
+                    for (const violation of lastDiagnostic?.violations ?? []) {
+                        console.error(`      ${violation.constraintId}: ${violation.message}`);
+                    }
+                }
+                console.error(`\n${PROJECT_HINT}`);
+                return 1;
+            }
+
             this.printDryRunSummary(blueprint as GameBlueprint, project.rootPath, out);
             return 0;
         }
 
         const result = await this.registry.build("tsPackage", project, out);
 
+        // Reading provenance for the CLI summary happens only after the registry has produced the package;
+        // it is not part of the Project -> Artifact execution path above.
+        const blueprint = this.loadBlueprint(project.rootPath) as GameBlueprint;
         const manifest = (blueprint as GameBlueprint).manifest;
         const blueprintHash = computeGameBlueprintHash(blueprint);
 

@@ -54,7 +54,14 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
 
             const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
             if (!resolution.success) {
-                throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
+                const failures = resolution.reels
+                    .filter((reel) => !reel.success)
+                    .map((reel) => {
+                        const violations = reel.diagnostics[reel.diagnostics.length - 1]?.violations ?? [];
+                        const details = violations.map((violation) => `${violation.constraintId}: ${violation.message}`).join("; ");
+                        return `reel ${reel.reelIndex} (seed ${reel.seed}) failed after ${reel.attemptsUsed} attempt(s)${details ? `: ${details}` : ""}`;
+                    });
+                throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips: ${failures.join("; ")}`);
             }
 
             const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), destinationPath, resolution.reelStripGeneration);
