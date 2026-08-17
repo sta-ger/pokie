@@ -1,0 +1,16 @@
+Build summary:
+  package root     /tmp/p6-08-generated-667f614b
+  game             Fixture Slot (id: "fixture-slot", v0.1.0)
+  blueprint hash   sha256:463a0d115a873efc6bec4867c1bb8be295a17a43df01fa10db844275c1cd9819
+  source           /home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-08-20260817015826/docs/phase5-evidence/p5-polish-19/parity/after-fix-fixture-blueprint.json
+
+Game package "Fixture Slot" (id: "fixture-slot") built in "/tmp/p6-08-generated-667f614b".
+
+Next:
+  cd /tmp/p6-08-generated-667f614b && npm install
+  pokie inspect /tmp/p6-08-generated-667f614b
+  pokie validate /tmp/p6-08-generated-667f614b
+  pokie sim /tmp/p6-08-generated-667f614b --rounds 10000 --seed demo --out sim.json
+  pokie report sim.json
+  pokie replay /tmp/p6-08-generated-667f614b --seed demo --round 1
+  pokie dev /tmp/p6-08-generated-667f614b

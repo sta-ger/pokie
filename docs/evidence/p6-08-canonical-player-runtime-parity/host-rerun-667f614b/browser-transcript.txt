@@ -1,0 +1,18 @@
+[2026-08-17T01:55:58.403Z] START fresh rendered-browser workflow: client=http://127.0.0.1:4512, studio=http://127.0.0.1:4611, seed=fixture-round
+[2026-08-17T01:55:58.416Z] NAVIGATE generated package npm start Player UI: http://127.0.0.1:4512
+[2026-08-17T01:55:58.970Z] INPUT generated Player Session seed="fixture-round" through rendered browser input
+[2026-08-17T01:55:59.343Z] CLICK "Start new session" at rendered BUTTON coordinates (643, 138)
+[2026-08-17T01:55:59.936Z] CLICK "Spin" at rendered BUTTON coordinates (75, 345)
+[2026-08-17T01:56:00.362Z] CLICK "Paytable" at rendered SUMMARY coordinates (383, 361)
+[2026-08-17T01:56:01.006Z] CAPTURE 10-generated-package-npm-start-seeded-player.png, rendered text, and rendered player grid
+[2026-08-17T01:56:01.019Z] NAVIGATE Studio Play UI: http://127.0.0.1:4611/#/project/play
+[2026-08-17T01:56:01.559Z] INPUT Studio Play Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T01:56:01.970Z] CLICK "New session" at rendered BUTTON coordinates (337, 439)
+[2026-08-17T01:56:02.464Z] CLICK "Spin" at rendered BUTTON coordinates (310, 259)
+[2026-08-17T01:56:03.149Z] CAPTURE 11-studio-play-seeded-round.png, rendered text, and rendered player grid
+[2026-08-17T01:56:03.152Z] NAVIGATE Studio Replay UI: http://127.0.0.1:4611/#/project/replay
+[2026-08-17T01:56:03.716Z] INPUT Studio Replay Seed (optional)="fixture-round" through rendered browser input
+[2026-08-17T01:56:04.143Z] CLICK "Load" at rendered BUTTON coordinates (531, 295)
+[2026-08-17T01:56:04.780Z] CLICK "Run again" at rendered BUTTON coordinates (329, 387)
+[2026-08-17T01:56:05.624Z] CAPTURE 12-studio-replay-seeded-round.png, rendered text, and rendered player grid
+[2026-08-17T01:56:05.628Z] ASSERT generated package Player, Studio Play, and Studio Replay visibly match the expected seeded 3x3 grid A/C/A | A/A/C | A/A/A and A-line win 5.00.
