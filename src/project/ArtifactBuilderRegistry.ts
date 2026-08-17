@@ -25,6 +25,7 @@ import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
+import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -49,11 +50,11 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "and a built package cannot itself be converted into any other target type.",
     ],
     outcomeLibrary: [
-        "Republishes an existing weighted-outcome bundle, or materializes/generates one from a Blueprint through the registry; " +
+        "Republishes an existing weighted-outcome bundle, or materializes/generates one from a Blueprint or runnable package through the registry; " +
             "it never recovers a game model from an existing bundle.",
     ],
     stakeAdapter: [
-        "Exports an already-computed canonical outcome library (or, for a Blueprint, first resolves or generates and registers its compatible canonical outcome library) into Stake " +
+        "Exports an already-computed canonical outcome library (or, for a Blueprint or runnable package, first resolves or generates and registers its compatible canonical outcome library) into Stake " +
             "Engine's own book-line format -- never re-derives or recovers the game model/blueprint that produced " +
             "those outcomes; that recovery is not supported by any builder.",
     ],
@@ -76,9 +77,7 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
         throw new Error(`ArtifactBuilderRegistry has no OPERATION_REQUIRED_CAPABILITY entry for "${operation}".`);
     }
 
-    const supportedSources = ALL_PROJECT_TYPES.filter(
-        (type) => PROJECT_TYPE_CAPABILITIES[type].includes(requiredSourceCapability) || (target === "outcomeLibrary" && type === "blueprint"),
-    );
+    const supportedSources = ALL_PROJECT_TYPES.filter((type) => PROJECT_TYPE_CAPABILITIES[type].includes(requiredSourceCapability));
 
     return {
         target,
@@ -110,9 +109,9 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
 // ArtifactBuilder already wired to POKIE's own already-atomic per-target writers (GamePackageGenerator,
 // OutcomeLibraryBundleWriter, StakeEngineImporter/StakeEngineExporter, ParSheetImporter/ParSheetExporter) --
 // see each builder's own doc comment for exactly what it reads/writes. Every builder here is deliberately a
-// same-type republish (blueprint->tsPackage is the direct conversion; blueprint->stakeAdapter is the one
-// registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back to the
-// Stake builder; every other target only republishes an already-built artifact of its own type) -- see
+// same-type republish (blueprint->tsPackage is the direct conversion; Blueprint/tsPackage->Outcome/Stake use
+// the registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back to
+// the Stake builder; every other target only republishes an already-built artifact of its own type) -- see
 // UNSUPPORTED_NOTES for what each target's build explicitly does NOT promise.
 export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
@@ -132,7 +131,7 @@ export class ArtifactBuilderRegistry {
         this.descriptors = descriptors;
         this.builders = builders;
         this.managedOutcomeProjects = managedOutcomeProjects;
-        this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, managedOutcomeProjects);
+        this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, loadPokieGame, managedOutcomeProjects);
     }
 
     public listTargets(): readonly ArtifactTargetType[] {
@@ -187,10 +186,10 @@ export class ArtifactBuilderRegistry {
     // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
     // is never a second, differently-worded "not supported" statement.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
-        if (target === "outcomeLibrary" && source.type === "blueprint") {
-            return this.buildManagedOutcomeFromBlueprint(source, destinationPath);
+        if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
+            return this.buildManagedOutcomeFromRuntime(source, destinationPath);
         }
-        if (target === "stakeAdapter" && source.type === "blueprint") {
+        if (target === "stakeAdapter" && (source.type === "blueprint" || source.type === "tsPackage")) {
             return this.blueprintStakeWorkflow
                 .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility))
                 .then(({project: outcomeLibrary}) =>
@@ -217,7 +216,7 @@ export class ArtifactBuilderRegistry {
         return builder.build(source, destinationPath);
     }
 
-    private async buildManagedOutcomeFromBlueprint(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    private async buildManagedOutcomeFromRuntime(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
             source,
             destinationPath,

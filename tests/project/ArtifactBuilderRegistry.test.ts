@@ -6,7 +6,7 @@ import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
-    OUTCOME_LIBRARY_READ_CAPABILITY,
+    OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_EXPORT_CAPABILITY,
@@ -30,15 +30,15 @@ describe("ArtifactBuilderRegistry", () => {
     it("reports the true required source capability and supported sources for an outcome-library build", () => {
         const descriptor = registry.describe("outcomeLibrary");
 
-        expect(descriptor.requiredSourceCapability).toBe(OUTCOME_LIBRARY_READ_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "outcomeLibrary"]);
+        expect(descriptor.requiredSourceCapability).toBe(OUTCOME_LIBRARY_GENERATE_CAPABILITY);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary"]);
     });
 
     it("reports the true required source capability and supported sources for a Stake artifact export", () => {
         const descriptor = registry.describe("stakeAdapter");
 
         expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXPORT_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["blueprint", "outcomeLibrary", "stakeAdapter"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"]);
     });
 
     it("reports the true required source capability and supported sources for a PAR export", () => {
@@ -230,6 +230,56 @@ describe("ArtifactBuilderRegistry", () => {
                     managedProjectRoots: [outcomeDir],
                 });
                 expect(fs.existsSync(alternateOutcomeDir)).toBe(false);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("materializes a real tsPackage through the registry for Outcome and Stake, preserving all runtime modes", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-tspackage-outcome-registry-test-"));
+            const blueprintPath = path.join(workDir, "game.blueprint.json");
+            const packageDir = path.join(workDir, "package");
+            const outcomeDir = path.join(workDir, "outcome");
+            const stakeDir = path.join(workDir, "stake");
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "package-outcome-slot", name: "Package Outcome Slot", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A"],
+                    paytable: {A: {2: 1, 3: 2}},
+                    reelStrips: [["A"], ["A"], ["A"]],
+                    availableBets: [1],
+                    betModes: [
+                        {id: "base", runtimeType: "base", isDefault: true},
+                        {id: "ante", runtimeType: "ante", costMultiplier: 2},
+                    ],
+                }),
+            );
+            const blueprintProject: PokieProject = {
+                type: "blueprint",
+                rootPath: blueprintPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+
+            try {
+                await registry.build("tsPackage", blueprintProject, packageDir);
+                const packageProject = projectOf("tsPackage");
+                const tsPackageProject = {...packageProject, rootPath: packageDir};
+
+                await expect(registry.build("outcomeLibrary", tsPackageProject, outcomeDir)).resolves.toMatchObject({outputPath: outcomeDir});
+                expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes).toEqual([
+                    expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
+                    expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
+                ]);
+
+                await expect(registry.build("stakeAdapter", tsPackageProject, stakeDir)).resolves.toMatchObject({outputPath: stakeDir});
+                expect(JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")).modes).toEqual([
+                    expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
+                    expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),
+                ]);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

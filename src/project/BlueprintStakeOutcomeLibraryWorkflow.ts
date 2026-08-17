@@ -6,6 +6,7 @@ import {renderBuiltGameModule} from "../generated/renderBuiltGameModule.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import {computeGameBlueprintHash} from "../generated/computeGameBlueprintHash.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
+import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import {VideoSlotSessionSerializer} from "../net/videoslot/VideoSlotSessionSerializer.js";
 import {CustomLinesDefinitions} from "../session/videoslot/linesdefinitions/CustomLinesDefinitions.js";
 import {ReelsSymbolsSequencesGenerator} from "../session/videoslot/combinations/ReelsSymbolsSequencesGenerator.js";
@@ -55,25 +56,27 @@ const GENERATED_RUNTIME = {
     WaysWinCalculator,
 };
 
-// Registry-owned prerequisite preparation for a Blueprint -> Stake request.  It deliberately materializes
-// the Blueprint through the same generated runtime module a tsPackage contains, then drives the public exact
-// outcome generator and canonical bundle writer.  There is consequently no second, hand-written Blueprint
-// calculation or Stake export path hidden in a CLI/Studio caller.
+// Registry-owned prerequisite preparation for a Blueprint/tsPackage -> Stake request. It drives the same
+// executable runtime a package exposes through the public exact generator and canonical bundle writer; there
+// is consequently no second, hand-written calculation or Stake export path hidden in a CLI/Studio caller.
 export class BlueprintStakeOutcomeLibraryWorkflow {
     private readonly validator = new GameBlueprintValidator();
     private readonly pokieVersion: string;
     private readonly loadBlueprint: (filePath: string) => unknown;
+    private readonly loadGame: typeof loadPokieGame;
     private readonly managedOutcomeProjects: ManagedOutcomeProjectServicing;
     private readonly writer: OutcomeLibraryBundleWriting;
 
     constructor(
         pokieVersion: string,
         loadBlueprint: (filePath: string) => unknown,
+        loadGame: typeof loadPokieGame = loadPokieGame,
         managedOutcomeProjects: ManagedOutcomeProjectServicing = new ManagedOutcomeProjectService(),
         writer: OutcomeLibraryBundleWriting = new OutcomeLibraryBundleWriter(pokieVersion),
     ) {
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint;
+        this.loadGame = loadGame;
         this.managedOutcomeProjects = managedOutcomeProjects;
         this.writer = writer;
     }
@@ -85,11 +88,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         source: PokieProject,
         destinationPath: string | ((compatibility: OutcomeProjectCompatibility) => string),
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
-        const blueprint = this.validateAndMaterialize(source.rootPath);
-        const game = this.loadMaterializedGame(blueprint);
+        const game = source.type === "blueprint" ? this.loadMaterializedGame(this.validateAndMaterialize(source.rootPath)) : await this.loadGame(source.rootPath);
         const configHash = game.getConfigHash?.();
         if (configHash === undefined) {
-            throw new Error(`Blueprint "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
+            throw new Error(`Project "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
         }
 
         const compatibility = {
@@ -110,20 +112,32 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     }
 
     private async generateBundle(blueprintPath: string, game: PokieGame, configHash: string, destinationPath: string): Promise<void> {
-        const generated = await generateExactWeightedOutcomeLibrary({
-            libraryId: `${game.getManifest().id}-base`,
-            game,
-            pokieVersion: this.pokieVersion,
-            configHash,
-        });
+        const declaredModes = game.getBetModes?.();
+        // A package without the optional bet-mode contract still has the canonical base runtime.  Do not
+        // pretend that base is selectable, though: only a declared runtime mode is passed to the exact
+        // session selector below.
+        const modes = declaredModes && declaredModes.length > 0 ? declaredModes : [{id: "base"}];
+        const generated = await Promise.all(
+            modes.map(async (mode) => ({
+                mode,
+                generated: await generateExactWeightedOutcomeLibrary({
+                    libraryId: `${game.getManifest().id}-${mode.id}`,
+                    game,
+                    pokieVersion: this.pokieVersion,
+                    configHash,
+                    ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
+                    selectBetMode: declaredModes !== undefined && declaredModes.length > 0,
+                }),
+            })),
+        );
         const result = await this.writer.writeToDirectory(
-            [{
-                modeName: "base",
-                libraryId: generated.library.libraryId,
-                schemaVersion: generated.library.schemaVersion,
-                outcomes: generated.library.outcomes,
-                generator: generated.diagnostics,
-            }],
+            generated.map(({mode, generated: library}) => ({
+                modeName: mode.id,
+                libraryId: library.library.libraryId,
+                schemaVersion: library.library.schemaVersion,
+                outcomes: library.library.outcomes,
+                generator: library.diagnostics,
+            })),
             destinationPath,
         );
         const errors = result.issues.filter((issue) => issue.severity === "error");

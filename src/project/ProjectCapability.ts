@@ -18,6 +18,11 @@ export const BLUEPRINT_BUILD_CAPABILITY: ProjectCapability = "blueprint.build";
 // "outcomeLibrary.validate" require. Only an "outcomeLibrary" project grants it today.
 export const OUTCOME_LIBRARY_READ_CAPABILITY: ProjectCapability = "outcomeLibrary.read";
 
+// Produces a canonical Outcome Library through ArtifactBuilderRegistry.  This is intentionally separate
+// from OUTCOME_LIBRARY_READ_CAPABILITY: a runnable package can calculate a new library without already
+// being a bundle, while a bundle can be republished without loading a game runtime.
+export const OUTCOME_LIBRARY_GENERATE_CAPABILITY: ProjectCapability = "outcomeLibrary.generate";
+
 // An existing Stake Engine directory that can be imported, analyzed, or diffed.  New exports use the narrower
 // STAKE_ADAPTER_EXPORT_CAPABILITY below, so a canonical outcome library cannot be mistaken for this foreign
 // directory format.

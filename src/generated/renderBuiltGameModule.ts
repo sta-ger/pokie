@@ -158,7 +158,21 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     const sequencesDeclaration = format === "ts" ? "const sequences: unknown[] = [];" : "const sequences = [];";
     const exactEnumerationSessionExport = freeGames
         ? ""
-        : `
+        : betModeWiring
+          ? `
+    createExactEnumerationSession(${combinationsGeneratorParam}) {
+        const config = createConfig();
+${winCalculatorDeclaration}        const session = new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
+        const betModes = (blueprint.betModes || []).map((mode) => new BetModeDefinition(mode.id, {
+            stakeMultiplier: mode.costMultiplier,
+            forcesFeatureEntry: mode.runtimeType === "buyFeature",
+            targetRtp: mode.targetRtp,
+        }));
+${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesSession(session, new BetModesConfig(betModes, ${JSON.stringify(betModeWiring.defaultModeId)})${
+    betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""
+});
+    },`
+          : `
     createExactEnumerationSession(${combinationsGeneratorParam}) {
         const config = createConfig();
 ${winCalculatorDeclaration}        return new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
