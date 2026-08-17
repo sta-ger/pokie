@@ -78,15 +78,16 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         const unwonCell = container.querySelector<HTMLElement>('[data-cell="1:0"]');
         expect(unwonCell?.style.backgroundColor).toBe("");
 
-        // A pays 5 for this round -- RoundArtifactInspector's own win row, the actual payout evidence
-        // Play renders (RoundArtifact never carries the game's static paytable itself -- PaytableView
-        // honestly reports "unavailable" here rather than fabricating a payout table, see
-        // PaytableView.tsx's own doc comment -- so this line-1/A/5 win row is the real rendered proof
-        // that this round's own A-symbol payout is 5, the same fact the CLI/package/examples captures
-        // record).
+        // Static player data comes from the captured session's initial payload -- the same serializer
+        // payload the generated client uses -- not from the round's winning lines.  The fixture's full
+        // A/B/C table and its actual post-spin balance must therefore render beside the canonical grid.
         expect(screen.getByText("line")).toBeInTheDocument();
         expect(screen.getAllByText("A").length).toBeGreaterThan(0);
         expect(screen.getByText(/5\.00.*5\.00x stake/)).toBeInTheDocument();
-        expect(screen.getByText(/Paytable unavailable/i)).toBeInTheDocument();
+        expect(screen.getAllByText("Symbol").length).toBeGreaterThan(1);
+        expect(screen.getAllByText("B").length).toBeGreaterThan(0);
+        expect(screen.getByText("Credits")).toBeInTheDocument();
+        expect(screen.getByText("1004")).toBeInTheDocument();
+        expect(screen.queryByText(/Paytable unavailable/i)).toBeNull();
     });
 });

@@ -43,6 +43,9 @@ export type ExpectedReplayState =
           seed?: string;
           artifact?: RoundArtifactJson;
           artifactWarnings: string[];
+          // A stored/pasted Studio replay descriptor can carry the player-facing post-round balance.
+          // It stays optional for portable artifacts produced by older/other replay tools.
+          credits?: number;
           stateBefore?: unknown;
           stateAfter?: unknown;
           // Whatever this record's own identity/timing is known to be -- a stored replay job's session/job
@@ -848,6 +851,7 @@ export function ReplayTab({
                                     {expected.artifact && expected.artifactWarnings.length === 0 && (
                                         <RoundArtifactInspector
                                             artifact={describeRoundArtifact(expected.artifact)}
+                                            credits={expected.credits}
                                             stateBefore={expected.stateBefore}
                                             stateAfter={expected.stateAfter}
                                         />
@@ -1000,6 +1004,7 @@ export function ReplayTab({
                                     comparison={findMethod === "artifact" ? comparison : undefined}
                                     stateBefore={result.stateBefore}
                                     stateAfter={result.stateAfter}
+                                    credits={result.credits}
                                 />
                             )}
                             {jobLoaded && !active && result && !result.artifact && (

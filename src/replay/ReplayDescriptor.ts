@@ -11,6 +11,10 @@ export type ReplayDescriptor = {
     round: number;
     totalBet: number;
     totalWin: number;
+    // The player-facing balance after the target round.  Studio replays lift a session's balance to
+    // avoid bankroll exhaustion while seeking a later round, so this optional ledger value preserves
+    // the original session's observable balance without changing replay execution semantics.
+    credits?: number;
     screen: unknown[][] | null;
     timestamp: number;
     durationMs: number;

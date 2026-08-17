@@ -309,6 +309,7 @@ describe("StudioReplayExecutionService", () => {
         expect(job.descriptor?.seed).toBe("demo");
         expect(job.descriptor?.totalBet).toBe(5);
         expect(job.descriptor?.screen).toEqual([[expect.stringContaining("round-5")]]);
+        expect(job.descriptor?.credits).toBe(1005);
     });
 
     it("produces the exact same descriptor for the same seed/round (reproducibility)", async () => {
@@ -1088,7 +1089,7 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         // stateBefore/stateAfter -- only Studio's own execution path does (see
         // StudioReplayExecutionService.buildArtifact()/captureBoundaryState()) -- so those fields are
         // compared separately below rather than expected to match directDescriptor exactly.
-        const {artifact, stateBefore, stateAfter, ...descriptorWithoutExtras} = job.descriptor ?? {};
+        const {artifact, stateBefore, stateAfter, credits, ...descriptorWithoutExtras} = job.descriptor ?? {};
         // sessionId is excluded too: both StudioReplayExecutionService and ReplayRecorder each mint
         // their own fresh session identity independently (see each one's own doc comment on
         // `sessionId`), so two separate replays of the same seed/round never share one.
@@ -1100,6 +1101,7 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         });
         expect(artifact?.screen).toEqual(job.descriptor?.screen);
         expect(stateAfter?.screen).toEqual(job.descriptor?.screen);
+        expect(credits).toBeDefined();
         expect(stateBefore).toBeDefined();
         expect(stateAfter).toBeDefined();
     });

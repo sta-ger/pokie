@@ -516,6 +516,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: job.descriptor.seed ?? undefined,
                         artifact: job.descriptor.artifact,
                         artifactWarnings: [],
+                        credits: job.descriptor.credits,
                         stateBefore: job.descriptor.stateBefore,
                         stateAfter: job.descriptor.stateAfter,
                         identity: {
@@ -552,7 +553,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     }
                     const parsedDescriptor =
                         typeof parsed === "object" && parsed !== null
-                            ? (parsed as {artifact?: RoundArtifactJson; stateBefore?: unknown; stateAfter?: unknown; sessionId?: string; timestamp?: number})
+                            ? (parsed as {
+                                  artifact?: RoundArtifactJson;
+                                  credits?: number;
+                                  stateBefore?: unknown;
+                                  stateAfter?: unknown;
+                                  sessionId?: string;
+                                  timestamp?: number;
+                              })
                             : undefined;
                     setExpectedReplay({
                         status: "loaded",
@@ -560,6 +568,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: response.seed,
                         artifact: parsedDescriptor?.artifact,
                         artifactWarnings: response.artifactWarnings,
+                        credits: parsedDescriptor?.credits,
                         stateBefore: parsedDescriptor?.stateBefore,
                         stateAfter: parsedDescriptor?.stateAfter,
                         identity: {
