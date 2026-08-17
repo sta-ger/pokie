@@ -31,6 +31,13 @@ function initialPayload(state: unknown): Record<string, unknown> | undefined {
     return asRecord(record?.initialPayload);
 }
 
+function currentBet(round: Record<string, unknown> | undefined, initial: Record<string, unknown>): number | undefined {
+    if (typeof round?.bet === "number") {
+        return round.bet;
+    }
+    return typeof initial.bet === "number" ? initial.bet : undefined;
+}
+
 // Prefer the pre-round snapshot: it identifies the exact configured session that evaluated the
 // displayed round.  `stateAfter` is the equivalent fallback for Play's live view, whose state capture
 // starts after a round has completed but retains the same immutable initial payload.
@@ -44,7 +51,7 @@ export function describeRoundPresentation(stateBefore: unknown, stateAfter: unkn
     return {
         paytable: derivePaytableView(initial.paytable),
         availableBets: deriveAvailableBets(initial.availableBets),
-        currentBet: typeof round?.bet === "number" ? round.bet : typeof initial.bet === "number" ? initial.bet : undefined,
+        currentBet: currentBet(round, initial),
         availableModeIds: deriveAvailableBetModeIds(initial.availableBetModeIds),
         currentModeId:
             deriveBetModeId(round?.roundPayload && asRecord(round.roundPayload)?.betModeId) ??
