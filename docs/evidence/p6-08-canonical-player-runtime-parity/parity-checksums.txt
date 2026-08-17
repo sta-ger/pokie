@@ -1,5 +1,5 @@
-# SHA-256 inputs are UTF-8, with no trailing newline.
-screen-json [["A","C","A"],["A","A","C"],["A","A","A"]]
-screen-sha256 dd72c66734bdd23c4bdfd5b7b950b1c347e0dc1cada1d78110de23f2131e704c
-round-input fixture-round|1|1.00|5.00|5.00x|[["A","C","A"],["A","A","C"],["A","A","A"]]
-round-sha256 2886f22c3b1f140045a60e27abd6c66903fa26cd85dcfe8ec6e7ef97e8273dd7
+round-input fixture-round|1|1|1004|5|5x|[["A","C","A"],["A","A","C"],["A","A","A"]]
+20-generated-package-npm-start-player.png sha256:acedb5477a12720502f14bbfe1b63b11e7c14096a965e868ab1a7b1408fe31e9
+21-studio-play-seeded-round.png sha256:2c0d28907186b025fabc992c5889beeac38f5892c5eba87281fec9bf68afdd0b
+22-studio-replay-seeded-round.png sha256:06f831476751824ea08ae21908d9db9b6b84904a25f1c0b71dec17b3dbb20b2e
+23-pokie-examples-fixture-round.png sha256:fc785f40568ec40456c4c171071fe70ab4c49a64e82706ba8dd79d8e2f28132c

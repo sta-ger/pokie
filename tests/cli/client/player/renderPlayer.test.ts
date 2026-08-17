@@ -299,7 +299,14 @@ describe("canonical Player source reachability", () => {
         const examplesUiPath = process.env.POKIE_EXAMPLES_PATH
             ? resolve(process.env.POKIE_EXAMPLES_PATH, "src/ui/ui.ts")
             : resolve(process.cwd(), "..", "pokie-examples", "src/ui/ui.ts");
+        const examplesRoot = process.env.POKIE_EXAMPLES_PATH
+            ? resolve(process.env.POKIE_EXAMPLES_PATH)
+            : resolve(process.cwd(), "..", "pokie-examples");
         const examplesUi = readFileSync(examplesUiPath, "utf8");
+        const fixturePage = readFileSync(resolve(examplesRoot, "fixture-slot.html"), "utf8");
+        const fixtureEntry = readFileSync(resolve(examplesRoot, "src/fixture-slot.ts"), "utf8");
+        const fixtureGame = readFileSync(resolve(examplesRoot, "src/games/fixture-slot/index.ts"), "utf8");
+        const examplesIndex = readFileSync(resolve(examplesRoot, "index.html"), "utf8");
 
         expect(devClient).toContain('from "./player/index.js"');
         expect(devClient).toContain("renderPlayerRound(");
@@ -308,6 +315,17 @@ describe("canonical Player source reachability", () => {
         expect(studio).not.toContain('from "../../../../client/player/renderPlayer"');
         expect(examplesUi).toContain('from "pokie/client/player"');
         expect(examplesUi).toContain("renderPlayerRound(");
+        // The public examples index exposes a real navigation control to the fixture page; that
+        // page boots the normal initializeUi() Player workflow, whose rendered Play control runs a
+        // genuine seeded VideoSlotSession.  This intentionally proves source reachability through
+        // the same canonical renderer rather than an automation-only DOM/state injection route.
+        expect(examplesIndex).toContain('href="fixture-slot.html"');
+        expect(fixturePage).toContain('src="/src/fixture-slot.ts"');
+        expect(fixtureEntry).toContain("initializeUi(");
+        expect(fixtureEntry).toContain("createFixtureSession");
+        expect(fixtureGame).toContain('FIXTURE_SEED = "fixture-round"');
+        expect(fixtureGame).toContain("new VideoSlotSession(");
+        expect(fixtureGame).toContain("new SymbolsCombinationsGenerator(");
         for (const legacyRenderer of [
             "renderReelsGrid(",
             "applyPersistentHighlights(",

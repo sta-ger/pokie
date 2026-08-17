@@ -1,8 +1,0 @@
-
-> pokie-examples@0.0.0 dev
-> vite --host 127.0.0.1 --port 5173
-
-
-  VITE v4.3.9  ready in 270 ms
-
-  ➜  Local:   http://127.0.0.1:5173/

@@ -1,17 +1,14 @@
-Generated package:
-$ npm start
-POKIE dev server listening on http://127.0.0.1:4511
-POKIE client UI listening on http://127.0.0.1:4512
-Browser: Spin and Paytable rendered; Player screenshot captured.
+Generated package Player (`npm start` / client-dev):
+seed=fixture-round, round=1, stake=1.00
+screen=A C A / A A C / A A A totalWin=5.00 (5.00x)
 
-Studio Play:
-seed=fixture-round, new session, spin
-round=1 stake=1.00 screen=A C A / A A C / A A A totalWin=5.00 (5.00x)
+Studio Play and Replay:
+seed=fixture-round, round=1, stake=1.00
+screen=A C A / A A C / A A A totalWin=5.00 (5.00x)
 
-Studio Replay:
-seed=fixture-round, load, replay round=1
-round=1 stake=1.00 screen=A C A / A A C / A A A totalWin=5.00 (5.00x)
+Public pokie-examples:
+rendered index link "Open deterministic round", then rendered "Play"
+seed=fixture-round, round=1, credits=1004, bet=1, A-line win=5, multiple=5x
 
 $ pokie replay <generated-package> --seed fixture-round --round 1
 game=fixture-slot round=1 totalBet=1 totalWin=5
-screen=[["A","C","A"],["A","A","C"],["A","A","A"]]

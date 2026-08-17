@@ -1,0 +1,4 @@
+NAVIGATE public pokie-examples index.
+CLICK rendered "Open deterministic round" link.
+CLICK rendered "Play" button on Fixture Slot.
+ASSERT seed=fixture-round round=1 grid=A C A / A A C / A A A; top-line highlights; paytable A=5; bet=1; credits=1004; win=5; multiple=5x.
