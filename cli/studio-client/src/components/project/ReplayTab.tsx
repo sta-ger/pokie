@@ -251,31 +251,32 @@ export function ReplayTab({
     // A recorded spin is a member of one runtime session, even when the picker is showing every
     // session interleaved. Keep the inspector's navigation in that session so Previous/Next always
     // means adjacent rounds rather than a surprising jump into another player's session.
-    const filteredSpins =
-        recentSpins.status === "loaded"
-            ? spinSessionFilter === "all"
-                ? recentSpins.entries
-                : recentSpins.entries.filter((entry) => entry.sessionId === spinSessionFilter)
-            : [];
+    const loadedSpins = recentSpins.status === "loaded" ? recentSpins.entries : [];
+    const filteredSpins = spinSessionFilter === "all" ? loadedSpins : loadedSpins.filter((entry) => entry.sessionId === spinSessionFilter);
     const selectedSessionSpins = selectedSpin
-        ? recentSpins.status === "loaded"
-            ? recentSpins.entries
-                  .filter((entry) => entry.sessionId === selectedSpin.sessionId)
-                  .slice()
-                  .sort((left, right) => (left.studioRound ?? 0) - (right.studioRound ?? 0))
-            : []
+        ? loadedSpins
+            .filter((entry) => entry.sessionId === selectedSpin.sessionId)
+            .slice()
+            .sort((left, right) => (left.studioRound ?? 0) - (right.studioRound ?? 0))
         : [];
     const selectedSpinIndex = selectedSpin
         ? selectedSessionSpins.findIndex(
-              (entry) =>
-                  entry.sessionId === selectedSpin.sessionId &&
+            (entry) =>
+                entry.sessionId === selectedSpin.sessionId &&
                   (entry.studioRound ?? entry.studioRequestId) === (selectedSpin.studioRound ?? selectedSpin.studioRequestId),
-          )
+        )
         : -1;
 
     function inspectSpin(entry: StudioRuntimeSessionView): void {
         setSelectedSpin(entry);
         markLoaded("spin", false);
+    }
+
+    function isSelectedSpin(entry: StudioRuntimeSessionView): boolean {
+        return (
+            selectedSpin?.sessionId === entry.sessionId &&
+            (selectedSpin.studioRound ?? selectedSpin.studioRequestId) === (entry.studioRound ?? entry.studioRequestId)
+        );
     }
 
     // Gated on `jobLoaded` (not just `progress !== undefined`) so a prior target's still-active or
@@ -556,34 +557,21 @@ export function ReplayTab({
                                                     component="button"
                                                     type="button"
                                                     onClick={() => inspectSpin(entry)}
-                                                    aria-current={
-                                                        selectedSpin?.sessionId === entry.sessionId &&
-                                                        (selectedSpin.studioRound ?? selectedSpin.studioRequestId) ===
-                                                            (entry.studioRound ?? entry.studioRequestId)
-                                                            ? "true"
-                                                            : undefined
-                                                    }
+                                                    aria-current={isSelectedSpin(entry) ? "true" : undefined}
                                                     style={{
                                                         overflowWrap: "anywhere",
                                                         whiteSpace: "normal",
                                                         textAlign: "left",
-                                                        fontWeight:
-                                                            selectedSpin?.sessionId === entry.sessionId &&
-                                                            (selectedSpin.studioRound ?? selectedSpin.studioRequestId) ===
-                                                                (entry.studioRound ?? entry.studioRequestId)
-                                                                ? 700
-                                                                : undefined,
+                                                        fontWeight: isSelectedSpin(entry) ? 700 : undefined,
                                                     }}
                                                 >
                                                     Round {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
                                                     win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
-                                                    {selectedSpin?.sessionId === entry.sessionId &&
-                                                        (selectedSpin.studioRound ?? selectedSpin.studioRequestId) ===
-                                                            (entry.studioRound ?? entry.studioRequestId) && (
-                                                            <Badge size="xs" variant="light" ml={6}>
+                                                    {isSelectedSpin(entry) && (
+                                                        <Badge size="xs" variant="light" ml={6}>
                                                                 Selected
-                                                            </Badge>
-                                                        )}
+                                                        </Badge>
+                                                    )}
                                                 </Anchor>
                                             </List.Item>
                                         ))}

@@ -180,6 +180,6 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
 
         await user.click(screen.getByRole("button", {name: "Next"}));
         expect(screen.getByText("Round 2 of 2")).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: /Round 2.*Find any win.*win 8/i })).toHaveAttribute("aria-current", "true");
+        expect(screen.getByRole("button", {name: /Round 2.*Find any win.*win 8/i})).toHaveAttribute("aria-current", "true");
     });
 });
