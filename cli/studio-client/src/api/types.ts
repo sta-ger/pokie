@@ -711,6 +711,9 @@ export type ReplayDescriptor = {
     round: number;
     totalBet: number;
     totalWin: number;
+    // The player-facing balance after the replayed round. Optional because older replay descriptors
+    // did not persist it, while Studio's replay executor includes it for current sessions.
+    credits?: number;
     screen: unknown[][] | null;
     timestamp: number;
     durationMs: number;
