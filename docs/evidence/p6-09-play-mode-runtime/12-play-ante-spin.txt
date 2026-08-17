@@ -1,0 +1,123 @@
+POKIE Studio
+/
+P6-09 Mode Semantics
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+
+ADVANCED
+
+Replay
+Build/Export
+Certification
+Fairness
+P6-09 Mode Semantics
+
+/home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/artifacts/mode-semantics-game
+
+Close project
+Play
+Bet
+
+Available bets come from this session's game model.
+
+Bet mode
+
+A buy-feature mode applies to this spin only; after a successful purchase, the returned session shows its persistent mode.
+
+Spin
+Scenarios
+
+Scenario searches use real settled spins and leave their final round in this Play session.
+
+Find any win
+Find symbol win
+Find free games
+Symbol
+
+The symbol Find symbol win searches for in a real, already-evaluated win.
+
+Session
+
+Show advanced details (seed)
+
+Reset Play session
+
+Round complete — no win this round.
+
+A
+Q
+J
+	
+K
+9
+J
+	
+A
+W
+Q
+	
+Q
+J
+W
+	
+10
+W
+J
+Credits
+997.75
+Total win
+0.00 (0.00x)
+Bet: 1123451020304050100
+Mode: basebaseantebuyFeature
+
+No wins on this step.
+
+Inspect round artifact
+Game	P6-09 Mode Semantics (id: "p6-09-mode-semantics", v1.0.0)
+Pokie version	1.3.0
+Bet mode	base
+Stake	1.25
+A
+Q
+J
+	
+K
+9
+J
+	
+A
+W
+Q
+	
+Q
+J
+W
+	
+10
+W
+J
+Credits
+997.75
+Total win
+0.00 (0.00x)
+Bet: 1123451020304050100
+Mode: basebaseantebuyFeature
+Round detail
+
+No wins on this step.
+
+Paytable
+
+Paytable unavailable — this round's own artifact records its already-evaluated wins, not the game's payout table itself.
+
+State before / after
+
+Snapshot captured for this round — see Advanced details for the full before/after state.
+
+Show advanced details (raw JSON, debug data)

@@ -1,0 +1,7 @@
+[2026-08-17T07:47:35.390Z] START fresh real-browser Studio Play rerun against http://127.0.0.1:4919; no API calls or DOM/state injection.
+[2026-08-17T07:47:35.407Z] NAVIGATE rendered Studio Play route
+[2026-08-17T07:47:35.990Z] CAPTURE 10-play-start: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:47:36.033Z] CLICK "New Play session" at rendered BUTTON coordinates (377, 396)
+[2026-08-17T07:48:36.400Z] FAILED Error: Timed out waiting for active session mode controls
+    at waitUntil (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:36:189)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:77:5)

@@ -1,0 +1,31 @@
+[2026-08-17T07:52:07.146Z] START fresh real-browser Studio Play rerun against http://127.0.0.1:4919; no API calls or DOM/state injection.
+[2026-08-17T07:52:07.167Z] NAVIGATE rendered Studio Play route
+[2026-08-17T07:52:07.883Z] CAPTURE 10-play-start: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:52:07.915Z] CLICK "New Play session" at rendered BUTTON coordinates (377, 351)
+[2026-08-17T07:52:08.275Z] OBSERVE active rendered modes: base
+[2026-08-17T07:52:08.341Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:52:08.727Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T07:52:09.094Z] ASSERT base Play spin: completed artifact preserves Bet mode=base and Stake=1.00; live selector=base.
+[2026-08-17T07:52:09.523Z] CAPTURE 11-play-base-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:52:09.568Z] CLICK "Bet mode" at rendered INPUT coordinates (459, 446)
+[2026-08-17T07:52:10.007Z] CLICK Bet mode option "ante" at rendered DIV coordinates (459, 527)
+[2026-08-17T07:52:10.358Z] SELECT Bet mode="ante" through rendered combobox and option
+[2026-08-17T07:52:10.440Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:52:10.818Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T07:52:11.184Z] FINDING ante Play spin: expected artifact Bet mode=ante, Stake=1.25, live selector=ante; rendered artifact={"Game":"P6-09 Mode Semantics (id: \"p6-09-mode-semantics\", v1.0.0)","Pokie version":"1.3.0","Bet mode":"base","Stake":"1.25"}, live selector=ante
+[2026-08-17T07:52:11.560Z] CAPTURE 12-play-ante-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:52:11.596Z] CLICK "Bet mode" at rendered INPUT coordinates (459, 446)
+[2026-08-17T07:52:12.023Z] CLICK Bet mode option "buyFeature" at rendered DIV coordinates (459, 561)
+[2026-08-17T07:52:12.374Z] SELECT Bet mode="buyFeature" through rendered combobox and option
+[2026-08-17T07:52:12.449Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:52:12.833Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1332)
+[2026-08-17T07:52:13.199Z] FINDING buyFeature Play spin: expected artifact Bet mode=buyFeature, Stake=50.00, live selector=base; rendered artifact={"Game":"P6-09 Mode Semantics (id: \"p6-09-mode-semantics\", v1.0.0)","Pokie version":"1.3.0","Bet mode":"base","Stake":"50.00"}, live selector=base
+[2026-08-17T07:52:13.611Z] CAPTURE 13-play-buyfeature-provenance-and-reset: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:52:13.655Z] CLICK "Spin" at rendered BUTTON coordinates (333, 494)
+[2026-08-17T07:52:14.038Z] CLICK "Inspect round artifact" at rendered SUMMARY coordinates (850, 1494)
+[2026-08-17T07:52:14.401Z] ASSERT post-buy normal Play spin: completed artifact preserves Bet mode=base and Stake=1.00; live selector=base.
+[2026-08-17T07:52:14.929Z] CAPTURE 14-play-post-buy-normal-spin: screenshot, rendered transcript, and rendered table values
+[2026-08-17T07:52:14.946Z] CLICK "Replay" at rendered BUTTON coordinates (130, 292)
+[2026-08-17T07:52:15.304Z] FAILED Error: Rendered control "Session Spin" not found: ["POKIE Studio","P6-09 Mode Semantics","Overview","Game Model","Play","Simulation","Replay","Build/Export","Certification","Fairness","Close project","Load","Download JSON","Refresh"]
+    at clickLocated (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:48:31)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-final-polishing/task_P6-09-20260817091913/docs/evidence/p6-09-play-mode-runtime/browser-ui-rerun.mjs:115:5)

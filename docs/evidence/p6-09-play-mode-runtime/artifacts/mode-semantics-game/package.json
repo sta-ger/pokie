@@ -1,0 +1,9 @@
+{
+  "name": "p6-09-mode-semantics-game",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "pokie": {
+    "entry": "./index.js"
+  }
+}
