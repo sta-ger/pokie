@@ -19,6 +19,7 @@ describe("package.json scripts", () => {
         );
 
         expect(pkg.scripts?.["check:full"]).toBe("node scripts/run-full-check.mjs");
+        expect(pkg.scripts?.["test:targeted"]).toContain("--runInBand --runTestsByPath");
         expect(runner).toContain('{name: "unit", arguments: ["test"]}');
         expect(runner).toContain('{name: "typecheck", arguments: ["run", "typecheck"]}');
         expect(runner).toContain('{name: "integration", arguments: ["run", "test:integration"]}');
