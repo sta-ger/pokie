@@ -252,6 +252,8 @@ export function ReplayTab({
     // session interleaved. Keep the inspector's navigation in that session so Previous/Next always
     // means adjacent rounds rather than a surprising jump into another player's session.
     const loadedSpins = recentSpins.status === "loaded" ? recentSpins.entries : [];
+    const spinSessionIds = Array.from(new Set(loadedSpins.map((entry) => entry.sessionId)));
+    const describeSpinSession = (sessionId: string): string => `Session ${spinSessionIds.indexOf(sessionId) + 1}`;
     const filteredSpins = spinSessionFilter === "all" ? loadedSpins : loadedSpins.filter((entry) => entry.sessionId === spinSessionFilter);
     const selectedSessionSpins = selectedSpin
         ? loadedSpins
@@ -524,12 +526,12 @@ export function ReplayTab({
                                 onChange={setSpinSessionFilter}
                                 data={[
                                     {label: "All sessions", value: "all"},
-                                    ...Array.from(new Set(recentSpins.entries.map((entry) => entry.sessionId))).map((sessionId, index) => ({
+                                    ...spinSessionIds.map((sessionId) => ({
                                         // The inspector's Loaded replay card is the one persistent
                                         // place that exposes the full session UUID. Repeating it in a
                                         // filter and every round row made the actual round/scenario
                                         // information hard to scan.
-                                        label: `Session ${index + 1}`,
+                                        label: describeSpinSession(sessionId),
                                         value: sessionId,
                                     })),
                                 ]}
@@ -565,7 +567,7 @@ export function ReplayTab({
                                                         fontWeight: isSelectedSpin(entry) ? 700 : undefined,
                                                     }}
                                                 >
-                                                    Round {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
+                                                    {describeSpinSession(entry.sessionId)} — Round {entry.studioRound ?? "?"} — {describeStudioRoundOperation(entry.studioOperation ?? "spin")} —
                                                     win {entry.win ?? 0} — {entry.studioRecordedAt ? new Date(entry.studioRecordedAt).toLocaleString() : "time unavailable"}
                                                     {isSelectedSpin(entry) && (
                                                         <Badge size="xs" variant="light" ml={6}>

@@ -172,7 +172,7 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         );
 
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
-        const firstRound = screen.getByRole("button", {name: /Round 1.*Spin.*win 2/i});
+        const firstRound = screen.getByRole("button", {name: /Session 1.*Round 1.*Spin.*win 2.*2026/i});
         expect(firstRound).not.toHaveTextContent("session-1");
         await user.click(firstRound);
         expect(screen.getByText("Round 1 of 2")).toBeInTheDocument();
@@ -180,6 +180,6 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
 
         await user.click(screen.getByRole("button", {name: "Next"}));
         expect(screen.getByText("Round 2 of 2")).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: /Round 2.*Find any win.*win 8/i})).toHaveAttribute("aria-current", "true");
+        expect(screen.getByRole("button", {name: /Session 1.*Round 2.*Find any win.*win 8.*2026/i})).toHaveAttribute("aria-current", "true");
     });
 });
