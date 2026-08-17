@@ -6,6 +6,8 @@ import {
     GameBlueprint,
     GamePackageGenerator,
     PokieGame,
+    SymbolsCombination,
+    SymbolsCombinationsGenerating,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -512,6 +514,44 @@ describe("GamePackageGenerator", () => {
             const creditsBefore = session.getCreditsAmount();
             session.play();
             expect(session.getCreditsAmount()).toBeCloseTo(creditsBefore - session.getBet() * 1.25 + session.getWinAmount(), 10);
+        });
+
+        it("wires the same explicit base and ante semantics onto a finite package's exact-enumeration session", () => {
+            const generator = new GamePackageGenerator("1.3.0");
+            const result = generator.generate(
+                buildBlueprint({
+                    reels: 2,
+                    rows: 1,
+                    reelStrips: [
+                        ["A", "B"],
+                        ["A", "B"],
+                    ],
+                    paytable: {A: {2: 5}, B: {2: 2}},
+                    betModes: [
+                        {id: "ante", runtimeType: "ante", costMultiplier: 1.25},
+                        {id: "base", runtimeType: "base", isDefault: true},
+                    ],
+                    manifest: {id: "exact-enum-explicit-ante", name: "Exact Enum Explicit Ante", version: "0.1.0"},
+                }),
+                cwd,
+            );
+            const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
+            const combinationsGenerator: SymbolsCombinationsGenerating<string> = {
+                generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix([["A"], ["A"]]),
+            };
+            const session = game.createExactEnumerationSession!(combinationsGenerator) as unknown as {
+                getBetModeId(): string;
+                setBetMode(modeId: string): void;
+                getBet(): number;
+                getStakeAmount(): number;
+            };
+
+            expect(session.getBetModeId()).toBe("base");
+            expect(session.getStakeAmount()).toBe(session.getBet());
+
+            session.setBetMode("ante");
+            expect(session.getBetModeId()).toBe("ante");
+            expect(session.getStakeAmount()).toBeCloseTo(session.getBet() * 1.25, 10);
         });
 
         it("wires a one-shot buyFeature mode that actually forces entry into mechanics.freeGames for the declared count", () => {

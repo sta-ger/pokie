@@ -168,8 +168,24 @@ describe("BuildCommand", () => {
         );
     });
 
+    it("uses the same registry path for the Outcome Library → Stake prerequisite hand-off", async () => {
+        const project = {
+            type: "outcomeLibrary",
+            rootPath: "/project/outcomes",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            provenance: "canonical outcome bundle",
+        } as PokieProject;
+        const builder = stubBuilder("stakeAdapter", {outputPath: "/project/stake"});
+        const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+        const exitCode = await command.run(["/project/outcomes", "--target", "stakeAdapter", "--out", "/project/stake"]);
+
+        expect(exitCode).toBe(0);
+        expect(builder.calledWith).toEqual({source: project, destinationPath: "/project/stake"});
+    });
+
     describe("tsPackage from a blueprint source", () => {
-        it("loads the blueprint from the resolved project's rootPath and validates it", async () => {
+        it("leaves validation to the registry builder, reading the blueprint only for its success summary", async () => {
             const loadBlueprint = jest.fn().mockReturnValue(rawBlueprint);
             const validator = createStubValidator([]);
             const builder = stubBuilder("tsPackage", {outputPath: "/fake/out"});
@@ -184,10 +200,10 @@ describe("BuildCommand", () => {
             await command.run(["config.json", "--target", "tsPackage", "--out", "out-dir"]);
 
             expect(loadBlueprint).toHaveBeenCalledWith("config.json");
-            expect(validator.calledWith).toBe(rawBlueprint);
+            expect(validator.calledWith).toBeUndefined();
         });
 
-        it("returns 1 and does not build when validation reports errors", async () => {
+        it("does not use its preview validator to block the registry build", async () => {
             const validator = createStubValidator([{code: "blueprint-reels-invalid", severity: "error", message: "bad reels"}]);
             const builder = stubBuilder("tsPackage", {outputPath: "/fake/out"});
             const command = new BuildCommand(
@@ -200,9 +216,9 @@ describe("BuildCommand", () => {
 
             const exitCode = await command.run(["config.json", "--target", "tsPackage", "--out", "out-dir"]);
 
-            expect(exitCode).toBe(1);
-            expect(builder.calledWith).toBeUndefined();
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("1 error(s)"));
+            expect(exitCode).toBe(0);
+            expect(builder.calledWith).toEqual({source: blueprintProject(), destinationPath: "out-dir"});
+            expect(errorSpy).not.toHaveBeenCalled();
         });
 
         it("still builds when validation reports only warnings", async () => {
@@ -447,39 +463,6 @@ describe("BuildCommand", () => {
                 expect(printed).toContain("Dry run");
             });
 
-            it("reports a clear per-reel failure and returns 1, without building, when one reel's generation is unsatisfiable", async () => {
-                const unsatisfiable: GameBlueprint = {
-                    ...blueprintWithGeneration,
-                    reelStripGeneration: [
-                        {type: "literal", strip: ["A", "B"]},
-                        {
-                            type: "generated",
-                            length: 4,
-                            symbolCounts: {A: 2, B: 2},
-                            seed: 5,
-                            maxAttempts: 2,
-                            constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
-                        },
-                    ],
-                };
-                const builder = stubBuilder("tsPackage", () => {
-                    throw new Error("must not be called");
-                });
-                const command = new BuildCommand(
-                    "1.3.0",
-                    () => unsatisfiable,
-                    createStubValidator([]),
-                    stubProjectResolver(blueprintProject()),
-                    registryWithBuilders(builder),
-                );
-
-                const exitCode = await command.run(["config.json", "--target", "tsPackage", "--out", "out-dir"]);
-
-                expect(exitCode).toBe(1);
-                expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("could not generate its reel strips"));
-                expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("reel 1"));
-                expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("maximum-circular-distance"));
-            });
         });
     });
 

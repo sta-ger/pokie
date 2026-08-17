@@ -13,9 +13,9 @@ import type {PokieProject} from "./PokieProject.js";
 // loaded (OutcomeLibraryBundleReader.readLibrary, the same reader loadWeightedOutcomeLibraryFromBundle wraps),
 // and the result is streamed straight into OutcomeLibraryBundleWriter -- a WeightedOutcomeLibrary's own
 // "outcomes" array is already exactly the Iterable<WeightedOutcomeInput> shape OutcomeLibraryBundleModeInput
-// expects, so no field mapping happens here. Never re-derives or recomputes anything: this is a validated
-// copy/republish, not a rebuild from a game model (see ArtifactBuilderRegistry's own "outcomeLibrary"
-// unsupportedNotes).
+// expects, so no field mapping happens here. Blueprint materialization is deliberately not an ArtifactBuilder
+// operation: ArtifactBuilderRegistry's managed workflow owns generation, verification, registration and reopen
+// as one lifecycle, so this public builder can never leave an unregistered Blueprint-derived bundle behind.
 export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
     public readonly target = "outcomeLibrary";
     public readonly destinationKind = "directory";
@@ -34,6 +34,13 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+
+        if (source.type !== "outcomeLibrary") {
+            throw new Error(
+                `OutcomeLibraryArtifactBuilder only republishes an "outcomeLibrary" project; ` +
+                    `Blueprint conversion must use ArtifactBuilderRegistry.build("outcomeLibrary", source, destinationPath).`,
+            );
+        }
 
         const manifest = await this.reader.readManifest(source.rootPath);
         const modes: OutcomeLibraryBundleModeInput[] = await Promise.all(

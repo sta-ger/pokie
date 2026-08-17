@@ -1,11 +1,13 @@
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_READ_CAPABILITY,
+    OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     OUTCOME_SOURCE_READ_CAPABILITY,
     OUTCOME_SOURCE_SAMPLE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     RUNTIME_EXECUTE_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
+    STAKE_ADAPTER_EXPORT_CAPABILITY,
     WASM_MANIFEST_READ_CAPABILITY,
     type ProjectCapability,
 } from "./ProjectCapability.js";
@@ -34,10 +36,21 @@ export type ProjectCapabilities = readonly ProjectCapability[];
 // PreGeneratedOutcomeSourcing-style draw-by-draw serving contract, so it stays read-only — see that
 // capability's own doc comment.
 export const PROJECT_TYPE_CAPABILITIES: Readonly<Record<ProjectType, ProjectCapabilities>> = {
-    blueprint: [BLUEPRINT_BUILD_CAPABILITY],
-    tsPackage: [RUNTIME_EXECUTE_CAPABILITY],
-    outcomeLibrary: [OUTCOME_LIBRARY_READ_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY, OUTCOME_SOURCE_SAMPLE_CAPABILITY],
-    stakeAdapter: [STAKE_ADAPTER_EXCHANGE_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY],
+    // A Blueprint can request Stake output through ArtifactBuilderRegistry's prerequisite workflow: it
+    // resolves a compatible registered Outcome Library or materializes/generates/registers one first.
+    // The capability means that registry-owned workflow is reachable; it does not permit a caller to
+    // bypass the registry and export a Blueprint directly with StakeEngineExporter.
+    blueprint: [BLUEPRINT_BUILD_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
+    // A loadable package is the code-first source for exact Outcome generation.  The registry materializes
+    // its runtime before generation, so a package whose game has no exact-enumeration runtime fails closed
+    // there instead of being mistaken for an already-readable Outcome bundle.
+    tsPackage: [RUNTIME_EXECUTE_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
+    // A canonical outcome library is also the sole native source for a new Stake Engine export.  Grant the
+    // narrow export capability here rather than teaching a CLI/Studio caller to bypass ArtifactBuilderRegistry and
+    // invoke StakeEngineExporter itself: registry.build("stakeAdapter", outcomeLibrary, ...) is the one
+    // Project -> Artifact boundary for that conversion.
+    outcomeLibrary: [OUTCOME_LIBRARY_READ_CAPABILITY, OUTCOME_LIBRARY_GENERATE_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY, OUTCOME_SOURCE_SAMPLE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY],
+    stakeAdapter: [STAKE_ADAPTER_EXCHANGE_CAPABILITY, STAKE_ADAPTER_EXPORT_CAPABILITY, OUTCOME_SOURCE_READ_CAPABILITY],
     wasm: [WASM_MANIFEST_READ_CAPABILITY],
     parWorkbook: [PAR_WORKBOOK_EXCHANGE_CAPABILITY],
 };

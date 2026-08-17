@@ -2,6 +2,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {localPokieDependencyRunner} from "../../../testUtils/offlinePokieDependencyOverride.js";
+import {prepareExactCodeFirstPackage} from "../../../testUtils/prepareExactCodeFirstPackage.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -34,7 +36,7 @@ describe("StudioArtifactBuildService", () => {
     }
 
     describe("listTargets", () => {
-        it("reports every ArtifactBuilderRegistry target, marking only tsPackage supported for a blueprint project", async () => {
+        it("reports the registry-owned Blueprint -> Outcome -> Stake targets as supported", async () => {
             const blueprintPath = writeBlueprintFile();
 
             const targets = await service.listTargets(blueprintPath);
@@ -42,8 +44,8 @@ describe("StudioArtifactBuildService", () => {
             expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry]));
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
-            expect(byTarget.get("outcomeLibrary")?.supported).toBe(false);
-            expect(byTarget.get("stakeAdapter")?.supported).toBe(false);
+            expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
+            expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
             expect(byTarget.get("parWorkbook")?.supported).toBe(false);
             expect(byTarget.get("wasm")?.supported).toBe(false);
         });
@@ -84,16 +86,16 @@ describe("StudioArtifactBuildService", () => {
             expect(result.destination).toBe(explicitOut);
         });
 
-        it("reports an unsupported conversion, with the same message build() itself reports, instead of ever checking a destination", async () => {
+        it("previews the registry-owned Blueprint -> Stake hand-off without writing", async () => {
             const blueprintPath = writeBlueprintFile();
 
             const result = await service.preview(blueprintPath, "stakeAdapter");
 
-            expect(result.status).toBe("unsupported");
-            if (result.status !== "unsupported") {
-                throw new Error("expected unsupported");
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
             }
-            expect(result.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+            expect(result.sourceType).toBe("blueprint");
         });
 
         it("reports a conflict for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
@@ -152,16 +154,111 @@ describe("StudioArtifactBuildService", () => {
             expect(result.outputPath).toBe(explicitOut);
         });
 
-        it("reports an unsupported conversion instead of ever invoking a builder", async () => {
+        it("builds Blueprint -> Stake through the shared registry and registers the generated Outcome Project", async () => {
             const blueprintPath = writeBlueprintFile();
+            const registeredProjects: string[] = [];
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, (projectRoot) => {
+                registeredProjects.push(projectRoot);
+                return Promise.resolve();
+            });
 
             const result = await service.build(blueprintPath, "stakeAdapter");
 
-            expect(result.status).toBe("unsupported");
-            if (result.status !== "unsupported") {
-                throw new Error("expected unsupported");
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
             }
-            expect(result.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+            expect(fs.existsSync(path.join(result.outputPath, "index.json"))).toBe(true);
+            expect(registeredProjects).toHaveLength(1);
+            expect(fs.existsSync(path.join(registeredProjects[0], "manifest.json"))).toBe(true);
+        });
+
+        it("builds Blueprint -> Outcome through the shared registry and registers the opened Outcome Project", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const registeredProjects: string[] = [];
+            service = new StudioArtifactBuildService("1.3.0", undefined, undefined, (projectRoot) => {
+                registeredProjects.push(projectRoot);
+                return Promise.resolve();
+            });
+
+            const result = await service.build(blueprintPath, "outcomeLibrary");
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
+            }
+            expect(result.outputPath).toBe(path.join(workDir, "outcomeLibrary"));
+            expect(registeredProjects).toEqual([result.outputPath]);
+            expect(fs.existsSync(path.join(result.outputPath, "manifest.json"))).toBe(true);
+        });
+
+        it("reports an explicit compatible-project reuse when a Blueprint Outcome request names another destination", async () => {
+            const blueprintPath = writeBlueprintFile();
+            const firstOutcomeDir = path.join(workDir, "first-outcome");
+            const requestedOutcomeDir = path.join(workDir, "requested-but-reused-outcome");
+
+            await expect(service.build(blueprintPath, "outcomeLibrary", firstOutcomeDir)).resolves.toMatchObject({
+                status: "ok",
+                outputPath: firstOutcomeDir,
+            });
+            await expect(service.build(blueprintPath, "outcomeLibrary", requestedOutcomeDir)).resolves.toEqual({
+                status: "ok",
+                target: "outcomeLibrary",
+                outputPath: firstOutcomeDir,
+                outputKind: "directory",
+                sourceType: "blueprint",
+                requestedDestinationPath: requestedOutcomeDir,
+                reusedCompatibleProject: true,
+            });
+            expect(fs.existsSync(requestedOutcomeDir)).toBe(false);
+        });
+
+        it("uses the same registry Outcome reuse and Stake flow for a real pokie init code-first package", async () => {
+            const packageRoot = path.join(workDir, "code-first-package");
+            const outcomeDir = path.join(workDir, "outcomes");
+            const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+            const stakeDir = path.join(workDir, "stake");
+            await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
+
+            expect(await service.listTargets(packageRoot)).toEqual(expect.arrayContaining([
+                expect.objectContaining({target: "outcomeLibrary", supported: true}),
+                expect.objectContaining({target: "stakeAdapter", supported: true}),
+                expect.objectContaining({target: "parWorkbook", supported: false}),
+            ]));
+            await expect(service.build(packageRoot, "outcomeLibrary", outcomeDir)).resolves.toMatchObject({
+                status: "ok",
+                sourceType: "tsPackage",
+                outputPath: outcomeDir,
+            });
+            await expect(service.build(packageRoot, "outcomeLibrary", reusedOutcomeDir)).resolves.toEqual({
+                status: "ok",
+                target: "outcomeLibrary",
+                outputPath: outcomeDir,
+                outputKind: "directory",
+                sourceType: "tsPackage",
+                requestedDestinationPath: reusedOutcomeDir,
+                reusedCompatibleProject: true,
+            });
+            await expect(service.build(packageRoot, "stakeAdapter", stakeDir)).resolves.toMatchObject({
+                status: "ok",
+                sourceType: "tsPackage",
+                outputPath: stakeDir,
+            });
+            expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes).toEqual([
+                expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
+                expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
+            ]);
+            expect(JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")).modes).toEqual([
+                expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
+                expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),
+            ]);
+            await expect(service.build(packageRoot, "parWorkbook", path.join(workDir, "unsupported.xlsx"))).resolves.toEqual(
+                expect.objectContaining({
+                    status: "unsupported",
+                    target: "parWorkbook",
+                    message: expect.stringContaining('"parWorkbook" cannot be built from a "tsPackage" project. Supported sources: parWorkbook.'),
+                }),
+            );
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {

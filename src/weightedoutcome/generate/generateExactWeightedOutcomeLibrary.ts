@@ -12,6 +12,7 @@ import type {WeightedOutcomeLibrary} from "../WeightedOutcomeLibrary.js";
 import {accumulateUniqueGridWeights, type UniqueGridWeightEntry} from "./internal/accumulateUniqueGridWeights.js";
 import {computeExactEnumerationSourceId} from "./internal/computeExactEnumerationSourceId.js";
 import {ForcedSymbolsCombinationsGenerator} from "./internal/ForcedSymbolsCombinationsGenerator.js";
+import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
 import {sampleStopTuples} from "./internal/sampleStopTuples.js";
 import {sweepStopTuples} from "./internal/sweepStopTuples.js";
 import {toBigIntSafeDecimal} from "./internal/toBigIntSafeDecimal.js";
@@ -59,6 +60,11 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly pokieVersion: string;
     readonly configHash?: string;
     readonly betMode?: string;
+    // Opt in only for callers that require the executable session itself to enact the requested mode.
+    // The long-standing CLI/Studio generator also supports recording a caller-selected declarative mode on
+    // packages whose exact session predates the runtime bet-mode decorator, so it intentionally leaves this
+    // false. ArtifactBuilderRegistry sets it true for canonical Project -> Outcome/Stake conversion.
+    readonly selectBetMode?: boolean;
     readonly stake?: number;
     readonly maxOutcomeSpaceSize?: bigint;
     // Explicit opt-in: only consulted once the space actually exceeds maxOutcomeSpaceSize. Its mere presence
@@ -260,6 +266,15 @@ export async function *streamExactWeightedOutcomes(
         // Guaranteed non-null by prepare(): a game whose createExactEnumerationSession was undefined would
         // already have thrown before this point.
         const session = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator<string>(entry.grid));
+        if (options.selectBetMode && options.betMode !== undefined) {
+            if (!supportsBetModeSelecting(session)) {
+                throw new WeightedOutcomeLibraryGenerationError(
+                    "weighted-outcome-library-generation-bet-mode-unsupported",
+                    `"${manifest.id}" cannot exactly enumerate bet mode "${options.betMode}" because its exact-enumeration session does not support bet-mode selection.`,
+                );
+            }
+            session.setBetMode(options.betMode);
+        }
         if (!session.canPlayNextGame()) {
             throw new WeightedOutcomeLibraryGenerationError(
                 "weighted-outcome-library-generation-session-not-playable",

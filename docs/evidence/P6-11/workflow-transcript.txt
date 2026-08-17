@@ -1,0 +1,25 @@
+P6-11 independent verification summary
+Reviewed implementation: 582a7de7d9d8120e032ac2dc77eb1605b9d9ecc8
+
+Studio UI (fresh public Studio/client)
+- Built a Blueprint into an Outcome library, then added it to Projects and
+  opened it as a project.
+- The opened Outcome displayed exact analysis for base mode (RTP 166.67%, hit
+  frequency 33.33%, max win 5) and sampled outcome-92d7fefe2949e936 (5.00x).
+- A real Play session completed a Spin; a 25-round Simulation completed; Replay
+  loaded and inspected that Play-produced round.
+- From the Blueprint Build/Export view, generated 4 base-mode Outcomes and
+  completed Stake Engine export (4 files).
+
+Invalid Blueprint retry
+- Invalid `reels` produced: `blueprint-reels-invalid: "reels" must be a
+  positive integer.`
+- After correction, the Outcome-library build succeeded and its deep check was
+  valid.
+
+Code-first parity
+- Public `pokie init` package validated and simulated successfully.
+- Its Outcome build reused the compatible registered Outcome destination rather
+  than creating the alternate requested destination.
+- Stake export preserved the base and ante mode mappings: base stake/cost 1;
+  ante stake/cost 2; no alternate destination was created.

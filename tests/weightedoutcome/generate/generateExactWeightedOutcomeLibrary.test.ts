@@ -1,4 +1,6 @@
 import {
+    BetModeDefinition,
+    BetModesConfig,
     estimateExactOutcomeSpaceSize,
     GameBlueprint,
     GamePackageGenerator,
@@ -9,8 +11,10 @@ import {
     streamExactWeightedOutcomes,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
+    VideoSlotSession,
+    VideoSlotWithBetModesSession,
 } from "pokie";
-import {buildAlternateFixtureGame, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
+import {buildAlternateFixtureGame, buildFixtureConfig, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -94,6 +98,58 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             expect(outcome.artifact.stake).toBe(2);
             expect(outcome.artifact.provenance.configHash).toBe("sha256:deadbeef");
         }
+    });
+
+    it("selects the requested supported bet mode on every exact-enumeration session before calculating its outcomes", async () => {
+        const selectedModeIds: string[] = [];
+        const config = buildFixtureConfig();
+        const game: PokieGame = {
+            getManifest: () => ({id: "mode-selecting-fixture-slot", name: "Mode Selecting Fixture Slot", version: "1.0.0"}),
+            createSession: () =>
+                new VideoSlotWithBetModesSession(
+                    new VideoSlotSession<string>(config),
+                    new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 1.25})], "base"),
+                ),
+            createExactEnumerationSession: (combinationsGenerator) => {
+                const session = new VideoSlotWithBetModesSession(
+                    new VideoSlotSession<string>(config, combinationsGenerator),
+                    new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 1.25})], "base"),
+                );
+                const setBetMode = session.setBetMode.bind(session);
+                session.setBetMode = (modeId: string) => {
+                    selectedModeIds.push(modeId);
+                    setBetMode(modeId);
+                };
+                return session;
+            },
+        };
+
+        const result = await generateExactWeightedOutcomeLibrary({
+            libraryId: "fixture-lib",
+            game,
+            pokieVersion: "1.3.0",
+            betMode: "ante",
+            selectBetMode: true,
+        });
+
+        expect(selectedModeIds).toEqual(Array(result.library.outcomes.length).fill("ante"));
+        expect(result.library.outcomes.every((outcome) => outcome.artifact.betMode === "ante")).toBe(true);
+    });
+
+    it("rejects an exact session without bet-mode selection with an actionable error when selection was requested", async () => {
+        const options = {
+            libraryId: "fixture-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            betMode: "ante",
+            selectBetMode: true,
+        };
+
+        await expect(generateExactWeightedOutcomeLibrary(options)).rejects.toMatchObject({
+            name: "WeightedOutcomeLibraryGenerationError",
+            code: "weighted-outcome-library-generation-bet-mode-unsupported",
+            message: expect.stringContaining('cannot exactly enumerate bet mode "ante" because its exact-enumeration session does not support bet-mode selection'),
+        });
     });
 
     it("fails closed when the space exceeds maxOutcomeSpaceSize and bounded was not requested", async () => {

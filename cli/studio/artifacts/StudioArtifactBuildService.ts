@@ -1,4 +1,13 @@
-import {ArtifactBuildConflictError, ArtifactBuilderRegistry, ArtifactTargetType, PokieProject, ProjectResolving, ProjectTargetResolver} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    ArtifactBuilderRegistry,
+    ArtifactTargetType,
+    ManagedOutcomeProjectService,
+    ManagedOutcomeProjectServicing,
+    PokieProject,
+    ProjectResolving,
+    ProjectTargetResolver,
+} from "pokie";
 import path from "path";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
@@ -61,11 +70,13 @@ export class StudioArtifactBuildService {
 
     constructor(
         pokieVersion: string,
-        registry: ArtifactBuilderRegistry = new ArtifactBuilderRegistry(pokieVersion),
-        resolveProject: ProjectResolving = new ProjectTargetResolver(),
+        registry?: ArtifactBuilderRegistry,
+        resolveProject?: ProjectResolving,
+        private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
+        managedOutcomeProjects?: ManagedOutcomeProjectServicing,
     ) {
-        this.registry = registry;
-        this.resolveProject = resolveProject;
+        this.resolveProject = resolveProject ?? new ProjectTargetResolver();
+        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
@@ -131,7 +142,27 @@ export class StudioArtifactBuildService {
 
         try {
             const result = await this.registry.build(target, project, destination);
-            return {status: "ok", target, outputPath: result.outputPath, outputKind: destinationKindFor(target), sourceType: project.type};
+            // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
+            // the registry generated or reopened. Register it with Studio before reporting success; no
+            // Studio-only outcome-path index is maintained here.
+            const managedProjectRoots = new Set([
+                ...(result.prerequisiteProjectRoots ?? []),
+                ...(result.managedProjectRoots ?? []),
+            ]);
+            await Promise.all(Array.from(managedProjectRoots, (projectRoot) => this.registerManagedProject(projectRoot)));
+            return {
+                status: "ok",
+                target,
+                outputPath: result.outputPath,
+                outputKind: destinationKindFor(target),
+                sourceType: project.type,
+                ...(result.reusedCompatibleProject
+                    ? {
+                        requestedDestinationPath: result.requestedDestinationPath,
+                        reusedCompatibleProject: true,
+                    }
+                    : {}),
+            };
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 return {status: "conflict", target, message: error.message};

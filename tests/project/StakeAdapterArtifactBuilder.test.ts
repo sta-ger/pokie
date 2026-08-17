@@ -1,7 +1,15 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, PokieProject, PROJECT_TYPE_CAPABILITIES, StakeAdapterArtifactBuilder, StakeEngineExporter} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    OutcomeLibraryBundleWriter,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    StakeAdapterArtifactBuilder,
+    StakeEngineExporter,
+} from "pokie";
+import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../stakeengine/StakeEngineTestFixtures.js";
 
 function stakeAdapterProjectOf(rootPath: string): PokieProject {
@@ -41,6 +49,28 @@ describe("StakeAdapterArtifactBuilder", () => {
         expect(result.outputPath).toBe(destinationDir);
         expect(new Set(fs.readdirSync(destinationDir))).toEqual(new Set(fs.readdirSync(sourceDir)));
         expect(fs.readFileSync(path.join(destinationDir, "index.json"), "utf-8")).toBe(fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8"));
+    });
+
+    it("builds Stake output from the registered canonical Outcome Library prerequisite", async () => {
+        const outcomeDir = `${sourceDir}-outcome-library`;
+        const stakeDir = `${sourceDir}-stake-output`;
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], outcomeDir);
+
+        const result = await new StakeAdapterArtifactBuilder("1.3.0").build(
+            {
+                type: "outcomeLibrary",
+                rootPath: outcomeDir,
+                capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                provenance: "canonical prerequisite",
+            },
+            stakeDir,
+        );
+
+        expect(result.outputPath).toBe(stakeDir);
+        expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
+        expect(fs.existsSync(path.join(stakeDir, "pokie-manifest.json"))).toBe(true);
+        fs.rmSync(outcomeDir, {recursive: true, force: true});
+        fs.rmSync(stakeDir, {recursive: true, force: true});
     });
 
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {

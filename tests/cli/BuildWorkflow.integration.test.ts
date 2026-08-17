@@ -5,11 +5,14 @@ import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {DevCommand} from "../../cli/commands/DevCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
+import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {ReportCommand} from "../../cli/commands/ReportCommand.js";
 import {ServeCommand} from "../../cli/commands/ServeCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
+import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
+import {prepareExactCodeFirstPackage} from "../testUtils/prepareExactCodeFirstPackage.js";
 
 // End-to-end happy path for "pokie build": the actual example blueprint shipped in
 // examples/blueprints/ (see also examples/blueprints/README.md), generated into a package with
@@ -142,6 +145,87 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             await devClientServer?.stop();
             fs.rmSync(clientRoot, {recursive: true, force: true});
         }
+    });
+
+    it("registers a direct Outcome build before its analysis, sampling, Replay, and Stake continuation", async () => {
+        const finiteBlueprintPath = path.join(workDir, "finite-outcome.blueprint.json");
+        fs.writeFileSync(
+            finiteBlueprintPath,
+            JSON.stringify({
+                manifest: {id: "finite-outcome-slot", name: "Finite Outcome Slot", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 5}},
+                reelStrips: [["A", "A", "B"], ["A", "B"]],
+                availableBets: [1],
+            }),
+        );
+        const outcomeDir = path.join(workDir, "outcomes");
+        const stakeDir = path.join(workDir, "stake");
+        const reportFile = path.join(workDir, "outcomes-report.json");
+        const sampleFile = path.join(workDir, "outcomes-sample.json");
+        const replayFile = path.join(workDir, "outcomes-replay.json");
+
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", outcomeDir])).toBe(0);
+        expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
+        expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(true);
+
+        const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", reusedOutcomeDir])).toBe(0);
+        expect(fs.existsSync(reusedOutcomeDir)).toBe(false);
+        expect((console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n")).toContain(
+            `reused compatible Outcome Project "${outcomeDir}" instead of writing "${reusedOutcomeDir}"`,
+        );
+
+        expect(await new ValidateCommand().run([outcomeDir])).toBe(0);
+        await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
+        expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});
+
+        await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "25", "--seed", "direct-outcome", "--out", sampleFile]);
+        expect(JSON.parse(fs.readFileSync(sampleFile, "utf-8"))).toMatchObject({modeName: "base", statistics: {rounds: 25}});
+
+        await new ReplayCommand().run([outcomeDir, "--mode", "base", "--seed", "direct-outcome", "--round", "2", "--out", replayFile]);
+        expect(JSON.parse(fs.readFileSync(replayFile, "utf-8"))).toMatchObject({round: 2, seed: "direct-outcome"});
+
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "stakeAdapter", "--out", stakeDir])).toBe(0);
+        expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
+    });
+
+    it("takes a real pokie init code-first package through the CLI registry's Outcome reuse and Stake flow, while preserving its runtime modes and PAR diagnostic", async () => {
+        const packageRoot = path.join(workDir, "code-first-package");
+        const outcomeDir = path.join(workDir, "outcomes");
+        const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+        const stakeDir = path.join(workDir, "stake");
+        await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
+
+        expect(await new ValidateCommand().run([packageRoot])).toBe(0);
+        const simFile = path.join(workDir, "code-first-sim.json");
+        await new SimCommand().run([packageRoot, "--rounds", "20", "--seed", "code-first", "--out", simFile]);
+        expect(JSON.parse(fs.readFileSync(simFile, "utf-8"))).toMatchObject({game: {id: "code-first-registry-slot"}, rounds: 20});
+        const reportFile = path.join(workDir, "code-first-sim.md");
+        await new ReportCommand().run([simFile, "--format", "markdown", "--out", reportFile]);
+        expect(fs.readFileSync(reportFile, "utf-8")).toContain("# Simulation Report: Code-first Registry Slot");
+
+        expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "outcomeLibrary", "--out", outcomeDir])).toBe(0);
+        const outcomeManifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {modes: Array<{modeName: string; betMode: string; stake: number}>};
+        expect(outcomeManifest.modes).toEqual([
+            expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
+            expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
+        ]);
+
+        expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "outcomeLibrary", "--out", reusedOutcomeDir])).toBe(0);
+        expect(fs.existsSync(reusedOutcomeDir)).toBe(false);
+        expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "stakeAdapter", "--out", stakeDir])).toBe(0);
+        const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")) as {modes: Array<{name: string; betMode: string; stake: number; cost: number}>};
+        expect(stakeManifest.modes).toEqual([
+            expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
+            expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),
+        ]);
+
+        await expect(new ParCommand("1.3.0").run(["import", packageRoot])).rejects.toThrow(
+            '"par.import" is not supported for a "tsPackage" project (missing the "parWorkbook.exchange" capability).',
+        );
     });
 
     it("refuses to rebuild into the same --out once it's already populated -- there is no rebuild/merge recognition", async () => {

@@ -13,6 +13,8 @@ export type StudioArtifactBuildView =
           readonly outputPath: string;
           readonly outputKind: "file" | "directory";
           readonly sourceType: ProjectType;
+          readonly requestedDestinationPath?: string;
+          readonly reusedCompatibleProject?: boolean;
       }
     | {readonly status: "unsupported"; readonly target: ArtifactTargetType; readonly message: string}
     | {readonly status: "conflict"; readonly target: ArtifactTargetType; readonly message: string}

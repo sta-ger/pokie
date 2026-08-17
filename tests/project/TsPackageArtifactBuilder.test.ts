@@ -72,4 +72,29 @@ describe("TsPackageArtifactBuilder", () => {
         await expect(builder.build(blueprintProjectOf(blueprintPath), destinationDir)).rejects.toThrow(/error/i);
         expect(fs.existsSync(destinationDir)).toBe(false);
     });
+
+    it("reports the exact failed generated reel through the registry-owned package builder", async () => {
+        const unsatisfiable: GameBlueprint = {
+            ...blueprint,
+            reelStrips: undefined,
+            reelStripGeneration: [
+                {type: "literal", strip: ["A", "W"]},
+                {
+                    type: "generated",
+                    length: 4,
+                    symbolCounts: {A: 2, W: 2},
+                    seed: 5,
+                    maxAttempts: 2,
+                    constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                },
+            ],
+        };
+        fs.writeFileSync(blueprintPath, JSON.stringify(unsatisfiable));
+        const builder = new TsPackageArtifactBuilder("1.3.0");
+
+        await expect(builder.build(blueprintProjectOf(blueprintPath), destinationDir)).rejects.toThrow(
+            /reel 1 .*maximum-circular-distance/,
+        );
+        expect(fs.existsSync(destinationDir)).toBe(false);
+    });
 });

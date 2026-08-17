@@ -18,9 +18,20 @@ export const BLUEPRINT_BUILD_CAPABILITY: ProjectCapability = "blueprint.build";
 // "outcomeLibrary.validate" require. Only an "outcomeLibrary" project grants it today.
 export const OUTCOME_LIBRARY_READ_CAPABILITY: ProjectCapability = "outcomeLibrary.read";
 
-// A project that can be exchanged with Stake Engine — what "stakeEngine.export", "stakeEngine.import",
-// "stakeEngine.analyze", and "stakeEngine.diff" require. Only a "stakeAdapter" project grants it today.
+// Produces a canonical Outcome Library through ArtifactBuilderRegistry.  This is intentionally separate
+// from OUTCOME_LIBRARY_READ_CAPABILITY: a runnable package can calculate a new library without already
+// being a bundle, while a bundle can be republished without loading a game runtime.
+export const OUTCOME_LIBRARY_GENERATE_CAPABILITY: ProjectCapability = "outcomeLibrary.generate";
+
+// An existing Stake Engine directory that can be imported, analyzed, or diffed.  New exports use the narrower
+// STAKE_ADAPTER_EXPORT_CAPABILITY below, so a canonical outcome library cannot be mistaken for this foreign
+// directory format.
 export const STAKE_ADAPTER_EXCHANGE_CAPABILITY: ProjectCapability = "stakeAdapter.exchange";
+
+// Produces a new Stake Engine export from a canonical precomputed source.  Kept distinct from the broader
+// exchange capability: an outcome-library can be exported, but it cannot be mistaken for an existing Stake
+// directory that supports Stake import/analyze/diff operations.
+export const STAKE_ADAPTER_EXPORT_CAPABILITY: ProjectCapability = "stakeAdapter.export";
 
 // A project that can be exchanged as a PAR sheet workbook — what "par.import" and "par.export" require. Only
 // a "parWorkbook" project grants it today.

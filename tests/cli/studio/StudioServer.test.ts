@@ -5788,7 +5788,7 @@ describe("StudioServer", () => {
             expect(unknownTarget.status).toBe(400);
         });
 
-        it("lists every ArtifactBuilderRegistry target, marking only tsPackage supported for a blueprint project", async () => {
+        it("lists the registry-owned Blueprint targets, including Outcome and Stake prerequisite flows", async () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
@@ -5799,7 +5799,8 @@ describe("StudioServer", () => {
             expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry.supported]));
             expect(byTarget.get("tsPackage")).toBe(true);
-            expect(byTarget.get("outcomeLibrary")).toBe(false);
+            expect(byTarget.get("outcomeLibrary")).toBe(true);
+            expect(byTarget.get("stakeAdapter")).toBe(true);
         });
 
         it("builds a tsPackage from a blueprint project to the default sibling destination, agreeing with BuildCommand's own default", async () => {
@@ -5816,16 +5817,17 @@ describe("StudioServer", () => {
             expect(fs.existsSync(path.join(artifactWorkDir, "tsPackage", "package.json"))).toBe(true);
         });
 
-        it("reports 'unsupported' (never a 500) for a target this project's own type doesn't grant", async () => {
+        it("builds Blueprint Stake through the authoritative Outcome prerequisite", async () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
 
-            expect(status).toBe(200);
-            const view = body as {status: string; message?: string};
-            expect(view.status).toBe("unsupported");
-            expect(view.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+            expect(status).toBe(201);
+            const view = body as {status: string; outputPath?: string; sourceType?: string};
+            expect(view.status).toBe("ok");
+            expect(view.sourceType).toBe("blueprint");
+            expect(fs.existsSync(path.join(view.outputPath!, "index.json"))).toBe(true);
         });
 
         it("returns a conflict (409) for a pre-existing non-empty destination and never writes to it", async () => {
@@ -5882,16 +5884,16 @@ describe("StudioServer", () => {
             expect((body as {destination?: string}).destination).toBe(explicitOut);
         });
 
-        it("reports 'unsupported' (never a 500) for a preview target this project's own type doesn't grant", async () => {
+        it("previews the Blueprint Stake prerequisite build", async () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
             const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/preview`, {target: "stakeAdapter"});
 
             expect(status).toBe(200);
-            const view = body as {status: string; message?: string};
-            expect(view.status).toBe("unsupported");
-            expect(view.message).toContain('"stakeAdapter" cannot be built from a "blueprint" project');
+            const view = body as {status: string; sourceType?: string};
+            expect(view.status).toBe("ok");
+            expect(view.sourceType).toBe("blueprint");
         });
 
         it("previews a conflict (409) for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it", async () => {
