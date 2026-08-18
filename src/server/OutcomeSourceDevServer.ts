@@ -3,7 +3,6 @@ import {SecureWeightedOutcomeRandomSource} from "../pregenerated/SecureWeightedO
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {PreGeneratedRoundResultProjector} from "../pregenerated/PreGeneratedRoundResultProjector.js";
-import type {PreGeneratedRoundResult} from "../pregenerated/PreGeneratedRoundResult.js";
 import {OutcomeLibraryBundleOutcomeSource} from "../weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import type {PokieProject} from "../project/PokieProject.js";
@@ -13,9 +12,13 @@ import type {PokieDevServerHandling} from "./PokieDevServerHandling.js";
 import type {PokieDevServerOptions} from "./PokieDevServerOptions.js";
 import {InMemoryIdempotencyRepository} from "./idempotency/InMemoryIdempotencyRepository.js";
 import {InMemoryPreGeneratedSessionRepository} from "./pregenerated/InMemoryPreGeneratedSessionRepository.js";
+import {InMemoryPreGeneratedRoundRecorder} from "./pregenerated/InMemoryPreGeneratedRoundRecorder.js";
+import type {PreGeneratedRoundRecord} from "./pregenerated/PreGeneratedRoundRecord.js";
+import type {PreGeneratedRoundRecording} from "./pregenerated/PreGeneratedRoundRecording.js";
 import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSessionRepository.js";
 import {PreGeneratedSpinCommandHandler} from "./pregenerated/PreGeneratedSpinCommandHandler.js";
 import type {PreGeneratedSpinCommandResult} from "./pregenerated/PreGeneratedSpinCommandResult.js";
+import {buildSessionCapturePolicy, type SessionCapturePolicy} from "./session/SessionCapturePolicy.js";
 import {InMemoryWallet} from "./wallet/InMemoryWallet.js";
 import {isTransactionalWalletPort} from "./wallet/isTransactionalWalletPort.js";
 import {TransactionalWalletAdapter} from "./wallet/TransactionalWalletAdapter.js";
@@ -29,7 +32,7 @@ const DEFAULT_INITIAL_BALANCE = 1000;
 type SampleFn = (project: PokieProject, modeName: string, randomSource: WeightedOutcomeRandomSource) => Promise<OutcomeSourceSampleResult>;
 type GameSummary = {id: string; name: string; version: string};
 type SpinRequest = {requestId?: string; bet?: number; mode?: string};
-type RecordedRound = {result: PreGeneratedRoundResult; roundsPlayed: number};
+type PublicReplayIdentity = Pick<PreGeneratedRoundRecord["replay"], "libraryId" | "libraryHash" | "round" | "outcomeId">;
 
 // A native Outcome Library is a complete source of rounds, but it is not a loadable PokieGame. This
 // server therefore implements the same Player-facing /sessions contract as PokieDevServer directly on
@@ -50,7 +53,9 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
     private readonly wallet: TransactionalWalletPort;
     private readonly spinHandler: PreGeneratedSpinCommandHandler;
     private readonly projector = new PreGeneratedRoundResultProjector();
-    private readonly roundsBySession = new Map<string, RecordedRound>();
+    private readonly roundRecorder: PreGeneratedRoundRecording;
+    private readonly capturePolicy: SessionCapturePolicy;
+    private readonly roundRecordQueues = new Map<string, Promise<unknown>>();
     private readonly gameSummary: Promise<GameSummary>;
     private server: http.Server | undefined;
 
@@ -66,6 +71,8 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         this.port = options.port ?? DEFAULT_PORT;
         this.sample = sample;
         this.sessionRepository = options.preGeneratedSessionRepository ?? new InMemoryPreGeneratedSessionRepository();
+        this.roundRecorder = options.preGeneratedRoundRecorder ?? new InMemoryPreGeneratedRoundRecorder();
+        this.capturePolicy = buildSessionCapturePolicy(options.sessionCapturePolicyMode ?? "partial", options.captureDebugSessionData ?? true);
         const configuredWallet = options.wallet ?? new InMemoryWallet();
         this.wallet = isTransactionalWalletPort(configuredWallet) ? configuredWallet : new TransactionalWalletAdapter(configuredWallet);
         this.spinHandler = new PreGeneratedSpinCommandHandler(
@@ -208,12 +215,12 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
             return;
         }
 
-        const recorded = this.roundsBySession.get(sessionId);
+        const recorded = await this.roundRecorder.loadLatest(sessionId);
         const response = recorded === undefined
             ? {sessionId, game: await this.gameSummary, credits: await this.wallet.getBalance(sessionId)}
-            : await this.buildRoundResponse(recorded.result);
+            : await this.buildRoundResponse(recorded);
         if (includeInternal) {
-            response.internal = recorded === undefined ? {session: state} : this.projector.projectInternal(recorded.result);
+            response.internal = recorded === undefined ? {session: state} : this.projectInternalRound(recorded);
         }
         this.sendJson(res, 200, response);
     }
@@ -253,27 +260,88 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         }
 
         const state = await this.sessionRepository.load(sessionId);
-        const previousRecord = this.roundsBySession.get(sessionId);
-        // A repeated requestId may replay an older cached round after a later round has already been
-        // served. It must return that original result, but must not replace the Player/GET session's
-        // latest-round view with stale artifact data while its credits/state remain at the later round.
-        if (
-            state !== undefined &&
-            (previousRecord === undefined ||
-                state.roundsPlayed > previousRecord.roundsPlayed ||
-                (state.roundsPlayed === previousRecord.roundsPlayed && result.result.runtime.roundId === previousRecord.result.runtime.roundId))
-        ) {
-            this.roundsBySession.set(sessionId, {result: result.result, roundsPlayed: state.roundsPlayed});
-        }
-        const response = await this.buildRoundResponse(result.result);
+        // A cached requestId result was already settled and recorded during its original request. Its
+        // stable roundId is the recorder's idempotency key, so look it up before recording every result;
+        // a missing record is the only recovery case where it is safe and necessary to restore that
+        // canonical record from the idempotency result.
+        const recorded = await this.loadOrRecordRound(result, state?.seed);
+        const response = await this.buildRoundResponse(recorded);
         if (includeInternal) {
-            response.internal = this.projector.projectInternal(result.result);
+            // A spin response may expose the round it has just served when explicitly requested; this
+            // remains transport-only and does not change the configured persisted capture. In particular,
+            // production's partial recorder does not retain this artifact for a later GET /sessions call.
+            response.internal = {
+                capturePolicy: recorded.capturePolicy,
+                replay: recorded.replay,
+                ...this.projector.projectInternal(result.result),
+            };
         }
         this.sendJson(res, 200, response);
     }
 
-    private async buildRoundResponse(result: PreGeneratedRoundResult): Promise<Record<string, unknown> & {internal?: unknown}> {
-        return {...this.projector.projectPublic(result), game: await this.gameSummary, bet: result.artifact.stake};
+    private createRoundRecord(result: Extract<PreGeneratedSpinCommandResult, {status: "played"}>, seed: string | undefined): PreGeneratedRoundRecord {
+        if (seed === undefined) {
+            // A successful handler result can only exist for a session it loaded, and that session must
+            // include its selection seed. Keep this invariant explicit rather than fabricating replay data.
+            throw new Error(`Cannot record outcome-library round "${result.result.runtime.roundId}" without its session seed.`);
+        }
+
+        const publicView = this.projector.projectPublic(result.result);
+        return {
+            sessionId: result.sessionId,
+            roundId: result.result.runtime.roundId,
+            round: result.round,
+            publicView,
+            stake: result.result.artifact.stake,
+            replay: {
+                libraryId: result.result.selection.libraryId,
+                libraryHash: result.result.selection.libraryHash,
+                seed,
+                round: result.round,
+                outcomeId: result.result.selection.outcomeId,
+                weight: result.result.selection.weight,
+                totalWin: result.result.artifact.totalWin,
+                payoutMultiplier: result.result.artifact.payoutMultiplier,
+                timestamp: Date.now(),
+                durationMs: 0,
+            },
+            capturePolicy: this.capturePolicy,
+            ...(this.capturePolicy.mode === "full" ? {internal: this.projector.projectInternal(result.result)} : {}),
+        };
+    }
+
+    private loadOrRecordRound(result: Extract<PreGeneratedSpinCommandResult, {status: "played"}>, seed: string | undefined): Promise<PreGeneratedRoundRecord> {
+        const key = JSON.stringify([result.sessionId, result.result.runtime.roundId]);
+        const previous = this.roundRecordQueues.get(key) ?? Promise.resolve();
+        const recording = previous.then(async () => {
+            const existing = await this.roundRecorder.load(result.sessionId, result.result.runtime.roundId);
+            return existing ?? this.roundRecorder.record(this.createRoundRecord(result, seed));
+        });
+        this.roundRecordQueues.set(
+            key,
+            recording.then(
+                () => undefined,
+                () => undefined,
+            ),
+        );
+        return recording;
+    }
+
+    private async buildRoundResponse(record: PreGeneratedRoundRecord): Promise<Record<string, unknown> & {internal?: unknown}> {
+        return {...record.publicView, game: await this.gameSummary, bet: record.stake, replay: this.publicReplayIdentity(record)};
+    }
+
+    private projectInternalRound(record: PreGeneratedRoundRecord): Record<string, unknown> {
+        return {
+            capturePolicy: record.capturePolicy,
+            replay: record.replay,
+            ...(record.internal === undefined ? {} : record.internal),
+        };
+    }
+
+    private publicReplayIdentity(record: PreGeneratedRoundRecord): PublicReplayIdentity {
+        const {libraryId, libraryHash, round, outcomeId} = record.replay;
+        return {libraryId, libraryHash, round, outcomeId};
     }
 
     private isInternalDataRequested(url: URL): boolean {

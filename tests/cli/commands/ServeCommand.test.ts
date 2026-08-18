@@ -2,6 +2,7 @@ import {
     loadPokieGame,
     OutcomeLibraryBundleWriter,
     OutcomeSourceDevServer,
+    InMemoryWallet,
     PokieDevServer,
     PokieDevServerAddress,
     PokieDevServerHandling,
@@ -9,6 +10,8 @@ import {
     PokieGame,
     PokieGameManifest,
     PokieProject,
+    PreGeneratedRoundRecord,
+    PreGeneratedRoundRecording,
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
@@ -384,5 +387,79 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
 
         await server!.stop();
         logSpy.mockRestore();
+    });
+
+    it("records one settled native round with a stable replay identity, and honors full versus partial capture", async () => {
+        const records = new Map<string, PreGeneratedRoundRecord>();
+        const recorder: PreGeneratedRoundRecording = {
+            record: jest.fn((record: PreGeneratedRoundRecord) => {
+                const key = `${record.sessionId}:${record.roundId}`;
+                const existing = records.get(key);
+                if (existing !== undefined) {
+                    return Promise.resolve(existing);
+                }
+                records.set(key, record);
+                return Promise.resolve(record);
+            }),
+            load: (sessionId, roundId) => Promise.resolve(records.get(`${sessionId}:${roundId}`)),
+            loadLatest: (sessionId) =>
+                Promise.resolve([...records.values()].filter((record) => record.sessionId === sessionId).sort((a, b) => b.round - a.round)[0]),
+        };
+        const wallet = new InMemoryWallet();
+        const debit = jest.spyOn(wallet, "debit");
+        const project = {...outcomeLibraryProject, rootPath: bundleDir};
+        const fullServer = new OutcomeSourceDevServer(project, "base", {
+            host: "127.0.0.1",
+            port: 0,
+            wallet,
+            preGeneratedRoundRecorder: recorder,
+            sessionCapturePolicyMode: "full",
+        });
+        const fullAddress = await fullServer.start();
+        const fullBaseUrl = `http://${fullAddress.host}:${fullAddress.port}`;
+
+        const created = await fetch(`${fullBaseUrl}/sessions`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: "recorded-seed", initialBalance: 10}),
+        });
+        const {sessionId} = (await created.json()) as {sessionId: string};
+        const spin = async () => {
+            const response = await fetch(`${fullBaseUrl}/sessions/${sessionId}/spin`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({requestId: "recorded-round"}),
+            });
+            return (await response.json()) as {credits: number; replay: Record<string, unknown>};
+        };
+
+        const [first, retry] = await Promise.all([spin(), spin()]);
+        expect(debit).toHaveBeenCalledTimes(1);
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        expect(records.size).toBe(1);
+        expect(retry).toEqual(first);
+
+        const recorded = [...records.values()][0];
+        expect(recorded.replay).toMatchObject({seed: "recorded-seed", round: 1, outcomeId: first.replay.outcomeId});
+        expect(recorded.internal?.artifact.provenance).toEqual(outcomeLibraryBundleTestProvenance);
+        const fullRestored = await fetch(`${fullBaseUrl}/sessions/${sessionId}?debug=1`);
+        expect(await fullRestored.json()).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
+        await fullServer.stop();
+
+        const partialServer = new OutcomeSourceDevServer(project, "base", {host: "127.0.0.1", port: 0, sessionCapturePolicyMode: "partial"});
+        const partialAddress = await partialServer.start();
+        const partialBaseUrl = `http://${partialAddress.host}:${partialAddress.port}`;
+        const partialCreated = await fetch(`${partialBaseUrl}/sessions`, {method: "POST"});
+        const {sessionId: partialSessionId} = (await partialCreated.json()) as {sessionId: string};
+        await fetch(`${partialBaseUrl}/sessions/${partialSessionId}/spin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({requestId: "partial-round"}),
+        });
+        const partialRestored = (await (await fetch(`${partialBaseUrl}/sessions/${partialSessionId}?debug=1`)).json()) as Record<string, unknown>;
+        expect(partialRestored).toHaveProperty("internal.capturePolicy", {version: 1, mode: "partial", captureDebugPayloads: true});
+        expect(partialRestored).toHaveProperty("internal.replay.seed");
+        expect(partialRestored).not.toHaveProperty("internal.artifact");
+        await partialServer.stop();
     });
 });
