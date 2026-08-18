@@ -1,4 +1,5 @@
 import http, {IncomingMessage, ServerResponse} from "http";
+import crypto from "crypto";
 import {SecureWeightedOutcomeRandomSource} from "../pregenerated/SecureWeightedOutcomeRandomSource.js";
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
