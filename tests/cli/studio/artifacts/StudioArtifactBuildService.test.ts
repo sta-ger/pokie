@@ -309,8 +309,8 @@ describe("StudioArtifactBuildService", () => {
             const registry = {
                 supportsConversionFrom: () => true,
                 build: async (_target: string, _source: PokieProject, _destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
-                    options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: 12n, estimatedBytes: 34n, complexityWarning: "Large publish"}});
-                    options.onProgress?.({status: "running", completed: 1n, total: 12n, message: "Writing outcomes"});
+                    options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(12), estimatedBytes: BigInt(34), complexityWarning: "Large publish"}});
+                    options.onProgress?.({status: "running", completed: BigInt(1), total: BigInt(12), message: "Writing outcomes"});
                     await publishGate;
                     if (options.signal?.aborted) throw new ArtifactBuildCancelledError();
                     return {outputPath: path.join(workDir, "out")};
@@ -321,9 +321,7 @@ describe("StudioArtifactBuildService", () => {
             const started = service.start(project.rootPath, "outcomeLibrary", path.join(workDir, "out"));
             expect(started.status).toBe("queued");
             await new Promise<void>((resolve) => {
-                queueMicrotask(() => {
-                    resolve();
-                });
+                setTimeout(resolve, 0);
             });
 
             expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({

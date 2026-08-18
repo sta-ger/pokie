@@ -96,11 +96,11 @@ describe("BuildCommand", () => {
         builder.build = (source, destinationPath, lifecycle) => {
             builder.calledWith = {source, destinationPath};
             builder.lifecycle = lifecycle;
-            lifecycle?.onProgress?.({status: "preflight", preflight: {estimatedItemCount: 8n, estimatedBytes: 16n, complexityWarning: "Large export"}});
-            lifecycle?.onProgress?.({status: "running", completed: 1n, total: 8n, message: "Writing bundle"});
+            lifecycle?.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(8), estimatedBytes: BigInt(16), complexityWarning: "Large export"}});
+            lifecycle?.onProgress?.({status: "running", completed: BigInt(1), total: BigInt(8), message: "Writing bundle"});
             return Promise.resolve({outputPath: "/fake/out"});
         };
-        const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(blueprintProject()), registryWithBuilders(builder));
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, undefined, stubProjectResolver(blueprintProject()), registryWithBuilders(builder));
 
         await expect(command.run(["config.json", "--target", "tsPackage", "--out", "out-dir"])).resolves.toBe(0);
 
