@@ -28,6 +28,17 @@ type PathInputProps = TextInputProps & {
     // suggestion) -- every other caller omits it.
     defaultLocationName?: string;
     fileFilters?: StudioNativePickerFileFilter[];
+    // `kind: "any"` deliberately keeps its ordinary Browse action on the server-side picker: a
+    // native OS dialog can choose a file *or* a folder, but not both truthfully in one request. A
+    // caller that accepts both can still expose one focused native shortcut for the file-shaped
+    // member of that union (Import Project uses this for PAR workbooks) without taking away the
+    // established generic Browse flow for package directories.
+    nativePicker?: {
+        kind: "file" | "directory";
+        label: string;
+        fileFilters?: StudioNativePickerFileFilter[];
+        filePickerMode?: "open" | "save";
+    };
     // File controls that create an artifact use the host's native Save dialog, including a filename
     // field and overwrite confirmation.  Existing-file controls retain the normal Open dialog.
     filePickerMode?: "open" | "save";
@@ -104,6 +115,7 @@ export function PathInput({
     relevantDirectory,
     defaultLocationName,
     fileFilters,
+    nativePicker,
     filePickerMode = "open",
     autoDestinationPath,
     value,
@@ -192,6 +204,49 @@ export function PathInput({
         }
     };
 
+    // A deliberately opt-in native shortcut for a specific member of an otherwise generic path
+    // field. Its fallback remains the same server filesystem browser as ordinary Browse, so a
+    // headless Studio server never leaves the user with a dead action.
+    const handleNativePickerClick = async (): Promise<void> => {
+        if (nativePicker === undefined) {
+            return;
+        }
+        setBrowsing(true);
+        try {
+            const startLocation = await resolveBrowseStartLocation({
+                fetchImpl,
+                currentValue,
+                browseId,
+                relevantDirectory,
+                defaultLocationName,
+                kind: nativePicker.kind,
+            });
+            const availability = await checkNativePickerAvailability(fetchImpl);
+            if (availability.status === "available") {
+                const result = await pickNativePath(fetchImpl, {
+                    kind: nativePicker.kind,
+                    mode: nativePicker.kind === "file" ? nativePicker.filePickerMode ?? "open" : undefined,
+                    startPath: startLocation,
+                    fileFilters: nativePicker.fileFilters,
+                });
+                if (result.status === "selected") {
+                    rememberAndSelect(result.path);
+                    return;
+                }
+                if (result.status === "cancelled") {
+                    return;
+                }
+            }
+            setModalInitialPath(startLocation ?? currentValue);
+            setModalOpened(true);
+        } catch {
+            setModalInitialPath(currentValue);
+            setModalOpened(true);
+        } finally {
+            setBrowsing(false);
+        }
+    };
+
     return (
         <Stack gap={4}>
             <Group align="flex-end" gap="xs" wrap="nowrap">
@@ -212,6 +267,11 @@ export function PathInput({
                 <Button variant="default" onClick={handleBrowseClick} loading={browsing}>
                     Browse…
                 </Button>
+                {nativePicker !== undefined && (
+                    <Button variant="default" onClick={handleNativePickerClick} loading={browsing}>
+                        {nativePicker.label}
+                    </Button>
+                )}
             </Group>
             {hint.status === "loading" && (
                 <Text size="xs" c="dimmed">

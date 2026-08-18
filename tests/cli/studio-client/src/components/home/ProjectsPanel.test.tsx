@@ -115,6 +115,49 @@ describe("ProjectsPanel: Import Project", () => {
         expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
     });
 
+    it("picks a PAR workbook through the native file picker, then detects and routes it into Design Game", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "selected", path: "/games/native-sheet.xlsx"}}),
+            "/api/home/projects/registry/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "recognized", location: "/games/native-sheet.xlsx", type: "parWorkbook", capabilities: [], suggestedName: "native-sheet"},
+            }),
+        });
+        renderWithProviders(
+            <>
+                <ProjectsPanel />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
+
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+        expect(await screen.findByDisplayValue("/games/native-sheet.xlsx")).toBeInTheDocument();
+
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toEqual({
+            kind: "file",
+            mode: "open",
+            fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
+        });
+
+        await user.click(screen.getByRole("button", {name: "Detect"}));
+        expect(await screen.findByText(/This is a PAR sheet workbook/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
+
+        await waitFor(() =>
+            expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
+                pathname: "/home/design",
+                state: {initialParSheetPath: "/games/native-sheet.xlsx"},
+            }),
+        );
+    });
+
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
