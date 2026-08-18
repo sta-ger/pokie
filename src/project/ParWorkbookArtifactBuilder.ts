@@ -1,11 +1,17 @@
 import {ParSheetExporter} from "../parsheet/ParSheetExporter.js";
-import fs from "fs";
 import type {ParSheetExporting} from "../parsheet/ParSheetExporting.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
-import {assertArtifactBuildNotCancelled, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {
+    assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
+    captureArtifactDestinationState,
+    cleanupIncompleteArtifactOutput,
+    reportArtifactBuildProgress,
+    type ArtifactBuildOptions,
+} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -35,34 +41,41 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
 
-        const imported = await this.importer.importFromFile(source.rootPath);
-        const importErrors = imported.issues.filter((issue) => issue.severity === "error");
-        if (importErrors.length > 0) {
-            throw new Error(
-                `Could not read PAR sheet workbook "${source.rootPath}": ${importErrors
-                    .map((issue) => `${issue.code}: ${issue.message}`)
-                    .join("; ")}`,
-            );
-        }
-
-        reportArtifactBuildProgress(options, {status: "running"});
-        assertArtifactBuildNotCancelled(options);
-        const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath);
-        if (options?.signal?.aborted) {
-            await fs.promises.rm(destinationPath, {force: true}).catch(() => undefined);
+        try {
+            reportArtifactBuildProgress(options, {status: "running", message: "Reading PAR workbook"});
+            const imported = await this.importer.importFromFile(source.rootPath);
             assertArtifactBuildNotCancelled(options);
-        }
-        const exportErrors = exportIssues.filter((issue) => issue.severity === "error");
-        if (exportErrors.length > 0) {
-            throw new Error(
-                `Could not republish PAR sheet workbook "${source.rootPath}" to "${destinationPath}": ${exportErrors
-                    .map((issue) => `${issue.code}: ${issue.message}`)
-                    .join("; ")}`,
-            );
-        }
+            const importErrors = imported.issues.filter((issue) => issue.severity === "error");
+            if (importErrors.length > 0) {
+                throw new Error(
+                    `Could not read PAR sheet workbook "${source.rootPath}": ${importErrors
+                        .map((issue) => `${issue.code}: ${issue.message}`)
+                        .join("; ")}`,
+                );
+            }
 
-        reportArtifactBuildProgress(options, {status: "completed"});
-        return {outputPath: destinationPath};
+            reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
+            const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath);
+            assertArtifactBuildNotCancelled(options);
+            const exportErrors = exportIssues.filter((issue) => issue.severity === "error");
+            if (exportErrors.length > 0) {
+                throw new Error(
+                    `Could not republish PAR sheet workbook "${source.rootPath}" to "${destinationPath}": ${exportErrors
+                        .map((issue) => `${issue.code}: ${issue.message}`)
+                        .join("; ")}`,
+                );
+            }
+
+            reportArtifactBuildProgress(options, {status: "completed"});
+            return {outputPath: destinationPath};
+        } catch (error) {
+            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (options?.signal?.aborted) {
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", message: "PAR workbook publishing failed"});
+            throw error;
+        }
     }
 }

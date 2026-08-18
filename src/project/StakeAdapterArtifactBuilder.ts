@@ -1,5 +1,4 @@
 import {StakeEngineExporter} from "../stakeengine/StakeEngineExporter.js";
-import fs from "fs";
 import type {StakeEngineExporting} from "../stakeengine/StakeEngineExporting.js";
 import {StakeEngineImporter} from "../stakeengine/StakeEngineImporter.js";
 import type {StakeEngineImporting} from "../stakeengine/StakeEngineImporting.js";
@@ -7,6 +6,9 @@ import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
     assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
+    captureArtifactDestinationState,
+    cleanupIncompleteArtifactOutput,
     reportArtifactBuildProgress,
     type ArtifactBuildOptions,
     type ArtifactBuildPreflight,
@@ -44,29 +46,41 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
 
-        const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
-        const preflight = stakePreflight(modes);
-        reportArtifactBuildProgress(options, {status: "preflight", preflight});
-        assertArtifactBuildNotCancelled(options);
+        try {
+            const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
+            const preflight = stakePreflight(modes);
+            reportArtifactBuildProgress(options, {status: "preflight", preflight, message: "Inspecting Stake books"});
+            assertArtifactBuildNotCancelled(options);
 
-        reportArtifactBuildProgress(options, {status: "running", completed: BigInt(0), total: preflight.estimatedItemCount});
-        const result = await this.exporter.exportToDirectory(modes, destinationPath);
-        if (options?.signal?.aborted) {
-            await fs.promises.rm(destinationPath, {recursive: true, force: true}).catch(() => undefined);
+            let completed = BigInt(0);
+            for (const mode of modes) {
+                completed += BigInt(mode.library.outcomes.length);
+                reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: `Prepared Stake mode ${mode.modeName}`});
+                assertArtifactBuildNotCancelled(options);
+            }
+            reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing Stake export"});
+            const result = await this.exporter.exportToDirectory(modes, destinationPath);
+            assertArtifactBuildNotCancelled(options);
+            const exportErrors = result.issues.filter((issue) => issue.severity === "error");
+            if (exportErrors.length > 0 || result.manifest === undefined) {
+                throw new Error(
+                    `Could not republish Stake Engine export "${source.rootPath}" to "${destinationPath}": ${exportErrors
+                        .map((issue) => `${issue.code}: ${issue.message}`)
+                        .join("; ")}`,
+                );
+            }
+
+            reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
+            return {outputPath: result.outDir, preflight};
+        } catch (error) {
+            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (options?.signal?.aborted) {
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", message: "Stake export failed"});
+            throw error;
         }
-        const exportErrors = result.issues.filter((issue) => issue.severity === "error");
-        if (exportErrors.length > 0 || result.manifest === undefined) {
-            throw new Error(
-                `Could not republish Stake Engine export "${source.rootPath}" to "${destinationPath}": ${exportErrors
-                    .map((issue) => `${issue.code}: ${issue.message}`)
-                    .join("; ")}`,
-            );
-        }
-
-        assertArtifactBuildNotCancelled(options);
-        reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount});
-        return {outputPath: result.outDir, preflight};
     }
 
     private async readStakeModes(sourcePath: string): Promise<readonly StakeEngineExportModeInput[]> {

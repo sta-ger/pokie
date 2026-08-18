@@ -73,4 +73,17 @@ describe("ParWorkbookArtifactBuilder", () => {
         );
         expect(fs.readFileSync(sourceFile)).toEqual(before);
     });
+
+    it("refuses a symlink-ancestor alias of the source workbook without creating an output", async () => {
+        const linkedDir = `${dir}-link`;
+        fs.symlinkSync(dir, linkedDir, "dir");
+        try {
+            await expect(new ParWorkbookArtifactBuilder("1.3.0").build(parWorkbookProjectOf(sourceFile), path.join(linkedDir, "source.par.xlsx"))).rejects.toThrow(
+                ArtifactBuildConflictError,
+            );
+            expect(fs.readFileSync(sourceFile)).toEqual(fs.readFileSync(path.join(linkedDir, "source.par.xlsx")));
+        } finally {
+            fs.unlinkSync(linkedDir);
+        }
+    });
 });

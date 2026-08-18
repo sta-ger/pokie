@@ -2,12 +2,14 @@ import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibra
 import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/OutcomeLibraryBundleReading.js";
 import type {OutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleModeInput.js";
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
-import fs from "fs";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {
     assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
+    captureArtifactDestinationState,
+    cleanupIncompleteArtifactOutput,
     reportArtifactBuildProgress,
     type ArtifactBuildOptions,
     type ArtifactBuildPreflight,
@@ -44,6 +46,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
 
         if (source.type !== "outcomeLibrary") {
             throw new Error(
@@ -52,41 +55,48 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             );
         }
 
-        const manifest = await this.reader.readManifest(source.rootPath);
-        const preflight = outcomePreflight(manifest);
-        reportArtifactBuildProgress(options, {status: "preflight", preflight});
-        assertArtifactBuildNotCancelled(options);
-        const modes: OutcomeLibraryBundleModeInput[] = await Promise.all(
-            manifest.modes.map(async (entry) => {
+        try {
+            const manifest = await this.reader.readManifest(source.rootPath);
+            const preflight = outcomePreflight(manifest);
+            reportArtifactBuildProgress(options, {status: "preflight", preflight, message: "Inspecting outcome-library modes"});
+            assertArtifactBuildNotCancelled(options);
+            const modes: OutcomeLibraryBundleModeInput[] = [];
+            let completed = BigInt(0);
+            for (const entry of manifest.modes) {
                 const library = await this.reader.readLibrary(source.rootPath, entry.modeName);
-                return {
+                modes.push({
                     modeName: entry.modeName,
                     libraryId: library.libraryId,
                     schemaVersion: library.schemaVersion,
                     outcomes: library.outcomes,
                     generator: entry.generator,
-                };
-            }),
-        );
+                });
+                completed += BigInt(entry.outcomeCount);
+                reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: `Loaded mode ${entry.modeName}`});
+                assertArtifactBuildNotCancelled(options);
+            }
 
-        reportArtifactBuildProgress(options, {status: "running", completed: BigInt(0), total: preflight.estimatedItemCount});
-        assertArtifactBuildNotCancelled(options);
-        const result = await this.writer.writeToDirectory(modes, destinationPath);
-        if (options?.signal?.aborted) {
-            await fs.promises.rm(destinationPath, {recursive: true, force: true}).catch(() => undefined);
+            reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing outcome-library bundle"});
+            const result = await this.writer.writeToDirectory(modes, destinationPath);
             assertArtifactBuildNotCancelled(options);
-        }
-        const errors = result.issues.filter((issue) => issue.severity === "error");
-        if (errors.length > 0 || result.manifest === undefined) {
-            throw new Error(
-                `Could not republish outcome-library bundle "${source.rootPath}" to "${destinationPath}": ${errors
-                    .map((issue) => `${issue.code}: ${issue.message}`)
-                    .join("; ")}`,
-            );
-        }
+            const errors = result.issues.filter((issue) => issue.severity === "error");
+            if (errors.length > 0 || result.manifest === undefined) {
+                throw new Error(
+                    `Could not republish outcome-library bundle "${source.rootPath}" to "${destinationPath}": ${errors
+                        .map((issue) => `${issue.code}: ${issue.message}`)
+                        .join("; ")}`,
+                );
+            }
 
-        reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount});
-        return {outputPath: result.outDir, preflight};
+            reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
+            return {outputPath: result.outDir, preflight};
+        } catch (error) {
+            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (options?.signal?.aborted) {
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", message: "Outcome-library publishing failed"});
+            throw error;
+        }
     }
 }
 

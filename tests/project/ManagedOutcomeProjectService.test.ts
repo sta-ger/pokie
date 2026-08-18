@@ -56,4 +56,27 @@ describe("ManagedOutcomeProjectService atomic registry writes", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("rolls back a newly published record when post-publication registration rejects", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-outcome-registration-rollback-"));
+        const blueprintPath = path.join(workDir, "game.blueprint.json");
+        const outcomePath = path.join(workDir, "outcome");
+        const compatibility = {gameId: "sample-slot", gameVersion: "0.1.0", configHash: "config-hash", pokieVersion: "1.3.0"};
+        fs.writeFileSync(blueprintPath, "{}");
+        const mode = buildOutcomeLibraryBundleModeInput("base", "base");
+        const outcomes = Array.from(mode.outcomes as Iterable<WeightedOutcomeInput<string>>).map((outcome) => ({
+            ...outcome,
+            artifact: {...outcome.artifact, provenance: {...outcome.artifact.provenance, configHash: compatibility.configHash}},
+        }));
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{...mode, outcomes}], outcomePath);
+
+        try {
+            const service = new ManagedOutcomeProjectService(undefined, () => Promise.reject(new Error("registration callback failed")));
+            await expect(service.registerAndOpen(blueprintPath, outcomePath, compatibility)).rejects.toThrow(/registration callback failed/);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
+            await expect(service.findCompatible(blueprintPath, compatibility)).resolves.toBeUndefined();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 });

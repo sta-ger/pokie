@@ -79,8 +79,13 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         const legacyRoot = this.allocateRoot(sourceRootPath, compatibility);
         const legacyProject = await this.openIfCompatible(legacyRoot, compatibility);
         if (legacyProject === undefined) return undefined;
-        await this.register(sourceRootPath, legacyRoot, compatibility);
-        await this.onRegistered(legacyProject);
+        const rollback = await this.register(sourceRootPath, legacyRoot, compatibility);
+        try {
+            await this.onRegistered(legacyProject);
+        } catch (error) {
+            await rollback().catch(() => undefined);
+            throw error;
+        }
         return legacyProject;
     }
 
@@ -98,8 +103,16 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         if (project === undefined) {
             throw new Error(`Generated Outcome Library at "${rootPath}" could not be opened as a compatible managed Outcome Project.`);
         }
-        await this.register(sourceRootPath, rootPath, compatibility);
-        await this.onRegistered(project);
+        const rollback = await this.register(sourceRootPath, rootPath, compatibility);
+        try {
+            await this.onRegistered(project);
+        } catch (error) {
+            // Publishing the registry record is not the end of registration: an injected Studio/CLI
+            // registration hook can still reject. Restore the exact prior document so a failed open never
+            // leaves a discoverable but incomplete managed Project behind.
+            await rollback().catch(() => undefined);
+            throw error;
+        }
         return project;
     }
 
@@ -119,15 +132,26 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         }
     }
 
-    private async register(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<void> {
+    private async register(sourceRootPath: string, rootPath: string, compatibility: OutcomeProjectCompatibility): Promise<() => Promise<void>> {
         const document = await this.readRegistry(sourceRootPath);
         const canonicalRoot = path.resolve(rootPath);
         const projects = [...document.projects.filter((entry) => path.resolve(entry.rootPath) !== canonicalRoot), {...compatibility, rootPath: canonicalRoot}];
         const registryPath = this.registryPath(sourceRootPath);
+        await this.writeRegistry(registryPath, {projects});
+        return async () => {
+            if (document.projects.length === 0) {
+                await this.files.remove(registryPath, {force: true});
+            } else {
+                await this.writeRegistry(registryPath, document);
+            }
+        };
+    }
+
+    private async writeRegistry(registryPath: string, document: RegistryDocument): Promise<void> {
         await this.files.mkdir(path.dirname(registryPath), {recursive: true});
         const temporaryPath = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
         try {
-            await this.files.writeFile(temporaryPath, JSON.stringify({projects}, undefined, 2), "utf-8");
+            await this.files.writeFile(temporaryPath, JSON.stringify(document, undefined, 2), "utf-8");
             await this.files.rename(temporaryPath, registryPath);
         } finally {
             // A disk/permission failure before the rename must not leave a plausible registry fragment

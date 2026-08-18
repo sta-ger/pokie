@@ -74,6 +74,19 @@ describe("TsPackageArtifactBuilder", () => {
         expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(before);
     });
 
+    it("refuses a symlink-ancestor alias of the Blueprint source", async () => {
+        const linkedDir = `${dir}-link`;
+        fs.symlinkSync(dir, linkedDir, "dir");
+        try {
+            await expect(new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), path.join(linkedDir, "config.json"))).rejects.toThrow(
+                ArtifactBuildConflictError,
+            );
+            expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(JSON.stringify(blueprint));
+        } finally {
+            fs.unlinkSync(linkedDir);
+        }
+    });
+
     it("throws when the blueprint fails validation, without touching the destination", async () => {
         fs.writeFileSync(blueprintPath, JSON.stringify({...blueprint, reels: -1}));
         const builder = new TsPackageArtifactBuilder("1.3.0");
