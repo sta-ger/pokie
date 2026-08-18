@@ -105,10 +105,16 @@ describe("ProjectDashboardPage - Game Model tab", () => {
 
     it("keeps the Reel Strip Modeler's 300-stop reel editor bounded while later reels and stops remain reachable", async () => {
         const user = userEvent.setup();
+        const modelerBlueprint = createLargeReelStripModelerBlueprint();
+        const modelerEntries = modelerBlueprint.reelStripGeneration as {type: "literal"; strip: string[]}[];
+        // Keep the production-scale Reel 6, alongside a no-pager short reel and a 101-stop reel
+        // whose final one-symbol page disappears after a single removal.
+        modelerEntries[0] = {type: "literal", strip: ["S00"]};
+        modelerEntries[1] = {...modelerEntries[1], strip: modelerEntries[1].strip.slice(0, 101)};
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
-            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: createLargeReelStripModelerBlueprint(), blueprintHash: "large-hash"}}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: modelerBlueprint, blueprintHash: "large-hash"}}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -129,6 +135,23 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
         expect(within(reels).getByText("Showing symbols 201–300 of 300.")).toBeInTheDocument();
         expect(within(reels).getByRole("textbox", {name: "Reel 6 symbol 300"})).toHaveValue("S16");
+
+        // Changing from the last page of a 300-stop reel to a shorter reel must not strand the
+        // modeler on an out-of-range page (the short reel has no pager to recover with).
+        await user.click(within(reels).getByRole("button", {name: "Select reel Which reel"}));
+        await user.click(within(reels).getByRole("button", {name: "Select reel 1"}));
+        expect(within(reels).getByRole("textbox", {name: "Reel 1 symbol 1"})).toHaveValue("S00");
+        expect(within(reels).queryByText(/Showing symbols/)).not.toBeInTheDocument();
+
+        // A mutation that removes the sole symbol on the final page must clamp the editor back to
+        // the remaining 100 symbols instead of hiding them behind an unavailable pager action.
+        await user.click(within(reels).getByRole("button", {name: "Select reel Which reel"}));
+        await user.click(within(reels).getByRole("button", {name: "Select reel 2"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 101"})).toBeInTheDocument();
+        await user.click(within(reels).getByRole("button", {name: "Remove reel 2 symbol 101"}));
+        expect(await within(reels).findByText("Showing symbols 1–100 of 100.")).toBeInTheDocument();
+        expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 100"})).toBeInTheDocument();
     });
 
     it("renders every section of a full projection, straight off GET /api/project/gameModel", async () => {

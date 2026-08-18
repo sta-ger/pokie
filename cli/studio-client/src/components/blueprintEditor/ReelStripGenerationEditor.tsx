@@ -123,12 +123,20 @@ function LiteralStripEditor({reelIndex, entry, mutate, issues}: {reelIndex: numb
     const [newSymbolId, setNewSymbolId] = useState("");
     const [page, setPage] = useState(0);
     const pageSize = 100;
-    const firstVisiblePosition = page * pageSize;
+    const lastPage = Math.max(0, Math.ceil(strip.length / pageSize) - 1);
+    // The selected reel and its local draft can both change without unmounting this editor.  Render
+    // from a valid page immediately, then keep the stored pager state in sync, so a shorter reel or
+    // a removal from the final page can never leave the symbols inaccessible behind an empty page.
+    const visiblePage = Math.min(page, lastPage);
+    useEffect(() => {
+        setPage((currentPage) => Math.min(currentPage, lastPage));
+    }, [reelIndex, lastPage]);
+    const firstVisiblePosition = visiblePage * pageSize;
     const visibleStrip = strip.slice(firstVisiblePosition, firstVisiblePosition + pageSize);
 
     return (
         <div>
-            {strip.length > pageSize && <BoundedListPager itemLabel="symbols" itemCount={strip.length} page={page} pageSize={pageSize} onPageChange={setPage} />}
+            {strip.length > pageSize && <BoundedListPager itemLabel="symbols" itemCount={strip.length} page={visiblePage} pageSize={pageSize} onPageChange={setPage} />}
             <List listStyleType="none" spacing={4}>
                 {visibleStrip.map((symbolId, visiblePosition) => {
                     const position = firstVisiblePosition + visiblePosition;
