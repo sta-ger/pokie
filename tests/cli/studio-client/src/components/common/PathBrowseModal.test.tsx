@@ -155,7 +155,12 @@ describe("PathBrowseModal", () => {
             {fetchImpl},
         );
 
-        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        const title = await screen.findByText("Server filesystem browser");
+        const heading = title.closest("h2");
+        if (heading === null) {
+            throw new Error("Server filesystem browser must be the modal's h2 title.");
+        }
+        expect(heading.querySelector("h1, h2, h3, h4, h5, h6")).toBeNull();
         expect(screen.getByText(/showing files on the machine running Studio's server, not this browser's device/)).toBeInTheDocument();
         expect(screen.getByText(/Browse for a destination directory/)).toBeInTheDocument();
     });
