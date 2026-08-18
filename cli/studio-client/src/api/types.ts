@@ -1215,6 +1215,23 @@ export type StudioArtifactBuildView =
     | {status: "cancelled"; message: string}
     | {status: "error"; message: string};
 
+// The Build/Export artifact publisher is a server-side job, not a held-open request.  This lets the
+// screen render the same ArtifactBuildOptions preflight/progress callbacks that the CLI receives.
+export type StudioArtifactBuildJobView = {
+    id: string;
+    target: StudioArtifactTargetType;
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    cancellationRequested: boolean;
+    progress?: {
+        status: "preflight" | "running" | "completed" | "cancelled" | "failed";
+        completed?: string;
+        total?: string;
+        preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
+        message?: string;
+    };
+    result?: StudioArtifactBuildView;
+};
+
 // POST /api/project/artifacts/preview's own DTO — see cli/studio/artifacts/StudioArtifactPreviewView.ts's
 // own doc comment. The pre-build counterpart to StudioArtifactBuildView above: the same registry-resolved
 // target/destination/sourceType and the same capability/conflict diagnostics a subsequent build would

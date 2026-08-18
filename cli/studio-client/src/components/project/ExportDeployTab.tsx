@@ -1,19 +1,22 @@
 import {useEffect, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
 import {
-    buildArtifact,
+    cancelArtifactBuild,
     checkNativePickerAvailability,
     exportStakeEngine,
     generateOutcomeLibrary,
+    getArtifactBuild,
     listArtifactTargets,
     openOutputFolder,
     previewArtifact,
     revealOutputPath,
     registerProjectImport,
+    startArtifactBuild,
 } from "../../api/apiClient";
 import type {
     OutcomeLibrarySelector,
     StudioArtifactBuildView,
+    StudioArtifactBuildJobView,
     StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
@@ -121,7 +124,7 @@ function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportVie
 // already use for their own single card.
 type ArtifactBuildRunView =
     | {status: "idle"}
-    | {status: "running"}
+    | {status: "running"; jobId: string; progress?: StudioArtifactBuildJobView["progress"]; cancellationRequested: boolean}
     | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>}
     | {status: "cancelled"}
     | {status: "error"; message: string};
@@ -378,7 +381,13 @@ function TargetCard({
                     )}
                     {artifactBuildRun.status === "running" && (
                         <Text size="sm" c="dimmed" mt={4}>
-                            Building artifact; progress is reported while files are published.
+                            {artifactBuildRun.progress?.status === "preflight"
+                                ? `Preflight: ${artifactBuildRun.progress.preflight?.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
+                                    `${artifactBuildRun.progress.preflight?.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
+                                    `${artifactBuildRun.progress.preflight?.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`
+                                : `Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                    `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`}
+                            {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
                         </Text>
                     )}
                     {artifactBuildRun.status === "cancelled" && (
@@ -561,7 +570,10 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
     const [artifactBuildRuns, setArtifactBuildRuns] = useState<Record<string, ArtifactBuildRunView>>({});
-    const artifactBuildControllers = useRef<Record<string, AbortController>>({});
+    const artifactBuildPollTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    useEffect(() => () => {
+        Object.values(artifactBuildPollTimers.current).forEach((timer) => clearTimeout(timer));
+    }, []);
     // Every outputPath a successful build's own "Add to Projects" has already registered this session --
     // keyed by outputPath (not target), since a rebuild against a different outDir is a different
     // registration candidate even for the same target.
@@ -725,34 +737,55 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         if (artifactBuildRuns[target]?.status === "running") {
             return;
         }
-        const controller = new AbortController();
-        artifactBuildControllers.current[target] = controller;
-        setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running"}}));
-        buildArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, controller.signal)
-            .then((view) => {
-                if (view.status === "ok") {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result: view}}));
-                } else if (view.status === "cancelled") {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
-                } else {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeArtifactBuildResultError(view)}}));
-                }
+        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
+            .then((job) => {
+                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: false}}));
+                pollArtifactBuild(target, job.id);
             })
-            .catch((error: unknown) => {
-                setArtifactBuildRuns((runs) => ({
-                    ...runs,
-                    [target]: controller.signal.aborted
-                        ? {status: "cancelled"}
-                        : {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
-                }));
-            })
-            .finally(() => {
-                Reflect.deleteProperty(artifactBuildControllers.current, target);
-            });
+            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
+                ...runs,
+                [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
+            })));
     }
 
     function handleCancelArtifactBuild(target: StudioArtifactTargetType): void {
-        artifactBuildControllers.current[target]?.abort();
+        const run = artifactBuildRuns[target];
+        if (run?.status !== "running") return;
+        setArtifactBuildRuns((runs) => ({...runs, [target]: {...run, cancellationRequested: true}}));
+        cancelArtifactBuild(fetchImpl, run.jobId)
+            .then(() => pollArtifactBuild(target, run.jobId))
+            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
+                ...runs,
+                [target]: {status: "error", message: describeProjectActionError("The artifact build cancellation", errorMessage(error))},
+            })));
+    }
+
+    function pollArtifactBuild(target: StudioArtifactTargetType, jobId: string): void {
+        getArtifactBuild(fetchImpl, jobId)
+            .then((job) => {
+                if (job.status === "queued" || job.status === "running") {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId, progress: job.progress, cancellationRequested: job.cancellationRequested}}));
+                    artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId), 100);
+                    return;
+                }
+                Reflect.deleteProperty(artifactBuildPollTimers.current, target);
+                if (job.status === "cancelled") {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
+                } else if (job.result !== undefined && job.result.status === "ok") {
+                    const result = job.result;
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result}}));
+                } else {
+                    const result = job.result;
+                    setArtifactBuildRuns((runs) => ({
+                        ...runs,
+                        [target]: {status: "error", message: result !== undefined && result.status !== "ok" ? describeArtifactBuildResultError(result) : "Artifact build ended without a result."},
+                    }));
+                }
+            })
+            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
+                ...runs,
+                [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
+            })));
     }
 
     // A successful build's own output is itself a resolvable PokieProject (of the built target's own

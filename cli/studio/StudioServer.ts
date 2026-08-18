@@ -316,6 +316,7 @@ export class StudioServer implements StudioServerHandling {
         // against an event loop nobody is serving requests on anymore.
         this.simulationService.cancelAll();
         this.replayService.cancelAll();
+        this.artifactBuildService.cancelAll();
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active.
         this.playService.reset();
@@ -350,6 +351,7 @@ export class StudioServer implements StudioServerHandling {
         }
         this.simulationService.cancelActiveForProject(this.currentContext.projectRoot);
         this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
+        this.artifactBuildService.cancelActiveForProject(this.currentContext.projectRoot);
     }
 
     // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
@@ -760,7 +762,13 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "POST" && url.pathname === "/api/project/artifacts/build") {
-            await this.handleBuildArtifact(req, res);
+            await this.handleStartArtifactBuild(req, res);
+            return;
+        }
+
+        const artifactBuildJobRoute = (/^\/api\/project\/artifacts\/build\/([^/]+)(?:\/(cancel))?$/).exec(url.pathname);
+        if (artifactBuildJobRoute !== null) {
+            await this.handleArtifactBuildJob(method, res, artifactBuildJobRoute[1], artifactBuildJobRoute[2] === "cancel");
             return;
         }
 
@@ -1952,10 +1960,10 @@ export class StudioServer implements StudioServerHandling {
         return status === "conflict" ? 409 : 200;
     }
 
-    // POST /api/project/artifacts/build -- statusForArtifactBuild below mirrors statusForParSheetExport's
-    // own convention (a new artifact is 201, a conflict is 409, everything else -- unsupported/error -- is
-    // a normal 200 parsed result, not a thrown error).
-    private async handleBuildArtifact(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // POST /api/project/artifacts/build creates a bounded, pollable job rather than holding one request
+    // open through an Outcome/Stake publish.  The client consequently sees preflight and live writer
+    // progress before the terminal artifact result, and Cancel can address the same server-side job.
+    private async handleStartArtifactBuild(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -1970,21 +1978,27 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        // A cancelled browser request is the Studio Build/Export surface's cancel action.  Relay it
-        // to the shared builder contract so no background publish can commit after the UI has stopped it.
-        const controller = new AbortController();
-        req.once("aborted", () => controller.abort());
-        const result = await this.artifactBuildService.build(this.currentContext.projectRoot, validated.target, validated.outDir, {
-            signal: controller.signal,
-        });
-        this.sendJson(res, this.statusForArtifactBuild(result.status), result);
+        this.sendJson(res, 202, {status: "created", job: this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir)});
     }
 
-    private statusForArtifactBuild(status: "ok" | "unsupported" | "conflict" | "cancelled" | "error"): number {
-        if (status === "ok") {
-            return 201;
+    private handleArtifactBuildJob(method: string, res: ServerResponse, id: string, cancel: boolean): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return Promise.resolve();
         }
-        return status === "conflict" ? 409 : 200;
+        if ((cancel && method !== "POST") || (!cancel && method !== "GET")) {
+            this.sendJson(res, 405, {error: "Method not allowed."});
+            return Promise.resolve();
+        }
+        const job = cancel
+            ? this.artifactBuildService.cancelForProject(this.currentContext.projectRoot, id)
+            : this.artifactBuildService.getStatusForProject(this.currentContext.projectRoot, id);
+        if (job === undefined) {
+            this.sendJson(res, 404, {error: "Artifact build job not found."});
+            return Promise.resolve();
+        }
+        this.sendJson(res, 200, job);
+        return Promise.resolve();
     }
 
     private async handleStartSimulation(req: IncomingMessage, res: ServerResponse): Promise<void> {

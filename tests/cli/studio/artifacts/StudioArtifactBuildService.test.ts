@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {ArtifactBuildCancelledError, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving} from "pokie";
 import {localPokieDependencyRunner} from "../../../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../../../testUtils/prepareExactCodeFirstPackage.js";
 
@@ -289,6 +290,60 @@ describe("StudioArtifactBuildService", () => {
             const result = await service.build(blueprintPath, "tsPackage");
 
             expect(result.status).toBe("error");
+        });
+    });
+
+    describe("bounded build jobs", () => {
+        it("publishes preflight and running progress before completion, and cancellation reaches the shared builder signal", async () => {
+            let releaseBuild: (() => void) | undefined;
+            const publishGate = new Promise<void>((resolve) => {
+                releaseBuild = resolve;
+            });
+            const project: PokieProject = {
+                type: "blueprint",
+                rootPath: path.join(workDir, "blueprint.json"),
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const resolver: ProjectResolving = {resolve: () => Promise.resolve(project)};
+            const registry = {
+                supportsConversionFrom: () => true,
+                build: async (_target: string, _source: PokieProject, _destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
+                    options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: 12n, estimatedBytes: 34n, complexityWarning: "Large publish"}});
+                    options.onProgress?.({status: "running", completed: 1n, total: 12n, message: "Writing outcomes"});
+                    await publishGate;
+                    if (options.signal?.aborted) throw new ArtifactBuildCancelledError();
+                    return {outputPath: path.join(workDir, "out")};
+                },
+            } as unknown as ArtifactBuilderRegistry;
+            service = new StudioArtifactBuildService("1.3.0", registry, resolver);
+
+            const started = service.start(project.rootPath, "outcomeLibrary", path.join(workDir, "out"));
+            expect(started.status).toBe("queued");
+            await new Promise<void>((resolve) => {
+                queueMicrotask(() => {
+                    resolve();
+                });
+            });
+
+            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+                status: "running",
+                progress: {status: "running", completed: "1", total: "12", message: "Writing outcomes"},
+            });
+            expect(service.getStatusForProject(project.rootPath, started.id)?.progress?.preflight).toEqual({
+                estimatedItemCount: "12",
+                estimatedBytes: "34",
+                complexityWarning: "Large publish",
+            });
+
+            expect(service.cancelForProject(project.rootPath, started.id)).toMatchObject({cancellationRequested: true, status: "running"});
+            releaseBuild?.();
+            await new Promise<void>((resolve) => {
+                setTimeout(() => {
+                    resolve();
+                }, 0);
+            });
+            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
         });
     });
 });

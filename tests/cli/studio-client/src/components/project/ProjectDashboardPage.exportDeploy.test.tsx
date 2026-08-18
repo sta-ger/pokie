@@ -562,6 +562,68 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     });
 
     describe("Build/Export: Build artifact (ArtifactBuilderRegistry, shared with the CLI)", () => {
+        it("renders server preflight and live progress before the artifact job completes", async () => {
+            const user = userEvent.setup();
+            let statusReads = 0;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [requestPath] = url.split("?");
+                if (requestPath === "/api/project/artifacts/build" && init?.method === "POST") {
+                    return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "job-1", target: "tsPackage", status: "queued", cancellationRequested: false}})});
+                }
+                if (requestPath === "/api/project/artifacts/build/job-1") {
+                    statusReads += 1;
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve(statusReads === 1
+                            ? {id: "job-1", target: "tsPackage", status: "running", cancellationRequested: false, progress: {status: "running", completed: "1", total: "10", message: "Writing outcomes", preflight: {estimatedItemCount: "10", estimatedBytes: "20", complexityWarning: "Large publish"}}}
+                            : {id: "job-1", target: "tsPackage", status: "completed", cancellationRequested: false, result: {status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", outputKind: "directory", sourceType: "blueprint"}}),
+                    });
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+            const section = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            await user.click(within(section).getByRole("button", {name: "Build"}));
+
+            expect(await within(section).findByText(/Preflight: 10 estimated item/)).toHaveTextContent("Large publish");
+            expect(await within(section).findByText(/Built to \/games\/tsPackage/)).toBeInTheDocument();
+        });
+
+        it("sends visible Cancel to the server-side artifact job and renders its cancelled terminal state", async () => {
+            const user = userEvent.setup();
+            let cancelled = false;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [requestPath] = url.split("?");
+                if (requestPath === "/api/project/artifacts/build" && init?.method === "POST") {
+                    return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "job-cancel", target: "tsPackage", status: "queued", cancellationRequested: false}})});
+                }
+                if (requestPath === "/api/project/artifacts/build/job-cancel/cancel") {
+                    cancelled = true;
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "job-cancel", target: "tsPackage", status: "running", cancellationRequested: true})});
+                }
+                if (requestPath === "/api/project/artifacts/build/job-cancel") {
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(cancelled
+                        ? {id: "job-cancel", target: "tsPackage", status: "cancelled", cancellationRequested: true, result: {status: "cancelled", message: "Artifact build was cancelled."}}
+                        : {id: "job-cancel", target: "tsPackage", status: "running", cancellationRequested: false, progress: {status: "running", message: "Writing outcomes"}})});
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            await user.click(screen.getByRole("button", {name: "Build/Export"}));
+            const section = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            await user.click(within(section).getByRole("button", {name: "Build"}));
+            await user.click(await within(section).findByRole("button", {name: "Cancel"}));
+
+            expect(await within(section).findByText(/Build cancelled\. No incomplete artifact was published/)).toBeInTheDocument();
+            expect(cancelled).toBe(true);
+        });
+
         it("lists only the capability-supported target (tsPackage), runs it through the shared registry, and offers Open as Project/Projects visibility/folder reveal", async () => {
             const user = userEvent.setup();
             let capturedBuildTarget: string | undefined;
