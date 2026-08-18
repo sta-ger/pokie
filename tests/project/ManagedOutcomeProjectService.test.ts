@@ -5,6 +5,7 @@ import {
     ManagedOutcomeProjectService,
     type ManagedOutcomeProjectFileOperations,
     OutcomeLibraryBundleWriter,
+    type WeightedOutcomeInput,
 } from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
@@ -16,10 +17,12 @@ describe("ManagedOutcomeProjectService atomic registry writes", () => {
         const compatibility = {gameId: "sample-slot", gameVersion: "0.1.0", configHash: "config-hash", pokieVersion: "1.3.0"};
         fs.writeFileSync(blueprintPath, "{}");
         const baseMode = buildOutcomeLibraryBundleModeInput("base", "base");
+        // The shared fixture accepts synchronous and asynchronous sources, but this setup uses its plain-array source.
+        const baseOutcomes = Array.from(baseMode.outcomes as Iterable<WeightedOutcomeInput<string>>);
         const modes = [
             {
                 ...baseMode,
-                outcomes: Array.from(baseMode.outcomes, (outcome) => ({
+                outcomes: baseOutcomes.map((outcome) => ({
                     ...outcome,
                     artifact: {...outcome.artifact, provenance: {...outcome.artifact.provenance, configHash: compatibility.configHash}},
                 })),
