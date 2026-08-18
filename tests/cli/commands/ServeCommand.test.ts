@@ -318,6 +318,10 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         expect(match).not.toBeNull();
         const port = Number(match![1]);
 
+        const outcomeSourceResponse = await fetch(`http://127.0.0.1:${port}/outcome-source`);
+        expect(outcomeSourceResponse.status).toBe(200);
+        expect(await outcomeSourceResponse.json()).toEqual({type: "outcomeLibrary", modeName: "base"});
+
         const response = await fetch(`http://127.0.0.1:${port}/outcome-source/sample`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},

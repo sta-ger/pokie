@@ -149,7 +149,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
             return;
         }
         if (method === "GET" && url.pathname === "/outcome-source") {
-            this.sendJson(res, 200, {type: this.project.type, rootPath: this.project.rootPath, modeName: this.modeName});
+            this.sendJson(res, 200, {type: this.project.type, modeName: this.modeName});
             return;
         }
         if (method === "POST" && url.pathname === "/outcome-source/sample") {
