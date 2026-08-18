@@ -1,4 +1,5 @@
 import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
+import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 
 export type ReplayDescriptor = {
     // The identity of the actual game session this replay created and played forward -- minted fresh
@@ -33,4 +34,9 @@ export type ReplayDescriptor = {
     // `artifact` above: only Studio's own StudioReplayExecutionService populates these.
     stateBefore?: Record<string, unknown>;
     stateAfter?: Record<string, unknown>;
+    // A native outcome-library round has already been selected and settled.  This carries its exact
+    // selector provenance into the same replay descriptor that `pokie replay`, Studio, and runtime
+    // sessions use, rather than asking ReplayRecorder to create a PokieGame and calculate it again.
+    // Absent for ordinary game-package replays.
+    outcomeSource?: PreGeneratedRoundReplayDescriptor;
 };

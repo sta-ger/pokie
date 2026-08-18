@@ -153,7 +153,15 @@ export class ServeCommand implements CliCommandHandling {
             throw new Error(`--mode <modeName> is required to serve a native outcome-library project. ${USAGE}`);
         }
 
-        const server = this.createOutcomeSourceServer(project, options.mode, {host: options.host, port: options.port});
+        // `serve` is the native Outcome Library's local/dev entry point, just as `dev` is for a
+        // runtime package. Keep its captured rounds inspectable for Studio/local troubleshooting;
+        // a production host constructs OutcomeSourceDevServer with its explicit (normally partial)
+        // SessionCapturePolicy instead of inheriting this CLI posture.
+        const server = this.createOutcomeSourceServer(project, options.mode, {
+            host: options.host,
+            port: options.port,
+            sessionCapturePolicyMode: "full",
+        });
         const address = await server.start();
 
         console.log(`POKIE outcome-source dev server listening on http://${address.host}:${address.port}`);

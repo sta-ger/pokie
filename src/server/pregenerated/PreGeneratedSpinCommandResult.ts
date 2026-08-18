@@ -13,6 +13,8 @@ import type {PreGeneratedRoundResult} from "../../pregenerated/PreGeneratedRound
 // PreGeneratedSpinCommandHandler instance sharing this repository committed first) — every wallet
 // transaction this attempt applied has already been reversed by the time this is returned.
 export type PreGeneratedSpinCommandResult<T extends string | number = string> =
-    | {status: "played"; sessionId: string; result: PreGeneratedRoundResult<T>; version?: number}
+    // round is persisted with the idempotency result so a retry can record/replay the exact original
+    // deterministic selection even after later rounds have advanced the session state.
+    | {status: "played"; sessionId: string; round: number; result: PreGeneratedRoundResult<T>; version?: number}
     | {status: "not-found"; sessionId: string}
     | {status: "conflict"; sessionId: string; reason: string};

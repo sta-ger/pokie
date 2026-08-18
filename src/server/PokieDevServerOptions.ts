@@ -2,6 +2,7 @@ import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLib
 import type {IdempotencyRepository} from "./idempotency/IdempotencyRepository.js";
 import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSessionRepository.js";
 import type {PreGeneratedSpinCommandResult} from "./pregenerated/PreGeneratedSpinCommandResult.js";
+import type {PreGeneratedRoundRecording} from "./pregenerated/PreGeneratedRoundRecording.js";
 import type {SessionCaptureMode} from "./session/SessionCapturePolicy.js";
 import type {SessionRepository} from "./session/SessionRepository.js";
 import type {SpinCommandResult} from "./spin/SpinCommandResult.js";
@@ -69,4 +70,8 @@ export type PokieDevServerOptions = {
     preGeneratedOutcomeLibrary?: WeightedOutcomeLibrary;
     preGeneratedSessionRepository?: PreGeneratedSessionRepository;
     preGeneratedIdempotencyRepository?: IdempotencyRepository<PreGeneratedSpinCommandResult>;
+    // The recorder used by OutcomeSourceDevServer for native outcome-library /sessions traffic. Its
+    // records hold the canonical pre-generated replay provenance and, under "full" capture, the exact
+    // selected RoundArtifact/runtime audit view. Supply a durable implementation in production.
+    preGeneratedRoundRecorder?: PreGeneratedRoundRecording;
 };

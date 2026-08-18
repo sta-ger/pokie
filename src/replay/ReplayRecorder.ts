@@ -1,8 +1,8 @@
 import crypto from "crypto";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {ReplayDescriptor} from "./ReplayDescriptor.js";
-import type {ReplayRecording} from "./ReplayRecording.js";
-import type {ReplayRecordingOptions} from "./ReplayRecordingOptions.js";
+import type {PreGeneratedReplayRecording, ReplayRecording} from "./ReplayRecording.js";
+import type {PreGeneratedReplayRecordingOptions, ReplayRecordingOptions} from "./ReplayRecordingOptions.js";
 
 type SessionWithSymbolsCombination = GameSessionHandling & {
     getSymbolsCombination(): {toMatrix(transposed?: boolean): unknown[][]};
@@ -11,7 +11,7 @@ type SessionWithSymbolsCombination = GameSessionHandling & {
 // There is no seek-to-round primitive in GameSessionHandling, so this replays a round best-effort by
 // playing a fresh session forward from round 1 up to the requested round. Reproducibility for a given
 // seed depends entirely on the game package actually threading context.seed into a deterministic setup.
-export class ReplayRecorder implements ReplayRecording {
+export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecording {
     public record(options: ReplayRecordingOptions): ReplayDescriptor {
         const {game, seed, round} = options;
         if (!Number.isInteger(round) || round < 1) {
@@ -44,6 +44,26 @@ export class ReplayRecorder implements ReplayRecording {
             screen: this.captureScreen(session),
             timestamp: startedAt,
             durationMs,
+        };
+    }
+
+    // Records an already-settled native Outcome Library round in the standard ReplayDescriptor shape.
+    // Unlike record(), this never creates a game session or calls play(): the supplied artifact/provenance
+    // is the authoritative math result and the outcomeSource field preserves how it was selected.
+    public recordPreGenerated(options: PreGeneratedReplayRecordingOptions): ReplayDescriptor {
+        const {sessionId, game, replay, totalBet, credits, screen} = options;
+        return {
+            sessionId,
+            game,
+            seed: replay.seed,
+            round: replay.round,
+            totalBet,
+            totalWin: replay.totalWin,
+            ...(credits === undefined ? {} : {credits}),
+            screen,
+            timestamp: replay.timestamp,
+            durationMs: replay.durationMs,
+            outcomeSource: replay,
         };
     }
 

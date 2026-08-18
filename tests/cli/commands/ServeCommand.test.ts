@@ -2,6 +2,7 @@ import {
     loadPokieGame,
     OutcomeLibraryBundleWriter,
     OutcomeSourceDevServer,
+    InMemoryWallet,
     PokieDevServer,
     PokieDevServerAddress,
     PokieDevServerHandling,
@@ -9,15 +10,18 @@ import {
     PokieGame,
     PokieGameManifest,
     PokieProject,
+    PreGeneratedRoundRecord,
+    PreGeneratedRoundRecording,
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
+    replayOutcomeSourceProject,
 } from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -270,7 +274,7 @@ describe("ServeCommand outcome-source routing", () => {
 
         expect(receivedProject).toBe(outcomeLibraryProject);
         expect(receivedMode).toBe("base");
-        expect(receivedOptions).toEqual({host: undefined, port: 4322});
+        expect(receivedOptions).toEqual({host: undefined, port: 4322, sessionCapturePolicyMode: "full"});
         expect(stubServer.startCalls).toBe(1);
         expect(loadGame).not.toHaveBeenCalled();
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
@@ -314,6 +318,10 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         expect(match).not.toBeNull();
         const port = Number(match![1]);
 
+        const outcomeSourceResponse = await fetch(`http://127.0.0.1:${port}/outcome-source`);
+        expect(outcomeSourceResponse.status).toBe(200);
+        expect(await outcomeSourceResponse.json()).toEqual({type: "outcomeLibrary", modeName: "base"});
+
         const response = await fetch(`http://127.0.0.1:${port}/outcome-source/sample`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -327,5 +335,182 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
 
         await server!.stop();
         logSpy.mockRestore();
+    });
+
+    it("serves a native bundle through the Player session contract with public-by-default, idempotent pre-generated spins", async () => {
+        const loadGame = jest.fn();
+        let server: PokieDevServerHandling | undefined;
+        const command = new ServeCommand(loadGame, undefined, undefined, new ProjectTargetResolver(), (project, modeName, options) => {
+            server = new OutcomeSourceDevServer(project, modeName, options);
+            return server;
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir, "--mode", "base", "--port", "0"]);
+
+        const port = Number(logSpy.mock.calls.map((call) => call[0]).join("\n").match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
+        const baseUrl = `http://127.0.0.1:${port}`;
+        const created = await fetch(`${baseUrl}/sessions`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: "player-seed", initialBalance: 10}),
+        });
+        const createdBody = (await created.json()) as {sessionId: string; game: {id: string}; credits: number};
+
+        expect(created.status).toBe(201);
+        expect(createdBody.game.id).toBe("sample-slot");
+        expect(createdBody.credits).toBe(10);
+        expect(loadGame).not.toHaveBeenCalled();
+
+        const spin = async (requestId: string, debug = false) => {
+            const response = await fetch(`${baseUrl}/sessions/${createdBody.sessionId}/spin${debug ? "?debug=1" : ""}`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({requestId}),
+            });
+            return {response, body: (await response.json()) as Record<string, unknown>};
+        };
+        const first = await spin("round-1");
+        const retry = await spin("round-1");
+        const debugRetry = await spin("round-1", true);
+
+        expect(first.response.status).toBe(200);
+        expect(first.body).toMatchObject({sessionId: createdBody.sessionId, game: {id: "sample-slot"}, requestId: "round-1", bet: 1});
+        expect(first.body).not.toHaveProperty("internal");
+        expect(retry.body).toEqual(first.body);
+        expect(debugRetry.body.credits).toBe(first.body.credits);
+        expect(debugRetry.body).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
+
+        const fullRestored = await fetch(`${baseUrl}/sessions/${createdBody.sessionId}?debug=1`);
+        expect(await fullRestored.json()).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
+
+        const second = await spin("round-2");
+        const staleRetry = await spin("round-1");
+        expect(staleRetry.body).toEqual(first.body);
+
+        const restored = await fetch(`${baseUrl}/sessions/${createdBody.sessionId}`);
+        const restoredBody = (await restored.json()) as Record<string, unknown>;
+        expect(restoredBody).toMatchObject({roundId: second.body.roundId, credits: second.body.credits, bet: 1});
+        expect(restoredBody).not.toHaveProperty("internal");
+
+        await server!.stop();
+        logSpy.mockRestore();
+    });
+
+    it("records one settled native round with a stable replay identity, and honors full versus partial capture", async () => {
+        const records = new Map<string, PreGeneratedRoundRecord>();
+        const recorder: PreGeneratedRoundRecording = {
+            record: jest.fn((record: PreGeneratedRoundRecord) => {
+                const key = `${record.sessionId}:${record.roundId}`;
+                const existing = records.get(key);
+                if (existing !== undefined) {
+                    return Promise.resolve(existing);
+                }
+                records.set(key, record);
+                return Promise.resolve(record);
+            }),
+            load: (sessionId, roundId) => Promise.resolve(records.get(`${sessionId}:${roundId}`)),
+            loadLatest: (sessionId) =>
+                Promise.resolve([...records.values()].filter((record) => record.sessionId === sessionId).sort((a, b) => b.round - a.round)[0]),
+        };
+        const wallet = new InMemoryWallet();
+        const debit = jest.spyOn(wallet, "debit");
+        const project = {...outcomeLibraryProject, rootPath: bundleDir};
+        const fullServer = new OutcomeSourceDevServer(project, "base", {
+            host: "127.0.0.1",
+            port: 0,
+            wallet,
+            preGeneratedRoundRecorder: recorder,
+            sessionCapturePolicyMode: "full",
+        });
+        const fullAddress = await fullServer.start();
+        const fullBaseUrl = `http://${fullAddress.host}:${fullAddress.port}`;
+
+        const created = await fetch(`${fullBaseUrl}/sessions`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: "recorded-seed", initialBalance: 10}),
+        });
+        const {sessionId} = (await created.json()) as {sessionId: string};
+        const spin = async () => {
+            const response = await fetch(`${fullBaseUrl}/sessions/${sessionId}/spin`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({requestId: "recorded-round"}),
+            });
+            return (await response.json()) as {credits: number; replay: Record<string, unknown>};
+        };
+
+        const [first, retry] = await Promise.all([spin(), spin()]);
+        expect(debit).toHaveBeenCalledTimes(1);
+        expect(recorder.record).toHaveBeenCalledTimes(1);
+        expect(records.size).toBe(1);
+        expect(retry).toEqual(first);
+
+        const recorded = [...records.values()][0];
+        expect(recorded.replay).toMatchObject({seed: "recorded-seed", round: 1, outcomeId: first.replay.outcomeId});
+        expect(recorded.internal?.artifact.provenance).toEqual(outcomeLibraryBundleTestProvenance);
+        const replayed = await replayOutcomeSourceProject(project, "base", recorded.replay.seed, recorded.replay.round);
+        expect(replayed).toEqual(expect.objectContaining({supported: true, replay: expect.objectContaining({
+            libraryId: recorded.replay.libraryId,
+            libraryHash: recorded.replay.libraryHash,
+            outcomeId: recorded.replay.outcomeId,
+            totalWin: recorded.replay.totalWin,
+            payoutMultiplier: recorded.replay.payoutMultiplier,
+        })}));
+        if (replayed.supported) {
+            // The settled server round and the public `pokie replay` workflow now share the canonical
+            // ReplayDescriptor contract. The server's record retains its real session/wallet facts;
+            // the replay command only reconstructs the deterministic selection, never game math.
+            expect(recorded.replayDescriptor).toMatchObject({
+                sessionId,
+                seed: recorded.replay.seed,
+                round: recorded.replay.round,
+                totalBet: recorded.stake,
+                totalWin: recorded.replay.totalWin,
+                outcomeSource: expect.objectContaining({
+                    libraryId: replayed.replay.libraryId,
+                    libraryHash: replayed.replay.libraryHash,
+                    seed: replayed.replay.seed,
+                    round: replayed.replay.round,
+                    outcomeId: replayed.replay.outcomeId,
+                    totalWin: replayed.replay.totalWin,
+                    payoutMultiplier: replayed.replay.payoutMultiplier,
+                }),
+            });
+            expect(replayed.descriptor).toMatchObject({
+                seed: recorded.replay.seed,
+                round: recorded.replay.round,
+                totalWin: recorded.replay.totalWin,
+                outcomeSource: expect.objectContaining({
+                    libraryId: recorded.replay.libraryId,
+                    libraryHash: recorded.replay.libraryHash,
+                    seed: recorded.replay.seed,
+                    round: recorded.replay.round,
+                    outcomeId: recorded.replay.outcomeId,
+                    totalWin: recorded.replay.totalWin,
+                    payoutMultiplier: recorded.replay.payoutMultiplier,
+                }),
+            });
+        }
+        const fullRestored = await fetch(`${fullBaseUrl}/sessions/${sessionId}?debug=1`);
+        expect(await fullRestored.json()).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
+        await fullServer.stop();
+
+        const partialServer = new OutcomeSourceDevServer(project, "base", {host: "127.0.0.1", port: 0, sessionCapturePolicyMode: "partial"});
+        const partialAddress = await partialServer.start();
+        const partialBaseUrl = `http://${partialAddress.host}:${partialAddress.port}`;
+        const partialCreated = await fetch(`${partialBaseUrl}/sessions`, {method: "POST"});
+        const {sessionId: partialSessionId} = (await partialCreated.json()) as {sessionId: string};
+        await fetch(`${partialBaseUrl}/sessions/${partialSessionId}/spin`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({requestId: "partial-round"}),
+        });
+        const partialRestored = (await (await fetch(`${partialBaseUrl}/sessions/${partialSessionId}?debug=1`)).json()) as Record<string, unknown>;
+        expect(partialRestored).toHaveProperty("internal.capturePolicy", {version: 1, mode: "partial", captureDebugPayloads: true});
+        expect(partialRestored).toHaveProperty("internal.replay.seed");
+        expect(partialRestored).not.toHaveProperty("internal.artifact");
+        await partialServer.stop();
     });
 });

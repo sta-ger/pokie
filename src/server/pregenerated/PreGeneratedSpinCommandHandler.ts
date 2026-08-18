@@ -262,7 +262,7 @@ export class PreGeneratedSpinCommandHandler<T extends string | number = string> 
             }
             sessionStateSaved = true;
 
-            const commandResult: PreGeneratedSpinCommandResult<T> = {status: "played", sessionId, result};
+            const commandResult: PreGeneratedSpinCommandResult<T> = {status: "played", sessionId, round, result};
             if (newVersion !== undefined) {
                 commandResult.version = newVersion;
             }

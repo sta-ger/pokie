@@ -187,7 +187,7 @@ export class ReplayCommand implements CliCommandHandling {
             throw new UnsupportedProjectOperationError(result.diagnostic);
         }
 
-        const json = JSON.stringify(result.replay, null, 4);
+        const json = JSON.stringify(result.descriptor, null, 4);
         if (options.out) {
             this.writeFile(options.out, json);
         }
