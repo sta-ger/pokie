@@ -8,6 +8,7 @@ import type {SimulationProgressView, SimulationReportView} from "../../domain/in
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
+import {BoundedListPager} from "../common/BoundedListPager";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
@@ -26,6 +27,7 @@ export type ReportDetailState =
 // Matches SimulationReportBuilder.LOW_ROUNDS_WARNING_THRESHOLD (src/reporting/SimulationReportBuilder.ts)
 // so the out-of-the-box default never itself trips the "requested rounds is low" warning/recommendation.
 const DEFAULT_ROUNDS = 10000;
+const RECENT_RUNS_PAGE_SIZE = 50;
 
 type FormValues = {rounds: number; seed: string; workers: number; modeName: string};
 
@@ -88,6 +90,11 @@ export function SimulationTab({
     }, [availableModes]);
     const [fullReportOpened, {toggle: toggleFullReport, close: closeFullReport}] = useDisclosure(false);
     const [compareOpened, setCompareOpened] = useState(false);
+    const [recentRunsPage, setRecentRunsPage] = useState(0);
+    const recentRunEntries = recentRuns.status === "loaded" ? recentRuns.entries : [];
+    const visibleRecentRunEntries = recentRunEntries.slice(recentRunsPage * RECENT_RUNS_PAGE_SIZE, (recentRunsPage + 1) * RECENT_RUNS_PAGE_SIZE);
+
+    useEffect(() => setRecentRunsPage(0), [recentRuns]);
 
     // ProjectDashboardPage only ever mounts the tab whose data it's currently showing (see its own doc
     // comment -- data hooks stay at page level, but each tab *component*, including this one's own
@@ -373,35 +380,44 @@ export function SimulationTab({
                 {runAgainNotice && <WarningState message={runAgainNotice} />}
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (
-                    <List listStyleType="none" spacing={4}>
-                        {recentRuns.entries.map((entry) => {
-                            const isSelected = entry.id === currentReportId;
-                            return (
-                                <List.Item key={entry.id}>
-                                    <Group gap="xs" wrap="wrap" align="baseline">
-                                        <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                            {entry.game.id} v{entry.game.version} — {entry.actualRounds}/{entry.requestedRounds} rounds, RTP{" "}
-                                            {(entry.rtp * 100).toFixed(2)}%, {new Date(entry.startedAt).toLocaleString()}
-                                            {entry.hasWarnings ? " (has warnings)" : ""}
-                                        </Text>
-                                        <Button
-                                            size="xs"
-                                            variant={isSelected ? "filled" : "default"}
-                                            onClick={() => {
-                                                onOpenHistoric(entry);
-                                                setActiveStep(2);
-                                            }}
-                                        >
-                                            Open
-                                        </Button>
-                                        <Anchor component="button" type="button" onClick={() => onRunAgain(entry)}>
-                                            Run again
-                                        </Anchor>
-                                    </Group>
-                                </List.Item>
-                            );
-                        })}
-                    </List>
+                    <>
+                        <BoundedListPager
+                            itemLabel="runs"
+                            itemCount={recentRunEntries.length}
+                            page={recentRunsPage}
+                            pageSize={RECENT_RUNS_PAGE_SIZE}
+                            onPageChange={setRecentRunsPage}
+                        />
+                        <List listStyleType="none" spacing={4}>
+                            {visibleRecentRunEntries.map((entry) => {
+                                const isSelected = entry.id === currentReportId;
+                                return (
+                                    <List.Item key={entry.id}>
+                                        <Group gap="xs" wrap="wrap" align="baseline">
+                                            <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                                                {entry.game.id} v{entry.game.version} — {entry.actualRounds}/{entry.requestedRounds} rounds, RTP{" "}
+                                                {(entry.rtp * 100).toFixed(2)}%, {new Date(entry.startedAt).toLocaleString()}
+                                                {entry.hasWarnings ? " (has warnings)" : ""}
+                                            </Text>
+                                            <Button
+                                                size="xs"
+                                                variant={isSelected ? "filled" : "default"}
+                                                onClick={() => {
+                                                    onOpenHistoric(entry);
+                                                    setActiveStep(2);
+                                                }}
+                                            >
+                                                Open
+                                            </Button>
+                                            <Anchor component="button" type="button" onClick={() => onRunAgain(entry)}>
+                                                Run again
+                                            </Anchor>
+                                        </Group>
+                                    </List.Item>
+                                );
+                            })}
+                        </List>
+                    </>
                 )}
             </PageSection>
         </div>

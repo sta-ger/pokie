@@ -10,6 +10,7 @@ import type {
     StudioRuntimeSessionView,
 } from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
+import {createLongReplayList} from "../../testUtils/largeStudioProjectFixture";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
@@ -113,6 +114,34 @@ function dimensionRow(label: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Replay & Debug workflow", () => {
+    it("keeps a 250-replay history to a 50-row render window while every replay remains inspectable", async () => {
+        const user = userEvent.setup();
+        let inspectedLastReplay = false;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/replays": () => ({ok: true, status: 200, body: createLongReplayList()}),
+            "/api/project/replays/replay-249": () => {
+                inspectedLastReplay = true;
+                return {ok: true, status: 200, body: jobFor("replay-249", {round: 250})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToReplayTab(user);
+
+        const recentReplaysSection = screen.getByText("Recent replays").closest("fieldset") as HTMLElement;
+        await waitFor(() => expect(within(recentReplaysSection).getByText("Showing replays 1–50 of 250.")).toBeInTheDocument());
+        expect(within(recentReplaysSection).getAllByRole("listitem")).toHaveLength(50);
+
+        for (let page = 0; page < 4; page += 1) {
+            await user.click(within(recentReplaysSection).getByRole("button", {name: "Next 50 replays"}));
+        }
+        expect(within(recentReplaysSection).getByText("Showing replays 201–250 of 250.")).toBeInTheDocument();
+        expect(within(recentReplaysSection).getByText(/round 250 —/)).toBeInTheDocument();
+        await user.click(within(recentReplaysSection).getAllByRole("button", {name: "Inspect"})[49]);
+        await waitFor(() => expect(inspectedLastReplay).toBe(true));
+    });
+
     it("runs a Recreate from seed replay, inspects the full artifact with step navigation, and exports it", async () => {
         const user = userEvent.setup();
         let pollCount = 0;

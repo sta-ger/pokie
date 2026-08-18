@@ -24,6 +24,7 @@ import {describeRuntimeScreen, type RecentSpinsListView} from "../../domain/inte
 import {describeReplayActionError} from "../../domain/replayActionError";
 import {useConfirm} from "../../hooks/useConfirm";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
+import {BoundedListPager} from "../common/BoundedListPager";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
@@ -117,6 +118,7 @@ const CAPABILITY_STATUS_COLOR: Record<ReplayCapabilityStatus, string> = {
     bestEffort: "yellow",
     unavailable: "gray",
 };
+const REPLAY_LIST_PAGE_SIZE = 50;
 
 function downloadJsonBlob(filename: string, data: unknown): void {
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
@@ -215,6 +217,11 @@ export function ReplayTab({
     }, [availableModes, selectedMode]);
 
     const [findMethod, setFindMethod] = useState<FindMethod>("seedRound");
+    const [replayListPage, setReplayListPage] = useState(0);
+    const replayListEntries = listView.status === "loaded" ? listView.entries : [];
+    const visibleReplayListEntries = replayListEntries.slice(replayListPage * REPLAY_LIST_PAGE_SIZE, (replayListPage + 1) * REPLAY_LIST_PAGE_SIZE);
+
+    useEffect(() => setReplayListPage(0), [listView]);
     // Which source a load action last actually completed for -- the loaded card/action bar/result
     // section below is gated on this matching `findMethod`. `markLoaded` is the only way it changes
     // outside of `switchSource` resetting it.
@@ -472,32 +479,41 @@ export function ReplayTab({
                         {listError && <ErrorState message={describeReplayActionError("The replay list", listError)} />}
                         {listView.status === "empty" && <EmptyState message="No replays run yet." />}
                         {listView.status === "loaded" && (
-                            <List listStyleType="none" spacing={4}>
-                                {listView.entries.map((entry) =>
-                                    isReplayListEntryReproducible(entry) ? (
-                                        <List.Item key={entry.id}>
-                                            <Anchor
-                                                component="button"
-                                                type="button"
-                                                onClick={() => {
-                                                    onCompareStored(entry.id);
-                                                    markLoaded("artifact", false);
-                                                }}
-                                                style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
-                                            >
-                                                {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
-                                            </Anchor>
-                                        </List.Item>
-                                    ) : (
-                                        <List.Item key={entry.id}>
-                                            <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                                                {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)} (reproduce
+                            <>
+                                <BoundedListPager
+                                    itemLabel="replays"
+                                    itemCount={replayListEntries.length}
+                                    page={replayListPage}
+                                    pageSize={REPLAY_LIST_PAGE_SIZE}
+                                    onPageChange={setReplayListPage}
+                                />
+                                <List listStyleType="none" spacing={4}>
+                                    {visibleReplayListEntries.map((entry) =>
+                                        isReplayListEntryReproducible(entry) ? (
+                                            <List.Item key={entry.id}>
+                                                <Anchor
+                                                    component="button"
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onCompareStored(entry.id);
+                                                        markLoaded("artifact", false);
+                                                    }}
+                                                    style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
+                                                >
+                                                    {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                                </Anchor>
+                                            </List.Item>
+                                        ) : (
+                                            <List.Item key={entry.id}>
+                                                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                                                    {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)} (reproduce
                                                 unavailable — no recorded seed; use Recent replays below to inspect it instead)
-                                            </Text>
-                                        </List.Item>
-                                    ),
-                                )}
-                            </List>
+                                                </Text>
+                                            </List.Item>
+                                        ),
+                                    )}
+                                </List>
+                            </>
                         )}
                     </PageSection>
                 </div>
@@ -1137,49 +1153,58 @@ export function ReplayTab({
                 {listError && <ErrorState message={describeReplayActionError("The replay list", listError)} />}
                 {listView.status === "empty" && <EmptyState message="No replays run yet." />}
                 {listView.status === "loaded" && (
-                    <List listStyleType="none" spacing={4}>
-                        {listView.entries.map((entry) => (
-                            <List.Item key={entry.id}>
-                                <Group gap="xs" wrap="wrap" align="baseline">
-                                    <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                        {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
-                                    </Text>
-                                    <Anchor
-                                        component="button"
-                                        type="button"
-                                        onClick={() => {
-                                            switchSource("seedRound");
-                                            // Only mark it loaded once the fetch actually succeeds -- a
-                                            // failure is surfaced below via listError instead of silently
-                                            // showing a loaded card/result for a round that never loaded.
-                                            onInspectStored(entry.id)
-                                                .then(() => markLoaded("seedRound", true))
-                                                .catch(() => undefined);
-                                        }}
-                                    >
-                                        Inspect
-                                    </Anchor>
-                                    {isReplayListEntryReproducible(entry) ? (
+                    <>
+                        <BoundedListPager
+                            itemLabel="replays"
+                            itemCount={replayListEntries.length}
+                            page={replayListPage}
+                            pageSize={REPLAY_LIST_PAGE_SIZE}
+                            onPageChange={setReplayListPage}
+                        />
+                        <List listStyleType="none" spacing={4}>
+                            {visibleReplayListEntries.map((entry) => (
+                                <List.Item key={entry.id}>
+                                    <Group gap="xs" wrap="wrap" align="baseline">
+                                        <Text size="sm" style={{overflowWrap: "anywhere"}}>
+                                            {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                        </Text>
                                         <Anchor
                                             component="button"
                                             type="button"
                                             onClick={() => {
-                                                switchSource("artifact");
-                                                onCompareStored(entry.id);
-                                                markLoaded("artifact", false);
+                                                switchSource("seedRound");
+                                                // Only mark it loaded once the fetch actually succeeds -- a
+                                                // failure is surfaced below via listError instead of silently
+                                                // showing a loaded card/result for a round that never loaded.
+                                                onInspectStored(entry.id)
+                                                    .then(() => markLoaded("seedRound", true))
+                                                    .catch(() => undefined);
                                             }}
                                         >
-                                            Reproduce &amp; compare
+                                        Inspect
                                         </Anchor>
-                                    ) : (
-                                        <Text size="sm" c="dimmed">
+                                        {isReplayListEntryReproducible(entry) ? (
+                                            <Anchor
+                                                component="button"
+                                                type="button"
+                                                onClick={() => {
+                                                    switchSource("artifact");
+                                                    onCompareStored(entry.id);
+                                                    markLoaded("artifact", false);
+                                                }}
+                                            >
+                                            Reproduce &amp; compare
+                                            </Anchor>
+                                        ) : (
+                                            <Text size="sm" c="dimmed">
                                             Reproduce unavailable — no recorded seed
-                                        </Text>
-                                    )}
-                                </Group>
-                            </List.Item>
-                        ))}
-                    </List>
+                                            </Text>
+                                        )}
+                                    </Group>
+                                </List.Item>
+                            ))}
+                        </List>
+                    </>
                 )}
             </PageSection>
         </div>
