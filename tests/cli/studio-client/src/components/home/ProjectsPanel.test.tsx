@@ -115,6 +115,169 @@ describe("ProjectsPanel: Import Project", () => {
         expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
     });
 
+    it("picks a PAR workbook through the native file picker, then detects and routes it into Design Game", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "selected", path: "/games/native-sheet.xlsx"}}),
+            "/api/home/projects/registry/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "recognized", location: "/games/native-sheet.xlsx", type: "parWorkbook", capabilities: [], suggestedName: "native-sheet"},
+            }),
+        });
+        renderWithProviders(
+            <>
+                <ProjectsPanel />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
+
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+        expect(await screen.findByDisplayValue("/games/native-sheet.xlsx")).toBeInTheDocument();
+
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toEqual({
+            kind: "file",
+            mode: "open",
+            fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
+        });
+
+        await user.click(screen.getByRole("button", {name: "Detect"}));
+        expect(await screen.findByText(/This is a PAR sheet workbook/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
+
+        await waitFor(() =>
+            expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
+                pathname: "/home/design",
+                state: {initialParSheetPath: "/games/native-sheet.xlsx"},
+            }),
+        );
+    });
+
+    it("leaves the imported location unchanged without opening the fallback browser when the native PAR picker is cancelled", async () => {
+        const user = userEvent.setup();
+        const selectedLocation = "/games/already-selected.xlsx";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: selectedLocation, displayPath: selectedLocation, entries: [], isDirectory: false},
+            }),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "cancelled"}}),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.type(screen.getByLabelText("Location", {exact: false}), selectedLocation);
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(true));
+        expect(screen.getByDisplayValue(selectedLocation)).toBeInTheDocument();
+        expect(screen.queryByText("Server filesystem browser")).not.toBeInTheDocument();
+    });
+
+    it("falls back to file-only server selection when the native PAR picker is unavailable", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "No display"}}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    resolvedPath: "/games",
+                    displayPath: "/games",
+                    entries: [{name: "fallback-sheet.xlsx", isDirectory: false}],
+                    isDirectory: true,
+                },
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(await screen.findByText("fallback-sheet.xlsx")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Select this folder"})).not.toBeInTheDocument();
+        await user.click(screen.getByText("fallback-sheet.xlsx"));
+        expect(screen.getByDisplayValue("/games/fallback-sheet.xlsx")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(false);
+    });
+
+    it("falls back to file-only server selection when the native PAR picker request fails", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "error", message: "Picker failed"}}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    resolvedPath: "/games",
+                    displayPath: "/games",
+                    entries: [{name: "error-fallback-sheet.xlsx", isDirectory: false}],
+                    isDirectory: true,
+                },
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(await screen.findByText("error-fallback-sheet.xlsx")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Select this folder"})).not.toBeInTheDocument();
+        await user.click(screen.getByText("error-fallback-sheet.xlsx"));
+        expect(screen.getByDisplayValue("/games/error-fallback-sheet.xlsx")).toBeInTheDocument();
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toMatchObject({
+            kind: "file",
+            mode: "open",
+            fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
+        });
+    });
+
+    it("keeps the ordinary Import Project Browse picker generic for files and folders", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    resolvedPath: "/games",
+                    displayPath: "/games",
+                    entries: [{name: "generic-sheet.xlsx", isDirectory: false}],
+                    isDirectory: true,
+                },
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+
+        expect(await screen.findByText("generic-sheet.xlsx")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Select this folder"}));
+        expect(screen.getByDisplayValue("/games")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+        await user.click(await screen.findByText("generic-sheet.xlsx"));
+        expect(screen.getByDisplayValue("/games/generic-sheet.xlsx")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(false);
+    });
+
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

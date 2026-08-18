@@ -28,6 +28,17 @@ type PathInputProps = TextInputProps & {
     // suggestion) -- every other caller omits it.
     defaultLocationName?: string;
     fileFilters?: StudioNativePickerFileFilter[];
+    // `kind: "any"` deliberately keeps its ordinary Browse action on the server-side picker: a
+    // native OS dialog can choose a file *or* a folder, but not both truthfully in one request. A
+    // caller that accepts both can still expose one focused native shortcut for the file-shaped
+    // member of that union (Import Project uses this for PAR workbooks) without taking away the
+    // established generic Browse flow for package directories.
+    nativePicker?: {
+        kind: "file" | "directory";
+        label: string;
+        fileFilters?: StudioNativePickerFileFilter[];
+        filePickerMode?: "open" | "save";
+    };
     // File controls that create an artifact use the host's native Save dialog, including a filename
     // field and overwrite confirmation.  Existing-file controls retain the normal Open dialog.
     filePickerMode?: "open" | "save";
@@ -104,6 +115,7 @@ export function PathInput({
     relevantDirectory,
     defaultLocationName,
     fileFilters,
+    nativePicker,
     filePickerMode = "open",
     autoDestinationPath,
     value,
@@ -115,6 +127,7 @@ export function PathInput({
     const fetchImpl = useStudioApi();
     const [modalOpened, setModalOpened] = useState(false);
     const [modalInitialPath, setModalInitialPath] = useState("");
+    const [modalKind, setModalKind] = useState<PathBrowseKind>(kind);
     const [hint, setHint] = useState<HintState>({status: "idle"});
     const [browsing, setBrowsing] = useState(false);
     // Bumped on every resolveHint/rememberAndSelect call so a response for an earlier value -- one that
@@ -161,6 +174,12 @@ export function PathInput({
         }
     };
 
+    const openFallbackModal = (initialPath: string, fallbackKind: PathBrowseKind): void => {
+        setModalInitialPath(initialPath);
+        setModalKind(fallbackKind);
+        setModalOpened(true);
+    };
+
     const handleBrowseClick = async (): Promise<void> => {
         setBrowsing(true);
         try {
@@ -179,14 +198,54 @@ export function PathInput({
                     // "unavailable"/"error" falls through to the fallback modal below.
                 }
             }
-            setModalInitialPath(startLocation ?? currentValue);
-            setModalOpened(true);
+            openFallbackModal(startLocation ?? currentValue, kind);
         } catch {
             // A native-availability/pick request that itself fails to reach the server (offline, a
             // transient error) is treated the same as "unavailable" -- fall back to the modal rather
             // than leaving Browse looking like it did nothing.
-            setModalInitialPath(currentValue);
-            setModalOpened(true);
+            openFallbackModal(currentValue, kind);
+        } finally {
+            setBrowsing(false);
+        }
+    };
+
+    // A deliberately opt-in native shortcut for a specific member of an otherwise generic path
+    // field. Its fallback remains the same server filesystem browser as ordinary Browse, while
+    // retaining this shortcut's narrower selection kind so a PAR-sheet action cannot select a
+    // directory when the native picker is unavailable.
+    const handleNativePickerClick = async (): Promise<void> => {
+        if (nativePicker === undefined) {
+            return;
+        }
+        setBrowsing(true);
+        try {
+            const startLocation = await resolveBrowseStartLocation({
+                fetchImpl,
+                currentValue,
+                browseId,
+                relevantDirectory,
+                defaultLocationName,
+                kind: nativePicker.kind,
+            });
+            const availability = await checkNativePickerAvailability(fetchImpl);
+            if (availability.status === "available") {
+                const result = await pickNativePath(fetchImpl, {
+                    kind: nativePicker.kind,
+                    mode: nativePicker.kind === "file" ? nativePicker.filePickerMode ?? "open" : undefined,
+                    startPath: startLocation,
+                    fileFilters: nativePicker.fileFilters,
+                });
+                if (result.status === "selected") {
+                    rememberAndSelect(result.path);
+                    return;
+                }
+                if (result.status === "cancelled") {
+                    return;
+                }
+            }
+            openFallbackModal(startLocation ?? currentValue, nativePicker.kind);
+        } catch {
+            openFallbackModal(currentValue, nativePicker.kind);
         } finally {
             setBrowsing(false);
         }
@@ -212,6 +271,11 @@ export function PathInput({
                 <Button variant="default" onClick={handleBrowseClick} loading={browsing}>
                     Browse…
                 </Button>
+                {nativePicker !== undefined && (
+                    <Button variant="default" onClick={handleNativePickerClick} loading={browsing}>
+                        {nativePicker.label}
+                    </Button>
+                )}
             </Group>
             {hint.status === "loading" && (
                 <Text size="xs" c="dimmed">
@@ -241,7 +305,7 @@ export function PathInput({
                 opened={modalOpened}
                 onClose={() => setModalOpened(false)}
                 onSelect={rememberAndSelect}
-                kind={kind}
+                kind={modalKind}
                 initialPath={modalInitialPath}
                 title={browseTitle ?? DEFAULT_BROWSE_TITLE[kind]}
             />

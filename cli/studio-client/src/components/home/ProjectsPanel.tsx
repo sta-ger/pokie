@@ -411,6 +411,11 @@ export function ProjectsPanel({
                         kind="any"
                         browseTitle="Browse for a project to import"
                         browseId="import-project-location"
+                        nativePicker={{
+                            kind: "file",
+                            label: "Browse PAR sheet…",
+                            fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
+                        }}
                         value={location}
                         onChange={(event) => handleLocationChange(event.currentTarget.value)}
                         onPathSelected={handleLocationChange}
