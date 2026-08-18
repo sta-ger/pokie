@@ -10,6 +10,7 @@ import {
     GamePackageInspectionReport,
     GameSessionHandling,
     loadPokieGame,
+    ManagedOutcomeProjectService,
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
@@ -41,6 +42,7 @@ import {createMaterializingRuntimePackageResolver} from "../../../cli/materializ
 import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
@@ -5828,6 +5830,93 @@ describe("StudioServer", () => {
             expect(view.status).toBe("ok");
             expect(view.sourceType).toBe("blueprint");
             expect(fs.existsSync(path.join(view.outputPath!, "index.json"))).toBe(true);
+        });
+
+        it("cancels an active Blueprint Outcome publish through the HTTP job route without publishing a managed project", async () => {
+            const blueprintPath = writeBlueprintFile({
+                manifest: {id: "cancellable-outcome-slot", name: "Cancellable Outcome Slot", version: "1.0.0"},
+                reels: 3,
+                rows: 1,
+                symbols: ["A", "B", "C", "D", "E", "F", "G"],
+                paytable: {A: {3: 1}},
+                reelStrips: Array.from({length: 3}, () => ["A", "B", "C", "D", "E", "F", "G"]),
+                availableBets: [1],
+            });
+            const destination = path.join(artifactWorkDir, "cancelled-outcome-library");
+            const registryPath = path.join(artifactWorkDir, ".pokie", "managed-outcome-projects.json");
+            // Keep the complete production chain: Studio -> real ArtifactBuilderRegistry -> real
+            // BlueprintStakeOutcomeLibraryWorkflow -> real ManagedOutcomeProjectService.  The distinct
+            // outcome space yields while the canonical writer is actively publishing, giving
+            // the HTTP Cancel route a real in-flight bundle to interrupt.
+            const artifactBuildService = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                undefined,
+                new ManagedOutcomeProjectService(),
+            );
+            const homeService = new StudioHomeService("1.3.0");
+            artifactServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: artifactStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
+                artifactBuildService,
+                initialContext: {mode: "project", projectRoot: blueprintPath},
+            });
+            const address = await artifactServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "outcomeLibrary", outDir: destination});
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+
+            let activeJob: {id: string; status: string; progress?: {message?: string}} | undefined;
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                expect(response.status).toBe(200);
+                const current = response.body as {id: string; status: string; progress?: {message?: string}};
+                if (current.progress?.message?.startsWith("Writing Outcome mode")) {
+                    activeJob = current;
+                    break;
+                }
+                if (current.status !== "queued" && current.status !== "running") break;
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+            expect(activeJob).toEqual(expect.objectContaining({id: job.id, status: "running"}));
+
+            const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
+            expect(cancelled.status).toBe(200);
+            expect(cancelled.body).toMatchObject({id: job.id, status: "running", cancellationRequested: true});
+
+            let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                expect(response.status).toBe(200);
+                const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
+                if (current.status !== "queued" && current.status !== "running") {
+                    terminalJob = current;
+                    break;
+                }
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+
+            expect(terminalJob).toEqual(expect.objectContaining({
+                id: job.id,
+                status: "cancelled",
+                cancellationRequested: true,
+                result: expect.objectContaining({status: "cancelled"}),
+            }));
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.readdirSync(artifactWorkDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
+            expect(fs.existsSync(registryPath)).toBe(false);
         });
 
         it("returns a conflict (409) for a pre-existing non-empty destination and never writes to it", async () => {
