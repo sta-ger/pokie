@@ -150,7 +150,8 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
         expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 101"})).toBeInTheDocument();
         await user.click(within(reels).getByRole("button", {name: "Remove reel 2 symbol 101"}));
-        expect(await within(reels).findByText("Showing symbols 1–100 of 100.")).toBeInTheDocument();
+        // Exactly 100 symbols no longer need a pager; the first page remains reachable directly.
+        expect(within(reels).queryByText(/Showing symbols/)).not.toBeInTheDocument();
         expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 100"})).toBeInTheDocument();
     });
 
