@@ -163,3 +163,24 @@ test/transcript cannot. Do not commit generated trees, repeated attempts, PID
 files, server logs, broad forensic archives, or duplicate screenshots without a
 specific review need. Phase 5 evidence remains its own preserved record; Phase
 6 adds evidence only for new or changed behavior.
+
+## Studio workspace scale boundary
+
+The Blueprint Workspace presents its primary work in this order: Overview, Game
+Model, Play, Simulation, Replay, and Build/Export. Replay and Build/Export are
+normal workflows, not an "Advanced" category. Certification is shown only when
+the opened project directly reads an outcome-library artifact; a Blueprint first
+produces that artifact through Build/Export. Provably Fair is named explicitly
+and is available only to a live runtime project.
+
+The bounded large-project fixture used by the Studio component tests represents
+six reels with 300 stops each, 48 symbols, 192 paytable rows, 12 modes, stack
+metadata, long replay/report lists, and a large outcome-library mode set. The
+Game Model's full-strip table renders at most 100 positions per reel and lets
+the user page through every stop. This keeps the initial 1,800-stop inspection
+within a bounded DOM budget while preserving the complete model for review;
+the small primary game window remains immediate. Simulation and Replay remain
+server-backed lists, so their initial response and browser memory must be
+measured with the same fixture before introducing client-side virtualization.
+No primary user error tells a producer to inspect a server log: each message
+states the failed action, a reason where known, and the next recovery action.

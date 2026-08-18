@@ -1,7 +1,8 @@
 import type {StudioReplayJobRecord} from "./StudioReplayJobRecord.js";
 import type {StudioReplayRepository} from "./StudioReplayRepository.js";
 
-const DEFAULT_MAX_TERMINAL_REPLAYS_PER_PROJECT = 20;
+// Studio's paged history view supports the 250-replay long-history workflow.
+const DEFAULT_MAX_TERMINAL_REPLAYS_PER_PROJECT = 250;
 
 // The default StudioReplayRepository — a process-lifetime Map, same scope/lifetime/by-reference
 // mutation model as InMemoryStudioSimulationRepository (see that class's own doc comment for the full

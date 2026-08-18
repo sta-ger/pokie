@@ -9,6 +9,7 @@ import type {
     StudioSimulationStatisticsView,
 } from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
+import {createLargeSimulationLibrary} from "../../testUtils/largeStudioProjectFixture";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
@@ -91,6 +92,32 @@ function stepperStep(label: string, description: string): RegExp {
 }
 
 describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
+    it("keeps a 150-run library to a 50-row render window while every run remains reachable", async () => {
+        const user = userEvent.setup();
+        let openedLastRun = false;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: createLargeSimulationLibrary()}),
+            "/api/project/reports/simulation-149": () => {
+                openedLastRun = true;
+                return {ok: true, status: 200, body: reportDetailFor({seed: "seed-149"})};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+
+        const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
+        await waitFor(() => expect(within(recentRunsSection).getByText("Showing runs 1–50 of 150.")).toBeInTheDocument());
+        expect(within(recentRunsSection).getAllByRole("listitem")).toHaveLength(50);
+
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Next 50 runs"}));
+        await user.click(within(recentRunsSection).getByRole("button", {name: "Next 50 runs"}));
+        expect(within(recentRunsSection).getByText("Showing runs 101–150 of 150.")).toBeInTheDocument();
+        await user.click(within(recentRunsSection).getAllByRole("button", {name: "Open"})[49]);
+        await waitFor(() => expect(openedLastRun).toBe(true));
+    });
+
     it("Configure defaults to 10000 rounds, runs, and auto-opens a Review summary with recommendations/warnings intact", async () => {
         const user = userEvent.setup();
         let pollCount = 0;
@@ -876,7 +903,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await goToSimulationTab(user);
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("The recent runs list couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("The recent runs list couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("Something went wrong listing reports.");
 
         const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
@@ -934,7 +961,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(within(recentRunsSection).getByRole("button", {name: "Open"}));
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("This report couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("This report couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("ENOENT");
     }, 60000);
 
@@ -979,7 +1006,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(await screen.findByRole("button", {name: /a v1\.0\.0/}));
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("The comparison report couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("The comparison report couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("Something went wrong.");
     }, 60000);
 

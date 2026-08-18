@@ -43,6 +43,6 @@ describe("describeProjectActionError", () => {
         const described = describeProjectActionError("This validation request", rawMessage);
 
         expect(described).not.toContain(rawMessage);
-        expect(described).toBe("This validation request couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(described).toBe("This validation request couldn't be completed. Try again. If it continues, reopen the project and retry.");
     });
 });

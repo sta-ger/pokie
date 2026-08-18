@@ -55,7 +55,7 @@ describe("describePathActionError", () => {
 
         expect(described).not.toContain(rawMessage);
         expect(described).toBe(
-            "The certification bundle directory could not be completed. Try again, and check the Studio server logs if the problem persists.",
+            "The certification bundle directory could not be completed. Try again. If it continues, choose the location again and retry.",
         );
     });
 });

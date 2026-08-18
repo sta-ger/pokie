@@ -34,7 +34,7 @@ const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) =>
     schema: (subject) => ({status: `${subject} is missing or invalid.`, remediation: "Provide a valid value and try again."}),
     other: (subject) => ({
         status: `${subject} could not be completed.`,
-        remediation: "Try again, and check the Studio server logs if the problem persists.",
+        remediation: "Try again. If it continues, choose the location again and retry.",
     }),
 };
 

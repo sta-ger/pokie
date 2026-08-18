@@ -42,6 +42,6 @@ describe("describeRuntimeActionError", () => {
         const described = describeRuntimeActionError("This request", rawMessage);
 
         expect(described).not.toContain(rawMessage);
-        expect(described).toBe("This request couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(described).toBe("This request couldn't be completed. Try again. If it continues, start a new session and retry.");
     });
 });

@@ -8,7 +8,9 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "blueprint", capabilities: ["blueprint.build"]}}),
+    // Certification is available only to a project that directly reads an outcome-library artifact.
+    // A Blueprint reaches this workflow only after Build/Export has produced that artifact.
+    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "outcomeLibrary", capabilities: ["outcomeLibrary.read"]}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -347,11 +349,11 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Certification"}));
-
-        expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("");
+        // A Blueprint does not directly own an outcome-library artifact. Its previous certification
+        // state cannot leak into the newly opened project, and the workflow stays unavailable until
+        // Build/Export creates an artifact with the required capability.
+        expect(screen.queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
         expect(screen.queryByText("Clean")).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to Build bundle"})).not.toBeInTheDocument();
     });
 
     it("blocks Build and surfaces a diagnostic for a partially-filled mode row, instead of silently dropping it", async () => {

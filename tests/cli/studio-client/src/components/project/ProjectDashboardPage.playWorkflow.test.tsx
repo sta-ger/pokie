@@ -81,7 +81,7 @@ describe("ProjectDashboardPage - Play", () => {
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
 
         expect(
-            await screen.findByText("This session couldn't be completed. Try again, and check the Studio server logs if the problem persists."),
+            await screen.findByText("This session couldn't be completed. Try again. If it continues, start a new session and retry."),
         ).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "New Play session"})).toBeInTheDocument();
     }, 30000);

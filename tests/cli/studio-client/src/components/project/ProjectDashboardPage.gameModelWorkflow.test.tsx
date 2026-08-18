@@ -4,6 +4,7 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {createLargeGameModelProjection, createLargeReelStripModelerBlueprint} from "../../testUtils/largeStudioProjectFixture";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
@@ -83,6 +84,77 @@ async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promi
 }
 
 describe("ProjectDashboardPage - Game Model tab", () => {
+    it("keeps a 1,800-stop production model bounded while every reel position remains inspectable", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        await user.click(screen.getByRole("tab", {name: "Full strips"}));
+        expect(await screen.findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
+        // Six full-strip tables are present, but each table has a 100-row rendering window rather
+        // than mounting all 1,800 stops at once.
+        await user.click(screen.getAllByRole("button", {name: "Next 100"})[0]);
+        expect(screen.getByText("Showing positions 100–199 of 300.")).toBeInTheDocument();
+        expect(screen.getAllByText("100").length).toBeGreaterThan(0);
+    });
+
+    it("keeps the Reel Strip Modeler's 300-stop reel editor bounded while later reels and stops remain reachable", async () => {
+        const user = userEvent.setup();
+        const modelerBlueprint = createLargeReelStripModelerBlueprint();
+        const modelerEntries = modelerBlueprint.reelStripGeneration as {type: "literal"; strip: string[]}[];
+        // Keep the production-scale Reel 6, alongside a no-pager short reel and a 101-stop reel
+        // whose final one-symbol page disappears after a single removal.
+        modelerEntries[0] = {type: "literal", strip: ["S00"]};
+        modelerEntries[1] = {...modelerEntries[1], strip: modelerEntries[1].strip.slice(0, 101)};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: modelerBlueprint, blueprintHash: "large-hash"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const reels = sectionFieldset("Reels");
+        await user.click(within(reels).getByRole("button", {name: "Edit"}));
+        expect(await within(reels).findByText("Per-reel (Reel Strip Modeler)")).toBeInTheDocument();
+        expect(within(reels).getAllByRole("button", {name: /^Select reel [1-6]$/})).toHaveLength(6);
+
+        // Selecting the final reel takes the normal modeler path, but only its first 100 literal
+        // symbols mount; the other 1,700 stops remain unrendered until the user pages to them.
+        await user.click(within(reels).getByRole("button", {name: "Select reel 6"}));
+        expect(within(reels).getByText("Showing symbols 1–100 of 300.")).toBeInTheDocument();
+        expect(within(reels).getAllByRole("textbox", {name: /Reel 6 symbol/})).toHaveLength(100);
+
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        expect(within(reels).getByText("Showing symbols 201–300 of 300.")).toBeInTheDocument();
+        expect(within(reels).getByRole("textbox", {name: "Reel 6 symbol 300"})).toHaveValue("S16");
+
+        // Changing from the last page of a 300-stop reel to a shorter reel must not strand the
+        // modeler on an out-of-range page (the short reel has no pager to recover with).
+        await user.click(within(reels).getByRole("button", {name: "Select reel Which reel"}));
+        await user.click(within(reels).getByRole("button", {name: "Select reel 1"}));
+        expect(within(reels).getByRole("textbox", {name: "Reel 1 symbol 1"})).toHaveValue("S00");
+        expect(within(reels).queryByText(/Showing symbols/)).not.toBeInTheDocument();
+
+        // A mutation that removes the sole symbol on the final page must clamp the editor back to
+        // the remaining 100 symbols instead of hiding them behind an unavailable pager action.
+        await user.click(within(reels).getByRole("button", {name: "Select reel Which reel"}));
+        await user.click(within(reels).getByRole("button", {name: "Select reel 2"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 101"})).toBeInTheDocument();
+        await user.click(within(reels).getByRole("button", {name: "Remove reel 2 symbol 101"}));
+        // Exactly 100 symbols no longer need a pager; the first page remains reachable directly.
+        expect(within(reels).queryByText(/Showing symbols/)).not.toBeInTheDocument();
+        expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 100"})).toBeInTheDocument();
+    });
+
     it("renders every section of a full projection, straight off GET /api/project/gameModel", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

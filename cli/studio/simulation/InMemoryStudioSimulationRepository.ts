@@ -1,7 +1,8 @@
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
 import type {StudioSimulationRepository} from "./StudioSimulationRepository.js";
 
-const DEFAULT_MAX_TERMINAL_JOBS_PER_PROJECT = 20;
+// Studio's paged history view supports the 150-report large-project workflow.
+const DEFAULT_MAX_TERMINAL_JOBS_PER_PROJECT = 250;
 
 // The default StudioSimulationRepository — a process-lifetime Map, same scope/lifetime as
 // InMemorySessionRepository/InMemoryRecentProjectsRepository. Records are stored (and returned) by

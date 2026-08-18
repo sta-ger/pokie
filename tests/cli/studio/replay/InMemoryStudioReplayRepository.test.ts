@@ -135,6 +135,19 @@ describe("InMemoryStudioReplayRepository", () => {
     });
 
     describe("retention", () => {
+        it("retains the 250-replay history supported by the paged Studio workflow by default", () => {
+            const repository = new InMemoryStudioReplayRepository();
+
+            for (let i = 0; i < 250; i++) {
+                repository.save(createRecord(`replay-${i}`, "/a", "completed", i * 1000));
+            }
+
+            const remaining = repository.listByProjectRoot("/a");
+            expect(remaining).toHaveLength(250);
+            expect(remaining[0].id).toBe("replay-249");
+            expect(remaining[249].id).toBe("replay-0");
+        });
+
         it("keeps at most the configured number of terminal replays per project", () => {
             const repository = new InMemoryStudioReplayRepository(3);
 

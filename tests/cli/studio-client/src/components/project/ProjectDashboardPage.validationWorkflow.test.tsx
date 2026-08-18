@@ -31,7 +31,7 @@ describe("ProjectDashboardPage - Validation workflow", () => {
         await screen.findByRole("heading", {name: "A"});
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("This validation check couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("This validation check couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("ENOENT");
         expect(alert).not.toHaveTextContent("blueprint.json");
     });

@@ -65,7 +65,7 @@ export type ProjectTab =
     | "certification"
     | "provablyFair";
 
-// Every runtime operation (Simulation/Replay/Certification/Fairness/Build-Export/Analysis) needs
+// The game-facing workflows (Play, Simulation, Replay and Build/Export) need
 // the loaded project to actually be runnable in-process. A "tsPackage" project carries
 // RUNTIME_EXECUTE_CAPABILITY itself; a "blueprint" project never does (see RUNTIME_EXECUTE_CAPABILITY's
 // own doc comment), but Studio always materializes it into a runnable tsPackage before loading it, so
@@ -91,11 +91,13 @@ const BUILD_EXPORT_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
 ];
 
-// Certification builds/verifies an evidence bundle on top of an already-computed native outcome library --
-// what CERTIFICATION_BUILD_OPERATION/CERTIFICATION_VERIFY_OPERATION require (OUTCOME_LIBRARY_READ_CAPABILITY),
-// same reasoning as Build/Export's own outcome-library card. Never offered for a "stakeAdapter" export, which
-// has no PreGeneratedOutcomeSourcing-style draw contract of its own to sample from.
-const CERTIFICATION_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, OUTCOME_LIBRARY_READ_CAPABILITY];
+// Certification consumes an existing, native outcome-library artifact. A Blueprint must first use
+// Build/Export to create that artifact; merely being buildable is not certification capability.
+const CERTIFICATION_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [OUTCOME_LIBRARY_READ_CAPABILITY];
+
+// Provably Fair is an integration/runtime operation, not a generic project-quality claim. It is
+// deliberately unavailable to Blueprints, which have no live runtime integration until built.
+const PROVABLY_FAIR_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [RUNTIME_EXECUTE_CAPABILITY];
 
 type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
     // undefined -- always reachable once a project is loaded (Overview). A non-empty list -- reachable
@@ -108,9 +110,9 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // diagnostics folded into Overview itself (see OverviewTab), run on load and re-run on demand, not a
 // separate click-to-check tab. Every entry but Overview/Game Model carries `requiredCapabilities` --
 // what actually decides whether it's offered (see isTabSupported below), never just "the dashboard
-// loaded at all". Replay/Certification/Fairness/Build-Export are tagged `section: "Advanced"`
-// so NavTabs visually separates them from the primary Overview -> Play -> Simulation flow --
-// everything's still one click away, just not presented as equal-weight to it.
+// loaded at all". Overview, Game Model, Play, Simulation, Replay, and Build/Export are the
+// workspace's primary information architecture, in that order. They are deliberately ungrouped:
+// Replay and Build/Export are ordinary production workflows, not "Advanced" escape hatches.
 //
 // "gameModel"/GameModelTab has no `requiredCapabilities`, same as Overview -- it's a View Mode reading
 // of GET /api/project/gameModel's own resolved-project-type-aware projection (see buildProjectGameModel's
@@ -146,10 +148,10 @@ const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "gameModel", label: "Game Model"},
     {value: "play", label: "Play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "replay", label: "Replay", section: "Advanced", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "exportDeploy", label: "Build/Export", section: "Advanced", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
-    {value: "certification", label: "Certification", section: "Advanced", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
-    {value: "provablyFair", label: "Fairness", section: "Advanced", requiredCapabilities: RUNTIME_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "exportDeploy", label: "Build/Export", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
+    {value: "certification", label: "Certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
+    {value: "provablyFair", label: "Provably Fair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
