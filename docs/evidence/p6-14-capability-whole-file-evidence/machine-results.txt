@@ -1,0 +1,37 @@
+P6-14 independent host result: PASS
+candidate: 9fe5d3049349bf14cf8de3ece8e1022d37c097ef
+host: Linux; Node v24.18.0; npm 11.16.0
+workflow: npm run test:targeted (Jest --runInBand --runTestsByPath)
+
+executed paths:
+- tests/cli/commands/ReplayCommand.test.ts
+- tests/cli/commands/ServeCommand.test.ts
+- tests/project/ArtifactBuilderRegistry.test.ts
+- tests/project/OutcomeSourceProjectAnalyzer.test.ts
+- tests/project/ProjectCapabilities.test.ts
+- tests/project/ProjectTargetResolver.test.ts
+- tests/project/describeUnsupportedProjectOperation.test.ts
+- tests/project/readWasmComponentManifest.test.ts
+- tests/cli/cliCommandInventory.contract.test.ts
+- tests/cli/studio/StudioServer.test.ts
+- tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
+
+runner excerpt:
+PASS pokie-integration tests/cli/studio/StudioServer.test.ts (11.524 s)
+PASS pokie tests/project/ArtifactBuilderRegistry.test.ts
+PASS pokie tests/project/OutcomeSourceProjectAnalyzer.test.ts
+PASS pokie tests/cli/cliCommandInventory.contract.test.ts
+PASS pokie tests/cli/commands/ServeCommand.test.ts
+PASS pokie tests/cli/commands/ReplayCommand.test.ts
+PASS pokie tests/project/ProjectTargetResolver.test.ts
+PASS pokie tests/project/readWasmComponentManifest.test.ts
+PASS pokie tests/project/describeUnsupportedProjectOperation.test.ts
+PASS pokie tests/project/ProjectCapabilities.test.ts
+PASS studio-client-components tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx (20.205 s)
+Test Suites: 11 passed, 11 total
+Tests:       1409 passed, 1409 total
+Snapshots:   0 total
+Time:        38.775 s
+Ran all test suites within the eleven paths above in 3 projects.
+
+unretained raw runner log sha256: d0babe96430906229a6020f3fe829447e716b3b79b65d8bb700dffca4cd7ec1a
