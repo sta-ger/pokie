@@ -27,7 +27,7 @@ const PROJECT_ACTION_ISSUE_COPY: Record<ProjectActionErrorReason, (subject: stri
     schema: (subject) => ({status: `${subject} was rejected as invalid.`, remediation: "Check the values entered and try again."}),
     other: (subject) => ({
         status: `${subject} couldn't be completed.`,
-        remediation: "Try again, and check the Studio server logs if the problem persists.",
+        remediation: "Try again. If it continues, reopen the project and retry.",
     }),
 };
 

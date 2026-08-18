@@ -21,8 +21,10 @@ const PROJECT_ROUTES = {
             status: "loaded",
             projectRoot: "/games/my-slot",
             game: {id: "my-slot", name: "My Slot", version: "1.0.0"},
-            type: "blueprint",
-            capabilities: ["blueprint.build"],
+            // This inventory fixture represents a built runtime project that also directly owns an
+            // outcome-library artifact. Blueprint-specific navigation is covered separately below.
+            type: "tsPackage",
+            capabilities: ["runtime.execute", "outcomeLibrary.read"],
             origin: "managed",
         },
     }),
@@ -117,7 +119,7 @@ describe("Home (/home/:tab) tab inventory baseline", () => {
 });
 
 describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
-    it("lists exactly the 8 supported tabs, in order, with a single 'Advanced' grouping starting at Replay -- no standalone Validate, Deployment, Analysis, or Stake Engine Export entries", async () => {
+    it("keeps the six primary workflows in order and leaves Replay/Build ungrouped; direct artifact and runtime integrations appear only when their capabilities exist", async () => {
         const {fetchImpl} = createRoutedFakeFetch(PROJECT_ROUTES);
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -133,18 +135,48 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
             "Replay",
             "Build/Export",
             "Certification",
-            "Fairness",
+            "Provably Fair",
         ]);
-        // Exactly one "Advanced" section header for the whole nav (NavTabs only prints one when the
-        // section actually changes from the previous item's) -- Overview/Game Model/Play/Simulation stay
-        // ungrouped as the primary happy path (Play is Studio's own normal game mode, right alongside
-        // Overview and Simulation; Game Model has no requiredCapabilities either, same as Overview -- see
-        // ALL_PROJECT_TABS' own doc comment); everything from Replay onward shares it. There's no
-        // "Validate" section any more (validation is now automatic diagnostics inside Overview -- see
+        // There is no "Advanced" exile: Overview/Game Model/Play/Simulation/Replay/Build-Export are
+        // the primary flow. Certification is an artifact capability and Provably Fair is a runtime
+        // integration, so this fixture intentionally has both. There's no "Validate" section any more
+        // (validation is now automatic diagnostics inside Overview -- see
         // OverviewTab), and Deployment/Stake Engine Export/Analysis (Outcome Libraries) have been removed
         // outright, not just hidden -- Build/Export is the sole Studio build surface (see ExportDeployTab),
         // and their old routes are gone too (see the deep-link fallback test below).
-        expect(within(nav).getAllByText("Advanced")).toHaveLength(1);
+        expect(within(nav).queryByText("Advanced")).not.toBeInTheDocument();
+    });
+
+    it("shows a Blueprint's six primary workflows without Certification or Provably Fair, directing artifact work through Build/Export", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...PROJECT_ROUTES,
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "loaded",
+                    projectRoot: "/games/blueprint-slot",
+                    game: {id: "blueprint-slot", name: "Blueprint Slot", version: "1.0.0"},
+                    type: "blueprint",
+                    capabilities: ["blueprint.build"],
+                },
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "Blueprint Slot"});
+
+        const nav = screen.getByRole("navigation", {name: "Sections"});
+        expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual([
+            "Overview",
+            "Game Model",
+            "Play",
+            "Simulation",
+            "Replay",
+            "Build/Export",
+        ]);
+        expect(within(nav).queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
+        expect(within(nav).queryByRole("button", {name: "Provably Fair"})).not.toBeInTheDocument();
     });
 
     it("falls back to Overview for the old Deployment, Stake Engine Export, and Outcome Libraries deep links, same as any other unrecognized tab -- they're not kept alive merely for pre-release compatibility", async () => {
@@ -164,7 +196,7 @@ describe("Project Dashboard (/project/:tab) tab inventory baseline", () => {
         expect(outcomeLibrariesRender.queryByRole("button", {name: stepperStep("Select/import", "Choose a library")})).not.toBeInTheDocument();
     });
 
-    it("lists Overview, Game Model, Build/Export and Certification for a read-only outcome-library project -- reachable without RUNTIME_EXECUTE_CAPABILITY, but Play/Simulation/Replay/Fairness (which need a real draw or live session) stay hidden", async () => {
+    it("lists Overview, Game Model, Build/Export and Certification for a read-only outcome-library project -- reachable without RUNTIME_EXECUTE_CAPABILITY, but Play/Simulation/Replay/Provably Fair (which need a real draw or live session) stay hidden", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...PROJECT_ROUTES,
             "/api/project/context": () => ({
@@ -398,7 +430,7 @@ describe("Advanced tab subject-specific recovery copy baseline", () => {
         expect(
             alerts.some(
                 (alert) =>
-                    alert.textContent === "The deployment targets list couldn't be completed. Try again, and check the Studio server logs if the problem persists.",
+                    alert.textContent === "The deployment targets list couldn't be completed. Try again. If it continues, reopen the project and retry.",
             ),
         ).toBe(true);
         expect(alerts.every((alert) => alert.textContent !== "deployment targets registry unavailable")).toBe(true);
@@ -415,7 +447,7 @@ describe("Advanced tab subject-specific recovery copy baseline", () => {
         const alerts = await screen.findAllByRole("alert");
         expect(
             alerts.some(
-                (alert) => alert.textContent === "The replay list couldn't be completed. Try again, and check the Studio server logs if the problem persists.",
+                (alert) => alert.textContent === "The replay list couldn't be completed. Try again. If it continues, reload the replay source and retry.",
             ),
         ).toBe(true);
         expect(alerts.every((alert) => alert.textContent !== "replay list endpoint unreachable")).toBe(true);
@@ -446,7 +478,7 @@ describe("Scoped path-action error remediation baseline", () => {
             alerts.some(
                 (alert) =>
                     alert.textContent ===
-                    "The certification bundle directory could not be completed. Try again, and check the Studio server logs if the problem persists.",
+                    "The certification bundle directory could not be completed. Try again. If it continues, choose the location again and retry.",
             ),
         ).toBe(true);
         expect(alerts.some((alert) => alert.textContent === "bundle directory not found")).toBe(false);

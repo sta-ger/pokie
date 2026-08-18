@@ -97,7 +97,7 @@ describe("Guided Design Game: automatic validation freshness", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         expect(
-            await screen.findByText("This validation request could not be completed. Try again, and check the Studio server logs if the problem persists."),
+            await screen.findByText("This validation request could not be completed. Try again. If it continues, reopen the project and retry."),
         ).toBeInTheDocument();
         expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
     }, 60000);

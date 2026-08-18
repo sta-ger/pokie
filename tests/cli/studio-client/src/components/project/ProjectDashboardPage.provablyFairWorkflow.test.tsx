@@ -8,7 +8,8 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
-    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "blueprint", capabilities: ["blueprint.build"]}}),
+    // Provably Fair is a live runtime integration, never a generic Blueprint quality tab.
+    "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "tsPackage", capabilities: ["runtime.execute"]}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),
@@ -53,7 +54,7 @@ const PROOF: FairnessRoundProof = {
 
 async function goToProvablyFairTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
-    await user.click(screen.getByRole("button", {name: "Fairness"}));
+    await user.click(screen.getByRole("button", {name: "Provably Fair"}));
     await screen.findByLabelText("Source outcome-library bundle directory");
 }
 
@@ -336,7 +337,7 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Fairness"}));
+        await user.click(screen.getByRole("button", {name: "Provably Fair"}));
 
         expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("");
         expect(screen.queryByText("sha256:server-seed-hash")).not.toBeInTheDocument();

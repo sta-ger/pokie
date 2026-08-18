@@ -21,17 +21,17 @@ const GENERATION_ERROR_COPY: Record<string, GenerationErrorCopy> = {
     },
     "weighted-outcome-library-generation-weight-not-representable": {
         status: "One of this library's outcome weights can't be represented exactly.",
-        remediation: "This points to a mechanic/config issue in the game itself, not something to retry -- check the Studio server logs for the exact outcome that failed.",
+        remediation: "This points to a mechanic or configuration issue in the game. Review the game model, correct it, and generate again.",
     },
     "weighted-outcome-library-generation-session-not-playable": {
         status: "The game session became unplayable partway through generation.",
-        remediation: "This points to a mechanic/config issue in the game itself, not something to retry -- check the Studio server logs for details.",
+        remediation: "This points to a mechanic or configuration issue in the game. Review the game model, correct it, and generate again.",
     },
 };
 
 const GENERATION_ERROR_FALLBACK: GenerationErrorCopy = {
     status: "Generating this outcome library failed.",
-    remediation: "Check the settings above and try again; check the Studio server logs if the problem persists.",
+    remediation: "Check the settings above and try again. If it continues, reopen the project and retry.",
 };
 
 export function describeOutcomeLibraryGenerationErrorExplanation(code: string): string {

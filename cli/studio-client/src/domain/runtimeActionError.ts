@@ -24,13 +24,13 @@ const RUNTIME_ACTION_ISSUE_COPY: Record<RuntimeActionErrorReason, (subject: stri
     schema: (subject) => ({status: `${subject} was rejected as invalid.`, remediation: "Check the values entered and try again."}),
     other: (subject) => ({
         status: `${subject} couldn't be completed.`,
-        remediation: "Try again, and check the Studio server logs if the problem persists.",
+        remediation: "Try again. If it continues, start a new session and retry.",
     }),
 };
 
 // Turns a Play call site's raw backend failure text into inline, subject-specific status + remediation
 // copy -- e.g. describeRuntimeActionError("This session", "Insufficient balance for this session.")
-// -> "This session couldn't be completed. Try again, and check the Studio server logs if the problem
+// -> "This session couldn't be completed. Try again. If it continues, start a new session and retry."
 // persists." Never echoes the raw message back, same convention as describePathActionError -- a network
 // hiccup or a game's own failure is an everyday outcome, not a bug worth surfacing verbatim.
 export function describeRuntimeActionError(subject: string, message: string): string {

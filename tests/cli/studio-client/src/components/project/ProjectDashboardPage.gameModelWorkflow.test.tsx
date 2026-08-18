@@ -4,6 +4,7 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {createLargeGameModelProjection} from "../../testUtils/largeStudioProjectFixture";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
@@ -83,6 +84,25 @@ async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promi
 }
 
 describe("ProjectDashboardPage - Game Model tab", () => {
+    it("keeps a 1,800-stop production model bounded while every reel position remains inspectable", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        expect(await screen.findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
+        // Six full-strip tables are present, but each table has a 100-row rendering window rather
+        // than mounting all 1,800 stops at once.
+        expect(screen.getAllByText("Next 100")).toHaveLength(6);
+        await user.click(screen.getAllByRole("button", {name: "Next 100"})[0]);
+        expect(screen.getByText("Showing positions 100–199 of 300.")).toBeInTheDocument();
+        expect(screen.getAllByText("100").length).toBeGreaterThan(0);
+    });
+
     it("renders every section of a full projection, straight off GET /api/project/gameModel", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

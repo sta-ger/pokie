@@ -876,7 +876,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await goToSimulationTab(user);
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("The recent runs list couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("The recent runs list couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("Something went wrong listing reports.");
 
         const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
@@ -934,7 +934,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(within(recentRunsSection).getByRole("button", {name: "Open"}));
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("This report couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("This report couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("ENOENT");
     }, 60000);
 
@@ -979,7 +979,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await user.click(await screen.findByRole("button", {name: /a v1\.0\.0/}));
 
         const alert = await screen.findByRole("alert");
-        expect(alert).toHaveTextContent("The comparison report couldn't be completed. Try again, and check the Studio server logs if the problem persists.");
+        expect(alert).toHaveTextContent("The comparison report couldn't be completed. Try again. If it continues, reopen the project and retry.");
         expect(alert).not.toHaveTextContent("Something went wrong.");
     }, 60000);
 

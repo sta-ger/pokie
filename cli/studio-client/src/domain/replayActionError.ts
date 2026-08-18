@@ -36,7 +36,7 @@ const REPLAY_ACTION_ISSUE_COPY: Record<ReplayActionErrorReason, (subject: string
     }),
     other: (subject) => ({
         status: `${subject} couldn't be completed.`,
-        remediation: "Try again, and check the Studio server logs if the problem persists.",
+        remediation: "Try again. If it continues, reload the replay source and retry.",
     }),
 };
 

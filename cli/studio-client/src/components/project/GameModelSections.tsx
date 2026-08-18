@@ -390,32 +390,56 @@ function describeSpecialCell(position: {isWild: boolean; isScatter: boolean}): s
     return "—";
 }
 
+// A full strip can legitimately have hundreds of stops. Keeping a bounded render window prevents a
+// 5–7 reel production model from creating thousands of table rows at once, while the controls keep
+// every physical stop inspectable without approximating or dropping data.
+const REEL_POSITIONS_RENDER_LIMIT = 100;
+
 function ReelPositionsTable({reel}: {reel: GameModelResolvedReel}) {
+    const [start, setStart] = useState(0);
+    const maxStart = Math.max(0, reel.positions.length - REEL_POSITIONS_RENDER_LIMIT);
+    const visiblePositions = reel.positions.slice(start, start + REEL_POSITIONS_RENDER_LIMIT);
+    const lastVisible = start + visiblePositions.length;
     return (
-        <Table.ScrollContainer minWidth={480}>
-            <Table>
-                <Table.Thead>
-                    <Table.Tr>
-                        <Table.Th>Index</Table.Th>
-                        <Table.Th>Symbol</Table.Th>
-                        <Table.Th>Special</Table.Th>
-                        <Table.Th>Stack</Table.Th>
-                        <Table.Th>Locked</Table.Th>
-                    </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                    {reel.positions.map((position) => (
-                        <Table.Tr key={position.index}>
-                            <Table.Td>{position.index}</Table.Td>
-                            <Table.Td><SymbolPresentation symbolId={position.symbolId} /></Table.Td>
-                            <Table.Td>{describeSpecialCell(position)}</Table.Td>
-                            <Table.Td>{position.stackSize > 1 ? `${position.stackSize}×` : "—"}</Table.Td>
-                            <Table.Td>{position.locked ? "Locked" : "—"}</Table.Td>
+        <div>
+            {reel.positions.length > REEL_POSITIONS_RENDER_LIMIT && (
+                <Group gap="xs" mb="xs">
+                    <Text size="sm" c="dimmed">
+                        Showing positions {start}–{lastVisible - 1} of {reel.positions.length}.
+                    </Text>
+                    <Button size="xs" variant="default" disabled={start === 0} onClick={() => setStart((current) => Math.max(0, current - REEL_POSITIONS_RENDER_LIMIT))}>
+                        Previous 100
+                    </Button>
+                    <Button size="xs" variant="default" disabled={start >= maxStart} onClick={() => setStart((current) => Math.min(maxStart, current + REEL_POSITIONS_RENDER_LIMIT))}>
+                        Next 100
+                    </Button>
+                </Group>
+            )}
+            <Table.ScrollContainer minWidth={480}>
+                <Table>
+                    <Table.Thead>
+                        <Table.Tr>
+                            <Table.Th>Index</Table.Th>
+                            <Table.Th>Symbol</Table.Th>
+                            <Table.Th>Special</Table.Th>
+                            <Table.Th>Stack</Table.Th>
+                            <Table.Th>Locked</Table.Th>
                         </Table.Tr>
-                    ))}
-                </Table.Tbody>
-            </Table>
-        </Table.ScrollContainer>
+                    </Table.Thead>
+                    <Table.Tbody>
+                        {visiblePositions.map((position) => (
+                            <Table.Tr key={position.index}>
+                                <Table.Td>{position.index}</Table.Td>
+                                <Table.Td><SymbolPresentation symbolId={position.symbolId} /></Table.Td>
+                                <Table.Td>{describeSpecialCell(position)}</Table.Td>
+                                <Table.Td>{position.stackSize > 1 ? `${position.stackSize}×` : "—"}</Table.Td>
+                                <Table.Td>{position.locked ? "Locked" : "—"}</Table.Td>
+                            </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                </Table>
+            </Table.ScrollContainer>
+        </div>
     );
 }
 
