@@ -4,8 +4,18 @@ import type {GameModelProjection, StudioReplayListEntry, StudioSimulationReportL
 // 48 symbols, 192 paytable rows, 12 modes, stack metadata, and long persisted-workflow lists.
 // It is generated deterministically so tests exercise the real rendering boundary without committing
 // a multi-megabyte JSON capture.
+function createLargeSymbolIds(): string[] {
+    return Array.from({length: 48}, (_, index) => `S${String(index).padStart(2, "0")}`);
+}
+
+function createLargeReelStrips(symbols: string[]): string[][] {
+    return Array.from({length: 6}, (_, reelIndex) => Array.from({length: 300}, (_, index) => symbols[(index + reelIndex) % symbols.length]));
+}
+
 export function createLargeGameModelProjection(): GameModelProjection {
-    const symbols = Array.from({length: 48}, (_, index) => ({id: `S${String(index).padStart(2, "0")}`, isWild: index === 0, isScatter: index === 1}));
+    const symbolIds = createLargeSymbolIds();
+    const reelStrips = createLargeReelStrips(symbolIds);
+    const symbols = symbolIds.map((id, index) => ({id, isWild: index === 0, isScatter: index === 1}));
     return {
         basics: {status: "available", data: {id: "large-slot", name: "Large Slot", version: "1.0.0"}},
         layout: {status: "available", data: {reels: 6, rows: 4, winModel: {type: "ways"}}},
@@ -15,12 +25,12 @@ export function createLargeGameModelProjection(): GameModelProjection {
             data: {
                 generationMode: "reelStrips",
                 gameWindow: {reels: 6, rows: 4, wrapsAround: true, grid: Array.from({length: 6}, () => Array.from({length: 4}, (_, row) => ({symbolId: symbols[row].id, isWild: row === 0, isScatter: row === 1})))},
-                reels: Array.from({length: 6}, (_, reelIndex) => ({
+                reels: reelStrips.map((strip, reelIndex) => ({
                     reelIndex,
                     source: "literal" as const,
-                    positions: Array.from({length: 300}, (_, index) => ({
+                    positions: strip.map((symbolId, index) => ({
                         index,
-                        symbolId: symbols[(index + reelIndex) % symbols.length].id,
+                        symbolId,
                         isWild: (index + reelIndex) % symbols.length === 0,
                         isScatter: (index + reelIndex) % symbols.length === 1,
                         locked: index % 37 === 0,
@@ -44,6 +54,25 @@ export function createLargeGameModelProjection(): GameModelProjection {
         },
         mechanics: {status: "available", data: {freeGames: {scatterSymbol: "S01", awardsByCount: {3: 10, 4: 15, 5: 20}}}},
         limits: {status: "available", data: {minBet: 0.1, maxBet: 5}},
+    };
+}
+
+// The same six 300-stop source as createLargeGameModelProjection(), but in the persisted Blueprint
+// shape consumed by the actual Reel Strip Modeler. Keeping both paths on one deterministic fixture
+// prevents the modeler-scale proof from drifting away from the Game Model stress data.
+export function createLargeReelStripModelerBlueprint(): Record<string, unknown> {
+    const symbols = createLargeSymbolIds();
+    return {
+        manifest: {id: "large-slot", name: "Large Slot", version: "1.0.0"},
+        reels: 6,
+        rows: 4,
+        symbols,
+        wilds: [symbols[0]],
+        scatters: [symbols[1]],
+        paylines: [],
+        paytable: [],
+        availableBets: [0.1, 0.2, 0.5, 1, 2, 5],
+        reelStripGeneration: createLargeReelStrips(symbols).map((strip) => ({type: "literal", strip})),
     };
 }
 

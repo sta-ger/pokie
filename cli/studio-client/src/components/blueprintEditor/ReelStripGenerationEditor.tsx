@@ -41,6 +41,7 @@ import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/us
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
+import {BoundedListPager} from "../common/BoundedListPager";
 import {BufferedTextInput} from "../common/BufferedTextInput";
 import {CodeBlock} from "../common/CodeBlock";
 import {EmptyState} from "../common/EmptyState";
@@ -120,33 +121,41 @@ function makeScratchBlueprint(reelIndex: number, entry: Record<string, unknown>)
 function LiteralStripEditor({reelIndex, entry, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate; issues: DraftIssue[]}) {
     const strip = asStringList(entry.strip);
     const [newSymbolId, setNewSymbolId] = useState("");
+    const [page, setPage] = useState(0);
+    const pageSize = 100;
+    const firstVisiblePosition = page * pageSize;
+    const visibleStrip = strip.slice(firstVisiblePosition, firstVisiblePosition + pageSize);
 
     return (
         <div>
+            {strip.length > pageSize && <BoundedListPager itemLabel="symbols" itemCount={strip.length} page={page} pageSize={pageSize} onPageChange={setPage} />}
             <List listStyleType="none" spacing={4}>
-                {strip.map((symbolId, position) => (
-                    <List.Item key={position}>
-                        <Group gap="xs">
-                            <BufferedTextInput
-                                aria-label={`Reel ${reelIndex + 1} symbol ${position + 1}`}
-                                value={symbolId}
-                                onCommit={(value) => mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value))}
-                            />
-                            {issueFor(issues, `strip.${position}`) && <Text c="red" size="xs">{issueFor(issues, `strip.${position}`)}</Text>}
-                            <RowActions
-                                itemLabel={`reel ${reelIndex + 1} symbol ${position + 1}`}
-                                onDuplicate={() => mutate((b) => duplicateReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
-                                onRemove={() => mutate((b) => removeReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
-                                onMoveUp={position > 0 ? () => mutate((b) => moveReelStripGenerationLiteralSymbolAt(b, reelIndex, position, position - 1)) : undefined}
-                                onMoveDown={
-                                    position < strip.length - 1
-                                        ? () => mutate((b) => moveReelStripGenerationLiteralSymbolAt(b, reelIndex, position, position + 1))
-                                        : undefined
-                                }
-                            />
-                        </Group>
-                    </List.Item>
-                ))}
+                {visibleStrip.map((symbolId, visiblePosition) => {
+                    const position = firstVisiblePosition + visiblePosition;
+                    return (
+                        <List.Item key={position}>
+                            <Group gap="xs">
+                                <BufferedTextInput
+                                    aria-label={`Reel ${reelIndex + 1} symbol ${position + 1}`}
+                                    value={symbolId}
+                                    onCommit={(value) => mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value))}
+                                />
+                                {issueFor(issues, `strip.${position}`) && <Text c="red" size="xs">{issueFor(issues, `strip.${position}`)}</Text>}
+                                <RowActions
+                                    itemLabel={`reel ${reelIndex + 1} symbol ${position + 1}`}
+                                    onDuplicate={() => mutate((b) => duplicateReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
+                                    onRemove={() => mutate((b) => removeReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
+                                    onMoveUp={position > 0 ? () => mutate((b) => moveReelStripGenerationLiteralSymbolAt(b, reelIndex, position, position - 1)) : undefined}
+                                    onMoveDown={
+                                        position < strip.length - 1
+                                            ? () => mutate((b) => moveReelStripGenerationLiteralSymbolAt(b, reelIndex, position, position + 1))
+                                            : undefined
+                                    }
+                                />
+                            </Group>
+                        </List.Item>
+                    );
+                })}
             </List>
             <QuickActions>
                 <TextInput

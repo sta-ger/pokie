@@ -4,7 +4,7 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
-import {createLargeGameModelProjection} from "../../testUtils/largeStudioProjectFixture";
+import {createLargeGameModelProjection, createLargeReelStripModelerBlueprint} from "../../testUtils/largeStudioProjectFixture";
 
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
@@ -101,6 +101,34 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         await user.click(screen.getAllByRole("button", {name: "Next 100"})[0]);
         expect(screen.getByText("Showing positions 100–199 of 300.")).toBeInTheDocument();
         expect(screen.getAllByText("100").length).toBeGreaterThan(0);
+    });
+
+    it("keeps the Reel Strip Modeler's 300-stop reel editor bounded while later reels and stops remain reachable", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: createLargeReelStripModelerBlueprint(), blueprintHash: "large-hash"}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+
+        const reels = sectionFieldset("Reels");
+        await user.click(within(reels).getByRole("button", {name: "Edit"}));
+        expect(await within(reels).findByText("Per-reel (Reel Strip Modeler)")).toBeInTheDocument();
+        expect(within(reels).getAllByRole("button", {name: /^Select reel [1-6]$/})).toHaveLength(6);
+
+        // Selecting the final reel takes the normal modeler path, but only its first 100 literal
+        // symbols mount; the other 1,700 stops remain unrendered until the user pages to them.
+        await user.click(within(reels).getByRole("button", {name: "Select reel 6"}));
+        expect(within(reels).getByText("Showing symbols 1–100 of 300.")).toBeInTheDocument();
+        expect(within(reels).getAllByRole("textbox", {name: /Reel 6 symbol/})).toHaveLength(100);
+
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        expect(within(reels).getByText("Showing symbols 201–300 of 300.")).toBeInTheDocument();
+        expect(within(reels).getByRole("textbox", {name: "Reel 6 symbol 300"})).toHaveValue("S16");
     });
 
     it("renders every section of a full projection, straight off GET /api/project/gameModel", async () => {
