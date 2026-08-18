@@ -158,6 +158,82 @@ describe("ProjectsPanel: Import Project", () => {
         );
     });
 
+    it("leaves the imported location unchanged without opening the fallback browser when the native PAR picker is cancelled", async () => {
+        const user = userEvent.setup();
+        const selectedLocation = "/games/already-selected.xlsx";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: selectedLocation, displayPath: selectedLocation, entries: [], isDirectory: false},
+            }),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "cancelled"}}),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.type(screen.getByLabelText("Location", {exact: false}), selectedLocation);
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(true));
+        expect(screen.getByDisplayValue(selectedLocation)).toBeInTheDocument();
+        expect(screen.queryByText("Server filesystem browser")).not.toBeInTheDocument();
+    });
+
+    it("opens the server filesystem browser when the native PAR picker is unavailable", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "unavailable", reason: "No display"}}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    resolvedPath: "/games",
+                    displayPath: "/games",
+                    entries: [{name: "fallback-sheet.xlsx", isDirectory: false}],
+                    isDirectory: true,
+                },
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        expect(await screen.findByText("fallback-sheet.xlsx")).toBeInTheDocument();
+        expect(calls.some((call) => call.url === "/api/home/fs/native-browse")).toBe(false);
+    });
+
+    it("opens the server filesystem browser when the native PAR picker request fails", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "unavailable"}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "error", message: "Picker failed"}}),
+            "/api/home/fs/browse": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", resolvedPath: "/games", displayPath: "/games", entries: [], isDirectory: true},
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.click(screen.getByRole("button", {name: "Browse PAR sheet…"}));
+
+        expect(await screen.findByText("Server filesystem browser")).toBeInTheDocument();
+        const pickCall = calls.find((call) => call.url === "/api/home/fs/native-browse");
+        expect(JSON.parse(String(pickCall?.init?.body))).toMatchObject({
+            kind: "file",
+            mode: "open",
+            fileFilters: [{name: "PAR sheets", extensions: ["xlsx"]}],
+        });
+    });
+
     it("shows a not-recognized message for a path that isn't any known project type, without registering anything", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
