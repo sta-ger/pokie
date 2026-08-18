@@ -1,24 +1,11 @@
 # P6-14 independent host verification — passed
 
-Candidate: `b880108c1da02a8539af3e6426c5be2fc0430f41` (checked-out `HEAD`). Host: Linux, Node `v24.18.0`, npm `11.16.0`.
+Candidate: `37683e4b2d87e383bd91ec428a9a3da3a114ae68` (checked-out `HEAD`). Host: Linux, Node `v24.18.0`, npm `11.16.0`.
 
-This is independent, machine-owned evidence. The candidate's CLI and Studio client were rebuilt with `npm run build-cli`; generated public-workflow trees and full host logs were removed after the observations below were reduced to this bounded record and artifact checksums.
+The three remaining named whole-file suites are green: **3/3 suites, 46/46 tests**. The candidate's public CLI and Studio client were freshly rebuilt first.
 
-## Whole-file regression set
+Using only that rebuilt `pokie` CLI and a fresh temporary `--blank` Blueprint, native Outcome Library build, deep validation, JSON report, sample, 12-round simulation, and canonical replay all completed. The resulting library contained 11,500 exact outcomes. Its public `serve` endpoint returned `200` for `GET /health`, `201` for `POST /sessions`, and `200` for `POST /sessions/:id/spin`; the spin response included its public replay identity.
 
-The exact requested command completed green: **8/8 suites, 112/112 tests**. See [`machine-results.txt`](machine-results.txt) for the command and suite list.
+The same Blueprint published a Stake adapter with its expected manifest, index, lookup, and compressed-books files. The public WASM checks truthfully rejected both a Blueprint build (no supported source/arbitrary package-to-WASM compiler) and an opaque `.wasm` (no compatible `PokieWasmComponentManifest` sidecar), without claiming execution support.
 
-## Public capability workflow
-
-Using only the rebuilt public `pokie` CLI, a fresh finite Blueprint was created with:
-
-```text
-pokie create 'P6-14 Finite Host Capability' --blank --out <temporary>/finite.blueprint.json
-pokie build <blueprint> --target outcomeLibrary --out <temporary>/outcome-library
-```
-
-The native Outcome Library contained 91,125 exact outcomes. `validate --deep`, `report --format json`, `sample`, `sim --rounds 12`, and `replay --round 2` all succeeded. `pokie serve <bundle> --mode base` served `GET /health` (`200`), its public `POST /sessions` contract returned **201**, and `POST /sessions/:id/spin` returned **200** with a replay identity. This independently exercises the repaired server session-identifier path.
-
-`pokie build <blueprint> --target stakeAdapter` also completed and published its Stake adapter. The two public WASM observations were intentionally negative and truthful: a Blueprint cannot build to WASM because no source grants that capability/no arbitrary package-to-WASM compiler exists; an opaque `.wasm` without a compatible sidecar is not recognized and does not imply execution support.
-
-Only compact results and checksums are committed. No generated Blueprint, Outcome Library, Stake adapter, simulation/replay output, raw logs, browser data, or automation files are retained.
+[`machine-results.txt`](machine-results.txt) is the concise transcript; [`CHECKSUMS.sha256`](CHECKSUMS.sha256) identifies the unretained generated outputs. No generated project/output tree, raw log, browser data, or automation script is committed.

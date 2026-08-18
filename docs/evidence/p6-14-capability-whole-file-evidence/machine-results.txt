@@ -1,38 +1,28 @@
 P6-14 independent host result: PASS
-candidate: b880108c1da02a8539af3e6426c5be2fc0430f41
+candidate: 37683e4b2d87e383bd91ec428a9a3da3a114ae68
 host: Linux; Node v24.18.0; npm 11.16.0
 
 Fresh build
 PASS  npm run build-cli (CLI and Studio-client production bundle)
 
-Required whole-file command
+Required remaining whole-file command
 PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:$PATH npm run test:targeted -- \
-  tests/project/ProjectCapabilities.test.ts \
-  tests/project/describeUnsupportedProjectOperation.test.ts \
-  tests/project/ArtifactBuilderRegistry.test.ts \
-  tests/project/ProjectTargetResolver.test.ts \
-  tests/project/OutcomeSourceProjectAnalyzer.test.ts \
-  tests/project/readWasmComponentManifest.test.ts \
   tests/cli/commands/ServeCommand.test.ts \
-  tests/cli/commands/ReplayCommand.test.ts
+  tests/project/ArtifactBuilderRegistry.test.ts \
+  tests/project/OutcomeSourceProjectAnalyzer.test.ts
 
-PASS  tests/project/ProjectCapabilities.test.ts
-PASS  tests/project/describeUnsupportedProjectOperation.test.ts
-PASS  tests/project/ArtifactBuilderRegistry.test.ts
-PASS  tests/project/ProjectTargetResolver.test.ts
-PASS  tests/project/OutcomeSourceProjectAnalyzer.test.ts
-PASS  tests/project/readWasmComponentManifest.test.ts
 PASS  tests/cli/commands/ServeCommand.test.ts
-PASS  tests/cli/commands/ReplayCommand.test.ts
-Jest summary: 8 passed, 8 total suites; 112 passed, 112 total tests.
+PASS  tests/project/ArtifactBuilderRegistry.test.ts
+PASS  tests/project/OutcomeSourceProjectAnalyzer.test.ts
+Jest summary: 3 passed, 3 total suites; 46 passed, 46 total tests.
 
-Public rebuilt-CLI workflow (fresh finite --blank Blueprint; 91,125 exact outcomes)
+Public rebuilt-CLI workflow (fresh finite --blank Blueprint; 11,500 exact outcomes)
 PASS  build --target outcomeLibrary
 PASS  validate <bundle> --deep
-PASS  report <bundle> --format json: native/streaming, one base mode, totalWeight 91125, RTP 0.9999999999999851
-PASS  sample <bundle> --mode base --seed p6-14-host: canonical selected outcome
-PASS  sim <bundle> --mode base --rounds 12 --seed p6-14-host: report written (total bet 12, total win 17)
-PASS  replay <bundle> --mode base --seed p6-14-host --round 2: canonical outcomeSource descriptor written
+PASS  report <bundle> --format json
+PASS  sample <bundle> --mode base --seed p6-14-candidate: canonical selected outcome
+PASS  sim <bundle> --mode base --rounds 12 --seed p6-14-candidate: 12 rounds completed
+PASS  replay <bundle> --mode base --seed p6-14-candidate --round 2: canonical outcomeSource descriptor written
 PASS  build <blueprint> --target stakeAdapter: adapter published, including lookup_base.csv, books_base.jsonl.zst, index.json, pokie-manifest.json
 PASS  serve <bundle> --mode base: GET /health 200; POST /sessions 201; POST /sessions/:id/spin 200
 PASS  build <blueprint> --target wasm: denied truthfully — no supported source/capability and no arbitrary package-to-WASM compiler
