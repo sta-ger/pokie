@@ -60,3 +60,26 @@ npm run typecheck
 No P0/P1 or further material P2 issue was confirmed in this slice. No
 compatibility alias, changelog, release checklist, generated output, or
 additional evidence archive was added.
+
+## Independent host verification — 2026-08-19
+
+Verifier checkout: `7a02b9251362bc24b097514707bb0fe161c2d88a`.
+
+The first required complete file was run once, using its checked-in real
+code-first fixture lifecycle. The persisted request names
+`tests/cli/StudioArtifactBuildService.test.ts`; the candidate contains that
+file at `tests/cli/studio/StudioArtifactBuildService.test.ts`.
+
+```text
+npm run test:targeted -- tests/cli/studio/StudioArtifactBuildService.test.ts
+# FAILED: 1 suite; 16 passed, 2 failed, 18 total
+# Blueprint -> Stake: expected build status "ok"; received "error".
+# Code-first tsPackage -> Stake: expected build status "ok"; received "error".
+```
+
+The code-first case ran `pokie init --no-prepare`, then the fixture's real
+`npm install` and `npm run build`. Its permitted local dependency runner uses
+the candidate checkout's installed packages, so this exercised the public
+package lifecycle without a registry dependency. Jest removed the temporary
+fixture directory after the run. Per the bounded-verification rule, no later
+required files were run after this material Build failure.
