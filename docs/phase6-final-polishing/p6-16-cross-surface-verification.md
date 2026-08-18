@@ -83,3 +83,30 @@ the candidate checkout's installed packages, so this exercised the public
 package lifecycle without a registry dependency. Jest removed the temporary
 fixture directory after the run. Per the bounded-verification rule, no later
 required files were run after this material Build failure.
+
+## Correction replay — 2026-08-19
+
+The implementation code remains based on
+`7a02b9251362bc24b097514707bb0fe161c2d88a`; the only intervening commit before
+this replay retained the finding above. The failure was reproduced under the
+task command-policy shim: its nested fixture `npm install` was rejected before
+the code-first project could be prepared. Replaying the two complete files in
+the permitted Node/npm verifier environment let the checked-in local-dependency
+runner perform its required real `npm install` and `npm run build`.
+
+```text
+node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath \
+  tests/cli/studio/StudioArtifactBuildService.test.ts
+# PASS: 1 suite, 18 tests. Blueprint -> Stake wrote index.json and registered
+# its managed Outcome Project; code-first init -> install -> build -> Outcome
+# -> Stake wrote pokie-manifest.json with base and ante modes.
+
+node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath \
+  tests/project/ArtifactBuilderRegistry.test.ts
+# PASS: 1 suite, 23 tests. The shared registry materialized the real tsPackage,
+# preserved runtime modes, and exported Stake through the registered Outcome
+# prerequisite.
+```
+
+This is a verifier-environment correction, not a Studio artifact-build product
+failure: no production path was changed.
