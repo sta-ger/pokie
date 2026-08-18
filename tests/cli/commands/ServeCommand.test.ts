@@ -15,6 +15,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
+    replayOutcomeSourceProject,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -273,7 +274,7 @@ describe("ServeCommand outcome-source routing", () => {
 
         expect(receivedProject).toBe(outcomeLibraryProject);
         expect(receivedMode).toBe("base");
-        expect(receivedOptions).toEqual({host: undefined, port: 4322});
+        expect(receivedOptions).toEqual({host: undefined, port: 4322, sessionCapturePolicyMode: "full"});
         expect(stubServer.startCalls).toBe(1);
         expect(loadGame).not.toHaveBeenCalled();
         const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
@@ -376,6 +377,9 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         expect(debugRetry.body.credits).toBe(first.body.credits);
         expect(debugRetry.body).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
 
+        const fullRestored = await fetch(`${baseUrl}/sessions/${createdBody.sessionId}?debug=1`);
+        expect(await fullRestored.json()).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
+
         const second = await spin("round-2");
         const staleRetry = await spin("round-1");
         expect(staleRetry.body).toEqual(first.body);
@@ -442,6 +446,14 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         const recorded = [...records.values()][0];
         expect(recorded.replay).toMatchObject({seed: "recorded-seed", round: 1, outcomeId: first.replay.outcomeId});
         expect(recorded.internal?.artifact.provenance).toEqual(outcomeLibraryBundleTestProvenance);
+        const replayed = await replayOutcomeSourceProject(project, "base", recorded.replay.seed, recorded.replay.round);
+        expect(replayed).toEqual({supported: true, replay: expect.objectContaining({
+            libraryId: recorded.replay.libraryId,
+            libraryHash: recorded.replay.libraryHash,
+            outcomeId: recorded.replay.outcomeId,
+            totalWin: recorded.replay.totalWin,
+            payoutMultiplier: recorded.replay.payoutMultiplier,
+        })});
         const fullRestored = await fetch(`${fullBaseUrl}/sessions/${sessionId}?debug=1`);
         expect(await fullRestored.json()).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
         await fullServer.stop();
