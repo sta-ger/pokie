@@ -2,7 +2,14 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleModeInput, OutcomeLibraryBundleWriter, WeightedOutcomeInput} from "pokie";
+import {
+    OutcomeLibraryBundleManifest,
+    OutcomeLibraryBundleModeIndex,
+    OutcomeLibraryBundleModeInput,
+    OutcomeLibraryBundleWriteCancelledError,
+    OutcomeLibraryBundleWriter,
+    WeightedOutcomeInput,
+} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function siblingLeftovers(outDir: string): string[] {
@@ -154,6 +161,23 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
 
         await writer.writeToDirectory(modes(), outDir);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("honors cancellation from the final temporary-publish callback without committing an output", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        const controller = new AbortController();
+
+        await expect(
+            writer.writeToDirectory([modes()[0]], outDir, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    if (progress.message === "Publishing Outcome file manifest.json") controller.abort();
+                },
+            }),
+        ).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
+
+        expect(fs.existsSync(outDir)).toBe(false);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 

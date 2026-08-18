@@ -1,5 +1,7 @@
 import {
     ArtifactBuildConflictError,
+    ArtifactBuildCancelledError,
+    type ArtifactBuildOptions,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
     ManagedOutcomeProjectService,
@@ -129,7 +131,12 @@ export class StudioArtifactBuildService {
     // "conflict" status (never a bare 500) since ArtifactBuildConflictError is the one error every concrete
     // ArtifactBuilder throws for "destination already occupied" -- see assertArtifactDestinationAvailable's
     // own doc comment.
-    public async build(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactBuildView> {
+    public async build(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        outDir?: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<StudioArtifactBuildView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
@@ -141,7 +148,7 @@ export class StudioArtifactBuildService {
         }
 
         try {
-            const result = await this.registry.build(target, project, destination);
+            const result = await this.registry.build(target, project, destination, options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -156,6 +163,17 @@ export class StudioArtifactBuildService {
                 outputPath: result.outputPath,
                 outputKind: destinationKindFor(target),
                 sourceType: project.type,
+                ...(result.preflight !== undefined
+                    ? {
+                        preflight: {
+                            ...(result.preflight.estimatedItemCount !== undefined
+                                ? {estimatedItemCount: result.preflight.estimatedItemCount.toString()}
+                                : {}),
+                            ...(result.preflight.estimatedBytes !== undefined ? {estimatedBytes: result.preflight.estimatedBytes.toString()} : {}),
+                            ...(result.preflight.complexityWarning !== undefined ? {complexityWarning: result.preflight.complexityWarning} : {}),
+                        },
+                    }
+                    : {}),
                 ...(result.reusedCompatibleProject
                     ? {
                         requestedDestinationPath: result.requestedDestinationPath,
@@ -166,6 +184,9 @@ export class StudioArtifactBuildService {
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
                 return {status: "conflict", target, message: error.message};
+            }
+            if (error instanceof ArtifactBuildCancelledError) {
+                return {status: "cancelled", message: "Artifact build was cancelled."};
             }
             return {status: "error", message: error instanceof Error ? error.message : String(error)};
         }

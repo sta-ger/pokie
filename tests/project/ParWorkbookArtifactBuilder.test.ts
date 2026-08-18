@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {
     ArtifactBuildConflictError,
+    ArtifactBuildCancelledError,
     GameBlueprint,
     ParSheetExporter,
     ParWorkbookArtifactBuilder,
@@ -108,5 +109,24 @@ describe("ParWorkbookArtifactBuilder", () => {
             "injected PAR write failure",
         );
         expect(fs.existsSync(unicodeDestination)).toBe(false);
+    });
+
+    it("cancels at the PAR publish commit callback without leaving a temporary workbook", async () => {
+        const controller = new AbortController();
+        const messages: string[] = [];
+
+        await expect(
+            new ParWorkbookArtifactBuilder("1.3.0").build(parWorkbookProjectOf(sourceFile), destinationFile, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    messages.push(progress.message ?? progress.status);
+                    if (progress.message === "Committing PAR workbook") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(messages).toContain("Committing PAR workbook");
+        expect(fs.existsSync(destinationFile)).toBe(false);
+        expect(fs.readdirSync(dir).filter((entry) => entry.startsWith(`.${path.basename(destinationFile)}.tmp-`))).toEqual([]);
     });
 });

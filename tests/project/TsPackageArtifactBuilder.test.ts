@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {
     ArtifactBuildConflictError,
+    ArtifactBuildCancelledError,
     GameBlueprint,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
@@ -141,5 +142,24 @@ describe("TsPackageArtifactBuilder", () => {
             "injected TypeScript package write failure",
         );
         expect(fs.existsSync(unicodeDestination)).toBe(false);
+    });
+
+    it("cancels at the final TypeScript package publish callback without committing a package", async () => {
+        const controller = new AbortController();
+        const messages: string[] = [];
+
+        await expect(
+            new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), destinationDir, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    messages.push(progress.message ?? progress.status);
+                    if (progress.message === "Publishing TypeScript package file dist/index.js") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(messages).toContain("Publishing TypeScript package file dist/index.js");
+        expect(fs.existsSync(destinationDir)).toBe(false);
+        expect(fs.readdirSync(dir).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.tmp-`))).toEqual([]);
     });
 });

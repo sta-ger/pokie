@@ -1970,11 +1970,17 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.artifactBuildService.build(this.currentContext.projectRoot, validated.target, validated.outDir);
+        // A cancelled browser request is the Studio Build/Export surface's cancel action.  Relay it
+        // to the shared builder contract so no background publish can commit after the UI has stopped it.
+        const controller = new AbortController();
+        req.once("aborted", () => controller.abort());
+        const result = await this.artifactBuildService.build(this.currentContext.projectRoot, validated.target, validated.outDir, {
+            signal: controller.signal,
+        });
         this.sendJson(res, this.statusForArtifactBuild(result.status), result);
     }
 
-    private statusForArtifactBuild(status: "ok" | "unsupported" | "conflict" | "error"): number {
+    private statusForArtifactBuild(status: "ok" | "unsupported" | "conflict" | "cancelled" | "error"): number {
         if (status === "ok") {
             return 201;
         }

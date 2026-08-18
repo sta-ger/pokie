@@ -57,7 +57,10 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
-            const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath);
+            const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath, {
+                signal: options?.signal,
+                onProgress: (progress) => reportArtifactBuildProgress(options, {status: "running", message: progress.message}),
+            });
             assertArtifactBuildNotCancelled(options);
             const exportErrors = exportIssues.filter((issue) => issue.severity === "error");
             if (exportErrors.length > 0) {

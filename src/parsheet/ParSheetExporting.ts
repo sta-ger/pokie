@@ -1,5 +1,10 @@
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
+export type ParSheetExportOptions = {
+    readonly signal?: AbortSignal;
+    readonly onProgress?: (progress: {readonly message: string}) => void;
+};
+
 export interface ParSheetExporting {
     // "blueprint" is `unknown`, not `GameBlueprint` — exportToFile runs full validation itself (the
     // same GameBlueprintValidator "pokie build"/ParSheetImporter use) rather than trusting the caller
@@ -8,5 +13,5 @@ export interface ParSheetExporting {
     //
     // "sourcePath", when given, is recorded on the "Meta" sheet only (see ProvenanceSheetMapping) —
     // it plays no role in the export itself.
-    exportToFile(blueprint: unknown, filePath: string, sourcePath?: string): Promise<ValidationIssue[]>;
+    exportToFile(blueprint: unknown, filePath: string, sourcePath?: string, options?: ParSheetExportOptions): Promise<ValidationIssue[]>;
 }

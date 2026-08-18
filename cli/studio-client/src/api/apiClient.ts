@@ -61,7 +61,7 @@ import type {
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.
 export type FetchLike = (
     url: string,
-    init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"},
+    init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"; signal?: AbortSignal},
 ) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
 
 type ProjectActionResult = {context: StudioContext; manifest: PokieGameManifest};
@@ -1110,11 +1110,17 @@ export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifa
 // Runs the active project through ArtifactBuilderRegistry directly, the exact same
 // "pokie build <project> --target <target>" pipeline. "unsupported" and "conflict" are both normal parsed
 // results (never thrown) -- same convention as exportStakeEngine above.
-export async function buildArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string): Promise<StudioArtifactBuildView> {
+export async function buildArtifact(
+    fetchImpl: FetchLike,
+    target: StudioArtifactTargetType,
+    outDir?: string,
+    signal?: AbortSignal,
+): Promise<StudioArtifactBuildView> {
     const response = await fetchImpl("/api/project/artifacts/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({target, outDir}),
+        signal,
     });
     if (!response.ok && response.status !== 409) {
         throw new Error(await extractErrorMessage(response, "Failed to build the artifact"));

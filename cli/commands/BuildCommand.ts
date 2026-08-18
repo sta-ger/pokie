@@ -1,5 +1,6 @@
 import {
     ArtifactBuilderRegistry,
+    type ArtifactBuildOptions,
     ArtifactTargetType,
     computeGameBlueprintHash,
     buildGameBuildInfo,
@@ -227,7 +228,7 @@ export class BuildCommand implements CliCommandHandling {
 
         let result: {readonly outputPath: string};
         try {
-            result = await this.registry.build("tsPackage", project, out);
+            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build("tsPackage", project, out, lifecycle));
         } catch (error) {
             // Reel-strip constraints are an authored Blueprint condition, not an invocation failure.
             // The registry remains the only build path; this CLI boundary merely turns its structured
@@ -274,7 +275,7 @@ export class BuildCommand implements CliCommandHandling {
             return 0;
         }
 
-        const result = await this.registry.build(target, project, out);
+        const result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, lifecycle));
 
         console.log("Build summary:");
         console.log(`  artifact root    ${result.outputPath}`);
@@ -293,6 +294,49 @@ export class BuildCommand implements CliCommandHandling {
         );
 
         return 0;
+    }
+
+    // The CLI's interactive cancellation surface is Ctrl+C.  It feeds the same AbortSignal as Studio
+    // into the registry, so large Outcome/Stake publishes stop at their next cooperative progress boundary
+    // instead of merely terminating the process after a final directory swap.  Progress is intentionally
+    // throttled by message: outcome streaming may report every record, while the terminal only needs a
+    // truthful phase/count update.
+    private async runWithArtifactLifecycle<T>(run: (options: ArtifactBuildOptions) => Promise<T>): Promise<T> {
+        const controller = new AbortController();
+        let lastMessage: string | undefined;
+        const cancel = (): void => {
+            if (!controller.signal.aborted) {
+                console.log("Cancelling artifact build…");
+                controller.abort();
+            }
+        };
+        process.once("SIGINT", cancel);
+        try {
+            return await run({
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    if (progress.status === "preflight") {
+                        const count = progress.preflight?.estimatedItemCount;
+                        const bytes = progress.preflight?.estimatedBytes;
+                        console.log(
+                            `Build preflight: ${count !== undefined ? `${count} estimated item(s)` : "item count unavailable"}` +
+                                `${bytes !== undefined ? `, ${bytes} estimated bytes` : ""}` +
+                                `${progress.preflight?.complexityWarning ? `. Warning: ${progress.preflight.complexityWarning}` : ""}`,
+                        );
+                    }
+                    if (progress.message !== undefined && progress.message !== lastMessage) {
+                        lastMessage = progress.message;
+                        console.log(
+                            `Build ${progress.status}: ${progress.message}` +
+                                `${progress.completed !== undefined ? ` (${progress.completed}${progress.total !== undefined ? `/${progress.total}` : ""})` : ""}`,
+                        );
+                    }
+                    if (progress.status === "cancelled") console.log("Artifact build cancelled.");
+                },
+            });
+        } finally {
+            process.off("SIGINT", cancel);
+        }
     }
 
     // Previews what "pokie build" would generate without touching the filesystem: same validation, same

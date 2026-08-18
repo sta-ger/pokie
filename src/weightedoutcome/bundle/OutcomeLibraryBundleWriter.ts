@@ -212,10 +212,17 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                         assertNotCancelled(options);
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
                         options?.onProgress?.({completed, message: `Publishing Outcome file ${file}`});
+                        // A progress listener is allowed to abort the work it is observing.  This check
+                        // must be after the callback as well as before the next file: the last callback
+                        // is immediately followed by the atomic swap below.
+                        assertNotCancelled(options);
                     }
                 },
             });
 
+            // Keep the direct-writer contract true even if a custom atomic publisher grows a callback
+            // boundary of its own: never report a completed bundle after its signal was cancelled.
+            assertNotCancelled(options);
             const finalIssues =
                 cleanupWarning !== undefined
                     ? [...issues, {code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]

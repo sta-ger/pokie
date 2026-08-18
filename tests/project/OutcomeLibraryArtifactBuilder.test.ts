@@ -113,7 +113,7 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         expect(fs.existsSync(destinationDir)).toBe(false);
     });
 
-    it("cancels during a Unicode-path bundle write, leaving neither output nor writer scratch directories", async () => {
+    it("cancels from the final Unicode-path bundle publish callback, leaving neither output nor writer scratch directories", async () => {
         const controller = new AbortController();
         const unicodeDestination = path.join(path.dirname(destinationDir), "результат с пробелом");
         const progress: string[] = [];
@@ -123,12 +123,12 @@ describe("OutcomeLibraryArtifactBuilder", () => {
                 signal: controller.signal,
                 onProgress: (event) => {
                     progress.push(event.message ?? event.status);
-                    if (event.message?.startsWith("Writing Outcome mode")) controller.abort();
+                    if (event.message === "Publishing Outcome file manifest.json") controller.abort();
                 },
             }),
         ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
 
-        expect(progress.some((message) => message.startsWith("Writing Outcome mode"))).toBe(true);
+        expect(progress).toContain("Publishing Outcome file manifest.json");
         expect(fs.existsSync(unicodeDestination)).toBe(false);
         expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
     });

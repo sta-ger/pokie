@@ -6,6 +6,7 @@ import {
     StakeEngineBookLine,
     StakeEngineEvent,
     StakeEngineExportModeInput,
+    StakeEngineExportCancelledError,
     StakeEngineExporter,
     StakeEngineIndex,
     StakeEngineManifest,
@@ -196,6 +197,23 @@ describe("StakeEngineExporter", () => {
         // outDir already exists (fs.mkdtempSync created it) — the point is that validation failing writes
         // nothing into it at all.
         expect(fs.readdirSync(outDir)).toEqual([]);
+    });
+
+    it("honors cancellation from the final temporary-publish callback without committing an output", async () => {
+        const exporter = new StakeEngineExporter<string>("1.3.0");
+        const controller = new AbortController();
+
+        await expect(
+            exporter.exportToDirectory(modes, outDir, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    if (progress.message === "Publishing Stake file pokie-manifest.json") controller.abort();
+                },
+            }),
+        ).rejects.toThrow(StakeEngineExportCancelledError);
+
+        expect(fs.readdirSync(outDir)).toEqual([]);
+        expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("blocks export when two modeNames differ only in case (files would really conflict)", async () => {

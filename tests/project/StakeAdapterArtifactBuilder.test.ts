@@ -127,7 +127,7 @@ describe("StakeAdapterArtifactBuilder", () => {
         expect(fs.existsSync(destinationDir)).toBe(false);
     });
 
-    it("cancels during a Unicode-path Stake export, leaving neither output nor temporary export", async () => {
+    it("cancels from the final Unicode-path Stake publish callback, leaving neither output nor temporary export", async () => {
         const controller = new AbortController();
         const unicodeDestination = path.join(path.dirname(destinationDir), "ставка с пробелом");
         const progress: string[] = [];
@@ -137,12 +137,12 @@ describe("StakeAdapterArtifactBuilder", () => {
                 signal: controller.signal,
                 onProgress: (event) => {
                     progress.push(event.message ?? event.status);
-                    if (event.message?.startsWith("Building Stake mode")) controller.abort();
+                    if (event.message === "Publishing Stake file pokie-manifest.json") controller.abort();
                 },
             }),
         ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
 
-        expect(progress.some((message) => message.startsWith("Building Stake mode"))).toBe(true);
+        expect(progress).toContain("Publishing Stake file pokie-manifest.json");
         expect(fs.existsSync(unicodeDestination)).toBe(false);
         expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
     });

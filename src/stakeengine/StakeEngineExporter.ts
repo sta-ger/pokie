@@ -182,18 +182,25 @@ export class StakeEngineExporter<T extends string | number = string> implements 
                     this.writeFile(path.join(tempDir, builtMode.csvFileName), builtMode.csvContent);
                     options?.onProgress?.({completed, message: `Publishing Stake file ${builtMode.csvFileName}`});
                     assertNotCancelled(options);
+                    assertNotCancelled(options);
                     this.writeFile(path.join(tempDir, builtMode.booksFileName), builtMode.booksBuffer);
                     options?.onProgress?.({completed, message: `Publishing Stake file ${builtMode.booksFileName}`});
+                    assertNotCancelled(options);
                 }
                 assertNotCancelled(options);
                 this.writeFile(path.join(tempDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
                 options?.onProgress?.({completed, message: "Publishing Stake file index.json"});
                 assertNotCancelled(options);
+                assertNotCancelled(options);
                 this.writeFile(path.join(tempDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
                 options?.onProgress?.({completed, message: "Publishing Stake file pokie-manifest.json"});
+                // The final callback is still a cancellation boundary: returning from this closure
+                // authorizes publishDirectoryAtomically to commit its temp directory.
+                assertNotCancelled(options);
             },
         });
 
+        assertNotCancelled(options);
         return cleanupWarning !== undefined
             ? {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}
             : undefined;

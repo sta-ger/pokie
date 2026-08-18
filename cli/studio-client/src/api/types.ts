@@ -1202,9 +1202,17 @@ export type StudioArtifactTargetView = {
 // doc comment. Mirrors ArtifactBuilderRegistry.build()'s own outcomes exactly: a successful build's
 // outputPath/sourceType, an unsupported conversion, a destination conflict, or any other build failure.
 export type StudioArtifactBuildView =
-    | {status: "ok"; target: StudioArtifactTargetType; outputPath: string; outputKind: "file" | "directory"; sourceType: StudioProjectType}
+    | {
+          status: "ok";
+          target: StudioArtifactTargetType;
+          outputPath: string;
+          outputKind: "file" | "directory";
+          sourceType: StudioProjectType;
+          preflight?: {estimatedItemCount?: string; estimatedBytes?: string; complexityWarning?: string};
+      }
     | {status: "unsupported"; target: StudioArtifactTargetType; message: string}
     | {status: "conflict"; target: StudioArtifactTargetType; message: string}
+    | {status: "cancelled"; message: string}
     | {status: "error"; message: string};
 
 // POST /api/project/artifacts/preview's own DTO — see cli/studio/artifacts/StudioArtifactPreviewView.ts's

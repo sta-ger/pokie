@@ -77,7 +77,16 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
 
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing TypeScript package"});
             assertArtifactBuildNotCancelled(options);
-            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), destinationPath, resolution.reelStripGeneration);
+            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), destinationPath, resolution.reelStripGeneration, {
+                signal: options?.signal,
+                onProgress: (progress) =>
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: BigInt(progress.completed),
+                        total: BigInt(progress.total),
+                        message: progress.message,
+                    }),
+            });
             assertArtifactBuildNotCancelled(options);
             reportArtifactBuildProgress(options, {status: "completed"});
             return {outputPath: result.projectRoot};

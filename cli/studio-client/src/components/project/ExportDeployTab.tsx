@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
 import {
     buildArtifact,
@@ -123,6 +123,7 @@ type ArtifactBuildRunView =
     | {status: "idle"}
     | {status: "running"}
     | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>}
+    | {status: "cancelled"}
     | {status: "error"; message: string};
 
 function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
@@ -188,6 +189,7 @@ function TargetCard({
     artifactPreview: ArtifactPreviewRunView;
     artifactBuildRun: ArtifactBuildRunView;
     onBuildArtifact: (target: StudioArtifactTargetType) => void;
+    onCancelArtifactBuild: (target: StudioArtifactTargetType) => void;
     artifactDestination: string;
     onArtifactDestinationChange: (target: StudioArtifactTargetType, destination: string) => void;
     onOpenAsProject: (projectRoot: string) => void;
@@ -368,12 +370,36 @@ function TargetCard({
                     <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"}>
                         Build
                     </Button>
+                    {artifactBuildRun.status === "running" && (
+                        <Button size="xs" mt="sm" ml="xs" color="red" variant="light" onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>
+                            Cancel
+                        </Button>
+                    )}
+                    {artifactBuildRun.status === "running" && (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Building artifact; progress is reported while files are published.
+                        </Text>
+                    )}
+                    {artifactBuildRun.status === "cancelled" && (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Build cancelled. No incomplete artifact was published.
+                        </Text>
+                    )}
                     {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
                     {artifactBuildRun.status === "ok" && (
                         <>
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
+                            {artifactBuildRun.result.preflight && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)
+                                    {artifactBuildRun.result.preflight.estimatedBytes !== undefined
+                                        ? ` (estimated ${artifactBuildRun.result.preflight.estimatedBytes} bytes)`
+                                        : ""}
+                                    {artifactBuildRun.result.preflight.complexityWarning ? ` — ${artifactBuildRun.result.preflight.complexityWarning}` : ""}
+                                </Text>
+                            )}
                             <QuickActions>
                                 <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
                                     Open as Project
@@ -534,6 +560,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
     const [artifactBuildRuns, setArtifactBuildRuns] = useState<Record<string, ArtifactBuildRunView>>({});
+    const artifactBuildControllers = useRef<Record<string, AbortController>>({});
     // Every outputPath a successful build's own "Add to Projects" has already registered this session --
     // keyed by outputPath (not target), since a rebuild against a different outDir is a different
     // registration candidate even for the same target.
@@ -697,11 +724,15 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         if (artifactBuildRuns[target]?.status === "running") {
             return;
         }
+        const controller = new AbortController();
+        artifactBuildControllers.current[target] = controller;
         setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running"}}));
-        buildArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
+        buildArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined, controller.signal)
             .then((view) => {
                 if (view.status === "ok") {
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result: view}}));
+                } else if (view.status === "cancelled") {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
                 } else {
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeArtifactBuildResultError(view)}}));
                 }
@@ -709,9 +740,18 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             .catch((error: unknown) => {
                 setArtifactBuildRuns((runs) => ({
                     ...runs,
-                    [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
+                    [target]: controller.signal.aborted
+                        ? {status: "cancelled"}
+                        : {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
                 }));
+            })
+            .finally(() => {
+                Reflect.deleteProperty(artifactBuildControllers.current, target);
             });
+    }
+
+    function handleCancelArtifactBuild(target: StudioArtifactTargetType): void {
+        artifactBuildControllers.current[target]?.abort();
     }
 
     // A successful build's own output is itself a resolvable PokieProject (of the built target's own
@@ -793,6 +833,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                             artifactPreview={artifactPreview}
                                             artifactBuildRun={artifactBuildRun}
                                             onBuildArtifact={handleBuildArtifact}
+                                            onCancelArtifactBuild={handleCancelArtifactBuild}
                                             artifactDestination={card.artifactTarget === undefined ? "" : artifactDestinations[card.artifactTarget] ?? ""}
                                             onArtifactDestinationChange={(target, destination) =>
                                                 setArtifactDestinations((destinations) => ({...destinations, [target]: destination}))
