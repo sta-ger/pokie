@@ -81,4 +81,14 @@ describe("StakeAdapterArtifactBuilder", () => {
         await expect(builder.build(stakeAdapterProjectOf(sourceDir), destinationDir)).rejects.toThrow(ArtifactBuildConflictError);
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
     });
+
+    it("refuses a destination inside the source without publishing a partial Stake export", async () => {
+        const nestedDestination = path.join(sourceDir, "republished");
+
+        await expect(new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), nestedDestination)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.existsSync(nestedDestination)).toBe(false);
+        expect(fs.existsSync(path.join(sourceDir, "index.json"))).toBe(true);
+    });
 });

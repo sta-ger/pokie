@@ -67,6 +67,19 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
     });
 
+    it("refuses a destination inside the source, including through a symlink, without altering the bundle", async () => {
+        const nestedDestination = path.join(sourceDir, "republished");
+        const linkedParent = `${sourceDir}-link`;
+        fs.symlinkSync(sourceDir, linkedParent, "dir");
+        const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
+
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), nestedDestination)).rejects.toThrow(ArtifactBuildConflictError);
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), path.join(linkedParent, "republished"))).rejects.toThrow(ArtifactBuildConflictError);
+        expect(fs.existsSync(nestedDestination)).toBe(false);
+        expect(fs.existsSync(path.join(sourceDir, "manifest.json"))).toBe(true);
+        fs.unlinkSync(linkedParent);
+    });
+
     it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {
         const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
 

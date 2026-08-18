@@ -6,6 +6,7 @@ import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/Outcom
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 
 // (Re)publishes an already-built "outcomeLibrary" bundle to a new destination, atomically -- every mode's
@@ -34,6 +35,7 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
         if (source.type !== "outcomeLibrary") {
             throw new Error(

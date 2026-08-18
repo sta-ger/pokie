@@ -5,6 +5,7 @@ import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 
 // (Re)publishes an already-exported "parWorkbook" .xlsx file to a new destination, atomically -- reads it back
@@ -30,6 +31,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
         const imported = await this.importer.importFromFile(source.rootPath);
         const importErrors = imported.issues.filter((issue) => issue.severity === "error");

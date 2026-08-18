@@ -5,6 +5,7 @@ import type {StakeEngineImporting} from "../stakeengine/StakeEngineImporting.js"
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import {buildWeightedOutcomeLibrary} from "../weightedoutcome/buildWeightedOutcomeLibrary.js";
@@ -34,6 +35,7 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
 
     public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
         const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
 

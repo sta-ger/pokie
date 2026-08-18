@@ -30,6 +30,7 @@ import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibra
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateExactWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 
@@ -107,6 +108,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
 
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
         assertArtifactDestinationAvailable(bundleDir, "directory");
+        assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
         await this.generateBundle(source.rootPath, game, configHash, bundleDir);
         return {project: await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility), reused: false};
     }

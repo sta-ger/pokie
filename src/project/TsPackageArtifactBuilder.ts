@@ -8,6 +8,7 @@ import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneratio
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 
 // Builds a "tsPackage" artifact from a resolved "blueprint" source -- the same validate/resolve-reel-strips/
@@ -41,6 +42,7 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
     public build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
         try {
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+            assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
             const blueprint = this.loadBlueprint(source.rootPath);
             const errors = this.validator.validate(blueprint).filter((issue) => issue.severity === "error");

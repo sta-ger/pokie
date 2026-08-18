@@ -64,4 +64,13 @@ describe("ParWorkbookArtifactBuilder", () => {
         await expect(builder.build(parWorkbookProjectOf(sourceFile), destinationFile)).rejects.toThrow(ArtifactBuildConflictError);
         expect(fs.readFileSync(destinationFile, "utf-8")).toBe("not ours");
     });
+
+    it("refuses the source workbook itself as destination without changing it", async () => {
+        const before = fs.readFileSync(sourceFile);
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0").build(parWorkbookProjectOf(sourceFile), sourceFile)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.readFileSync(sourceFile)).toEqual(before);
+    });
 });

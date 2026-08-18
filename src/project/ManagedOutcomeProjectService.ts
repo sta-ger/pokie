@@ -105,8 +105,14 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         const registryPath = this.registryPath(sourceRootPath);
         await fs.promises.mkdir(path.dirname(registryPath), {recursive: true});
         const temporaryPath = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
-        await fs.promises.writeFile(temporaryPath, JSON.stringify({projects}, undefined, 2), "utf-8");
-        await fs.promises.rename(temporaryPath, registryPath);
+        try {
+            await fs.promises.writeFile(temporaryPath, JSON.stringify({projects}, undefined, 2), "utf-8");
+            await fs.promises.rename(temporaryPath, registryPath);
+        } finally {
+            // A disk/permission failure before the rename must not leave a plausible registry fragment
+            // beside the authoritative file for a later scan to mistake for a Project.
+            await fs.promises.rm(temporaryPath, {force: true}).catch(() => undefined);
+        }
     }
 
     private async readRegistry(sourceRootPath: string): Promise<RegistryDocument> {
