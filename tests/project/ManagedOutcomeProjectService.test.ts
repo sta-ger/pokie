@@ -15,10 +15,11 @@ describe("ManagedOutcomeProjectService atomic registry writes", () => {
         const outcomePath = path.join(workDir, "outcome");
         const compatibility = {gameId: "sample-slot", gameVersion: "0.1.0", configHash: "config-hash", pokieVersion: "1.3.0"};
         fs.writeFileSync(blueprintPath, "{}");
+        const baseMode = buildOutcomeLibraryBundleModeInput("base", "base");
         const modes = [
             {
-                ...buildOutcomeLibraryBundleModeInput("base", "base"),
-                outcomes: buildOutcomeLibraryBundleModeInput("base", "base").outcomes.map((outcome) => ({
+                ...baseMode,
+                outcomes: Array.from(baseMode.outcomes, (outcome) => ({
                     ...outcome,
                     artifact: {...outcome.artifact, provenance: {...outcome.artifact.provenance, configHash: compatibility.configHash}},
                 })),
