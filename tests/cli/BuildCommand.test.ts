@@ -11,7 +11,7 @@ import {
     ProjectResolving,
     ValidationIssue,
 } from "pokie";
-import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
+import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 
 function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
     return {

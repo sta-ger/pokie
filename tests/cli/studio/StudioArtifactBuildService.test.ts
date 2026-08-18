@@ -1,10 +1,10 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {StudioArtifactBuildService} from "../../../../cli/studio/artifacts/StudioArtifactBuildService.js";
+import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {ArtifactBuildCancelledError, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving} from "pokie";
-import {localPokieDependencyRunner} from "../../../testUtils/offlinePokieDependencyOverride.js";
-import {prepareExactCodeFirstPackage} from "../../../testUtils/prepareExactCodeFirstPackage.js";
+import {localPokieDependencyRunner} from "../../testUtils/offlinePokieDependencyOverride.js";
+import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {

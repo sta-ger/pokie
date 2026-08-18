@@ -778,7 +778,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
                         ...runs,
-                        [target]: {status: "error", message: result !== undefined && result.status !== "ok" ? describeArtifactBuildResultError(result) : "Artifact build ended without a result."},
+                        [target]: {status: "error", message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result."},
                     }));
                 }
             })
