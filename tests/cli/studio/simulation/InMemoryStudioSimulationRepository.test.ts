@@ -134,6 +134,19 @@ describe("InMemoryStudioSimulationRepository", () => {
     });
 
     describe("retention", () => {
+        it("retains the 150-report history supported by the paged Studio workflow by default", () => {
+            const repository = new InMemoryStudioSimulationRepository();
+
+            for (let i = 0; i < 150; i++) {
+                repository.save(createRecord(`job-${i}`, "/a", "completed", i * 1000));
+            }
+
+            const remaining = repository.listTerminalByProjectRoot("/a");
+            expect(remaining).toHaveLength(150);
+            expect(remaining[0].id).toBe("job-149");
+            expect(remaining[149].id).toBe("job-0");
+        });
+
         it("keeps at most the configured number of terminal jobs per project", () => {
             const repository = new InMemoryStudioSimulationRepository(3);
 
