@@ -1,7 +1,15 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, GameBlueprint, PokieProject, PROJECT_TYPE_CAPABILITIES, TsPackageArtifactBuilder} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    ArtifactBuildCancelledError,
+    GameBlueprint,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    TsPackageArtifactBuilder,
+    type GamePackageGenerating,
+} from "pokie";
 
 function blueprintProjectOf(rootPath: string): PokieProject {
     return {
@@ -65,6 +73,28 @@ describe("TsPackageArtifactBuilder", () => {
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
     });
 
+    it("refuses the Blueprint source itself as destination without changing it", async () => {
+        const before = fs.readFileSync(blueprintPath, "utf-8");
+
+        await expect(new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), blueprintPath)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(before);
+    });
+
+    it("refuses a symlink-ancestor alias of the Blueprint source", async () => {
+        const linkedDir = `${dir}-link`;
+        fs.symlinkSync(dir, linkedDir, "dir");
+        try {
+            await expect(new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), path.join(linkedDir, "config.json"))).rejects.toThrow(
+                ArtifactBuildConflictError,
+            );
+            expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(JSON.stringify(blueprint));
+        } finally {
+            fs.unlinkSync(linkedDir);
+        }
+    });
+
     it("throws when the blueprint fails validation, without touching the destination", async () => {
         fs.writeFileSync(blueprintPath, JSON.stringify({...blueprint, reels: -1}));
         const builder = new TsPackageArtifactBuilder("1.3.0");
@@ -96,5 +126,40 @@ describe("TsPackageArtifactBuilder", () => {
             /reel 1 .*maximum-circular-distance/,
         );
         expect(fs.existsSync(destinationDir)).toBe(false);
+    });
+
+    it("removes a partial Unicode-path package when its generator fails", async () => {
+        const unicodeDestination = path.join(dir, "пакет с пробелом");
+        const failingGenerator: GamePackageGenerating = {
+            generate: (_blueprint, _cwd, outputPath) => {
+                fs.mkdirSync(outputPath as string, {recursive: true});
+                fs.writeFileSync(path.join(outputPath as string, "package.json"), "partial");
+                throw new Error("injected TypeScript package write failure");
+            },
+        };
+
+        await expect(new TsPackageArtifactBuilder("1.3.0", undefined, undefined, failingGenerator).build(blueprintProjectOf(blueprintPath), unicodeDestination)).rejects.toThrow(
+            "injected TypeScript package write failure",
+        );
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+    });
+
+    it("cancels at the final TypeScript package publish callback without committing a package", async () => {
+        const controller = new AbortController();
+        const messages: string[] = [];
+
+        await expect(
+            new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), destinationDir, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    messages.push(progress.message ?? progress.status);
+                    if (progress.message === "Publishing TypeScript package file dist/index.js") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(messages).toContain("Publishing TypeScript package file dist/index.js");
+        expect(fs.existsSync(destinationDir)).toBe(false);
+        expect(fs.readdirSync(dir).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.tmp-`))).toEqual([]);
     });
 });

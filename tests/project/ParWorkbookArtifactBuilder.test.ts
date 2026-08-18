@@ -1,7 +1,16 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, GameBlueprint, ParSheetExporter, ParWorkbookArtifactBuilder, PokieProject, PROJECT_TYPE_CAPABILITIES} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    ArtifactBuildCancelledError,
+    GameBlueprint,
+    ParSheetExporter,
+    ParWorkbookArtifactBuilder,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    type ParSheetExporting,
+} from "pokie";
 
 function parWorkbookProjectOf(rootPath: string): PokieProject {
     return {
@@ -63,5 +72,61 @@ describe("ParWorkbookArtifactBuilder", () => {
 
         await expect(builder.build(parWorkbookProjectOf(sourceFile), destinationFile)).rejects.toThrow(ArtifactBuildConflictError);
         expect(fs.readFileSync(destinationFile, "utf-8")).toBe("not ours");
+    });
+
+    it("refuses the source workbook itself as destination without changing it", async () => {
+        const before = fs.readFileSync(sourceFile);
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0").build(parWorkbookProjectOf(sourceFile), sourceFile)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.readFileSync(sourceFile)).toEqual(before);
+    });
+
+    it("refuses a symlink-ancestor alias of the source workbook without creating an output", async () => {
+        const linkedDir = `${dir}-link`;
+        fs.symlinkSync(dir, linkedDir, "dir");
+        try {
+            await expect(new ParWorkbookArtifactBuilder("1.3.0").build(parWorkbookProjectOf(sourceFile), path.join(linkedDir, "source.par.xlsx"))).rejects.toThrow(
+                ArtifactBuildConflictError,
+            );
+            expect(fs.readFileSync(sourceFile)).toEqual(fs.readFileSync(path.join(linkedDir, "source.par.xlsx")));
+        } finally {
+            fs.unlinkSync(linkedDir);
+        }
+    });
+
+    it("removes a partial Unicode-path workbook when its exporter fails", async () => {
+        const unicodeDestination = path.join(dir, "отчёт с пробелом.par.xlsx");
+        const failingExporter: ParSheetExporting = {
+            exportToFile: (_blueprint, outputPath) => {
+                fs.writeFileSync(outputPath, "partial workbook");
+                return Promise.reject(new Error("injected PAR write failure"));
+            },
+        };
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0", undefined, failingExporter).build(parWorkbookProjectOf(sourceFile), unicodeDestination)).rejects.toThrow(
+            "injected PAR write failure",
+        );
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+    });
+
+    it("cancels at the PAR publish commit callback without leaving a temporary workbook", async () => {
+        const controller = new AbortController();
+        const messages: string[] = [];
+
+        await expect(
+            new ParWorkbookArtifactBuilder("1.3.0").build(parWorkbookProjectOf(sourceFile), destinationFile, {
+                signal: controller.signal,
+                onProgress: (progress) => {
+                    messages.push(progress.message ?? progress.status);
+                    if (progress.message === "Committing PAR workbook") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(messages).toContain("Committing PAR workbook");
+        expect(fs.existsSync(destinationFile)).toBe(false);
+        expect(fs.readdirSync(dir).filter((entry) => entry.startsWith(`.${path.basename(destinationFile)}.tmp-`))).toEqual([]);
     });
 });

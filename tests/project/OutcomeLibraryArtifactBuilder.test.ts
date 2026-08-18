@@ -1,7 +1,14 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, OutcomeLibraryArtifactBuilder, OutcomeLibraryBundleWriter, PokieProject, PROJECT_TYPE_CAPABILITIES} from "pokie";
+import {
+    ArtifactBuildCancelledError,
+    ArtifactBuildConflictError,
+    OutcomeLibraryArtifactBuilder,
+    OutcomeLibraryBundleWriter,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function outcomeLibraryProjectOf(rootPath: string): PokieProject {
@@ -65,6 +72,83 @@ describe("OutcomeLibraryArtifactBuilder", () => {
 
         await expect(builder.build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(ArtifactBuildConflictError);
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
+    });
+
+    it("refuses a destination inside the source, including through a symlink, without altering the bundle", async () => {
+        const nestedDestination = path.join(sourceDir, "republished");
+        const linkedParent = `${sourceDir}-link`;
+        fs.symlinkSync(sourceDir, linkedParent, "dir");
+        const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
+
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), nestedDestination)).rejects.toThrow(ArtifactBuildConflictError);
+        await expect(builder.build(outcomeLibraryProjectOf(sourceDir), path.join(linkedParent, "republished"))).rejects.toThrow(ArtifactBuildConflictError);
+        expect(fs.existsSync(nestedDestination)).toBe(false);
+        expect(fs.existsSync(path.join(sourceDir, "manifest.json"))).toBe(true);
+        fs.unlinkSync(linkedParent);
+    });
+
+    it("refuses the source bundle itself without changing its valid-looking manifest", async () => {
+        const manifestBefore = fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8");
+
+        await expect(new OutcomeLibraryArtifactBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), sourceDir)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8")).toBe(manifestBefore);
+    });
+
+    it("reports preflight/cancellation before publishing and leaves no Outcome bundle", async () => {
+        const controller = new AbortController();
+        const statuses: string[] = [];
+
+        await expect(
+            new OutcomeLibraryArtifactBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), destinationDir, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    statuses.push(event.status);
+                    if (event.status === "preflight") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+        expect(statuses).toEqual(["preflight", "cancelled"]);
+        expect(fs.existsSync(destinationDir)).toBe(false);
+    });
+
+    it("cancels from the final Unicode-path bundle publish callback, leaving neither output nor writer scratch directories", async () => {
+        const controller = new AbortController();
+        const unicodeDestination = path.join(path.dirname(destinationDir), "результат с пробелом");
+        const progress: string[] = [];
+
+        await expect(
+            new OutcomeLibraryArtifactBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), unicodeDestination, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    progress.push(event.message ?? event.status);
+                    if (event.message === "Publishing Outcome file manifest.json") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(progress).toContain("Publishing Outcome file manifest.json");
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+        expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
+    });
+
+    it("cleans staging output when the underlying Outcome writer fails", async () => {
+        const failingWriter = new OutcomeLibraryBundleWriter(
+            "1.3.0",
+            undefined,
+            undefined,
+            (filePath, contents) => {
+                if (path.basename(filePath).startsWith("index_")) throw new Error("injected Outcome write failure");
+                fs.writeFileSync(filePath, contents, "utf-8");
+            },
+        );
+
+        await expect(new OutcomeLibraryArtifactBuilder("1.3.0", undefined, failingWriter).build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(
+            "injected Outcome write failure",
+        );
+        expect(fs.existsSync(destinationDir)).toBe(false);
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
     });
 
     it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {

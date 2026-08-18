@@ -2,6 +2,7 @@ import {
     ArtifactBuilder,
     ArtifactBuilderRegistry,
     ArtifactBuildResult,
+    ArtifactBuildOptions,
     computeGameBlueprintHash,
     GameBlueprint,
     GameBlueprintValidating,
@@ -10,7 +11,7 @@ import {
     ProjectResolving,
     ValidationIssue,
 } from "pokie";
-import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
+import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 
 function createStubValidator(issues: ValidationIssue[]): GameBlueprintValidating & {calledWith?: unknown} {
     return {
@@ -44,16 +45,18 @@ function blueprintProject(rootPath = "config.json"): PokieProject {
 function stubBuilder(
     target: string,
     result: ArtifactBuildResult | (() => ArtifactBuildResult),
-): ArtifactBuilder & {calledWith?: {source: PokieProject; destinationPath: string}} {
+): ArtifactBuilder & {calledWith?: {source: PokieProject; destinationPath: string}; lifecycle?: ArtifactBuildOptions} {
     const builder = {
         target,
         calledWith: undefined as {source: PokieProject; destinationPath: string} | undefined,
-        build(source: PokieProject, destinationPath: string) {
+        lifecycle: undefined as ArtifactBuildOptions | undefined,
+        build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions) {
             builder.calledWith = {source, destinationPath};
+            builder.lifecycle = options;
             return Promise.resolve(typeof result === "function" ? result() : result);
         },
     };
-    return builder as ArtifactBuilder & {calledWith?: {source: PokieProject; destinationPath: string}};
+    return builder as ArtifactBuilder & {calledWith?: {source: PokieProject; destinationPath: string}; lifecycle?: ArtifactBuildOptions};
 }
 
 function registryWithBuilders(...builders: ArtifactBuilder[]): ArtifactBuilderRegistry {
@@ -86,6 +89,25 @@ describe("BuildCommand", () => {
     afterEach(() => {
         logSpy.mockRestore();
         errorSpy.mockRestore();
+    });
+
+    it("forwards lifecycle preflight and running updates to the terminal", async () => {
+        const builder = stubBuilder("tsPackage", {outputPath: "/fake/out"});
+        builder.build = (source, destinationPath, lifecycle) => {
+            builder.calledWith = {source, destinationPath};
+            builder.lifecycle = lifecycle;
+            lifecycle?.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(8), estimatedBytes: BigInt(16), complexityWarning: "Large export"}});
+            lifecycle?.onProgress?.({status: "running", completed: BigInt(1), total: BigInt(8), message: "Writing bundle"});
+            return Promise.resolve({outputPath: "/fake/out"});
+        };
+        const command = new BuildCommand("1.3.0", () => rawBlueprint, undefined, stubProjectResolver(blueprintProject()), registryWithBuilders(builder));
+
+        await expect(command.run(["config.json", "--target", "tsPackage", "--out", "out-dir"])).resolves.toBe(0);
+
+        expect(builder.lifecycle?.signal).toBeDefined();
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Build preflight: 8 estimated item(s), 16 estimated bytes. Warning: Large export");
+        expect(printed).toContain("Build running: Writing bundle (1/8)");
     });
 
     it("has the expected name and description", () => {

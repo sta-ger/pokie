@@ -6,7 +6,7 @@ import type {
     PokieGameManifest,
     PokieGamePackageValidationReport,
     ProjectDashboardContext,
-    StudioArtifactBuildView,
+    StudioArtifactBuildJobView,
     StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
@@ -61,7 +61,7 @@ import type {
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.
 export type FetchLike = (
     url: string,
-    init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"},
+    init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"; signal?: AbortSignal},
 ) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
 
 type ProjectActionResult = {context: StudioContext; manifest: PokieGameManifest};
@@ -1110,14 +1110,31 @@ export async function previewArtifact(fetchImpl: FetchLike, target: StudioArtifa
 // Runs the active project through ArtifactBuilderRegistry directly, the exact same
 // "pokie build <project> --target <target>" pipeline. "unsupported" and "conflict" are both normal parsed
 // results (never thrown) -- same convention as exportStakeEngine above.
-export async function buildArtifact(fetchImpl: FetchLike, target: StudioArtifactTargetType, outDir?: string): Promise<StudioArtifactBuildView> {
+export async function startArtifactBuild(
+    fetchImpl: FetchLike,
+    target: StudioArtifactTargetType,
+    outDir?: string,
+): Promise<StudioArtifactBuildJobView> {
     const response = await fetchImpl("/api/project/artifacts/build", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({target, outDir}),
     });
-    if (!response.ok && response.status !== 409) {
-        throw new Error(await extractErrorMessage(response, "Failed to build the artifact"));
+    if (!response.ok) {
+        throw new Error(await extractErrorMessage(response, "Failed to start the artifact build"));
     }
-    return (await response.json()) as StudioArtifactBuildView;
+    const view = (await response.json()) as {status: "created"; job: StudioArtifactBuildJobView};
+    return view.job;
+}
+
+export async function getArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {
+    const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}`, {cache: "no-store"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the artifact build status"));
+    return (await response.json()) as StudioArtifactBuildJobView;
+}
+
+export async function cancelArtifactBuild(fetchImpl: FetchLike, id: string): Promise<StudioArtifactBuildJobView> {
+    const response = await fetchImpl(`/api/project/artifacts/build/${encodeURIComponent(id)}/cancel`, {method: "POST"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel the artifact build"));
+    return (await response.json()) as StudioArtifactBuildJobView;
 }

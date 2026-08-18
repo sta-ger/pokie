@@ -1,3 +1,4 @@
+import fs from "fs";
 import vm from "vm";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
@@ -29,9 +30,18 @@ import {SelectedEvaluatorGroupWinAggregationPolicy} from "../session/videoslot/w
 import {OutcomeLibraryBundleWriter} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriter.js";
 import type {OutcomeLibraryBundleWriting} from "../weightedoutcome/bundle/OutcomeLibraryBundleWriting.js";
 import {generateExactWeightedOutcomeLibrary} from "../weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
+import {estimateExactOutcomeSpaceSize} from "../weightedoutcome/generate/estimateExactOutcomeSpaceSize.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
+import {
+    assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
+    reportArtifactBuildProgress,
+    type ArtifactBuildOptions,
+    type ArtifactBuildPreflight,
+} from "./ArtifactBuildOptions.js";
 
 const GENERATED_RUNTIME = {
     BetModeDefinition,
@@ -87,7 +97,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
     public async resolveOrGenerate(
         source: PokieProject,
         destinationPath: string | ((compatibility: OutcomeProjectCompatibility) => string),
+        options?: ArtifactBuildOptions,
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
+        assertArtifactBuildNotCancelled(options);
         const game = source.type === "blueprint" ? this.loadMaterializedGame(this.validateAndMaterialize(source.rootPath)) : await this.loadGame(source.rootPath);
         const configHash = game.getConfigHash?.();
         if (configHash === undefined) {
@@ -102,16 +114,47 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         };
         const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
         if (compatible !== undefined) {
+            reportArtifactBuildProgress(options, {status: "completed"});
             return {project: compatible, reused: true};
         }
 
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
         assertArtifactDestinationAvailable(bundleDir, "directory");
-        await this.generateBundle(source.rootPath, game, configHash, bundleDir);
-        return {project: await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility), reused: false};
+        assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
+        const preflight = outcomeGenerationPreflight(game);
+        reportArtifactBuildProgress(options, {status: "preflight", preflight});
+        assertArtifactBuildNotCancelled(options);
+        try {
+            await this.generateBundle(source.rootPath, game, configHash, bundleDir, options, preflight);
+            assertArtifactBuildNotCancelled(options);
+            const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
+            reportArtifactBuildProgress(options, {
+                status: "completed",
+                completed: preflight.estimatedItemCount,
+                total: preflight.estimatedItemCount,
+                preflight,
+            });
+            return {project, reused: false};
+        } catch (error) {
+            // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
+            // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
+            await fs.promises.rm(bundleDir, {recursive: true, force: true}).catch(() => undefined);
+            if (options?.signal?.aborted) {
+                reportArtifactBuildProgress(options, {status: "cancelled", preflight});
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", preflight});
+            throw error;
+        }
     }
 
-    private async generateBundle(blueprintPath: string, game: PokieGame, configHash: string, destinationPath: string): Promise<void> {
+    private async generateBundle(
+        blueprintPath: string,
+        game: PokieGame,
+        configHash: string,
+        destinationPath: string,
+        options: ArtifactBuildOptions | undefined,
+        preflight: ArtifactBuildPreflight,
+    ): Promise<void> {
         const declaredModes = game.getBetModes?.();
         // A package without the optional bet-mode contract still has the canonical base runtime.  Do not
         // pretend that base is selectable, though: only a declared runtime mode is passed to the exact
@@ -127,9 +170,14 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     configHash,
                     ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
                     selectBetMode: declaredModes !== undefined && declaredModes.length > 0,
+                    signal: options?.signal,
+                    onProgress: (completed, total) => {
+                        reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
+                    },
                 }),
             })),
         );
+        assertArtifactBuildNotCancelled(options);
         const result = await this.writer.writeToDirectory(
             generated.map(({mode, generated: library}) => ({
                 modeName: mode.id,
@@ -139,6 +187,18 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 generator: library.diagnostics,
             })),
             destinationPath,
+            {
+                signal: options?.signal,
+                onProgress: (progress) => {
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: progress.completed,
+                        total: preflight.estimatedItemCount,
+                        preflight,
+                        message: progress.message,
+                    });
+                },
+            },
         );
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || result.manifest === undefined) {
@@ -179,4 +239,18 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         return module.exports as PokieGame;
     }
 
+}
+
+function outcomeGenerationPreflight(game: PokieGame): ArtifactBuildPreflight {
+    const estimate = estimateExactOutcomeSpaceSize(game);
+    const estimatedItemCount = estimate.totalOutcomeSpaceSize;
+    return {
+        estimatedItemCount,
+        // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
+        // a planning signal only; the precise output size is unknown until grids have been deduplicated.
+        estimatedBytes: estimatedItemCount * BigInt(1024),
+        ...(estimatedItemCount > BigInt(10_000)
+            ? {complexityWarning: `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`}
+            : {}),
+    };
 }

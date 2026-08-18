@@ -7,7 +7,16 @@ import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import {
+    assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
+    captureArtifactDestinationState,
+    cleanupIncompleteArtifactOutput,
+    reportArtifactBuildProgress,
+    type ArtifactBuildOptions,
+} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 
 // Builds a "tsPackage" artifact from a resolved "blueprint" source -- the same validate/resolve-reel-strips/
@@ -35,13 +44,15 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
         this.generator = generator;
     }
 
-    // Deliberately not `async`: every step here is synchronous, and require-await (rightly) rejects an `async`
-    // method with no `await` in its body -- but build() must still never throw synchronously (see ArtifactBuilder's
-    // own doc comment), so every failure path returns a rejected Promise explicitly instead.
-    public build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        let destinationState: ReturnType<typeof captureArtifactDestinationState> | undefined;
         try {
+            assertArtifactBuildNotCancelled(options);
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+            assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+            destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
 
+            reportArtifactBuildProgress(options, {status: "running", message: "Loading and validating Blueprint"});
             const blueprint = this.loadBlueprint(source.rootPath);
             const errors = this.validator.validate(blueprint).filter((issue) => issue.severity === "error");
             if (errors.length > 0) {
@@ -64,10 +75,29 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
                 throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips: ${failures.join("; ")}`);
             }
 
-            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), destinationPath, resolution.reelStripGeneration);
-            return Promise.resolve({outputPath: result.projectRoot});
+            reportArtifactBuildProgress(options, {status: "running", message: "Publishing TypeScript package"});
+            assertArtifactBuildNotCancelled(options);
+            const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), destinationPath, resolution.reelStripGeneration, {
+                signal: options?.signal,
+                onProgress: (progress) =>
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: BigInt(progress.completed),
+                        total: BigInt(progress.total),
+                        message: progress.message,
+                    }),
+            });
+            assertArtifactBuildNotCancelled(options);
+            reportArtifactBuildProgress(options, {status: "completed"});
+            return {outputPath: result.projectRoot};
         } catch (error) {
-            return Promise.reject(error);
+            // The generator normally stages atomically. This cleanup additionally protects injected/custom
+            // generators that fail after allocating their output directory.
+            if (destinationState !== undefined) await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (options?.signal?.aborted) {
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", message: "TypeScript package publishing failed"});
+            throw error;
         }
     }
 }

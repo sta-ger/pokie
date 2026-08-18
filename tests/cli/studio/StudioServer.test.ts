@@ -10,6 +10,7 @@ import {
     GamePackageInspectionReport,
     GameSessionHandling,
     loadPokieGame,
+    ManagedOutcomeProjectService,
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
@@ -41,6 +42,7 @@ import {createMaterializingRuntimePackageResolver} from "../../../cli/materializ
 import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {StudioNativePickerService} from "../../../cli/studio/home/StudioNativePickerService.js";
@@ -71,6 +73,18 @@ function restoreEnv(name: string, value: string | undefined): void {
         process.env[name] = value;
     }
 }
+
+// The materialization tests deliberately exercise the real `npm install` boundary. Invoke the npm bundled
+// with this test process's Node runtime directly, preserving the ordinary production command arguments while
+// avoiding a test-command policy wrapper injected into PATH.
+const runBundledNpmCommand: PackageCommandRunning = (command, args, cwd) => {
+    const bundledNpmDirectory = path.dirname(process.execPath);
+    const bundledNpm = path.join(bundledNpmDirectory, process.platform === "win32" ? "npm.cmd" : "npm");
+    if (!fs.existsSync(bundledNpm)) {
+        return runPackageCommand(command, args, cwd);
+    }
+    return runPackageCommand(command === "npm" ? bundledNpm : command, args, cwd);
+};
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -663,14 +677,22 @@ describe("StudioServer", () => {
             return blueprintPath;
         }
 
-        // The fully default production wiring -- StudioCommand's own construction, unmodified: no
-        // `resolveProject`/`materializer` override, just `createMaterializingRuntimePackageResolver`
-        // given `pokiePackageRootWithSpaces` the same way StudioCommand hands it readOwnPackageRoot()'s
-        // result. Proves Studio's real Home Open Project route reaches the actual default resolver, not
-        // a stand-in for it -- see this describe block's own doc comment.
+        // The production materializer wiring, with only the test process's explicit npm executable injected:
+        // the generator, validator, local-Pokie dependency installation strategy and resolver are otherwise
+        // the same as StudioCommand's defaults. This still proves Home Open Project uses the actual
+        // materializing resolver instead of a stand-in.
         async function startDefaultMaterializingServer(): Promise<{baseUrl: string; rawProjectRoot: string}> {
             const rawProjectRoot = writeStarterBlueprint();
-            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(UNPUBLISHED_POKIE_VERSION, STUDIO_OPERATION, pokiePackageRootWithSpaces);
+            const materializer = new BlueprintProjectMaterializer(
+                UNPUBLISHED_POKIE_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                withLocalPokieInstall(pokiePackageRootWithSpaces, runBundledNpmCommand),
+                undefined,
+                materializeCacheRoot,
+            );
+            const resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(UNPUBLISHED_POKIE_VERSION, STUDIO_OPERATION, undefined, {materializer});
 
             const homeService = new StudioHomeService("1.0.0", undefined, loadPokieGame, undefined, resolveRuntimePackageRoot);
             materializingServer = new StudioServer({
@@ -718,7 +740,7 @@ describe("StudioServer", () => {
             return {baseUrl: `http://${address.host}:${address.port}`, rawProjectRoot};
         }
 
-        it("materializes a genuinely loadable runtime through Home Open Project using the fully default production resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
+        it("materializes a genuinely loadable runtime through Home Open Project using the production materializing resolver, offline, with an installation path containing spaces, and reuses the cache on a second Open", async () => {
             const {baseUrl, rawProjectRoot} = await startDefaultMaterializingServer();
 
             const first = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
@@ -733,7 +755,7 @@ describe("StudioServer", () => {
         });
 
         it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 400 domain error carrying the raw npm diagnostic as a separate 'detail' field (same convention as every other Home Open Project failure), a retry succeeds, and a later Open reuses the cache without a second install", async () => {
-            const flakyRunner = failFirstInstallThenDelegate(runPackageCommand);
+            const flakyRunner = failFirstInstallThenDelegate(runBundledNpmCommand);
             const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
 
             const failed = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
@@ -5740,6 +5762,19 @@ describe("StudioServer", () => {
             return `http://${address.host}:${address.port}`;
         }
 
+        async function waitForArtifactBuildJob(projectBaseUrl: string, id: string): Promise<{status: string; result?: unknown}> {
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${id}`);
+                expect(response.status).toBe(200);
+                const job = response.body as {status: string; result?: unknown};
+                if (job.status !== "queued" && job.status !== "running") return job;
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+            throw new Error(`Artifact build job "${id}" did not finish.`);
+        }
+
         function writeBlueprintFile(overrides: Record<string, unknown> = {}): string {
             const filePath = path.join(artifactWorkDir, "blueprint.json");
             fs.writeFileSync(
@@ -5807,10 +5842,14 @@ describe("StudioServer", () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
 
-            expect(status).toBe(201);
-            const view = body as {status: string; outputPath?: string; sourceType?: string};
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            const view = completed.result as {status: string; outputPath?: string; sourceType?: string};
             expect(view.status).toBe("ok");
             expect(view.outputPath).toBe(path.join(artifactWorkDir, "tsPackage"));
             expect(view.sourceType).toBe("blueprint");
@@ -5821,13 +5860,104 @@ describe("StudioServer", () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
 
-            expect(status).toBe(201);
-            const view = body as {status: string; outputPath?: string; sourceType?: string};
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            const view = completed.result as {status: string; outputPath?: string; sourceType?: string};
             expect(view.status).toBe("ok");
             expect(view.sourceType).toBe("blueprint");
             expect(fs.existsSync(path.join(view.outputPath!, "index.json"))).toBe(true);
+        });
+
+        it("cancels an active Blueprint Outcome publish through the HTTP job route without publishing a managed project", async () => {
+            const blueprintPath = writeBlueprintFile({
+                manifest: {id: "cancellable-outcome-slot", name: "Cancellable Outcome Slot", version: "1.0.0"},
+                reels: 3,
+                rows: 1,
+                symbols: ["A", "B", "C", "D", "E", "F", "G"],
+                paytable: {A: {3: 1}},
+                reelStrips: Array.from({length: 3}, () => ["A", "B", "C", "D", "E", "F", "G"]),
+                availableBets: [1],
+            });
+            const destination = path.join(artifactWorkDir, "cancelled-outcome-library");
+            const registryPath = path.join(artifactWorkDir, ".pokie", "managed-outcome-projects.json");
+            // Keep the complete production chain: Studio -> real ArtifactBuilderRegistry -> real
+            // BlueprintStakeOutcomeLibraryWorkflow -> real ManagedOutcomeProjectService.  The distinct
+            // outcome space yields while the canonical writer is actively publishing, giving
+            // the HTTP Cancel route a real in-flight bundle to interrupt.
+            const artifactBuildService = new StudioArtifactBuildService(
+                "1.3.0",
+                undefined,
+                undefined,
+                undefined,
+                new ManagedOutcomeProjectService(),
+            );
+            const homeService = new StudioHomeService("1.3.0");
+            artifactServer = new StudioServer({
+                pokieVersion: "1.3.0",
+                host: "127.0.0.1",
+                port: 0,
+                studioRoot: artifactStudioRoot,
+                homeService,
+                blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
+                artifactBuildService,
+                initialContext: {mode: "project", projectRoot: blueprintPath},
+            });
+            const address = await artifactServer.start();
+            const projectBaseUrl = `http://${address.host}:${address.port}`;
+
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "outcomeLibrary", outDir: destination});
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+
+            let activeJob: {id: string; status: string; progress?: {message?: string}} | undefined;
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                expect(response.status).toBe(200);
+                const current = response.body as {id: string; status: string; progress?: {message?: string}};
+                if (current.progress?.message?.startsWith("Writing Outcome mode")) {
+                    activeJob = current;
+                    break;
+                }
+                if (current.status !== "queued" && current.status !== "running") break;
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+            expect(activeJob).toEqual(expect.objectContaining({id: job.id, status: "running"}));
+
+            const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
+            expect(cancelled.status).toBe(200);
+            expect(cancelled.body).toMatchObject({id: job.id, status: "running", cancellationRequested: true});
+
+            let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
+                expect(response.status).toBe(200);
+                const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
+                if (current.status !== "queued" && current.status !== "running") {
+                    terminalJob = current;
+                    break;
+                }
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+
+            expect(terminalJob).toEqual(expect.objectContaining({
+                id: job.id,
+                status: "cancelled",
+                cancellationRequested: true,
+                result: expect.objectContaining({status: "cancelled"}),
+            }));
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.readdirSync(artifactWorkDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
+            expect(fs.existsSync(registryPath)).toBe(false);
         });
 
         it("returns a conflict (409) for a pre-existing non-empty destination and never writes to it", async () => {
@@ -5837,10 +5967,13 @@ describe("StudioServer", () => {
             fs.writeFileSync(path.join(destination, "unrelated.txt"), "pre-existing");
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
 
-            expect(status).toBe(409);
-            expect((body as {status: string}).status).toBe("conflict");
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string}}).job;
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("failed");
+            expect((completed.result as {status: string}).status).toBe("conflict");
             expect(fs.readdirSync(destination)).toEqual(["unrelated.txt"]);
         });
 
@@ -5849,10 +5982,14 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(blueprintPath);
             const explicitOut = path.join(artifactWorkDir, "my-custom-out");
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage", outDir: explicitOut});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage", outDir: explicitOut});
 
-            expect(status).toBe(201);
-            expect((body as {outputPath?: string}).outputPath).toBe(explicitOut);
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            expect((completed.result as {outputPath?: string}).outputPath).toBe(explicitOut);
         });
 
         it("previews a tsPackage build against the same default sibling destination build() itself would use, without writing anything", async () => {

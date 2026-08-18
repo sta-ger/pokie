@@ -4,7 +4,17 @@ import {StakeEngineImporter} from "../stakeengine/StakeEngineImporter.js";
 import type {StakeEngineImporting} from "../stakeengine/StakeEngineImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import {
+    assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
+    captureArtifactDestinationState,
+    cleanupIncompleteArtifactOutput,
+    reportArtifactBuildProgress,
+    type ArtifactBuildOptions,
+    type ArtifactBuildPreflight,
+} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import {buildWeightedOutcomeLibrary} from "../weightedoutcome/buildWeightedOutcomeLibrary.js";
@@ -32,22 +42,56 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         this.exporter = exporter;
     }
 
-    public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
+        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
+        const destinationState = captureArtifactDestinationState(destinationPath, this.destinationKind);
 
-        const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
+        try {
+            const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
+            const preflight = stakePreflight(modes);
+            reportArtifactBuildProgress(options, {status: "preflight", preflight, message: "Inspecting Stake books"});
+            assertArtifactBuildNotCancelled(options);
 
-        const result = await this.exporter.exportToDirectory(modes, destinationPath);
-        const exportErrors = result.issues.filter((issue) => issue.severity === "error");
-        if (exportErrors.length > 0 || result.manifest === undefined) {
-            throw new Error(
-                `Could not republish Stake Engine export "${source.rootPath}" to "${destinationPath}": ${exportErrors
-                    .map((issue) => `${issue.code}: ${issue.message}`)
-                    .join("; ")}`,
-            );
+            let completed = BigInt(0);
+            for (const mode of modes) {
+                completed += BigInt(mode.library.outcomes.length);
+                reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: `Prepared Stake mode ${mode.modeName}`});
+                assertArtifactBuildNotCancelled(options);
+            }
+            reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing Stake export"});
+            const result = await this.exporter.exportToDirectory(modes, destinationPath, {
+                signal: options?.signal,
+                onProgress: (progress) => {
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: progress.completed,
+                        total: preflight.estimatedItemCount,
+                        preflight,
+                        message: progress.message,
+                    });
+                },
+            });
+            assertArtifactBuildNotCancelled(options);
+            const exportErrors = result.issues.filter((issue) => issue.severity === "error");
+            if (exportErrors.length > 0 || result.manifest === undefined) {
+                throw new Error(
+                    `Could not republish Stake Engine export "${source.rootPath}" to "${destinationPath}": ${exportErrors
+                        .map((issue) => `${issue.code}: ${issue.message}`)
+                        .join("; ")}`,
+                );
+            }
+
+            reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount, preflight});
+            return {outputPath: result.outDir, preflight};
+        } catch (error) {
+            await cleanupIncompleteArtifactOutput(destinationPath, destinationState);
+            if (options?.signal?.aborted) {
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", message: "Stake export failed"});
+            throw error;
         }
-
-        return {outputPath: result.outDir};
     }
 
     private async readStakeModes(sourcePath: string): Promise<readonly StakeEngineExportModeInput[]> {
@@ -79,4 +123,18 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             }),
         );
     }
+}
+
+function stakePreflight(modes: readonly StakeEngineExportModeInput[]): ArtifactBuildPreflight {
+    const estimatedItemCount = modes.reduce((total, mode) => total + BigInt(mode.library.outcomes.length), BigInt(0));
+    // Stake's exported books are compressed, so the in-memory canonical JSON is a conservative complexity
+    // signal rather than a misleading promise about final archive size.
+    const estimatedBytes = modes.reduce((total, mode) => total + BigInt(Buffer.byteLength(JSON.stringify(mode.library.outcomes))), BigInt(0));
+    return {
+        estimatedItemCount,
+        estimatedBytes,
+        ...(estimatedItemCount > BigInt(10_000)
+            ? {complexityWarning: `Exporting ${estimatedItemCount} Stake books can take noticeable time and disk space.`}
+            : {}),
+    };
 }

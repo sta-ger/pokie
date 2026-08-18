@@ -2305,21 +2305,22 @@ describe("CLI top-level dispatch contract (--help/-h, unknown command, --version
 
 // Ties this file's frozen validation/dispatch contract to the deep, per-command functional coverage
 // (every accepted option value, every JSON output shape, actual file I/O) that already lives in
-// tests/cli/commands/*.test.ts — one dedicated file per command class, by convention. That coverage
+// tests/cli/commands/*.test.ts or the one test file some command suites keep directly under tests/cli/
+// — one dedicated file per command class, by convention. That coverage
 // isn't duplicated here — CLI_CONTRACT_CASES' own "valid" cases above are this file's real,
 // executable evidence that every command's accepted path actually works end to end through
 // dispatch(), not this file-existence check alone (a dedicated test file could exist and still not
 // prove that, and its own absence wouldn't be caught by the checks above) — but silently deleting a
 // command's dedicated test file would otherwise go unnoticed by everything else in this file, so it
 // still gets its own guard.
-describe("CLI command test coverage (structural link to tests/cli/commands/*.test.ts)", () => {
+describe("CLI command test coverage (structural link to dedicated command test files)", () => {
     const commands = registerCommands();
     const COMMANDS_TEST_DIR = path.join(__dirname, "commands");
 
     it("every registered command class has its own dedicated test file", () => {
         for (const command of commands) {
-            const testFile = path.join(COMMANDS_TEST_DIR, `${command.constructor.name}.test.ts`);
-            expect(fs.existsSync(testFile)).toBe(true);
+            const fileName = `${command.constructor.name}.test.ts`;
+            expect(fs.existsSync(path.join(COMMANDS_TEST_DIR, fileName)) || fs.existsSync(path.join(__dirname, fileName))).toBe(true);
         }
     });
 });

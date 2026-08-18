@@ -1,19 +1,22 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text} from "@mantine/core";
 import {
-    buildArtifact,
+    cancelArtifactBuild,
     checkNativePickerAvailability,
     exportStakeEngine,
     generateOutcomeLibrary,
+    getArtifactBuild,
     listArtifactTargets,
     openOutputFolder,
     previewArtifact,
     revealOutputPath,
     registerProjectImport,
+    startArtifactBuild,
 } from "../../api/apiClient";
 import type {
     OutcomeLibrarySelector,
     StudioArtifactBuildView,
+    StudioArtifactBuildJobView,
     StudioArtifactPreviewView,
     StudioArtifactTargetType,
     StudioArtifactTargetView,
@@ -121,8 +124,9 @@ function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportVie
 // already use for their own single card.
 type ArtifactBuildRunView =
     | {status: "idle"}
-    | {status: "running"}
+    | {status: "running"; jobId: string; progress?: StudioArtifactBuildJobView["progress"]; cancellationRequested: boolean}
     | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>}
+    | {status: "cancelled"}
     | {status: "error"; message: string};
 
 function describeArtifactBuildResultError(view: Exclude<StudioArtifactBuildView, {status: "ok"}>): string {
@@ -165,6 +169,7 @@ function TargetCard({
     artifactPreview,
     artifactBuildRun,
     onBuildArtifact,
+    onCancelArtifactBuild,
     artifactDestination,
     onArtifactDestinationChange,
     onOpenAsProject,
@@ -188,6 +193,7 @@ function TargetCard({
     artifactPreview: ArtifactPreviewRunView;
     artifactBuildRun: ArtifactBuildRunView;
     onBuildArtifact: (target: StudioArtifactTargetType) => void;
+    onCancelArtifactBuild: (target: StudioArtifactTargetType) => void;
     artifactDestination: string;
     onArtifactDestinationChange: (target: StudioArtifactTargetType, destination: string) => void;
     onOpenAsProject: (projectRoot: string) => void;
@@ -368,12 +374,47 @@ function TargetCard({
                     <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"}>
                         Build
                     </Button>
+                    {artifactBuildRun.status === "running" && (
+                        <Button size="xs" mt="sm" ml="xs" color="red" variant="light" onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>
+                            Cancel
+                        </Button>
+                    )}
+                    {artifactBuildRun.status === "running" && (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            {artifactBuildRun.progress?.preflight && (
+                                <>
+                                    {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
+                                        `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
+                                        `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
+                                    <br />
+                                </>
+                            )}
+                            {artifactBuildRun.progress?.status !== "preflight" &&
+                                (`Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                    `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
+                            {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
+                        </Text>
+                    )}
+                    {artifactBuildRun.status === "cancelled" && (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Build cancelled. No incomplete artifact was published.
+                        </Text>
+                    )}
                     {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
                     {artifactBuildRun.status === "ok" && (
                         <>
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                             </Text>
+                            {artifactBuildRun.result.preflight && (
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)
+                                    {artifactBuildRun.result.preflight.estimatedBytes !== undefined
+                                        ? ` (estimated ${artifactBuildRun.result.preflight.estimatedBytes} bytes)`
+                                        : ""}
+                                    {artifactBuildRun.result.preflight.complexityWarning ? ` — ${artifactBuildRun.result.preflight.complexityWarning}` : ""}
+                                </Text>
+                            )}
                             <QuickActions>
                                 <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result.outputPath)}>
                                     Open as Project
@@ -534,6 +575,10 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     // One run per artifactTarget (keyed by StudioArtifactTargetType), each independent of every other --
     // see ArtifactBuildRunView's own doc comment.
     const [artifactBuildRuns, setArtifactBuildRuns] = useState<Record<string, ArtifactBuildRunView>>({});
+    const artifactBuildPollTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    useEffect(() => () => {
+        Object.values(artifactBuildPollTimers.current).forEach((timer) => clearTimeout(timer));
+    }, []);
     // Every outputPath a successful build's own "Add to Projects" has already registered this session --
     // keyed by outputPath (not target), since a rebuild against a different outDir is a different
     // registration candidate even for the same target.
@@ -697,21 +742,55 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
         if (artifactBuildRuns[target]?.status === "running") {
             return;
         }
-        setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running"}}));
-        buildArtifact(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
-            .then((view) => {
-                if (view.status === "ok") {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result: view}}));
+        startArtifactBuild(fetchImpl, target, artifactDestinations[target]?.trim() || undefined)
+            .then((job) => {
+                setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId: job.id, progress: job.progress, cancellationRequested: false}}));
+                pollArtifactBuild(target, job.id);
+            })
+            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
+                ...runs,
+                [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
+            })));
+    }
+
+    function handleCancelArtifactBuild(target: StudioArtifactTargetType): void {
+        const run = artifactBuildRuns[target];
+        if (run?.status !== "running") return;
+        setArtifactBuildRuns((runs) => ({...runs, [target]: {...run, cancellationRequested: true}}));
+        cancelArtifactBuild(fetchImpl, run.jobId)
+            .then(() => pollArtifactBuild(target, run.jobId))
+            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
+                ...runs,
+                [target]: {status: "error", message: describeProjectActionError("The artifact build cancellation", errorMessage(error))},
+            })));
+    }
+
+    function pollArtifactBuild(target: StudioArtifactTargetType, jobId: string): void {
+        getArtifactBuild(fetchImpl, jobId)
+            .then((job) => {
+                if (job.status === "queued" || job.status === "running") {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "running", jobId, progress: job.progress, cancellationRequested: job.cancellationRequested}}));
+                    artifactBuildPollTimers.current[target] = setTimeout(() => pollArtifactBuild(target, jobId), 100);
+                    return;
+                }
+                Reflect.deleteProperty(artifactBuildPollTimers.current, target);
+                if (job.status === "cancelled") {
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
+                } else if (job.result !== undefined && job.result.status === "ok") {
+                    const result = job.result;
+                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result}}));
                 } else {
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "error", message: describeArtifactBuildResultError(view)}}));
+                    const result = job.result;
+                    setArtifactBuildRuns((runs) => ({
+                        ...runs,
+                        [target]: {status: "error", message: result !== undefined ? describeArtifactBuildResultError(result) : "Artifact build ended without a result."},
+                    }));
                 }
             })
-            .catch((error: unknown) => {
-                setArtifactBuildRuns((runs) => ({
-                    ...runs,
-                    [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
-                }));
-            });
+            .catch((error: unknown) => setArtifactBuildRuns((runs) => ({
+                ...runs,
+                [target]: {status: "error", message: describeProjectActionError("The artifact build", errorMessage(error))},
+            })));
     }
 
     // A successful build's own output is itself a resolvable PokieProject (of the built target's own
@@ -793,6 +872,7 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                             artifactPreview={artifactPreview}
                                             artifactBuildRun={artifactBuildRun}
                                             onBuildArtifact={handleBuildArtifact}
+                                            onCancelArtifactBuild={handleCancelArtifactBuild}
                                             artifactDestination={card.artifactTarget === undefined ? "" : artifactDestinations[card.artifactTarget] ?? ""}
                                             onArtifactDestinationChange={(target, destination) =>
                                                 setArtifactDestinations((destinations) => ({...destinations, [target]: destination}))

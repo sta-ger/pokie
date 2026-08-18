@@ -14,7 +14,11 @@ import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
 import {StakeEngineExportInvariantError} from "./StakeEngineExportInvariantError.js";
 import type {StakeEngineExportModeInput} from "./StakeEngineExportModeInput.js";
-import type {StakeEngineExporting} from "./StakeEngineExporting.js";
+import {
+    StakeEngineExportCancelledError,
+    type StakeEngineExporting,
+    type StakeEngineExportOptions,
+} from "./StakeEngineExporting.js";
 import type {StakeEngineExportResult} from "./StakeEngineExportResult.js";
 import type {StakeEngineExportValidating} from "./StakeEngineExportValidating.js";
 import {StakeEngineExportValidator} from "./StakeEngineExportValidator.js";
@@ -84,22 +88,30 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     // export in memory before touching the filesystem at all: on any validation error (structural, or an
     // outcome's events/amounts turning out not to be representable in Stake units), nothing is written and an
     // existing outDir is left completely untouched. There is no partial export.
-    // Not "async": every step here is synchronous (fs.*Sync throughout, for the same reason
-    // GamePackageGenerator's own generate() is fully synchronous — a Stake export is one-shot local disk I/O,
-    // not concurrent/streamed). Still returns a Promise, and still turns a thrown error into a rejection rather
-    // than a synchronous throw (see the catch below), so callers can `await`/`.catch()` it exactly like any
-    // other exporter in this package.
-    public exportToDirectory(modes: readonly StakeEngineExportModeInput<T>[], outDir: string): Promise<StakeEngineExportResult> {
+    // This is async specifically to yield between bounded outcome batches. That gives a UI/timer-driven
+    // AbortSignal a chance to fire during a large export rather than only before its synchronous publish starts.
+    public async exportToDirectory(
+        modes: readonly StakeEngineExportModeInput<T>[],
+        outDir: string,
+        options?: StakeEngineExportOptions,
+    ): Promise<StakeEngineExportResult> {
+        assertNotCancelled(options);
         try {
             const structuralIssues = this.validator.validate(modes);
             if (structuralIssues.some((issue) => issue.severity === "error")) {
-                return Promise.resolve({outDir, files: [], manifest: undefined, issues: structuralIssues});
+                return {outDir, files: [], manifest: undefined, issues: structuralIssues};
             }
 
-            const buildResults = modes.map((mode) => this.buildMode(mode));
+            const buildResults: ModeBuildResult[] = [];
+            let completed = BigInt(0);
+            for (const mode of modes) {
+                const result = await this.buildMode(mode, options, completed);
+                buildResults.push(result);
+                completed += BigInt(mode.library.outcomes.length);
+            }
             const allIssues = [...structuralIssues, ...buildResults.flatMap((result) => result.issues)];
             if (allIssues.some((issue) => issue.severity === "error")) {
-                return Promise.resolve({outDir, files: [], manifest: undefined, issues: allIssues});
+                return {outDir, files: [], manifest: undefined, issues: allIssues};
             }
 
             // Safe: no error-level issue above means every buildMode call returned a "built" result.
@@ -133,10 +145,11 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             };
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
-            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest);
+            assertNotCancelled(options);
+            const cleanupWarning = this.writeToTempDirectoryThenSwap(outDir, builtModes, index, manifest, options, completed);
             const finalIssues = cleanupWarning !== undefined ? [...allIssues, cleanupWarning] : allIssues;
 
-            return Promise.resolve({outDir, files: relativeFiles, manifest, issues: finalIssues});
+            return {outDir, files: relativeFiles, manifest, issues: finalIssues};
         } catch (error) {
             return Promise.reject(error);
         }
@@ -156,6 +169,8 @@ export class StakeEngineExporter<T extends string | number = string> implements 
         builtModes: readonly BuiltMode[],
         index: StakeEngineIndex,
         manifest: StakeEngineManifest,
+        options: StakeEngineExportOptions | undefined,
+        completed: bigint,
     ): ValidationIssue | undefined {
         const {cleanupWarning} = publishDirectoryAtomically({
             outDir,
@@ -163,14 +178,29 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             removeDirectory: this.removeDirectory,
             writeFilesIntoTempDir: (tempDir) => {
                 for (const builtMode of builtModes) {
+                    assertNotCancelled(options);
                     this.writeFile(path.join(tempDir, builtMode.csvFileName), builtMode.csvContent);
+                    options?.onProgress?.({completed, message: `Publishing Stake file ${builtMode.csvFileName}`});
+                    assertNotCancelled(options);
+                    assertNotCancelled(options);
                     this.writeFile(path.join(tempDir, builtMode.booksFileName), builtMode.booksBuffer);
+                    options?.onProgress?.({completed, message: `Publishing Stake file ${builtMode.booksFileName}`});
+                    assertNotCancelled(options);
                 }
+                assertNotCancelled(options);
                 this.writeFile(path.join(tempDir, "index.json"), `${JSON.stringify(index, null, 4)}\n`);
+                options?.onProgress?.({completed, message: "Publishing Stake file index.json"});
+                assertNotCancelled(options);
+                assertNotCancelled(options);
                 this.writeFile(path.join(tempDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
+                options?.onProgress?.({completed, message: "Publishing Stake file pokie-manifest.json"});
+                // The final callback is still a cancellation boundary: returning from this closure
+                // authorizes publishDirectoryAtomically to commit its temp directory.
+                assertNotCancelled(options);
             },
         });
 
+        assertNotCancelled(options);
         return cleanupWarning !== undefined
             ? {code: "stakeengine-stale-export-cleanup-failed", severity: "warning", message: cleanupWarning, details: {outDir}}
             : undefined;
@@ -184,12 +214,18 @@ export class StakeEngineExporter<T extends string | number = string> implements 
     // way — a throwing projector, non-JSON-safe output — becomes a ValidationIssue rather than a crash; this
     // mode's own outcomes that already built fine are simply not returned (the exporter as a whole never writes
     // anything once any mode reports an error, see exportToDirectory).
-    private buildMode(mode: StakeEngineExportModeInput<T>): ModeBuildResult {
+    private async buildMode(
+        mode: StakeEngineExportModeInput<T>,
+        options: StakeEngineExportOptions | undefined,
+        completedBefore: bigint,
+    ): Promise<ModeBuildResult> {
         const issues: ValidationIssue[] = [];
         const bookLines: StakeEngineBookLine[] = [];
         const csvRows: {simulationId: number; weight: number; payoutMultiplier: number}[] = [];
 
+        let processed = BigInt(0);
         for (const outcome of mode.library.outcomes) {
+            assertNotCancelled(options);
             const id = parseStakeEngineOutcomeId(outcome.id);
             if (id === undefined) {
                 // Unreachable once StakeEngineExportValidator has run without errors (it rejects any outcome id
@@ -234,6 +270,14 @@ export class StakeEngineExporter<T extends string | number = string> implements 
 
             bookLines.push({id, events, payoutMultiplier: stakePayoutMultiplier});
             csvRows.push({simulationId: id, weight: outcome.weight, payoutMultiplier: stakePayoutMultiplier});
+            processed++;
+            options?.onProgress?.({completed: completedBefore + processed, message: `Building Stake mode ${mode.modeName}`});
+            assertNotCancelled(options);
+            if (processed % BigInt(256) === BigInt(0)) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
         }
 
         if (issues.length > 0) {
@@ -264,4 +308,8 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             },
         };
     }
+}
+
+function assertNotCancelled(options: StakeEngineExportOptions | undefined): void {
+    if (options?.signal?.aborted) throw new StakeEngineExportCancelledError();
 }

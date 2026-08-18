@@ -26,6 +26,7 @@ import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibra
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
+import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -185,15 +186,15 @@ export class ArtifactBuilderRegistry {
     // registered ArtifactBuilder. Throws (never silently no-ops) when `target` has no registered builder today
     // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
     // is never a second, differently-worded "not supported" statement.
-    public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
-            return this.buildManagedOutcomeFromRuntime(source, destinationPath);
+            return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
         }
         if (target === "stakeAdapter" && (source.type === "blueprint" || source.type === "tsPackage")) {
             return this.blueprintStakeWorkflow
-                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility))
+                .resolveOrGenerate(source, (compatibility) => this.managedOutcomeProjects.allocateRoot(source.rootPath, compatibility), options)
                 .then(({project: outcomeLibrary}) =>
-                    this.build("stakeAdapter", outcomeLibrary, destinationPath).then((result) => ({
+                    this.build("stakeAdapter", outcomeLibrary, destinationPath, options).then((result) => ({
                         ...result,
                         prerequisiteProjectRoots: [outcomeLibrary.rootPath],
                         managedProjectRoots: [outcomeLibrary.rootPath],
@@ -213,13 +214,18 @@ export class ArtifactBuilderRegistry {
             );
         }
 
-        return builder.build(source, destinationPath);
+        return builder.build(source, destinationPath, options);
     }
 
-    private async buildManagedOutcomeFromRuntime(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    private async buildManagedOutcomeFromRuntime(
+        source: PokieProject,
+        destinationPath: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<ArtifactBuildResult> {
         const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
             source,
             destinationPath,
+            options,
         );
         return {
             outputPath: outcomeLibrary.project.rootPath,

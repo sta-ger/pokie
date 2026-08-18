@@ -6,7 +6,7 @@ import {renderTsconfig} from "../gamepackage/renderTsconfig.js";
 import {BUILT_PACKAGE_FILES} from "./buildGameBuildInfo.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
 import type {GameBuildInfoReelStripGeneration} from "./GameBuildInfoReelStripGeneration.js";
-import type {GamePackageGenerating} from "./GamePackageGenerating.js";
+import type {GamePackageGenerateOptions, GamePackageGenerating} from "./GamePackageGenerating.js";
 import type {GeneratedGamePackage} from "./GeneratedGamePackage.js";
 import {materializeReelStrips} from "./materializeReelStrips.js";
 import {renderBuiltGameModule, renderBuiltGameModuleSource} from "./renderBuiltGameModule.js";
@@ -59,6 +59,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
         cwd: string,
         outDir?: string,
         reelStripGeneration?: GameBuildInfoReelStripGeneration,
+        options?: GamePackageGenerateOptions,
     ): GeneratedGamePackage {
         const id = blueprint.manifest.id;
         if (outDir === undefined && (id.includes("/") || id.includes("\\") || id === "." || id === "..")) {
@@ -99,7 +100,7 @@ export class GamePackageGenerator implements GamePackageGenerating {
             "README.md": renderBuiltPackageReadme(blueprint.manifest),
             "src/index.ts": renderBuiltGameModuleSource(materializedBlueprint, this.pokieVersion),
             "dist/index.js": renderBuiltGameModule(materializedBlueprint, this.pokieVersion),
-        });
+        }, options);
 
         return {projectRoot, manifest: blueprint.manifest, createdFiles: [...BUILT_PACKAGE_FILES]};
     }
@@ -110,15 +111,22 @@ export class GamePackageGenerator implements GamePackageGenerating {
     // absent or an empty directory, both of which a directory rename can safely replace), so a reader
     // can only ever observe projectRoot missing, or fully populated with every file — never a partial
     // write.
-    private publish(projectRoot: string, contentsByRelativePath: Record<string, string>): void {
+    private publish(projectRoot: string, contentsByRelativePath: Record<string, string>, options?: GamePackageGenerateOptions): void {
         const tempDir = `${projectRoot}.tmp-${crypto.randomBytes(6).toString("hex")}`;
+        const entries = Object.entries(contentsByRelativePath);
 
         try {
-            for (const [relativePath, contents] of Object.entries(contentsByRelativePath)) {
+            for (const [index, [relativePath, contents]] of entries.entries()) {
+                assertNotCancelled(options);
                 const tempPath = path.join(tempDir, ...relativePath.split("/"));
                 fs.mkdirSync(path.dirname(tempPath), {recursive: true});
                 fs.writeFileSync(tempPath, contents);
+                options?.onProgress?.({completed: index + 1, total: entries.length, message: `Publishing TypeScript package file ${relativePath}`});
+                assertNotCancelled(options);
             }
+            // The final file callback is a cancellation boundary: do not rename the complete temp
+            // directory into its user-visible destination after it asks us to stop.
+            assertNotCancelled(options);
             fs.renameSync(tempDir, projectRoot);
         } catch (error) {
             this.removeBestEffort(tempDir);
@@ -180,5 +188,11 @@ export class GamePackageGenerator implements GamePackageGenerating {
             });
 
         throw new Error(`Blueprint "${blueprint.manifest.id}" could not generate its reel strips:\n${lines.join("\n")}`);
+    }
+}
+
+function assertNotCancelled(options: GamePackageGenerateOptions | undefined): void {
+    if (options?.signal?.aborted) {
+        throw new Error("TypeScript package generation was cancelled.");
     }
 }

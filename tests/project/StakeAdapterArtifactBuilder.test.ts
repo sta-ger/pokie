@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    ArtifactBuildCancelledError,
     ArtifactBuildConflictError,
     OutcomeLibraryBundleWriter,
     PokieProject,
@@ -80,5 +81,87 @@ describe("StakeAdapterArtifactBuilder", () => {
 
         await expect(builder.build(stakeAdapterProjectOf(sourceDir), destinationDir)).rejects.toThrow(ArtifactBuildConflictError);
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
+    });
+
+    it("refuses a destination inside the source without publishing a partial Stake export", async () => {
+        const nestedDestination = path.join(sourceDir, "republished");
+
+        await expect(new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), nestedDestination)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.existsSync(nestedDestination)).toBe(false);
+        expect(fs.existsSync(path.join(sourceDir, "index.json"))).toBe(true);
+    });
+
+    it("refuses the source and a symlinked source ancestor without changing the Stake export", async () => {
+        const linkedParent = `${sourceDir}-link`;
+        fs.symlinkSync(sourceDir, linkedParent, "dir");
+
+        try {
+            await expect(new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), sourceDir)).rejects.toThrow(
+                ArtifactBuildConflictError,
+            );
+            await expect(
+                new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), path.join(linkedParent, "republished")),
+            ).rejects.toThrow(ArtifactBuildConflictError);
+            expect(fs.existsSync(path.join(sourceDir, "index.json"))).toBe(true);
+        } finally {
+            fs.unlinkSync(linkedParent);
+        }
+    });
+
+    it("reports preflight/cancellation before publishing and leaves no Stake directory", async () => {
+        const controller = new AbortController();
+        const statuses: string[] = [];
+
+        await expect(
+            new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), destinationDir, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    statuses.push(event.status);
+                    if (event.status === "preflight") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+        expect(statuses).toEqual(["preflight", "cancelled"]);
+        expect(fs.existsSync(destinationDir)).toBe(false);
+    });
+
+    it("cancels from the final Unicode-path Stake publish callback, leaving neither output nor temporary export", async () => {
+        const controller = new AbortController();
+        const unicodeDestination = path.join(path.dirname(destinationDir), "ставка с пробелом");
+        const progress: string[] = [];
+
+        await expect(
+            new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), unicodeDestination, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    progress.push(event.message ?? event.status);
+                    if (event.message === "Publishing Stake file pokie-manifest.json") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(progress).toContain("Publishing Stake file pokie-manifest.json");
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+        expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
+    });
+
+    it("cleans temporary export output when the underlying Stake writer fails", async () => {
+        const failingExporter = new StakeEngineExporter(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                throw new Error("injected Stake write failure");
+            },
+        );
+
+        await expect(new StakeAdapterArtifactBuilder("1.3.0", undefined, failingExporter).build(stakeAdapterProjectOf(sourceDir), destinationDir)).rejects.toThrow(
+            "injected Stake write failure",
+        );
+        expect(fs.existsSync(destinationDir)).toBe(false);
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
     });
 });

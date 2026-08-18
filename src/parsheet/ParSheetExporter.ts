@@ -23,7 +23,7 @@ import {SymbolsSheetMapper} from "./mapping/SymbolsSheetMapper.js";
 import type {SymbolsSheetMapping} from "./mapping/SymbolsSheetMapping.js";
 import {WinModelSheetMapper} from "./mapping/WinModelSheetMapper.js";
 import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
-import type {ParSheetExporting} from "./ParSheetExporting.js";
+import type {ParSheetExportOptions, ParSheetExporting} from "./ParSheetExporting.js";
 import type {SheetGrid} from "./SheetGrid.js";
 import {writeFileAtomically} from "./writeFileAtomically.js";
 
@@ -54,8 +54,7 @@ export class ParSheetExporter implements ParSheetExporting {
         provenanceMapper: ProvenanceSheetMapping = new ProvenanceSheetMapper(),
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         now: () => Date = () => new Date(),
-        writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void> = (workbook, filePath) =>
-            writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath)),
+        writeWorkbook: (workbook: ExcelJS.Workbook, filePath: string) => Promise<void> = defaultWriteWorkbook,
         // Appended after every pre-existing param (rather than grouped with the other sheet mappers
         // above) so that no existing positional caller of this constructor is broken by their arrival --
         // see the class-level API-evolution rule this codebase follows for public constructors.
@@ -86,7 +85,8 @@ export class ParSheetExporter implements ParSheetExporting {
     // untouched (writeWorkbook's own default implementation is itself atomic — see
     // writeFileAtomically.ts — so even a write/rename failure past this point can't leave a partial
     // file behind either). There is no "partial" export; either every sheet gets written, or none do.
-    public async exportToFile(blueprint: unknown, filePath: string, sourcePath?: string): Promise<ValidationIssue[]> {
+    public async exportToFile(blueprint: unknown, filePath: string, sourcePath?: string, options?: ParSheetExportOptions): Promise<ValidationIssue[]> {
+        assertNotCancelled(options);
         // Mirrors BuildCommand: a blueprint GameBlueprintValidator rejects is never treated as a
         // well-shaped GameBlueprint at all, since fields the mappers below assume exist (symbols,
         // paytable, ...) might not.
@@ -137,7 +137,18 @@ export class ParSheetExporter implements ParSheetExporting {
             this.provenanceMapper.toRows(typedBlueprint, this.pokieVersion, this.now(), sourcePath),
         );
 
-        await this.writeWorkbook(workbook, filePath);
+        options?.onProgress?.({message: "Serializing PAR workbook"});
+        assertNotCancelled(options);
+        if (this.writeWorkbook === defaultWriteWorkbook) {
+            await writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath), () => {
+                options?.onProgress?.({message: "Committing PAR workbook"});
+                assertNotCancelled(options);
+            });
+        } else {
+            await this.writeWorkbook(workbook, filePath);
+            options?.onProgress?.({message: "Committing PAR workbook"});
+            assertNotCancelled(options);
+        }
         return issues;
     }
 
@@ -193,6 +204,13 @@ export class ParSheetExporter implements ParSheetExporting {
 
         return [];
     }
+}
+
+const defaultWriteWorkbook = (workbook: ExcelJS.Workbook, filePath: string): Promise<void> =>
+    writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath));
+
+function assertNotCancelled(options: ParSheetExportOptions | undefined): void {
+    if (options?.signal?.aborted) throw new Error("PAR workbook export was cancelled.");
 }
 
 function addSheet(workbook: ExcelJS.Workbook, sheetName: string, grid: SheetGrid): void {

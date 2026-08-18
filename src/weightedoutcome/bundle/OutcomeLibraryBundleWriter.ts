@@ -12,7 +12,11 @@ import type {OutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleModeInpu
 import type {OutcomeLibraryBundleWriteResult} from "./OutcomeLibraryBundleWriteResult.js";
 import type {OutcomeLibraryBundleWriteValidating} from "./OutcomeLibraryBundleWriteValidating.js";
 import {OutcomeLibraryBundleWriteValidator} from "./OutcomeLibraryBundleWriteValidator.js";
-import type {OutcomeLibraryBundleWriting} from "./OutcomeLibraryBundleWriting.js";
+import {
+    OutcomeLibraryBundleWriteCancelledError,
+    type OutcomeLibraryBundleWriteOptions,
+    type OutcomeLibraryBundleWriting,
+} from "./OutcomeLibraryBundleWriting.js";
 
 // A single mode's provenance, read off its own first outcome — used to check every mode written into one
 // bundle shares the same underlying game/config/pokieVersion (betMode/stake are expected to differ per mode).
@@ -81,7 +85,12 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
         this.removeDirectory = removeDirectory;
     }
 
-    public async writeToDirectory(modes: readonly OutcomeLibraryBundleModeInput<T>[], outDir: string): Promise<OutcomeLibraryBundleWriteResult> {
+    public async writeToDirectory(
+        modes: readonly OutcomeLibraryBundleModeInput<T>[],
+        outDir: string,
+        options?: OutcomeLibraryBundleWriteOptions,
+    ): Promise<OutcomeLibraryBundleWriteResult> {
+        assertNotCancelled(options);
         const upfrontIssues = this.validator.validate(modes);
         if (upfrontIssues.some((issue) => issue.severity === "error")) {
             return {outDir, files: [], manifest: undefined, issues: upfrontIssues};
@@ -96,8 +105,10 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             let gameManifest: OutcomeLibraryBundleManifest["game"] | undefined;
             let configHash: string | undefined;
             let artifactPokieVersion: string | undefined;
+            let completed = BigInt(0);
 
             for (const mode of modes) {
+                assertNotCancelled(options);
                 const schemaVersion = mode.schemaVersion ?? WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION;
                 if (schemaVersion !== WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION) {
                     issues.push({
@@ -111,11 +122,12 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
                 const outcomesFile = `outcomes_${mode.modeName}.jsonl`;
                 const outcomesPath = path.join(stagingDir, outcomesFile);
-                const result = await streamModeOutcomesToTempFile(mode.modeName, mode.libraryId, mode.outcomes, schemaVersion, outcomesPath);
+                const result = await streamModeOutcomesToTempFile(mode.modeName, mode.libraryId, mode.outcomes, schemaVersion, outcomesPath, options, completed);
                 issues.push(...result.issues);
                 if (result.built === undefined) {
                     continue;
                 }
+                completed += BigInt(result.built.entries.length);
 
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
                 if (firstMode === undefined) {
@@ -171,6 +183,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 this.writeFile(path.join(stagingDir, indexFile), `${JSON.stringify(index, null, 4)}\n`);
             }
 
+            assertNotCancelled(options);
             if (issues.some((issue) => issue.severity === "error") || gameManifest === undefined || artifactPokieVersion === undefined) {
                 return {outDir, files: [], manifest: undefined, issues};
             }
@@ -187,6 +200,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 modes: manifestEntries,
                 files: relativeFiles,
             };
+            assertNotCancelled(options);
             this.writeFile(path.join(stagingDir, "manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             const {cleanupWarning} = publishDirectoryAtomically({
@@ -195,11 +209,20 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 removeDirectory: this.removeDirectory,
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
+                        assertNotCancelled(options);
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
+                        options?.onProgress?.({completed, message: `Publishing Outcome file ${file}`});
+                        // A progress listener is allowed to abort the work it is observing.  This check
+                        // must be after the callback as well as before the next file: the last callback
+                        // is immediately followed by the atomic swap below.
+                        assertNotCancelled(options);
                     }
                 },
             });
 
+            // Keep the direct-writer contract true even if a custom atomic publisher grows a callback
+            // boundary of its own: never report a completed bundle after its signal was cancelled.
+            assertNotCancelled(options);
             const finalIssues =
                 cleanupWarning !== undefined
                     ? [...issues, {code: "outcome-library-bundle-write-stale-cleanup-failed", severity: "warning" as const, message: cleanupWarning, details: {outDir}}]
@@ -215,4 +238,8 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
             }
         }
     }
+}
+
+function assertNotCancelled(options: OutcomeLibraryBundleWriteOptions | undefined): void {
+    if (options?.signal?.aborted) throw new OutcomeLibraryBundleWriteCancelledError();
 }

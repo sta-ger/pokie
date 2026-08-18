@@ -7,6 +7,7 @@ import type {ValidationIssue} from "../../../validation/ValidationIssue.js";
 import type {WeightedOutcomeInput} from "../../buildWeightedOutcomeLibrary.js";
 import {compareIds} from "../../internal/compareIds.js";
 import type {OutcomeLibraryBundleIndexEntry} from "../OutcomeLibraryBundleModeIndex.js";
+import {OutcomeLibraryBundleWriteCancelledError, type OutcomeLibraryBundleWriteOptions} from "../OutcomeLibraryBundleWriting.js";
 
 // A single outcome's provenance/betMode/stake — compared against the mode's first outcome to enforce that
 // every outcome describes the same underlying, paid round of the same game/config. Mirrors
@@ -70,6 +71,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     outcomes: Iterable<WeightedOutcomeInput<T>> | AsyncIterable<WeightedOutcomeInput<T>>,
     schemaVersion: number,
     filePath: string,
+    options?: OutcomeLibraryBundleWriteOptions,
+    completedBefore = BigInt(0),
 ): Promise<StreamModeOutcomesResult<T>> {
     const issues: ValidationIssue[] = [];
     const roundArtifactValidator = new RoundArtifactValidator<T>();
@@ -85,10 +88,12 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     let offset = 0;
     let hashedCount = 0;
     let totalWeight = 0;
+    let processed = BigInt(0);
 
     const fd = fs.openSync(filePath, "w");
     try {
         for await (const outcome of outcomes) {
+            assertNotCancelled(options);
             if (!isNonEmptyString(outcome.id)) {
                 issues.push({
                     code: "outcome-library-bundle-write-outcome-id-invalid",
@@ -211,6 +216,16 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             hashedCount++;
 
             totalWeight += outcome.weight;
+            processed++;
+            options?.onProgress?.({completed: completedBefore + processed, message: `Writing Outcome mode ${modeName}`});
+            assertNotCancelled(options);
+            // Sync filesystem writes otherwise starve an AbortController driven by a UI/timer. Yield in bounded
+            // batches without weakening the one-pass streaming contract.
+            if (processed % BigInt(256) === BigInt(0)) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
         }
     } finally {
         fs.closeSync(fd);
@@ -248,4 +263,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     }
 
     return {issues, built: {entries, totalWeight, libraryHash, firstOutcome}};
+}
+
+function assertNotCancelled(options: OutcomeLibraryBundleWriteOptions | undefined): void {
+    if (options?.signal?.aborted) throw new OutcomeLibraryBundleWriteCancelledError();
 }

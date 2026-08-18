@@ -1,5 +1,8 @@
 import {
     ArtifactBuildConflictError,
+    ArtifactBuildCancelledError,
+    type ArtifactBuildOptions,
+    type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
     ManagedOutcomeProjectService,
@@ -10,6 +13,7 @@ import {
 } from "pokie";
 import path from "path";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
+import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 
@@ -67,6 +71,8 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 export class StudioArtifactBuildService {
     private readonly registry: ArtifactBuilderRegistry;
     private readonly resolveProject: ProjectResolving;
+    private readonly jobs = new Map<string, StudioArtifactBuildJobRecord>();
+    private nextJobId = 1;
 
     constructor(
         pokieVersion: string,
@@ -129,7 +135,12 @@ export class StudioArtifactBuildService {
     // "conflict" status (never a bare 500) since ArtifactBuildConflictError is the one error every concrete
     // ArtifactBuilder throws for "destination already occupied" -- see assertArtifactDestinationAvailable's
     // own doc comment.
-    public async build(projectRoot: string, target: ArtifactTargetType, outDir?: string): Promise<StudioArtifactBuildView> {
+    public async build(
+        projectRoot: string,
+        target: ArtifactTargetType,
+        outDir?: string,
+        options?: ArtifactBuildOptions,
+    ): Promise<StudioArtifactBuildView> {
         const resolved = await this.resolveForTarget(projectRoot, target, outDir);
         if (resolved === undefined) {
             return {status: "error", message: `"${projectRoot}" was not recognized as a POKIE project.`};
@@ -141,7 +152,7 @@ export class StudioArtifactBuildService {
         }
 
         try {
-            const result = await this.registry.build(target, project, destination);
+            const result = await this.registry.build(target, project, destination, options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -156,6 +167,17 @@ export class StudioArtifactBuildService {
                 outputPath: result.outputPath,
                 outputKind: destinationKindFor(target),
                 sourceType: project.type,
+                ...(result.preflight !== undefined
+                    ? {
+                        preflight: {
+                            ...(result.preflight.estimatedItemCount !== undefined
+                                ? {estimatedItemCount: result.preflight.estimatedItemCount.toString()}
+                                : {}),
+                            ...(result.preflight.estimatedBytes !== undefined ? {estimatedBytes: result.preflight.estimatedBytes.toString()} : {}),
+                            ...(result.preflight.complexityWarning !== undefined ? {complexityWarning: result.preflight.complexityWarning} : {}),
+                        },
+                    }
+                    : {}),
                 ...(result.reusedCompatibleProject
                     ? {
                         requestedDestinationPath: result.requestedDestinationPath,
@@ -167,7 +189,102 @@ export class StudioArtifactBuildService {
             if (error instanceof ArtifactBuildConflictError) {
                 return {status: "conflict", target, message: error.message};
             }
+            if (error instanceof ArtifactBuildCancelledError) {
+                return {status: "cancelled", message: "Artifact build was cancelled."};
+            }
             return {status: "error", message: error instanceof Error ? error.message : String(error)};
+        }
+    }
+
+    // Starts independently from the request that created it, so a client can observe the preflight and
+    // every running update rather than waiting for one terminal HTTP response.  Retention is bounded;
+    // active jobs are never evicted.
+    public start(projectRoot: string, target: ArtifactTargetType, outDir?: string): StudioArtifactBuildJobView {
+        this.trimTerminalJobs();
+        const record: StudioArtifactBuildJobRecord = {
+            id: String(this.nextJobId++),
+            projectRoot,
+            target,
+            status: "queued",
+            cancellationRequested: false,
+            controller: new AbortController(),
+        };
+        this.jobs.set(record.id, record);
+        queueMicrotask(() => {
+            this.run(record, outDir).catch(() => {
+                // run() converts every builder failure into the public terminal result.
+            });
+        });
+        return this.toJobView(record);
+    }
+
+    public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        const record = this.jobs.get(id);
+        return record?.projectRoot === projectRoot ? this.toJobView(record) : undefined;
+    }
+
+    public cancelForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        const record = this.jobs.get(id);
+        if (record === undefined || record.projectRoot !== projectRoot) return undefined;
+        if (record.status === "queued" || record.status === "running") {
+            record.cancellationRequested = true;
+            record.controller.abort();
+        }
+        return this.toJobView(record);
+    }
+
+    public cancelActiveForProject(projectRoot: string): void {
+        for (const record of this.jobs.values()) {
+            if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
+                record.cancellationRequested = true;
+                record.controller.abort();
+            }
+        }
+    }
+
+    public cancelAll(): void {
+        for (const record of this.jobs.values()) {
+            if (record.status === "queued" || record.status === "running") {
+                record.cancellationRequested = true;
+                record.controller.abort();
+            }
+        }
+    }
+
+    private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
+        record.status = "running";
+        const result = await this.build(record.projectRoot, record.target, outDir, {
+            signal: record.controller.signal,
+            onProgress: (progress) => {
+                const next = toProgressView(progress);
+                // Builders normally report preflight once and subsequent running callbacks without
+                // repeating it. Keep that estimate attached to the latest live snapshot so a poller
+                // cannot miss it between the two callbacks.
+                record.progress = next.preflight === undefined && record.progress?.preflight !== undefined
+                    ? {...next, preflight: record.progress.preflight}
+                    : next;
+            },
+        });
+        const status = terminalStatusFor(result);
+        Object.assign(record, {result, status});
+    }
+
+    private toJobView(record: StudioArtifactBuildJobRecord): StudioArtifactBuildJobView {
+        return {
+            id: record.id,
+            target: record.target,
+            status: record.status,
+            cancellationRequested: record.cancellationRequested,
+            ...(record.progress !== undefined ? {progress: record.progress} : {}),
+            ...(record.result !== undefined ? {result: record.result} : {}),
+        };
+    }
+
+    private trimTerminalJobs(): void {
+        const terminal = Array.from(this.jobs.values()).filter((job) => job.status !== "queued" && job.status !== "running");
+        while (terminal.length >= 20) {
+            const oldest = terminal.shift();
+            if (oldest !== undefined) this.jobs.delete(oldest.id);
         }
     }
 
@@ -197,4 +314,38 @@ export class StudioArtifactBuildService {
         const supported = descriptor.supportedSources.length > 0 ? descriptor.supportedSources.join(", ") : "none today";
         return `"${target}" cannot be built from a "${project.type}" project. Supported sources: ${supported}. ${descriptor.unsupportedNotes.join(" ")}`;
     }
+}
+
+function terminalStatusFor(result: StudioArtifactBuildView): "completed" | "failed" | "cancelled" {
+    if (result.status === "cancelled") return "cancelled";
+    return result.status === "ok" ? "completed" : "failed";
+}
+
+type StudioArtifactBuildJobRecord = {
+    readonly id: string;
+    readonly projectRoot: string;
+    readonly target: ArtifactTargetType;
+    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    cancellationRequested: boolean;
+    readonly controller: AbortController;
+    progress?: StudioArtifactBuildProgressView;
+    result?: StudioArtifactBuildView;
+};
+
+function toProgressView(progress: ArtifactBuildProgress): StudioArtifactBuildProgressView {
+    return {
+        status: progress.status,
+        ...(progress.completed !== undefined ? {completed: progress.completed.toString()} : {}),
+        ...(progress.total !== undefined ? {total: progress.total.toString()} : {}),
+        ...(progress.preflight !== undefined
+            ? {
+                preflight: {
+                    ...(progress.preflight.estimatedItemCount !== undefined ? {estimatedItemCount: progress.preflight.estimatedItemCount.toString()} : {}),
+                    ...(progress.preflight.estimatedBytes !== undefined ? {estimatedBytes: progress.preflight.estimatedBytes.toString()} : {}),
+                    ...(progress.preflight.complexityWarning !== undefined ? {complexityWarning: progress.preflight.complexityWarning} : {}),
+                },
+            }
+            : {}),
+        ...(progress.message !== undefined ? {message: progress.message} : {}),
+    };
 }
