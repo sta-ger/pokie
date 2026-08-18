@@ -7,6 +7,7 @@ import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import {assertArtifactBuildNotCancelled, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -39,8 +40,9 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
     // Deliberately not `async`: every step here is synchronous, and require-await (rightly) rejects an `async`
     // method with no `await` in its body -- but build() must still never throw synchronously (see ArtifactBuilder's
     // own doc comment), so every failure path returns a rejected Promise explicitly instead.
-    public build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    public build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         try {
+            assertArtifactBuildNotCancelled(options);
             assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
             assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
@@ -66,7 +68,10 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
                 throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips: ${failures.join("; ")}`);
             }
 
+            reportArtifactBuildProgress(options, {status: "running"});
+            assertArtifactBuildNotCancelled(options);
             const result = this.generator.generate(blueprint as GameBlueprint, process.cwd(), destinationPath, resolution.reelStripGeneration);
+            reportArtifactBuildProgress(options, {status: "completed"});
             return Promise.resolve({outputPath: result.projectRoot});
         } catch (error) {
             return Promise.reject(error);

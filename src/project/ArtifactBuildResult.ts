@@ -17,4 +17,7 @@ export type ArtifactBuildResult = {
     // request returns its registered Outcome Project here; Stake keeps using prerequisiteProjectRoots for
     // backward-compatible callers that display its generated prerequisite separately.
     readonly managedProjectRoots?: readonly string[];
+    // A completed build repeats its up-front estimate so callers can retain an honest job summary after the
+    // transient progress callback has gone away.
+    readonly preflight?: import("./ArtifactBuildOptions.js").ArtifactBuildPreflight;
 };

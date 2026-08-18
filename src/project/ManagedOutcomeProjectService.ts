@@ -28,6 +28,24 @@ export interface ManagedOutcomeProjectServicing {
 type RegisteredOutcomeProject = OutcomeProjectCompatibility & {readonly rootPath: string};
 type RegistryDocument = {readonly projects: readonly RegisteredOutcomeProject[]};
 
+// Kept injectable solely at this atomic filesystem boundary. It makes write/rename failures testable without
+// monkey-patching Node's process-wide fs module, while production retains fs.promises.
+export type ManagedOutcomeProjectFileOperations = {
+    readonly mkdir: (directory: string, options: {readonly recursive: true}) => Promise<unknown>;
+    readonly writeFile: (filePath: string, data: string, encoding: "utf-8") => Promise<void>;
+    readonly rename: (oldPath: string, newPath: string) => Promise<void>;
+    readonly remove: (filePath: string, options: {readonly force: true}) => Promise<void>;
+    readonly readFile: (filePath: string, encoding: "utf-8") => Promise<string>;
+};
+
+const DEFAULT_FILE_OPERATIONS: ManagedOutcomeProjectFileOperations = {
+    mkdir: (directory, options) => fs.promises.mkdir(directory, options),
+    writeFile: (filePath, data, encoding) => fs.promises.writeFile(filePath, data, encoding),
+    rename: (oldPath, newPath) => fs.promises.rename(oldPath, newPath),
+    remove: (filePath, options) => fs.promises.rm(filePath, options),
+    readFile: (filePath, encoding) => fs.promises.readFile(filePath, encoding),
+};
+
 // A compact, source-adjacent managed-project registry.  Keeping it under .pokie makes a CLI invocation and a
 // Studio invocation over the same Blueprint discover exactly the same authoritative records without requiring
 // either UI process to be alive.  Older deterministic bundles are adopted only after their manifest has been
@@ -36,13 +54,16 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
     private readonly reader = new OutcomeLibraryBundleReader();
     private readonly resolveProject: ProjectResolving;
     private readonly onRegistered: (project: PokieProject) => Promise<void>;
+    private readonly files: ManagedOutcomeProjectFileOperations;
 
     constructor(
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         onRegistered: (project: PokieProject) => Promise<void> = () => Promise.resolve(),
+        files: ManagedOutcomeProjectFileOperations = DEFAULT_FILE_OPERATIONS,
     ) {
         this.resolveProject = resolveProject;
         this.onRegistered = onRegistered;
+        this.files = files;
     }
 
     public async findCompatible(sourceRootPath: string, compatibility: OutcomeProjectCompatibility): Promise<PokieProject | undefined> {
@@ -103,21 +124,21 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
         const canonicalRoot = path.resolve(rootPath);
         const projects = [...document.projects.filter((entry) => path.resolve(entry.rootPath) !== canonicalRoot), {...compatibility, rootPath: canonicalRoot}];
         const registryPath = this.registryPath(sourceRootPath);
-        await fs.promises.mkdir(path.dirname(registryPath), {recursive: true});
+        await this.files.mkdir(path.dirname(registryPath), {recursive: true});
         const temporaryPath = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
         try {
-            await fs.promises.writeFile(temporaryPath, JSON.stringify({projects}, undefined, 2), "utf-8");
-            await fs.promises.rename(temporaryPath, registryPath);
+            await this.files.writeFile(temporaryPath, JSON.stringify({projects}, undefined, 2), "utf-8");
+            await this.files.rename(temporaryPath, registryPath);
         } finally {
             // A disk/permission failure before the rename must not leave a plausible registry fragment
             // beside the authoritative file for a later scan to mistake for a Project.
-            await fs.promises.rm(temporaryPath, {force: true}).catch(() => undefined);
+            await this.files.remove(temporaryPath, {force: true}).catch(() => undefined);
         }
     }
 
     private async readRegistry(sourceRootPath: string): Promise<RegistryDocument> {
         try {
-            const parsed = JSON.parse(await fs.promises.readFile(this.registryPath(sourceRootPath), "utf-8")) as RegistryDocument;
+            const parsed = JSON.parse(await this.files.readFile(this.registryPath(sourceRootPath), "utf-8")) as RegistryDocument;
             return Array.isArray(parsed.projects) ? parsed : {projects: []};
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code === "ENOENT") return {projects: []};

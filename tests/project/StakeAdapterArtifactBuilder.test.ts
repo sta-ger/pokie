@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    ArtifactBuildCancelledError,
     ArtifactBuildConflictError,
     OutcomeLibraryBundleWriter,
     PokieProject,
@@ -90,5 +91,39 @@ describe("StakeAdapterArtifactBuilder", () => {
         );
         expect(fs.existsSync(nestedDestination)).toBe(false);
         expect(fs.existsSync(path.join(sourceDir, "index.json"))).toBe(true);
+    });
+
+    it("refuses the source and a symlinked source ancestor without changing the Stake export", async () => {
+        const linkedParent = `${sourceDir}-link`;
+        fs.symlinkSync(sourceDir, linkedParent, "dir");
+
+        try {
+            await expect(new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), sourceDir)).rejects.toThrow(
+                ArtifactBuildConflictError,
+            );
+            await expect(
+                new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), path.join(linkedParent, "republished")),
+            ).rejects.toThrow(ArtifactBuildConflictError);
+            expect(fs.existsSync(path.join(sourceDir, "index.json"))).toBe(true);
+        } finally {
+            fs.unlinkSync(linkedParent);
+        }
+    });
+
+    it("reports preflight/cancellation before publishing and leaves no Stake directory", async () => {
+        const controller = new AbortController();
+        const statuses: string[] = [];
+
+        await expect(
+            new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), destinationDir, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    statuses.push(event.status);
+                    if (event.status === "preflight") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+        expect(statuses).toEqual(["preflight", "cancelled"]);
+        expect(fs.existsSync(destinationDir)).toBe(false);
     });
 });

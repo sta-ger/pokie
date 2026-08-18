@@ -1,9 +1,11 @@
 import {ParSheetExporter} from "../parsheet/ParSheetExporter.js";
+import fs from "fs";
 import type {ParSheetExporting} from "../parsheet/ParSheetExporting.js";
 import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {ParSheetImporting} from "../parsheet/ParSheetImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import {assertArtifactBuildNotCancelled, reportArtifactBuildProgress, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -29,7 +31,8 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         this.exporter = exporter;
     }
 
-    public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
@@ -43,7 +46,13 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             );
         }
 
+        reportArtifactBuildProgress(options, {status: "running"});
+        assertArtifactBuildNotCancelled(options);
         const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath);
+        if (options?.signal?.aborted) {
+            await fs.promises.rm(destinationPath, {force: true}).catch(() => undefined);
+            assertArtifactBuildNotCancelled(options);
+        }
         const exportErrors = exportIssues.filter((issue) => issue.severity === "error");
         if (exportErrors.length > 0) {
             throw new Error(
@@ -53,6 +62,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
             );
         }
 
+        reportArtifactBuildProgress(options, {status: "completed"});
         return {outputPath: destinationPath};
     }
 }

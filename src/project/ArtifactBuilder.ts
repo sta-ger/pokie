@@ -1,4 +1,5 @@
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
 import type {PokieProject} from "./PokieProject.js";
 
@@ -25,5 +26,5 @@ export interface ArtifactBuilder {
     // without invoking build() at all, off the same single fact build() itself enforces -- never a second,
     // independently-maintained copy of it.
     readonly destinationKind: "file" | "directory";
-    build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult>;
+    build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult>;
 }

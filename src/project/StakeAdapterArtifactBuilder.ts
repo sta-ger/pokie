@@ -1,9 +1,16 @@
 import {StakeEngineExporter} from "../stakeengine/StakeEngineExporter.js";
+import fs from "fs";
 import type {StakeEngineExporting} from "../stakeengine/StakeEngineExporting.js";
 import {StakeEngineImporter} from "../stakeengine/StakeEngineImporter.js";
 import type {StakeEngineImporting} from "../stakeengine/StakeEngineImporting.js";
 import type {ArtifactBuilder} from "./ArtifactBuilder.js";
 import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
+import {
+    assertArtifactBuildNotCancelled,
+    reportArtifactBuildProgress,
+    type ArtifactBuildOptions,
+    type ArtifactBuildPreflight,
+} from "./ArtifactBuildOptions.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -33,13 +40,21 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         this.exporter = exporter;
     }
 
-    public async build(source: PokieProject, destinationPath: string): Promise<ArtifactBuildResult> {
+    public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);
         assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
 
         const modes = source.type === "outcomeLibrary" ? await this.readOutcomeLibraryModes(source.rootPath) : await this.readStakeModes(source.rootPath);
+        const preflight = stakePreflight(modes);
+        reportArtifactBuildProgress(options, {status: "preflight", preflight});
+        assertArtifactBuildNotCancelled(options);
 
+        reportArtifactBuildProgress(options, {status: "running", completed: BigInt(0), total: preflight.estimatedItemCount});
         const result = await this.exporter.exportToDirectory(modes, destinationPath);
+        if (options?.signal?.aborted) {
+            await fs.promises.rm(destinationPath, {recursive: true, force: true}).catch(() => undefined);
+        }
         const exportErrors = result.issues.filter((issue) => issue.severity === "error");
         if (exportErrors.length > 0 || result.manifest === undefined) {
             throw new Error(
@@ -49,7 +64,9 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             );
         }
 
-        return {outputPath: result.outDir};
+        assertArtifactBuildNotCancelled(options);
+        reportArtifactBuildProgress(options, {status: "completed", completed: preflight.estimatedItemCount, total: preflight.estimatedItemCount});
+        return {outputPath: result.outDir, preflight};
     }
 
     private async readStakeModes(sourcePath: string): Promise<readonly StakeEngineExportModeInput[]> {
@@ -81,4 +98,18 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
             }),
         );
     }
+}
+
+function stakePreflight(modes: readonly StakeEngineExportModeInput[]): ArtifactBuildPreflight {
+    const estimatedItemCount = modes.reduce((total, mode) => total + BigInt(mode.library.outcomes.length), BigInt(0));
+    // Stake's exported books are compressed, so the in-memory canonical JSON is a conservative complexity
+    // signal rather than a misleading promise about final archive size.
+    const estimatedBytes = modes.reduce((total, mode) => total + BigInt(Buffer.byteLength(JSON.stringify(mode.library.outcomes))), BigInt(0));
+    return {
+        estimatedItemCount,
+        estimatedBytes,
+        ...(estimatedItemCount > BigInt(10_000)
+            ? {complexityWarning: `Exporting ${estimatedItemCount} Stake books can take noticeable time and disk space.`}
+            : {}),
+    };
 }

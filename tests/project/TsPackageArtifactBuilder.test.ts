@@ -65,6 +65,15 @@ describe("TsPackageArtifactBuilder", () => {
         expect(fs.readdirSync(destinationDir)).toEqual(["unrelated.txt"]);
     });
 
+    it("refuses the Blueprint source itself as destination without changing it", async () => {
+        const before = fs.readFileSync(blueprintPath, "utf-8");
+
+        await expect(new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), blueprintPath)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(before);
+    });
+
     it("throws when the blueprint fails validation, without touching the destination", async () => {
         fs.writeFileSync(blueprintPath, JSON.stringify({...blueprint, reels: -1}));
         const builder = new TsPackageArtifactBuilder("1.3.0");

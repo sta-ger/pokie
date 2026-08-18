@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
     BlueprintStakeOutcomeLibraryWorkflow,
     loadGameBlueprint,
@@ -55,6 +56,55 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
             expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
             expect(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).toBe(manifestBeforeStake);
             expect(fs.existsSync(path.join(workDir, ".pokie", "outcome-libraries"))).toBe(false);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("preflights a large Outcome job, exposes cancellation, and leaves neither bundle nor managed registration", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cancelled-blueprint-outcome-"));
+        const blueprintPath = path.join(workDir, "game.blueprint.json");
+        const outcomeDir = path.join(workDir, "outcome");
+        const controller = new AbortController();
+        const progress: string[] = [];
+        fs.writeFileSync(
+            blueprintPath,
+            JSON.stringify({
+                manifest: {id: "large-workflow-slot", name: "Large Workflow Slot", version: "1.0.0"},
+                reels: 5,
+                rows: 1,
+                symbols: ["A"],
+                paytable: {A: {3: 1, 4: 2, 5: 3}},
+                reelStrips: Array.from({length: 5}, () => Array.from({length: 7}, () => "A")),
+                availableBets: [1],
+            }),
+        );
+        const project: PokieProject = {
+            type: "blueprint",
+            rootPath: blueprintPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            provenance: "test fixture",
+        };
+
+        try {
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint);
+            await expect(
+                workflow.resolveOrGenerate(project, outcomeDir, {
+                    signal: controller.signal,
+                    onProgress: (event) => {
+                        progress.push(event.status);
+                        if (event.status === "preflight") {
+                            expect(event.preflight?.estimatedItemCount).toBe(BigInt(16_807));
+                            expect(event.preflight?.estimatedBytes).toBeGreaterThan(BigInt(0));
+                            expect(event.preflight?.complexityWarning).toMatch(/16[,.]?807/);
+                            controller.abort();
+                        }
+                    },
+                }),
+            ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            expect(progress).toEqual(["preflight", "cancelled"]);
+            expect(fs.existsSync(outcomeDir)).toBe(false);
+            expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

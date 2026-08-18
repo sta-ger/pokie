@@ -1,7 +1,14 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, OutcomeLibraryArtifactBuilder, OutcomeLibraryBundleWriter, PokieProject, PROJECT_TYPE_CAPABILITIES} from "pokie";
+import {
+    ArtifactBuildCancelledError,
+    ArtifactBuildConflictError,
+    OutcomeLibraryArtifactBuilder,
+    OutcomeLibraryBundleWriter,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function outcomeLibraryProjectOf(rootPath: string): PokieProject {
@@ -78,6 +85,32 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         expect(fs.existsSync(nestedDestination)).toBe(false);
         expect(fs.existsSync(path.join(sourceDir, "manifest.json"))).toBe(true);
         fs.unlinkSync(linkedParent);
+    });
+
+    it("refuses the source bundle itself without changing its valid-looking manifest", async () => {
+        const manifestBefore = fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8");
+
+        await expect(new OutcomeLibraryArtifactBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), sourceDir)).rejects.toThrow(
+            ArtifactBuildConflictError,
+        );
+        expect(fs.readFileSync(path.join(sourceDir, "manifest.json"), "utf-8")).toBe(manifestBefore);
+    });
+
+    it("reports preflight/cancellation before publishing and leaves no Outcome bundle", async () => {
+        const controller = new AbortController();
+        const statuses: string[] = [];
+
+        await expect(
+            new OutcomeLibraryArtifactBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), destinationDir, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    statuses.push(event.status);
+                    if (event.status === "preflight") controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+        expect(statuses).toEqual(["preflight", "cancelled"]);
+        expect(fs.existsSync(destinationDir)).toBe(false);
     });
 
     it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {
