@@ -1,11 +1,24 @@
-# P6-14 independent host verification — finding
+# P6-14 independent host verification — passed
 
-Candidate: `ab731169fce04c1105c375c465faae75ce757a1c` (the checked-out HEAD). Host: Linux, Node `v18.19.1`, npm `11.16.0`.
+Candidate: `b880108c1da02a8539af3e6426c5be2fc0430f41` (checked-out `HEAD`). Host: Linux, Node `v24.18.0`, npm `11.16.0`.
 
-The public CLI was rebuilt from this checkout. Its Studio-client bundle could not finish because the installed Vite/Rolldown imports Node's newer `util.styleText`; the rebuilt CLI executable was produced before that host-runtime incompatibility.
+This is independent, machine-owned evidence. The candidate's CLI and Studio client were rebuilt with `npm run build-cli`; generated public-workflow trees and full host logs were removed after the observations below were reduced to this bounded record and artifact checksums.
 
-Using that executable against a fresh temporary, finite Blueprint, the native Outcome Library build, validation, report, sample, simulation, and canonical replay commands completed. However, `pokie serve <bundle> --mode base` accepted the bundle and listened locally, then its public `POST /sessions` endpoint returned HTTP 500: `crypto is not defined`. This violates the native Outcome Library serving/session capability.
+## Whole-file regression set
 
-The exact eight requested whole-file suites were also run once in-band. Five passed; three failed (eight tests), so the required all-green result was not obtained. `ServeCommand.test.ts` independently reproduces the 500. The two Stake-related suite failures and a public Stake-adapter build both stop at `zlib.zstdCompressSync is not a function` on this Node 18 host; Node 18 does not provide that zstd API. WASM public commands truthfully denied unsupported compilation/republication (excerpted in `machine-results.txt`).
+The exact requested command completed green: **8/8 suites, 112/112 tests**. See [`machine-results.txt`](machine-results.txt) for the command and suite list.
 
-Only summaries, excerpts, and hashes are committed here. All generated Blueprint artifacts, reports, full logs, temporary workspace, server process, and build output were removed after capture.
+## Public capability workflow
+
+Using only the rebuilt public `pokie` CLI, a fresh finite Blueprint was created with:
+
+```text
+pokie create 'P6-14 Finite Host Capability' --blank --out <temporary>/finite.blueprint.json
+pokie build <blueprint> --target outcomeLibrary --out <temporary>/outcome-library
+```
+
+The native Outcome Library contained 91,125 exact outcomes. `validate --deep`, `report --format json`, `sample`, `sim --rounds 12`, and `replay --round 2` all succeeded. `pokie serve <bundle> --mode base` served `GET /health` (`200`), its public `POST /sessions` contract returned **201**, and `POST /sessions/:id/spin` returned **200** with a replay identity. This independently exercises the repaired server session-identifier path.
+
+`pokie build <blueprint> --target stakeAdapter` also completed and published its Stake adapter. The two public WASM observations were intentionally negative and truthful: a Blueprint cannot build to WASM because no source grants that capability/no arbitrary package-to-WASM compiler exists; an opaque `.wasm` without a compatible sidecar is not recognized and does not imply execution support.
+
+Only compact results and checksums are committed. No generated Blueprint, Outcome Library, Stake adapter, simulation/replay output, raw logs, browser data, or automation files are retained.

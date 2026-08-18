@@ -1,36 +1,39 @@
-P6-14 independent host result
-candidate: ab731169fce04c1105c375c465faae75ce757a1c
-host: Linux; node v18.19.1; npm 11.16.0
+P6-14 independent host result: PASS
+candidate: b880108c1da02a8539af3e6426c5be2fc0430f41
+host: Linux; Node v24.18.0; npm 11.16.0
 
-Public CLI workflow (fresh finite Blueprint -> native Outcome Library)
-PASS  build --target outcomeLibrary: 6 items; artifact published
-PASS  validate <bundle>: valid
-PASS  report <bundle> --format json: native/streaming analysis (weight 6, RTP 1.6666666666666665)
-PASS  sample <bundle> --mode base --seed p6-14-audit: selected a canonical weighted outcome
-PASS  sim <bundle> --mode base --rounds 12 --seed p6-14-audit: completed and wrote a report
-PASS  replay <bundle> --mode base --seed p6-14-audit --round 2: wrote canonical descriptor with outcomeSource
-FAIL  serve <bundle> --mode base: listener started; POST /sessions returned HTTP 500
+Fresh build
+PASS  npm run build-cli (CLI and Studio-client production bundle)
 
-HTTP/1.1 500 Internal Server Error
-Content-Type: application/json
-
-{"error":"crypto is not defined"}
-
-Public Stake-adapter and WASM capability observations
-FAIL  build <blueprint> --target stakeAdapter: zlib.zstdCompressSync is not a function (Node 18 host API unavailable)
-PASS  build <blueprint> --target wasm: denied truthfully: no supported sources / no arbitrary package-to-WASM compiler today
-PASS  build <opaque.wasm> --target wasm: denied truthfully: compatible .pokie-wasm.json sidecar required; no WASM execution claim
-
-Whole-file command
-npm run test:targeted -- tests/project/ProjectCapabilities.test.ts tests/project/describeUnsupportedProjectOperation.test.ts tests/project/ArtifactBuilderRegistry.test.ts tests/project/ProjectTargetResolver.test.ts tests/project/OutcomeSourceProjectAnalyzer.test.ts tests/project/readWasmComponentManifest.test.ts tests/cli/commands/ServeCommand.test.ts tests/cli/commands/ReplayCommand.test.ts
+Required whole-file command
+PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:$PATH npm run test:targeted -- \
+  tests/project/ProjectCapabilities.test.ts \
+  tests/project/describeUnsupportedProjectOperation.test.ts \
+  tests/project/ArtifactBuilderRegistry.test.ts \
+  tests/project/ProjectTargetResolver.test.ts \
+  tests/project/OutcomeSourceProjectAnalyzer.test.ts \
+  tests/project/readWasmComponentManifest.test.ts \
+  tests/cli/commands/ServeCommand.test.ts \
+  tests/cli/commands/ReplayCommand.test.ts
 
 PASS  tests/project/ProjectCapabilities.test.ts
 PASS  tests/project/describeUnsupportedProjectOperation.test.ts
+PASS  tests/project/ArtifactBuilderRegistry.test.ts
 PASS  tests/project/ProjectTargetResolver.test.ts
+PASS  tests/project/OutcomeSourceProjectAnalyzer.test.ts
 PASS  tests/project/readWasmComponentManifest.test.ts
+PASS  tests/cli/commands/ServeCommand.test.ts
 PASS  tests/cli/commands/ReplayCommand.test.ts
-FAIL  tests/cli/commands/ServeCommand.test.ts: expected session creation 201, received 500; recording assertion also failed
-FAIL  tests/project/ArtifactBuilderRegistry.test.ts: four Stake-export expectations stopped at zlib.zstdCompressSync
-FAIL  tests/project/OutcomeSourceProjectAnalyzer.test.ts: two Stake-reader expectations stopped at zlib.zstdCompressSync
+Jest summary: 8 passed, 8 total suites; 112 passed, 112 total tests.
 
-Jest summary: 3 failed, 5 passed, 8 total suites; 8 failed, 104 passed, 112 total tests.
+Public rebuilt-CLI workflow (fresh finite --blank Blueprint; 91,125 exact outcomes)
+PASS  build --target outcomeLibrary
+PASS  validate <bundle> --deep
+PASS  report <bundle> --format json: native/streaming, one base mode, totalWeight 91125, RTP 0.9999999999999851
+PASS  sample <bundle> --mode base --seed p6-14-host: canonical selected outcome
+PASS  sim <bundle> --mode base --rounds 12 --seed p6-14-host: report written (total bet 12, total win 17)
+PASS  replay <bundle> --mode base --seed p6-14-host --round 2: canonical outcomeSource descriptor written
+PASS  build <blueprint> --target stakeAdapter: adapter published, including lookup_base.csv, books_base.jsonl.zst, index.json, pokie-manifest.json
+PASS  serve <bundle> --mode base: GET /health 200; POST /sessions 201; POST /sessions/:id/spin 200
+PASS  build <blueprint> --target wasm: denied truthfully — no supported source/capability and no arbitrary package-to-WASM compiler
+PASS  build <opaque.wasm> --target wasm: denied truthfully — compatible PokieWasmComponentManifest sidecar required; no WASM execution claim
