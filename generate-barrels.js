@@ -6,7 +6,7 @@ const sourceDirectory = "./src";
 const outputFile = "./src/index.ts";
 
 function scanDirectory(directory) {
-    const files = fs.readdirSync(directory);
+    const files = fs.readdirSync(directory).sort();
 
     files.forEach((file) => {
         const filePath = path.join(directory, file);
