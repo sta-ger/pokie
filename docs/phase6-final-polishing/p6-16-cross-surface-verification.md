@@ -110,3 +110,29 @@ node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --runInBand --runT
 
 This is a verifier-environment correction, not a Studio artifact-build product
 failure: no production path was changed.
+
+## Independent required-path replay — 2026-08-19 (finding)
+
+Candidate: `0bf37b82648edc16d3a82a9e737e70d03a36cd3b`.
+Verifier runtime: Node `v18.19.1` (zlib `1.3`).  All six persisted request
+paths were supplied once as literal `--runTestsByPath` arguments to the
+checked-in Jest runner; no test, Studio, browser, workflow, or product source
+was modified and this failing interaction was not retried.
+
+```text
+node --max-old-space-size=512 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath <six required paths>
+# FAIL: 6 suites; 35 passed tests, 6 failed tests.
+# PaylinePresetsModal.test.tsx: ENOENT (the required path is absent on candidate).
+# BlueprintEditorPage.save, PathBrowseModal, ProjectDashboardPage.gameModelWorkflow:
+#   setup aborts in undici: webidl.util.markAsUncloneable is not a function.
+# StudioArtifactBuildService: 16 passed, 2 failed (Stake result status "error").
+# ArtifactBuilderRegistry: 4 Stake tests fail: zlib.zstdCompressSync is not a function.
+```
+
+The code-first fixture did begin its real `pokie init --no-prepare` lifecycle
+and printed the generated package's real `npm install` / `npm run build` next
+step, but the missing Node 22+ APIs prevented a green fixture-to-Stake result.
+Accordingly, this invocation cannot independently confirm the requested
+Blueprint or TypeScript Outcome-to-Stake behavior. The absence of a named
+required test file is also a current-candidate verification defect. No
+generated fixture or raw log was retained.
