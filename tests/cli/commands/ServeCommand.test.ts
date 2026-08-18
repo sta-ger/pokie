@@ -17,7 +17,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
-import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -324,6 +324,63 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         expect(response.status).toBe(200);
         expect(body.supported).toBe(true);
         expect(body.selection.libraryId).toBe("base-lib");
+
+        await server!.stop();
+        logSpy.mockRestore();
+    });
+
+    it("serves a native bundle through the Player session contract with public-by-default, idempotent pre-generated spins", async () => {
+        const loadGame = jest.fn();
+        let server: PokieDevServerHandling | undefined;
+        const command = new ServeCommand(loadGame, undefined, undefined, new ProjectTargetResolver(), (project, modeName, options) => {
+            server = new OutcomeSourceDevServer(project, modeName, options);
+            return server;
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir, "--mode", "base", "--port", "0"]);
+
+        const port = Number(logSpy.mock.calls.map((call) => call[0]).join("\n").match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
+        const baseUrl = `http://127.0.0.1:${port}`;
+        const created = await fetch(`${baseUrl}/sessions`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: "player-seed", initialBalance: 10}),
+        });
+        const createdBody = (await created.json()) as {sessionId: string; game: {id: string}; credits: number};
+
+        expect(created.status).toBe(201);
+        expect(createdBody.game.id).toBe("sample-slot");
+        expect(createdBody.credits).toBe(10);
+        expect(loadGame).not.toHaveBeenCalled();
+
+        const spin = async (requestId: string, debug = false) => {
+            const response = await fetch(`${baseUrl}/sessions/${createdBody.sessionId}/spin${debug ? "?debug=1" : ""}`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({requestId}),
+            });
+            return {response, body: (await response.json()) as Record<string, unknown>};
+        };
+        const first = await spin("round-1");
+        const retry = await spin("round-1");
+        const debugRetry = await spin("round-1", true);
+
+        expect(first.response.status).toBe(200);
+        expect(first.body).toMatchObject({sessionId: createdBody.sessionId, game: {id: "sample-slot"}, requestId: "round-1", bet: 1});
+        expect(first.body).not.toHaveProperty("internal");
+        expect(retry.body).toEqual(first.body);
+        expect(debugRetry.body.credits).toBe(first.body.credits);
+        expect(debugRetry.body).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
+
+        const second = await spin("round-2");
+        const staleRetry = await spin("round-1");
+        expect(staleRetry.body).toEqual(first.body);
+
+        const restored = await fetch(`${baseUrl}/sessions/${createdBody.sessionId}`);
+        const restoredBody = (await restored.json()) as Record<string, unknown>;
+        expect(restoredBody).toMatchObject({roundId: second.body.roundId, credits: second.body.credits, bet: 1});
+        expect(restoredBody).not.toHaveProperty("internal");
 
         await server!.stop();
         logSpy.mockRestore();
