@@ -82,12 +82,12 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
             opened={opened}
             onClose={onClose}
             title={
-                <Stack gap={0}>
-                    <Text fw={500}>Server filesystem browser</Text>
-                    <Text size="xs" c="dimmed">
+                <>
+                    <span style={{fontWeight: 500}}>Server filesystem browser</span>
+                    <span style={{display: "block", color: "var(--mantine-color-dimmed)", fontSize: "var(--mantine-font-size-xs)"}}>
                         {title} — showing files on the machine running Studio&apos;s server, not this browser&apos;s device.
-                    </Text>
-                </Stack>
+                    </span>
+                </>
             }
             size="md"
         >
