@@ -2,9 +2,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving} from "pokie";
+import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
 import {localPokieDependencyRunner} from "../../testUtils/offlinePokieDependencyOverride.js";
 import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
+import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -343,5 +344,94 @@ describe("StudioArtifactBuildService", () => {
             });
             expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({status: "cancelled", result: {status: "cancelled"}});
         });
+
+        it("cancels a running real Outcome publish through the job workflow without publishing output or registering a managed Project", async () => {
+            const outputPath = path.join(workDir, "cancelled-outcome-library");
+            const managedProjects: string[] = [];
+            const project: PokieProject = {
+                type: "blueprint",
+                rootPath: path.join(workDir, "blueprint.json"),
+                capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+                provenance: "test fixture",
+            } as PokieProject;
+            const resolver: ProjectResolving = {resolve: () => Promise.resolve(project)};
+            const sampleOutcome = firstOutcomeFrom(buildOutcomeLibraryBundleModeInput("base", "cancelled-library").outcomes);
+            let publishStarted: (() => void) | undefined;
+            const publishing = new Promise<void>((resolve) => {
+                publishStarted = resolve;
+            });
+            async function *cancellableOutcomes(): AsyncIterable<typeof sampleOutcome> {
+                for (let index = 0; index < 512; index += 1) {
+                    yield {
+                        ...sampleOutcome,
+                        id: index.toString().padStart(4, "0"),
+                        artifact: {...sampleOutcome.artifact, roundId: `cancelled-round-${index}`},
+                    };
+                }
+            }
+            const registry = {
+                supportsConversionFrom: () => true,
+                build: async (_target: string, _source: PokieProject, destination: string, options: {signal?: AbortSignal; onProgress?: (progress: unknown) => void}) => {
+                    options.onProgress?.({status: "preflight", preflight: {estimatedItemCount: BigInt(512), estimatedBytes: BigInt(0), complexityWarning: "Large publish"}});
+                    let result;
+                    try {
+                        result = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(
+                            [{...buildOutcomeLibraryBundleModeInput("base", "cancelled-library"), outcomes: cancellableOutcomes()}],
+                            destination,
+                            {
+                                signal: options.signal,
+                                onProgress: (progress) => {
+                                    options.onProgress?.({status: "running", completed: progress.completed, total: BigInt(512), message: progress.message});
+                                    publishStarted?.();
+                                },
+                            },
+                        );
+                    } catch (error) {
+                        if (options.signal?.aborted) throw new ArtifactBuildCancelledError();
+                        throw error;
+                    }
+                    if (result.manifest === undefined) throw new Error("Expected the real Outcome writer to publish a valid bundle.");
+                    return {outputPath: destination, managedProjectRoots: [destination]};
+                },
+            } as unknown as ArtifactBuilderRegistry;
+            service = new StudioArtifactBuildService("1.3.0", registry, resolver, (projectRoot) => {
+                managedProjects.push(projectRoot);
+                return Promise.resolve();
+            });
+
+            const started = service.start(project.rootPath, "outcomeLibrary", outputPath);
+            await publishing;
+            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+                status: "running",
+                progress: {status: "running", preflight: {estimatedItemCount: "512", complexityWarning: "Large publish"}},
+            });
+
+            expect(service.cancelForProject(project.rootPath, started.id)).toMatchObject({status: "running", cancellationRequested: true});
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
+
+            expect(service.getStatusForProject(project.rootPath, started.id)).toMatchObject({
+                status: "cancelled",
+                cancellationRequested: true,
+                result: {status: "cancelled"},
+            });
+            expect(fs.existsSync(outputPath)).toBe(false);
+            expect(fs.readdirSync(workDir).filter((entry) => entry.startsWith("cancelled-outcome-library.staging-"))).toEqual([]);
+            expect(managedProjects).toEqual([]);
+        });
     });
 });
+
+function firstOutcomeFrom(outcomes: Iterable<WeightedOutcomeInput<string>> | AsyncIterable<WeightedOutcomeInput<string>>): WeightedOutcomeInput<string> {
+    if (!isIterable(outcomes)) {
+        throw new Error("Expected an Outcome bundle fixture to be synchronously iterable.");
+    }
+    const [outcome] = outcomes;
+    if (outcome !== undefined) return outcome;
+    throw new Error("Expected an Outcome bundle fixture to contain an outcome.");
+}
+
+function isIterable<T>(value: Iterable<T> | AsyncIterable<T>): value is Iterable<T> {
+    return Symbol.iterator in value;
+}

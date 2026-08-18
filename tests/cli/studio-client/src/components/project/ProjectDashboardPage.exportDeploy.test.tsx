@@ -631,12 +631,19 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             let capturedRegisterLocation: string | undefined;
             const fetchImpl: FetchLike = (url, init) => {
                 const [path] = url.split("?");
-                if (path === "/api/project/artifacts/build") {
+                if (path === "/api/project/artifacts/build" && init?.method === "POST") {
                     capturedBuildTarget = (JSON.parse(String(init?.body)) as {target: string}).target;
                     return Promise.resolve({
                         ok: true,
-                        status: 201,
-                        json: () => Promise.resolve({status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", outputKind: "directory", sourceType: "blueprint"}),
+                        status: 202,
+                        json: () => Promise.resolve({status: "created", job: {id: "job-package", target: "tsPackage", status: "queued", cancellationRequested: false}}),
+                    });
+                }
+                if (path === "/api/project/artifacts/build/job-package") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({id: "job-package", target: "tsPackage", status: "completed", cancellationRequested: false, result: {status: "ok", target: "tsPackage", outputPath: "/games/tsPackage", outputKind: "directory", sourceType: "blueprint"}}),
                     });
                 }
                 if (path === "/api/home/projects/open") {
@@ -723,18 +730,34 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             };
             const fetchImpl: FetchLike = (url, init) => {
                 const [path] = url.split("?");
-                if (path === "/api/project/artifacts/build") {
+                if (path === "/api/project/artifacts/build" && init?.method === "POST") {
                     return Promise.resolve({
                         ok: true,
-                        status: 201,
+                        status: 202,
                         json: () =>
                             Promise.resolve({
+                                status: "created",
+                                job: {id: "job-par", target: "parWorkbook", status: "queued", cancellationRequested: false},
+                            }),
+                    });
+                }
+                if (path === "/api/project/artifacts/build/job-par") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({
+                            id: "job-par",
+                            target: "parWorkbook",
+                            status: "completed",
+                            cancellationRequested: false,
+                            result: {
                                 status: "ok",
                                 target: "parWorkbook",
                                 outputPath: "/games/republished-sheet.xlsx",
                                 outputKind: "file",
                                 sourceType: "parWorkbook",
-                            }),
+                            },
+                        }),
                     });
                 }
                 if (path === "/api/home/fs/native-browse/availability") {
@@ -781,16 +804,28 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             const user = userEvent.setup();
             const fetchImpl: FetchLike = (url, init) => {
                 const [path] = url.split("?");
-                if (path === "/api/project/artifacts/build") {
+                if (path === "/api/project/artifacts/build" && init?.method === "POST") {
                     return Promise.resolve({
-                        ok: false,
-                        status: 409,
-                        json: () =>
-                            Promise.resolve({
+                        ok: true,
+                        status: 202,
+                        json: () => Promise.resolve({status: "created", job: {id: "job-conflict", target: "tsPackage", status: "queued", cancellationRequested: false}}),
+                    });
+                }
+                if (path === "/api/project/artifacts/build/job-conflict") {
+                    return Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () => Promise.resolve({
+                            id: "job-conflict",
+                            target: "tsPackage",
+                            status: "failed",
+                            cancellationRequested: false,
+                            result: {
                                 status: "conflict",
                                 target: "tsPackage",
                                 message: '"/games/tsPackage" already exists and is not empty. Choose a different --out path or remove it first.',
-                            }),
+                            },
+                        }),
                     });
                 }
                 return fetchImplFrom(BASE_ROUTES)(url, init);

@@ -381,12 +381,17 @@ function TargetCard({
                     )}
                     {artifactBuildRun.status === "running" && (
                         <Text size="sm" c="dimmed" mt={4}>
-                            {artifactBuildRun.progress?.status === "preflight"
-                                ? `Preflight: ${artifactBuildRun.progress.preflight?.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
-                                    `${artifactBuildRun.progress.preflight?.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
-                                    `${artifactBuildRun.progress.preflight?.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`
-                                : `Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
-                                    `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`}
+                            {artifactBuildRun.progress?.preflight && (
+                                <>
+                                    {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
+                                        `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
+                                        `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
+                                    <br />
+                                </>
+                            )}
+                            {artifactBuildRun.progress?.status !== "preflight" &&
+                                (`Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                    `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
                             {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
                         </Text>
                     )}
