@@ -349,11 +349,11 @@ describe("ProjectDashboardPage - Certification workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Certification"}));
-
-        expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("");
+        // A Blueprint does not directly own an outcome-library artifact. Its previous certification
+        // state cannot leak into the newly opened project, and the workflow stays unavailable until
+        // Build/Export creates an artifact with the required capability.
+        expect(screen.queryByRole("button", {name: "Certification"})).not.toBeInTheDocument();
         expect(screen.queryByText("Clean")).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to Build bundle"})).not.toBeInTheDocument();
     });
 
     it("blocks Build and surfaces a diagnostic for a partially-filled mode row, instead of silently dropping it", async () => {

@@ -337,11 +337,10 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
         });
         renderRoutedApp({fetchImpl: fetchImplB, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "B"});
-        await user.click(screen.getByRole("button", {name: "Provably Fair"}));
-
-        expect(await screen.findByLabelText("Source outcome-library bundle directory")).toHaveValue("");
+        // A Blueprint has no live runtime integration. The previous project's commitments must not
+        // leak into it, and this workflow is unavailable until a runtime-capable project is opened.
+        expect(screen.queryByRole("button", {name: "Provably Fair"})).not.toBeInTheDocument();
         expect(screen.queryByText("sha256:server-seed-hash")).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Continue to Generate/inspect proof"})).not.toBeInTheDocument();
     });
 
     it("marks a completed Configure as Outdated once a seed/mode field changes, and clears it on a fresh Compute commitments run", async () => {

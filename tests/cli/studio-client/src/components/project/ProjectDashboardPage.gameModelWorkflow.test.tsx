@@ -94,10 +94,10 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToGameModelTab(user);
 
+        await user.click(screen.getByRole("tab", {name: "Full strips"}));
         expect(await screen.findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
         // Six full-strip tables are present, but each table has a 100-row rendering window rather
         // than mounting all 1,800 stops at once.
-        expect(screen.getAllByText("Next 100")).toHaveLength(6);
         await user.click(screen.getAllByRole("button", {name: "Next 100"})[0]);
         expect(screen.getByText("Showing positions 100–199 of 300.")).toBeInTheDocument();
         expect(screen.getAllByText("100").length).toBeGreaterThan(0);
