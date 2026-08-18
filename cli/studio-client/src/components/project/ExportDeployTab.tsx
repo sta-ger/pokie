@@ -166,6 +166,7 @@ function TargetCard({
     artifactPreview,
     artifactBuildRun,
     onBuildArtifact,
+    onCancelArtifactBuild,
     artifactDestination,
     onArtifactDestinationChange,
     onOpenAsProject,
