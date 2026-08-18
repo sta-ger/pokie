@@ -3,6 +3,8 @@ import {SecureWeightedOutcomeRandomSource} from "../pregenerated/SecureWeightedO
 import {SeededWeightedOutcomeRandomSource} from "../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {WeightedOutcomeRandomSource} from "../pregenerated/WeightedOutcomeRandomSource.js";
 import {PreGeneratedRoundResultProjector} from "../pregenerated/PreGeneratedRoundResultProjector.js";
+import {ReplayRecorder} from "../replay/ReplayRecorder.js";
+import type {PreGeneratedReplayRecording} from "../replay/ReplayRecording.js";
 import {OutcomeLibraryBundleOutcomeSource} from "../weightedoutcome/bundle/OutcomeLibraryBundleOutcomeSource.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import type {PokieProject} from "../project/PokieProject.js";
@@ -53,6 +55,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
     private readonly wallet: TransactionalWalletPort;
     private readonly spinHandler: PreGeneratedSpinCommandHandler;
     private readonly projector = new PreGeneratedRoundResultProjector();
+    private readonly replayRecorder: PreGeneratedReplayRecording = new ReplayRecorder();
     private readonly roundRecorder: PreGeneratedRoundRecording;
     private readonly capturePolicy: SessionCapturePolicy;
     private readonly roundRecordQueues = new Map<string, Promise<unknown>>();
@@ -279,7 +282,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         this.sendJson(res, 200, response);
     }
 
-    private createRoundRecord(result: Extract<PreGeneratedSpinCommandResult, {status: "played"}>, seed: string | undefined): PreGeneratedRoundRecord {
+    private async createRoundRecord(result: Extract<PreGeneratedSpinCommandResult, {status: "played"}>, seed: string | undefined): Promise<PreGeneratedRoundRecord> {
         if (seed === undefined) {
             // A successful handler result can only exist for a session it loaded, and that session must
             // include its selection seed. Keep this invariant explicit rather than fabricating replay data.
@@ -287,24 +290,33 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         }
 
         const publicView = this.projector.projectPublic(result.result);
+        const replay = {
+            libraryId: result.result.selection.libraryId,
+            libraryHash: result.result.selection.libraryHash,
+            seed,
+            round: result.round,
+            outcomeId: result.result.selection.outcomeId,
+            weight: result.result.selection.weight,
+            totalWin: result.result.artifact.totalWin,
+            payoutMultiplier: result.result.artifact.payoutMultiplier,
+            timestamp: Date.now(),
+            durationMs: 0,
+        };
         return {
             sessionId: result.sessionId,
             roundId: result.result.runtime.roundId,
             round: result.round,
             publicView,
             stake: result.result.artifact.stake,
-            replay: {
-                libraryId: result.result.selection.libraryId,
-                libraryHash: result.result.selection.libraryHash,
-                seed,
-                round: result.round,
-                outcomeId: result.result.selection.outcomeId,
-                weight: result.result.selection.weight,
-                totalWin: result.result.artifact.totalWin,
-                payoutMultiplier: result.result.artifact.payoutMultiplier,
-                timestamp: Date.now(),
-                durationMs: 0,
-            },
+            replay,
+            replayDescriptor: this.replayRecorder.recordPreGenerated({
+                sessionId: result.sessionId,
+                game: await this.gameSummary,
+                replay,
+                totalBet: result.result.artifact.stake,
+                credits: result.result.runtime.balanceAfter,
+                screen: result.result.artifact.screen.map((row) => [...row]),
+            }),
             capturePolicy: this.capturePolicy,
             ...(this.capturePolicy.mode === "full" ? {internal: this.projector.projectInternal(result.result)} : {}),
         };
@@ -315,7 +327,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         const previous = this.roundRecordQueues.get(key) ?? Promise.resolve();
         const recording = previous.then(async () => {
             const existing = await this.roundRecorder.load(result.sessionId, result.result.runtime.roundId);
-            return existing ?? this.roundRecorder.record(this.createRoundRecord(result, seed));
+            return existing ?? this.roundRecorder.record(await this.createRoundRecord(result, seed));
         });
         this.roundRecordQueues.set(
             key,
@@ -335,6 +347,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         return {
             capturePolicy: record.capturePolicy,
             replay: record.replay,
+            replayDescriptor: record.replayDescriptor,
             ...(record.internal === undefined ? {} : record.internal),
         };
     }

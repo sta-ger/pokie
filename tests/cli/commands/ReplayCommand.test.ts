@@ -320,6 +320,29 @@ describe("ReplayCommand outcome-source routing", () => {
                 timestamp: 0,
                 durationMs: 1,
             },
+            descriptor: {
+                sessionId: "outcome-source:base-lib:demo-seed:3",
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                seed: "demo-seed",
+                round: 3,
+                totalBet: 1,
+                totalWin: 5,
+                screen: [],
+                timestamp: 0,
+                durationMs: 1,
+                outcomeSource: {
+                    libraryId: "base-lib",
+                    libraryHash: "sha256:abc",
+                    seed: "demo-seed",
+                    round: 3,
+                    outcomeId: "2",
+                    weight: 150,
+                    totalWin: 5,
+                    payoutMultiplier: 5,
+                    timestamp: 0,
+                    durationMs: 1,
+                },
+            },
         });
         const loadGame = jest.fn();
         const command = new ReplayCommand(loadGame, undefined, undefined, undefined, resolveProject, replay);
@@ -329,9 +352,9 @@ describe("ReplayCommand outcome-source routing", () => {
 
         expect(replay.calls).toEqual([{project: outcomeLibraryProject, modeName: "base", seed: "demo-seed", round: 3}]);
         expect(loadGame).not.toHaveBeenCalled();
-        const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as {outcomeId: string; libraryId: string};
-        expect(descriptor.outcomeId).toBe("2");
-        expect(descriptor.libraryId).toBe("base-lib");
+        const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as ReplayDescriptor;
+        expect(descriptor.outcomeSource?.outcomeId).toBe("2");
+        expect(descriptor.outcomeSource?.libraryId).toBe("base-lib");
 
         logSpy.mockRestore();
     });
@@ -382,9 +405,9 @@ describe("ReplayCommand outcome-source routing (integration, real outcome-librar
         await command.run([bundleDir, "--round", "1", "--seed", "replay-seed", "--mode", "base"]);
 
         expect(loadGame).not.toHaveBeenCalled();
-        const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as {libraryId: string; outcomeId: string};
-        expect(descriptor.libraryId).toBe("base-lib");
-        expect(typeof descriptor.outcomeId).toBe("string");
+        const descriptor = JSON.parse(logSpy.mock.calls[0][0]) as ReplayDescriptor;
+        expect(descriptor.outcomeSource?.libraryId).toBe("base-lib");
+        expect(typeof descriptor.outcomeSource?.outcomeId).toBe("string");
 
         logSpy.mockRestore();
     });

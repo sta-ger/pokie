@@ -1,6 +1,7 @@
 import type {PreGeneratedRoundInternalView} from "../../pregenerated/PreGeneratedRoundInternalView.js";
 import type {PreGeneratedRoundPublicView} from "../../pregenerated/PreGeneratedRoundPublicView.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../../pregenerated/PreGeneratedRoundReplayDescriptor.js";
+import type {ReplayDescriptor} from "../../replay/ReplayDescriptor.js";
 import type {SessionCapturePolicy} from "../session/SessionCapturePolicy.js";
 
 // The persisted/audit representation of a served outcome-library round.  It deliberately keeps the
@@ -15,6 +16,9 @@ export type PreGeneratedRoundRecord<T extends string | number = string> = {
     readonly publicView: PreGeneratedRoundPublicView<T>;
     readonly stake: number;
     readonly replay: PreGeneratedRoundReplayDescriptor;
+    // The same canonical descriptor emitted by the Replay product path.  It wraps the native selection
+    // provenance above without re-running any game-model math.
+    readonly replayDescriptor: ReplayDescriptor;
     readonly capturePolicy: SessionCapturePolicy;
     readonly internal?: PreGeneratedRoundInternalView<T>;
 };

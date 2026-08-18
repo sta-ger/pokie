@@ -447,13 +447,48 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         expect(recorded.replay).toMatchObject({seed: "recorded-seed", round: 1, outcomeId: first.replay.outcomeId});
         expect(recorded.internal?.artifact.provenance).toEqual(outcomeLibraryBundleTestProvenance);
         const replayed = await replayOutcomeSourceProject(project, "base", recorded.replay.seed, recorded.replay.round);
-        expect(replayed).toEqual({supported: true, replay: expect.objectContaining({
+        expect(replayed).toEqual(expect.objectContaining({supported: true, replay: expect.objectContaining({
             libraryId: recorded.replay.libraryId,
             libraryHash: recorded.replay.libraryHash,
             outcomeId: recorded.replay.outcomeId,
             totalWin: recorded.replay.totalWin,
             payoutMultiplier: recorded.replay.payoutMultiplier,
-        })});
+        })}));
+        if (replayed.supported) {
+            // The settled server round and the public `pokie replay` workflow now share the canonical
+            // ReplayDescriptor contract. The server's record retains its real session/wallet facts;
+            // the replay command only reconstructs the deterministic selection, never game math.
+            expect(recorded.replayDescriptor).toMatchObject({
+                sessionId,
+                seed: recorded.replay.seed,
+                round: recorded.replay.round,
+                totalBet: recorded.stake,
+                totalWin: recorded.replay.totalWin,
+                outcomeSource: expect.objectContaining({
+                    libraryId: replayed.replay.libraryId,
+                    libraryHash: replayed.replay.libraryHash,
+                    seed: replayed.replay.seed,
+                    round: replayed.replay.round,
+                    outcomeId: replayed.replay.outcomeId,
+                    totalWin: replayed.replay.totalWin,
+                    payoutMultiplier: replayed.replay.payoutMultiplier,
+                }),
+            });
+            expect(replayed.descriptor).toMatchObject({
+                seed: recorded.replay.seed,
+                round: recorded.replay.round,
+                totalWin: recorded.replay.totalWin,
+                outcomeSource: expect.objectContaining({
+                    libraryId: recorded.replay.libraryId,
+                    libraryHash: recorded.replay.libraryHash,
+                    seed: recorded.replay.seed,
+                    round: recorded.replay.round,
+                    outcomeId: recorded.replay.outcomeId,
+                    totalWin: recorded.replay.totalWin,
+                    payoutMultiplier: recorded.replay.payoutMultiplier,
+                }),
+            });
+        }
         const fullRestored = await fetch(`${fullBaseUrl}/sessions/${sessionId}?debug=1`);
         expect(await fullRestored.json()).toHaveProperty("internal.artifact.provenance", outcomeLibraryBundleTestProvenance);
         await fullServer.stop();
