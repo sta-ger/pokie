@@ -1,36 +1,30 @@
 P6-14 independent host result: PASS
-candidate: 331e343d0fa44dd81e9874ffec968880f02bc2ea
+candidate: 7b972d8ac6b15c1ffa3c00f851839d3f806fcd96
 host: Linux; Node v24.18.0; npm 11.16.0
-
-Fresh build
-PASS  npm run build-cli (CLI and Studio-client production bundle)
 
 Complete bounded whole-file command
 PATH=/home/stager/.nvm/versions/node/v24.18.0/bin:$PATH npm run test:targeted -- \
-  tests/project/ProjectCapabilities.test.ts \
-  tests/project/describeUnsupportedProjectOperation.test.ts \
-  tests/project/ArtifactBuilderRegistry.test.ts \
-  tests/project/ProjectTargetResolver.test.ts \
-  tests/project/OutcomeSourceProjectAnalyzer.test.ts \
-  tests/project/readWasmComponentManifest.test.ts \
+  tests/cli/commands/ReplayCommand.test.ts \
   tests/cli/commands/ServeCommand.test.ts \
-  tests/cli/commands/ReplayCommand.test.ts
+  tests/project/ArtifactBuilderRegistry.test.ts \
+  tests/project/OutcomeSourceProjectAnalyzer.test.ts \
+  tests/project/ProjectCapabilities.test.ts \
+  tests/project/ProjectTargetResolver.test.ts \
+  tests/project/describeUnsupportedProjectOperation.test.ts \
+  tests/project/readWasmComponentManifest.test.ts \
+  tests/cli/cliCommandInventory.contract.test.ts \
+  tests/cli/studio/StudioServer.test.ts \
+  tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
 
-PASS  tests/project/ProjectCapabilities.test.ts
-PASS  tests/project/describeUnsupportedProjectOperation.test.ts
+PASS  tests/cli/commands/ReplayCommand.test.ts
 PASS  tests/cli/commands/ServeCommand.test.ts
 PASS  tests/project/ArtifactBuilderRegistry.test.ts
-PASS  tests/project/ProjectTargetResolver.test.ts
 PASS  tests/project/OutcomeSourceProjectAnalyzer.test.ts
+PASS  tests/project/ProjectCapabilities.test.ts
+PASS  tests/project/ProjectTargetResolver.test.ts
+PASS  tests/project/describeUnsupportedProjectOperation.test.ts
 PASS  tests/project/readWasmComponentManifest.test.ts
-PASS  tests/cli/commands/ReplayCommand.test.ts
-Jest summary: 8 passed, 8 total suites; 112 passed, 112 total tests.
-
-Public rebuilt-CLI workflow (fresh finite --blank Blueprint; 91,125 exact outcomes)
-PASS  build --target outcomeLibrary
-PASS  validate <bundle> --deep
-PASS  sample <bundle> --mode base --seed p6-14-candidate: canonical selected outcome
-PASS  sim <bundle> --mode base --rounds 12 --seed p6-14-candidate: 12 rounds completed
-PASS  replay <bundle> --mode base --seed p6-14-candidate --round 2: canonical outcomeSource descriptor written
-PASS  build <blueprint> --target stakeAdapter: adapter published, including lookup_base.csv, books_base.jsonl.zst, index.json, pokie-manifest.json
-PASS  serve <bundle> --mode base: GET /health 200; POST /sessions 201; POST /sessions/:id/spin 200
+PASS  tests/cli/cliCommandInventory.contract.test.ts
+PASS  tests/cli/studio/StudioServer.test.ts
+PASS  tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
+Jest summary: 11 passed, 11 total suites; 1,409 passed, 1,409 total tests.
