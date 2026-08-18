@@ -1,11 +1,9 @@
-# P6-14 independent host verification — passed
+# P6-14 exact-candidate capability verification — passed
 
-Candidate: `37683e4b2d87e383bd91ec428a9a3da3a114ae68` (checked-out `HEAD`). Host: Linux, Node `v24.18.0`, npm `11.16.0`.
+Candidate: `331e343d0fa44dd81e9874ffec968880f02bc2ea` (checked-out `HEAD`). Host: Linux, Node `v24.18.0`, npm `11.16.0`.
 
-The three remaining named whole-file suites are green: **3/3 suites, 46/46 tests**. The candidate's public CLI and Studio client were freshly rebuilt first.
+The complete bounded capability suite is green: **8/8 suites, 112/112 tests**. [`machine-results.txt`](machine-results.txt) records the exact eight whole-file paths and the command used; its candidate SHA is the SHA above.
 
-Using only that rebuilt `pokie` CLI and a fresh temporary `--blank` Blueprint, native Outcome Library build, deep validation, JSON report, sample, 12-round simulation, and canonical replay all completed. The resulting library contained 11,500 exact outcomes. Its public `serve` endpoint returned `200` for `GET /health`, `201` for `POST /sessions`, and `200` for `POST /sessions/:id/spin`; the spin response included its public replay identity.
+Using the freshly rebuilt public CLI and a temporary `--blank` Blueprint, native Outcome Library build, deep validation, sampling, 12-round simulation, replay, Stake-adapter build, and public local `serve` endpoints all completed. The native library contained 91,125 exact outcomes; `GET /health`, `POST /sessions`, and `POST /sessions/:id/spin` returned success, and the spin included a public replay identity.
 
-The same Blueprint published a Stake adapter with its expected manifest, index, lookup, and compressed-books files. The public WASM checks truthfully rejected both a Blueprint build (no supported source/arbitrary package-to-WASM compiler) and an opaque `.wasm` (no compatible `PokieWasmComponentManifest` sidecar), without claiming execution support.
-
-[`machine-results.txt`](machine-results.txt) is the concise transcript; [`CHECKSUMS.sha256`](CHECKSUMS.sha256) identifies the unretained generated outputs. No generated project/output tree, raw log, browser data, or automation script is committed.
+[`CHECKSUMS.sha256`](CHECKSUMS.sha256) identifies the unretained public-workflow outputs. No generated project/output tree, raw log, browser data, or automation script is committed.
