@@ -77,7 +77,18 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
             }
 
             reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing outcome-library bundle"});
-            const result = await this.writer.writeToDirectory(modes, destinationPath);
+            const result = await this.writer.writeToDirectory(modes, destinationPath, {
+                signal: options?.signal,
+                onProgress: (progress) => {
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: progress.completed,
+                        total: preflight.estimatedItemCount,
+                        preflight,
+                        message: progress.message,
+                    });
+                },
+            });
             assertArtifactBuildNotCancelled(options);
             const errors = result.issues.filter((issue) => issue.severity === "error");
             if (errors.length > 0 || result.manifest === undefined) {

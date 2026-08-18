@@ -61,7 +61,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         }
     });
 
-    it("preflights a large Outcome job, exposes cancellation, and leaves neither bundle nor managed registration", async () => {
+    it("preflights a large Outcome job, cancels during bundle publishing, and leaves neither bundle nor managed registration", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cancelled-blueprint-outcome-"));
         const blueprintPath = path.join(workDir, "game.blueprint.json");
         const outcomeDir = path.join(workDir, "outcome");
@@ -92,17 +92,19 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
                 workflow.resolveOrGenerate(project, outcomeDir, {
                     signal: controller.signal,
                     onProgress: (event) => {
-                        progress.push(event.status);
+                        progress.push(event.message ?? event.status);
                         if (event.status === "preflight") {
                             expect(event.preflight?.estimatedItemCount).toBe(BigInt(16_807));
                             expect(event.preflight?.estimatedBytes).toBeGreaterThan(BigInt(0));
                             expect(event.preflight?.complexityWarning).toMatch(/16[,.]?807/);
-                            controller.abort();
                         }
+                        if (event.message?.startsWith("Writing Outcome mode")) controller.abort();
                     },
                 }),
             ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
-            expect(progress).toEqual(["preflight", "cancelled"]);
+            expect(progress).toContain("preflight");
+            expect(progress.some((message) => message.startsWith("Writing Outcome mode"))).toBe(true);
+            expect(progress).toContain("cancelled");
             expect(fs.existsSync(outcomeDir)).toBe(false);
             expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(false);
         } finally {

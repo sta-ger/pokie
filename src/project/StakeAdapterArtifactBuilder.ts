@@ -61,7 +61,18 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
                 assertArtifactBuildNotCancelled(options);
             }
             reportArtifactBuildProgress(options, {status: "running", completed, total: preflight.estimatedItemCount, preflight, message: "Publishing Stake export"});
-            const result = await this.exporter.exportToDirectory(modes, destinationPath);
+            const result = await this.exporter.exportToDirectory(modes, destinationPath, {
+                signal: options?.signal,
+                onProgress: (progress) => {
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: progress.completed,
+                        total: preflight.estimatedItemCount,
+                        preflight,
+                        message: progress.message,
+                    });
+                },
+            });
             assertArtifactBuildNotCancelled(options);
             const exportErrors = result.issues.filter((issue) => issue.severity === "error");
             if (exportErrors.length > 0 || result.manifest === undefined) {

@@ -37,6 +37,7 @@ import type {PokieProject} from "./PokieProject.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing, type OutcomeProjectCompatibility} from "./ManagedOutcomeProjectService.js";
 import {
     assertArtifactBuildNotCancelled,
+    ArtifactBuildCancelledError,
     reportArtifactBuildProgress,
     type ArtifactBuildOptions,
     type ArtifactBuildPreflight,
@@ -138,8 +139,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             // A generated bundle is not a managed Project until registerAndOpen commits the registry record.
             // Do not leave a complete-looking orphan behind when registry I/O or cancellation fails.
             await fs.promises.rm(bundleDir, {recursive: true, force: true}).catch(() => undefined);
-            if (options?.signal?.aborted) reportArtifactBuildProgress(options, {status: "cancelled", preflight});
-            else reportArtifactBuildProgress(options, {status: "failed", preflight});
+            if (options?.signal?.aborted) {
+                reportArtifactBuildProgress(options, {status: "cancelled", preflight});
+                if (!(error instanceof ArtifactBuildCancelledError)) assertArtifactBuildNotCancelled(options);
+            } else reportArtifactBuildProgress(options, {status: "failed", preflight});
             throw error;
         }
     }
@@ -184,6 +187,18 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 generator: library.diagnostics,
             })),
             destinationPath,
+            {
+                signal: options?.signal,
+                onProgress: (progress) => {
+                    reportArtifactBuildProgress(options, {
+                        status: "running",
+                        completed: progress.completed,
+                        total: preflight.estimatedItemCount,
+                        preflight,
+                        message: progress.message,
+                    });
+                },
+            },
         );
         const errors = result.issues.filter((issue) => issue.severity === "error");
         if (errors.length > 0 || result.manifest === undefined) {

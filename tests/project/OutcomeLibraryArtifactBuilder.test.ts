@@ -113,6 +113,44 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         expect(fs.existsSync(destinationDir)).toBe(false);
     });
 
+    it("cancels during a Unicode-path bundle write, leaving neither output nor writer scratch directories", async () => {
+        const controller = new AbortController();
+        const unicodeDestination = path.join(path.dirname(destinationDir), "результат с пробелом");
+        const progress: string[] = [];
+
+        await expect(
+            new OutcomeLibraryArtifactBuilder("1.3.0").build(outcomeLibraryProjectOf(sourceDir), unicodeDestination, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    progress.push(event.message ?? event.status);
+                    if (event.message?.startsWith("Writing Outcome mode")) controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(progress.some((message) => message.startsWith("Writing Outcome mode"))).toBe(true);
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+        expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
+    });
+
+    it("cleans staging output when the underlying Outcome writer fails", async () => {
+        const failingWriter = new OutcomeLibraryBundleWriter(
+            "1.3.0",
+            undefined,
+            undefined,
+            (filePath, contents) => {
+                if (path.basename(filePath).startsWith("index_")) throw new Error("injected Outcome write failure");
+                fs.writeFileSync(filePath, contents, "utf-8");
+            },
+        );
+
+        await expect(new OutcomeLibraryArtifactBuilder("1.3.0", undefined, failingWriter).build(outcomeLibraryProjectOf(sourceDir), destinationDir)).rejects.toThrow(
+            "injected Outcome write failure",
+        );
+        expect(fs.existsSync(destinationDir)).toBe(false);
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
+    });
+
     it("rejects a Blueprint instead of writing an unregistered Outcome bundle", async () => {
         const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
 

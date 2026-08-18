@@ -126,4 +126,42 @@ describe("StakeAdapterArtifactBuilder", () => {
         expect(statuses).toEqual(["preflight", "cancelled"]);
         expect(fs.existsSync(destinationDir)).toBe(false);
     });
+
+    it("cancels during a Unicode-path Stake export, leaving neither output nor temporary export", async () => {
+        const controller = new AbortController();
+        const unicodeDestination = path.join(path.dirname(destinationDir), "ставка с пробелом");
+        const progress: string[] = [];
+
+        await expect(
+            new StakeAdapterArtifactBuilder("1.3.0").build(stakeAdapterProjectOf(sourceDir), unicodeDestination, {
+                signal: controller.signal,
+                onProgress: (event) => {
+                    progress.push(event.message ?? event.status);
+                    if (event.message?.startsWith("Building Stake mode")) controller.abort();
+                },
+            }),
+        ).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+
+        expect(progress.some((message) => message.startsWith("Building Stake mode"))).toBe(true);
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
+        expect(fs.readdirSync(path.dirname(unicodeDestination)).filter((entry) => entry.startsWith(`${path.basename(unicodeDestination)}.`))).toEqual([]);
+    });
+
+    it("cleans temporary export output when the underlying Stake writer fails", async () => {
+        const failingExporter = new StakeEngineExporter(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                throw new Error("injected Stake write failure");
+            },
+        );
+
+        await expect(new StakeAdapterArtifactBuilder("1.3.0", undefined, failingExporter).build(stakeAdapterProjectOf(sourceDir), destinationDir)).rejects.toThrow(
+            "injected Stake write failure",
+        );
+        expect(fs.existsSync(destinationDir)).toBe(false);
+        expect(fs.readdirSync(path.dirname(destinationDir)).filter((entry) => entry.startsWith(`${path.basename(destinationDir)}.`))).toEqual([]);
+    });
 });

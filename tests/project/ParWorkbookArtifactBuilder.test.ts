@@ -1,7 +1,15 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, GameBlueprint, ParSheetExporter, ParWorkbookArtifactBuilder, PokieProject, PROJECT_TYPE_CAPABILITIES} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    GameBlueprint,
+    ParSheetExporter,
+    ParWorkbookArtifactBuilder,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    type ParSheetExporting,
+} from "pokie";
 
 function parWorkbookProjectOf(rootPath: string): PokieProject {
     return {
@@ -85,5 +93,20 @@ describe("ParWorkbookArtifactBuilder", () => {
         } finally {
             fs.unlinkSync(linkedDir);
         }
+    });
+
+    it("removes a partial Unicode-path workbook when its exporter fails", async () => {
+        const unicodeDestination = path.join(dir, "отчёт с пробелом.par.xlsx");
+        const failingExporter: ParSheetExporting = {
+            exportToFile: (_blueprint, outputPath) => {
+                fs.writeFileSync(outputPath, "partial workbook");
+                return Promise.reject(new Error("injected PAR write failure"));
+            },
+        };
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0", undefined, failingExporter).build(parWorkbookProjectOf(sourceFile), unicodeDestination)).rejects.toThrow(
+            "injected PAR write failure",
+        );
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
     });
 });

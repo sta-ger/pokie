@@ -1,7 +1,14 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ArtifactBuildConflictError, GameBlueprint, PokieProject, PROJECT_TYPE_CAPABILITIES, TsPackageArtifactBuilder} from "pokie";
+import {
+    ArtifactBuildConflictError,
+    GameBlueprint,
+    PokieProject,
+    PROJECT_TYPE_CAPABILITIES,
+    TsPackageArtifactBuilder,
+    type GamePackageGenerating,
+} from "pokie";
 
 function blueprintProjectOf(rootPath: string): PokieProject {
     return {
@@ -118,5 +125,21 @@ describe("TsPackageArtifactBuilder", () => {
             /reel 1 .*maximum-circular-distance/,
         );
         expect(fs.existsSync(destinationDir)).toBe(false);
+    });
+
+    it("removes a partial Unicode-path package when its generator fails", async () => {
+        const unicodeDestination = path.join(dir, "пакет с пробелом");
+        const failingGenerator: GamePackageGenerating = {
+            generate: (_blueprint, _cwd, outputPath) => {
+                fs.mkdirSync(outputPath as string, {recursive: true});
+                fs.writeFileSync(path.join(outputPath as string, "package.json"), "partial");
+                throw new Error("injected TypeScript package write failure");
+            },
+        };
+
+        await expect(new TsPackageArtifactBuilder("1.3.0", undefined, undefined, failingGenerator).build(blueprintProjectOf(blueprintPath), unicodeDestination)).rejects.toThrow(
+            "injected TypeScript package write failure",
+        );
+        expect(fs.existsSync(unicodeDestination)).toBe(false);
     });
 });
