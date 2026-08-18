@@ -5742,6 +5742,19 @@ describe("StudioServer", () => {
             return `http://${address.host}:${address.port}`;
         }
 
+        async function waitForArtifactBuildJob(projectBaseUrl: string, id: string): Promise<{status: string; result?: unknown}> {
+            for (let attempt = 0; attempt < 1200; attempt += 1) {
+                const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${id}`);
+                expect(response.status).toBe(200);
+                const job = response.body as {status: string; result?: unknown};
+                if (job.status !== "queued" && job.status !== "running") return job;
+                await new Promise<void>((resolve) => {
+                    setTimeout(resolve, 10);
+                });
+            }
+            throw new Error(`Artifact build job "${id}" did not finish.`);
+        }
+
         function writeBlueprintFile(overrides: Record<string, unknown> = {}): string {
             const filePath = path.join(artifactWorkDir, "blueprint.json");
             fs.writeFileSync(
@@ -5809,10 +5822,14 @@ describe("StudioServer", () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
 
-            expect(status).toBe(201);
-            const view = body as {status: string; outputPath?: string; sourceType?: string};
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            const view = completed.result as {status: string; outputPath?: string; sourceType?: string};
             expect(view.status).toBe("ok");
             expect(view.outputPath).toBe(path.join(artifactWorkDir, "tsPackage"));
             expect(view.sourceType).toBe("blueprint");
@@ -5823,10 +5840,14 @@ describe("StudioServer", () => {
             const blueprintPath = writeBlueprintFile();
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "stakeAdapter"});
 
-            expect(status).toBe(201);
-            const view = body as {status: string; outputPath?: string; sourceType?: string};
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            const view = completed.result as {status: string; outputPath?: string; sourceType?: string};
             expect(view.status).toBe("ok");
             expect(view.sourceType).toBe("blueprint");
             expect(fs.existsSync(path.join(view.outputPath!, "index.json"))).toBe(true);
@@ -5926,10 +5947,13 @@ describe("StudioServer", () => {
             fs.writeFileSync(path.join(destination, "unrelated.txt"), "pre-existing");
             const projectBaseUrl = await startServerForProject(blueprintPath);
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage"});
 
-            expect(status).toBe(409);
-            expect((body as {status: string}).status).toBe("conflict");
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string}}).job;
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("failed");
+            expect((completed.result as {status: string}).status).toBe("conflict");
             expect(fs.readdirSync(destination)).toEqual(["unrelated.txt"]);
         });
 
@@ -5938,10 +5962,14 @@ describe("StudioServer", () => {
             const projectBaseUrl = await startServerForProject(blueprintPath);
             const explicitOut = path.join(artifactWorkDir, "my-custom-out");
 
-            const {status, body} = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage", outDir: explicitOut});
+            const started = await post(`${projectBaseUrl}/api/project/artifacts/build`, {target: "tsPackage", outDir: explicitOut});
 
-            expect(status).toBe(201);
-            expect((body as {outputPath?: string}).outputPath).toBe(explicitOut);
+            expect(started.status).toBe(202);
+            const job = (started.body as {job: {id: string; status: string}}).job;
+            expect(job.status).toBe("queued");
+            const completed = await waitForArtifactBuildJob(projectBaseUrl, job.id);
+            expect(completed.status).toBe("completed");
+            expect((completed.result as {outputPath?: string}).outputPath).toBe(explicitOut);
         });
 
         it("previews a tsPackage build against the same default sibling destination build() itself would use, without writing anything", async () => {
