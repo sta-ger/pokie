@@ -1,5 +1,0 @@
-2026-08-19 — Built the candidate once; opened one fresh-profile local public Studio session.
-Rendered Home, New Blueprint picker, valid Modeler, and successfully created/opened Starter Slot.
-Rendered Overview; all Game Model sections; Play empty/preparation and settled-spin states; Simulation empty/disabled and live-running states; Replay Session Spin; Build/Export gated/preflight states; and Projects wide/narrow states.
-Simulation was not restarted after the visibly typed value appended to the rendered default and produced a long-running job. The final screenshot therefore records loading, not a completed simulation report.
-Visual finding: the 405 px Projects table remains a compressed desktop table and is materially unusable.

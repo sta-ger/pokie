@@ -1,4 +1,4 @@
-# P6-20 independent host verification — passed
+# P6-20 final Player-parity browser evidence — passed
 
 Candidate `f8a90bf40d8bbfb9bb29db6163e6473f8147dd25` was normally built and
 packed with Node `v24.18.0`; the package archive was
@@ -19,8 +19,9 @@ One fresh local Studio process and fresh headed-browser profile then used only
 rendered controls and browser mouse/keyboard input: **Play** → advanced seed
 `fixture-round` → **New Play session** → **Spin**, followed by **Replay** →
 **Session Spin** → **Refresh** → the rendered Session 1 / Round 1 row. Both
-Studio surfaces rendered the identical Player round. The two screenshots below
-are the only retained images; checksums are in `SHA256SUMS`.
+Studio surfaces rendered the identical Player round. The two screenshots in
+this directory are the only retained images: `studio-play-fixture.png` and
+`studio-replay-fixture.png`.
 
 No generated package, package archive, browser profile, automation source,
-server log, or full raw log is retained.
+server log, full raw log, transcript, or checksum manifest is retained.
