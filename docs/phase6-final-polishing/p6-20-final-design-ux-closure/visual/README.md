@@ -1,7 +1,7 @@
 # P6-20 independent visual/product-design audit
 
-Candidate `b6ad154db45b3b4ee24d5d588fa650bdacd84efb` was built once and examined through one fresh-profile local public Studio session. Input used rendered controls only.
+Candidate `39bd9cacd8164c1e3b4ea0f3d01f21214699a2f4` was built and exercised once in a fresh Chrome profile against its local public Studio UI. Browser input used only rendered controls. The corrected Projects registry passed its visual/product checks in wide and narrow layouts.
 
-Result: **finding — P2 `p6-20-final-visual-design-closure-001`**. At a 405 px viewport, Projects retains a compressed desktop data table rather than offering a usable narrow layout. Row identity, status, actions, and pagination become effectively unreadable.
+Result: **finding — P1 `p6-20-final-visual-design-closure-001`**. On the fresh Home/Design Game surface, the visible default **Create Project** action ended with: “The project could not be completed. Try again. If it continues, choose the location again and retry.” This blocks Studio's primary guided managed-Blueprint creation path. The UI exposed no actionable failure detail. An independently CLI-created temporary Blueprint could be detected, registered, opened, and used to inspect the remaining reachable workspace surfaces.
 
-The bounded evidence is in `fresh-b6ad154d-20260819/`; `SURFACE-MATRIX.md` maps every requested visual surface/state to rendered proof. No browser profile, automation source, generated project/output tree, or raw log is retained.
+See `SURFACE-MATRIX.md` and `verification-transcript.txt`. Retained evidence is limited to rendered screenshots, checksums, and a concise transcript; no profile, generated project, automation source, raw log, build output, or PID file is committed.
