@@ -670,6 +670,29 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.queryByText("Project 12")).not.toBeInTheDocument();
     });
 
+    it("keeps each project identity, availability, metadata, and actions labelled for the narrow card layout", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {location: "/games/available", name: "Available game", type: "tsPackage", capabilities: [], origin: "managed", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
+                    {location: "/games/missing", name: "Missing game", type: "blueprint", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "missing"},
+                ],
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const availableRow = (await screen.findByText("Available game")).closest("tr");
+        const missingRow = screen.getByText("Missing game (missing)").closest("tr");
+        expect(availableRow).toHaveClass("project-registry-entry");
+        expect(within(availableRow as HTMLElement).getByText("Available")).toBeInTheDocument();
+        expect(within(missingRow as HTMLElement).getByText("Needs attention")).toBeInTheDocument();
+        expect(within(availableRow as HTMLElement).getByText("Available game").closest("td")).toHaveAttribute("data-label", "Project");
+        expect(within(availableRow as HTMLElement).getByRole("button", {name: "Open"}).closest("td")).toHaveAttribute("data-label", "Actions");
+        expect(within(missingRow as HTMLElement).getByRole("checkbox", {name: "Select missing project Missing game"}).closest("td")).toHaveAttribute("data-label", "Select");
+    });
+
     it("removes selected missing registrations together after confirmation", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

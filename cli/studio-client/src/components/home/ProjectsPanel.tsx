@@ -384,8 +384,8 @@ export function ProjectsPanel({
         });
     };
     const renderEntryRow = (entry: StudioProjectRegistryView): ReactNode => (
-        <Table.Tr key={entry.location}>
-            <Table.Td>
+        <Table.Tr key={entry.location} className="project-registry-entry">
+            <Table.Td className="project-registry-selection" data-label="Select">
                 {entry.status === "missing" && (
                     <Checkbox
                         aria-label={`Select missing project ${entry.name}`}
@@ -394,19 +394,22 @@ export function ProjectsPanel({
                     />
                 )}
             </Table.Td>
-            <Table.Td>
+            <Table.Td data-label="Project">
                 {renderEntryName(entry)}
                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>{entry.location}</Text>
+                <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
+                    {entry.status === "ok" ? "Available" : "Needs attention"}
+                </Text>
             </Table.Td>
-            <Table.Td>{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
-            <Table.Td>
+            <Table.Td data-label="Type">{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
+            <Table.Td data-label="Origin">
                 <Group gap={6} wrap="nowrap">
                     <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
                     {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
                 </Group>
             </Table.Td>
-            <Table.Td>{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
-            <Table.Td>
+            <Table.Td data-label="Last opened">{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
+            <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
                     {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
                         <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>Open</Button>
@@ -478,8 +481,8 @@ export function ProjectsPanel({
                         {filteredEntries.length === 0 ? (
                             <EmptyState message="No projects match these filters." />
                         ) : (
-                            <Table.ScrollContainer minWidth={0}>
-                                <Table style={{tableLayout: "fixed", width: "100%"}}>
+                            <Table.ScrollContainer className="project-registry-scroll" minWidth={0}>
+                                <Table className="project-registry" style={{tableLayout: "fixed", width: "100%"}}>
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th>
@@ -501,13 +504,13 @@ export function ProjectsPanel({
                                     </Table.Thead>
                                     <Table.Tbody>
                                         {availablePageEntries.length > 0 && (
-                                            <Table.Tr>
+                                            <Table.Tr className="project-registry-group">
                                                 <Table.Td colSpan={6}><Text fw={600} size="sm">Available projects</Text></Table.Td>
                                             </Table.Tr>
                                         )}
                                         {availablePageEntries.map(renderEntryRow)}
                                         {missingPageEntries.length > 0 && (
-                                            <Table.Tr>
+                                            <Table.Tr className="project-registry-group">
                                                 <Table.Td colSpan={6}><Text fw={600} size="sm">Needs attention</Text></Table.Td>
                                             </Table.Tr>
                                         )}
