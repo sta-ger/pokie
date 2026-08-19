@@ -1,42 +1,35 @@
 # P6-18 independent cold-start Studio rerun — finding
 
-Candidate: `407dac0a735967244b48bf5711b588d302a4ad23`
+Candidate: `a0b3ce4df1d6cca0c60df0e4f08a49e67ef3609d`
 Date: 2026-08-19 (Europe/Warsaw)
 
 ## Result
 
-**Finding `p6-18-mathematician-cold-start-workflow` (P1): blocked before the first workflow action.**
+**Finding `p6-18-mathematician-cold-start-workflow` (P1): the corrected public
+Studio startup path fails before a local client can be opened.**
 
-Using a fresh Chrome profile and a freshly started local Studio client from this
-candidate, the initial Design Game screen displayed the starter model, then its
-automatic validation immediately failed with:
+The independent rerun used the public command documented by the candidate:
 
-> This validation request could not be completed. Try again. If it continues,
-> choose the location again and retry.
+```sh
+npm run dev-studio-client
+```
 
-The sole cold-start product framing was the persisted request's Valera/
-mathematician framing. It could not be applied because the UI was not in a
-valid, saveable state. No product documentation, source, roadmap, internal
-terminology, or prepared browser script was consulted. Cold-start questions
-asked before the failure: **none**.
+It completed `build-cli`, then stopped its backend readiness check. The concise
+terminal evidence was:
 
-## Reproduction boundary
+```text
+Usage: pokie <command>
+Commands:
+  ... (no `studio` command)
+POKIE Studio stopped before it became available (exit 1).
+```
 
-1. Built the candidate locally and started its Studio Vite client with a fresh
-   browser profile.
-2. Opened the visible `Design Your Game` screen at `http://127.0.0.1:5173/`.
-3. Observed the automatic validation failure before changing the starter model
-   or invoking any workflow surface.
+The launcher runs `dist/cli/pokie.js studio --no-open --host 127.0.0.1 --port
+3200`, but this candidate's built public CLI does not provide that command.
+Consequently neither the Studio backend nor Vite client was available, so a
+fresh browser UI could not begin the Valera/mathematician workflow. No UI
+questions were reached and no remediation or affected-workflow rerun was
+possible in this bounded run.
 
-The browser-visible evidence is
-[`studio-cold-start-validation-failure.png`](studio-cold-start-validation-failure.png).
-Its SHA-256 is
-`f13e5af04cda3eb9c4d9593a9b03105f9bc0695ec5d87ea110cb95e201707028`.
-
-## Root cause
-
-The independently started Studio client requires a reachable Studio server for
-its initial validation, but the candidate's public CLI surface and package
-scripts exposed no cold-start Studio-server launch path. The UI reports the
-result as a location retry, which cannot resolve the unavailable server. This
-blocks P6-18's required end-to-end cold-start workflow.
+The prior screenshot from the earlier, pre-correction candidate was removed:
+it is not evidence for this candidate.
