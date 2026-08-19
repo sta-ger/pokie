@@ -29,25 +29,21 @@ retried.
 3. I chose **Close project** → **Projects** → the first-row **Open**. The
    reopened project displayed the saved name and id `valera-mathematician-slot`.
 4. In **Play**, the only startup choice was **New Play session**; a visible
-   **Spin** settled a real no-win round (screenshot 2).
+   **Spin** settled a real no-win round.
 5. In **Simulation**, the required **Rounds*** input was set to `25` through
    the browser keyboard. **Run Simulation** completed a `25/25` report with
-   rendered RTP `24.00%` (screenshot 3).
+   rendered RTP `24.00%`.
 6. In **Replay**, I selected the visible **Session Spin** source and its one
    rendered session entry. Studio loaded and inspected the recorded Play round,
-   including `Stake 1.00` (screenshot 4).
+   including `Stake 1.00`.
 7. In **Build/Export**, the visible Outcome library and Stake Engine cards
    explained their prerequisite relation. Clicking **Generate outcome library
    (base)** caused the blocked state above (screenshot 5). The relevant
    remediation is to restore a terminal success/failure/progress state, then
    rerun this Build/Export → Outcome library → Stake affected workflow.
 
-## Evidence checksums
+## Representative proof checksum
 
 | File | SHA-256 |
 | --- | --- |
-| `01-game-model-saved.png` | `1394c3b0bd5cfcc25a7daf20b12e0e6bbed83a6a30a46ae37fb6f74e88bca0b2` |
-| `02-play-settled.png` | `4275a84ca7c16d1bae7bbd99a5027d6394f695e67365fca41d217e0b662f5bab` |
-| `03-simulation-rtp.png` | `598e627cc0fa81c7d7eb78c92acb1b856b6bb814b9ead338f8121c49e9707e74` |
-| `04-replay-session-spin.png` | `d25217bd09d7eb29453a65ec13e113743d3766a34021802ca129f23d9e9baf03` |
 | `05-build-outcome-library-stalled.png` | `de49794b2459a2de46cb60eda7716ca625b20e5b148f51d09fbdf851bfe24714` |
