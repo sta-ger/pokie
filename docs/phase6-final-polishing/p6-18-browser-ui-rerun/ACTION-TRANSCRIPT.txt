@@ -1,0 +1,12 @@
+[2026-08-19T06:00:35Z] START one fresh Studio registry and one fresh Chrome profile against the public local Studio client.
+[2026-08-19T06:00:38Z] CLICK New Blueprint → Recommended.
+[2026-08-19T06:02:45Z] INPUT Game name, Game id, and description.
+[2026-08-19T06:02:47Z] EDIT all Game Model sections: basics; Layout/Add payline; Symbols/Add symbol; Reels/Reel 1 stop; Paytable/A x3 payout; Bets/Add bet.
+[2026-08-19T06:03:02Z] CLICK Create Project; observe the saved Blueprint Workspace.
+[2026-08-19T06:03:49Z] NAVIGATE visible Projects route → CLICK Open; observe the saved Blueprint reopened.
+[2026-08-19T06:03:50Z] CLICK Play → New Play session → Find any win; observe the settled winning round.
+[2026-08-19T06:06:25Z] CLICK Simulation → set Rounds=100 → Run Simulation; observe RTP 108.00% and the low-sample/no-seed interpretation warnings.
+[2026-08-19T06:09:08Z] CLICK Replay → Session Spin → Refresh → selected Round; observe Round inspector.
+[2026-08-19T06:09:12Z] CLICK Build/Export → Generate outcome library (base); observe Generated 1,024 outcomes.
+[2026-08-19T06:12:16Z] CLICK Run Stake Engine Export (base); observe Exported 4 file(s).
+[2026-08-19T06:12:19Z] COMPLETE with no rendered product error.

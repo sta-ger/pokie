@@ -1,10 +1,17 @@
-# P6-18 cold-start Studio verification — finding
+# P6-18 independent cold-start Studio rerun — passed
 
-Candidate: `d0e3d7e759931a333a18db8ed23835c7ca750801`
-Finding: `p6-18-mathematician-cold-start-workflow` (`P2`)
+Candidate: `48bd833e1ea3b9b8a0cdefc9ea95cdfd4ee96270`
 
-Two fresh Node 24 Studio/client and Chrome-profile launches were used. The first reached Recommended Blueprint creation and metadata editing; its host-side rendered-control driver clicked the Layout tab before it had been scrolled into the visible viewport. The second corrected that physical visibility issue and reached Layout (including an Add payline edit) and Symbols. It then stalled only because the driver waited for the accessible label `Symbol 1 id`, which is not included in the rendered page's text projection despite the actual Symbols editor being visibly present.
+Finding id: `p6-18-mathematician-cold-start-workflow`
 
-The candidate showed a valid model after the edits (with the expected duplicate-payline warning), and neither pass rendered a Studio error. However, the required complete workflow—save/reopen, Play, Simulation/RTP, selected Replay, Outcome Library, and Stake export—was not completed within the two-launch limit. Therefore there is no passing P6-18 evidence and no claim that the downstream flow works on this candidate.
+Run: 2026-08-19; one fresh local Studio/client, a fresh Studio registry, and a separate fresh Chrome profile. The candidate client was rebuilt with Node 24 before launch. Browser control used public Studio routes, rendered-control coordinate clicks, and keyboard input only.
 
-Stale screenshots from a different candidate (`0fadbd930320539ed6b76308b1728e487c220e6e`) were removed rather than presented as evidence for this SHA.
+## Cold-start questions and results
+
+1. Can a creator make and save a viable Valera mathematician Blueprint? **Yes.** `New Blueprint` → `Recommended` was edited in all six Game Model sections: basics, layout/paylines, symbols, literal reel strips, paytable, and bets. `Create Project` saved it, and its visible Projects row reopened successfully.
+2. Can the resulting project be understood through Play, Simulation, and Replay? **Yes.** `Find any win` produced a settled winning round; a 100-round Simulation rendered RTP **108.00%** (with the expected low-sample/no-seed warnings); Replay selected that recorded Session Spin and opened its Round inspector.
+3. Can the dependent output flow finish from the same saved project? **Yes.** `Generate outcome library (base)` rendered **Generated 1,024 outcomes**, then `Run Stake Engine Export (base)` rendered **Exported 4 file(s)**.
+
+No material product finding was exposed, so no product remediation or rerun was required.
+
+See [ACTION-TRANSCRIPT.txt](ACTION-TRANSCRIPT.txt) and [SHA256SUMS.txt](SHA256SUMS.txt). The five screenshots are the bounded rendered-state proof: Play, Simulation/RTP, selected Replay, Outcome Library, and Stake export.
