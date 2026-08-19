@@ -1,12 +1,8 @@
-[2026-08-19T13:40Z] START fresh Chrome profile; candidate=00b814a0a764f21933d04d907a32602c599b6365; fixture=fixture-slot; seed=fixture-round; round=1. Browser input used rendered controls, coordinates, and keyboard only.
-[2026-08-19T13:40Z] LAUNCH candidate-built generated package npm start (:3000/:3100); candidate pokie dev (:5064/:5065); candidate Studio (:5067); public pokie-examples Vite (:5066) with the candidate tarball installed. Each listener reported ready.
-[2026-08-19T13:40Z] ASSERT generated npm start Player: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A=5/B=3/C=1; credits 1004; win 5; bet 1; five-times multiple.
-[2026-08-19T13:40Z] ASSERT pokie dev Player: same fixture fields and highlights.
-[2026-08-19T13:40Z] ASSERT Studio Play: Show advanced details (seed) -> fixture-round -> New Play session -> Spin; same fixture fields and highlights. Its total-win summary expresses the five-times payout inline.
-[2026-08-19T13:40Z] ASSERT Studio Replay: fixture-round -> Load -> Run again; same fixture fields and highlights.
-[2026-08-19T13:40Z] ASSERT public pokie-examples: Open deterministic round -> Play -> Paytable; same fixture fields and highlights.
-[2026-08-19T13:41Z] LAUNCH candidate pokie serve (:3000) + separately launched candidate pokie client (:5063).
-[2026-08-19T13:41Z] OBSERVE standalone client prior unseeded grid: B/B/A | B/C/A | C/B/C.
-[2026-08-19T13:41Z] ACTION standalone client: enter fixture-round -> Start new session. ASSERT rendered Spin disabled immediately after click.
-[2026-08-19T13:41Z] FINDING P1: after rendered Spin re-enabled, first seeded Spin showed B/C/C | C/B/B | C/C/C, no highlighted cells, instead of fixture A/C/A | A/A/C | A/A/A and 0:0/0:1/0:2. No retry was made.
-[2026-08-19T13:41Z] COMPLETE reachable workflow; no private application API calls, DOM/state injection, or retained generated artifacts.
+[2026-08-19T13:46Z] BUILD candidate=00b814a0a764f21933d04d907a32602c599b6365 with Node v24.18.0; create fixture-slot from tracked after-fix-fixture-blueprint.json; install the candidate tarball into the generated package and disposable pokie-examples copy.
+[2026-08-19T13:54:52Z] START fresh Chrome profile and public generated-package npm start Player at 127.0.0.1:5101; only rendered controls, coordinate mouse, and keyboard input used.
+[2026-08-19T13:54:53Z] ACTION generated Player: Session seed (optional)=fixture-round; Start new session; Spin; Paytable.
+[2026-08-19T13:54:55Z] ASSERT generated npm start Player: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A=5/B=3/C=1; credits 1004; win 5; five-times payout.
+[2026-08-19T13:57:26Z] NAVIGATE public implicit-project Studio workflow to Play.
+[2026-08-19T13:57:27Z] ACTION Studio Play: Show advanced details (seed); Seed (optional)=fixture-round; New Play session.
+[2026-08-19T13:58:28Z] FINDING P1: after 60 seconds, the visible Studio Play page still showed Start Play / New Play session. No session, loading state, or rendered error appeared; no Studio Play round was reachable.
+[2026-08-19T13:58:28Z] STOP: preserve the bounded product finding; do not retry the failed interaction. Studio Replay, pokie-examples, pokie dev, and standalone-client portions are not reached in this invocation.
