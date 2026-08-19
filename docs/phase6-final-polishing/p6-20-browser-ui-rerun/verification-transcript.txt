@@ -1,8 +1,7 @@
-[2026-08-19T13:46Z] BUILD candidate=00b814a0a764f21933d04d907a32602c599b6365 with Node v24.18.0; create fixture-slot from tracked after-fix-fixture-blueprint.json; install the candidate tarball into the generated package and disposable pokie-examples copy.
-[2026-08-19T13:54:52Z] START fresh Chrome profile and public generated-package npm start Player at 127.0.0.1:5101; only rendered controls, coordinate mouse, and keyboard input used.
-[2026-08-19T13:54:53Z] ACTION generated Player: Session seed (optional)=fixture-round; Start new session; Spin; Paytable.
-[2026-08-19T13:54:55Z] ASSERT generated npm start Player: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A=5/B=3/C=1; credits 1004; win 5; five-times payout.
-[2026-08-19T13:57:26Z] NAVIGATE public implicit-project Studio workflow to Play.
-[2026-08-19T13:57:27Z] ACTION Studio Play: Show advanced details (seed); Seed (optional)=fixture-round; New Play session.
-[2026-08-19T13:58:28Z] FINDING P1: after 60 seconds, the visible Studio Play page still showed Start Play / New Play session. No session, loading state, or rendered error appeared; no Studio Play round was reachable.
-[2026-08-19T13:58:28Z] STOP: preserve the bounded product finding; do not retry the failed interaction. Studio Replay, pokie-examples, pokie dev, and standalone-client portions are not reached in this invocation.
+[2026-08-19T14:33Z] Candidate 88abb897afa9e32a981a66ad7bd92f5f18aeb05a: normal npm run build passed under Node v24.18.0; generated the tracked fixture and installed the candidate tarball.
+[2026-08-19T14:33Z] Fresh visible browser, package npm start: seed fixture-round → Start new session → Spin → Paytable; asserted A/C/A | A/A/C | A/A/A, 0:0/0:1/0:2, A=5/B=3/C=1, credits 1004, win 5, 5x.
+[2026-08-19T14:33Z] Fresh visible browser, standalone pokie client: the same seeded-session and round assertion passed.
+[2026-08-19T14:33Z] Fresh visible browser, pokie dev: the same seeded-session and round assertion passed.
+[2026-08-19T14:35Z] Visible Studio Play: Show advanced details (seed) → fixture-round → New Play session → Spin; the same assertion passed (studio-play.png).
+[2026-08-19T14:35Z] Visible Studio Replay: fixture-round → Load → Run again; the same assertion passed.
+[2026-08-19T14:35Z] Public pokie-examples clone 530c2c7ff709361d93fe60f59b20436be719d209: visible index had no Fixture Slot/Open deterministic round entry (public-pokie-examples-no-fixture.png); the required public fixture Player could not be reached. Its candidate-tarball Vite production build also failed at FileSessionRepository's browser-external fs.promises import.

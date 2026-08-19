@@ -1,22 +1,31 @@
-# P6-20 independent Player-parity rerun — finding
+# P6-20 independent current-candidate Player-parity rerun — finding
 
-Candidate `00b814a0a764f21933d04d907a32602c599b6365` was rebuilt locally under
-Node `v24.18.0`. A generated `fixture-slot` package was built from the tracked
-fixture blueprint, with the rebuilt candidate tarball installed into both the
-package and a disposable `pokie-examples` copy. The visible browser used a
-fresh Chrome profile and only rendered-control coordinate clicks and keyboard
-entry; no application API calls, DOM/state injection, or retained generated
-trees were used.
+Candidate: `88abb897afa9e32a981a66ad7bd92f5f18aeb05a` (Node `v24.18.0`).
+The normal candidate build passed. A tarball made from that build
+(`sha256:1b88fdb14e11c059025bdfbfdf11aa1d3961dafc3018c4b783a339ec3ea2abae`)
+was installed into a newly generated `fixture-slot` package made from the
+tracked fixture (`sha256:d4a5837dc81732cff77e2343e9c1c0649eac7e4a9357c10d59f93978c561bd82`).
 
-The real generated-package `npm start` Player completed the deterministic
-`fixture-round` round one: grid `A/C/A | A/A/C | A/A/A`, highlights
-`0:0/0:1/0:2`, paytable `A=5/B=3/C=1`, credits `1004`, win `5`, and 5x payout.
+One fresh Chrome profile used only rendered-control coordinate clicks and
+keyboard input. `npm start`, standalone `pokie client`, and `pokie dev` each
+created a new `fixture-round` session and visibly rendered the identical
+round: `A/C/A | A/A/C | A/A/A`, highlighted `0:0/0:1/0:2`, complete
+`A=5/B=3/C=1` paytable, credits `1004`, win `5`, and `5x`. Studio Play and
+Replay both completed that same visible round; `studio-play.png` is the one
+representative successful Studio capture.
 
-P1 finding: in the real public implicit-project Studio workflow, Studio Play
-accepted `fixture-round` through its rendered **Seed (optional)** input and a
-rendered **New Play session** click. It then remained on the start form for 60
-seconds without a session, a loading state, or an error. The deterministic
-Studio Play round therefore could not be reached. Studio Replay and the
-remaining cross-surface checks were not retried after this product failure.
+P1 `p6-20-current-candidate-player-parity`: a fresh clone of the real public
+`pokie-examples` repository at `530c2c7ff709361d93fe60f59b20436be719d209`
+did not render the required **Fixture Slot**/**Open deterministic round**
+entry. Its visible index is captured in `public-pokie-examples-no-fixture.png`,
+so the public Player page and round could not be exercised. Additionally,
+after installing the candidate tarball, the public checkout's normal Vite
+production build stopped at Rollup's browser-external `fs` module with:
+`"promises" is not exported by "__vite-browser-external"`, imported by
+`pokie/dist/esm/server/session/FileSessionRepository.js`. Thus the requested
+public cross-surface parity is not presently releasable, despite the reachable
+package and Studio paths passing.
 
-Only this README and the concise action transcript are retained.
+Only this README, the concise transcript, and two representative screenshots
+are retained; no generated package, clone, browser profile, automation, or raw
+log is committed.
