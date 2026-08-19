@@ -1,8 +1,6 @@
 import crypto from "crypto";
-import {once} from "events";
 import fs from "fs";
 import path from "path";
-import {finished} from "stream/promises";
 import zlib from "zlib";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
@@ -24,6 +22,56 @@ import {StakeEngineRoundEventsProjector} from "./StakeEngineRoundEventsProjector
 import type {StakeEngineRoundEventsProjecting} from "./StakeEngineRoundEventsProjecting.js";
 
 const GENERATED_BY = "pokie stakeengine export";
+
+// The public package root also exports client-facing game-model code, while this exporter is only
+// used by the Node CLI/runtime. These small event promises deliberately replace imports from
+// `events` and `stream/promises`, so a browser bundler inspecting the root barrel never resolves
+// Node-only stream modules for an exporter the browser does not use.
+function waitForStreamEvent(stream: NodeJS.EventEmitter, eventName: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const onEvent = (): void => {
+            cleanup();
+            resolve();
+        };
+        const onError = (error: Error): void => {
+            cleanup();
+            reject(error);
+        };
+        const cleanup = (): void => {
+            stream.removeListener(eventName, onEvent);
+            stream.removeListener("error", onError);
+        };
+
+        stream.once(eventName, onEvent);
+        stream.once("error", onError);
+    });
+}
+
+function waitForWritableStreamFinish(stream: NodeJS.EventEmitter): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const onFinish = (): void => {
+            cleanup();
+            resolve();
+        };
+        const onClose = (): void => {
+            cleanup();
+            reject(new Error("Books output stream closed before it finished writing."));
+        };
+        const onError = (error: Error): void => {
+            cleanup();
+            reject(error);
+        };
+        const cleanup = (): void => {
+            stream.removeListener("finish", onFinish);
+            stream.removeListener("close", onClose);
+            stream.removeListener("error", onError);
+        };
+
+        stream.once("finish", onFinish);
+        stream.once("close", onClose);
+        stream.once("error", onError);
+    });
+}
 
 type ModeProvenanceKey = {
     readonly gameId: unknown;
@@ -245,7 +293,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         const zstdStream = zlib.createZstdCompress();
         const booksWriteStream = fs.createWriteStream(path.join(stagingDir, booksFileName));
         zstdStream.pipe(booksWriteStream);
-        const booksFinished = finished(booksWriteStream);
+        const booksFinished = waitForWritableStreamFinish(booksWriteStream);
 
         let sawError = false;
         let firstArtifact: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineManifest["game"]; configHash?: string; pokieVersion: string}} | undefined;
@@ -330,7 +378,7 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                 const bookLine: StakeEngineBookLine = {id, events, payoutMultiplier: stakePayoutMultiplier};
                 const canWriteMore = zstdStream.write(`${JSON.stringify(bookLine)}\n`);
                 if (!canWriteMore) {
-                    await once(zstdStream, "drain");
+                    await waitForStreamEvent(zstdStream, "drain");
                 }
             }
         } finally {
