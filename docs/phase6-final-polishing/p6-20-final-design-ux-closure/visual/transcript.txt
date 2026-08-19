@@ -1,0 +1,10 @@
+Fresh-profile Studio visual traversal, candidate 42fa72e5ecc1c3c2f16c7bd703bc5bf8d7246015.
+
+Home: opened New Blueprint; rendered Blank warning/error state; visibly selected Game basics, Layout, Symbols, Reels, Paytable, Bets; selected Per-reel (Reel Strip Modeler); opened Projects.
+Dialog/generation: opened Random generator, generated Royal Grand Stampede, used the visible blueprint, and created/opened its project.
+Dashboard: visibly selected Overview, Game Model, Play, Simulation, Replay, and Build/Export.
+Play: New Play session → Spin rendered a completed round.
+Simulation: entered 20 Rounds → Run Simulation rendered review metrics, warnings, and a recent run.
+Responsive: resized visible Projects UI to 405 px and reviewed the card reflow.
+
+No DOM/state injection, API calls, browser profile, raw server log, generated project/output tree, PID file, or automation source was retained.
