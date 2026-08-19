@@ -255,6 +255,10 @@ See the [examples](https://github.com/sta-ger/pokie-examples) of various video s
 - **Mixed win evaluators** [[Demo](https://sta-ger.github.io/pokie-examples/mixed-evaluators.html)]
   [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/mixed-evaluators)] — the same grid
   evaluated as lines, ways, and clusters at once, paid by whichever wins the most (`HighestWinOnlyAggregationPolicy`).
+- **Fixture Slot — deterministic Player round** [[Demo](https://sta-ger.github.io/pokie-examples/fixture-slot.html)]
+  [[Code](https://github.com/sta-ger/pokie-examples/tree/main/src/games/fixture-slot)] — a compact seeded 3×3
+  round rendered through POKIE's public `client/player` surface; it is the parity fixture for package, Studio
+  Play, and Replay presentation.
 
 ### Modeling slot math with POKIE
 
