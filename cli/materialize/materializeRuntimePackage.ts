@@ -150,6 +150,7 @@ export function createMaterializingRuntimePackageResolver(
             undefined,
             pokiePackageRoot !== undefined ? withLocalPokieInstall(pokiePackageRoot) : undefined,
             undefined,
+            undefined,
             pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
         );
 
