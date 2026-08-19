@@ -4,11 +4,14 @@
 // StudioFsBrowseService's own `StudioFsBrowseErrorReason` naming so a caller's remediation copy stays
 // consistent with PathInput's own resolved-path hint. `schema` covers the one category browse never
 // produces: a missing/malformed value rejected before any filesystem access is even attempted.
-export type PathActionErrorReason = "absent" | "permission" | "type" | "schema" | "other";
+export type PathActionErrorReason = "network" | "absent" | "permission" | "type" | "schema" | "other";
 
 type PathActionIssue = {status: string; remediation: string};
 
 export function classifyPathActionErrorReason(message: string): PathActionErrorReason {
+    if ((/failed to fetch|networkerror|econnrefused|enotfound/i).test(message)) {
+        return "network";
+    }
     if ((/ENOENT|does not exist\b|no such file or directory/i).test(message)) {
         return "absent";
     }
@@ -25,6 +28,7 @@ export function classifyPathActionErrorReason(message: string): PathActionErrorR
 }
 
 const PATH_ACTION_ISSUE_COPY: Record<PathActionErrorReason, (subject: string) => PathActionIssue> = {
+    network: (subject) => ({status: `${subject} couldn't reach POKIE Studio.`, remediation: "Start or restart Studio, then try again."}),
     absent: (subject) => ({status: `${subject} could not be found.`, remediation: "Check the path and try again."}),
     permission: (subject) => ({status: `${subject} isn't readable.`, remediation: "Check its permissions and try again."}),
     type: (subject) => ({

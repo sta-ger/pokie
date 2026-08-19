@@ -97,7 +97,7 @@ describe("Guided Design Game: automatic validation freshness", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         expect(
-            await screen.findByText("This validation request could not be completed. Try again. If it continues, choose the location again and retry."),
+            await screen.findByText("This validation request couldn't reach POKIE Studio. Start or restart Studio, then try again."),
         ).toBeInTheDocument();
         expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
     }, 60000);
