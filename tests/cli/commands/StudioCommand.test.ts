@@ -1,4 +1,5 @@
 import {PokieDevServerAddress} from "pokie";
+import path from "path";
 import {StudioCommand} from "../../../cli/commands/StudioCommand.js";
 import {StudioServerOptions} from "../../../cli/studio/StudioServerOptions.js";
 
@@ -84,6 +85,32 @@ describe("StudioCommand", () => {
         expect(receivedOptions?.initialContext).toEqual({mode: "home"});
         expect(server.startCalls).toBe(1);
         expect(openedUrl).toBe("http://127.0.0.1:3200");
+
+        logSpy.mockRestore();
+    });
+
+    it("opens a registered package through Studio's bundled POKIE runtime when the package has no node_modules", async () => {
+        const server = createStubServer({host: "127.0.0.1", port: 3200});
+        let receivedOptions: StudioServerOptions | undefined;
+        const repositoryRoot = path.resolve(__dirname, "../../..");
+        const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+        const command = new StudioCommand("1.0.0", repositoryRoot, {
+            createServer: (options) => {
+                receivedOptions = options;
+                return server;
+            },
+            openBrowser: () => undefined,
+            studioRoot: "/fake/studio/root",
+            process: new FakeProcess() as unknown as NodeJS.Process,
+        });
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["--no-open"]);
+
+        await expect(receivedOptions!.homeService.openProject(fixtureRoot)).resolves.toMatchObject({
+            status: "loaded",
+            game: {id: "playable-game", name: "Playable Game", version: "1.0.0"},
+        });
 
         logSpy.mockRestore();
     });

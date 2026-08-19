@@ -1,10 +1,11 @@
 import {Command} from "commander";
-import {STUDIO_OPERATION} from "pokie";
+import {PokieGamePackageValidator, STUDIO_OPERATION} from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {StudioBlueprintService} from "../studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../studio/home/StudioHomeService.js";
+import {createStudioGameLoader, createStudioGamePackageValidator} from "../studio/loadStudioGame.js";
 import {createDefaultStudioProjectRegistrationService} from "../studio/StudioProjectRegistrationService.js";
 import {StudioContextResolver} from "../studio/StudioContextResolver.js";
 import {StudioContextResolving} from "../studio/StudioContextResolving.js";
@@ -53,6 +54,8 @@ export class StudioCommand implements CliCommandHandling {
     private readonly studioRoot: string;
     private readonly process: NodeJS.Process;
     private readonly pokieVersion: string;
+    private readonly loadGame: NonNullable<StudioServerOptions["loadGame"]>;
+    private readonly gamePackageValidator: PokieGamePackageValidator;
     // The one materializing resolver this command builds -- shared, by identity, between homeService's
     // own Open/Recent-Projects flow and the Project Dashboard/Play runtime StudioServer drives once
     // started (see run() below), rather than each independently building its own. Both go through the
@@ -68,12 +71,14 @@ export class StudioCommand implements CliCommandHandling {
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
         const projectRegistrationService = createDefaultStudioProjectRegistrationService();
         this.resolveRuntimePackageRoot = createMaterializingRuntimePackageResolver(pokieVersion, STUDIO_OPERATION, pokiePackageRoot);
+        this.loadGame = createStudioGameLoader(pokiePackageRoot);
+        this.gamePackageValidator = createStudioGamePackageValidator(pokiePackageRoot);
         this.homeService =
             dependencies.homeService ??
             new StudioHomeService(
                 pokieVersion,
                 undefined,
-                undefined,
+                this.loadGame,
                 undefined,
                 this.resolveRuntimePackageRoot,
                 (location) => projectRegistrationService.describeLocation(location),
@@ -116,6 +121,8 @@ export class StudioCommand implements CliCommandHandling {
             initialContext: context,
             homeService: this.homeService,
             blueprintService: this.blueprintService,
+            loadGame: this.loadGame,
+            gamePackageValidator: this.gamePackageValidator,
             resolveRuntimePackageRoot: this.resolveRuntimePackageRoot,
         });
         const address = await server.start();

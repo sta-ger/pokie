@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useLocation} from "react-router-dom";
 import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
@@ -78,6 +78,70 @@ describe("ProjectsPanel: Import Project", () => {
         );
         expect(await screen.findByText('Registered "a" -- it now shows up in Your projects above.')).toBeInTheDocument();
         expect(await screen.findByText("a")).toBeInTheDocument();
+    });
+
+    it("renders an explicit Detecting state while a preview request is in flight", async () => {
+        const user = userEvent.setup();
+        const fetchImpl = (url: string) => {
+            if (url.startsWith("/api/home/projects/registry?")) {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+            }
+            if (url === "/api/home/projects/registry/preview") {
+                return new Promise<never>(() => {
+                    // Intentionally remains pending while the UI exposes its in-flight state.
+                });
+            }
+            throw new Error(`Unexpected request: ${url}`);
+        };
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
+        await user.click(screen.getByRole("button", {name: "Detect"}));
+
+        // The empty project registry also owns a polite status region. Assert against this
+        // import flow's unique, visible copy rather than whichever status mounted first.
+        expect(await screen.findByText("Detecting project…")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Detect"})).toBeDisabled();
+    });
+
+    it("settles an unresponsive preview into an actionable error", async () => {
+        jest.useFakeTimers();
+        try {
+            const fetchImpl = (url: string) => {
+                if (url.startsWith("/api/home/projects/registry?")) {
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+                }
+                if (url === "/api/home/projects/registry/preview") {
+                    return new Promise<never>(() => {
+                        // Intentionally remains pending until the timeout settles the UI.
+                    });
+                }
+                if (url.startsWith("/api/home/fs/browse")) {
+                    return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "error", reason: "absent", resolvedPath: "/games/a"})});
+                }
+                throw new Error(`Unexpected request: ${url}`);
+            };
+            renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+            await act(async () => {
+                fireEvent.change(screen.getByLabelText("Location", {exact: false}), {target: {value: "/games/a"}});
+                fireEvent.click(screen.getByRole("button", {name: "Detect"}));
+                await Promise.resolve();
+            });
+
+            await act(async () => {
+                jest.advanceTimersByTime(15_000);
+                await Promise.resolve();
+            });
+
+            expect(screen.getByRole("alert")).toHaveTextContent("Project detection timed out. Confirm Studio is still reachable, then try again.");
+            expect(screen.getByRole("button", {name: "Detect"})).not.toBeDisabled();
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it("routes a recognized PAR sheet to Design Game's own PAR Sheet Import/Export panel instead of registering it", async () => {

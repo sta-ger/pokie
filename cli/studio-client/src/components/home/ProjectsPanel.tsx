@@ -8,6 +8,7 @@ import {
     registerProjectImport,
     relocateProjectRegistryEntry,
     removeProjectRegistryEntry,
+    type FetchLike,
 } from "../../api/apiClient";
 import type {StudioProjectImportPreviewResult, StudioProjectRegistryView, StudioProjectType} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -43,6 +44,11 @@ type ImportView =
     | {status: "registering"; result: RecognizedPreview}
     | {status: "registered"; name: string};
 
+// Detection only reads a small package manifest and its project shape, so an interactive request
+// should never leave Import Project waiting indefinitely.  A bounded failure keeps the next action
+// visible if the Studio server or an intermediary stops responding.
+const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
+
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
 // actually load into the Project Dashboard. "tsPackage" passes straight through; "blueprint" is
 // materialized into a real runtime first (see createMaterializingRuntimePackageResolver's own doc
@@ -60,6 +66,18 @@ const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     wasm: "WASM",
     parWorkbook: "PAR sheet",
 };
+
+function previewProjectImportWithTimeout(fetchImpl: FetchLike, location: string): Promise<StudioProjectImportPreviewResult> {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+            () => reject(new Error("Project detection timed out. Confirm Studio is still reachable, then try again.")),
+            PROJECT_IMPORT_DETECTION_TIMEOUT_MS,
+        );
+        previewProjectImport(fetchImpl, location)
+            .then(resolve, reject)
+            .finally(() => clearTimeout(timeout));
+    });
+}
 
 // Projects registry list -- every managed/registered project Studio knows about (see
 // StudioProjectRegistrationService.list()'s own doc comment), most-recently-registered/opened first.
@@ -221,7 +239,7 @@ export function ProjectsPanel({
             return;
         }
         setImportView({status: "detecting"});
-        previewProjectImport(fetchImpl, trimmed)
+        previewProjectImportWithTimeout(fetchImpl, trimmed)
             .then((result) => {
                 detectGuard.end();
                 if (result.status === "recognized") {
@@ -420,10 +438,27 @@ export function ProjectsPanel({
                         onChange={(event) => handleLocationChange(event.currentTarget.value)}
                         onPathSelected={handleLocationChange}
                     />
-                    <Button onClick={handleDetect} loading={importView.status === "detecting"}>
+                    <Button
+                        type="button"
+                        onClick={handleDetect}
+                        loading={importView.status === "detecting"}
+                        disabled={location.trim().length === 0}
+                        aria-describedby="import-project-detect-help"
+                    >
                         Detect
                     </Button>
                 </QuickActions>
+                {location.trim().length === 0 && (
+                    <Text id="import-project-detect-help" size="sm" c="dimmed" mt="xs">
+                        Enter a project location or use Browse to enable Detect.
+                    </Text>
+                )}
+
+                {importView.status === "detecting" && (
+                    <Text role="status" size="sm" c="dimmed" mt="xs">
+                        Detecting project…
+                    </Text>
+                )}
 
                 {importView.status === "error" && <ErrorState message={importView.message} />}
                 {importView.status === "unrecognized" && (
