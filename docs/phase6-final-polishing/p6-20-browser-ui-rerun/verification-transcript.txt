@@ -1,7 +1,7 @@
-[2026-08-19T14:33Z] Candidate 88abb897afa9e32a981a66ad7bd92f5f18aeb05a: normal npm run build passed under Node v24.18.0; generated the tracked fixture and installed the candidate tarball.
-[2026-08-19T14:33Z] Fresh visible browser, package npm start: seed fixture-round → Start new session → Spin → Paytable; asserted A/C/A | A/A/C | A/A/A, 0:0/0:1/0:2, A=5/B=3/C=1, credits 1004, win 5, 5x.
-[2026-08-19T14:33Z] Fresh visible browser, standalone pokie client: the same seeded-session and round assertion passed.
-[2026-08-19T14:33Z] Fresh visible browser, pokie dev: the same seeded-session and round assertion passed.
-[2026-08-19T14:35Z] Visible Studio Play: Show advanced details (seed) → fixture-round → New Play session → Spin; the same assertion passed (studio-play.png).
-[2026-08-19T14:35Z] Visible Studio Replay: fixture-round → Load → Run again; the same assertion passed.
-[2026-08-19T14:35Z] Public pokie-examples clone 530c2c7ff709361d93fe60f59b20436be719d209: visible index had no Fixture Slot/Open deterministic round entry (public-pokie-examples-no-fixture.png); the required public fixture Player could not be reached. Its candidate-tarball Vite production build also failed at FileSessionRepository's browser-external fs.promises import.
+[2026-08-19T14:44Z] Candidate 88abb897afa9e32a981a66ad7bd92f5f18aeb05a: normal Node v24.18.0 build passed; candidate tarball sha256=1b88fdb14e11c059025bdfbfdf11aa1d3961dafc3018c4b783a339ec3ea2abae.
+[2026-08-19T14:45Z] Generated tracked fixture (sha256=d4a5837dc81732cff77e2343e9c1c0649eac7e4a9357c10d59f93978c561bd82) and installed that tarball.
+[2026-08-19T14:50Z] Fresh visible browser, package npm start: seed fixture-round → Start new session → Spin passed: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A=5/B=3/C=1; credits 1004; win 5; 5x.
+[2026-08-19T14:50Z] Fresh visible browser, standalone pokie client: the same seeded-session and round assertion passed.
+[2026-08-19T14:50Z] Fresh visible browser, pokie dev: the same seeded-session and round assertion passed.
+[2026-08-19T14:52Z] Fresh visible Studio: Projects → Location → Detect → Register → Open; rendered Open left the fixture on Projects, so Studio Play and Replay were not reachable (P1).
+[2026-08-19T14:53Z] Public pokie-examples clone 530c2c7ff709361d93fe60f59b20436be719d209: visible index had no Fixture Slot/Open deterministic round; candidate-tarball Vite production build failed at FileSessionRepository fs.promises (P1).
