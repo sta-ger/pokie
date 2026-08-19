@@ -1,7 +1,7 @@
 # P6-20 independent visual/product-design audit
 
-Candidate product: `6f0c8788c42fffedb9407ad5b3f55443c4119651`. One fresh-profile local Studio launch was driven only through its rendered UI. This is the visual/product-design audit, not the separate workflow-UX audit.
+Candidate `39bd9cacd8164c1e3b4ea0f3d01f21214699a2f4` was built and exercised once in a fresh Chrome profile against its local public Studio UI. Browser input used only rendered controls. The corrected Projects registry passed its visual/product checks in wide and narrow layouts.
 
-Result: **finding — P2 `p6-20-final-visual-design-closure-001`**. The persisted Projects registry renders a long, flat sequence of stale/missing registrations before Import Project, with no rendered search, status filter, pagination, grouping, or bulk cleanup. The narrow layout retains the same unbounded sequence. This materially harms wayfinding and makes the import picker difficult to discover.
+Result: **finding — P1 `p6-20-final-visual-design-closure-001`**. On the fresh Home/Design Game surface, the visible default **Create Project** action ended with: “The project could not be completed. Try again. If it continues, choose the location again and retry.” This blocks Studio's primary guided managed-Blueprint creation path. The UI exposed no actionable failure detail. An independently CLI-created temporary Blueprint could be detected, registered, opened, and used to inspect the remaining reachable workspace surfaces.
 
-`SURFACE-MATRIX.md` maps the rendered surface/state observations to bounded screenshot evidence and SHA-256 checksums. No browser profile, generated project/output tree, automation source, or raw log is retained.
+See `SURFACE-MATRIX.md` and `verification-transcript.txt`. Retained evidence is limited to rendered screenshots, checksums, and a concise transcript; no profile, generated project, automation source, raw log, build output, or PID file is committed.

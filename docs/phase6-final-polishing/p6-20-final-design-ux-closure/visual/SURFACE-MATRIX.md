@@ -1,23 +1,20 @@
 # P6-20 visual surface matrix
 
-Fresh-profile public Studio UI audit of candidate `6f0c8788c42fffedb9407ad5b3f55443c4119651`. Visual/product-design scope only. Every hash is SHA-256.
+Fresh-profile public Studio UI audit of candidate `39bd9cacd8164c1e3b4ea0f3d01f21214699a2f4`. Checksums are SHA-256.
 
-| Required rendered surface/state | Observation | Screenshot evidence |
+| Rendered surface | Observation | Screenshot proof |
 | --- | --- | --- |
-| Home / Design Game / loading and valid modeler | The single-column editor rendered hierarchy, labels, section validation chips, documentation, and the automatic validation/loading affordance. | `01-home-design-valid.png` `f22919d5…c9495` |
-| New Blueprint dialog and model picker | The visible dialog offered Recommended, Blank, Random, and Load existing model choices with clear action hierarchy. | `02-new-blueprint-dialog.png` `456471c0…d9fa` |
-| Design Game / error and disabled state | Clearing the rendered Game id showed the inline required-field error and invalid validation summary; Create Project was unavailable until correction. | `02-design-inline-error-disabled.png` `4f194735…950c` |
-| Design Game / success and Outcome Project overview | Corrected fields created and opened the managed Blueprint. Overview rendered identity, origin, capability and valid-status information. | `03-project-overview-success.png` `e38c3a60…546c` |
-| Game Model / every section | Game basics, Layout, Symbols, Reels, Paytable, Bets & Modes, Mechanics, and derived Limits all rendered in one coherent workspace. | `04-game-model-overview.png` `bdada74d…8598` |
-| Game Model / Reels picker, full strips, analysis | Visible Game window, Full strips, and Analysis choices were traversed; Analysis exposed all five reels’ frequency/distance information. | `05-game-model-reels-analysis.png` `08ad4881…607c` |
-| Play / empty, disabled, success | Empty session controls preceded a real New Play session and settled visible Spin; the result rendered grid, credits, win, paylines and paytable. | `06-play-empty-disabled.png` `edb28a6d…7e52`; `07-play-round-success.png` `01be4b35…0851` |
-| Simulation / empty, disabled, loading path, success and warning | The rendered Configure/Run/Review/Export steps initially had no runs; a real 25-round run reached Review with RTP metrics and explicit low-round/unseeded warnings. | `10-simulation-empty-disabled.png` `e9c86545…16c`; `09-simulation-review-success.png` `da19d6c9…d076` |
-| Replay / empty, picker, disabled and success | The source picker and disabled download were visible before selection. Selecting the real Session Spin loaded a complete artifact with inspect/export availability and the canonical grid. | `10-replay-empty-disabled.png` `ddcb11c0…bbcb`; `11-replay-session-spin-success.png` `aea13277…0e17` |
-| Build / Export / prerequisites, controls and disabled state | Outcome-library, Stake Engine, artifact cards, Browse controls, preflight cards, available Build controls, and the disabled Stake export prerequisite were rendered. No output was built. | `12-build-export-preflight-disabled.png` `7bb1b707…221e3` |
-| Projects / wide responsive layout | Wide view showed a flat registry of current and many missing rows, with only per-row Open/Relocate/Remove actions. | `14-projects-stale-registry.png` `8fcfd523…a8cb2` |
-| Projects / narrow responsive layout | Narrow view retained the same long row sequence and actions; the list continued well beyond the viewport. | `16-projects-narrow.png` `3cbd96e5…ac86` |
-| Projects / import picker | Scrolling through the rendered registry reached Import Project only after numerous stale rows; Location, Browse, Browse PAR sheet, and disabled Detect rendered correctly. | `15-projects-wide-stale-registry.png` `5ba64e7e…c8610` |
+| Home / Design Game / Modeler | Default modeler rendered. Its normal managed **Create Project** action failed with the visible recovery error described below. | `01-home-design-valid.png` `20140a938fff…1b1a99` |
+| New Blueprint dialog and picker | Recommended, Blank, Random, and Load existing model choices were visible in the rendered dialog. | `02-new-blueprint-dialog.png` `5c0a6e3aa4b4…f243` |
+| Outcome Project | Imported Blueprint opened to its rendered Overview with project identity and capability context. | `03-project-overview-success.png` `74a61732ccce…50df` |
+| Game Model / every section | Game basics, Layout, Symbols, Reels, Paytable, Bets & Modes, Mechanics, and derived Limits rendered in one workspace. | `04-game-model-overview.png` `9f4ad7120de5…8f26` |
+| Reels picker and analysis | Game window, Full strips, and Analysis were reached; Analysis visibly rendered all six reel reports. | `05-game-model-reels-analysis.png` `f2c43d9f0612…a1cd` |
+| Play / Simulation | A real visible spin completed; a rendered 25-round simulation reached its report. | `07-play-round-success.png` `7f0a6e3aa4bd…47b8`; `09-simulation-review-success.png` `306d4d7613bd…bb83` |
+| Replay / Build | Replay's Session Spin picker and Build/Export's outcome-library/preflight surface rendered. | `11-replay-session-spin-success.png` `4afb30ad7d71…09db`; `12-build-export-preflight-disabled.png` `4a3079d0d255…553fa` |
+| Projects / wide | Eleven registrations were visibly grouped as Available projects, with filters, Import Project access, and Page 1 of 2. | `15-projects-wide-registry.png` `02c0670c7088…3b336` |
+| Projects / narrow | Responsive narrow layout retained the registry controls, rows, pagination, and Import Project section. | `16-projects-narrow.png` `ee968efaa3a9…2162d` |
+| Projects / missing filter and bulk cleanup dialog | Ten stale rows were filtered, selected, and presented to the rendered confirmation dialog before bulk cleanup. | `14-projects-bulk-cleanup.png` `44068e092b60…d046` |
 
-## Consolidated visual finding
+## Finding
 
-`p6-20-final-visual-design-closure-001` — **P2**: Projects presents its persisted registry as an unbounded flat list that places the Import Project picker after a large sequence of stale/missing entries. The rendered controls provide only per-row Relocate/Remove; there is no visible search, state filter, pagination, stale grouping, or bulk cleanup. The condition is demonstrated in both wide and narrow layouts and the picker is only visible at the list’s end. This is a material information-architecture and wayfinding defect.
+`p6-20-final-visual-design-closure-001` — **P1**: In fresh Home/Design Game, choosing the visible default Recommended model then **Create Project** reaches the generic rendered recovery error instead of opening a managed project. This is the primary guided project-creation route. The user cannot diagnose or recover from the displayed message; the specific server-side save/registration failure is not rendered.

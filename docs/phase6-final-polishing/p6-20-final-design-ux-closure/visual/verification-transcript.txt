@@ -1,0 +1,9 @@
+candidate=39bd9cacd8164c1e3b4ea0f3d01f21214699a2f4
+runtime=Node 24.18.0; one fresh-profile local Studio launch; rendered browser controls only
+
+1. Home/Design Game rendered the default modeler and New Blueprint dialog/picker. Choosing Recommended then Create Project rendered the managed-project recovery error (finding).
+2. A temporary public-CLI Blueprint was Detect -> Register -> Open through Studio. Outcome Project, all Game Model sections, Reels Analysis, Play (real spin), Simulation (25 rounds), Replay Session Spin picker, and Build/Export rendered.
+3. Through Projects UI, 11 Blueprint rows were registered. Wide registry showed page 1 and page 2; search matched two "stale-1" rows; narrow layout rendered the responsive table and Import Project controls.
+4. After the ten temporary entries were moved outside their registered locations, Availability=Missing showed 10 rows. Selecting the page's missing rows, confirming the visible bulk dialog, and pressing Confirm removed all 10. Clearing the filter left the one available registration.
+
+Temporary fixture, moved files, app-data directory, browser profile, local services, and automation were removed after evidence capture.
