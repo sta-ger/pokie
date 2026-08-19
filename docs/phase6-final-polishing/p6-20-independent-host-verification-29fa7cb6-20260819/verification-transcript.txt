@@ -1,0 +1,5 @@
+[2026-08-19] Exact candidate 29fa7cb693cc976ca3cdd118f53408ad8a109be9: npm run build passed under Node v24.18.0.
+[2026-08-19] npm pack --ignore-scripts: pokie-1.3.0.tgz SHA-256=5b76f8323c698a136f16e545feee64d5963d4aabfc6b8aacb4e70226199aa191.
+[2026-08-19] Fresh public HTTPS clone sta-ger/pokie-examples at 530c2c7ff709361d93fe60f59b20436be719d209 installed that tarball; public npm run build exited 1 after 853 modules transformed.
+[2026-08-19] Rollup error: "finished" is not exported by "__vite-browser-external", imported by pokie/dist/esm/stakeengine/StakeEngineBundleStreamingExporter.js (stream/promises).
+[2026-08-19] Fresh headed public-page and local-Studio attempts did not reach a rendered fixture/Design screen; no additional interaction was retried.
