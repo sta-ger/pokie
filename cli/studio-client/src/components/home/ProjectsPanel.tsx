@@ -478,8 +478,8 @@ export function ProjectsPanel({
                         {filteredEntries.length === 0 ? (
                             <EmptyState message="No projects match these filters." />
                         ) : (
-                            <Table.ScrollContainer minWidth={640}>
-                                <Table>
+                            <Table.ScrollContainer minWidth={0}>
+                                <Table style={{tableLayout: "fixed", width: "100%"}}>
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th>
