@@ -127,6 +127,10 @@ export default game;
 A plain `module.exports = game` (CommonJS) works the same way — the loader reads whichever module system the
 entry file was built for.
 
+The public [`pokie-examples`](https://github.com/sta-ger/pokie-examples) repository also declares a
+hand-authored JavaScript entry for its deterministic Fixture Slot. That makes `npx pokie dev .`
+usable from the examples checkout, while its Vite pages remain separate browser demonstrations.
+
 ## Loading a game package
 
 `loadPokieGame(packageRoot)` reads `package.json`, resolves `pokie.entry`, imports it, and returns a validated
