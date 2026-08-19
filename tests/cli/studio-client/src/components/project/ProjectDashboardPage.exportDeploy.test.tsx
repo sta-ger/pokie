@@ -489,6 +489,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
         const user = userEvent.setup();
+        let generated = false;
         const routes = {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
@@ -507,8 +508,20 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
                 },
             }),
+            "/api/project/stakeengine/export": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []},
+            }),
         };
-        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/outcome-libraries/generate") {
+                generated = true;
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
@@ -517,6 +530,39 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText(/Generated 500 outcomes for mode "base" \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
         expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
+        expect(generated).toBe(true);
+
+        // The successful session result itself (not a separately refreshed registry response) unlocks
+        // the next visible Build/Export action with the exact bundle/mode it just generated.
+        const stakeExport = screen.getByRole("button", {name: "Run Stake Engine Export (base)"});
+        expect(stakeExport).toBeEnabled();
+        await user.click(stakeExport);
+        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
+    });
+
+    it("keeps visible progress on the Outcome library card while generation is still running", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/outcome-libraries/generate") {
+                return new Promise(() => {
+                    // Deliberately unsettled: this assertion exercises the in-flight UI state.
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Generate outcome library (base)"}));
+
+        expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
     });
 
     it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {

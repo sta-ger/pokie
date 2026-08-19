@@ -209,10 +209,8 @@ as it did when the old app kept every tab's markup in the DOM simultaneously (ju
 ## Development
 
 ```sh
-# terminal 1: a real Studio backend to develop against
-npx pokie studio <path-to-a-project> --port 3200
-
-# terminal 2: Vite dev server with HMR, proxying /api to the server above
+# Builds the local CLI, starts its Studio backend, waits for it to be ready,
+# then starts the Vite dev server with HMR.
 npm run dev-studio-client
 ```
 

@@ -1,8 +1,26 @@
 import path from "path";
 import {INTERNAL_STUDIO_COMMAND_NAME} from "../../cli/commands/InternalStudioCommand.js";
+import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {isTopLevelHelpRequest, resolveCliInvocation} from "../../cli/resolveCliInvocation.js";
+import {buildUsageText} from "../../cli/usageText.js";
 
 const KNOWN_COMMANDS = ["build", "create", "serve", "sim", "validate"];
+
+describe("implicit Studio command registration", () => {
+    it('keeps "studio" out of the production command tree', () => {
+        const commands = registerCliCommands({
+            version: "1.3.0",
+            pokiePackageRoot: "/fake/pokie/root",
+            clientRoot: "/fake/pokie/root/dist/cli/client",
+            studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+        });
+        const names = commands.map((command) => command.getName());
+
+        expect(names).toContain(INTERNAL_STUDIO_COMMAND_NAME);
+        expect(names).not.toContain("studio");
+        expect(buildUsageText(commands)).not.toMatch(/\bstudio\b/i);
+    });
+});
 
 describe("isTopLevelHelpRequest", () => {
     it.each([["--help"], ["-h"]])('recognizes "pokie %s" as a request for the CLI\'s own help', (flag) => {

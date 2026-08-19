@@ -1,6 +1,11 @@
 import {classifyPathActionErrorReason, describePathActionError} from "../../../../../cli/studio-client/src/domain/pathActionError";
 
 describe("classifyPathActionErrorReason", () => {
+    it("classifies a browser network failure as network", () => {
+        expect(classifyPathActionErrorReason("Failed to fetch")).toBe("network");
+        expect(classifyPathActionErrorReason("connect ECONNREFUSED 127.0.0.1:3200")).toBe("network");
+    });
+
     it("classifies a raw ENOENT message as absent", () => {
         expect(classifyPathActionErrorReason("ENOENT: no such file or directory, open '/foo/bar.json'")).toBe("absent");
         expect(classifyPathActionErrorReason('"/foo/bar.json" does not exist.')).toBe("absent");
@@ -38,6 +43,9 @@ describe("describePathActionError", () => {
     });
 
     it("gives subject-specific, actionable copy for each reason", () => {
+        expect(describePathActionError("This validation request", "Failed to fetch")).toBe(
+            "This validation request couldn't reach POKIE Studio. Start or restart Studio, then try again.",
+        );
         expect(describePathActionError("The certification bundle directory", "EACCES: permission denied")).toBe(
             "The certification bundle directory isn't readable. Check its permissions and try again.",
         );

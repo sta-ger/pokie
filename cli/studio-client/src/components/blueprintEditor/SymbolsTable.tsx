@@ -63,7 +63,7 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                             <Table.Tr key={index}>
                                 <Table.Td>
                                     <BufferedTextInput
-                                        aria-label={`Symbol ${index + 1} id`}
+                                        label={`Symbol ${index + 1} id`}
                                         value={symbolId}
                                         onCommit={(value) => {
                                             let problem: string | undefined;
@@ -145,8 +145,8 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
             <QuickActions>
                 <Group gap="xs">
                     <TextInput
+                        label="New symbol id"
                         placeholder="New symbol id"
-                        aria-label="New symbol id"
                         value={newSymbolId}
                         onChange={(event) => setNewSymbolId(event.currentTarget.value)}
                     />

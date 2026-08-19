@@ -835,7 +835,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {activeTabSupported && (
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
-                                <OverviewTab header={header} validation={validation} onRevalidate={runValidate} />
+                                <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} />
                             )}
                             {activeTab === "overview" && header.status === "outcome-source" && (
                                 <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />

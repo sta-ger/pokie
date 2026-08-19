@@ -17,8 +17,8 @@ const TOP_LEVEL_HELP_FLAGS = ["--help", "-h"];
 // resolveCliInvocation() below ever sees it: that function's step 3 routes any leading "-"-prefixed
 // token to StudioCommand (which is right for "pokie --no-open", but would hand Studio a --help it
 // doesn't answer and launch it instead of printing the command list). Only the *first* token counts,
-// so "pokie build --help" still belongs to BuildCommand and "pokie studio --help" still belongs to
-// StudioCommand — neither is a top-level help request.
+// so "pokie build --help" still belongs to BuildCommand. A leading "studio" is not a public command,
+// so it also must not be mistaken for a request for the top-level help tree.
 export function isTopLevelHelpRequest(argv: string[]): boolean {
     const [first] = argv.slice(2);
     return first !== undefined && TOP_LEVEL_HELP_FLAGS.includes(first);
@@ -48,8 +48,8 @@ export function isTopLevelHelpRequest(argv: string[]): boolean {
 // one: findProjectRoot walks up from the working directory, and a hit is handed to Studio as its
 // projectRoot, making `pokie` from anywhere inside a project (including a nested subdirectory)
 // equivalent to `pokie <that project root>`. No hit means Home, exactly as before. Discovery is
-// deliberately confined to those two steps: an explicit "pokie studio" (step 2) names Studio itself
-// with no target and therefore always means Home, and an explicit path (step 4) is already a target.
+// deliberately confined to those two steps: `studio` is not a public command, and an explicit path
+// (step 4) is already a target.
 // Nothing is remembered between runs — the answer is always rediscovered from the current working
 // directory, never a "last opened project".
 //

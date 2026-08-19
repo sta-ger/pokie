@@ -21,6 +21,25 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
 // Overview (see OverviewTab's own ValidationDiagnostics). Every test here just waits for that automatic
 // first check to land instead of clicking into a "Validate" tab first.
 describe("ProjectDashboardPage - Validation workflow", () => {
+    it("takes the cold-start Overview workflow directly to Play", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/validate": () => ({
+                ok: true,
+                status: 200,
+                body: {packageRoot: "/games/a", valid: true, game: {id: "a", name: "A", version: "1.0.0"}, errors: [], warnings: [], suggestions: []},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Open Play"}));
+
+        expect(await screen.findByText(/Play prepares this project/)).toBeInTheDocument();
+    });
+
     it("shows a subject-specific recovery message, never the raw backend text, when the automatic validation check fails", async () => {
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,

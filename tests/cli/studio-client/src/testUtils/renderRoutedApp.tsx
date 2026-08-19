@@ -1,6 +1,7 @@
 import {MantineProvider} from "@mantine/core";
 import {ModalsProvider} from "@mantine/modals";
 import {render, type RenderResult} from "@testing-library/react";
+import {StrictMode, type ReactNode} from "react";
 import {createHashRouter, createMemoryRouter, Navigate, RouterProvider} from "react-router-dom";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {HomePage} from "../../../../../cli/studio-client/src/components/home/HomePage";
@@ -31,17 +32,18 @@ const ROUTES = [
     {path: "*", element: <Navigate to="/home/design" replace />},
 ];
 
-export function renderRoutedApp(options?: {fetchImpl?: FetchLike; initialEntries?: string[]}) {
+export function renderRoutedApp(options?: {fetchImpl?: FetchLike; initialEntries?: string[]; strictMode?: boolean}) {
     const router = createMemoryRouter(ROUTES, {initialEntries: options?.initialEntries ?? ["/home/design"]});
-    const result: RenderResult = render(
+    const app: ReactNode = (
         <MantineProvider>
             <StudioApiProvider fetchImpl={options?.fetchImpl}>
                 <ModalsProvider>
                     <RouterProvider router={router} />
                 </ModalsProvider>
             </StudioApiProvider>
-        </MantineProvider>,
+        </MantineProvider>
     );
+    const result: RenderResult = render(options?.strictMode ? <StrictMode>{app}</StrictMode> : app);
     return {...result, router};
 }
 

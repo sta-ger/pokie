@@ -1,6 +1,7 @@
 import {
     applyJsonText,
     createEmptyBlueprintEditorState,
+    createRecommendedBlueprint,
     loadBlueprintEditorState,
     withFieldUpdate,
 } from "../../../../../cli/studio-client/src/domain/blueprintEditorState";
@@ -12,6 +13,16 @@ import {
 } from "../../../../../cli/studio-client/src/domain/blueprintFormOps";
 
 describe("blueprintEditorState", () => {
+    describe("createRecommendedBlueprint", () => {
+        it("keeps the default exact outcome space small enough for its no-configuration Build/Export action", () => {
+            const blueprint = createRecommendedBlueprint() as {reels: number; reelStrips: string[][]};
+            const rawOutcomeSpaceSize = blueprint.reelStrips.reduce((total, strip) => total * strip.length, 1);
+
+            expect(blueprint.reelStrips).toHaveLength(blueprint.reels);
+            expect(rawOutcomeSpaceSize).toBe(1024);
+        });
+    });
+
     describe("createEmptyBlueprintEditorState", () => {
         it("returns a structurally minimal starter blueprint with matching jsonText", () => {
             const state = createEmptyBlueprintEditorState();

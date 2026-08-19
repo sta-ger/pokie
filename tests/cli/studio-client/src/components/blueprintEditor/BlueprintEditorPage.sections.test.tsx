@@ -144,6 +144,20 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(screen.getByLabelText("New symbol id")).toHaveValue("draft-symbol");
     }, 60000);
 
+    it("renders symbol input labels as visible text in the Symbols section", () => {
+        renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
+
+        fireEvent.click(sectionTab(/Symbols/));
+
+        // These labels identify a particular editable symbol row in the rendered page as well as
+        // providing its accessible name. A cold-start user can therefore locate the existing and
+        // new-symbol controls without relying on input-only ARIA metadata.
+        expect(screen.getByText("Symbol 1 id")).toBeVisible();
+        expect(screen.getByLabelText("Symbol 1 id")).toBeInTheDocument();
+        expect(screen.getByText("New symbol id")).toBeVisible();
+        expect(screen.getByLabelText("New symbol id")).toBeInTheDocument();
+    }, 60000);
+
     it("surfaces a validation error in its own section's badge and inline list, alongside the full summary at the bottom", async () => {
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
