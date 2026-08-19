@@ -1,27 +1,10 @@
-# P6-18 independent cold-start Studio rerun — passed
+# P6-18 cold-start Studio verification — finding
 
-Candidate: `0fadbd930320539ed6b76308b1728e487c220e6e`
-Finding id: `p6-18-mathematician-cold-start-workflow`
-Run: 2026-08-19, one fresh local Studio and a separate fresh Chrome profile.
+Candidate: `d0e3d7e759931a333a18db8ed23835c7ca750801`
+Finding: `p6-18-mathematician-cold-start-workflow` (`P2`)
 
-The candidate Studio client was rebuilt from this exact worktree using the host's supported Node 24 runtime before launch. Browser driving used only rendered controls, coordinate clicks, keyboard text entry, and rendered-page observation; it made no private Studio API calls and did not inject browser DOM or application state.
+Two fresh Node 24 Studio/client and Chrome-profile launches were used. The first reached Recommended Blueprint creation and metadata editing; its host-side rendered-control driver clicked the Layout tab before it had been scrolled into the visible viewport. The second corrected that physical visibility issue and reached Layout (including an Add payline edit) and Symbols. It then stalled only because the driver waited for the accessible label `Symbol 1 id`, which is not included in the rendered page's text projection despite the actual Symbols editor being visibly present.
 
-## Cold-start questions and results
+The candidate showed a valid model after the edits (with the expected duplicate-payline warning), and neither pass rendered a Studio error. However, the required complete workflow—save/reopen, Play, Simulation/RTP, selected Replay, Outcome Library, and Stake export—was not completed within the two-launch limit. Therefore there is no passing P6-18 evidence and no claim that the downstream flow works on this candidate.
 
-1. Does **New Blueprint → Recommended** save the intended bounded game math after naming it **Valera Mathematician** / `valera-mathematician`? **Yes.** The created `blueprint.json` had five literal strips of four stops: 1,024 raw combinations.
-2. Does the saved Blueprint immediately play a real round? **Yes.** **Play → New Play session → Spin** rendered a completed round and its **Inspect round artifact** control.
-3. Does the dependent build flow complete? **Yes.** One visible **Generate outcome library (base)** action rendered `Generated 1,024 outcomes`; the now-enabled **Run Stake Engine Export (base)** action rendered `Exported 4 file(s)`.
-
-No material product finding was exposed in the definitive rerun, so no product remediation or affected-workflow retry was required.
-
-## Concise visible-control transcript
-
-`New Blueprint` → `Recommended` → fill Game name, Game id, and Description → `Create Project` → `Play` → `New Play session` → `Spin` → `Build/Export` → `Generate outcome library (base)` → `Run Stake Engine Export (base)`.
-
-## Evidence
-
-| State | Screenshot | SHA-256 |
-| --- | --- | --- |
-| Completed rendered Play round | `01-play-round.png` | `a4a2f0bf8d50feae3431691ec724e566a3ddc415b168537fc0ad5c61bba5527f` |
-| Visible Outcome Library completion | `02-outcome-library-generated.png` | `7c1ec912208511de6708383390dac2c8ad4052087d04bdd42ec9a0a761c9cda4` |
-| Visible dependent Stake export completion | `03-stake-export-complete.png` | `1b34cb717f2bce322dba19acf269938fc5ad1bf855f95b56a53bdb278cb0af06` |
+Stale screenshots from a different candidate (`0fadbd930320539ed6b76308b1728e487c220e6e`) were removed rather than presented as evidence for this SHA.
