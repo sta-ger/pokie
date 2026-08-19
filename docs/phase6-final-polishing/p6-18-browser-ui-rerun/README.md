@@ -1,24 +1,27 @@
-# P6-18 independent cold-start Studio rerun — finding
+# P6-18 independent cold-start Studio rerun — passed
 
-Candidate: `3a37bdd1327b267c521886a987a075c36159cd07`
-Run: 2026-08-19, fresh local Studio and Chrome profile. Browser driving was restricted to visible controls, coordinate mouse clicks, keyboard input, and rendered-page observation.
+Candidate: `0fadbd930320539ed6b76308b1728e487c220e6e`
+Finding id: `p6-18-mathematician-cold-start-workflow`
+Run: 2026-08-19, one fresh local Studio and a separate fresh Chrome profile.
 
-## Cold-start question and remediation
+The candidate Studio client was rebuilt from this exact worktree using the host's supported Node 24 runtime before launch. Browser driving used only rendered controls, coordinate clicks, keyboard text entry, and rendered-page observation; it made no private Studio API calls and did not inject browser DOM or application state.
 
-The first isolated run used a temporary directory as Studio's managed-project Documents location. Studio correctly refused that unsafe destination before creating a project. The rerun used the normal platform Documents location with a new Studio process and browser profile; **New Blueprint → Recommended → Create Project** then completed and opened the workspace. No product finding was recorded for that expected safety refusal.
+## Cold-start questions and results
 
-## Verified
+1. Does **New Blueprint → Recommended** save the intended bounded game math after naming it **Valera Mathematician** / `valera-mathematician`? **Yes.** The created `blueprint.json` had five literal strips of four stops: 1,024 raw combinations.
+2. Does the saved Blueprint immediately play a real round? **Yes.** **Play → New Play session → Spin** rendered a completed round and its **Inspect round artifact** control.
+3. Does the dependent build flow complete? **Yes.** One visible **Generate outcome library (base)** action rendered `Generated 1,024 outcomes`; the now-enabled **Run Stake Engine Export (base)** action rendered `Exported 4 file(s)`.
 
-1. In **Game Model → Game basics**, entered and saved **Valera Mathematician** / `valera-mathematician` plus a description.
-2. In **Play**, created a new Play session and spun once. A complete rendered no-win round and its **Inspect round artifact** control appeared.
+No material product finding was exposed in the definitive rerun, so no product remediation or affected-workflow retry was required.
 
-## Finding — Outcome Library generation does not complete
+## Concise visible-control transcript
 
-On the one visible **Build/Export → Generate outcome library (base)** click, the page remained in the generation state for more than five minutes. No generated-library result or output directory appeared; **Run Stake Engine Export (base)** stayed disabled with “Generate an outcome library above first.” The Studio process remained CPU-active.
-
-The persisted Blueprint created through this same public workflow contains five 28-stop reel strips (rather than the 4-stop Recommended strips intended by this candidate), making the inferred raw stop space (28^5), not (4^5). This explains why the corrected cold-start generation remains impractically long. The dependent Stake export therefore could not be exercised. Remediation and an affected-workflow rerun remain outstanding.
+`New Blueprint` → `Recommended` → fill Game name, Game id, and Description → `Create Project` → `Play` → `New Play session` → `Spin` → `Build/Export` → `Generate outcome library (base)` → `Run Stake Engine Export (base)`.
 
 ## Evidence
 
-- `01-play-round.png` — completed rendered Play round; SHA-256 `727c595d7746a4725bd24bc16edcf7dc795cae0616a27fa22d344641032a8ba7`.
-- `02-outcome-library-no-result.png` — rendered Build/Export page during the still-running one-click generation; Stake remains disabled; SHA-256 `cf91b368126e652d607bf1d2801cc7417d077e1129848ecd67059f703e498ba2`.
+| State | Screenshot | SHA-256 |
+| --- | --- | --- |
+| Completed rendered Play round | `01-play-round.png` | `a4a2f0bf8d50feae3431691ec724e566a3ddc415b168537fc0ad5c61bba5527f` |
+| Visible Outcome Library completion | `02-outcome-library-generated.png` | `7c1ec912208511de6708383390dac2c8ad4052087d04bdd42ec9a0a761c9cda4` |
+| Visible dependent Stake export completion | `03-stake-export-complete.png` | `1b34cb717f2bce322dba19acf269938fc5ad1bf855f95b56a53bdb278cb0af06` |
