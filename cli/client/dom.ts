@@ -44,7 +44,9 @@ export function renderRawJson(el: HTMLElement, value: unknown): void {
 }
 
 export function wireSpinButton(button: HTMLButtonElement, onClick: () => void): void {
-    button.addEventListener("click", onClick);
+    // boot() replaces the active session and rewires this control. Keep exactly one handler so a later
+    // session cannot leave an older session's spin callback reachable.
+    button.onclick = onClick;
 }
 
 // A simple "stage i of N" view with prev/next navigation, generic enough for any
