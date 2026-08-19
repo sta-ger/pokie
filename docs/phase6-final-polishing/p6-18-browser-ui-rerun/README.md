@@ -14,4 +14,4 @@ Run: 2026-08-19; one fresh local Studio/client, a fresh Studio registry, and a s
 
 No material product finding was exposed, so no product remediation or rerun was required.
 
-See [ACTION-TRANSCRIPT.txt](ACTION-TRANSCRIPT.txt) and [SHA256SUMS.txt](SHA256SUMS.txt). The five screenshots are the bounded rendered-state proof: Play, Simulation/RTP, selected Replay, Outcome Library, and Stake export.
+See [ACTION-TRANSCRIPT.txt](ACTION-TRANSCRIPT.txt) for the concise rendered-control transcript. No generated output trees, browser artifacts, or screenshots are retained in this cleaned evidence revision.
