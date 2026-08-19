@@ -37,9 +37,11 @@ const STARTER_BLUEPRINT: Record<string, unknown> = {
 // anything. Keeping the reels literal makes this first project ready for Play/Simulation without a
 // separate reel-generation step. Keep the exact stop space small enough that this deliberately
 // no-configuration starter can also finish Build/Export's synchronous outcome-library generation:
-// 4^5 = 1,024 raw stop combinations, rather than a multi-million-combination first click.
+// 10^5 = 100,000 raw stop combinations, rather than a multi-million-combination first click. The
+// frequency tiers deliberately track the payout tiers, so the model is useful without emitting a
+// weighting/paytable mismatch warning.
 export function createRecommendedBlueprint(): Record<string, unknown> {
-    const reelStrip = ["A", "K", "Q", "J"];
+    const reelStrip = ["A", "K", "K", "Q", "Q", "Q", "J", "J", "J", "J"];
     return {
         manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
         reels: 5,

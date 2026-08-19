@@ -6,7 +6,7 @@ const STUDIO_HEALTH_URL = `${STUDIO_URL}/api/context`;
 const STUDIO_START_TIMEOUT_MS = 5000;
 const STUDIO_START_POLL_MS = 50;
 
-const studioProcess = spawn(process.execPath, ["dist/cli/pokie.js", "studio", "--no-open", "--host", "127.0.0.1", "--port", "3200"], {
+const studioProcess = spawn(process.execPath, ["dist/cli/pokie.js", "--no-open", "--host", "127.0.0.1", "--port", "3200"], {
     stdio: "inherit",
 });
 

@@ -19,7 +19,7 @@ describe("blueprintEditorState", () => {
             const rawOutcomeSpaceSize = blueprint.reelStrips.reduce((total, strip) => total * strip.length, 1);
 
             expect(blueprint.reelStrips).toHaveLength(blueprint.reels);
-            expect(rawOutcomeSpaceSize).toBe(1024);
+            expect(rawOutcomeSpaceSize).toBe(100000);
         });
     });
 

@@ -2793,8 +2793,6 @@ Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/reso
 - `pokie .` — Project mode for the current directory.
 - `pokie <path>` — Project mode for `<path>`, as long as `<path>` isn't itself one of the command
   names below and actually exists (a typo'd command name is never silently treated as a path — see below).
-- `pokie studio [path]` — the explicit public Studio command. With no path it opens **Home**; with a path it
-  opens that project directly, and accepts options such as `--no-open`, `--host`, or `--port`.
 
 Bare Studio flags discover a project the same way no arguments do, so `pokie --no-open` inside a project opens
 that project rather than Home, matching plain `pokie`.

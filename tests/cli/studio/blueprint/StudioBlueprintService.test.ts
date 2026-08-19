@@ -729,9 +729,11 @@ describe("StudioBlueprintService", () => {
             ];
 
             for (const {name, blueprint} of defaults) {
-                // A warning is a non-blocking design-quality signal, not a failed starter. The
-                // service contract distinguishes that from invalid blueprints by `status`.
-                expect(service.validate(blueprint).status).toBe("ok");
+                const validation = service.validate(blueprint);
+                expect(validation.status).toBe("ok");
+                if (name === "Recommended") {
+                    expect(validation.warnings.map((warning) => warning.code)).not.toContain("blueprint-weighting-pay-mismatch");
+                }
                 expect(blueprint.symbols.length).toBeGreaterThanOrEqual(4);
                 expect(Object.values(blueprint.paytable).some((payouts) => Object.keys(payouts).length > 0)).toBe(true);
 
@@ -764,7 +766,7 @@ describe("StudioBlueprintService", () => {
                 pokieVersion: "test",
             });
 
-            expect(result.diagnostics).toMatchObject({strategy: "exact", totalOutcomeSpaceSize: 1024, sampledRawCount: 1024});
+            expect(result.diagnostics).toMatchObject({strategy: "exact", totalOutcomeSpaceSize: 100000, sampledRawCount: 100000});
             expect(result.library.outcomes.length).toBeGreaterThan(0);
         });
     });
