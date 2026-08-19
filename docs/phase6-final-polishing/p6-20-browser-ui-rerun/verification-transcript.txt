@@ -1,0 +1,9 @@
+[2026-08-19T10:31Z] START fresh headed Chrome; candidate=7f5f74707889a2bf3ed8a329a78b9969fb043646; fixture=fixture-slot; seed=fixture-round; round=1. Mouse/keyboard input targeted rendered controls only.
+[2026-08-19T10:30Z] LAUNCH generated package npm start (API :4940/UI :4941); pokie serve (:4942) + pokie client (:4943); pokie dev (:4944/:4945); public pokie-examples Vite (:4946); implicit Studio (:4947). All launchers reported listening.
+[2026-08-19T10:31Z] ASSERT generated package npm start: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A win 5; credits 1004; bet 1; 5x; A=5/B=3/C=1; no feature counter.
+[2026-08-19T10:31Z] FINDING pokie client: rendered Session seed (optional)=fixture-round, then Start new session and immediately available Spin. Visible grid was B/B/A | C/C/B | C/B/A with no highlights, not the fixture result.
+[2026-08-19T10:33Z] ASSERT pokie dev: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A win 5; credits 1004; bet 1; 5x; A=5/B=3/C=1; no feature counter.
+[2026-08-19T10:33Z] ASSERT public pokie-examples Fixture Slot Play: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A win 5; credits 1004; bet 1; 5x; A=5/B=3/C=1; no feature counter.
+[2026-08-19T10:33Z] ASSERT Studio Play: seed fixture-round -> New Play session -> Spin gave the fixture result and all required fields.
+[2026-08-19T10:34Z] ASSERT Studio Replay: Replay -> Session Spin -> Session 1 Round 1 gave the fixture result and all required fields; captured studio-replay-fixture-round.png.
+[2026-08-19T10:34Z] COMPLETE reachable criteria; the standalone client parity failure is preserved without retrying that interaction.

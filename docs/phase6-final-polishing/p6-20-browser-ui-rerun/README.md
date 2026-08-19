@@ -1,15 +1,11 @@
-# P6-20 independent Studio Player parity rerun
+# P6-20 independent Player-presentation rerun
 
-Candidate `6d8d3eb5634091e40bc47e39c6b2255ca6ebf6a1` was built with Node 24.18.0 and exercised in one fresh, headed local Chrome/Studio session. Studio opened the tracked `fixture-slot` Blueprint; both visible surfaces used seed `fixture-round`, round 1.
+Candidate `7f5f74707889a2bf3ed8a329a78b9969fb043646` was built and packed locally (tarball SHA-256 `81c561d7e44a09396456216e3366b278f9dd24fa04f19b8f8968936f10012e0f`). A fresh headed Chrome session drove the visible UIs with the deterministic `fixture-slot`, seed `fixture-round`, round 1. The public `pokie-examples` Fixture Slot page used its normal Vite workflow and the supplied public-companion revision `c36f83b68dca6be9d4a56e0c66e6ddb5819e1f28`; no product API, DOM, or state injection was used.
 
-The normal UI workflow was Play → New Play session → Spin, then Replay → Recreate from seed → Load → Run again. No application API, DOM, or state injection was used: interaction was coordinate mouse/keyboard against rendered controls, with rendered-text/grid checks.
+`npm start`, `pokie dev`, public `pokie-examples`, Studio Play, and Studio Replay Session Spin rendered the required Player result: `A/C/A | A/A/C | A/A/A`, highlighted `0:0/0:1/0:2`, line-A win `5`, credits `1004`, bet `1`, five-times payout, paytable `A=5/B=3/C=1`, and no feature counter. The retained [Studio Replay screenshot](studio-replay-fixture-round.png) is the one representative visible capture; its integrity hash is in `SHA256SUMS`.
 
-Both screenshots show the same canonical Player result:
+Observed P1: in the separate `pokie serve` + `pokie client` presentation, the visible `Session seed (optional)` field accepted `fixture-round`, then `Start new session` was clicked, but the immediately enabled visible Spin rendered a different unhighlighted `B/B/A | C/C/B | C/B/A` round. This fails required parity. [cli/client/main.ts](../../../cli/client/main.ts) leaves the old spin button active while its asynchronous new-session `boot()` is running, so Spin can use the old unseeded `current.sessionId`; this is the direct root cause of the observed race. See [verification-transcript.txt](verification-transcript.txt).
 
-- reel columns `A/C/A | A/A/C | A/A/A` (visible rows `A A A / C A A / A C A`), with top-row winning cells `0:0`, `0:1`, `0:2`;
-- line `A` win `5`, total `5.00` (`5.00x`), credits `1004`, and paytable `A=5`, `B=3`, `C=1`;
-- bet `1`; the fixture correctly has no selectable bet-mode row and no feature counter.
+Canonical source-path confirmation: [cli/client/main.ts](../../../cli/client/main.ts) imports and calls the public `./player/index.js` `renderPlayerRound`; [CanonicalPlayerView.tsx](../../../cli/studio-client/src/components/common/CanonicalPlayerView.tsx) imports and calls the same public `client/player` entry point; [GameScreenView.tsx](../../../cli/studio-client/src/components/common/GameScreenView.tsx) is the shared Studio Play/Replay path. The public companion's normal `src/ui/ui.ts` imports `pokie/client/player` and calls `renderPlayerRound`.
 
-Source confirmation: [CanonicalPlayerView.tsx](../../../cli/studio-client/src/components/common/CanonicalPlayerView.tsx) imports `renderPlayerRound` and `deriveWinHighlightsFromRoundArtifactWins` from the public `cli/client/player` barrel. [GameScreenView.tsx](../../../cli/studio-client/src/components/common/GameScreenView.tsx) is the shared Play/Replay path into that component; [RoundSummary.tsx](../../../cli/studio-client/src/components/common/RoundSummary.tsx) and [RoundArtifactInspector.tsx](../../../cli/studio-client/src/components/common/RoundArtifactInspector.tsx) supply Play and Replay respectively.
-
-See `browser-transcript.txt` and `SHA256SUMS` for the bounded browser record and screenshot integrity hashes.
+Only this README, the concise transcript, one screenshot, and its checksum are committed. Temporary package trees, browser profiles, full logs, and audit scripts were discarded.
