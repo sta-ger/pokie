@@ -638,4 +638,64 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.queryByText("My managed game (missing)")).not.toBeInTheDocument();
         expect(screen.getAllByText("My managed game")).toHaveLength(1);
     });
+
+    it("groups a large registry, searches it, and pages the bounded results", async () => {
+        const user = userEvent.setup();
+        const entries = Array.from({length: 12}, (_, index) => ({
+            location: `/games/project-${index + 1}`,
+            name: index === 0 ? "Missing registry" : `Project ${index + 1}`,
+            type: index === 1 ? "blueprint" : "tsPackage" as const,
+            capabilities: [],
+            origin: "external" as const,
+            lastOpenedAt: "2026-01-01T00:00:00.000Z",
+            status: index === 0 ? "missing" : "ok" as const,
+        }));
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: entries}),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        expect(await screen.findByText("Available projects")).toBeInTheDocument();
+        expect(screen.getByText("Needs attention")).toBeInTheDocument();
+        expect(screen.getByText("Showing 1–10 of 12 projects")).toBeInTheDocument();
+        expect(screen.queryByText("Project 12")).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Next page"}));
+        expect(await screen.findByText("Project 12")).toBeInTheDocument();
+        expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+
+        await user.type(screen.getByLabelText("Search projects"), "Missing registry");
+        expect(await screen.findByText("Showing 1–1 of 1 projects")).toBeInTheDocument();
+        expect(screen.getByText("Missing registry (missing)")).toBeInTheDocument();
+        expect(screen.queryByText("Project 12")).not.toBeInTheDocument();
+    });
+
+    it("removes selected missing registrations together after confirmation", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {location: "/games/missing-a", name: "Missing A", type: "tsPackage", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "missing"},
+                    {location: "/games/missing-b", name: "Missing B", type: "blueprint", capabilities: [], origin: "managed", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "missing"},
+                    {location: "/games/current", name: "Current", type: "tsPackage", capabilities: [], origin: "managed", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
+                ],
+            }),
+            "/api/home/projects/registry/remove": () => ({ok: true, status: 200, body: {status: "ok"}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        await screen.findByText("Missing A (missing)");
+        await user.click(screen.getByRole("checkbox", {name: "Select missing projects on this page"}));
+        await user.click(screen.getByRole("button", {name: "Remove selected missing (2)"}));
+        expect(await screen.findByText("Remove 2 missing projects from Projects? This only forgets them here -- nothing on disk is deleted.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Confirm"}));
+
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/registry/remove")).toHaveLength(2));
+        expect(await screen.findByText("Current")).toBeInTheDocument();
+        expect(screen.queryByText("Missing A (missing)")).not.toBeInTheDocument();
+        expect(screen.queryByText("Missing B (missing)")).not.toBeInTheDocument();
+    });
 });
