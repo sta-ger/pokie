@@ -766,7 +766,7 @@ describe("StudioBlueprintService", () => {
                 pokieVersion: "test",
             });
 
-            expect(result.diagnostics).toMatchObject({strategy: "exact", totalOutcomeSpaceSize: 100000, sampledRawCount: 100000});
+            expect(result.diagnostics).toMatchObject({strategy: "exact", totalOutcomeSpaceSize: 1024, sampledRawCount: 1024});
             expect(result.library.outcomes.length).toBeGreaterThan(0);
         });
     });
