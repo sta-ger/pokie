@@ -98,7 +98,9 @@ describe("ProjectsPanel: Import Project", () => {
         await user.type(screen.getByLabelText("Location", {exact: false}), "/games/a");
         await user.click(screen.getByRole("button", {name: "Detect"}));
 
-        expect(await screen.findByRole("status")).toHaveTextContent("Detecting project…");
+        // The empty project registry also owns a polite status region. Assert against this
+        // import flow's unique, visible copy rather than whichever status mounted first.
+        expect(await screen.findByText("Detecting project…")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Detect"})).toBeDisabled();
     });
 
