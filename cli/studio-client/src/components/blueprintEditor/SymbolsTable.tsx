@@ -47,6 +47,10 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
 
     return (
         <PageSection legend="Symbols">
+            <Text size="sm" c="dimmed" mb="xs">
+                Select PNG to give a symbol its artwork. The image is shown in the reel and game views, and is saved
+                with this project when you save it.
+            </Text>
             <Table.ScrollContainer minWidth={480}>
                 <Table>
                     <Table.Thead>

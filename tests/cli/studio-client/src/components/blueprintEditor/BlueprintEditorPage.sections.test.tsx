@@ -156,6 +156,7 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(screen.getByLabelText("Symbol 1 id")).toBeInTheDocument();
         expect(screen.getByText("New symbol id")).toBeVisible();
         expect(screen.getByLabelText("New symbol id")).toBeInTheDocument();
+        expect(screen.getByText(/Select PNG to give a symbol its artwork/)).toBeVisible();
     }, 60000);
 
     it("surfaces a validation error in its own section's badge and inline list, alongside the full summary at the bottom", async () => {

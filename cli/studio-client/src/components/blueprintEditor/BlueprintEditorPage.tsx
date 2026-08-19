@@ -1002,8 +1002,10 @@ export function BlueprintEditorPage({
                 <div>
                     <Title order={2}>Design Your Game</Title>
                     <Text c="dimmed" size="sm" mb="md">
-                        Create a Blueprint Project from the recommended playable model, a reproducible random seed, or an explicit blank.
-                        Studio checks the model automatically; saving opens its Workspace for Play and Simulation.
+                        Start with the recommended playable model, then make it your own. Edit its layout, symbols,
+                        reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks
+                        the model automatically; Create Project saves it and opens the Workspace for Game Model, Play,
+                        Simulation, and Replay.
                     </Text>
                 </div>
             )}
