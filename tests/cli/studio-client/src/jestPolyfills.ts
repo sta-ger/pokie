@@ -65,6 +65,15 @@ if (typeof globalThis.Request === "undefined") {
     // the require() call below, then removed before react-dom itself ever loads/feature-detects.
     globalThis.MessagePort = MessagePort as unknown as typeof globalThis.MessagePort;
     globalThis.MessageChannel = MessageChannel as unknown as typeof globalThis.MessageChannel;
+    // undici 8 uses this Node 22 worker_threads marker during module initialization. Its only
+    // effect is to prevent a Request implementation from being structured-cloned; jsdom's
+    // in-process test realm never transfers these objects between workers. Node 18 has no such
+    // marker, so provide that no-op compatibility shape before loading undici.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const workerThreads = require("node:worker_threads") as typeof import("node:worker_threads") & {
+        markAsUncloneable?: (value: object) => void;
+    };
+    workerThreads.markAsUncloneable ??= () => undefined;
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const {Request, Response, Headers, fetch} = require("undici") as typeof import("undici");
     Object.assign(globalThis, {Request, Response, Headers, fetch});

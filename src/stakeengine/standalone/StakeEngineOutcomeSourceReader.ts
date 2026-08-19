@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import zlib from "zlib";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import {convertStakeUnitsToRatio} from "../internal/convertStakeUnitsToRatio.js";
+import {decompressZstdSync} from "../internal/zstd.js";
 import {parseStakeEngineOutcomeId} from "../internal/parseStakeEngineOutcomeId.js";
 import {resolveSafeStakeEngineFilePath} from "../internal/resolveSafeStakeEngineFilePath.js";
 import type {StakeEngineEvent} from "../StakeEngineEvent.js";
@@ -33,7 +33,7 @@ export class StakeEngineOutcomeSourceReader implements StakeEngineOutcomeSourceR
     constructor(
         validator: StakeEngineStandaloneValidating = new StakeEngineStandaloneValidator(),
         readFile: (filePath: string) => Buffer = (filePath) => fs.readFileSync(filePath),
-        decompress: (buffer: Buffer) => Buffer = (buffer) => zlib.zstdDecompressSync(buffer),
+        decompress: (buffer: Buffer) => Buffer = (buffer) => decompressZstdSync(buffer),
     ) {
         this.validator = validator;
         this.readFile = readFile;
