@@ -21,7 +21,7 @@ export type PlaySessionView = PlaySessionResultView | PlaySpinResultView;
 export function usePlaySession(onRoundRecorded?: () => void) {
     const fetchImpl = useStudioApi();
     const [session, setSession] = useState<PlaySessionView>({status: "idle"});
-    const [sessionId, setSessionId] = useState<string>();
+    const [sessionId, setSessionId] = useState<string | undefined>(undefined);
 
     // Same monotonic-requestId staleness guard pattern used throughout Studio's own page-level hooks,
     // one level simpler here: Play has only ever one in-flight-mutation slot (newSession/spin), never a
@@ -31,7 +31,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // response, even while React is scheduling the render that exposes its Spin control. Keeping that
     // identity alongside the rendered state avoids a click being silently discarded by a callback that
     // closed over a prior render's undefined session id.
-    const activeSessionIdRef = useRef<string>();
+    const activeSessionIdRef = useRef<string | undefined>(undefined);
     const newSessionGuard = useDoubleSubmitGuard();
     const spinGuard = useDoubleSubmitGuard();
 
