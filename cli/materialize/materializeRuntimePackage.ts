@@ -1,3 +1,6 @@
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     describeUnsupportedProjectOperation,
@@ -25,6 +28,75 @@ export type RuntimePackageResolution = {
 export type RuntimePackageResolving = (packageRoot: string) => Promise<RuntimePackageResolution>;
 
 const noRelease = (): Promise<void> => Promise.resolve();
+
+// The local installation is the implementation a materialized Blueprint will actually load through
+// withLocalPokieInstall. Its package metadata and compiled runtime are deliberately fingerprinted by
+// bytes rather than mtime: rebuilding an unpublished checkout in place commonly preserves its version
+// and path, while its dist output changes. The root path remains part of the fingerprint too, so two
+// separate local installations with identical bytes cannot share a cache entry that npm later wires to
+// different locations. A missing input still gets a stable path-specific identity; the normal running-
+// installation path is readable.
+export function createLocalRuntimeIdentity(pokiePackageRoot: string): string {
+    const identity = crypto.createHash("sha256");
+    const root = path.resolve(pokiePackageRoot);
+    identity.update(`root:${root}\0`);
+    for (const relativePath of ["package.json", "dist"]) {
+        appendRuntimePathIdentity(identity, path.join(root, relativePath), relativePath, new Set<string>());
+    }
+    return identity.digest("hex");
+}
+
+function appendRuntimePathIdentity(identity: crypto.Hash, targetPath: string, relativePath: string, ancestorDirectories: Set<string>): void {
+    let stats: fs.Stats;
+    try {
+        stats = fs.lstatSync(targetPath);
+    } catch {
+        identity.update(`missing:${relativePath}\0`);
+        return;
+    }
+
+    if (stats.isDirectory()) {
+        identity.update(`directory:${relativePath}\0`);
+        const realDirectoryPath = fs.realpathSync(targetPath);
+        if (ancestorDirectories.has(realDirectoryPath)) {
+            identity.update(`cycle:${relativePath}\0`);
+            return;
+        }
+        ancestorDirectories.add(realDirectoryPath);
+        const entries = fs.readdirSync(targetPath, {withFileTypes: true}).sort((left, right) => compareFileNames(left.name, right.name));
+        for (const entry of entries) {
+            appendRuntimePathIdentity(identity, path.join(targetPath, entry.name), `${relativePath}/${entry.name}`, ancestorDirectories);
+        }
+        ancestorDirectories.delete(realDirectoryPath);
+        return;
+    }
+    if (stats.isFile()) {
+        identity.update(`file:${relativePath}\0`);
+        identity.update(fs.readFileSync(targetPath));
+        identity.update("\0");
+        return;
+    }
+    if (stats.isSymbolicLink()) {
+        identity.update(`symlink:${relativePath}:${fs.readlinkSync(targetPath)}\0`);
+        try {
+            appendRuntimePathIdentity(identity, fs.realpathSync(targetPath), relativePath, ancestorDirectories);
+        } catch {
+            identity.update(`broken-symlink:${relativePath}\0`);
+        }
+        return;
+    }
+    identity.update(`other:${relativePath}\0`);
+}
+
+function compareFileNames(left: string, right: string): number {
+    if (left < right) {
+        return -1;
+    }
+    if (left > right) {
+        return 1;
+    }
+    return 0;
+}
 
 // The default for every call site that hasn't been wired to a real resolver -- hands packageRoot back
 // completely untouched. This is what keeps every existing caller (and every test constructing a command
@@ -78,7 +150,7 @@ export function createMaterializingRuntimePackageResolver(
             undefined,
             pokiePackageRoot !== undefined ? withLocalPokieInstall(pokiePackageRoot) : undefined,
             undefined,
-            pokiePackageRoot ?? pokieVersion,
+            pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,
         );
 
     return async (packageRoot: string): Promise<RuntimePackageResolution> => {
