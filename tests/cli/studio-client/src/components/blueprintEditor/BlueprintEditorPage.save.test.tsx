@@ -106,6 +106,10 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1));
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+        const savedBlueprint = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/save-managed")?.init?.body ?? "{}")
+            .blueprint as {reelStrips: string[][]};
+        expect(savedBlueprint.reelStrips.map((strip) => strip.length)).toEqual([4, 4, 4, 4, 4]);
+        expect(savedBlueprint.reelStrips.reduce((outcomeSpaceSize, strip) => outcomeSpaceSize * strip.length, 1)).toBe(1024);
         await waitFor(() =>
             expect(screen.getByTestId("location")).toHaveTextContent("/project/%2Fprojects%2Fstarter-slot%2Fblueprint.json/overview"),
         );
