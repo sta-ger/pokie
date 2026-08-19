@@ -561,6 +561,10 @@ function ReelsSection({section, sampleControls}: {section: GameModelSection<Game
     return (
         <div>
             <Text size="sm">Generation mode: {describeReelGenerationMode(data.generationMode)}</Text>
+            <Text size="sm" c="dimmed" mb="xs">
+                Use Game window to inspect a playable reel view. Open Full strips to inspect every reel stop, including
+                its symbol, special status, and stack length.
+            </Text>
             {hasNoFixedStrip && (
                 <div>
                     <Text size="sm" c="dimmed" mb="xs">

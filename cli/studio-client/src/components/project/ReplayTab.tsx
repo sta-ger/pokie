@@ -399,6 +399,10 @@ export function ReplayTab({
                 matches exactly for deterministic games. A game whose logic doesn&apos;t depend solely on the seed (e.g. it
                 reads external state) may not reproduce the original round.
             </Text>
+            <Text size="sm" c="dimmed" mb="sm">
+                To inspect a round you just played, choose Session Spin and select it from the list. Once a round is
+                loaded, its grid, wins, paylines, paytable, and export download are available below.
+            </Text>
 
             <SegmentedControl
                 value={findMethod}

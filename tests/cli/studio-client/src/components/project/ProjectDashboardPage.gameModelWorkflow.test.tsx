@@ -168,6 +168,7 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         expect(await screen.findByText("Id: a")).toBeInTheDocument();
         expect(screen.getByText("Reels: 3")).toBeInTheDocument();
         expect(screen.getByText("A · wild")).toBeInTheDocument();
+        expect(screen.getByText(/Open Full strips to inspect every reel stop/)).toBeInTheDocument();
         expect(screen.getByText("Available bets: 1, 2")).toBeInTheDocument();
         expect(screen.getByText("Bet range: 1 – 2")).toBeInTheDocument();
     });

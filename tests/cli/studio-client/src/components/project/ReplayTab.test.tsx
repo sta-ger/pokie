@@ -74,6 +74,7 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         );
 
         // "Recreate from seed" is the default source -- load the round/seed this job actually reproduced.
+        expect(screen.getByText(/To inspect a round you just played, choose Session Spin/)).toBeInTheDocument();
         await user.clear(screen.getByLabelText(/Target round number in a new replay session/i));
         await user.type(screen.getByLabelText(/Target round number in a new replay session/i), String(job.round));
         await user.type(screen.getByLabelText(/^Seed \(optional\)$/i), job.seed ?? "");

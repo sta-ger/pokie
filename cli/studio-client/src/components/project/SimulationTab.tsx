@@ -202,6 +202,10 @@ export function SimulationTab({
                         onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined),
                     )}
                 >
+                    <Text size="sm" c="dimmed" mb="sm">
+                        Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win.
+                        When it finishes, review the summary here or export the full report.
+                    </Text>
                     <QuickActions>
                         <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
                         <Button type="submit" loading={progress?.status === "queued"} disabled={active}>

@@ -70,7 +70,8 @@ type LockHolder = {readonly pid: number; readonly token?: string};
 // Cached, deterministically, by content: the cache key folds together the blueprint's own exact-content hash
 // (computeGameBlueprintHash — changes on any edit), the running "pokie" version (changes on an upgrade), and
 // the blueprint schema/build-contract version (GAME_BLUEPRINT_SCHEMA_VERSION — changes if the shape a build
-// understands ever changes) — so an unchanged blueprint against an unchanged "pokie" always resolves to the
+// understands ever changes), and the running installation identity (changes when an unpublished/local build is
+// replaced without a version bump) — so an unchanged blueprint against an unchanged "pokie" always resolves to the
 // same cache directory (no rebuild, no re-install), while an edit or a version bump always resolves to a
 // *different* one (never silently served a stale result; the old entry is simply orphaned, never reused).
 //
@@ -106,6 +107,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     private readonly runCommand: PackageCommandRunning;
     private readonly packageValidator: PokieGamePackageValidating;
     private readonly cacheRoot: string;
+    private readonly runtimeIdentity: string;
 
     constructor(
         pokieVersion: string,
@@ -115,6 +117,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         runCommand: PackageCommandRunning = runPackageCommand,
         packageValidator: PokieGamePackageValidating = new PokieGamePackageValidator(),
         cacheRoot: string = DEFAULT_CACHE_ROOT,
+        runtimeIdentity: string = pokieVersion,
     ) {
         this.pokieVersion = pokieVersion;
         this.generator = generator;
@@ -123,6 +126,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         this.runCommand = runCommand;
         this.packageValidator = packageValidator;
         this.cacheRoot = cacheRoot;
+        this.runtimeIdentity = runtimeIdentity;
     }
 
     public async materialize(project: PokieProject): Promise<ProjectMaterializationResult> {
@@ -216,7 +220,8 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         const raw =
             `blueprintHash:${computeGameBlueprintHash(blueprint)}|` +
             `pokieVersion:${this.pokieVersion}|` +
-            `buildContractVersion:${GAME_BLUEPRINT_SCHEMA_VERSION}`;
+            `buildContractVersion:${GAME_BLUEPRINT_SCHEMA_VERSION}|` +
+            `runtimeIdentity:${this.runtimeIdentity}`;
         return crypto.createHash("sha256").update(raw).digest("hex");
     }
 

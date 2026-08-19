@@ -18,7 +18,7 @@ import {
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
-import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../../../cli/materialize/UnsupportedProjectOperationError.js";
 import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
 
@@ -220,6 +220,53 @@ describe("BlueprintProjectMaterializer", () => {
         const v2 = await materializerV2.materialize(blueprintProjectOf(blueprintPath));
 
         expect(v1.runtimePath).not.toBe(v2.runtimePath);
+    });
+
+    it("does not reuse a same-version cache entry built by a different running POKIE installation", async () => {
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const firstRunner = createRecordingRunner();
+        const secondRunner = createRecordingRunner();
+        const first = await new BlueprintProjectMaterializer(
+            "1.3.0", undefined, undefined, undefined, firstRunner, createStubPackageValidator(validReport), cacheRoot, "/installed/pokie-a",
+        ).materialize(blueprintProjectOf(blueprintPath));
+        const second = await new BlueprintProjectMaterializer(
+            "1.3.0", undefined, undefined, undefined, secondRunner, createStubPackageValidator(validReport), cacheRoot, "/installed/pokie-b",
+        ).materialize(blueprintProjectOf(blueprintPath));
+
+        expect(second.runtimePath).not.toBe(first.runtimePath);
+        expect(firstRunner.calls).toHaveLength(1);
+        expect(secondRunner.calls).toHaveLength(1);
+    });
+
+    it("rebuilds when the same local POKIE installation path has different runtime contents", async () => {
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const pokiePackageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-local-runtime-"));
+        try {
+            const runtimeEntry = path.join(pokiePackageRoot, "dist", "cjs", "index.js");
+            fs.mkdirSync(path.dirname(runtimeEntry), {recursive: true});
+            fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "pokie", version: "1.3.0"}));
+            fs.writeFileSync(runtimeEntry, "module.exports = {build: 1};\n");
+            const firstIdentity = createLocalRuntimeIdentity(pokiePackageRoot);
+            const firstRunner = createRecordingRunner();
+
+            const first = await new BlueprintProjectMaterializer(
+                "1.3.0", undefined, undefined, undefined, firstRunner, createStubPackageValidator(validReport), cacheRoot, firstIdentity,
+            ).materialize(blueprintProjectOf(blueprintPath));
+
+            fs.writeFileSync(runtimeEntry, "module.exports = {build: 2};\n");
+            const secondIdentity = createLocalRuntimeIdentity(pokiePackageRoot);
+            const secondRunner = createRecordingRunner();
+            const second = await new BlueprintProjectMaterializer(
+                "1.3.0", undefined, undefined, undefined, secondRunner, createStubPackageValidator(validReport), cacheRoot, secondIdentity,
+            ).materialize(blueprintProjectOf(blueprintPath));
+
+            expect(secondIdentity).not.toBe(firstIdentity);
+            expect(second.runtimePath).not.toBe(first.runtimePath);
+            expect(firstRunner.calls).toHaveLength(1);
+            expect(secondRunner.calls).toHaveLength(1);
+        } finally {
+            fs.rmSync(pokiePackageRoot, {recursive: true, force: true});
+        }
     });
 
     it("passes tsPackage projects through verbatim, invoking neither npm nor the package validator", async () => {

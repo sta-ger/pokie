@@ -167,6 +167,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await goToSimulationTab(user);
 
         expect((screen.getByLabelText(/^Rounds/) as HTMLInputElement).value).toBe("10000");
+        expect(screen.getByText(/Simulation plays many rounds of this game to estimate RTP/)).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
 
