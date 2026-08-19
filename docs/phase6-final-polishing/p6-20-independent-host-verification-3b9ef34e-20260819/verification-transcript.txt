@@ -1,0 +1,2 @@
+[2026-08-19T16:40:38Z] Fresh headed Chrome profile: Studio Projects → typed tracked fixture Blueprint in rendered Location input. Rendered Detect remained disabled; workflow stopped without retry.
+[2026-08-19T16:41:27Z] Fresh browser tab: public pokie-examples Verifiable spin page rendered its Player after exact candidate-tarball install and public production build.
