@@ -8,14 +8,17 @@ import {
     materializeReelStrips,
     ParSheetExporting,
     ParSheetImporting,
+    PokieGame,
     resolveReelStripGeneration,
     SeededRandomNumberGenerator,
     SymbolsCombinationsGenerator,
+    SymbolsCombinationsGenerating,
     SymbolsSequence,
     ValidationIssue,
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotWinCalculator,
+    generateExactWeightedOutcomeLibrary,
 } from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
@@ -76,6 +79,31 @@ function simulateMaterializedBlueprint(blueprint: GameBlueprint): {rtp: number; 
     session.setBet(config.getAvailableBets()[0]);
     const statistics = new AggregateSimulationRunner(session, 10_000).run().getStatistics();
     return {rtp: statistics.rtp, hitRate: statistics.hitCount / statistics.rounds, volatility: statistics.volatility};
+}
+
+function buildExactEnumerationGame(blueprint: GameBlueprint): PokieGame {
+    const config = new VideoSlotConfig();
+    config.setAvailableBets(blueprint.availableBets ?? [1]);
+    config.setReelsNumber(blueprint.reels);
+    config.setReelsSymbolsNumber(blueprint.rows);
+    config.setAvailableSymbols(blueprint.symbols);
+    for (const [symbol, payouts] of Object.entries(blueprint.paytable)) {
+        for (const [matches, payout] of Object.entries(payouts)) {
+            config.getPaytable().setPayoutForSymbol(symbol, Number(matches), payout);
+        }
+    }
+    if (blueprint.paylines) {
+        const lines = new CustomLinesDefinitions();
+        blueprint.paylines.forEach((line, index) => lines.setLineDefinition(String(index), line));
+        config.setLinesDefinitions(lines);
+    }
+    config.setSymbolsSequences((blueprint.reelStrips ?? []).map((strip) => new SymbolsSequence().fromArray(strip)));
+
+    return {
+        getManifest: () => blueprint.manifest,
+        createSession: () => new VideoSlotSession(config),
+        createExactEnumerationSession: (combinationsGenerator: SymbolsCombinationsGenerating) => new VideoSlotSession(config, combinationsGenerator),
+    };
 }
 
 describe("StudioBlueprintService", () => {
@@ -724,6 +752,18 @@ describe("StudioBlueprintService", () => {
                 expect(math.volatility).toBeLessThan(20);
                 expect(name).toMatch(/Recommended|seeded Random/);
             }
+        });
+
+        it("generates the Recommended model's outcome library through the same exact generator Build/Export calls", async () => {
+            const blueprint = materializeForRuntime(createRecommendedBlueprint() as GameBlueprint);
+            const result = await generateExactWeightedOutcomeLibrary({
+                libraryId: "recommended-starter",
+                game: buildExactEnumerationGame(blueprint),
+                pokieVersion: "test",
+            });
+
+            expect(result.diagnostics).toMatchObject({strategy: "exact", totalOutcomeSpaceSize: 1024, sampledRawCount: 1024});
+            expect(result.library.outcomes.length).toBeGreaterThan(0);
         });
     });
 

@@ -289,6 +289,9 @@ function TargetCard({
                     <Button size="xs" mt="sm" onClick={onGenerateOutcomeLibrary} loading={outcomeLibraryRun.status === "running"}>
                         Generate outcome library ({defaultModeName})
                     </Button>
+                    {outcomeLibraryRun.status === "running" && (
+                        <LoadingState label="Generating outcome library from this project's current build…" />
+                    )}
                     {outcomeLibraryRun.status === "error" && <ErrorState message={outcomeLibraryRun.message} />}
                     {outcomeLibraryRun.status === "ok" && (
                         <Text size="sm" mt={4}>

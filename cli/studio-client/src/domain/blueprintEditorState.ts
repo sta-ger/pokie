@@ -35,9 +35,11 @@ const STARTER_BLUEPRINT: Record<string, unknown> = {
 // blank for the explicit Blank choice), this is a complete playable model: paylines, symbols,
 // paytable, bets and literal, already-materialized reels are all present before a creator changes
 // anything. Keeping the reels literal makes this first project ready for Play/Simulation without a
-// separate reel-generation step.
+// separate reel-generation step. Keep the exact stop space small enough that this deliberately
+// no-configuration starter can also finish Build/Export's synchronous outcome-library generation:
+// 4^5 = 1,024 raw stop combinations, rather than a multi-million-combination first click.
 export function createRecommendedBlueprint(): Record<string, unknown> {
-    const reelStrip = ["A", "A", "A", "A", "K", "K", "K", "K", "K", "K", "Q", "Q", "Q", "Q", "Q", "Q", "Q", "Q", "J", "J", "J", "J", "J", "J", "J", "J", "J", "J"];
+    const reelStrip = ["A", "K", "Q", "J"];
     return {
         manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
         reels: 5,

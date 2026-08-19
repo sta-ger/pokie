@@ -519,6 +519,31 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
     });
 
+    it("keeps visible progress on the Outcome library card while generation is still running", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/outcome-libraries/generate") {
+                return new Promise(() => {
+                    // Deliberately unsettled: this assertion exercises the in-flight UI state.
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Generate outcome library (base)"}));
+
+        expect(await screen.findByRole("status")).toHaveTextContent("Generating outcome library from this project's current build…");
+    });
+
     it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {
         const deploymentRender = renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/deployment"]});
         await deploymentRender.findByRole("heading", {name: "A"});
