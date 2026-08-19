@@ -1,0 +1,8 @@
+[2026-08-19T09:46:09Z] START fresh headed Chrome against exact candidate Studio and tracked fixture-slot blueprint.
+[2026-08-19T09:46:09Z] PLAY visible actions: navigate Play → Show advanced details (seed) → type fixture-round → New Play session → Spin.
+[2026-08-19T09:49:19Z] ASSERT Studio Play: reel columns A/C/A | A/A/C | A/A/A (visible rows A A A / C A A / A C A); highlighted top-row cells 0:0/0:1/0:2; line A win 5; total 5.00 (5.00x); credits 1004; paytable A=5/B=3/C=1; Bet: 1; no selectable mode or feature counter.
+[2026-08-19T09:49:19Z] CAPTURE studio-play-fixture-round.png.
+[2026-08-19T09:49:20Z] REPLAY visible actions: navigate Replay → type fixture-round → Load → Run again.
+[2026-08-19T09:52:00Z] ASSERT Studio Replay: reel columns A/C/A | A/A/C | A/A/A (visible rows A A A / C A A / A C A); highlighted top-row cells 0:0/0:1/0:2; line A win 5; total 5.00 (5.00x); credits 1004; paytable A=5/B=3/C=1; Bet: 1; no selectable mode or feature counter.
+[2026-08-19T09:52:00Z] CAPTURE studio-replay-fixture-round.png.
+[2026-08-19T09:52:00Z] COMPLETE: coordinate mouse/keyboard plus rendered-text/grid checks and screenshots only; no application API, DOM, or state injection.
