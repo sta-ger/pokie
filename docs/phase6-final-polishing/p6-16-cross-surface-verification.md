@@ -136,3 +136,35 @@ Accordingly, this invocation cannot independently confirm the requested
 Blueprint or TypeScript Outcome-to-Stake behavior. The absence of a named
 required test file is also a current-candidate verification defect. No
 generated fixture or raw log was retained.
+
+## Independent required-path replay — 2026-08-19 (candidate finding)
+
+Candidate: `4592072a5098b1adca98f0afa25924ba35af86db` (the exact requested
+SHA). Verifier runtime: Node `v18.19.1`; `zlib.zstdDecompressSync` is
+`undefined`. The repository was clean before and after this attempt.
+
+All seven literal paths in the persisted request were supplied once to the
+checked-in runner in one serial whole-file invocation:
+
+```text
+npm run test:targeted -- \
+  tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.save.test.tsx \
+  tests/cli/studio-client/src/components/blueprintEditor/PaylinePresetsModal.test.tsx \
+  tests/cli/studio-client/src/components/common/PathBrowseModal.test.tsx \
+  tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx \
+  tests/cli/studio/StudioArtifactBuildService.test.ts \
+  tests/project/ArtifactBuilderRegistry.test.ts \
+  tests/stakeengine/internal/zstd.test.ts
+# no Jest suite result after more than three minutes; terminated at the
+# bounded-verification limit without a retry. Temporary test fixtures were gone
+# after termination; no output tree or raw log was retained.
+```
+
+The candidate's new required `zstd.test.ts` calls
+`zlib.zstdDecompressSync(...)` directly in both assertions, while that API is
+not present in this verifier runtime. Thus it cannot produce an all-green
+whole-file result here even though the product fallback itself feature-detects
+native zstd. The serial run also failed to complete the required real
+code-first `init -> npm install -> npm run build` lifecycle, so neither the
+Blueprint nor TypeScript Outcome-to-Stake behavior is independently confirmed.
+This is a P2 verification finding. No product code or tests were changed.
