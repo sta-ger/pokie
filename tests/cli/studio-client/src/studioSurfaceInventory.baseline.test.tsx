@@ -591,18 +591,23 @@ describe("Design Game: Load/Save raw-error-surface baseline", () => {
 });
 
 describe("Projects: Import Project required-field baseline", () => {
-    it("'Detect' is a no-op (no API call, no feedback) for a blank/whitespace-only location, unlike every path field elsewhere in this group", async () => {
+    it("keeps Detect disabled with an adjacent, programmatically associated next-step explanation until a location is entered", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({"/api/home/projects/registry": () => ({ok: true, status: 200, body: []})});
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
+        await screen.findByText("No projects yet -- import or design one below.");
         const detectButton = await screen.findByRole("button", {name: "Detect"});
-        expect(detectButton).not.toBeDisabled();
+        expect(detectButton).toBeDisabled();
+        expect(detectButton).toHaveAttribute("aria-describedby", "import-project-detect-help");
+        expect(screen.getByText("Enter a project location or use Browse to enable Detect.")).toHaveAttribute("id", "import-project-detect-help");
 
         await user.click(detectButton);
 
         expect(calls.some((call) => call.url === "/api/home/projects/registry/preview")).toBe(false);
-        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        await user.type(screen.getByLabelText("Location", {exact: false}), "./my-game");
+        expect(detectButton).not.toBeDisabled();
+        expect(screen.queryByText("Enter a project location or use Browse to enable Detect.")).not.toBeInTheDocument();
     });
 });
 

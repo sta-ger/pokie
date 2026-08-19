@@ -420,10 +420,20 @@ export function ProjectsPanel({
                         onChange={(event) => handleLocationChange(event.currentTarget.value)}
                         onPathSelected={handleLocationChange}
                     />
-                    <Button onClick={handleDetect} loading={importView.status === "detecting"}>
+                    <Button
+                        onClick={handleDetect}
+                        loading={importView.status === "detecting"}
+                        disabled={location.trim().length === 0}
+                        aria-describedby="import-project-detect-help"
+                    >
                         Detect
                     </Button>
                 </QuickActions>
+                {location.trim().length === 0 && (
+                    <Text id="import-project-detect-help" size="sm" c="dimmed" mt="xs">
+                        Enter a project location or use Browse to enable Detect.
+                    </Text>
+                )}
 
                 {importView.status === "error" && <ErrorState message={importView.message} />}
                 {importView.status === "unrecognized" && (
