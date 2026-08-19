@@ -1,0 +1,8 @@
+[2026-08-19] Candidate 8db4a363e9dbd404bd1084f336c5745fcf2a8b77: normal npm run build passed on Node v24.18.0.
+[2026-08-19] Packed candidate: pokie-1.3.0.tgz sha256=19242014e5634120d7125653c2828a8f155205d4caabc8bb186dcd6d0896b624.
+[2026-08-19] Companion checkout /home/stager/Work/sta-ger/pokie-examples: clean HEAD 09a0889b8d335eeacbdb277c37376d97de96c268.
+[2026-08-19] Exact companion archive + candidate tarball: npm run build passed (858 modules transformed; fixture-slot production entry emitted).
+[2026-08-19] Exact companion archive + candidate tarball: public npm start Fixture Slot visible Play click rendered A/C/A | A/A/C | A/A/A; credits 1004; win 5; multiple 5x.
+[2026-08-19] Exact generated package + candidate tarball: npm start (pokie dev) visible client session and Spin rendered A/C/A | A/A/C | A/A/A; credits 1004; win 5; multiple 5x.
+[2026-08-19] Fresh headed Studio: visible Projects -> Detect -> Register -> Open reached Fixture Slot workspace; visible Play new fixture-round session + Spin rendered the same round, credits 1004, win 5.
+[2026-08-19] Fresh headed Studio: visible Replay Recreate from seed fixture-round, Load, and Run again completed round 1; rendered A/C/A | A/A/C | A/A/A, credits 1004, win 5.
