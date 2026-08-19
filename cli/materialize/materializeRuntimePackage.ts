@@ -77,6 +77,8 @@ export function createMaterializingRuntimePackageResolver(
             undefined,
             undefined,
             pokiePackageRoot !== undefined ? withLocalPokieInstall(pokiePackageRoot) : undefined,
+            undefined,
+            pokiePackageRoot ?? pokieVersion,
         );
 
     return async (packageRoot: string): Promise<RuntimePackageResolution> => {

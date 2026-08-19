@@ -222,6 +222,22 @@ describe("BlueprintProjectMaterializer", () => {
         expect(v1.runtimePath).not.toBe(v2.runtimePath);
     });
 
+    it("does not reuse a same-version cache entry built by a different running POKIE installation", async () => {
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const firstRunner = createRecordingRunner();
+        const secondRunner = createRecordingRunner();
+        const first = await new BlueprintProjectMaterializer(
+            "1.3.0", undefined, undefined, undefined, firstRunner, createStubPackageValidator(validReport), cacheRoot, "/installed/pokie-a",
+        ).materialize(blueprintProjectOf(blueprintPath));
+        const second = await new BlueprintProjectMaterializer(
+            "1.3.0", undefined, undefined, undefined, secondRunner, createStubPackageValidator(validReport), cacheRoot, "/installed/pokie-b",
+        ).materialize(blueprintProjectOf(blueprintPath));
+
+        expect(second.runtimePath).not.toBe(first.runtimePath);
+        expect(firstRunner.calls).toHaveLength(1);
+        expect(secondRunner.calls).toHaveLength(1);
+    });
+
     it("passes tsPackage projects through verbatim, invoking neither npm nor the package validator", async () => {
         const runner = createRecordingRunner();
         const packageValidator = createStubPackageValidator(validReport);

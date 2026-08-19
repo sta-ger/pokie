@@ -66,6 +66,76 @@ function createProjectDashboardFetchRoutes() {
 }
 
 describe("useOpenProject: guarded side effects", () => {
+    it("creates a Recommended Blueprint, then reopens its saved Projects row into the Workspace", async () => {
+        let saved = false;
+        const blueprintLocation = "/games/starter-slot/blueprint.json";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: saved
+                    ? [{
+                        location: blueprintLocation,
+                        name: "Starter Slot",
+                        type: "blueprint",
+                        capabilities: ["blueprint.build"],
+                        origin: "managed",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    }]
+                    : [],
+            }),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save-managed": () => {
+                saved = true;
+                return {
+                    ok: true,
+                    status: 201,
+                    body: {
+                        status: "ok",
+                        path: blueprintLocation,
+                        name: "starter-slot",
+                        blueprintHash: "starter-hash",
+                        registeredProject: {
+                            location: blueprintLocation,
+                            name: "Starter Slot",
+                            type: "blueprint",
+                            capabilities: ["blueprint.build"],
+                            origin: "managed",
+                            status: "ok",
+                        },
+                    },
+                };
+            },
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: blueprintLocation}, manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}},
+            }),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "loaded", projectRoot: blueprintLocation, game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
+            }),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: blueprintLocation, valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+
+        fireEvent.click(screen.getByRole("button", {name: "Create Project"}));
+        expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+
+        await act(() => router.navigate("/home/projects"));
+        fireEvent.click(await screen.findByRole("button", {name: "Open"}));
+
+        expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(blueprintLocation)}/overview`);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(2);
+    }, WORKFLOW_TIMEOUT_MS);
+
     it("Cancel never calls the open-project API", async () => {
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...registryRoute(),

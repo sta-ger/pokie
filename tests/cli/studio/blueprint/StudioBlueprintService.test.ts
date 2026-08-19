@@ -903,6 +903,21 @@ describe("StudioBlueprintService", () => {
             expect(fs.readFileSync(expectedPath, "utf-8")).toContain('"sample-slot"');
         });
 
+        it("persists the complete Recommended model as the managed Blueprint source a later Projects Open materializes", () => {
+            const managedDir = path.join(tmpDir, "POKIE Projects", "starter-slot");
+            const service = createServiceWithManagedDirectory(managedDir);
+            const recommended = createRecommendedBlueprint();
+
+            const result = service.saveManaged(recommended);
+
+            expect(result).toMatchObject({status: "ok", path: path.join(managedDir, "blueprint.json"), name: "starter-slot"});
+            if (result.status === "ok") {
+                const reloaded = service.load(result.path);
+                expect(reloaded).toMatchObject({status: "ok", blueprint: recommended});
+                expect(service.validate(reloaded.status === "ok" ? reloaded.blueprint : undefined)).toEqual({status: "ok", warnings: []});
+            }
+        });
+
         it("falls back to the literal name \"blueprint\" when manifest.id is blank", () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "blueprint");
             const service = createServiceWithManagedDirectory(managedDir);
