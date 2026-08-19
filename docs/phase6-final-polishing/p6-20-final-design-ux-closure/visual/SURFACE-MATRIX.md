@@ -1,20 +1,22 @@
 # P6-20 visual surface matrix
 
-Fresh-profile public Studio UI audit of candidate `39bd9cacd8164c1e3b4ea0f3d01f21214699a2f4`. Checksums are SHA-256.
+One fresh-profile public Studio session audited candidate `b6ad154db45b3b4ee24d5d588fa650bdacd84efb` on 2026-08-19. Evidence paths below are relative to `fresh-b6ad154d-20260819/`; SHA-256 values are full values in `CHECKSUMS.sha256`.
 
-| Rendered surface | Observation | Screenshot proof |
+| Required surface/state | Rendered observation and visual assessment | Screenshot/checksum |
 | --- | --- | --- |
-| Home / Design Game / Modeler | Default modeler rendered. Its normal managed **Create Project** action failed with the visible recovery error described below. | `01-home-design-valid.png` `20140a938fff…1b1a99` |
-| New Blueprint dialog and picker | Recommended, Blank, Random, and Load existing model choices were visible in the rendered dialog. | `02-new-blueprint-dialog.png` `5c0a6e3aa4b4…f243` |
-| Outcome Project | Imported Blueprint opened to its rendered Overview with project identity and capability context. | `03-project-overview-success.png` `74a61732ccce…50df` |
-| Game Model / every section | Game basics, Layout, Symbols, Reels, Paytable, Bets & Modes, Mechanics, and derived Limits rendered in one workspace. | `04-game-model-overview.png` `9f4ad7120de5…8f26` |
-| Reels picker and analysis | Game window, Full strips, and Analysis were reached; Analysis visibly rendered all six reel reports. | `05-game-model-reels-analysis.png` `f2c43d9f0612…a1cd` |
-| Play / Simulation | A real visible spin completed; a rendered 25-round simulation reached its report. | `07-play-round-success.png` `7f0a6e3aa4bd…47b8`; `09-simulation-review-success.png` `306d4d7613bd…bb83` |
-| Replay / Build | Replay's Session Spin picker and Build/Export's outcome-library/preflight surface rendered. | `11-replay-session-spin-success.png` `4afb30ad7d71…09db`; `12-build-export-preflight-disabled.png` `4a3079d0d255…553fa` |
-| Projects / wide | Eleven registrations were visibly grouped as Available projects, with filters, Import Project access, and Page 1 of 2. | `15-projects-wide-registry.png` `02c0670c7088…3b336` |
-| Projects / narrow | Responsive narrow layout retained the registry controls, rows, pagination, and Import Project section. | `16-projects-narrow.png` `ee968efaa3a9…2162d` |
-| Projects / missing filter and bulk cleanup dialog | Ten stale rows were filtered, selected, and presented to the rendered confirmation dialog before bulk cleanup. | `14-projects-bulk-cleanup.png` `44068e092b60…d046` |
+| Home / Design Game | Home rendered its clear heading, instructional hierarchy, primary Create Project control, section tabs, documentation links, and automatic-check loading copy. | `01-home-design.png` `1641b3a2…f5c0ce` |
+| New Blueprint dialog / picker | The rendered modal exposed Recommended, Blank, Random, and load paths. Recommended applied the valid starter model directly; the resulting Modeler showed a legible form and validation success. | `02-new-blueprint-picker.png` `456471c0…ced9fa`; `03-modeler-valid.png` `f22919d5…5c9495` |
+| Modeler / success | Valid starter Game basics, edit controls, validation hierarchy, and preview controls rendered. Create Project then opened the managed workspace successfully. | `03-modeler-valid.png` `f22919d5…5c9495`; `05-outcome-project.png` `db5fa2c3…fe1173` |
+| Outcome Project | Starter Slot Overview rendered project identity, path, navigation rail, and a concise next-step hierarchy. | `05-outcome-project.png` `db5fa2c3…fe1173` |
+| Game Model: Game basics, Layout, Symbols, Reels, Paytable, Bets & Modes, Mechanics, Limits | All eight named sections rendered in one scrollable, consistently styled workspace: editable basics/layout/symbols/reels/paytable/bets, clear empty Mechanics, and derived Limits. The model grid/table remained legible at desktop width. | `06-game-model-sections.png` `d434f661…1dbd9f` |
+| Play / empty and success | Empty/preparation state then a visible New Play session and settled Spin were rendered. The completed play surface communicated session/scenario controls without a visual hierarchy failure. | `07-play-empty.png` `65a076f0…dd9fb`; `08-play-success.png` `a793843d…c334f` |
+| Simulation / disabled, loading, success reachability | The blank Rounds configuration rendered its disabled/empty state; after visible input, the active job rendered a running progress state. The entered value appended to the existing default (1,000,020 rounds), so terminal review was not awaited; this was not retried. | `09-simulation-ready.png` `57595d2e…f3b112`; `10-simulation-loading.png` `0d898f3f…0bdbd4` |
+| Replay / picker | Replay rendered its explanatory hierarchy and Session Spin picker after the settled Play round. | `11-replay-session-spin.png` `f2d39309…b45c63` |
+| Build / disabled, warning, and preflight | Build/Export rendered outcome-library, static export, artifact, and deployment sections with visible prerequisites, preflight details, disabled gated actions, and an unconfigured remote-target warning. | `12-build-export.png` `7224ce7e…b6e39e` |
+| Projects / wide success, warning, disabled, picker | Wide Projects rendered an available managed project, Needs attention registrations, disabled missing-row cleanup, Relocate/Open/Remove actions, pagination, and Import Project location/browse controls. | `13-projects-wide.png` `27010095…f94ae` |
+| Projects / narrow responsiveness | At 405 px, the desktop multi-column registry is compressed into extremely narrow columns. Project path/status/action text wraps character-by-character and controls are not usable: material P2. | `14-projects-narrow.png` `7771faae…583582` |
+| Error-state coverage | No error state occurred in the physical Create Project → workspace → Spin route; no synthetic failure or state injection was used merely to manufacture one. Warning, empty, loading, success, and disabled states are represented above. | `05-outcome-project.png` `db5fa2c3…fe1173`; `10-simulation-loading.png` `0d898f3f…0bdbd4`; `12-build-export.png` `7224ce7e…b6e39e` |
 
-## Finding
+## Consolidated finding
 
-`p6-20-final-visual-design-closure-001` — **P1**: In fresh Home/Design Game, choosing the visible default Recommended model then **Create Project** reaches the generic rendered recovery error instead of opening a managed project. This is the primary guided project-creation route. The user cannot diagnose or recover from the displayed message; the specific server-side save/registration failure is not rendered.
+`p6-20-final-visual-design-closure-001` — **P2**: Projects has no usable narrow responsive presentation at 405 px. Its desktop data table compresses instead of reflowing or providing a horizontal/mobile treatment, making project identity, availability, and actions effectively unreadable.
