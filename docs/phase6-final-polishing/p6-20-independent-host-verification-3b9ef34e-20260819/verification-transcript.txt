@@ -1,2 +1,5 @@
-[2026-08-19T16:40:38Z] Fresh headed Chrome profile: Studio Projects → typed tracked fixture Blueprint in rendered Location input. Rendered Detect remained disabled; workflow stopped without retry.
-[2026-08-19T16:41:27Z] Fresh browser tab: public pokie-examples Verifiable spin page rendered its Player after exact candidate-tarball install and public production build.
+[2026-08-19T16:47:50Z] Node 24.18: exact candidate npm run build completed; npm pack --ignore-scripts SHA-256 19242014e5634120d7125653c2828a8f155205d4caabc8bb186dcd6d0896b624.
+[2026-08-19T16:48:09Z] Fresh GitHub public pokie-examples clone at 530c2c7: no fixture-slot page and package.json has no npm start script.
+[2026-08-19T16:59:06Z] Fresh headed Studio: visible Projects → Detect → Register → Open reached Fixture Slot.
+[2026-08-19T16:59:10Z] Visible Studio Play with seed fixture-round rendered A/C/A | A/A/C | A/A/A; credits 1004, win 5, paytable A/B/C.
+[2026-08-19T17:01:35Z] Visible Studio Replay → Session Spin → Session 1 Round 1 rendered the same grid, credits, win, and paytable.
