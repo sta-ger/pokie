@@ -656,7 +656,7 @@ describe("ProjectsPanel: Import Project", () => {
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
         expect(await screen.findByText("Available projects")).toBeInTheDocument();
-        expect(screen.getByText("Needs attention")).toBeInTheDocument();
+        expect(screen.getByText("Needs attention", {selector: ".project-registry-group *"})).toBeInTheDocument();
         expect(screen.getByText("Showing 1–10 of 12 projects")).toBeInTheDocument();
         expect(screen.queryByText("Project 12")).not.toBeInTheDocument();
 
