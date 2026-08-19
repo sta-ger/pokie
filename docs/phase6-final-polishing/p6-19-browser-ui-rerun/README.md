@@ -10,5 +10,14 @@ artwork, reels/stacks, save, Play, Simulation, Replay, outcome generation, and
 Stake export were not reachable. The required second, uncoached launch was not
 attempted because readiness did not pass.
 
+## Remediation
+
+The root package now declares the exact Node range required by the installed
+Vite/Rolldown toolchain: `^20.19.0 || >=22.12.0`. The tracked `.nvmrc` already
+selects Node 24, so a cold-start producer can resolve the material runtime
+question from the repository before launching Studio. The blocked Node 18
+attempt remains recorded below; browser workflow evidence must be collected
+from a supported runtime rather than treating its failed launch as UI proof.
+
 `launch-transcript.txt` retains only the setup result, launch status, and
 decisive diagnostic. `SHA256SUMS` verifies the transcript.
