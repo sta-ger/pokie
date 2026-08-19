@@ -1,4 +1,4 @@
-import {Button, Group, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput, Title} from "@mantine/core";
+import {Button, Group, Modal, NumberInput, SegmentedControl, Stack, Text, TextInput} from "@mantine/core";
 import {useEffect, useState} from "react";
 import {generateRandomBlueprint} from "../../api/apiClient";
 import type {StudioBlueprintRandomView} from "../../api/types";
@@ -137,7 +137,7 @@ export function NewBlueprintDialog({
     };
 
     return (
-        <Modal opened={opened} onClose={onClose} title={<Title order={4}>Create Blueprint Project</Title>} size="md">
+        <Modal opened={opened} onClose={onClose} title="Create Blueprint Project" size="md">
             <Stack gap="sm">
                 {step === "confirmDirty" && (
                     <Stack gap="sm">

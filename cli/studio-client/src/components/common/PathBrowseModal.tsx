@@ -1,4 +1,4 @@
-import {Button, Group, Modal, ScrollArea, Stack, Text, Title, UnstyledButton} from "@mantine/core";
+import {Button, Group, Modal, ScrollArea, Stack, Text, UnstyledButton} from "@mantine/core";
 import {IconArrowUp, IconFile, IconFolder} from "@tabler/icons-react";
 import {useEffect, useState} from "react";
 import {browseFilesystem} from "../../api/apiClient";
@@ -82,12 +82,12 @@ export function PathBrowseModal({opened, onClose, onSelect, kind, initialPath, t
             opened={opened}
             onClose={onClose}
             title={
-                <Stack gap={0}>
-                    <Title order={5}>Server filesystem browser</Title>
-                    <Text size="xs" c="dimmed">
+                <>
+                    <span style={{fontWeight: 500}}>Server filesystem browser</span>
+                    <span style={{display: "block", color: "var(--mantine-color-dimmed)", fontSize: "var(--mantine-font-size-xs)"}}>
                         {title} — showing files on the machine running Studio&apos;s server, not this browser&apos;s device.
-                    </Text>
-                </Stack>
+                    </span>
+                </>
             }
             size="md"
         >

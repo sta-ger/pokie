@@ -1,4 +1,4 @@
-import {ActionIcon, Button, Group, Modal, ScrollArea, Stack, Table, Text, TextInput, Title} from "@mantine/core";
+import {ActionIcon, Button, Group, Modal, ScrollArea, Stack, Table, Text, TextInput} from "@mantine/core";
 import {IconTrash} from "@tabler/icons-react";
 import {useEffect, useState} from "react";
 import {applyPaylineSet} from "../../domain/blueprintFormOps";
@@ -187,7 +187,7 @@ export function PaylinePresetsModal({
     }
 
     return (
-        <Modal opened={opened} onClose={onClose} title={<Title order={4}>Apply payline preset</Title>} size="lg">
+        <Modal opened={opened} onClose={onClose} title="Apply payline preset" size="lg">
             <Stack gap="md">
                 <Text size="sm" c="dimmed">
                     Current layout: {reels} reels × {rows} rows. Replace swaps every payline for the preset&apos;s; Append adds the preset&apos;s lines to

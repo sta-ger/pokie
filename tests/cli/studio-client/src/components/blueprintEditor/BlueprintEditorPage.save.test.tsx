@@ -239,6 +239,9 @@ describe("BlueprintEditorPage - guided Create Project", () => {
 
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
         await user.click(screen.getByRole("button", {name: "New Blueprint"}));
+        const dialogHeading = await screen.findByRole("heading", {name: "Create Blueprint Project"});
+        expect(dialogHeading.tagName).toBe("H2");
+        expect(dialogHeading.querySelector("h1, h2, h3, h4, h5, h6")).toBeNull();
         await user.click(await screen.findByRole("button", {name: "Generate random"}));
         await user.click(screen.getByRole("button", {name: "Generate"}));
         await user.click(await screen.findByRole("button", {name: "Use this blueprint"}));

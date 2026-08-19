@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import zlib from "zlib";
 import {buildRoundArtifact} from "../artifact/buildRoundArtifact.js";
 import {RoundArtifactBuildError} from "../artifact/RoundArtifactBuildError.js";
 import type {RoundArtifact} from "../artifact/RoundArtifact.js";
@@ -9,6 +8,7 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {buildWeightedOutcomeLibrary} from "../weightedoutcome/buildWeightedOutcomeLibrary.js";
 import {WeightedOutcomeLibraryBuildError} from "../weightedoutcome/WeightedOutcomeLibraryBuildError.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
+import {decompressZstdSync} from "./internal/zstd.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
 import {resolveSafeStakeEngineFilePath} from "./internal/resolveSafeStakeEngineFilePath.js";
 import {StakeEngineImportSyntheticWinComponent} from "./internal/StakeEngineImportSyntheticWinComponent.js";
@@ -76,7 +76,7 @@ export class StakeEngineImporter<T extends string | number = string> implements 
         validator: StakeEngineImportValidating = new StakeEngineImportValidator(),
         eventsImporter: StakeEngineRoundEventsImporting<T> = new StakeEngineRoundEventsImporter<T>(),
         readFile: (filePath: string) => Buffer = (filePath) => fs.readFileSync(filePath),
-        decompress: (buffer: Buffer) => Buffer = (buffer) => zlib.zstdDecompressSync(buffer),
+        decompress: (buffer: Buffer) => Buffer = (buffer) => decompressZstdSync(buffer),
     ) {
         this.validator = validator;
         this.eventsImporter = eventsImporter;
