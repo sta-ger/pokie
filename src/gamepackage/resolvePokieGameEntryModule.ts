@@ -8,7 +8,15 @@ export type ResolvedPokieGameEntryModule = {
     candidate: unknown;
 };
 
-export async function resolvePokieGameEntryModule(packageRoot: string): Promise<ResolvedPokieGameEntryModule> {
+// Kept injectable for hosts such as Studio that can supply the POKIE runtime to an otherwise complete
+// external package before its own dependencies have been installed. The ordinary loader remains the
+// default for every library/CLI caller.
+export type PokieGameEntryModuleLoading = (entryPath: string) => Promise<Record<string, unknown>>;
+
+export async function resolvePokieGameEntryModule(
+    packageRoot: string,
+    loadEntryModule: PokieGameEntryModuleLoading = (entryPath) => import(entryPath) as Promise<Record<string, unknown>>,
+): Promise<ResolvedPokieGameEntryModule> {
     const {entry} = readPokiePackageConfig(packageRoot);
     const entryPath = path.resolve(packageRoot, entry);
 
@@ -59,7 +67,7 @@ export async function resolvePokieGameEntryModule(packageRoot: string): Promise<
         // A plain absolute path, not a file:// URL: TypeScript downlevels `import()` to
         // `require()` in the CJS build (dist/cjs and ts-jest both compile to CommonJS), and
         // require() does not accept file:// URLs as module specifiers.
-        entryModule = (await import(entryPath)) as Record<string, unknown>;
+        entryModule = await loadEntryModule(entryPath);
     } catch (error) {
         if (isModuleNotFoundError(error)) {
             // entryPath itself exists (checked above), so this is a *different* module the entry
