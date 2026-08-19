@@ -92,7 +92,7 @@ describe("ProjectDashboardPage - Play", () => {
     // (RoundArtifactInspector's own artifact-shaped rendering is already covered by
     // RoundArtifactInspector.test.tsx -- this exercises RoundSummary's fallback flat-table/GameScreenView
     // path, the same one a session with no captured RoundArtifact renders through.)
-    it("Spin renders the played round through the shared RoundSummary/GameScreenView chain", async () => {
+    it("Spin renders the played round through the shared RoundSummary/GameScreenView chain in the production StrictMode lifecycle", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -113,7 +113,7 @@ describe("ProjectDashboardPage - Play", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"], strictMode: true});
         await goToPlayTab(user);
         await user.click(await screen.findByRole("button", {name: "New Play session"}));
         await user.click(await screen.findByRole("button", {name: "Spin"}));

@@ -27,6 +27,11 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // one level simpler here: Play has only ever one in-flight-mutation slot (newSession/spin), never a
     // separate state/session pair to guard against each other.
     const requestIdRef = useRef(0);
+    // A Play action must target the session that was actually accepted by the session-creation
+    // response, even while React is scheduling the render that exposes its Spin control. Keeping that
+    // identity alongside the rendered state avoids a click being silently discarded by a callback that
+    // closed over a prior render's undefined session id.
+    const activeSessionIdRef = useRef<string>();
     const newSessionGuard = useDoubleSubmitGuard();
     const spinGuard = useDoubleSubmitGuard();
 
@@ -43,11 +48,14 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         return;
                     }
                     setSession(describePlaySessionResult(result));
-                    setSessionId(result.status === "ok" ? result.session.sessionId : undefined);
+                    const nextSessionId = result.status === "ok" ? result.session.sessionId : undefined;
+                    activeSessionIdRef.current = nextSessionId;
+                    setSessionId(nextSessionId);
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
                         setSession({status: "error", message: errorMessage(error)});
+                        activeSessionIdRef.current = undefined;
                         setSessionId(undefined);
                     }
                 })
@@ -63,12 +71,13 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // (see spinGuard's own declaration above).
     const runSpinAction = useCallback(
         (action: (sid: string) => Promise<Parameters<typeof describePlaySpinResult>[0]>) => {
-            if (sessionId === undefined || !spinGuard.begin()) {
+            const activeSessionId = activeSessionIdRef.current;
+            if (activeSessionId === undefined || !spinGuard.begin()) {
                 return;
             }
             const requestId = ++requestIdRef.current;
             setSession({status: "loading"});
-            action(sessionId)
+            action(activeSessionId)
                 .then((result) => {
                     if (requestId !== requestIdRef.current) {
                         return;
@@ -87,7 +96,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                 .finally(() => spinGuard.end());
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [fetchImpl, sessionId, onRoundRecorded],
+        [fetchImpl, onRoundRecorded],
     );
 
     const spin = useCallback((bet?: number, mode?: string) => {
@@ -128,6 +137,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // being cleared here.
     const resetForProjectSwitch = useCallback(() => {
         requestIdRef.current++;
+        activeSessionIdRef.current = undefined;
         setSession({status: "idle"});
         setSessionId(undefined);
     }, []);
