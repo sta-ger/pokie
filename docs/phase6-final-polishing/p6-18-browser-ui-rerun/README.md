@@ -1,26 +1,27 @@
 # P6-18 independent cold-start Studio rerun — finding
 
-Candidate: `a400e007003f27a6b51c85f58aeefa9edf5443e9`
-Run: 2026-08-19, fresh local Studio at `http://127.0.0.1:4632`, a fresh Chrome profile, no pre-existing Studio project opened.
-Method: only visible Studio controls were read and activated through browser mouse/keyboard events; no product API, docs, source, roadmap, internal coaching, or prepared workflow script was used.
+Candidate: `00404c6a42bdcf7616bb94e949b5781b4f5481cb`
+Run: 2026-08-19; fresh local Studio/client, fresh Chrome profile, and no existing Studio project opened. Controls were activated only through rendered browser mouse/keyboard interactions.
 
 ## Cold-start questions
 
-None. The rendered UI exposed the project creation choices and the workflow controls without a question.
+None. The rendered Design Game and project workflow exposed the needed choices and controls.
 
-## Transcript and result
+## Verified before the finding
 
-1. Opened Studio's rendered **Design Game** home screen and chose **New Blueprint → Recommended**.
-2. Edited the displayed game id to `valera-mathematician` and game name to `Valera Mathematician`; the screen remained `Valid`.
-3. Used the visible **Create Project** action. Studio saved the managed Blueprint and opened its Workspace.
-4. Opened **Game Model → Edit**, entered the description `Cold-start browser verification`, and used **Save**. The rendered Game Model showed the saved description and `Valid` validation.
-5. Opened **Play → New Play session**. The rendered Play page showed Bet `1.00`, **Spin**, and `No round played yet -- Spin to play.`
-6. Entered `2` in the visible **Bet** control and blurred it. The control returned to `1.00`. Activated the visible **Spin** control once and waited a further 10 seconds. The rendered page still said `No round played yet -- Spin to play.` No error or round result was rendered.
+1. Created **New Blueprint → Recommended** as `valera-mathematician` / **Valera Mathematician**.
+2. Edited **Game Model** metadata, saved description `P6-18 independent cold-start verification`, and observed the saved view.
+3. Opened **Play**, created a session, and spun once. A complete rendered round appeared. This is the remediation rerun for the earlier P6-18 Play finding; it now passes.
+4. Ran a 25-round **Simulation** and observed its rendered RTP/recent-runs report.
+5. Opened **Replay → Session Spin**, selected the recorded round, and observed the loaded replay inspector.
 
-This blocks the mandatory Play portion of the requested workflow, so the bounded rerun stopped immediately rather than attempting unrelated flows or retrying the same failed interaction. The required remediation and rerun remain outstanding.
+## Finding: Outcome Library blocks Build/Export and Stake
+
+On **Build/Export**, the visible **Generate outcome library (base)** action returned to the unchanged page: no generated-library result appeared and the visible **Run Stake Engine Export (base)** card remained blocked by “Generate an outcome library above first.” No second generate attempt was made.
+
+This prevents the requested Outcome Library, Stake export, and subsequent Home Projects completion checks. Remediation and an affected-workflow rerun remain outstanding for this newly discovered finding.
 
 ## Evidence
 
-`play-spin-no-round.png` is the single representative screen after the failed Spin. SHA-256:
-
-`4e5d4a4f8cf0b078f6ba3d073e69fd5bb007dcbdfd90c78c0d068294adb75063`
+- `01-play-round.png` — rendered successful fixed Play round; SHA-256 `1ad11274be6bc592b80d305ff64ad2f336b800253296c5f1ca1452a03105e2ed`.
+- `02-outcome-library-no-result.png` — rendered Build/Export state after the one generate action; SHA-256 `2eb6fcd9d4aee974bd5740ad2fce14c841f8aa65e1bbb8a3f96303ed7c232df8`.
