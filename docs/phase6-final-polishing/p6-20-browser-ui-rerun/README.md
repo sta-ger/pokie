@@ -1,9 +1,9 @@
 # P6-20 independent Player-presentation rerun
 
-Candidate `7d13394a0484946de11e3ac624b30a648482f15c` was freshly built with Node 24.18.0 and exercised through a fresh headed Chrome profile using rendered controls only. The generated `fixture-slot` package used seed `fixture-round`, round 1.
+Candidate `7d13394a0484946de11e3ac624b30a648482f15c` was built under Node 24.18.0 and driven in a fresh Chrome profile using only visible rendered controls, coordinate clicks, and keyboard entry. The rerun used `fixture-slot`, `fixture-round`, round 1.
 
-Generated-package `npm start`, standalone `pokie serve` + `pokie client`, `pokie dev`, Studio Play, and Studio Replay all rendered `A/C/A | A/A/C | A/A/A`, persistent highlights `0:0/0:1/0:2`, line-A win `5`, credits `1004`, bet `1`, five-times payout, paytable `A=5/B=3/C=1`, and no feature counter. The standalone client had first rendered a prior unseeded round; immediately after visible `Start new session`, its Spin control was visibly disabled and a coordinate click did nothing. After boot, the visible seeded spin rendered the fixture round, not the prior round.
+The generated package `npm start`, standalone `pokie serve` + `pokie client`, `pokie dev`, Studio Play, Studio Replay, and the public `pokie-examples` workflow all visibly produced the same Player result: `A/C/A | A/A/C | A/A/A`, highlighted `0:0/0:1/0:2`, `A=5/B=3/C=1`, credits `1004`, win `5`, bet `1`, and `5x`, without a feature counter.
 
-The final public `pokie-examples` leg is externally unavailable: the current public checkout (`530c2c7ff709361d93fe60f59b20436be719d209`) has no `fixture-slot.html`, and `git fetch origin c36f83b68dca6be9d4a56e0c66e6ddb5819e1f28` returned `remote error: upload-pack: not our ref`. Its Vite workflow did launch normally, but cannot exercise the required fixture. See [verification-transcript.txt](verification-transcript.txt).
+In the standalone client, an unseeded prior round was first rendered. After entering `fixture-round` and pressing **Start new session**, **Spin** was visibly disabled during boot. Once the seeded session became ready, its visible Spin produced the fixture result rather than the prior grid.
 
-Only this concise README and transcript are retained; temporary package trees, browser profile, screenshots, logs, and browser-driving source were removed after verification.
+Only this README and the concise [verification transcript](verification-transcript.txt) are retained. Temporary generated package, local services, browser profiles, screenshots, raw logs, and the browser-driving source were removed after capture.

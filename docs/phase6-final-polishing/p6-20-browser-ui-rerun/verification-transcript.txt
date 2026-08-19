@@ -1,9 +1,11 @@
-[2026-08-19T11:04Z] START fresh headed Chrome/profile; candidate=7d13394a0484946de11e3ac624b30a648482f15c; fixture=fixture-slot; seed=fixture-round; round=1. Browser input used rendered-control coordinates and keyboard only.
-[2026-08-19T11:04Z] LAUNCH generated package npm start (API :4940/UI :4941); pokie serve (:4942) + pokie client (:4943); pokie dev (:4944/:4945); public pokie-examples Vite (:4946); Studio (:4947). Each listener reported ready.
-[2026-08-19T11:07Z] ASSERT npm start: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; line A win 5; credits 1004; bet 1; 5x; A=5/B=3/C=1; no feature counter.
-[2026-08-19T11:07Z] ASSERT pokie client race: first spin rendered a prior unseeded round; entering fixture-round then clicking Start new session left visible Spin disabled, and its coordinate click produced no action. After boot, seeded Spin rendered the fixture fields above, not the prior round.
-[2026-08-19T11:07Z] ASSERT pokie dev: fixture fields matched exactly.
-[2026-08-19T11:07Z] NOT_REACHED pokie-examples fixture: current public checkout 530c2c7 has no fixture-slot page; supplied c36f83b revision is no longer available from origin. Its normal Vite launcher did listen on :4946.
-[2026-08-19T11:08Z] ASSERT Studio Play: visible Show advanced details (seed) -> fixture-round -> New Play session -> Spin rendered the fixture fields exactly.
-[2026-08-19T11:09Z] ASSERT Studio Replay: visible Recreate from seed -> fixture-round -> Load -> Run again rendered the fixture fields exactly; result completed 1/1, actual round 1.
-[2026-08-19T11:10Z] COMPLETE reachable verification; removed temporary generated package, browser profile, logs, screenshots, and browser-driving source.
+[2026-08-19T11:32Z] START fresh Chrome profile; candidate=7d13394a0484946de11e3ac624b30a648482f15c; fixture=fixture-slot; seed=fixture-round; round=1. Browser input used rendered-control coordinates and keyboard only.
+[2026-08-19T11:32Z] LAUNCH generated package npm start (:4950/:4951); pokie serve (:4952) + pokie client (:4953); pokie dev (:4954/:4955); public pokie-examples Vite (:4956); Studio (:4957). Each listener reported ready.
+[2026-08-19T11:32Z] ASSERT generated npm start Player: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A=5/B=3/C=1; credits 1004; win 5; bet 1; 5x; no feature counter.
+[2026-08-19T11:32Z] OBSERVE pokie client prior unseeded round: C/C/B | A/C/C | C/C/C.
+[2026-08-19T11:32Z] ASSERT pokie client session transition: rendered Spin was disabled after Start new session with fixture-round; when ready, seeded Spin rendered the fixture fields, not the prior grid.
+[2026-08-19T11:32Z] ASSERT pokie client seeded Player: A/C/A | A/A/C | A/A/A; highlights 0:0/0:1/0:2; A=5/B=3/C=1; credits 1004; win 5; bet 1; 5x; no feature counter.
+[2026-08-19T11:32Z] ASSERT pokie dev Player: same fixture fields and highlights.
+[2026-08-19T11:32Z] ASSERT Studio Play: Show advanced details (seed) -> fixture-round -> New Play session -> Spin; same fixture fields and highlights.
+[2026-08-19T11:32Z] ASSERT Studio Replay: fixture-round -> Load -> Run again; same fixture fields and highlights.
+[2026-08-19T11:32Z] ASSERT public pokie-examples: Open deterministic round -> Play rendered A/C/A | A/A/C | A/A/A; Credits: 1004; Win: 5; Win multiple: 5x; Bet: 1; winning line 1; Paytable.
+[2026-08-19T11:32Z] COMPLETE all requested public rendered surfaces; no DOM/state injection or private application API calls.
