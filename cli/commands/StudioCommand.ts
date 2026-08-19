@@ -21,6 +21,8 @@ type StudioOptions = {
     noOpen: boolean;
 };
 
+export const STUDIO_COMMAND_NAME = "studio";
+
 const USAGE = "Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]";
 
 export type StudioCommandDependencies = {
@@ -39,9 +41,8 @@ export type StudioCommandDependencies = {
     process?: NodeJS.Process;
 };
 
-// The private, implicit Studio entry delegates to this command for `pokie` with no arguments and
-// `pokie .`/`pokie <path>`.
-// command — see resolveCliInvocation.ts/cli/pokie.ts for how each is resolved to it. This is the
+// The public Studio command also owns the implicit `pokie`, `pokie .`, and `pokie <path>` entries;
+// see resolveCliInvocation.ts/cli/pokie.ts for how each is resolved to it. This is the
 // first minimal stage of POKIE Studio (see docs/cli.md): starts StudioServer (app shell + JSON API),
 // waits for it to be listening, and best-effort opens a browser pointed at it, mirroring DevCommand's
 // shape.
@@ -90,7 +91,7 @@ export class StudioCommand implements CliCommandHandling {
     }
 
     public getName(): string {
-        return "studio";
+        return STUDIO_COMMAND_NAME;
     }
 
     public getDescription(): string {

@@ -13,7 +13,6 @@ import {GenerateCommand} from "./commands/GenerateCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
 import {ImportCommand} from "./commands/ImportCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
-import {InternalStudioCommand} from "./commands/InternalStudioCommand.js";
 import {ReelCommand} from "./commands/ReelCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
 import {ReportCommand} from "./commands/ReportCommand.js";
@@ -86,7 +85,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
             undefined,
             createMaterializingRuntimePackageResolver(version, SIM_OPERATION, pokiePackageRoot),
         ),
-        new InternalStudioCommand(new StudioCommand(version, pokiePackageRoot, {studioRoot})),
+        new StudioCommand(version, pokiePackageRoot, {studioRoot}),
         new ValidateCommand(
             undefined,
             undefined,
