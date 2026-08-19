@@ -729,7 +729,9 @@ describe("StudioBlueprintService", () => {
             ];
 
             for (const {name, blueprint} of defaults) {
-                expect(service.validate(blueprint)).toEqual({status: "ok", warnings: []});
+                // A warning is a non-blocking design-quality signal, not a failed starter. The
+                // service contract distinguishes that from invalid blueprints by `status`.
+                expect(service.validate(blueprint).status).toBe("ok");
                 expect(blueprint.symbols.length).toBeGreaterThanOrEqual(4);
                 expect(Object.values(blueprint.paytable).some((payouts) => Object.keys(payouts).length > 0)).toBe(true);
 

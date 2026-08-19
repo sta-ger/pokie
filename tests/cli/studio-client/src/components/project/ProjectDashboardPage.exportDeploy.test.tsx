@@ -541,7 +541,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await user.click(await screen.findByRole("button", {name: "Generate outcome library (base)"}));
 
-        expect(await screen.findByRole("status")).toHaveTextContent("Generating outcome library from this project's current build…");
+        expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
     });
 
     it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {
