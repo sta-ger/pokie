@@ -31,7 +31,10 @@ type ListView =
     // npm diagnostic (see apiClient's ProjectOpenError); absent for every other listView failure.
     | {status: "error"; message: string; detail?: string}
     | {status: "empty"}
-    | {status: "loaded"; entries: StudioProjectRegistryView[]};
+    // Keep the registered rows available when Open fails. Blueprint materialization can fail
+    // transiently (for example while its local dependency install is retried), and replacing this
+    // state with a bare error used to remove the very Open action needed to retry it.
+    | {status: "loaded"; entries: StudioProjectRegistryView[]; openError?: {message: string; detail?: string}};
 
 type RecognizedPreview = Extract<StudioProjectImportPreviewResult, {status: "recognized"}>;
 
@@ -177,14 +180,17 @@ export function ProjectsPanel({
         if (!openGuard.begin()) {
             return;
         }
+        setListView((previous) => previous.status === "loaded" ? {...previous, openError: undefined} : previous);
         setOpeningLocation(entry.location);
         const subject = entry.type === "blueprint" ? "The blueprint file" : "The project directory";
         openAndNavigate(entry.location)
             .catch((error: unknown) =>
-                setListView({
-                    status: "error",
-                    message: describePathActionError(subject, errorMessage(error)),
-                    detail: error instanceof ProjectOpenError ? error.detail : undefined,
+                setListView((previous) => {
+                    const openError = {
+                        message: describePathActionError(subject, errorMessage(error)),
+                        detail: error instanceof ProjectOpenError ? error.detail : undefined,
+                    };
+                    return previous.status === "loaded" ? {...previous, openError} : {status: "error", ...openError};
                 }),
             )
             .finally(() => {
@@ -309,75 +315,78 @@ export function ProjectsPanel({
                 {listView.status === "error" && <ErrorState message={listView.message} detail={listView.detail} />}
                 {listView.status === "empty" && <EmptyState message="No projects yet -- import or design one below." />}
                 {listView.status === "loaded" && (
-                    <Table.ScrollContainer minWidth={640}>
-                        <Table>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>Name</Table.Th>
-                                    <Table.Th>Type</Table.Th>
-                                    <Table.Th>Origin</Table.Th>
-                                    <Table.Th>Last opened</Table.Th>
-                                    <Table.Th>Actions</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {listView.entries.map((entry) => (
-                                    <Table.Tr key={entry.location}>
-                                        <Table.Td>
-                                            {renderEntryName(entry)}
-                                            <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                                                {entry.location}
-                                            </Text>
-                                        </Table.Td>
-                                        <Table.Td>{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
-                                        <Table.Td>
-                                            <Group gap={6} wrap="nowrap">
-                                                <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
-                                                {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
-                                            </Group>
-                                        </Table.Td>
-                                        <Table.Td>{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
-                                        <Table.Td>
-                                            <QuickActions>
-                                                {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
-                                                    <Button
-                                                        variant="default"
-                                                        size="xs"
-                                                        loading={openingLocation === entry.location}
-                                                        onClick={() => handleOpen(entry)}
-                                                    >
-                                                        Open
-                                                    </Button>
-                                                )}
-                                                {entry.status === "ok" && entry.type === "parWorkbook" && (
-                                                    <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>
-                                                        Open in Design Game
-                                                    </Button>
-                                                )}
-                                                {entry.status === "missing" && (
-                                                    <Button
-                                                        variant="default"
-                                                        size="xs"
-                                                        onClick={() => {
-                                                            setRelocatingEntry(entry);
-                                                            setRelocationLocation("");
-                                                            relocationLocationRef.current = "";
-                                                            setRelocationError(undefined);
-                                                        }}
-                                                    >
-                                                        Relocate
-                                                    </Button>
-                                                )}
-                                                <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>
-                                                    Remove
-                                                </Button>
-                                            </QuickActions>
-                                        </Table.Td>
+                    <>
+                        {listView.openError && <ErrorState message={listView.openError.message} detail={listView.openError.detail} />}
+                        <Table.ScrollContainer minWidth={640}>
+                            <Table>
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>Name</Table.Th>
+                                        <Table.Th>Type</Table.Th>
+                                        <Table.Th>Origin</Table.Th>
+                                        <Table.Th>Last opened</Table.Th>
+                                        <Table.Th>Actions</Table.Th>
                                     </Table.Tr>
-                                ))}
-                            </Table.Tbody>
-                        </Table>
-                    </Table.ScrollContainer>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {listView.entries.map((entry) => (
+                                        <Table.Tr key={entry.location}>
+                                            <Table.Td>
+                                                {renderEntryName(entry)}
+                                                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
+                                                    {entry.location}
+                                                </Text>
+                                            </Table.Td>
+                                            <Table.Td>{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
+                                            <Table.Td>
+                                                <Group gap={6} wrap="nowrap">
+                                                    <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
+                                                    {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
+                                                </Group>
+                                            </Table.Td>
+                                            <Table.Td>{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
+                                            <Table.Td>
+                                                <QuickActions>
+                                                    {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
+                                                        <Button
+                                                            variant="default"
+                                                            size="xs"
+                                                            loading={openingLocation === entry.location}
+                                                            onClick={() => handleOpen(entry)}
+                                                        >
+                                                        Open
+                                                        </Button>
+                                                    )}
+                                                    {entry.status === "ok" && entry.type === "parWorkbook" && (
+                                                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>
+                                                        Open in Design Game
+                                                        </Button>
+                                                    )}
+                                                    {entry.status === "missing" && (
+                                                        <Button
+                                                            variant="default"
+                                                            size="xs"
+                                                            onClick={() => {
+                                                                setRelocatingEntry(entry);
+                                                                setRelocationLocation("");
+                                                                relocationLocationRef.current = "";
+                                                                setRelocationError(undefined);
+                                                            }}
+                                                        >
+                                                        Relocate
+                                                        </Button>
+                                                    )}
+                                                    <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>
+                                                    Remove
+                                                    </Button>
+                                                </QuickActions>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                </Table.Tbody>
+                            </Table>
+                        </Table.ScrollContainer>
+                    </>
                 )}
                 {relocatingEntry && (
                     <div>
