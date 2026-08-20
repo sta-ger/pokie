@@ -51,7 +51,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(await screen.findByRole("tab", {name: /Reels/}));
         await goToReelStripModeler(user);
 
-        expect(screen.getAllByText("Literal — 4 symbols")).toHaveLength(5);
+        expect(screen.getAllByText("Literal — 4 symbol(s)")).toHaveLength(5);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
         expect(screen.getByLabelText("Reel 1 symbol 1")).toHaveValue("A");
         expect(screen.getByLabelText("Reel 1 symbol 2")).toHaveValue("K");
