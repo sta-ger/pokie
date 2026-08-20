@@ -702,6 +702,7 @@ describe("ProjectsPanel: Import Project", () => {
         // panel. Keep the Open button in its labelled card rather than clipping the sixth table column.
         expect(stylesheet).toMatch(/@media \(max-width: 75em\)[\s\S]*?\.project-registry-entry > td \{[\s\S]*?display: grid;/);
         expect(stylesheet).toMatch(/\.project-registry-entry > td \{[\s\S]*?min-width: 0;/);
+        expect(stylesheet).toMatch(/@media \(max-width: 48em\)[\s\S]*?\.project-registry-entry > td,[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/);
     });
 
     it("removes selected missing registrations together after confirmation", async () => {

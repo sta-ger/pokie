@@ -89,3 +89,13 @@ body,
         border: 0;
     }
 }
+
+/* At phone width, a label/value split leaves the project name, path, and action controls with too
+   little usable width. Keep each card's hierarchy, but stack its labels above full-width content so
+   long project locations remain scannable and the controls stay practical to use. */
+@media (max-width: 48em) {
+    .project-registry-entry > td,
+    .project-registry-selection:not(:empty) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
