@@ -185,7 +185,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: default production r
         }
     });
 
-    it("recovers from a failed staging build through the production resolver, leaves no cache artifacts, and safely retries without a second install once cached", async () => {
+    it("exposes exhausted staging-build retries as a materialization error, clears the failed cache, and reuses a fresh retry", async () => {
         const blueprintPath = writeStarterBlueprint();
 
         const flakyRunner = failOneStagingBuildThenDelegate(withLocalPokieInstall(pokiePackageRootWithSpaces));
