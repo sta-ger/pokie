@@ -834,7 +834,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 <Title order={2}>{describeProjectName(header)}</Title>
                 {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
                 {projectKey !== undefined && (
-                    <AdvancedDisclosure detail="project location">
+                    <AdvancedDisclosure label="project location">
                         <Text size="sm">Project path: {projectKey}</Text>
                         <Button variant="default" size="xs" mt="xs" onClick={copyProjectPath}>
                             Copy path
