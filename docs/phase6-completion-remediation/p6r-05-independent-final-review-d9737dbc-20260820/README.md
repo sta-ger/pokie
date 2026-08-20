@@ -17,6 +17,13 @@ then builds through a fresh staging directory and borrows that ready cache entry
 without another install.  The unit file covers the same lifecycle boundaries,
 including dependency failure cleanup, retry, and reuse.
 
+The exercised production path is
+`createMaterializingRuntimePackageResolver()` through
+`BlueprintProjectMaterializer.runDependenciesPhase()` and its staging-directory
+cleanup in `materializeUnderLock()`: the resolver propagates the typed failure
+without yielding a runtime path, while the next caller creates and then reuses
+the verified cache entry.
+
 No official release or packaging gate was run.  This index records the current
 source, machine-owned coverage, and retained P6R-04 rendered evidence; it does
 not substitute for the post-approval lifecycle gate.
