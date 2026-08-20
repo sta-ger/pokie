@@ -755,26 +755,17 @@ describe("StudioServer", () => {
             expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
         });
 
-        it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 400 domain error carrying the raw npm diagnostic as a separate 'detail' field (same convention as every other Home Open Project failure), a retry succeeds, and a later Open reuses the cache without a second install", async () => {
+        it("retries a transient staged install through Home Open Project so one Open reaches the Workspace, then reuses the cache", async () => {
             const flakyRunner = failFirstInstallThenDelegate(runBundledNpmCommand);
             const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
 
-            const failed = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(failed.status).toBe(400);
-            const failedBody = failed.body as {error: string; detail?: string};
-            expect(failedBody.error).not.toContain("npm ERR!");
-            expect(failedBody.error.toLowerCase()).toContain("dependencies");
-            // The raw npm diagnostic is still reachable -- as its own separate field, never folded into
-            // the primary human message above -- so a client can offer it as expandable detail.
-            expect(failedBody.detail).toContain("npm ERR! simulated transient local npm failure");
-
-            const retried = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(retried.status).toBe(200);
+            const openedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(openedAfterAutomaticRetry.status).toBe(200);
             expect(flakyRunner.calls).toBe(2);
 
             await post(`${baseUrl}/api/projects/close`);
-            const cachedAfterRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(cachedAfterRetry.status).toBe(200);
+            const cachedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(cachedAfterAutomaticRetry.status).toBe(200);
             expect(flakyRunner.calls).toBe(2);
         });
     });

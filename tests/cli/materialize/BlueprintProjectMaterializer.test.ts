@@ -36,6 +36,20 @@ function createRecordingRunner(fail?: string): PackageCommandRunning & {calls: R
     return Object.assign(runner, {calls});
 }
 
+function createFailOnceRunner(): PackageCommandRunning & {calls: RecordedCommand[]} {
+    const calls: RecordedCommand[] = [];
+    let failed = false;
+    const runner = (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
+        calls.push({command, args, cwd});
+        if (!failed) {
+            failed = true;
+            return Promise.reject(new Error("temporarily locked npm cache"));
+        }
+        return Promise.resolve({stdout: "", stderr: ""});
+    };
+    return Object.assign(runner, {calls});
+}
+
 function validReport(packageRoot: string): PokieGamePackageValidationReport {
     return {packageRoot, valid: true, game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}, errors: [], warnings: [], suggestions: []};
 }
@@ -176,6 +190,20 @@ describe("BlueprintProjectMaterializer", () => {
             fs.rmSync(spacedCacheRoot, {recursive: true, force: true});
             fs.rmSync(spacedSourceDir, {recursive: true, force: true});
         }
+    });
+
+    it("retries a transient dependency installation failure so the initial open can reach its Workspace", async () => {
+        const runner = createFailOnceRunner();
+        const packageValidator = createStubPackageValidator(validReport);
+        const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, packageValidator, cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+
+        const result = await materializer.materialize(blueprintProjectOf(blueprintPath));
+
+        expect(runner.calls).toHaveLength(2);
+        expect(runner.calls.map((call) => call.args)).toEqual([["install", "--omit=dev"], ["install", "--omit=dev"]]);
+        expect(packageValidator.calls).toEqual([runner.calls[1].cwd]);
+        expect(fs.existsSync(result.runtimePath)).toBe(true);
     });
 
     it("reuses the same cache directory for an unchanged blueprint and pokie version, without regenerating, reinstalling, or reverifying", async () => {
@@ -319,6 +347,8 @@ describe("BlueprintProjectMaterializer", () => {
 
         expect(caught).toBeInstanceOf(BlueprintMaterializationError);
         expect((caught as BlueprintMaterializationError).phase).toBe("dependencies");
+        expect((caught as BlueprintMaterializationError).details).toContain("network unreachable");
+        expect(failingRunner.calls).toHaveLength(2);
         expect(fs.readdirSync(cacheRoot)).toEqual([]);
 
         const workingRunner = createRecordingRunner();
