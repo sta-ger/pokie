@@ -1,0 +1,11 @@
+NAVIGATE visible public Studio Projects route
+INPUT rendered Search projects="P6 20 Visual Audit" through mouse/keyboard
+OBSERVE desktop registry remains tabular with visible headers and no horizontal overflow; Relocate 80x30px; Remove 77x30px
+CAPTURE 01-projects-desktop-registry.png
+OBSERVE 405px card stacks every labelled cell in one column with no horizontal overflow; Relocate 80x30px; Remove 77x30px
+CAPTURE 02-projects-405-stacked-card.png
+SCROLL visible 405px Projects card into the viewport using browser mouse wheel
+CLICK rendered Relocate at 92,383 (80x30px)
+OBSERVE 405px Relocate action opens rendered relocation controls without changing files on disk
+CAPTURE 03-projects-405-relocate-action.png
+CLOSE rendered relocation controls without changing the registry
