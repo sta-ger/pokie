@@ -5,6 +5,8 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 const RESOLVE_REELS_URL = "/api/home/blueprints/reel-strip-generation-preview";
+const SAVE_MANAGED_URL = "/api/home/blueprints/save-managed";
+const OPEN_PROJECT_URL = "/api/home/projects/open";
 
 function jsonResponse(body: unknown) {
     return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
@@ -30,6 +32,12 @@ async function addLiteralSymbol(user: ReturnType<typeof userEvent.setup>, symbol
 
 async function openConstraintsAdvanced(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(screen.getByRole("button", {name: "Show advanced details (constraints JSON)"}));
+}
+
+async function setNumberInput(user: ReturnType<typeof userEvent.setup>, label: string, value: string): Promise<void> {
+    await user.clear(screen.getByLabelText(label));
+    await user.type(screen.getByLabelText(label), value);
+    await user.tab();
 }
 
 const LITERAL_AB_ANALYSIS = {length: 2, symbolCounts: {A: 1, B: 1}, symbolFrequencies: {A: 0.5, B: 0.5}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {}};
@@ -800,4 +808,188 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByLabelText("Length")).toHaveValue("12");
         expect(screen.getByLabelText("Seed")).toHaveValue("99");
     });
+
+    it("completes the visual modeler workflow, saves the shared Game Model, and retains the applied generated reel after remount", async () => {
+        const user = userEvent.setup();
+        const managedSaveBodies: Array<{blueprint: {reelStripGeneration: Record<string, unknown>[]}}> = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === RESOLVE_REELS_URL) {
+                return jsonResponse({
+                    status: "ok",
+                    errors: [],
+                    warnings: [],
+                    reels: [{
+                        reelIndex: 0,
+                        type: "generated",
+                        seed: 7,
+                        success: true,
+                        attemptsUsed: 1,
+                        diagnostics: [],
+                        strip: ["A", "K", "Q", "J", "A", "K"],
+                        analysis: {
+                            length: 6,
+                            symbolCounts: {A: 2, K: 2, Q: 1, J: 1},
+                            symbolFrequencies: {A: 2 / 6, K: 2 / 6, Q: 1 / 6, J: 1 / 6},
+                            minimumCircularDistances: {A: 3},
+                            maximumCircularDistances: {A: 3},
+                            maximumConsecutiveOccurrences: {A: 1},
+                        },
+                    }],
+                });
+            }
+            if (url === "/api/home/blueprints/validate") {
+                return jsonResponse({status: "ok", warnings: []});
+            }
+            if (url === SAVE_MANAGED_URL) {
+                managedSaveBodies.push(JSON.parse((init?.body as string | undefined) ?? "{}"));
+                return jsonResponse({
+                    status: "ok",
+                    path: "/POKIE Projects/modeler/blueprint.json",
+                    name: "modeler",
+                    blueprintHash: "sha256:modeler",
+                    registeredProject: {location: "/POKIE Projects/modeler", name: "modeler", type: "blueprint", capabilities: [], origin: "managed", lastOpenedAt: "2026-08-20T00:00:00.000Z", status: "ok"},
+                });
+            }
+            if (url === OPEN_PROJECT_URL) {
+                return jsonResponse({context: {status: "loaded"}, manifest: {id: "modeler"}});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+        await user.click(await screen.findByRole("tab", {name: /Reels/}));
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+
+        // A literal draft is an ordinary first-class modeler path, before switching this reel to its
+        // generated configuration. Neither the raw constraint textarea nor a raw draft/response is
+        // exposed to assistive technology until its respective disclosure is expanded.
+        await addLiteralSymbol(user, "A");
+        expect(screen.getByLabelText("Reel 1 symbol 1")).toHaveValue("A");
+        await user.click(screen.getByRole("radio", {name: "Generated"}));
+        await user.click(screen.getByRole("radio", {name: "Weights"}));
+        expect(screen.getByRole("radio", {name: "Weights"})).toBeChecked();
+
+        const constraintsToggle = screen.getByRole("button", {name: "Show advanced details (constraints JSON)"});
+        const hiddenConstraints = screen.getByLabelText("Constraints for reel 1");
+        expect(constraintsToggle).toHaveAttribute("aria-expanded", "false");
+        expect(hiddenConstraints.closest("[hidden]")).not.toBeNull();
+        expect(screen.queryByRole("textbox", {name: "Constraints for reel 1"})).not.toBeInTheDocument();
+        constraintsToggle.focus();
+        await user.keyboard("{Enter}");
+        expect(constraintsToggle).toHaveAttribute("aria-expanded", "true");
+        expect(screen.getByRole("textbox", {name: "Constraints for reel 1"})).toBeVisible();
+        await user.keyboard(" ");
+        expect(constraintsToggle).toHaveAttribute("aria-expanded", "false");
+
+        // Exercise both source modes and their persisted source values, without using the raw JSON
+        // editor as a shortcut for ordinary configuration.
+        await user.click(screen.getByRole("radio", {name: "Counts"}));
+        await user.click(screen.getByRole("combobox", {name: "Symbol"}));
+        await user.keyboard("{ArrowDown}{Enter}");
+        await user.clear(screen.getByLabelText("Count"));
+        await user.type(screen.getByLabelText("Count"), "3");
+        await user.click(screen.getByRole("button", {name: "Add count"}));
+        expect(screen.getByLabelText("Length (derived from counts)")).toHaveValue("3");
+        await user.click(screen.getByRole("radio", {name: "Weights"}));
+        await user.click(screen.getByRole("combobox", {name: "Symbol"}));
+        await user.keyboard("{ArrowDown}{Enter}");
+        await user.clear(screen.getByLabelText("Weight"));
+        await user.type(screen.getByLabelText("Weight"), "2");
+        await user.click(screen.getByRole("button", {name: "Add weight"}));
+        await setNumberInput(user, "Length", "6");
+        await setNumberInput(user, "Seed", "7");
+
+        // Every common visual branch persists its own type, value, selected symbol, and wrap option.
+        const commonType = screen.getByRole("combobox", {name: "Common constraint type for reel 1"});
+        const commonValue = "Common constraint value for reel 1";
+        await user.click(screen.getByRole("combobox", {name: "Common constraint symbols for reel 1"}));
+        await user.keyboard("{ArrowDown}{Enter}");
+        await setNumberInput(user, commonValue, "3");
+        await user.click(screen.getByRole("button", {name: "Add constraint"}));
+        expect(screen.getByText("Minimum spacing: 3, A")).toBeInTheDocument();
+        await user.click(commonType);
+        await user.keyboard("{ArrowDown}{Enter}");
+        await user.click(screen.getByRole("combobox", {name: "Common constraint symbols for reel 1"}));
+        await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+        await setNumberInput(user, commonValue, "5");
+        await user.click(screen.getByRole("button", {name: "Add constraint"}));
+        expect(screen.getByText("Maximum spacing: 5, K")).toBeInTheDocument();
+        await user.click(commonType);
+        await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+        await user.click(screen.getByRole("combobox", {name: "Common constraint symbols for reel 1"}));
+        await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
+        await setNumberInput(user, commonValue, "2");
+        await user.click(screen.getByRole("switch", {name: "Wrap common constraint around reel 1"}));
+        await user.click(screen.getByRole("button", {name: "Add constraint"}));
+        expect(screen.getByText("Maximum consecutive occurrences: 2, Q, no wrap around")).toBeInTheDocument();
+        await user.click(screen.getByRole("combobox", {name: "Constraint preset for reel 1"}));
+        await user.keyboard("{ArrowDown}{Enter}");
+        await user.click(screen.getByRole("button", {name: "Add constraint preset to reel 1"}));
+
+        const stackSection = screen.getByRole("group", {name: "Stack constraints"});
+        await user.click(within(stackSection).getByRole("combobox", {name: "Eligible stack symbols for reel 1"}));
+        await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
+        await user.click(within(stackSection).getByRole("radio", {name: "Length range"}));
+        await setNumberInput(user, "Stack minimum length for reel 1", "2");
+        await setNumberInput(user, "Stack maximum length for reel 1", "3");
+        await setNumberInput(user, "Stack count for reel 1", "1");
+        await user.click(within(stackSection).getByRole("button", {name: "Add stack rule"}));
+        expect(within(stackSection).getByText("Stack 1: J, length 2–3, 1 required")).toBeInTheDocument();
+        await user.click(within(stackSection).getByRole("button", {name: "Edit"}));
+        await setNumberInput(user, "Stack count for reel 1", "2");
+        await user.click(within(stackSection).getByRole("button", {name: "Save stack rule"}));
+        expect(within(stackSection).getByText("Stack 1: J, length 2–3, 2 required")).toBeInTheDocument();
+
+        await openConstraintsAdvanced(user);
+        const constraintsField = screen.getByLabelText("Constraints for reel 1");
+        expect((constraintsField as HTMLTextAreaElement).value).toContain('"maximumCircularDistance"');
+        await user.clear(constraintsField);
+        await user.type(constraintsField, "{{malformed");
+        await user.tab();
+        expect(await screen.findByRole("alert")).toBeInTheDocument();
+        expect(screen.getByText("Stack 1: J, length 2–3, 2 required")).toBeInTheDocument();
+        fireEvent.change(constraintsField, {target: {value: '[{"type":"maximumConsecutiveOccurrences","maximumConsecutive":4,"symbolIds":["A"]}]'}});
+        fireEvent.blur(constraintsField);
+        await waitFor(() => expect(screen.getByText("Maximum consecutive occurrences: 4, A")).toBeInTheDocument());
+        await user.click(screen.getByRole("button", {name: "Remove common constraint 1 for reel 1"}));
+        expect(screen.getByText("No spacing or occurrence constraints yet.")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Check & preview"}));
+        expect(await screen.findByText("Generated successfully")).toBeInTheDocument();
+        const rawToggle = screen.getByRole("button", {name: "Show advanced details (raw draft config, raw preview response)"});
+        expect(rawToggle).toHaveAttribute("aria-expanded", "false");
+        expect(screen.getByText("Draft reelStripGeneration entry").closest("[hidden]")).not.toBeNull();
+        expect(screen.getByText("Raw preview response for this reel").closest("[hidden]")).not.toBeNull();
+        rawToggle.focus();
+        await user.keyboard("{Enter}");
+        expect(rawToggle).toHaveAttribute("aria-expanded", "true");
+        expect(screen.getByText("Raw preview response for this reel")).toBeVisible();
+
+        await user.click(screen.getByRole("button", {name: "Continue to Preview stop windows"}));
+        expect(screen.getByRole("group", {name: "Stop window preview"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Continue to Apply"}));
+        await user.click(screen.getByRole("button", {name: "Apply"}));
+        expect(screen.getByText(/Use the common Game Model Save to persist the blueprint/)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
+        await waitFor(() => expect(managedSaveBodies).toHaveLength(1));
+        const savedReel = managedSaveBodies[0].blueprint.reelStripGeneration[0];
+        expect(savedReel).toMatchObject({type: "generated", length: 6, seed: 7});
+        expect(Object.values(savedReel.symbolWeights as Record<string, number>)).toContain(2);
+        expect(await screen.findByText('Saved to "/POKIE Projects/modeler/blueprint.json".')).toBeInTheDocument();
+
+        // Applying the already-saved shared Game Model is the editor's explicit form remount boundary.
+        // The applied reel configuration belongs to that Game Model, not the Modeler's local draft.
+        await user.click(screen.getByRole("radio", {name: "JSON", hidden: true}));
+        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(managedSaveBodies[0].blueprint)}});
+        await user.click(screen.getByRole("button", {name: "Apply JSON"}));
+        await user.click(screen.getByRole("radio", {name: "Form", hidden: true}));
+        await user.click(await screen.findByRole("tab", {name: /Reels/}));
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        expect(screen.getByRole("radio", {name: "Generated"})).toBeChecked();
+        expect(screen.getByLabelText("Length")).toHaveValue("6");
+        expect(screen.getByLabelText("Seed")).toHaveValue("7");
+    }, 90000);
 });
