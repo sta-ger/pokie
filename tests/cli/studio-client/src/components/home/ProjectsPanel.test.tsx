@@ -1,5 +1,7 @@
 import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {readFileSync} from "node:fs";
+import {join} from "node:path";
 import {useLocation} from "react-router-dom";
 import {ProjectsPanel} from "../../../../../../cli/studio-client/src/components/home/ProjectsPanel";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
@@ -691,6 +693,14 @@ describe("ProjectsPanel: Import Project", () => {
         expect(within(availableRow as HTMLElement).getByText("Available game").closest("td")).toHaveAttribute("data-label", "Project");
         expect(within(availableRow as HTMLElement).getByRole("button", {name: "Open"}).closest("td")).toHaveAttribute("data-label", "Actions");
         expect(within(missingRow as HTMLElement).getByRole("checkbox", {name: "Select missing project Missing game"}).closest("td")).toHaveAttribute("data-label", "Select");
+    });
+
+    it("uses the labelled card layout while desktop navigation leaves the Projects panel too narrow for every action", () => {
+        const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
+
+        // At the 1050px audit viewport, AppShell's persistent navigation leaves about 790px for the
+        // panel. Keep the Open button in its labelled card rather than clipping the sixth table column.
+        expect(stylesheet).toMatch(/@media \(max-width: 75em\)[\s\S]*?\.project-registry-entry > td \{[\s\S]*?display: grid;/);
     });
 
     it("removes selected missing registrations together after confirmation", async () => {

@@ -8,14 +8,15 @@ body,
     overflow-x: hidden;
 }
 
-/* The Projects registry has a desktop table for fast comparison. On a phone the same rows become
-   labelled cards: project identity, availability, each metadata value, and every action stay in one
-   readable vertical unit instead of squeezing six columns into the viewport. */
+/* The Projects registry has a desktop table for fast comparison. When the fixed desktop navigation
+   leaves the main panel narrower than a table's six columns, the same rows become labelled cards:
+   project identity, availability, each metadata value, and every action stay in one readable vertical
+   unit instead of placing the reopen action beyond the viewport. */
 .project-registry-status {
     display: none;
 }
 
-@media (max-width: 48em) {
+@media (max-width: 75em) {
     .project-registry-scroll,
     .project-registry-scroll [data-radix-scroll-area-viewport] {
         overflow: visible;
