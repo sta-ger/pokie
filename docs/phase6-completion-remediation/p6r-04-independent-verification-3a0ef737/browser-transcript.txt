@@ -1,0 +1,8 @@
+Candidate 3a0ef73737a5c9419639977031c328fc3366a0d7; fresh Studio public root: HTTP 200.
+Rendered UI: Design Game > New Blueprint > Random.
+Rendered UI: edited optional name from "P6 Random Name Draft" to "P6 Random Name Final".
+Rendered UI: Generate retained the edited name; Use this blueprint > Create Project.
+Rendered observation: blueprint saved and validated, but Workspace did not open; visible error reported failed runtime-dependency installation in the materialization cache.
+Rendered UI: public Projects route listed P6 Random Name Final as Available Blueprint / Managed with Open.
+Rendered 405px Projects observation: content/action layout overflowed right; saved-project Open began at x=442, outside the 405px viewport.
+Build/Export and its dependent Play, Simulation, Replay, and reel-modeler workflow were not reached because Workspace did not open.
