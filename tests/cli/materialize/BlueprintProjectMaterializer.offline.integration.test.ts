@@ -49,17 +49,17 @@ async function postJson(url: string, body: unknown = {}): Promise<{status: numbe
 // over from a previous run of this same file gets borrowed.
 const UNPUBLISHED_POKIE_VERSION = `0.0.0-offline-e2e-unpublished-${crypto.randomBytes(4).toString("hex")}`;
 
-// Fails the very first "npm install" it's asked to run (a real, structured rejection shaped like a real
-// execFile failure -- a message plus a separate "stderr") and delegates every call after that to `base` --
-// standing in for a real, transient local npm failure (a flaky lock, a momentarily-corrupt npm cache)
-// followed by a successful retry, without ever faking BlueprintProjectMaterializer's own recovery logic.
-function failFirstInstallThenDelegate(base: PackageCommandRunning): PackageCommandRunning & {calls: number} {
+// Fails every install for one staging directory (a real, structured rejection shaped like a real execFile
+// failure -- a message plus a separate "stderr") and delegates a later staging build to `base`. This lets
+// the materializer exhaust its own transient-install retry before the production resolver must surface its
+// BlueprintMaterializationError; the caller's subsequent retry then gets a fresh staging directory.
+function failOneStagingBuildThenDelegate(base: PackageCommandRunning): PackageCommandRunning & {calls: number} {
     let calls = 0;
-    let failed = false;
+    let failedStagingDir: string | undefined;
     const runner = (command: string, args: string[], cwd: string): Promise<PackageCommandResult> => {
         calls++;
-        if (args[0] === "install" && !failed) {
-            failed = true;
+        if (args[0] === "install" && (failedStagingDir === undefined || cwd === failedStagingDir)) {
+            failedStagingDir = cwd;
             return Promise.reject(
                 Object.assign(new Error("Command failed: npm install\nnpm ERR! simulated transient local npm failure"), {
                     stderr: "npm ERR! simulated transient local npm failure -- e.g. a momentarily locked npm cache",
@@ -188,7 +188,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: default production r
     it("recovers from a failed staging build through the production resolver, leaves no cache artifacts, and safely retries without a second install once cached", async () => {
         const blueprintPath = writeStarterBlueprint();
 
-        const flakyRunner = failFirstInstallThenDelegate(withLocalPokieInstall(pokiePackageRootWithSpaces));
+        const flakyRunner = failOneStagingBuildThenDelegate(withLocalPokieInstall(pokiePackageRootWithSpaces));
         const materializer = new BlueprintProjectMaterializer(
             UNPUBLISHED_POKIE_VERSION,
             undefined,
@@ -219,12 +219,12 @@ describe("BlueprintProjectMaterializer (offline end-to-end: default production r
         try {
             expect(fs.existsSync(path.join(retried.runtimePath, "dist", "index.js"))).toBe(true);
             expect(fs.existsSync(path.join(retried.runtimePath, "node_modules", "pokie"))).toBe(true);
-            expect(flakyRunner.calls).toBe(2);
+            expect(flakyRunner.calls).toBe(3);
 
             const cachedAfterRetry = await resolveRuntimePackageRoot(blueprintPath);
             try {
                 expect(cachedAfterRetry.runtimePath).toBe(retried.runtimePath);
-                expect(flakyRunner.calls).toBe(2);
+                expect(flakyRunner.calls).toBe(3);
             } finally {
                 await cachedAfterRetry.release();
             }
