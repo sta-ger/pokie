@@ -25,6 +25,14 @@ cleanup in `materializeUnderLock()`: the resolver propagates the typed failure
 without yielding a runtime path, while the next caller creates and then reuses
 the verified cache entry.
 
+The retry-exhaustion boundary retains the final failed command result while it
+performs the bounded attempts, then constructs `BlueprintMaterializationError`
+outside that attempt's `catch`. This prevents an arbitrary runner rejection
+from escaping after cleanup, while the enclosing staging cleanup removes the
+unpublished directory before the per-key lock is released. The two materializer
+test files exercise that exact public resolver/materializer boundary, the empty
+cache observation, a fresh succeeding call, and its subsequent cache borrow.
+
 No official release or packaging gate was run.  This index records the current
 source, machine-owned coverage, and retained P6R-04 rendered evidence; it does
 not substitute for the post-approval lifecycle gate.
