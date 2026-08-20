@@ -45,6 +45,7 @@ body,
         display: grid;
         grid-template-columns: minmax(5.5rem, 30%) minmax(0, 1fr);
         gap: var(--mantine-spacing-xs);
+        min-width: 0;
         width: 100%;
         padding: var(--mantine-spacing-xs) 0;
         border: 0;

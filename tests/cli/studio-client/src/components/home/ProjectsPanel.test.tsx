@@ -701,6 +701,7 @@ describe("ProjectsPanel: Import Project", () => {
         // At the 1050px audit viewport, AppShell's persistent navigation leaves about 790px for the
         // panel. Keep the Open button in its labelled card rather than clipping the sixth table column.
         expect(stylesheet).toMatch(/@media \(max-width: 75em\)[\s\S]*?\.project-registry-entry > td \{[\s\S]*?display: grid;/);
+        expect(stylesheet).toMatch(/\.project-registry-entry > td \{[\s\S]*?min-width: 0;/);
     });
 
     it("removes selected missing registrations together after confirmation", async () => {
