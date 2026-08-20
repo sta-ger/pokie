@@ -123,10 +123,37 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         expect(within(staticExportSection).getByText("Stake Engine Export")).toBeInTheDocument();
 
-        expect(screen.queryByText("External Adapter: local-json-example")).not.toBeInTheDocument();
+        expect(screen.queryByText("local-json-example")).not.toBeInTheDocument();
 
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
-        expect(await within(remoteSection).findByText("Remote deployment (none registered yet)")).toBeInTheDocument();
+        expect(await within(remoteSection).findByText("Remote delivery is not set up")).toBeInTheDocument();
+    });
+
+    it("keeps technical target implementation details out of the primary Build/Export cards until Advanced details is opened by keyboard", async () => {
+        const user = userEvent.setup();
+        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByText("Purpose:")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByText("Destination:")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByText("Prerequisites")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate outcome library (base)"})).toBeEnabled();
+        expect(within(outcomeLibrarySection).getByText("Adapter:")).not.toBeVisible();
+        expect(within(outcomeLibrarySection).getByText("Compatibility:")).not.toBeVisible();
+
+        const details = within(outcomeLibrarySection).getByRole("button", {name: "Show advanced details (technical information)"});
+        expect(details).toHaveAttribute("aria-expanded", "false");
+        expect(details).toHaveAttribute("aria-controls");
+        details.focus();
+        await user.keyboard("{Enter}");
+
+        expect(details).toHaveAttribute("aria-expanded", "true");
+        expect(within(outcomeLibrarySection).getByText("Adapter:")).toBeVisible();
+        expect(within(outcomeLibrarySection).getByText(/weighted-outcome-library generator/)).toBeVisible();
+        expect(within(outcomeLibrarySection).getByText("Compatibility:")).toBeVisible();
     });
 
     it("runs a registered remote adapter target's own compatibility check right here (no hand-off to the Deployment tab), offering Publish once it comes back clean", async () => {
@@ -161,7 +188,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await screen.findByText("External Adapter: acme-rgs-v2");
+        await screen.findByText("Remote delivery");
         await user.click(screen.getByRole("button", {name: "Check compatibility"}));
 
         // Runs the same runDeployment(publish: false) pipeline the Deployment tab itself drives, right
@@ -237,7 +264,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await screen.findByText("External Adapter: acme-rgs-v2");
+        await screen.findByText("Remote delivery");
         // Waits for the same registry-backed resolution the Stake Engine Export card's own enabled state
         // depends on, so the compatibility check below is guaranteed to run after the registry's
         // already-registered library has actually loaded, not against a still-loading registryView.

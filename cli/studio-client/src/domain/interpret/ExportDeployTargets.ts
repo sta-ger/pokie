@@ -62,27 +62,27 @@ export type ExportDeployTargetCard = {
 const ARTIFACT_TARGET_CARD_INFO: Readonly<Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string}>> = {
     tsPackage: {
         label: "TypeScript Game Package",
-        purpose: "Builds a runnable tsPackage from this project's own GameBlueprint source -- the same conversion \"pokie build --target tsPackage\" runs.",
+        purpose: "Create a runnable game package from this project.",
         destination: "A new package directory (default: a \"tsPackage\" sibling of this project).",
     },
     outcomeLibrary: {
         label: "Outcome library (republish)",
-        purpose: "Republishes this project's own already-computed outcome library bundle to a new location -- never re-derives it from a game (see the Outcome libraries group above for that).",
+        purpose: "Copy this outcome library to a new location.",
         destination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
     },
     stakeAdapter: {
         label: "Stake Engine export (republish)",
-        purpose: "Republishes this project's own already-exported Stake Engine bundle to a new location -- never re-derives it from an outcome library (see the Static export group above for that).",
+        purpose: "Copy this Stake Engine export to a new location.",
         destination: "A new Stake Engine export directory beside this project by default.",
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
-        purpose: "Republishes this project's own already-loaded PAR sheet to a new .xlsx workbook file -- never derives one from a package/blueprint.",
+        purpose: "Save a copy of this PAR sheet as an Excel workbook.",
         destination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
     },
     wasm: {
         label: "WASM",
-        purpose: "No builder is registered for this target today -- no ProjectType grants the capability it requires.",
+        purpose: "This output is not available for the current project.",
         destination: "Not available.",
     },
 };
@@ -108,7 +108,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                     "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.",
                 capabilities: [],
                 limits: entry.unsupportedNotes,
-                prerequisites: [],
+                prerequisites: ["This project is ready to build. Choose a destination or use the default."],
                 locality: "local",
                 compatibility: "The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.",
                 artifactTarget: entry.target,
@@ -129,7 +129,7 @@ const STAKE_ENGINE_EXPORT_CARD: ExportDeployTargetCard = {
     adapter: "Stake Engine math-sdk static file format",
     version: `manifest schema v${STAKE_ENGINE_MANIFEST_SCHEMA_VERSION}`,
     purpose:
-        "Exports one or more bet modes' canonical outcome libraries to the real Stake Engine math-sdk static file format -- the first static export target POKIE ships.",
+        "Create a standalone Stake Engine bundle from this project's outcomes.",
     destination: "A local output directory: index.json, a per-mode lookup CSV, per-mode zstd-compressed books, and a sibling pokie-manifest.json.",
     writePublishBehavior:
         "Export writes the whole bundle to disk in one atomic swap (an existing directory is only replaced once every file has been generated); Validate diagnostics runs the same checks first without writing anything.",
@@ -161,7 +161,7 @@ const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     adapter: "pokie's own weighted-outcome-library generator",
     version: "--",
     purpose:
-        "Generates (or selects) a canonical outcome library from this project's own current build -- the source content every other target on this page deploys/exports from.",
+        "Create the outcome library used by the other export and delivery options.",
     destination: "A local bundle directory registered for this project (outcomelibrary by default, or a custom directory) -- nothing is deployed or exported externally.",
     writePublishBehavior: "Generate writes the bundle to disk and registers it for discovery; Select/Validate/Inspect never write anything.",
     capabilities: ["Exact or bounded-sample generation, whichever the game's own mechanic supports", "Registry discovery by mode name for every other target on this page"],
@@ -180,10 +180,10 @@ function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary
     return {
         kind: "remoteDeployment",
         id: target.id,
-        label: `External Adapter: ${target.id}`,
+        label: "Remote delivery",
         adapter: "External Adapter SDK registered target",
         version: target.version,
-        purpose: "A registered ExternalDeploymentTarget -- deploys a canonical outcome library to this external format/RGS-style consumer via pokie's own External Adapter SDK.",
+        purpose: "Check and publish this project's outcome library to a configured remote destination.",
         destination: "Wherever this target's own runtime adapter delivers to -- not necessarily local to this machine.",
         writePublishBehavior:
             "Preview runs the full pipeline (compatibility check, projection, generation, artifact validation, target diagnostic) without writing; Deploy additionally publishes the generated artifacts to the target's own output location.",
@@ -204,10 +204,10 @@ function describeExternalAdapterTargetCard(target: StudioDeploymentTargetSummary
 const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     kind: "remoteDeployment",
     id: "remote-deployment-placeholder",
-    label: "Remote deployment (none registered yet)",
+    label: "Remote delivery is not set up",
     adapter: "External Adapter SDK",
     version: "--",
-    purpose: "Reserved for a real remote RGS/aggregator integration -- register an ExternalDeploymentTarget with a remote runtimeAdapter to add one.",
+    purpose: "Set up a remote destination before this project can be delivered outside Studio.",
     destination: "Not yet registered.",
     writePublishBehavior: "Not applicable until a remote target is registered.",
     capabilities: [],

@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createFakeFetch, createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -33,8 +33,17 @@ describe("ProjectDashboardPage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
-        expect(await screen.findByRole("heading", {name: "Sample Slot"})).toBeInTheDocument();
-        await waitFor(() => expect(screen.getAllByText("/games/sample-slot").length).toBeGreaterThan(0));
+        const projectHeading = await screen.findByRole("heading", {name: "Sample Slot"});
+        expect(projectHeading).toBeInTheDocument();
+        const projectHeader = projectHeading.parentElement as HTMLElement;
+        expect(within(projectHeader).getByText("Project path: /games/sample-slot")).not.toBeVisible();
+        const projectDetails = within(projectHeader).getByRole("button", {name: "Show advanced details (project location)"});
+        expect(projectDetails).toHaveAttribute("aria-expanded", "false");
+        projectDetails.focus();
+        await user.keyboard("{Enter}");
+        expect(projectDetails).toHaveAttribute("aria-expanded", "true");
+        expect(within(projectHeader).getByText("Project path: /games/sample-slot")).toBeVisible();
+        expect(within(projectHeader).getByRole("button", {name: "Copy path"})).toBeInTheDocument();
 
         // No separate "Validate" section to click into any more -- validation runs automatically as
         // soon as the project loads, and its result renders right inside Overview.

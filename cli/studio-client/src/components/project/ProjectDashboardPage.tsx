@@ -43,6 +43,7 @@ import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
 import {LoadingState} from "../common/LoadingState";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {CertificationTab} from "./CertificationTab";
@@ -769,6 +770,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, [activeTab, header.status]);
 
     const [closeError, setCloseError] = useState<string>();
+    const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
     const handleClose = (): void => {
         const doClose = (): void => {
@@ -793,6 +795,17 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, doClose);
     };
+
+    function copyProjectPath(): void {
+        if (projectKey === undefined || navigator.clipboard === undefined) {
+            setCopyPathNotice("Clipboard access is unavailable. Open Advanced details to select the project path.");
+            return;
+        }
+        navigator.clipboard
+            .writeText(projectKey)
+            .then(() => setCopyPathNotice("Project path copied."))
+            .catch(() => setCopyPathNotice("Couldn't copy the project path. Open Advanced details to select it."));
+    }
 
     if (header.status === "empty") {
         return (
@@ -819,7 +832,16 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         >
             <div>
                 <Title order={2}>{describeProjectName(header)}</Title>
-                <Text c="dimmed">{header.projectRoot}</Text>
+                {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
+                {projectKey !== undefined && (
+                    <AdvancedDisclosure detail="project location">
+                        <Text size="sm">Project path: {projectKey}</Text>
+                        <Button variant="default" size="xs" mt="xs" onClick={copyProjectPath}>
+                            Copy path
+                        </Button>
+                        {copyPathNotice && <Text size="xs" c="dimmed" aria-live="polite">{copyPathNotice}</Text>}
+                    </AdvancedDisclosure>
+                )}
                 <Button variant="default" size="xs" mt="xs" onClick={handleClose} loading={closeGuard.isBlocked()}>
                     Close project
                 </Button>
