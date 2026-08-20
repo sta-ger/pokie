@@ -12,7 +12,9 @@ It also records the visible Projects **Open** control and the resulting Fixture
 Slot Workspace. Its one action transcript and two distinct screenshots are the
 complete retained representative evidence.
 
-Earlier host attempts, alternate candidates, checksum manifests, and repeated
-captures were remediation history only and have been removed so they cannot be
-mistaken for accepted-candidate evidence. This record is verification evidence
-only; it makes no publication or campaign-completion claim.
+Superseded P6-20 host attempts, alternate candidates, checksum manifests, and
+repeated captures were remediation history only and have been removed so they
+cannot be mistaken for accepted-candidate evidence. Earlier P6-15--P6-19
+records are immutable prerequisite-step history and are not part of this P6-20
+evidence index. This record is verification evidence only; it makes no
+publication or campaign-completion claim.
