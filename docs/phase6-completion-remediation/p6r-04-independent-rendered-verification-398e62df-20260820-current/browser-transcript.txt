@@ -1,0 +1,9 @@
+[2026-08-20T17:00Z] START fresh candidate Studio from this checkout with `node ./dist/cli/pokie.js --no-open`; public root rendered.
+[2026-08-20T17:00Z] CLICK New Blueprint; CLICK Random; edit the visible optional Name; CLICK Generate; CLICK Use this blueprint; CLICK Create Project. Game Model rendered per-reel generation.
+[2026-08-20T17:05Z] CLICK POKIE Studio; CLICK New Blueprint; CLICK Recommended; CLICK Create Project. Rendered Starter Slot Workspace opened.
+[2026-08-20T17:05Z] CLICK Play; CLICK New Play session; CLICK Spin. Rendered settled round observed.
+[2026-08-20T17:05Z] CLICK Simulation; INPUT Rounds=25; CLICK Run Simulation. Rendered RTP/Recent runs report observed.
+[2026-08-20T17:05Z] CLICK Replay; INPUT target round=1 and seed=p6r04-recommended-seed; CLICK Load. Rendered loaded replay observed.
+[2026-08-20T17:06Z] CLICK Build/Export; CLICK Generate exact outcome library (base). Rendered success: 1,024 exact outcomes.
+[2026-08-20T17:06Z] CLICK Run Stake Engine Export (base) once. It did not advance within the bounded wait and rendered no product error; driver/readiness-inconclusive and not retried.
+[2026-08-20T17:08Z] Capture rendered Build/Export and Projects desktop/405px evidence.
