@@ -1,0 +1,5 @@
+Command (single serial complete-file invocation):
+
+npm run test:targeted -- tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx tests/cli/studio-client/src/integration/happyPath.test.tsx tests/cli/studio/StudioServer.test.ts
+
+Exit status: 0

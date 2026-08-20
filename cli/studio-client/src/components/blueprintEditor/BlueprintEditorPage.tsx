@@ -875,7 +875,7 @@ export function BlueprintEditorPage({
                         // The newly registered Blueprint Project is ready to use as-is; enter its
                         // Workspace rather than leaving the creator at a separate build step.
                         openProject(fetchImpl, registeredProject.location)
-                            .then(() => navigate(`/project/${encodeURIComponent(registeredProject.location)}/overview`))
+                            .then(({context}) => navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`))
                             .catch((error: unknown) => setWorkspaceOpenError(errorMessage(error)));
                     }
                 }

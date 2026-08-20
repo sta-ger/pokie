@@ -64,7 +64,10 @@ export type FetchLike = (
     init?: {method?: string; headers?: Record<string, string>; body?: string; cache?: "no-store"; signal?: AbortSignal},
 ) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
 
-type ProjectActionResult = {context: StudioContext; manifest: PokieGameManifest};
+// `/api/home/projects/open` only succeeds after Studio has selected a project context. Keep that
+// contract precise so every caller routes from the server-resolved project identity rather than the
+// potentially non-canonical registry location it submitted.
+type ProjectActionResult = {context: Extract<StudioContext, {mode: "project"}>; manifest: PokieGameManifest};
 
 export async function getContext(fetchImpl: FetchLike): Promise<StudioContext> {
     const response = await fetchImpl("/api/context");

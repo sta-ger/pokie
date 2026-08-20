@@ -1,0 +1,7 @@
+[2026-08-20T17:38:32Z] CLICK rendered Reels Edit after scrolling it into the visible viewport; the Modeler mode rendered.
+[2026-08-20T17:39:55Z] CLICK Select reel 1; configure Generated source through rendered controls.
+[2026-08-20T17:39:56Z] ADD visible A/K/Q/J counts; ADD visible minimum-spacing constraint; ADD visible No stacks rule.
+[2026-08-20T17:40:03Z] CLICK Preview; OBSERVE Generated successfully.
+[2026-08-20T17:40:04Z] CLICK Continue to Done, Use changes, then Save; later Game Model summary rendered Per-reel generation.
+[2026-08-20T17:44:19Z] OBSERVE rendered exact outcome generation completed: Generated 256 outcomes for mode "base" using exact.
+[2026-08-20T17:45:40Z] CLICK Run Stake Engine Export (base) once; OBSERVE Exported 4 file(s).

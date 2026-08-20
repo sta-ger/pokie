@@ -1,6 +1,8 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {readFileSync} from "fs";
+import {join} from "path";
 import {AppShellLayout} from "../../../../../../cli/studio-client/src/components/layout/AppShellLayout";
 import {NavTabs} from "../../../../../../cli/studio-client/src/components/layout/NavTabs";
 
@@ -36,6 +38,14 @@ function renderLayout() {
 }
 
 describe("AppShellLayout - mobile navigation", () => {
+    it("marks the main area for the phone-width navbar-offset safeguard", () => {
+        renderLayout();
+
+        expect(document.querySelector(".studio-app-main")).toHaveTextContent("content");
+        const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
+        expect(stylesheet).toMatch(/@media \(max-width: 48em\)[\s\S]*?\.studio-app-main \{[\s\S]*?padding-inline: var\(--app-shell-padding\) !important;/);
+    });
+
     it("closes the navbar after selecting a section, and returns focus to the burger", async () => {
         const user = userEvent.setup();
         const {onSelect, burger} = renderLayout();

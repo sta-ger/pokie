@@ -1,0 +1,11 @@
+[2026-08-20] CONFIRM candidate HEAD d66fb1a42707726b46f8e121d1ae2ca721412321.
+[2026-08-20] TEST one serial complete-file command completed: npm run test:targeted -- BlueprintEditorPage.reelStripModeler, ProjectDashboardPage.playWorkflow, ProjectDashboardPage.simulationWorkflow, ProjectDashboardPage.replayWorkflow, ProjectDashboardPage.exportDeploy, ProjectsPanel, happyPath, StudioServer.
+[2026-08-20] BUILD candidate completed once; START fresh Studio exactly: node ./dist/cli/pokie.js --no-open (http://127.0.0.1:3200).
+[2026-08-20] UI CREATE Recommended Blueprint project; OBSERVE workspace opened after the rendered save/registration settled.
+[2026-08-20] UI MODELER select Reel 1; choose Generated/Weights; create visual spacing constraint, preset, and J length-2--3 stack rule; open constraints Advanced details; remove intentionally incompatible constraints; PREVIEW generated successfully after 1 attempt; inspect stop-window preview; Apply; Save Game Model.
+[2026-08-20] UI PLAY create one session and Spin; OBSERVE rendered round completion.
+[2026-08-20] UI SIMULATION set Rounds=25 and Run Simulation; OBSERVE rendered RTP/report and 25/25 completed rounds.
+[2026-08-20] UI REPLAY recreate round 1 with seed p6r04-repaired-seed; Run again once; OBSERVE completed 1/1 rounds and exportable replay. With project location already open, open Replay Advanced details; both distinct rendered disclosures remained available.
+[2026-08-20] UI BUILD/EXPORT Generate exact outcome library (base) once; OBSERVE Generated 5,120 outcomes for mode base using exact.
+[2026-08-20] UI BUILD/EXPORT Run Stake Engine Export (base) once; OBSERVE Exported 4 file(s) to stakeengine.
+[2026-08-20] COMPLETE without rendered product error.

@@ -755,26 +755,17 @@ describe("StudioServer", () => {
             expect((second.body as {manifest: PokieGameManifest}).manifest).toEqual(firstBody.manifest);
         });
 
-        it("recovers from a failed staged install through Home Open Project: the failure surfaces as a 400 domain error carrying the raw npm diagnostic as a separate 'detail' field (same convention as every other Home Open Project failure), a retry succeeds, and a later Open reuses the cache without a second install", async () => {
+        it("retries a transient staged install through Home Open Project so one Open reaches the Workspace, then reuses the cache", async () => {
             const flakyRunner = failFirstInstallThenDelegate(runBundledNpmCommand);
             const {baseUrl, rawProjectRoot} = await startMaterializingServer(flakyRunner);
 
-            const failed = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(failed.status).toBe(400);
-            const failedBody = failed.body as {error: string; detail?: string};
-            expect(failedBody.error).not.toContain("npm ERR!");
-            expect(failedBody.error.toLowerCase()).toContain("dependencies");
-            // The raw npm diagnostic is still reachable -- as its own separate field, never folded into
-            // the primary human message above -- so a client can offer it as expandable detail.
-            expect(failedBody.detail).toContain("npm ERR! simulated transient local npm failure");
-
-            const retried = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(retried.status).toBe(200);
+            const openedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(openedAfterAutomaticRetry.status).toBe(200);
             expect(flakyRunner.calls).toBe(2);
 
             await post(`${baseUrl}/api/projects/close`);
-            const cachedAfterRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
-            expect(cachedAfterRetry.status).toBe(200);
+            const cachedAfterAutomaticRetry = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
+            expect(cachedAfterAutomaticRetry.status).toBe(200);
             expect(flakyRunner.calls).toBe(2);
         });
     });
@@ -1632,12 +1623,14 @@ describe("StudioServer", () => {
             let managedBaseUrl: string;
             let managedWorkDir: string;
             let managedRegistry: InMemoryStudioProjectRegistry;
+            let managedProjectRegistrationService: StudioProjectRegistrationService;
 
             beforeEach(async () => {
                 managedWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-managed-work-"));
                 const managedLoadGame = jest.fn().mockResolvedValue(createFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
                 const managedHomeService = new StudioHomeService("1.0.0", undefined, managedLoadGame);
                 managedRegistry = new InMemoryStudioProjectRegistry();
+                managedProjectRegistrationService = new StudioProjectRegistrationService(managedRegistry);
                 // Points PokiePathResolver.resolveIndependentProjectDirectory's own "POKIE Projects/<name>"
                 // convention at this test's own temp directory instead of the real machine's Documents/Home
                 // -- everything else about saveManaged() (writing blueprint.json, registering it) runs for
@@ -1668,7 +1661,7 @@ describe("StudioServer", () => {
                         undefined,
                         {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioBlueprintService>[11],
                     ),
-                    projectRegistrationService: new StudioProjectRegistrationService(managedRegistry),
+                    projectRegistrationService: managedProjectRegistrationService,
                 });
                 const address = await managedServer.start();
                 managedBaseUrl = `http://${address.host}:${address.port}`;
@@ -1741,6 +1734,23 @@ describe("StudioServer", () => {
                 expect(await managedRegistry.list()).toEqual([
                     expect.objectContaining({location: expectedPath, name: "starter-slot", origin: "managed", type: "blueprint"}),
                 ]);
+            });
+
+            it("retries a transient managed-project registration so Create Project can open the recommended model", async () => {
+                const registerManaged = jest.spyOn(managedProjectRegistrationService, "registerManaged");
+                registerManaged.mockRejectedValueOnce(new Error("temporarily locked project registry"));
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: createRecommendedBlueprint(),
+                });
+
+                expect(status).toBe(201);
+                expect(body).toMatchObject({
+                    status: "ok",
+                    registeredProject: expect.objectContaining({origin: "managed", type: "blueprint", status: "ok"}),
+                });
+                expect(registerManaged).toHaveBeenCalledTimes(2);
+                expect(await managedRegistry.list()).toHaveLength(1);
             });
 
             it("serves only declared artwork from a reopened managed Blueprint directory", async () => {

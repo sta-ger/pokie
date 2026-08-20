@@ -1,0 +1,11 @@
+[2026-08-20T16:18:51Z] NAVIGATE public Studio root; rendered Design Your Game.
+[2026-08-20T16:18:51Z] CLICK New Blueprint; CLICK Recommended; rendered editor.
+[2026-08-20T16:18:53Z] CLICK Reels; attempted one rendered Modeler selection. No product error rendered; readiness wait later inconclusive.
+[2026-08-20T16:21:27Z] CLICK Create Project; Workspace rendered successfully.
+[2026-08-20T16:23:55Z] CLICK New Play session; CLICK Spin; rendered round observed.
+[2026-08-20T16:23:56Z] CLICK Simulation; INPUT Rounds=25; CLICK Run Simulation; rendered Recent runs report observed.
+[2026-08-20T16:23:58Z] CLICK Replay; INPUT target round=1 and seed=p6r04-seed; CLICK Load; rendered loaded replay observed.
+[2026-08-20T16:24:00Z] CLICK Run again once. No rendered product error; completion wait inconclusive and not retried.
+[2026-08-20T16:25:11Z] CLICK Build/Export; CLICK Generate exact outcome library (base); rendered 1,024 outcomes generated.
+[2026-08-20T16:25:15Z] CLICK Run Stake Engine Export (base); rendered Exported 4 file(s) observed.
+[2026-08-20T16:27:20Z] NAVIGATE public Studio Projects URL; rendered Projects registry; captured desktop and 405px surfaces.

@@ -1,0 +1,11 @@
+Candidate: 398e62df147a68709b60e0e461716b9e07c6536c
+
+Command (one complete-file invocation):
+npm run test:targeted -- tests/cli/studio/StudioServer.test.ts
+
+Exit status: 0
+Test Suites: 1 passed, 1 total
+Tests: 279 passed, 279 total
+Time: 13.829 s
+
+Jest emitted its usual post-run open-handle advisory after reporting success.

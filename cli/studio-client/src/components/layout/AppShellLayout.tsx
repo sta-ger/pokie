@@ -120,7 +120,7 @@ export function AppShellLayout({
             <AppShell.Navbar p="md">
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
-            <AppShell.Main>{children}</AppShell.Main>
+            <AppShell.Main className="studio-app-main">{children}</AppShell.Main>
         </AppShell>
     );
 }

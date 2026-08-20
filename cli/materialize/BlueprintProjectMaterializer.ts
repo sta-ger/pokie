@@ -37,6 +37,12 @@ const MATERIALIZED_MARKER_FILE = ".pokie-materialized.json";
 // never correctness: whoever eventually acquires the lock always re-checks readiness before acting.
 const LOCK_RETRY_DELAY_MS = 15;
 
+// A cache materialization is the user-facing boundary behind Studio's one-click Create Project flow.
+// npm can occasionally reject an otherwise valid local install while its cache or another process is
+// momentarily busy. Retry that install once in the same disposable staging directory before reporting a
+// failure; a permanent dependency error still surfaces with npm's final diagnostic.
+const DEPENDENCY_INSTALL_ATTEMPTS = 2;
+
 // Written into a freshly claimed `<cacheDir>.lock` directory, immediately after the `mkdir` that claims it --
 // records which OS process is holding this cache key's lock so a *later* contender can tell an actively-held
 // lock (holder's pid still alive: keep waiting, never touch it) apart from an abandoned one (holder's pid is
@@ -234,23 +240,28 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     }
 
     private async runDependenciesPhase(stagingDir: string): Promise<void> {
-        try {
-            // "--omit=dev": a staged runtime's dist/index.js is already generated here (never compiled --
-            // see this class's own doc comment), so its devDependencies (e.g. "typescript") are never
-            // actually needed. Skipping them is also what makes this install genuinely offline end to end
-            // when composed with withLocalPokieInstall's own dependency-closure rewrite (see
-            // PackageCommandRunner.ts): a real running POKIE installation that isn't a dev checkout (e.g.
-            // "npm install -g pokie") never has its own devDependencies installed either, so there'd be
-            // nothing on disk for that mechanism to point "typescript" at anyway.
-            await this.runCommand("npm", ["install", "--omit=dev"], stagingDir);
-        } catch (error) {
-            throw new BlueprintMaterializationError(
-                "dependencies",
-                `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
-                    "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
-                    "for the exact npm output.",
-                extractNpmStderr(error) ?? (error instanceof Error ? error.message : String(error)),
-            );
+        for (let attempt = 1; attempt <= DEPENDENCY_INSTALL_ATTEMPTS; attempt++) {
+            try {
+                // "--omit=dev": a staged runtime's dist/index.js is already generated here (never compiled --
+                // see this class's own doc comment), so its devDependencies (e.g. "typescript") are never
+                // actually needed. Skipping them is also what makes this install genuinely offline end to end
+                // when composed with withLocalPokieInstall's own dependency-closure rewrite (see
+                // PackageCommandRunner.ts): a real running POKIE installation that isn't a dev checkout (e.g.
+                // "npm install -g pokie") never has its own devDependencies installed either, so there'd be
+                // nothing on disk for that mechanism to point "typescript" at anyway.
+                await this.runCommand("npm", ["install", "--omit=dev"], stagingDir);
+                return;
+            } catch (error) {
+                if (attempt === DEPENDENCY_INSTALL_ATTEMPTS) {
+                    throw new BlueprintMaterializationError(
+                        "dependencies",
+                        `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
+                            "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
+                            "for the exact npm output.",
+                        extractNpmStderr(error) ?? (error instanceof Error ? error.message : String(error)),
+                    );
+                }
+            }
         }
     }
 

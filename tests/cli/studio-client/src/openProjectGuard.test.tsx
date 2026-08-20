@@ -69,6 +69,7 @@ describe("useOpenProject: guarded side effects", () => {
     it("creates a Recommended Blueprint, then reopens its saved Projects row into the Workspace", async () => {
         let saved = false;
         const blueprintLocation = "/games/starter-slot/blueprint.json";
+        const generatedProjectRoot = "/games/starter-slot/generated";
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({
                 ok: true,
@@ -110,14 +111,17 @@ describe("useOpenProject: guarded side effects", () => {
             "/api/home/projects/open": () => ({
                 ok: true,
                 status: 200,
-                body: {context: {mode: "project", projectRoot: blueprintLocation}, manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}},
+                // The server may canonicalize a registry entry to its materialized runtime package.
+                // The public Open action must route to that resolved context rather than reopen the
+                // stale registry location through useProjectContext.
+                body: {context: {mode: "project", projectRoot: generatedProjectRoot}, manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}},
             }),
             "/api/project/context": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "loaded", projectRoot: blueprintLocation, game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
+                body: {status: "loaded", projectRoot: generatedProjectRoot, game: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
             }),
-            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: blueprintLocation, valid: true}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: generatedProjectRoot, valid: true}}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/replays": () => ({ok: true, status: 200, body: []}),
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
@@ -132,7 +136,7 @@ describe("useOpenProject: guarded side effects", () => {
         fireEvent.click(await screen.findByRole("button", {name: "Open"}));
 
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
-        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(blueprintLocation)}/overview`);
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(generatedProjectRoot)}/overview`);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(2);
     }, WORKFLOW_TIMEOUT_MS);
 

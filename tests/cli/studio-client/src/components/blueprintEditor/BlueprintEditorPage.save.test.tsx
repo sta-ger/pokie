@@ -88,7 +88,14 @@ describe("BlueprintEditorPage - guided Create Project", () => {
                 };
             }
             if (call.url === "/api/home/projects/open") {
-                return {ok: true, status: 200, body: {context: {status: "loaded"}, manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"}}};
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        context: {mode: "project", projectRoot: "/projects/starter-slot/blueprint.json"},
+                        manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+                    },
+                };
             }
             throw new Error(`unexpected fetch to ${call.url}`);
         });

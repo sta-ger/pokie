@@ -37,7 +37,7 @@ describe("ProjectDashboardPage", () => {
         expect(projectHeading).toBeInTheDocument();
         const projectHeader = projectHeading.parentElement as HTMLElement;
         expect(within(projectHeader).getByText("Project path: /games/sample-slot")).not.toBeVisible();
-        const projectDetails = within(projectHeader).getByRole("button", {name: "Show advanced details (project location)"});
+        const projectDetails = within(projectHeader).getByRole("button", {name: "Show project location"});
         expect(projectDetails).toHaveAttribute("aria-expanded", "false");
         projectDetails.focus();
         await user.keyboard("{Enter}");

@@ -1,0 +1,10 @@
+[2026-08-20T14:26:36Z] START fresh Chrome at public root http://127.0.0.1:3200 against candidate-built Studio.
+[2026-08-20T14:26:44Z] OBSERVE root landing rendered Design Your Game; used New Blueprint > Random and physical mouse/keyboard entry to set Name (optional) to P6 Random Name Final.
+[2026-08-20T14:26:47Z] CLICK Generate, Use this blueprint, and Create Project through rendered controls.
+[2026-08-20T14:26:50Z] OBSERVE created project was persisted, registered, and opened in the rendered Workspace.
+[2026-08-20T14:27:36Z] CLICK Play > New Play session > Spin; OBSERVE rendered round completed.
+[2026-08-20T14:28:08Z] CLICK Simulation, set rendered Rounds input to 25, and Run Simulation; OBSERVE rendered RTP report (20.00%).
+[2026-08-20T14:28:11Z] CLICK Replay > Session Spin and select the rendered Session 1 Round 1 record. Initial readiness wait elapsed without a rendered error; later observation showed Loaded replay, Full complete round artifact, and Round inspector, so the wait is not a finding.
+[2026-08-20T14:30:00Z] CLICK Build/Export > Generate outcome library (base). Later rendered error: "p6-random-name-final"'s exact outcome space (481890304 reel-stop combinations) exceeds maxOutcomeSpaceSize (20000000). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled bounded-coverage strategy via the "bounded" option.
+[2026-08-20T14:30:00Z] OBSERVE Stake Engine Export remained disabled by its displayed prerequisite: Generate an outcome library above first. No duplicate generation action was attempted.
+[2026-08-20T14:31:00Z] OBSERVE Projects registry at desktop and 405px, with the created project and visible Open action; captured the four listed representative screenshots.

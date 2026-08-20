@@ -1,0 +1,13 @@
+Candidate: 64e70730bd1c2a33244c8fa412671dae9387df41
+
+Command (one complete-file invocation):
+npm run test:targeted -- tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.playWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx tests/cli/studio-client/src/integration/happyPath.test.tsx tests/cli/studio/StudioServer.test.ts
+
+Exit status: 1
+Test Suites: 1 failed, 7 passed, 8 total
+Tests: 4 failed, 410 passed, 414 total
+Time: 382.829 s
+
+Failing file: tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx
+Failing cases (4): state before/after inspector; RNG/reel-stop debug disclosure; Session Spin inspect view; failed replay-job explanation.
+Common observed failure: Testing Library found both rendered labels "Show advanced details (project location)" and "Show advanced details (raw JSON, debug data)" for an unscoped /Show advanced details/ lookup.

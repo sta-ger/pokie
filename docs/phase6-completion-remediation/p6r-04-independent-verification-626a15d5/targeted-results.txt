@@ -1,0 +1,9 @@
+candidate_sha=626a15d5059c9b814c2d04adddbfc3bc28d28c92
+command=npm run test:targeted -- <the eight persisted complete test paths>
+result=FAIL (exit 1)
+Test Suites: 1 failed, 7 passed, 8 total
+Tests: 4 failed, 408 passed, 412 total
+failed_file=tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx
+failure_excerpt=TestingLibraryElementError: Found multiple elements with the text: /Show advanced details/
+other_persisted_files=passed
+duration_seconds=384.18

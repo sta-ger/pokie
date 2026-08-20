@@ -23,11 +23,13 @@ export function useOpenProject(): (projectRoot: string) => Promise<void> {
     return useCallback(
         (projectRoot: string) =>
             guardedAction(async () => {
-                await openProject(fetchImpl, projectRoot);
+                const {context} = await openProject(fetchImpl, projectRoot);
                 // Project identity belongs in the history entry, not only in the server's mutable
                 // current-project context. This lets a Back/Forward navigation restore the project
-                // whose state the entry represents before its dashboard can become interactive.
-                navigate(`/project/${encodeURIComponent(projectRoot)}/overview`);
+                // whose state the entry represents before its dashboard can become interactive. The
+                // server resolves the selected registry entry (a Blueprint can resolve to its generated
+                // runtime package), so its returned context is the authoritative route identity.
+                navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
             }),
         [fetchImpl, navigate, guardedAction],
     );

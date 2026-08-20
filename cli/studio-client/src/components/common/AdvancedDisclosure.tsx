@@ -5,9 +5,10 @@ import {PageSection} from "./PageSection";
 
 // The "show/hide the technical stuff" toggle -- an Anchor that flips a PageSection open/closed --
 // duplicated ad hoc across every tab (each with its own noun: "advanced settings"/"advanced
-// options"/"advanced spin options"/"raw blueprint JSON"). One shared component, one noun ("advanced
-// details"), with `detail` carrying whatever specific parenthetical a given screen wants to keep
-// (e.g. "seed, workers").
+// options"/"advanced spin options"/"raw blueprint JSON"). One shared component defaults to
+// "advanced details", with `detail` carrying whatever specific parenthetical a given screen wants
+// to keep (e.g. "seed, workers"). A parent can use `label` when the disclosure is not technical,
+// such as the project location in the page header.
 //
 // Follows the WAI-ARIA "Disclosure (Show/Hide)" pattern: the toggle is a real <button> (via
 // `component="button"`) carrying `aria-expanded` (so assistive tech announces open/closed state, not
@@ -16,14 +17,24 @@ import {PageSection} from "./PageSection";
 // rendering -- so `aria-controls` never names an element absent from the DOM (a dangling IDREF):
 // `hidden` removes it from both layout and the accessibility tree on its own, no extra `aria-hidden`
 // needed, and the *same* element (never a fresh one) is what gets revealed on open.
-export function AdvancedDisclosure({detail, defaultOpened = false, children}: {detail?: string; defaultOpened?: boolean; children: ReactNode}) {
+export function AdvancedDisclosure({
+    detail,
+    defaultOpened = false,
+    children,
+    label = "advanced details",
+}: {
+    detail?: string;
+    defaultOpened?: boolean;
+    children: ReactNode;
+    label?: string;
+}) {
     const [opened, {toggle}] = useDisclosure(defaultOpened);
     const contentId = useId();
     return (
         <div>
             <Text size="sm" mt="sm">
                 <Anchor component="button" type="button" aria-expanded={opened} aria-controls={contentId} onClick={toggle}>
-                    {opened ? "Hide" : "Show"} advanced details{detail ? ` (${detail})` : ""}
+                    {opened ? "Hide" : "Show"} {label}{detail ? ` (${detail})` : ""}
                 </Anchor>
             </Text>
             <PageSection id={contentId} legend="Advanced details" hidden={!opened}>

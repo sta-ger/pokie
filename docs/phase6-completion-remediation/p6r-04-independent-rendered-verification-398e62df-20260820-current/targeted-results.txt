@@ -1,0 +1,8 @@
+Command (one complete-file serial invocation):
+
+npm run test:targeted -- tests/cli/studio/StudioServer.test.ts
+
+Exit status: 0
+Test Suites: 1 passed, 1 total
+Tests: 279 passed, 279 total
+Time: 13.935 s
