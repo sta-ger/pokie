@@ -1,5 +1,7 @@
-2026-08-20  Fresh Chrome profile opened candidate Studio from `node ./dist/cli/pokie.js --no-open`.
-2026-08-20  Rendered Home/Design Game, New Blueprint dialog, guided model sections, and the server-filesystem picker fallback.
-2026-08-20  Recommended Blueprint was valid. Choosing Per-reel (Reel Strip Modeler) rendered five empty literal reels and nine validation errors; Create Project could not continue.
-2026-08-20  Via visible Projects controls, detected, registered, and opened the existing candidate `playable-game` fixture without altering it.
-2026-08-20  Rendered Workspace, all Game Model sections, empty/disabled Play, completed Play and one-round Simulation (warning state), Replay source and loaded Round inspector, and Build/Export/Outcome-library preflight.
+2026-08-20 fresh-profile Studio served from this checkout with `node ./dist/cli/pokie.js --no-open`.
+Rendered Design Game valid, blank/error/disabled, New Blueprint dialog, and Random success states; traversed Game basics, Layout, Symbols, Reels, Paytable, and Bets.
+Created a temporary Random Blueprint via visible controls, then rendered Workspace Overview, Game Model, Reel Strip Modeler, Play empty/session/spin, Simulation, Replay picker/inspector, Build/Export, Projects, and the 405px Projects layout.
+Simulation completed 20 rounds and visibly reported both no-seed and low-sample warnings.
+Replay loaded the recorded visible Play spin and rendered its Full/Inspectable/Exportable inspector state.
+Returned to the Recommended Blueprint, opened Reels, then visibly chose Per-reel (Reel Strip Modeler): five populated strips became invalid empty literal strips and nine errors rendered.
+Browse was invoked from the visible Projects import control; the host-native X11 picker was not a Chrome-rendered surface and is not represented as a browser screenshot.

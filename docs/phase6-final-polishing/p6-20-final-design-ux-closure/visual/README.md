@@ -1,9 +1,7 @@
 # P6-20 independent visual/product-design audit
 
-Candidate `acab3128c79f2a92b1ff328be269a0aac34b099e` was built, then served once from this checkout with `node ./dist/cli/pokie.js --no-open`. A fresh Chrome profile drove only public Studio URLs and rendered mouse/keyboard controls. The host had no graphical display, so Chrome rendered headlessly; screenshots are Chrome-rendered UI, not DOM fabrication.
+One fresh Chrome/X11 profile inspected the candidate implementation served from this checkout by exactly `node ./dist/cli/pokie.js --no-open`. Browser actions used visible controls and browser mouse/keyboard input only. The read-only companion checkout was clean at `6bb67dee3d2e8e98bab754e1000019701a17266b` before the run.
 
-The supplied read-only `pokie-examples` companion was clean at required HEAD `6bb67dee3d2e8e98bab754e1000019701a17266b` before and after the run.
+The audit found one material P2 design defect: switching a valid Recommended Blueprint to **Per-reel (Reel Strip Modeler)** discards all five populated reel strips with no warning, conversion, or recovery affordance. It creates nine visible validation errors and prevents project creation. No P0/P1 visual defect was observed.
 
-Result: **P2 finding**. Selecting **Per-reel (Reel Strip Modeler)** from the valid Recommended Blueprint silently replaces all five populated literal strips with empty strips. The model immediately shows nine errors and Create Project cannot proceed. The clear validation text prevents a bad save, but the destructive mode switch has no warning, conversion, or recovery affordance.
-
-The retained PNGs are all below 0.5 MiB; no generated project/output tree, browser profile, raw log, or automation script is committed.
+All retained PNGs are under 0.7 MiB. The generated Blueprint Project, browser profile, Studio process logs, and temporary automation were removed rather than committed.
