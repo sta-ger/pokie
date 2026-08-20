@@ -1,0 +1,4 @@
+2026-08-20T04:48Z  Candidate archive in a temporary committed-examples copy: visible Fixture Slot Play rendered fixture-round A/C/A | A/A/C | A/A/A; credits 1004, win 5, 5x.
+2026-08-20T04:50Z  Candidate-built Fixture Slot package via public candidate `pokie dev`: typed fixture-round, clicked Start new session and Spin; the same visible grid and values rendered.
+2026-08-20T04:52Z  Candidate-built Studio from `node ./dist/cli/pokie.js --no-open`: generated package was detected, registered, opened, then Play seed fixture-round / New Play session / Spin rendered the same round. Replay Session Spin selected the captured round and rendered the same grid, credits 1004, and total win 5.00 (5.00x).
+2026-08-20T04:54Z  Visible Projects recovery: Close project, Projects, then a visible mouse click on the Fixture Slot card's Open control returned to the Fixture Slot Workspace. The two retained screenshots are the bounded rendered proof.
