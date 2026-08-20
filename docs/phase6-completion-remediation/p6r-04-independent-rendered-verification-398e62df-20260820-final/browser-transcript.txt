@@ -1,0 +1,39 @@
+[2026-08-20T17:19:19.429Z] START fresh current-candidate Studio through public root
+[2026-08-20T17:19:19.890Z] CLICK "New Blueprint" at rendered coordinates (342,298)
+[2026-08-20T17:19:20.382Z] CLICK "Random" at rendered coordinates (802,176)
+[2026-08-20T17:19:20.851Z] INPUT "Name (optional)"="P6R04 Current Random" through rendered browser control
+[2026-08-20T17:19:21.358Z] CLICK "Generate" at rendered coordinates (777,221)
+[2026-08-20T17:19:21.870Z] CLICK "Use this blueprint" at rendered coordinates (756,406)
+[2026-08-20T17:19:22.305Z] CLICK "Create Project" at rendered coordinates (342,186)
+[2026-08-20T17:19:25.544Z] CLICK "Game Model" at rendered coordinates (130,137)
+[2026-08-20T17:20:31.666Z] OBSERVE Random Game Model rendered its per-reel generation views (Game window, Full strips, Analysis).
+[2026-08-20T17:20:33.029Z] CLICK "POKIE Studio" at rendered coordinates (62,29)
+[2026-08-20T17:20:33.481Z] CLICK "New Blueprint" at rendered coordinates (342,298)
+[2026-08-20T17:20:33.971Z] CLICK "Recommended" at rendered coordinates (578,176)
+[2026-08-20T17:20:34.407Z] CLICK "Create Project" at rendered coordinates (342,186)
+[2026-08-20T17:20:35.035Z] OBSERVE rendered Recommended Workspace opened.
+[2026-08-20T17:20:35.058Z] CLICK "Play" at rendered coordinates (130,178)
+[2026-08-20T17:20:35.505Z] CLICK "New Play session" at rendered coordinates (377,354)
+[2026-08-20T17:20:35.960Z] CLICK "Spin" at rendered coordinates (333,376)
+[2026-08-20T17:20:36.366Z] OBSERVE rendered Play spin settled.
+[2026-08-20T17:20:36.406Z] CLICK "Simulation" at rendered coordinates (130,219)
+[2026-08-20T17:20:36.906Z] INPUT "Rounds"="25" through rendered browser control
+[2026-08-20T17:20:37.363Z] CLICK "Run Simulation" at rendered coordinates (577,347)
+[2026-08-20T17:20:37.765Z] OBSERVE rendered 25-round Simulation report.
+[2026-08-20T17:20:37.780Z] CLICK "Replay" at rendered coordinates (130,260)
+[2026-08-20T17:20:38.205Z] INPUT "Target round number in a new replay session"="1" through rendered browser control
+[2026-08-20T17:20:38.626Z] INPUT "Seed (optional)"="p6r04-current-rendered-seed" through rendered browser control
+[2026-08-20T17:20:39.055Z] CLICK "Load" at rendered coordinates (1210,418)
+[2026-08-20T17:20:39.457Z] OBSERVE rendered Replay request loaded.
+[2026-08-20T17:20:39.472Z] CLICK "Build/Export" at rendered coordinates (130,300)
+[2026-08-20T17:20:39.937Z] CLICK "Generate exact outcome library (base)" at rendered coordinates (423,447)
+[2026-08-20T17:20:41.768Z] OBSERVE rendered exact outcome generation completed with 1,024 outcomes.
+[2026-08-20T17:20:42.337Z] CAPTURE build-export-desktop.png
+[2026-08-20T17:20:42.988Z] CAPTURE build-export-405px.png
+[2026-08-20T17:20:43.595Z] NAVIGATE public Studio URL #/home/projects
+[2026-08-20T17:20:44.104Z] CAPTURE projects-405px.png
+[2026-08-20T17:20:44.966Z] CAPTURE projects-desktop.png
+[2026-08-20T17:20:44.966Z] COMPLETE rendered workflow.
+[2026-08-20T17:21:22.173Z] NAVIGATE public Studio URL #/project/exportDeploy
+[2026-08-20T17:21:22.624Z] CLICK "Run Stake Engine Export (base)" once at rendered coordinates (405,814)
+[2026-08-20T17:21:23.694Z] OBSERVE rendered Stake Engine Export completed.
