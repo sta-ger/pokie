@@ -229,6 +229,18 @@ function TargetCard({
                 </Text>{" "}
                 {card.destination}
             </Text>
+            {!card.supported && (
+                <>
+                    <Text size="sm" fw={600} mt={4}>
+                        Unavailable for this project
+                    </Text>
+                    <List size="sm" withPadding>
+                        {(card.unavailableReasons.length > 0 ? card.unavailableReasons : ["This output is not available for the current project."]).map((reason, index) => (
+                            <List.Item key={index}>{reason}</List.Item>
+                        ))}
+                    </List>
+                </>
+            )}
             {card.prerequisites.length > 0 && (
                 <>
                     <Text size="sm" fw={600} mt={4}>
@@ -296,7 +308,7 @@ function TargetCard({
                 </>
             )}
 
-            {card.kind === "buildArtifact" && card.artifactTarget && (
+            {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
                 <>
                     <PathInput
                         label={card.artifactTarget === "parWorkbook" ? "Output file (optional)" : "Output directory (optional)"}
@@ -323,10 +335,8 @@ function TargetCard({
                             <Text size="sm">Target: {card.label}</Text>
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
-                            <Text size="sm">Output type: {artifactPreview.result.destinationKind}</Text>
-                            <Text size="sm">Conflict state: {artifactPreview.status === "ok" ? "Available" : "Conflict — build will not overwrite it"}</Text>
-                            <Text size="sm">Planned outputs: {artifactPreview.result.plannedOutputs.join("; ")}</Text>
-                            {artifactPreview.status === "conflict" && <ErrorState message={artifactPreview.result.message} />}
+                            <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
+                            {artifactPreview.status === "conflict" && <ErrorState message="This destination already contains files. Choose a different destination; Build will not overwrite it." />}
                         </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
@@ -448,6 +458,12 @@ function TargetCard({
             <AdvancedDisclosure detail="technical information">
                 <Text size="sm">
                     <Text span fw={600}>
+                        Technical destination:
+                    </Text>{" "}
+                    {card.technicalDestination}
+                </Text>
+                <Text size="sm">
+                    <Text span fw={600}>
                         Adapter:
                     </Text>{" "}
                     {card.adapter} (v{card.version})
@@ -458,6 +474,24 @@ function TargetCard({
                     </Text>{" "}
                     {card.writePublishBehavior}
                 </Text>
+                {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
+                    <>
+                        <Text size="sm" mt={4}>
+                            <Text span fw={600}>
+                                Planned outputs:
+                            </Text>{" "}
+                            {artifactPreview.result.plannedOutputs.join("; ")}
+                        </Text>
+                        {artifactPreview.status === "conflict" && (
+                            <Text size="sm" mt={4}>
+                                <Text span fw={600}>
+                                    Preflight detail:
+                                </Text>{" "}
+                                {artifactPreview.result.message}
+                            </Text>
+                        )}
+                    </>
+                )}
                 {card.capabilities.length > 0 && (
                     <>
                         <Text size="sm" fw={600} mt={4}>

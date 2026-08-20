@@ -1,4 +1,4 @@
-import {describeExportDeployTargetCards} from "../../../../../../cli/studio-client/src/domain/interpret/ExportDeployTargets";
+import {describeArtifactBuildTargetCards, describeExportDeployTargetCards} from "../../../../../../cli/studio-client/src/domain/interpret/ExportDeployTargets";
 import type {StudioDeploymentTargetSummary, StudioProjectCapability} from "../../../../../../cli/studio-client/src/api/types";
 
 const BUILDABLE_CAPABILITIES: StudioProjectCapability[] = ["blueprint.build"];
@@ -99,5 +99,39 @@ describe("describeExportDeployTargetCards", () => {
                 expect(field).not.toMatch(bareDeploymentPattern);
             }
         }
+    });
+});
+
+describe("describeArtifactBuildTargetCards", () => {
+    it("keeps an unsupported output visible with its concrete unavailable reason, while reserving destination protocol for Advanced details", () => {
+        const cards = describeArtifactBuildTargetCards([
+            {
+                target: "stakeAdapter",
+                supported: false,
+                unsupportedNotes: ["This target only republishes an existing Stake Engine export."],
+            },
+        ]);
+
+        expect(cards).toHaveLength(1);
+        expect(cards[0]).toMatchObject({
+            id: "artifact-stakeAdapter",
+            supported: false,
+            destination: "Choose a folder for the copied Stake Engine export, or use the default destination.",
+            technicalDestination: "A new Stake Engine export directory beside this project by default.",
+            unavailableReasons: ["This target only republishes an existing Stake Engine export."],
+        });
+        expect(cards[0].limits).toEqual([]);
+    });
+
+    it("uses product-facing primary destinations while retaining exact destination and write behavior as advanced detail", () => {
+        const cards = describeExportDeployTargetCards([target()], BUILDABLE_CAPABILITIES);
+        const stakeCard = cards.find((card) => card.kind === "staticExport");
+        const remoteCard = cards.find((card) => card.kind === "remoteDeployment" && card.deploymentTarget !== undefined);
+
+        expect(stakeCard?.destination).not.toMatch(/index\.json|zstd|CSV|manifest/);
+        expect(stakeCard?.technicalDestination).toMatch(/index\.json.*zstd-compressed books.*pokie-manifest\.json/);
+        expect(stakeCard?.writePublishBehavior).toMatch(/atomic swap/);
+        expect(remoteCard?.destination).not.toMatch(/runtime adapter/);
+        expect(remoteCard?.technicalDestination).toMatch(/runtime adapter/);
     });
 });
