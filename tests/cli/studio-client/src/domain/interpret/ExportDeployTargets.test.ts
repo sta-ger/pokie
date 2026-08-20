@@ -123,6 +123,24 @@ describe("describeArtifactBuildTargetCards", () => {
         expect(cards[0].limits).toEqual([]);
     });
 
+    it("supplies every unsupported artifact target with a target-specific next step when the server has no reason", () => {
+        const cards = describeArtifactBuildTargetCards([
+            {target: "tsPackage", supported: false, unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+            {target: "stakeAdapter", supported: false, unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, unsupportedNotes: []},
+            {target: "wasm", supported: false, unsupportedNotes: []},
+        ]);
+
+        expect(cards.map((card) => card.unavailableReasons)).toEqual([
+            ["This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one."],
+            ["This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
+            ["This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
+            ["This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue."],
+            ["WASM export is not available yet because POKIE has no WASM builder. Choose another output format."],
+        ]);
+    });
+
     it("uses product-facing primary destinations while retaining exact destination and write behavior as advanced detail", () => {
         const cards = describeExportDeployTargetCards([target()], BUILDABLE_CAPABILITIES);
         const stakeCard = cards.find((card) => card.kind === "staticExport");

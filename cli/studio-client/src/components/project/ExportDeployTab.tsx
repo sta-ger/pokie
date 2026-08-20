@@ -235,7 +235,7 @@ function TargetCard({
                         Unavailable for this project
                     </Text>
                     <List size="sm" withPadding>
-                        {(card.unavailableReasons.length > 0 ? card.unavailableReasons : ["This output is not available for the current project."]).map((reason, index) => (
+                        {card.unavailableReasons.map((reason, index) => (
                             <List.Item key={index}>{reason}</List.Item>
                         ))}
                     </List>

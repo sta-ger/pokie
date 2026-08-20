@@ -171,6 +171,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
         expect(await within(buildArtifactSection).findByText("This target only copies an existing outcome library.")).toBeVisible();
+        expect(
+            within(buildArtifactSection).getByText(
+                "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
+            ),
+        ).toBeVisible();
         expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).not.toHaveLength(0);
         expect(within(buildArtifactSection).getAllByRole("button", {name: "Build"})).toHaveLength(1);
 

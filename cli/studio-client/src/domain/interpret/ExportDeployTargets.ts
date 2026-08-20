@@ -61,36 +61,45 @@ export type ExportDeployTargetCard = {
 // reachable as a card (ArtifactBuilderRegistry reports it as supported by no ProjectType today -- see
 // ArtifactBuilderRegistry's own "wasm" doc comment), but is listed here for the same exhaustiveness reason
 // GROUP_LABELS below covers every ExportDeployTargetKind.
-const ARTIFACT_TARGET_CARD_INFO: Readonly<Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string}>> = {
+const ARTIFACT_TARGET_CARD_INFO: Readonly<
+    Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
+> = {
     tsPackage: {
         label: "TypeScript Game Package",
         purpose: "Create a runnable game package from this project.",
         destination: "Choose a folder for the finished game package, or use the default destination.",
         technicalDestination: "A new package directory (default: a \"tsPackage\" sibling of this project).",
+        unavailableReason: "This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one.",
     },
     outcomeLibrary: {
         label: "Outcome library (republish)",
         purpose: "Copy this outcome library to a new location.",
         destination: "Choose a folder for the copied outcome library, or use the default destination.",
         technicalDestination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
+        unavailableReason:
+            "This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
     },
     stakeAdapter: {
         label: "Stake Engine export (republish)",
         purpose: "Copy this Stake Engine export to a new location.",
         destination: "Choose a folder for the copied Stake Engine export, or use the default destination.",
         technicalDestination: "A new Stake Engine export directory beside this project by default.",
+        unavailableReason:
+            "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
         purpose: "Save a copy of this PAR sheet as an Excel workbook.",
         destination: "Choose where to save the copied workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
+        unavailableReason: "This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue.",
     },
     wasm: {
         label: "WASM",
         purpose: "This output is not available for the current project.",
         destination: "This output is not available for the current project.",
         technicalDestination: "Not available.",
+        unavailableReason: "WASM export is not available yet because POKIE has no WASM builder. Choose another output format.",
     },
 };
 
@@ -98,6 +107,12 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<Record<StudioArtifactTargetType, {labe
 // StudioArtifactBuildService.listTargets (the same registry.supportsConversionFrom() check "pokie build"
 // runs). Unsupported cards remain visible and explain why this project cannot build them, rather than
 // making an unavailable output look as though Studio forgot to offer it.
+function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fallbackReason: string): readonly string[] {
+    if (entry.supported) return [];
+    if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
+    return [fallbackReason];
+}
+
 export function describeArtifactBuildTargetCards(targets: readonly StudioArtifactTargetView[]): ExportDeployTargetCard[] {
     return targets
         .map((entry) => {
@@ -116,7 +131,11 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 capabilities: [],
                 limits: [],
                 prerequisites: entry.supported ? ["This project is ready to build. Choose a destination or use the default."] : [],
-                unavailableReasons: entry.supported ? [] : entry.unsupportedNotes,
+                // The server's descriptor remains the authority whenever it provides a reason. Some
+                // transitional or third-party Studio responses have no descriptor prose, however, so the
+                // card still needs a useful, target-specific next step instead of a generic unavailable
+                // message that leaves the user guessing.
+                unavailableReasons: unavailableReasonsForArtifactTarget(entry, info.unavailableReason),
                 supported: entry.supported,
                 locality: "local",
                 compatibility: "The exact same ArtifactBuilderRegistry conversion runs in the CLI and Studio, so they always agree on what's buildable and what it writes.",
@@ -232,7 +251,7 @@ const REMOTE_DEPLOYMENT_PLACEHOLDER_CARD: ExportDeployTargetCard = {
     capabilities: [],
     limits: [],
     prerequisites: ["Add a remote delivery destination in Studio."],
-    unavailableReasons: [],
+    unavailableReasons: ["Remote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio."],
     supported: false,
     locality: "remote",
     compatibility: "Once registered, goes through the same ExternalDeploymentCompatibilityValidator contract every other target already does.",
