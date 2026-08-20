@@ -45,7 +45,7 @@
         "build-test-runtime": "npm run build-esm && npm run build-cjs",
         "build-client": "tsc --project tsconfig.client.json && shx cp cli/client/index.html cli/client/style.css dist/cli/client/",
         "typecheck-studio-client": "tsc --project cli/studio-client/tsconfig.json --noEmit",
-        "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts",
+        "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html",
         "dev-studio-client": "npm run build-cli && node scripts/start-studio-client-dev.mjs",
         "build-cli": "tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
         "prebuild": "npm run lint",
