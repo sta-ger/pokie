@@ -5,7 +5,7 @@ Candidate baseline: `d9737dbcbfa694338b444bf59aa8ef63387c0463`.
 ## Result
 
 The current P6R-05 correction's bounded materializer recovery contract passed
-in the required single serial complete-file command:
+in the required single serial complete-file command (two suites and 37 tests):
 
 ```text
 npm run test:targeted -- tests/cli/materialize/BlueprintProjectMaterializer.offline.integration.test.ts tests/cli/materialize/BlueprintProjectMaterializer.test.ts
