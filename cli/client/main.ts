@@ -1,4 +1,5 @@
 import {FetchLike, spin} from "./apiClient.js";
+import {describeClientGameTitle} from "./clientPresentation.js";
 import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButton} from "./dom.js";
 import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
 import {
@@ -234,7 +235,7 @@ function render(
     selectedMode: string | undefined,
     onSelectMode: (modeId: string) => void,
 ): void {
-    elements.gameTitle.textContent = `${response.game.name} — POKIE client preview`;
+    elements.gameTitle.textContent = describeClientGameTitle(response.game.name);
     const roundView = extractKnownRoundView(response);
     renderRoundView({bet: elements.bet, screen: elements.screen}, roundView);
 
