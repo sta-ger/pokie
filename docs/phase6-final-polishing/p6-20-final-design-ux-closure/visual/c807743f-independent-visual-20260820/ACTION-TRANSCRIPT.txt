@@ -1,0 +1,12 @@
+NAVIGATE visible Studio Home / Design Game in one fresh browser profile.
+OBSERVE automatic-check loading; CAPTURE 01-home-design.png.
+CLICK rendered New Blueprint; CAPTURE 02-new-blueprint-dialog.png.
+CLICK Blank; OBSERVE invalid/disabled validation state; CAPTURE 03-blank-error-disabled.png.
+SELECT Random, name the Blueprint, Generate, and Use this blueprint; CAPTURE 04-random-success-dialog.png.
+SELECT rendered Game basics, Layout, Symbols, Reels, Paytable, and Bets sections; CAPTURE 05-guided-all-sections.png.
+SELECT Per-reel Reel Strip Modeler and Reel 1; CAPTURE 06-reel-strip-modeler.png.
+CLICK Create Project; inspect Workspace Game Model sections; CAPTURE 08-workspace-game-model-all-sections.png.
+OPEN Play, create a real session, and Spin; CAPTURE 09-play-empty-disabled.png and 10-play-success.png.
+RUN a 10-round Simulation; OBSERVE report and warnings; CAPTURE 11-simulation-warning-success.png.
+OPEN Replay and select Session Spin; OBSERVE all-sessions list; CAPTURE 12-replay-source-picker.png.
+OPEN Build/Export and Projects desktop/405px responsive states; CAPTURE 14-build-outcome-project.png, 15-projects-desktop.png, and 16-projects-405-responsive.png.
