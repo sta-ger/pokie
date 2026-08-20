@@ -40,6 +40,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useOpenProject} from "../../hooks/useOpenProject";
 import {EmptyState} from "../common/EmptyState";
 import {ErrorState} from "../common/ErrorState";
+import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
 import {PageSection} from "../common/PageSection";
@@ -50,20 +51,19 @@ import {PathInput} from "../common/PathInput";
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
     outcomeLibrary: {
         legend: "Outcome libraries",
-        blurb: "Generates or selects the canonical outcome library every other builder below reads from -- a build step in its own right, not a delivery target.",
+        blurb: "Create the game outcomes used by the export and delivery options below.",
     },
     staticExport: {
         legend: "Static export",
-        blurb: "Writes a standalone, self-contained bundle to disk -- nothing is registered, nothing runs a delivery step.",
+        blurb: "Create a standalone bundle for another system to use.",
     },
     buildArtifact: {
         legend: "Build artifact",
-        blurb:
-            'Runs this project through pokie\'s own ArtifactBuilderRegistry -- the exact "pokie build <project> --target <target>" conversions the CLI itself offers, only ever listing a target this project\'s own resolved type actually supports.',
+        blurb: "Create a project file or package that can be opened or shared.",
     },
     remoteDeployment: {
         legend: "Remote deployment",
-        blurb: "A registered External Adapter SDK target, checked for compatibility before Publish is ever offered -- the SDK's own local-json-example demo target is deliberately never listed here (see ExportDeployTargets.ts's own doc comment); register a real target to replace this group's placeholder.",
+        blurb: "Check a configured delivery destination before publishing to it.",
     },
 };
 
@@ -214,15 +214,9 @@ function TargetCard({
             <Group gap="xs" mb={4}>
                 <Text fw={600}>{card.label}</Text>
                 <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
-                    {card.locality}
+                    {card.locality === "local" ? "This computer" : "Remote"}
                 </Badge>
             </Group>
-            <Text size="sm">
-                <Text span fw={600}>
-                    Adapter:
-                </Text>{" "}
-                {card.adapter} (v{card.version})
-            </Text>
             <Text size="sm" mt={4}>
                 <Text span fw={600}>
                     Purpose:
@@ -235,32 +229,14 @@ function TargetCard({
                 </Text>{" "}
                 {card.destination}
             </Text>
-            <Text size="sm" mt={4}>
-                <Text span fw={600}>
-                    Write / publish behavior:
-                </Text>{" "}
-                {card.writePublishBehavior}
-            </Text>
-            {card.capabilities.length > 0 && (
+            {!card.supported && (
                 <>
                     <Text size="sm" fw={600} mt={4}>
-                        Capabilities
+                        Unavailable for this project
                     </Text>
                     <List size="sm" withPadding>
-                        {card.capabilities.map((capability, index) => (
-                            <List.Item key={index}>{capability}</List.Item>
-                        ))}
-                    </List>
-                </>
-            )}
-            {card.limits.length > 0 && (
-                <>
-                    <Text size="sm" fw={600} mt={4}>
-                        Limits
-                    </Text>
-                    <List size="sm" withPadding>
-                        {card.limits.map((limit, index) => (
-                            <List.Item key={index}>{limit}</List.Item>
+                        {card.unavailableReasons.map((reason, index) => (
+                            <List.Item key={index}>{reason}</List.Item>
                         ))}
                     </List>
                 </>
@@ -277,12 +253,6 @@ function TargetCard({
                     </List>
                 </>
             )}
-            <Text size="sm" mt={4}>
-                <Text span fw={600}>
-                    Compatibility:
-                </Text>{" "}
-                {card.compatibility}
-            </Text>
 
             {card.kind === "outcomeLibrary" && (
                 <>
@@ -338,7 +308,7 @@ function TargetCard({
                 </>
             )}
 
-            {card.kind === "buildArtifact" && card.artifactTarget && (
+            {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
                 <>
                     <PathInput
                         label={card.artifactTarget === "parWorkbook" ? "Output file (optional)" : "Output directory (optional)"}
@@ -365,10 +335,8 @@ function TargetCard({
                             <Text size="sm">Target: {card.label}</Text>
                             <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
                             <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
-                            <Text size="sm">Output type: {artifactPreview.result.destinationKind}</Text>
-                            <Text size="sm">Conflict state: {artifactPreview.status === "ok" ? "Available" : "Conflict — build will not overwrite it"}</Text>
-                            <Text size="sm">Planned outputs: {artifactPreview.result.plannedOutputs.join("; ")}</Text>
-                            {artifactPreview.status === "conflict" && <ErrorState message={artifactPreview.result.message} />}
+                            <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
+                            {artifactPreview.status === "conflict" && <ErrorState message="This destination already contains files. Choose a different destination; Build will not overwrite it." />}
                         </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
@@ -486,6 +454,75 @@ function TargetCard({
                     )}
                 </>
             )}
+
+            <AdvancedDisclosure detail="technical information">
+                <Text size="sm">
+                    <Text span fw={600}>
+                        Technical destination:
+                    </Text>{" "}
+                    {card.technicalDestination}
+                </Text>
+                <Text size="sm">
+                    <Text span fw={600}>
+                        Adapter:
+                    </Text>{" "}
+                    {card.adapter} (v{card.version})
+                </Text>
+                <Text size="sm" mt={4}>
+                    <Text span fw={600}>
+                        Write / publish behavior:
+                    </Text>{" "}
+                    {card.writePublishBehavior}
+                </Text>
+                {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
+                    <>
+                        <Text size="sm" mt={4}>
+                            <Text span fw={600}>
+                                Planned outputs:
+                            </Text>{" "}
+                            {artifactPreview.result.plannedOutputs.join("; ")}
+                        </Text>
+                        {artifactPreview.status === "conflict" && (
+                            <Text size="sm" mt={4}>
+                                <Text span fw={600}>
+                                    Preflight detail:
+                                </Text>{" "}
+                                {artifactPreview.result.message}
+                            </Text>
+                        )}
+                    </>
+                )}
+                {card.capabilities.length > 0 && (
+                    <>
+                        <Text size="sm" fw={600} mt={4}>
+                            Capabilities
+                        </Text>
+                        <List size="sm" withPadding>
+                            {card.capabilities.map((capability, index) => (
+                                <List.Item key={index}>{capability}</List.Item>
+                            ))}
+                        </List>
+                    </>
+                )}
+                {card.limits.length > 0 && (
+                    <>
+                        <Text size="sm" fw={600} mt={4}>
+                            Limits
+                        </Text>
+                        <List size="sm" withPadding>
+                            {card.limits.map((limit, index) => (
+                                <List.Item key={index}>{limit}</List.Item>
+                            ))}
+                        </List>
+                    </>
+                )}
+                <Text size="sm" mt={4}>
+                    <Text span fw={600}>
+                        Compatibility:
+                    </Text>{" "}
+                    {card.compatibility}
+                </Text>
+            </AdvancedDisclosure>
         </div>
     );
 }
@@ -820,13 +857,9 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
-                Every applicable way this project can be built or leave Studio, grouped by what it actually
-                does -- generating an outcome library is the source build step every other target here reads
-                from, a static export writes a standalone bundle with nothing registered, and a remote
-                deployment is a registered External Adapter SDK target, checked for compatibility before
-                anything is published. Each card runs its own builder right here, against this project&apos;s own primary build mode
-                ({defaultModeName}) -- nothing here silently runs in the background, and nothing leaves this
-                tab to do it.
+                Build game outputs, export a bundle, or deliver it to a configured destination. Each option
+                shows what it needs and what happens next; details about the underlying integration are
+                available when you need them.
             </Text>
             <QuickActions>
                 <Button variant="default" size="xs" onClick={deployment.refreshTargets}>

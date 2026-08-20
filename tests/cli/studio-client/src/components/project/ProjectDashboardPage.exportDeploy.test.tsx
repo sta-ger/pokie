@@ -19,15 +19,14 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         status: 200,
         body: [{id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]}],
     }),
-    // No target is supported for this fixture's own "blueprint" project other than tsPackage -- most tests
-    // here aren't about the Build/Export tab's own "Build artifact" group, so this stays empty/unsupported
-    // by default; see the dedicated describe block below for real coverage of that group.
+    // Only tsPackage is buildable from this fixture's blueprint. The unavailable cards remain visible with
+    // their server-provided reason, so users can see why the other outputs cannot be built here.
     "/api/project/artifacts/targets": () => ({
         ok: true,
         status: 200,
         body: [
             {target: "tsPackage", supported: true, unsupportedNotes: []},
-            {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, unsupportedNotes: ["This target only copies an existing outcome library."]},
             {target: "stakeAdapter", supported: false, unsupportedNotes: []},
             {target: "parWorkbook", supported: false, unsupportedNotes: []},
             {target: "wasm", supported: false, unsupportedNotes: []},
@@ -123,10 +122,80 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         expect(within(staticExportSection).getByText("Stake Engine Export")).toBeInTheDocument();
 
-        expect(screen.queryByText("External Adapter: local-json-example")).not.toBeInTheDocument();
+        expect(screen.queryByText("local-json-example")).not.toBeInTheDocument();
 
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
-        expect(await within(remoteSection).findByText("Remote deployment (none registered yet)")).toBeInTheDocument();
+        expect(await within(remoteSection).findByText("Remote delivery is not set up")).toBeInTheDocument();
+    });
+
+    it("keeps technical target implementation details out of the primary Build/Export cards until Advanced details is opened by keyboard", async () => {
+        const user = userEvent.setup();
+        renderRoutedApp({fetchImpl: fetchImplFrom(BASE_ROUTES), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByText("Purpose:")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByText("Destination:")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByText("Prerequisites")).toBeInTheDocument();
+        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate outcome library (base)"})).toBeEnabled();
+        expect(within(outcomeLibrarySection).getByText("Adapter:")).not.toBeVisible();
+        expect(within(outcomeLibrarySection).getByText("Compatibility:")).not.toBeVisible();
+
+        const details = within(outcomeLibrarySection).getByRole("button", {name: "Show advanced details (technical information)"});
+        expect(details).toHaveAttribute("aria-expanded", "false");
+        expect(details).toHaveAttribute("aria-controls");
+        details.focus();
+        await user.keyboard("{Enter}");
+
+        expect(details).toHaveAttribute("aria-expanded", "true");
+        expect(within(outcomeLibrarySection).getByText("Adapter:")).toBeVisible();
+        expect(within(outcomeLibrarySection).getByText(/weighted-outcome-library generator/)).toBeVisible();
+        expect(within(outcomeLibrarySection).getByText("Compatibility:")).toBeVisible();
+    });
+
+    it("shows an unavailable build target's reason before Advanced details, while keeping destination protocols inside the disclosure", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [{id: "acme-rgs-v2", version: "0.1.0", requirements: {}, capabilities: []}],
+            }),
+        };
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("This target only copies an existing outcome library.")).toBeVisible();
+        expect(
+            within(buildArtifactSection).getByText(
+                "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
+            ),
+        ).toBeVisible();
+        expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).not.toHaveLength(0);
+        expect(within(buildArtifactSection).getAllByRole("button", {name: "Build"})).toHaveLength(1);
+
+        const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
+        const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
+        expect(screen.getByText(/index\.json, a per-mode lookup CSV/)).not.toBeVisible();
+        expect(screen.getByText(/zstd-compressed books/)).not.toBeVisible();
+        expect(screen.getByText(/runtime adapter delivers/)).not.toBeVisible();
+        expect(await screen.findByText("package.json")).not.toBeVisible();
+
+        await user.click(within(staticExportSection).getByRole("button", {name: "Show advanced details (technical information)"}));
+        expect(within(staticExportSection).getByText(/index\.json, a per-mode lookup CSV/)).toBeVisible();
+        expect(within(staticExportSection).getByText(/zstd-compressed books/)).toBeVisible();
+
+        await user.click(within(remoteSection).getByRole("button", {name: "Show advanced details (technical information)"}));
+        expect(within(remoteSection).getByText(/runtime adapter delivers/)).toBeVisible();
+
+        await user.click(within(buildArtifactSection).getAllByRole("button", {name: "Show advanced details (technical information)"})[0]);
+        expect(within(buildArtifactSection).getByText("Planned outputs:")).toBeVisible();
+        expect(within(buildArtifactSection).getByText("package.json")).toBeVisible();
     });
 
     it("runs a registered remote adapter target's own compatibility check right here (no hand-off to the Deployment tab), offering Publish once it comes back clean", async () => {
@@ -161,7 +230,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await screen.findByText("External Adapter: acme-rgs-v2");
+        await screen.findByText("Remote delivery");
         await user.click(screen.getByRole("button", {name: "Check compatibility"}));
 
         // Runs the same runDeployment(publish: false) pipeline the Deployment tab itself drives, right
@@ -237,7 +306,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await screen.findByText("External Adapter: acme-rgs-v2");
+        await screen.findByText("Remote delivery");
         // Waits for the same registry-backed resolution the Stake Engine Export card's own enabled state
         // depends on, so the compatibility check below is guaranteed to run after the registry's
         // already-registered library has actually loaded, not against a still-loading registryView.
@@ -670,7 +739,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             expect(cancelled).toBe(true);
         });
 
-        it("lists only the capability-supported target (tsPackage), runs it through the shared registry, and offers Open as Project/Projects visibility/folder reveal", async () => {
+        it("keeps unavailable targets explanatory while running the supported tsPackage target through the shared registry and offering Open as Project/Projects visibility/folder reveal", async () => {
             const user = userEvent.setup();
             let capturedBuildTarget: string | undefined;
             let capturedOpenProjectRoot: string | undefined;
@@ -712,11 +781,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
             const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
             expect(within(buildArtifactSection).getByText("TypeScript Game Package")).toBeInTheDocument();
-            // Only the one target this blueprint project's own type actually supports is ever offered --
-            // "PAR sheet (.xlsx)"/"Stake Engine export (republish)"/"Outcome library (republish)" are
-            // filtered out entirely (never rendered disabled), same convention as every other group here.
-            expect(within(buildArtifactSection).queryByText("PAR sheet (.xlsx)")).not.toBeInTheDocument();
-            expect(within(buildArtifactSection).queryByText("Stake Engine export (republish)")).not.toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText("PAR sheet (.xlsx)")).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText("Stake Engine export (republish)")).toBeInTheDocument();
+            expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).toHaveLength(4);
 
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 

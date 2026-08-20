@@ -1,4 +1,4 @@
-import {describeExportDeployTargetCards} from "../../../../../../cli/studio-client/src/domain/interpret/ExportDeployTargets";
+import {describeArtifactBuildTargetCards, describeExportDeployTargetCards} from "../../../../../../cli/studio-client/src/domain/interpret/ExportDeployTargets";
 import type {StudioDeploymentTargetSummary, StudioProjectCapability} from "../../../../../../cli/studio-client/src/api/types";
 
 const BUILDABLE_CAPABILITIES: StudioProjectCapability[] = ["blueprint.build"];
@@ -99,5 +99,57 @@ describe("describeExportDeployTargetCards", () => {
                 expect(field).not.toMatch(bareDeploymentPattern);
             }
         }
+    });
+});
+
+describe("describeArtifactBuildTargetCards", () => {
+    it("keeps an unsupported output visible with its concrete unavailable reason, while reserving destination protocol for Advanced details", () => {
+        const cards = describeArtifactBuildTargetCards([
+            {
+                target: "stakeAdapter",
+                supported: false,
+                unsupportedNotes: ["This target only republishes an existing Stake Engine export."],
+            },
+        ]);
+
+        expect(cards).toHaveLength(1);
+        expect(cards[0]).toMatchObject({
+            id: "artifact-stakeAdapter",
+            supported: false,
+            destination: "Choose a folder for the copied Stake Engine export, or use the default destination.",
+            technicalDestination: "A new Stake Engine export directory beside this project by default.",
+            unavailableReasons: ["This target only republishes an existing Stake Engine export."],
+        });
+        expect(cards[0].limits).toEqual([]);
+    });
+
+    it("supplies every unsupported artifact target with a target-specific next step when the server has no reason", () => {
+        const cards = describeArtifactBuildTargetCards([
+            {target: "tsPackage", supported: false, unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
+            {target: "stakeAdapter", supported: false, unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, unsupportedNotes: []},
+            {target: "wasm", supported: false, unsupportedNotes: []},
+        ]);
+
+        expect(cards.map((card) => card.unavailableReasons)).toEqual([
+            ["This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one."],
+            ["This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
+            ["This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
+            ["This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue."],
+            ["WASM export is not available yet because POKIE has no WASM builder. Choose another output format."],
+        ]);
+    });
+
+    it("uses product-facing primary destinations while retaining exact destination and write behavior as advanced detail", () => {
+        const cards = describeExportDeployTargetCards([target()], BUILDABLE_CAPABILITIES);
+        const stakeCard = cards.find((card) => card.kind === "staticExport");
+        const remoteCard = cards.find((card) => card.kind === "remoteDeployment" && card.deploymentTarget !== undefined);
+
+        expect(stakeCard?.destination).not.toMatch(/index\.json|zstd|CSV|manifest/);
+        expect(stakeCard?.technicalDestination).toMatch(/index\.json.*zstd-compressed books.*pokie-manifest\.json/);
+        expect(stakeCard?.writePublishBehavior).toMatch(/atomic swap/);
+        expect(remoteCard?.destination).not.toMatch(/runtime adapter/);
+        expect(remoteCard?.technicalDestination).toMatch(/runtime adapter/);
     });
 });
