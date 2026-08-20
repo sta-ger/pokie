@@ -38,6 +38,28 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         Element.prototype.scrollIntoView = jest.fn();
     });
 
+    it("converts every Recommended literal strip when opening the per-reel modeler", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/blueprints/validate") {
+                return jsonResponse({status: "ok", warnings: []});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+        await user.click(await screen.findByRole("tab", {name: /Reels/}));
+        await goToReelStripModeler(user);
+
+        expect(screen.getAllByText("Literal — 4 symbols")).toHaveLength(5);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        expect(screen.getByLabelText("Reel 1 symbol 1")).toHaveValue("A");
+        expect(screen.getByLabelText("Reel 1 symbol 2")).toHaveValue("K");
+        expect(screen.getByLabelText("Reel 1 symbol 3")).toHaveValue("Q");
+        expect(screen.getByLabelText("Reel 1 symbol 4")).toHaveValue("J");
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
+    });
+
     it("edits a literal reel's strip as a local draft, and only Apply commits it to the blueprint", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
