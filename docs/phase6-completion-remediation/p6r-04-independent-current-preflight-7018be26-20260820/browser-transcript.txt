@@ -1,0 +1,4 @@
+[2026-08-20T18:59:43.971Z] INPUT the Outcome library card's rendered Output directory (optional)="/tmp/p6r04-current-outcome-2903792-1787252383692" and blur.
+[2026-08-20T18:59:44.349Z] CLICK the Outcome library card's rendered Build button exactly once.
+[2026-08-20T19:00:01.932Z] OBSERVE completed card renders Preflight: 21952 estimated item(s), its available byte estimate, the complexity warning, and enabled post-build actions Open as Project and Add to Projects.
+[2026-08-20T19:00:02.640Z] CAPTURE build-export-complete-preflight.png.
