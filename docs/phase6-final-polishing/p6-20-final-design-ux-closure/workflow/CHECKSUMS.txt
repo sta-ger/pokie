@@ -1,4 +1,0 @@
-05ea45e45545e08339d75963bb53924b7f1875afe08311af15d15fad6169f129  screenshots/01-client-disconnected.png
-ea61cf59a82f7f75560127f57df7dfe784d9471f7f6fd024ed9721a794de917a  screenshots/02-technical-details.png
-579eb449e05262ac23cc98e3e19f4d3ad1ef4c0e1f7542c1cb1826165cf5be7c  screenshots/03-retry-still-disconnected.png
-d18ecd64b601d5fae8d8cb1d3fb999b2fa3a459fec640dbade26e88db6648e32  screenshots/04-new-session-unavailable.png
