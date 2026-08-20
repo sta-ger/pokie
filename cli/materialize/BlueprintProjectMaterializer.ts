@@ -240,6 +240,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     }
 
     private async runDependenciesPhase(stagingDir: string): Promise<void> {
+        let lastError: unknown;
         for (let attempt = 1; attempt <= DEPENDENCY_INSTALL_ATTEMPTS; attempt++) {
             try {
                 // "--omit=dev": a staged runtime's dist/index.js is already generated here (never compiled --
@@ -252,17 +253,19 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 await this.runCommand("npm", ["install", "--omit=dev"], stagingDir);
                 return;
             } catch (error) {
-                if (attempt === DEPENDENCY_INSTALL_ATTEMPTS) {
-                    throw new BlueprintMaterializationError(
-                        "dependencies",
-                        `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
-                            "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
-                            "for the exact npm output.",
-                        extractNpmStderr(error) ?? (error instanceof Error ? error.message : String(error)),
-                    );
-                }
+                lastError = error;
             }
         }
+        // The only exit after every bounded install attempt has failed is the materialization boundary --
+        // never the runner's arbitrary rejection shape. materializeUnderLock() then removes this call's
+        // disposable staging directory before releasing the cache-key lock, so a later caller starts fresh.
+        throw new BlueprintMaterializationError(
+            "dependencies",
+            `Could not install this Blueprint's runtime dependencies in "${stagingDir}". This is usually a local ` +
+                "npm or network problem, not a problem with the Blueprint itself -- see this error's own \"details\" " +
+                "for the exact npm output.",
+            extractNpmStderr(lastError) ?? (lastError instanceof Error ? lastError.message : String(lastError)),
+        );
     }
 
     private async runVerifyPhase(stagingDir: string, blueprintPath: string): Promise<void> {
