@@ -1,6 +1,7 @@
 import {isPokieGame} from "./isPokieGame.js";
 import {readPokiePackageConfig} from "./readPokiePackageConfig.js";
 import fs from "fs";
+import {createRequire} from "module";
 import path from "path";
 
 export type ResolvedPokieGameEntryModule = {
@@ -13,9 +14,26 @@ export type ResolvedPokieGameEntryModule = {
 // default for every library/CLI caller.
 export type PokieGameEntryModuleLoading = (entryPath: string) => Promise<Record<string, unknown>>;
 
+// Jest executes source modules inside a VM context. Node deliberately rejects native dynamic
+// imports from that context unless Jest itself was started with --experimental-vm-modules, even
+// when the requested entry is an ordinary CommonJS game package. Keep native import as the normal
+// path (it is required for ESM game packages), with a narrowly scoped CommonJS fallback for that
+// host limitation. createRequire is anchored at the entry so its transitive dependencies resolve
+// exactly as they would for a consumer loading that package directly.
+async function importPokieGameEntryModule(entryPath: string): Promise<Record<string, unknown>> {
+    try {
+        return (await import(entryPath)) as Record<string, unknown>;
+    } catch (error) {
+        if (!isVmDynamicImportUnavailable(error)) {
+            throw error;
+        }
+        return createRequire(entryPath)(entryPath) as Record<string, unknown>;
+    }
+}
+
 export async function resolvePokieGameEntryModule(
     packageRoot: string,
-    loadEntryModule: PokieGameEntryModuleLoading = (entryPath) => import(entryPath) as Promise<Record<string, unknown>>,
+    loadEntryModule: PokieGameEntryModuleLoading = importPokieGameEntryModule,
 ): Promise<ResolvedPokieGameEntryModule> {
     const {entry} = readPokiePackageConfig(packageRoot);
     const entryPath = path.resolve(packageRoot, entry);
@@ -103,6 +121,14 @@ export async function resolvePokieGameEntryModule(
 // properties, unaffected by that.
 function isModuleNotFoundError(error: unknown): boolean {
     return typeof error === "object" && error !== null && (error as {code?: unknown}).code === "MODULE_NOT_FOUND";
+}
+
+function isVmDynamicImportUnavailable(error: unknown): boolean {
+    return (
+        typeof error === "object" &&
+        error !== null &&
+        (error as {code?: unknown}).code === "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG"
+    );
 }
 
 // null (rather than -Infinity/0) when sourceRoot contains no files at all, so an empty "src"
