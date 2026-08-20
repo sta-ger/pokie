@@ -1,0 +1,12 @@
+[2026-08-20T16:35Z] START fresh candidate Studio from this checkout with `node ./dist/cli/pokie.js --no-open`; public root rendered Design Your Game.
+[2026-08-20T16:36Z] CLICK New Blueprint; CLICK Recommended; rendered Blueprint editor.
+[2026-08-20T16:36Z] CLICK Reels; CLICK rendered Per-reel (Reel Strip Modeler) label once. It did not switch in the bounded wait and rendered no product error; readiness-inconclusive.
+[2026-08-20T16:37Z] CLICK Create Project; rendered Starter Slot managed Blueprint Workspace.
+[2026-08-20T16:37Z] CLICK Play; CLICK New Play session; CLICK Spin; rendered settled round (no win).
+[2026-08-20T16:38Z] CLICK Simulation; input Rounds=25; CLICK Run Simulation; rendered report: 25/25, RTP 32.00%.
+[2026-08-20T16:38Z] CLICK Replay; input target round=1 and seed=p6r04-current-seed; CLICK Load; rendered loaded replay request.
+[2026-08-20T16:38Z] CLICK Run again once. It did not advance in the bounded wait and rendered no product error; readiness-inconclusive.
+[2026-08-20T16:39Z] CLICK Build/Export; CLICK Generate exact outcome library (base) once. It did not advance in the bounded wait and rendered no product error; readiness-inconclusive. Stake Engine Export remained disabled.
+[2026-08-20T16:41Z] CLICK POKIE Studio; CLICK Projects; rendered registry and captured desktop/405px Projects plus Build/Export surfaces.
+[2026-08-20T16:42Z] TARGETED START: one serial `npm run test:targeted --` command with all eight candidate-associated complete paths.
+[2026-08-20T16:47Z] TARGETED STOP: exact Jest PID remained CPU-active without a terminal result after 5m10s; terminated. No pass/fail result recorded.
