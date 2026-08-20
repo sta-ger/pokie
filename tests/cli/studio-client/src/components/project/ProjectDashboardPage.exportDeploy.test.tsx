@@ -139,7 +139,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(outcomeLibrarySection).getByText("Purpose:")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Destination:")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Prerequisites")).toBeInTheDocument();
-        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate outcome library (base)"})).toBeEnabled();
+        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
         expect(within(outcomeLibrarySection).getByText("Adapter:")).not.toBeVisible();
         expect(within(outcomeLibrarySection).getByText("Compatibility:")).not.toBeVisible();
 
@@ -594,9 +594,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Generate outcome library (base)"}));
+        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
-        expect(await screen.findByText(/Generated 500 outcomes for mode "base" \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
+        expect(await screen.findByText(/Generated 500 outcomes for mode "base" using exact \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
         expect(screen.queryByLabelText("Mode")).not.toBeInTheDocument();
         expect(generated).toBe(true);
@@ -629,9 +629,58 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Generate outcome library (base)"}));
+        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText("Generating outcome library from this project's current build…")).toBeInTheDocument();
+    });
+
+    it("lets a project above the exact-generation cap explicitly generate bounded coverage and continue to Stake Engine Export", async () => {
+        const user = userEvent.setup();
+        let generationRequest: unknown;
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
+            "/api/project/outcome-libraries/registry": () => ({ok: true, status: 200, body: {status: "ok", bundleDir: "outcomelibrary", buildStatus: "missing"}}),
+            "/api/project/outcome-libraries/generate": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    bundleDir: "outcomelibrary",
+                    files: ["manifest.json"],
+                    warnings: [],
+                    mode: {modeName: "base", libraryId: "random-base", hash: "sha256:library", outcomeCount: 10_000, totalWeight: 10_000, rtp: 0.95},
+                    generator: {algorithm: "bounded", strategy: "bounded-coverage", pokieVersion: "1.0.0"},
+                    coverage: 0.000020752,
+                    selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                },
+            }),
+            "/api/project/stakeengine/export": () => ({ok: true, status: 200, body: {status: "ok", outDir: "stakeengine", files: ["index.json"], manifest: {}, warnings: []}}),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/outcome-libraries/generate") {
+                generationRequest = JSON.parse(String(init?.body));
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(screen.getByRole("checkbox", {name: "Bounded coverage (sampled; not exact)"}));
+        expect(screen.getByLabelText("Sample size")).toHaveValue("10000");
+        expect(screen.getByLabelText("Coverage seed")).toHaveValue("studio-bounded-coverage");
+        await user.click(screen.getByRole("button", {name: "Generate bounded-coverage outcome library (base)"}));
+
+        expect(generationRequest).toEqual({
+            mode: "base",
+            maxOutcomeSpaceSize: "20000000",
+            bounded: {sampleSize: "10000", seed: "studio-bounded-coverage"},
+        });
+        expect(await screen.findByText(/Generated 10,000 outcomes for mode "base" using bounded-coverage \(0\.0021% of the raw space\) \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Run Stake Engine Export (base)"}));
+        expect(await screen.findByText("Exported 1 file(s) to stakeengine.")).toBeInTheDocument();
     });
 
     it("falls back to Overview for the removed /project/deployment, /project/stakeEngineExport, and /project/outcomeLibraries routes, never mounting their own old workflows", async () => {

@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from "react";
-import {Badge, Button, Group, List, Text} from "@mantine/core";
+import {Badge, Button, Checkbox, Group, List, Text, TextInput} from "@mantine/core";
 import {
     cancelArtifactBuild,
     checkNativePickerAvailability,
@@ -80,6 +80,19 @@ function resolveDefaultModeName(projectModesView: DeploymentManager["projectMode
 }
 
 const STAKE_ENGINE_DEFAULT_OUT_DIR = "stakeengine";
+const DEFAULT_MAX_OUTCOME_SPACE_SIZE = "20000000";
+const DEFAULT_BOUNDED_SAMPLE_SIZE = "10000";
+const DEFAULT_BOUNDED_SEED = "studio-bounded-coverage";
+
+// Both choices intentionally map one-to-one onto generateExactWeightedOutcomeLibrary's public
+// options. In particular, enabling bounded coverage remains an explicit user decision: setting a
+// sample size alone can never silently turn an exact request into a sampled one.
+type OutcomeLibraryGenerationOptions = {
+    maxOutcomeSpaceSize: string;
+    bounded: boolean;
+    sampleSize: string;
+    seed: string;
+};
 
 type OutcomeLibraryRunView =
     | {status: "idle"}
@@ -159,6 +172,8 @@ function TargetCard({
     defaultModeName,
     outcomeLibraryRun,
     onGenerateOutcomeLibrary,
+    outcomeLibraryGenerationOptions,
+    onOutcomeLibraryGenerationOptionsChange,
     resolveOutcomeLibrarySource,
     resolveDeploymentModes,
     staticExportRun,
@@ -183,6 +198,8 @@ function TargetCard({
     defaultModeName: string;
     outcomeLibraryRun: OutcomeLibraryRunView;
     onGenerateOutcomeLibrary: () => void;
+    outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
+    onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
     resolveOutcomeLibrarySource: () => Extract<OutcomeLibrarySelector, {kind: "bundle"}> | undefined;
     resolveDeploymentModes: () => StudioDeploymentModeInput[] | undefined;
     staticExportRun: StaticExportRunView;
@@ -256,8 +273,46 @@ function TargetCard({
 
             {card.kind === "outcomeLibrary" && (
                 <>
+                    <TextInput
+                        mt="sm"
+                        label="Max outcome space size"
+                        description="Exact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store."
+                        inputMode="numeric"
+                        value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
+                        onChange={(event) =>
+                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})
+                        }
+                    />
+                    <Checkbox
+                        mt="sm"
+                        label="Bounded coverage (sampled; not exact)"
+                        description="Explicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed."
+                        checked={outcomeLibraryGenerationOptions.bounded}
+                        onChange={(event) =>
+                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, bounded: event.currentTarget.checked})
+                        }
+                    />
+                    {outcomeLibraryGenerationOptions.bounded && (
+                        <Group align="start" grow mt="sm">
+                            <TextInput
+                                label="Sample size"
+                                description="Number of deterministic reel-stop draws to include."
+                                inputMode="numeric"
+                                value={outcomeLibraryGenerationOptions.sampleSize}
+                                onChange={(event) =>
+                                    onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
+                                }
+                            />
+                            <TextInput
+                                label="Coverage seed"
+                                description="Saved with the generated library so this sample can be reproduced."
+                                value={outcomeLibraryGenerationOptions.seed}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, seed: event.currentTarget.value})}
+                            />
+                        </Group>
+                    )}
                     <Button size="xs" mt="sm" onClick={onGenerateOutcomeLibrary} loading={outcomeLibraryRun.status === "running"}>
-                        Generate outcome library ({defaultModeName})
+                        Generate {outcomeLibraryGenerationOptions.bounded ? "bounded-coverage" : "exact"} outcome library ({defaultModeName})
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
                         <LoadingState label="Generating outcome library from this project's current build…" />
@@ -266,7 +321,11 @@ function TargetCard({
                     {outcomeLibraryRun.status === "ok" && (
                         <Text size="sm" mt={4}>
                             Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
-                            {outcomeLibraryRun.result.mode.modeName}&quot; (RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
+                            {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
+                            {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
+                                ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
+                                : ""}
+                            {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
                             {outcomeLibraryRun.result.bundleDir}.{" "}
                             <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
                                 Open output folder
@@ -551,6 +610,12 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
     const outcomeLibraryGuard = useDoubleSubmitGuard();
+    const [outcomeLibraryGenerationOptions, setOutcomeLibraryGenerationOptions] = useState<OutcomeLibraryGenerationOptions>({
+        maxOutcomeSpaceSize: DEFAULT_MAX_OUTCOME_SPACE_SIZE,
+        bounded: false,
+        sampleSize: DEFAULT_BOUNDED_SAMPLE_SIZE,
+        seed: DEFAULT_BOUNDED_SEED,
+    });
 
     const [staticExportRun, setStaticExportRun] = useState<StaticExportRunView>({status: "idle"});
     const staticExportGuard = useDoubleSubmitGuard();
@@ -687,7 +752,13 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
             return;
         }
         setOutcomeLibraryRun({status: "running"});
-        generateOutcomeLibrary(fetchImpl, {mode: defaultModeName})
+        generateOutcomeLibrary(fetchImpl, {
+            mode: defaultModeName,
+            maxOutcomeSpaceSize: outcomeLibraryGenerationOptions.maxOutcomeSpaceSize,
+            ...(outcomeLibraryGenerationOptions.bounded
+                ? {bounded: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
+                : {}),
+        })
             .then((view) => {
                 outcomeLibraryGuard.end();
                 if (view.status === "ok") {
@@ -898,6 +969,8 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                                             defaultModeName={defaultModeName}
                                             outcomeLibraryRun={outcomeLibraryRun}
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
+                                            outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
+                                            onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
                                             resolveOutcomeLibrarySource={resolveOutcomeLibrarySource}
                                             resolveDeploymentModes={resolveDeploymentModes}
                                             staticExportRun={staticExportRun}
