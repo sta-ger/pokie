@@ -1,4 +1,0 @@
-2026-08-20T01:56:41Z  Public companion Fixture Slot: clicked Play; rendered A/C/A | A/A/C | A/A/A, credits 1004, win 5, 5x, symbols A/B/C.
-2026-08-20T01:56:42Z  Candidate-built generated package via public `pokie dev`: entered fixture-round, clicked Start new session then Spin; rendered the same grid, credits, win, multiple, and symbols.
-2026-08-20T01:59:52Z  Fresh Studio from `node ./dist/cli/pokie.js --no-open`: opened Projects, entered the generated-package path through the visible field, and clicked Detect with the mouse.
-2026-08-20T02:00:56Z  Detect had not completed within the 60-second visible-UI wait. A later rendered observation showed “Detected a Package …” but the workflow did not reach Register/Open/Studio Play/Replay or Projects reopen recovery.
