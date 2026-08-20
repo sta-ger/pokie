@@ -1,4 +1,4 @@
-import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Table, Text, TextInput, Textarea} from "@mantine/core";
+import {Alert, Badge, Button, Group, List, MultiSelect, NumberInput, Radio, Select, Switch, Table, Text, TextInput, Textarea} from "@mantine/core";
 import {IconAlertTriangle, IconCircleCheck} from "@tabler/icons-react";
 import {useEffect, useRef, useState} from "react";
 import {previewReelStripGeneration} from "../../api/apiClient";
@@ -350,23 +350,35 @@ function LockedPositions({
     );
 }
 
-function ConstraintsEditor({reelIndex, entry, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate; issues: DraftIssue[]}) {
+function ConstraintsJsonEditor({reelIndex, entry, mutate, issues}: {reelIndex: number; entry: Record<string, unknown>; mutate: BlueprintMutate; issues: DraftIssue[]}) {
     const [error, setError] = useState<string>();
-    // Bumped only when a preset is inserted programmatically -- remounts the Textarea below so its own
-    // uncontrolled `defaultValue` picks up the freshly appended preset instead of silently keeping
-    // whatever the user last typed/blurred (same "uncontrolled input needs a fresh key" technique
-    // ReelStripGenerationEditor's own `draftGeneration` uses at the whole-reel level).
-    const [textKey, setTextKey] = useState(0);
-    const [presetId, setPresetId] = useState<string | null>(null);
-    const initialText = Array.isArray(entry.constraints) ? JSON.stringify(entry.constraints, null, 2) : "";
+    const serializedConstraints = Array.isArray(entry.constraints) ? JSON.stringify(entry.constraints, null, 2) : "";
+    const [text, setText] = useState(serializedConstraints);
+    const lastSerializedConstraints = useRef(serializedConstraints);
+
+    // Visual changes are reflected in the expert view, but a malformed expert edit remains intact until
+    // its author fixes it. That makes the raw editor a genuine escape hatch without ever replacing the
+    // last valid visual draft with partial JSON.
+    useEffect(() => {
+        if (lastSerializedConstraints.current !== serializedConstraints && error === undefined) {
+            setText(serializedConstraints);
+        }
+        lastSerializedConstraints.current = serializedConstraints;
+    }, [error, serializedConstraints]);
 
     return (
-        <PageSection legend="Constraints (JSON array)">
+        <div>
+            <Text size="sm" c="dimmed" mb="xs">Use this only for constraint types not covered by the visual controls.</Text>
             <Textarea
-                key={textKey}
                 rows={4}
-                defaultValue={initialText}
+                value={text}
                 aria-label={`Constraints for reel ${reelIndex + 1}`}
+                onChange={(event) => {
+                    const nextText = event.currentTarget.value;
+                    setText(nextText);
+                    const result = parseReelStripGenerationConstraintsJson(nextText);
+                    setError(result.ok ? undefined : result.error);
+                }}
                 onBlur={(event) => {
                     const result = parseReelStripGenerationConstraintsJson(event.currentTarget.value);
                     if (!result.ok) {
@@ -379,30 +391,134 @@ function ConstraintsEditor({reelIndex, entry, mutate, issues}: {reelIndex: numbe
             />
             {error && <ErrorState message={error} />}
             {!error && issueFor(issues, "constraints") && <ErrorState message={issueFor(issues, "constraints") as string} />}
+        </div>
+    );
+}
+
+type CommonConstraintType = "minimumCircularDistance" | "maximumCircularDistance" | "maximumConsecutiveOccurrences";
+type CommonConstraintDraft = {
+    type: CommonConstraintType;
+    minimumDistance?: number;
+    maximumDistance?: number;
+    maximumConsecutive?: number;
+    symbolIds?: string[];
+    wrapAround?: boolean;
+};
+
+const COMMON_CONSTRAINT_OPTIONS: Array<{value: CommonConstraintType; label: string}> = [
+    {value: "minimumCircularDistance", label: "Minimum spacing"},
+    {value: "maximumCircularDistance", label: "Maximum spacing"},
+    {value: "maximumConsecutiveOccurrences", label: "Maximum consecutive occurrences"},
+];
+
+function commonConstraintValue(constraint: CommonConstraintDraft): number | undefined {
+    switch (constraint.type) {
+        case "minimumCircularDistance": return constraint.minimumDistance;
+        case "maximumCircularDistance": return constraint.maximumDistance;
+        case "maximumConsecutiveOccurrences": return constraint.maximumConsecutive;
+    }
+    return undefined;
+}
+
+function asCommonConstraintDraft(value: unknown): CommonConstraintDraft | undefined {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const constraint = value as Record<string, unknown>;
+    if (!COMMON_CONSTRAINT_OPTIONS.some((option) => option.value === constraint.type)) return undefined;
+    const draft = constraint as CommonConstraintDraft;
+    const expectedValue = commonConstraintValue(draft);
+    return typeof expectedValue === "number" ? draft : undefined;
+}
+
+function describeCommonConstraint(constraint: CommonConstraintDraft): string {
+    const option = COMMON_CONSTRAINT_OPTIONS.find((candidate) => candidate.value === constraint.type);
+    const value = commonConstraintValue(constraint);
+    return `${option?.label ?? constraint.type}: ${value}, ${constraint.symbolIds?.join(", ") ?? "all symbols"}${constraint.wrapAround === false ? ", no wrap around" : ""}`;
+}
+
+function CommonConstraintsEditor({reelIndex, entry, symbols, mutate}: {reelIndex: number; entry: Record<string, unknown>; symbols: string[]; mutate: BlueprintMutate}) {
+    const constraints = Array.isArray(entry.constraints) ? entry.constraints : [];
+    const commonConstraints = constraints.flatMap((constraint, index) => {
+        const draft = asCommonConstraintDraft(constraint);
+        return draft === undefined ? [] : [{index, constraint: draft}];
+    });
+    const [editingIndex, setEditingIndex] = useState<number>();
+    const [type, setType] = useState<CommonConstraintType>("minimumCircularDistance");
+    const [value, setValue] = useState<number | string>(3);
+    const [symbolIds, setSymbolIds] = useState<string[]>([]);
+    const [wrapAround, setWrapAround] = useState(true);
+    const [presetId, setPresetId] = useState<string | null>(null);
+
+    const replaceConstraints = (next: unknown[]): void => mutate((blueprint) => setReelStripGenerationConstraints(blueprint, reelIndex, next));
+    const reset = (): void => {
+        setEditingIndex(undefined);
+        setType("minimumCircularDistance");
+        setValue(3);
+        setSymbolIds([]);
+        setWrapAround(true);
+    };
+    const edit = (index: number, constraint: CommonConstraintDraft): void => {
+        setEditingIndex(index);
+        setType(constraint.type);
+        setValue(commonConstraintValue(constraint) ?? "");
+        setSymbolIds(constraint.symbolIds ?? []);
+        setWrapAround(constraint.wrapAround !== false);
+    };
+    const save = (): void => {
+        if (!(typeof value === "number" && Number.isInteger(value) && value > 0)) return;
+        let constraint: CommonConstraintDraft;
+        switch (type) {
+            case "minimumCircularDistance":
+                constraint = {type, minimumDistance: value};
+                break;
+            case "maximumCircularDistance":
+                constraint = {type, maximumDistance: value};
+                break;
+            case "maximumConsecutiveOccurrences":
+                constraint = {type, maximumConsecutive: value};
+                break;
+        }
+        if (symbolIds.length > 0) constraint.symbolIds = symbolIds;
+        if (!wrapAround) constraint.wrapAround = false;
+        const next = [...constraints];
+        if (editingIndex === undefined) next.push(constraint);
+        else next[editingIndex] = constraint;
+        replaceConstraints(next);
+        reset();
+    };
+
+    return (
+        <PageSection legend="Spacing and occurrence constraints">
+            <Text size="sm" c="dimmed" mb="xs">Set common repeat spacing and run limits without JSON. Leave symbols empty to apply the rule to every symbol.</Text>
+            {commonConstraints.length === 0 ? <Text size="sm" c="dimmed" mb="xs">No spacing or occurrence constraints yet.</Text> : (
+                <List size="sm" mb="sm">
+                    {commonConstraints.map(({index, constraint}, commonIndex) => (
+                        <List.Item key={index}>
+                            {describeCommonConstraint(constraint)}
+                            <Group gap="xs" mt={4}>
+                                <Button size="compact-xs" variant="default" aria-label={`Edit common constraint ${commonIndex + 1} for reel ${reelIndex + 1}`} onClick={() => edit(index, constraint)}>Edit</Button>
+                                <Button size="compact-xs" color="red" variant="default" aria-label={`Remove common constraint ${commonIndex + 1} for reel ${reelIndex + 1}`} onClick={() => replaceConstraints(constraints.filter((_, constraintIndex) => constraintIndex !== index))}>Remove</Button>
+                            </Group>
+                        </List.Item>
+                    ))}
+                </List>
+            )}
             <QuickActions>
-                <Select
-                    aria-label={`Constraint preset for reel ${reelIndex + 1}`}
-                    placeholder="Add preset…"
-                    data={REEL_STRIP_CONSTRAINT_PRESETS.map((preset) => ({value: preset.id, label: preset.label}))}
-                    value={presetId}
-                    onChange={setPresetId}
-                />
-                <Button
-                    variant="default"
-                    aria-label={`Add constraint preset to reel ${reelIndex + 1}`}
-                    onClick={() => {
-                        const preset = REEL_STRIP_CONSTRAINT_PRESETS.find((candidate) => candidate.id === presetId);
-                        if (preset === undefined) {
-                            return;
-                        }
-                        const existing = Array.isArray(entry.constraints) ? entry.constraints : [];
-                        setError(undefined);
-                        mutate((b) => setReelStripGenerationConstraints(b, reelIndex, [...existing, preset.build()]));
-                        setTextKey((key) => key + 1);
-                    }}
-                >
-                    Add preset
-                </Button>
+                <Select aria-label={`Common constraint type for reel ${reelIndex + 1}`} label="Constraint" data={COMMON_CONSTRAINT_OPTIONS} value={type} onChange={(next) => next !== null && setType(next as CommonConstraintType)} />
+                <NumberInput aria-label={`Common constraint value for reel ${reelIndex + 1}`} label={COMMON_CONSTRAINT_OPTIONS.find((option) => option.value === type)?.label} min={1} step={1} value={value} onChange={setValue} />
+                <MultiSelect aria-label={`Common constraint symbols for reel ${reelIndex + 1}`} label="Symbols (all when empty)" data={symbols} value={symbolIds} onChange={setSymbolIds} clearable />
+                <Switch aria-label={`Wrap common constraint around reel ${reelIndex + 1}`} label="Wrap around reel" checked={wrapAround} onChange={(event) => setWrapAround(event.currentTarget.checked)} />
+                <Button variant="default" onClick={save}>{editingIndex === undefined ? "Add constraint" : "Save constraint"}</Button>
+                {editingIndex !== undefined && <Button variant="subtle" onClick={reset}>Cancel common constraint edit</Button>}
+            </QuickActions>
+            <QuickActions>
+                <Select aria-label={`Constraint preset for reel ${reelIndex + 1}`} label="Preset" placeholder="Choose a common preset…" data={REEL_STRIP_CONSTRAINT_PRESETS.map((preset) => ({value: preset.id, label: preset.label}))} value={presetId} onChange={setPresetId} />
+                <Button variant="default" aria-label={`Add constraint preset to reel ${reelIndex + 1}`} onClick={() => {
+                    const preset = REEL_STRIP_CONSTRAINT_PRESETS.find((candidate) => candidate.id === presetId);
+                    if (preset !== undefined) {
+                        replaceConstraints([...constraints, preset.build()]);
+                        setPresetId(null);
+                    }
+                }}>Add preset</Button>
             </QuickActions>
         </PageSection>
     );
@@ -566,8 +682,7 @@ function GeneratedEditor({
 }) {
     const sourceMode = getReelStripGenerationSourceMode(entry);
     // Bumped only by the "Auto" button below -- remounts the Length NumberInput so its own uncontrolled
-    // `defaultValue` picks up the programmatically computed length, the same "uncontrolled input needs a
-    // fresh key" technique ConstraintsEditor's own `textKey` uses for its preset-insert action.
+    // `defaultValue` picks up the programmatically computed length.
     const [lengthKey, setLengthKey] = useState(0);
     const autoLength = computeReelStripGenerationAutoLength(entry);
     const countLength = Object.values(asRecord(entry.symbolCounts)).reduce<number>((sum, value) => sum + (typeof value === "number" ? value : 0), 0);
@@ -633,8 +748,11 @@ function GeneratedEditor({
             <SourceTable reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} issues={issues} />
             {sourceMode === "symbolCounts" && consumedOccurrences > 0 && <Text size="sm" c="dimmed" mt="xs">Stack rules consume at least {consumedOccurrences} counted occurrence(s).</Text>}
             <LockedPositions reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} issues={issues} />
+            <CommonConstraintsEditor reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} />
             <StackConstraintsEditor reelIndex={reelIndex} entry={entry} symbols={symbols} mutate={mutate} />
-            <ConstraintsEditor reelIndex={reelIndex} entry={entry} mutate={mutate} issues={issues} />
+            <AdvancedDisclosure detail="constraints JSON">
+                <ConstraintsJsonEditor reelIndex={reelIndex} entry={entry} mutate={mutate} issues={issues} />
+            </AdvancedDisclosure>
         </div>
     );
 }

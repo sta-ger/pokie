@@ -28,6 +28,10 @@ async function addLiteralSymbol(user: ReturnType<typeof userEvent.setup>, symbol
     await user.click(screen.getByRole("button", {name: "Add symbol to reel 1"}));
 }
 
+async function openConstraintsAdvanced(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole("button", {name: "Show advanced details (constraints JSON)"}));
+}
+
 const LITERAL_AB_ANALYSIS = {length: 2, symbolCounts: {A: 1, B: 1}, symbolFrequencies: {A: 0.5, B: 0.5}, minimumCircularDistances: {}, maximumCircularDistances: {}, maximumConsecutiveOccurrences: {}};
 
 describe("BlueprintEditorPage - Reel Strip Modeler", () => {
@@ -223,6 +227,9 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await goToReelStripModeler(user);
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
         await selectGeneratedWeights(user);
+
+        expect(screen.getByLabelText("Constraints for reel 1").closest("[hidden]")).not.toBeNull();
+        await openConstraintsAdvanced(user);
 
         const constraintsField = screen.getByLabelText("Constraints for reel 1");
         await user.clear(constraintsField);
@@ -498,8 +505,9 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
 
         // Also leave reel 2 with a malformed constraints field showing its own local parse error --
         // the parse fails, so nothing here is ever committed to the draft/blueprint, but the error and
-        // typed text are still local, uncontrolled UI state tied to *this* reel's own editor instance.
+        // typed text are still local editor state tied to this reel's own editor instance.
         await user.click(screen.getByRole("button", {name: stepperStep("Edit or generate", "Literal or generated")}));
+        await openConstraintsAdvanced(user);
         await user.type(screen.getByLabelText("Constraints for reel 2"), "{{not valid json");
         await user.tab();
         expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -511,6 +519,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByLabelText("Length")).toHaveValue("5");
         expect(screen.getByLabelText("Seed")).toHaveValue("11");
         expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        await openConstraintsAdvanced(user);
         expect(screen.getByLabelText("Constraints for reel 1")).toHaveValue("");
 
         // And reel 2 the other way, confirming this isn't just reel 1 happening to win by coincidence.
@@ -717,11 +726,50 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Select reel 1"}));
         await selectGeneratedWeights(user);
 
+        expect(screen.getByLabelText("Constraints for reel 1").closest("[hidden]")).not.toBeNull();
         await user.click(screen.getByRole("combobox", {name: "Constraint preset for reel 1"}));
         await user.keyboard("{ArrowDown}{Enter}");
         await user.click(screen.getByRole("button", {name: "Add constraint preset to reel 1"}));
 
+        await openConstraintsAdvanced(user);
         expect(screen.getByLabelText("Constraints for reel 1")).toHaveValue(JSON.stringify([{type: "maximumConsecutiveOccurrences", maximumConsecutive: 1}], null, 2));
+    });
+
+    it("edits common spacing constraints visually and recovers an advanced JSON edit without corrupting the visual draft", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToReelStripModeler(user);
+        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
+        await selectGeneratedWeights(user);
+
+        await user.click(screen.getByRole("button", {name: "Add constraint"}));
+        expect(screen.getByText("Minimum spacing: 3, all symbols")).toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Edit common constraint 1 for reel 1"}));
+        await user.clear(screen.getByLabelText("Common constraint value for reel 1"));
+        await user.type(screen.getByLabelText("Common constraint value for reel 1"), "4");
+        await user.click(screen.getByRole("switch", {name: "Wrap common constraint around reel 1"}));
+        await user.click(screen.getByRole("button", {name: "Save constraint"}));
+        expect(screen.getByText("Minimum spacing: 4, all symbols, no wrap around")).toBeInTheDocument();
+
+        await openConstraintsAdvanced(user);
+        const constraintsField = screen.getByLabelText("Constraints for reel 1");
+        expect(constraintsField).toHaveValue(JSON.stringify([{type: "minimumCircularDistance", minimumDistance: 4, wrapAround: false}], null, 2));
+
+        await user.clear(constraintsField);
+        await user.type(constraintsField, "{{not valid json");
+        await user.tab();
+        expect(await screen.findByRole("alert")).toBeInTheDocument();
+        expect(screen.getByText("Minimum spacing: 4, all symbols, no wrap around")).toBeInTheDocument();
+
+        fireEvent.change(constraintsField, {target: {value: '[{"type":"maximumConsecutiveOccurrences","maximumConsecutive":2}]'}});
+        fireEvent.blur(constraintsField);
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.getByText("Maximum consecutive occurrences: 2, all symbols")).toBeInTheDocument());
+        await user.click(screen.getByRole("button", {name: "Remove common constraint 1 for reel 1"}));
+        expect(screen.getByText("No spacing or occurrence constraints yet.")).toBeInTheDocument();
     });
 
     it("copies another reel's own applied configuration into the current reel's draft via Copy from reel", async () => {
