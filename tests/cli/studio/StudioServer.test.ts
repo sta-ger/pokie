@@ -42,6 +42,7 @@ import {createMaterializingRuntimePackageResolver} from "../../../cli/materializ
 import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {ScaffoldResult} from "../../../cli/scaffold/ScaffoldResult.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {createRecommendedBlueprint} from "../../../cli/studio-client/src/domain/blueprintEditorState.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
@@ -1710,6 +1711,36 @@ describe("StudioServer", () => {
                 const entries = await managedRegistry.list();
                 expect(entries).toHaveLength(1);
                 expect(entries[0]).toMatchObject({location: expectedPath, name: "sample-slot", origin: "managed", type: "blueprint"});
+            });
+
+            // This is the actual fresh Home / Design Game default, rather than the compact server-only
+            // fixture above. It closes the boundary the guided Create Project action crosses: its
+            // validated Recommended model must be persisted and registered in one request, so the client
+            // receives the row it immediately opens into the Workspace.
+            it("persists and registers the default Recommended Design Game model", async () => {
+                const expectedPath = path.join(managedWorkDir, "POKIE Projects", "starter-slot", "blueprint.json");
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: createRecommendedBlueprint(),
+                });
+
+                expect(status).toBe(201);
+                expect(body).toMatchObject({
+                    status: "ok",
+                    path: expectedPath,
+                    name: "starter-slot",
+                    blueprintHash: computeGameBlueprintHash(createRecommendedBlueprint()),
+                    registeredProject: expect.objectContaining({
+                        location: expectedPath,
+                        origin: "managed",
+                        type: "blueprint",
+                        status: "ok",
+                    }),
+                });
+                expect(JSON.parse(fs.readFileSync(expectedPath, "utf-8"))).toEqual(createRecommendedBlueprint());
+                expect(await managedRegistry.list()).toEqual([
+                    expect.objectContaining({location: expectedPath, name: "starter-slot", origin: "managed", type: "blueprint"}),
+                ]);
             });
 
             it("serves only declared artwork from a reopened managed Blueprint directory", async () => {

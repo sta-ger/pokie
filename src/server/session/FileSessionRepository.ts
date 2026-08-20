@@ -1,9 +1,18 @@
-import crypto from "crypto";
-import {promises as fs} from "fs";
-import path from "path";
 import type {PokieSessionState} from "./PokieSessionState.js";
 import {SessionVersionConflictError} from "./SessionVersionConflictError.js";
 import type {VersionedSessionRepository, VersionedSessionState} from "./VersionedSessionRepository.js";
+
+type NodeFileSystem = typeof import("node:fs/promises");
+type NodeCrypto = typeof import("node:crypto");
+type NodePath = typeof import("node:path");
+type NodeFileRuntime = {readonly fs: NodeFileSystem; readonly crypto: NodeCrypto; readonly path: NodePath};
+
+// This module remains part of the root package entry point for its server-side public API. Keep its
+// Node built-ins behind a runtime boundary so a browser consumer importing an unrelated root export
+// (such as a game model) does not fail its production bundle while resolving `fs.promises`.
+function loadNodeFileRuntime(): Promise<NodeFileRuntime> {
+    return Promise.all([import("node:fs/promises"), import("node:crypto"), import("node:path")]).then(([fs, crypto, path]) => ({fs, crypto, path}));
+}
 
 // Persists one JSON file per session under `directory`, so sessions restore after a `pokie serve`
 // restart. Filenames are a SHA-256 hash of the sessionId rather than the sessionId itself, since
@@ -33,9 +42,11 @@ import type {VersionedSessionRepository, VersionedSessionState} from "./Versione
 export class FileSessionRepository implements VersionedSessionRepository {
     private readonly directory: string;
     private readonly writeQueues = new Map<string, Promise<unknown>>();
+    private readonly nodeRuntime: Promise<NodeFileRuntime>;
 
     constructor(directory: string) {
         this.directory = directory;
+        this.nodeRuntime = loadNodeFileRuntime();
     }
 
     public save(sessionId: string, state: PokieSessionState): Promise<void> {
@@ -86,7 +97,8 @@ export class FileSessionRepository implements VersionedSessionRepository {
 
     private async readRecord(sessionId: string): Promise<VersionedSessionState | undefined> {
         try {
-            const raw = await fs.readFile(this.filePathFor(sessionId), "utf-8");
+            const {fs} = await this.nodeRuntime;
+            const raw = await fs.readFile(await this.filePathFor(sessionId), "utf-8");
             const parsed = JSON.parse(raw) as {version?: unknown; state?: unknown};
             if (typeof parsed.version === "number" && parsed.state !== undefined) {
                 return {version: parsed.version, state: parsed.state as PokieSessionState};
@@ -100,11 +112,13 @@ export class FileSessionRepository implements VersionedSessionRepository {
     }
 
     private async writeRecord(sessionId: string, record: VersionedSessionState): Promise<void> {
+        const {fs} = await this.nodeRuntime;
         await fs.mkdir(this.directory, {recursive: true});
-        await fs.writeFile(this.filePathFor(sessionId), JSON.stringify(record), "utf-8");
+        await fs.writeFile(await this.filePathFor(sessionId), JSON.stringify(record), "utf-8");
     }
 
-    private filePathFor(sessionId: string): string {
+    private async filePathFor(sessionId: string): Promise<string> {
+        const {crypto, path} = await this.nodeRuntime;
         const fileName = crypto.createHash("sha256").update(sessionId).digest("hex");
         return path.join(this.directory, `${fileName}.json`);
     }

@@ -74,6 +74,10 @@ type StaticVideoSlotView = {
     availableBetModeIds: string[];
 };
 
+// Each connect/restore/new-session request owns one UI generation. A response from an older request
+// must never re-enable Spin or render a round after a newer session has started booting.
+let bootGeneration = 0;
+
 function requireElement<T extends HTMLElement>(id: string): T {
     const el = document.getElementById(id);
     if (el === null) {
@@ -320,14 +324,24 @@ function showSpinError(elements: Elements, error: unknown, onRetry: () => void, 
 }
 
 async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId?: string, seed?: string): Promise<void> {
+    const generation = ++bootGeneration;
+    // This has to happen before the first await: a prior session's Spin callback remains available
+    // until the new session has been accepted below.
+    elements.spinButton.disabled = true;
     clearConnectionError(elements.connectionError);
     elements.spinError.hidden = true;
 
     try {
         renderStatus(elements.status, "Connecting…");
         const {apiBaseUrl} = await fetchConfig(fetchImpl);
+        if (generation !== bootGeneration) {
+            return;
+        }
 
         let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl, preferredSessionId ?? readPreferredSessionId(), seed);
+        if (generation !== bootGeneration) {
+            return;
+        }
         renderSessionId(elements, current.sessionId);
         let stageIndex = 0;
         const staticView = deriveStaticVideoSlotView(current);
@@ -377,6 +391,9 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
             elements.spinButton.disabled = true;
             spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet, selectedMode)
                 .then((response) => {
+                    if (generation !== bootGeneration) {
+                        return;
+                    }
                     current = response;
                     renderSessionId(elements, current.sessionId);
                     stageIndex = 0;
@@ -386,15 +403,23 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
                     rerender();
                 })
                 .catch((error: unknown) => {
+                    if (generation !== bootGeneration) {
+                        return;
+                    }
                     showSpinError(elements, error, attemptSpin, () => reconnect(elements, fetchImpl));
                 })
                 .finally(() => {
-                    elements.spinButton.disabled = false;
+                    if (generation === bootGeneration) {
+                        elements.spinButton.disabled = false;
+                    }
                 });
         };
 
         wireSpinButton(elements.spinButton, attemptSpin);
     } catch (error) {
+        if (generation !== bootGeneration) {
+            return;
+        }
         renderStatus(elements.status, "Unable to connect.");
         showConnectionError(elements, error, () => {
             boot(elements, fetchImpl, preferredSessionId, seed).catch((retryError: unknown) => console.error(retryError));

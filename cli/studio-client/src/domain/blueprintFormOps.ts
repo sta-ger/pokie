@@ -927,20 +927,27 @@ export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelG
     return "default";
 }
 
-// Switching modes clears the fields for every mode being left, so the blueprint never ends up carrying
-// more than one at once by accident (GameBlueprintValidator only warns/errors about that combination,
-// doesn't always block it, but the editor's own toggle is meant to make the choice explicit and
-// exclusive).
+// Switching modes keeps the blueprint exclusive: fields for every mode being left are removed. Moving
+// from literal reel strips to the per-reel model is a representation-preserving conversion, though:
+// each existing strip becomes that reel's literal entry instead of being silently replaced by an empty
+// one. GameBlueprintValidator only warns/errors about carrying multiple modes, but the editor's toggle
+// makes the choice explicit and canonical.
 export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: ReelGenerationMode): void {
     if (mode === "reelStrips") {
         blueprint.reelStrips = blueprint.reelStrips !== undefined ? asReelStrips(blueprint.reelStrips) : new Array(reelCount(blueprint)).fill([]).map(() => []);
         Reflect.deleteProperty(blueprint, "reelStripGeneration");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     } else if (mode === "reelStripGeneration") {
-        blueprint.reelStripGeneration =
-            blueprint.reelStripGeneration !== undefined
-                ? asReelStripGenerationEntries(blueprint.reelStripGeneration)
-                : new Array(reelCount(blueprint)).fill(null).map(() => ({type: "literal", strip: []}));
+        const literalStrips = blueprint.reelStrips !== undefined ? asReelStrips(blueprint.reelStrips) : undefined;
+        let entries: Record<string, unknown>[];
+        if (blueprint.reelStripGeneration !== undefined) {
+            entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
+        } else if (literalStrips !== undefined) {
+            entries = Array.from({length: reelCount(blueprint)}, (_, reelIndex) => ({type: "literal", strip: literalStrips[reelIndex] ?? []}));
+        } else {
+            entries = new Array(reelCount(blueprint)).fill(null).map(() => ({type: "literal", strip: []}));
+        }
+        blueprint.reelStripGeneration = entries;
         Reflect.deleteProperty(blueprint, "reelStrips");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     } else if (mode === "symbolWeights") {

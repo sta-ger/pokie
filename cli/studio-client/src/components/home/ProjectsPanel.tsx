@@ -1,4 +1,4 @@
-import {Anchor, Badge, Button, Group, Table, Text, TextInput} from "@mantine/core";
+import {Anchor, Badge, Button, Checkbox, Group, Select, Table, Text, TextInput} from "@mantine/core";
 import {useCallback, useEffect, useRef, useState, type ReactNode} from "react";
 import {useNavigate} from "react-router-dom";
 import {
@@ -70,6 +70,11 @@ const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     parWorkbook: "PAR sheet",
 };
 
+const PROJECTS_PER_PAGE = 10;
+
+type ProjectTypeFilter = "all" | StudioProjectType;
+type ProjectStatusFilter = "all" | "ok" | "missing";
+
 function previewProjectImportWithTimeout(fetchImpl: FetchLike, location: string): Promise<StudioProjectImportPreviewResult> {
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(
@@ -109,6 +114,13 @@ export function ProjectsPanel({
     // before React has committed the controlled input's re-render.
     const relocationLocationRef = useRef("");
     const [relocationError, setRelocationError] = useState<string | undefined>(undefined);
+    const [search, setSearch] = useState("");
+    const [typeFilter, setTypeFilter] = useState<ProjectTypeFilter>("all");
+    const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("all");
+    const [page, setPage] = useState(1);
+    const [selectedMissingLocations, setSelectedMissingLocations] = useState<ReadonlySet<string>>(new Set());
+    const [removingMissing, setRemovingMissing] = useState(false);
+    const [missingRemovalError, setMissingRemovalError] = useState<string | undefined>(undefined);
     const detectGuard = useDoubleSubmitGuard();
     const registerGuard = useDoubleSubmitGuard();
     const openGuard = useDoubleSubmitGuard();
@@ -205,6 +217,47 @@ export function ProjectsPanel({
                 .then(() => removeEntry(entry.location))
                 .catch((error: unknown) => setListView({status: "error", message: errorMessage(error)}));
         });
+    };
+
+    const setFilters = (nextSearch: string, nextType: ProjectTypeFilter, nextStatus: ProjectStatusFilter): void => {
+        setSearch(nextSearch);
+        setTypeFilter(nextType);
+        setStatusFilter(nextStatus);
+        setPage(1);
+    };
+
+    const handleBulkRemoveMissing = (): void => {
+        const selectedLocations = [...selectedMissingLocations];
+        if (selectedLocations.length === 0 || removingMissing) {
+            return;
+        }
+        confirm(
+            `Remove ${selectedLocations.length} missing project${selectedLocations.length === 1 ? "" : "s"} from Projects? This only forgets them here -- nothing on disk is deleted.`,
+            () => {
+                setRemovingMissing(true);
+                setMissingRemovalError(undefined);
+                Promise.allSettled(selectedLocations.map((entryLocation) => removeProjectRegistryEntry(fetchImpl, entryLocation)))
+                    .then((results) => {
+                        const removedLocations = new Set(
+                            results.flatMap((result, index) => result.status === "fulfilled" ? [selectedLocations[index]] : []),
+                        );
+                        if (removedLocations.size > 0) {
+                            setListView((previous) => {
+                                if (previous.status !== "loaded") {
+                                    return previous;
+                                }
+                                const entries = previous.entries.filter((entry) => !removedLocations.has(entry.location));
+                                return entries.length === 0 ? {status: "empty"} : {...previous, entries};
+                            });
+                            setSelectedMissingLocations((previous) => new Set([...previous].filter((location) => !removedLocations.has(location))));
+                        }
+                        if (removedLocations.size !== selectedLocations.length) {
+                            setMissingRemovalError("Some missing projects could not be removed. The remaining selections are still available to retry.");
+                        }
+                    })
+                    .finally(() => setRemovingMissing(false));
+            },
+        );
     };
 
     const handleLocationChange = (value: string): void => {
@@ -308,6 +361,76 @@ export function ProjectsPanel({
             });
     };
 
+    const entries = listView.status === "loaded" ? listView.entries : [];
+    const searchNeedle = search.trim().toLocaleLowerCase();
+    const filteredEntries = entries.filter((entry) => {
+        const matchesSearch = searchNeedle.length === 0 || [entry.name, entry.location, PROJECT_TYPE_LABEL[entry.type], entry.origin]
+            .some((value) => value.toLocaleLowerCase().includes(searchNeedle));
+        return matchesSearch && (typeFilter === "all" || entry.type === typeFilter) && (statusFilter === "all" || entry.status === statusFilter);
+    });
+    const pageCount = Math.max(1, Math.ceil(filteredEntries.length / PROJECTS_PER_PAGE));
+    const currentPage = Math.min(page, pageCount);
+    const pageEntries = filteredEntries.slice((currentPage - 1) * PROJECTS_PER_PAGE, currentPage * PROJECTS_PER_PAGE);
+    const availablePageEntries = pageEntries.filter((entry) => entry.status === "ok");
+    const missingPageEntries = pageEntries.filter((entry) => entry.status === "missing");
+    const missingEntries = entries.filter((entry) => entry.status === "missing");
+    const selectedMissingOnPage = missingPageEntries.filter((entry) => selectedMissingLocations.has(entry.location));
+    const toggleMissingSelection = (location: string, checked: boolean): void => {
+        setSelectedMissingLocations((previous) => {
+            const next = new Set(previous);
+            if (checked) next.add(location);
+            else next.delete(location);
+            return next;
+        });
+    };
+    const renderEntryRow = (entry: StudioProjectRegistryView): ReactNode => (
+        <Table.Tr key={entry.location} className="project-registry-entry">
+            <Table.Td className="project-registry-selection" data-label="Select">
+                {entry.status === "missing" && (
+                    <Checkbox
+                        aria-label={`Select missing project ${entry.name}`}
+                        checked={selectedMissingLocations.has(entry.location)}
+                        onChange={(event) => toggleMissingSelection(entry.location, event.currentTarget.checked)}
+                    />
+                )}
+            </Table.Td>
+            <Table.Td data-label="Project">
+                {renderEntryName(entry)}
+                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>{entry.location}</Text>
+                <Text className="project-registry-status" size="sm" c={entry.status === "ok" ? "teal" : "orange"}>
+                    {entry.status === "ok" ? "Available" : "Needs attention"}
+                </Text>
+            </Table.Td>
+            <Table.Td data-label="Type">{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
+            <Table.Td data-label="Origin">
+                <Group gap={6} wrap="nowrap">
+                    <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
+                    {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
+                </Group>
+            </Table.Td>
+            <Table.Td data-label="Last opened">{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
+            <Table.Td className="project-registry-actions" data-label="Actions">
+                <QuickActions>
+                    {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
+                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>Open</Button>
+                    )}
+                    {entry.status === "ok" && entry.type === "parWorkbook" && (
+                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Design Game</Button>
+                    )}
+                    {entry.status === "missing" && (
+                        <Button variant="default" size="xs" onClick={() => {
+                            setRelocatingEntry(entry);
+                            setRelocationLocation("");
+                            relocationLocationRef.current = "";
+                            setRelocationError(undefined);
+                        }}>Relocate</Button>
+                    )}
+                    <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>Remove</Button>
+                </QuickActions>
+            </Table.Td>
+        </Table.Tr>
+    );
+
     return (
         <div>
             <PageSection legend="Your projects">
@@ -317,75 +440,99 @@ export function ProjectsPanel({
                 {listView.status === "loaded" && (
                     <>
                         {listView.openError && <ErrorState message={listView.openError.message} detail={listView.openError.detail} />}
-                        <Table.ScrollContainer minWidth={640}>
-                            <Table>
-                                <Table.Thead>
-                                    <Table.Tr>
-                                        <Table.Th>Name</Table.Th>
-                                        <Table.Th>Type</Table.Th>
-                                        <Table.Th>Origin</Table.Th>
-                                        <Table.Th>Last opened</Table.Th>
-                                        <Table.Th>Actions</Table.Th>
-                                    </Table.Tr>
-                                </Table.Thead>
-                                <Table.Tbody>
-                                    {listView.entries.map((entry) => (
-                                        <Table.Tr key={entry.location}>
-                                            <Table.Td>
-                                                {renderEntryName(entry)}
-                                                <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                                                    {entry.location}
-                                                </Text>
-                                            </Table.Td>
-                                            <Table.Td>{PROJECT_TYPE_LABEL[entry.type]}</Table.Td>
-                                            <Table.Td>
-                                                <Group gap={6} wrap="nowrap">
-                                                    <Text component="span">{entry.origin === "managed" ? "Managed" : "Registered"}</Text>
-                                                    {entry.importedFromParSheetPath && <Badge size="xs" color="grape">Imported from PAR</Badge>}
-                                                </Group>
-                                            </Table.Td>
-                                            <Table.Td>{formatTimestamp(entry.lastOpenedAt)}</Table.Td>
-                                            <Table.Td>
-                                                <QuickActions>
-                                                    {entry.status === "ok" && OPENABLE_TYPES.has(entry.type) && (
-                                                        <Button
-                                                            variant="default"
-                                                            size="xs"
-                                                            loading={openingLocation === entry.location}
-                                                            onClick={() => handleOpen(entry)}
-                                                        >
-                                                        Open
-                                                        </Button>
-                                                    )}
-                                                    {entry.status === "ok" && entry.type === "parWorkbook" && (
-                                                        <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>
-                                                        Open in Design Game
-                                                        </Button>
-                                                    )}
-                                                    {entry.status === "missing" && (
-                                                        <Button
-                                                            variant="default"
-                                                            size="xs"
-                                                            onClick={() => {
-                                                                setRelocatingEntry(entry);
-                                                                setRelocationLocation("");
-                                                                relocationLocationRef.current = "";
-                                                                setRelocationError(undefined);
-                                                            }}
-                                                        >
-                                                        Relocate
-                                                        </Button>
-                                                    )}
-                                                    <Button variant="subtle" color="red" size="xs" onClick={() => handleRemove(entry)}>
-                                                    Remove
-                                                    </Button>
-                                                </QuickActions>
-                                            </Table.Td>
+                        <QuickActions>
+                            <TextInput
+                                label="Search projects"
+                                placeholder="Name or location"
+                                value={search}
+                                onChange={(event) => setFilters(event.currentTarget.value, typeFilter, statusFilter)}
+                            />
+                            <Select
+                                label="Project type"
+                                data={[{value: "all", label: "All types"}, ...Object.entries(PROJECT_TYPE_LABEL).map(([value, label]) => ({value, label}))]}
+                                value={typeFilter}
+                                onChange={(value) => setFilters(search, (value ?? "all") as ProjectTypeFilter, statusFilter)}
+                            />
+                            <Select
+                                label="Availability"
+                                data={[{value: "all", label: "All projects"}, {value: "ok", label: "Available"}, {value: "missing", label: "Missing"}]}
+                                value={statusFilter}
+                                onChange={(value) => setFilters(search, typeFilter, (value ?? "all") as ProjectStatusFilter)}
+                            />
+                            {(search.length > 0 || typeFilter !== "all" || statusFilter !== "all") && (
+                                <Button variant="default" onClick={() => setFilters("", "all", "all")}>Clear filters</Button>
+                            )}
+                        </QuickActions>
+                        {missingEntries.length > 0 && (
+                            <QuickActions>
+                                <Button
+                                    color="red"
+                                    variant="light"
+                                    disabled={selectedMissingLocations.size === 0}
+                                    loading={removingMissing}
+                                    onClick={handleBulkRemoveMissing}
+                                >
+                                    Remove selected missing ({selectedMissingLocations.size})
+                                </Button>
+                                <Text size="sm" c="dimmed">Remove stale registrations in one step; project files stay untouched.</Text>
+                            </QuickActions>
+                        )}
+                        {missingRemovalError && <ErrorState message={missingRemovalError} />}
+                        {filteredEntries.length === 0 ? (
+                            <EmptyState message="No projects match these filters." />
+                        ) : (
+                            <Table.ScrollContainer className="project-registry-scroll" minWidth={0}>
+                                <Table className="project-registry" style={{tableLayout: "fixed", width: "100%"}}>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>
+                                                {missingPageEntries.length > 0 && (
+                                                    <Checkbox
+                                                        aria-label="Select missing projects on this page"
+                                                        checked={selectedMissingOnPage.length === missingPageEntries.length}
+                                                        indeterminate={selectedMissingOnPage.length > 0 && selectedMissingOnPage.length < missingPageEntries.length}
+                                                        onChange={(event) => missingPageEntries.forEach((entry) => toggleMissingSelection(entry.location, event.currentTarget.checked))}
+                                                    />
+                                                )}
+                                            </Table.Th>
+                                            <Table.Th>Name</Table.Th>
+                                            <Table.Th>Type</Table.Th>
+                                            <Table.Th>Origin</Table.Th>
+                                            <Table.Th>Last opened</Table.Th>
+                                            <Table.Th>Actions</Table.Th>
                                         </Table.Tr>
-                                    ))}
-                                </Table.Tbody>
-                            </Table>
-                        </Table.ScrollContainer>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {availablePageEntries.length > 0 && (
+                                            <Table.Tr className="project-registry-group">
+                                                <Table.Td colSpan={6}><Text fw={600} size="sm">Available projects</Text></Table.Td>
+                                            </Table.Tr>
+                                        )}
+                                        {availablePageEntries.map(renderEntryRow)}
+                                        {missingPageEntries.length > 0 && (
+                                            <Table.Tr className="project-registry-group">
+                                                <Table.Td colSpan={6}><Text fw={600} size="sm">Needs attention</Text></Table.Td>
+                                            </Table.Tr>
+                                        )}
+                                        {missingPageEntries.map(renderEntryRow)}
+                                    </Table.Tbody>
+                                </Table>
+                            </Table.ScrollContainer>
+                        )}
+                        {filteredEntries.length > 0 && (
+                            <Group justify="space-between" mt="sm" wrap="wrap">
+                                <Text size="sm" c="dimmed">
+                                    Showing {(currentPage - 1) * PROJECTS_PER_PAGE + 1}–{Math.min(currentPage * PROJECTS_PER_PAGE, filteredEntries.length)} of {filteredEntries.length} projects
+                                </Text>
+                                {pageCount > 1 && (
+                                    <Group gap="xs">
+                                        <Button variant="default" size="xs" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous page</Button>
+                                        <Text size="sm">Page {currentPage} of {pageCount}</Text>
+                                        <Button variant="default" size="xs" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next page</Button>
+                                    </Group>
+                                )}
+                            </Group>
+                        )}
                     </>
                 )}
                 {relocatingEntry && (

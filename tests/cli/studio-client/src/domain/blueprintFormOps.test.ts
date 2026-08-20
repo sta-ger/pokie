@@ -632,7 +632,7 @@ describe("blueprintFormOps", () => {
             expect(b.reelStrips).toEqual([[], []]);
         });
 
-        it("switching to reelStripGeneration clears reelStrips/symbolWeights and seeds one literal entry per reel", () => {
+        it("switching to reelStripGeneration clears symbolWeights and seeds one literal entry per reel", () => {
             const b: Record<string, unknown> = {reels: 2, symbolWeights: {A: 1}};
 
             setReelGenerationMode(b, "reelStripGeneration");
@@ -640,6 +640,30 @@ describe("blueprintFormOps", () => {
             expect(b.symbolWeights).toBeUndefined();
             expect(b.reelStrips).toBeUndefined();
             expect(b.reelStripGeneration).toEqual([{type: "literal", strip: []}, {type: "literal", strip: []}]);
+        });
+
+        it("preserves every literal reel strip when converting to the per-reel modeler", () => {
+            const b: Record<string, unknown> = {
+                reels: 5,
+                reelStrips: [
+                    ["A", "K", "Q", "J"],
+                    ["A", "K", "Q", "J"],
+                    ["K", "Q", "J", "J"],
+                    ["K", "Q", "J", "J"],
+                    ["Q", "Q", "J", "J"],
+                ],
+            };
+
+            setReelGenerationMode(b, "reelStripGeneration");
+
+            expect(b.reelStrips).toBeUndefined();
+            expect(b.reelStripGeneration).toEqual([
+                {type: "literal", strip: ["A", "K", "Q", "J"]},
+                {type: "literal", strip: ["A", "K", "Q", "J"]},
+                {type: "literal", strip: ["K", "Q", "J", "J"]},
+                {type: "literal", strip: ["K", "Q", "J", "J"]},
+                {type: "literal", strip: ["Q", "Q", "J", "J"]},
+            ]);
         });
 
         it("switching to symbolWeights clears reelStrips/reelStripGeneration", () => {

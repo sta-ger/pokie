@@ -7,3 +7,95 @@ body,
     max-width: 100%;
     overflow-x: hidden;
 }
+
+/* The Projects registry has a desktop table for fast comparison. When the fixed desktop navigation
+   leaves the main panel narrower than a table's six columns, the same rows become labelled cards:
+   project identity, availability, each metadata value, and every action stay in one readable vertical
+   unit instead of placing the reopen action beyond the viewport. */
+.project-registry-status {
+    display: none;
+}
+
+@media (max-width: 75em) {
+    .project-registry-scroll,
+    .project-registry-scroll [data-radix-scroll-area-viewport] {
+        overflow: visible;
+    }
+
+    .project-registry,
+    .project-registry tbody,
+    .project-registry-entry {
+        display: block;
+        width: 100%;
+    }
+
+    .project-registry thead {
+        display: none;
+    }
+
+    .project-registry-entry {
+        box-sizing: border-box;
+        margin-block: var(--mantine-spacing-sm);
+        padding: var(--mantine-spacing-sm);
+        border: 1px solid var(--mantine-color-default-border);
+        border-radius: var(--mantine-radius-sm);
+    }
+
+    .project-registry-entry > td {
+        display: grid;
+        grid-template-columns: minmax(5.5rem, 30%) minmax(0, 1fr);
+        gap: var(--mantine-spacing-xs);
+        min-width: 0;
+        width: 100%;
+        padding: var(--mantine-spacing-xs) 0;
+        border: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .project-registry-entry > td::before {
+        content: attr(data-label);
+        color: var(--mantine-color-dimmed);
+        font-size: var(--mantine-font-size-sm);
+        font-weight: 600;
+    }
+
+    .project-registry-selection:empty {
+        display: none;
+    }
+
+    .project-registry-selection:not(:empty) {
+        grid-template-columns: minmax(5.5rem, 30%) minmax(0, 1fr);
+    }
+
+    .project-registry-actions .mantine-Group-root {
+        justify-content: flex-start;
+    }
+
+    .project-registry-status {
+        display: block;
+        margin-top: var(--mantine-spacing-xs);
+        font-weight: 600;
+    }
+
+    .project-registry-group {
+        display: block;
+        width: 100%;
+        margin-top: var(--mantine-spacing-md);
+    }
+
+    .project-registry-group > td {
+        display: block;
+        padding: var(--mantine-spacing-xs) 0;
+        border: 0;
+    }
+}
+
+/* At phone width, a label/value split leaves the project name, path, and action controls with too
+   little usable width. Keep each card's hierarchy, but stack its labels above full-width content so
+   long project locations remain scannable and the controls stay practical to use. */
+@media (max-width: 48em) {
+    .project-registry-entry > td,
+    .project-registry-selection:not(:empty) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

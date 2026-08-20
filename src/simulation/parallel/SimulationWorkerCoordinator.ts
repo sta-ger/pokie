@@ -1,10 +1,28 @@
-import {Worker} from "worker_threads";
+import type {Worker} from "worker_threads";
 import {getDefaultWorkerEntryUrl} from "./internal/defaultWorkerEntryUrl.js";
 import type {SimulationWorkerMessage} from "./internal/SimulationWorkerMessage.js";
 import {SimulationCancelledError} from "./SimulationCancelledError.js";
 import type {SimulationWorkerRequest} from "./SimulationWorkerRequest.js";
 import {SimulationWorkerFailureError} from "./SimulationWorkerFailureError.js";
 import type {SimulationWorkerResult} from "./SimulationWorkerResult.js";
+
+type WorkerThreadsModule = {
+    Worker: new (filename: URL, options: {workerData: SimulationWorkerRequest}) => Worker;
+};
+
+// Keep the Node-only worker_threads dependency out of browser bundles. The public package root also
+// exports client-facing code, so a literal dynamic import would still let a browser bundler discover
+// and externalize this Node builtin before a simulation ever asks to use worker threads.
+// eslint-disable-next-line no-new-func -- preserves a native runtime import in both ESM and CJS output.
+const importWorkerThreads = new Function("specifier", "return import(specifier)") as (specifier: string) => Promise<WorkerThreadsModule>;
+
+// Jest evaluates source modules in a VM without a dynamic-import callback. Keep the CommonJS
+// fallback equally indirect so browser bundles do not discover the Node-only builtin merely by
+// inspecting this public simulation API.
+// eslint-disable-next-line no-new-func -- mirrors the narrowly-scoped dynamic-import workaround above.
+const requireWorkerThreads = new Function("nodeRequire", "return nodeRequire('worker_threads')") as (
+    nodeRequire: NodeRequire,
+) => WorkerThreadsModule;
 
 export type SimulationWorkerProgress = {workerIndex: number; roundsCompleted: number};
 
@@ -151,6 +169,26 @@ export class SimulationWorkerCoordinator {
 
     private async buildDefaultCreateWorker(): Promise<(request: SimulationWorkerRequest) => Worker> {
         const url = this.workerEntryUrl ?? (await getDefaultWorkerEntryUrl());
-        return (request) => new Worker(url, {workerData: request});
+        const {Worker: NodeWorker} = await this.resolveWorkerThreads();
+        return (request) => new NodeWorker(url, {workerData: request});
     }
+
+    private async resolveWorkerThreads(): Promise<WorkerThreadsModule> {
+        try {
+            return await importWorkerThreads("worker_threads");
+        } catch (error) {
+            if (!isVmDynamicImportUnavailable(error) || typeof require !== "function") {
+                throw error;
+            }
+            return requireWorkerThreads(require);
+        }
+    }
+}
+
+function isVmDynamicImportUnavailable(error: unknown): boolean {
+    return (
+        typeof error === "object" &&
+        error !== null &&
+        (error as {code?: unknown}).code === "ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG"
+    );
 }

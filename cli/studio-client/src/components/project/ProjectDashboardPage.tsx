@@ -678,7 +678,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, [fetchImpl]);
 
     const play = usePlaySession(refreshRecentSpins);
+    const resetPlayForProjectSwitch = play.resetForProjectSwitch;
     const deployment = useDeploymentManager();
+
+    // Reset Play before the newly resolved project's tab can be painted.  A passive effect here can
+    // run after the user has already pressed "New Play session" on a just-opened project; its reset
+    // then invalidates that request and leaves the visible form looking as if the action did nothing.
+    // Layout effects run after React has committed the new project but before the browser can dispatch
+    // an interaction against it, so the first session request belongs to the current project.
+    useLayoutEffect(() => {
+        if (projectKey !== undefined) {
+            resetPlayForProjectSwitch();
+        }
+    }, [projectKey, resetPlayForProjectSwitch]);
 
     // Set by GameModelTab whenever its own in-progress section edit has unsaved changes (see its own
     // `onDirtyChange` doc comment) -- folded into `hasActiveOperation`'s own "confirm before Close
@@ -724,7 +736,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         refreshReports();
         refreshReplayList();
         refreshRecentSpins();
-        play.resetForProjectSwitch();
         deployment.resetForProjectSwitch();
         deployment.refreshTargets();
         deployment.refreshProjectModesAndRegistry();
