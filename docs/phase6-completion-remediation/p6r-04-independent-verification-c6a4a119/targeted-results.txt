@@ -1,0 +1,8 @@
+candidate_sha=c6a4a119d641483ca0388adf763e79d3294a57a1
+command=npm run test:targeted -- <the eight persisted complete test paths>
+result=FAIL (exit 1)
+Test Suites: 2 failed, 6 passed, 8 total
+Tests: 5 failed, 408 passed, 413 total
+duration_seconds=398.118
+failed_files=tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx;tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
+failure_excerpts=Replay broad Show advanced details query matches multiple visible controls; Export/Deploy expected Preflight: 10 estimated item text was absent.
