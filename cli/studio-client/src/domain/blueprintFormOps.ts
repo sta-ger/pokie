@@ -853,12 +853,10 @@ export function removeReelStripGenerationLockedPosition(blueprint: Record<string
     });
 }
 
-// Constraints are edited as a raw JSON array (ReelStripConstraintSpec[]) rather than one bespoke
-// widget per constraint type -- there are seven types with quite different fields (see
-// src/generated/ReelStripConstraintSpec.ts), and the Blueprint Editor already has a JSON-editing
-// affordance elsewhere (the whole-blueprint JSON view) whose shape errors surface the same way, via
-// the existing Validate action. This parser is pure/side-effect-free so a failed parse can be shown
-// inline without touching the blueprint -- see setReelStripGenerationConstraints for the actual mutator.
+// The Modeler has visual editors for the common spacing, occurrence, and stack constraints; this parser
+// remains the Advanced escape hatch for every other ReelStripConstraintSpec. It is pure and
+// side-effect-free, so an incomplete expert edit can show its own inline error without replacing the
+// visual draft -- see setReelStripGenerationConstraints for the actual mutator.
 export function parseReelStripGenerationConstraintsJson(jsonText: string): {ok: true; constraints: unknown[]} | {ok: false; error: string} {
     if (jsonText.trim().length === 0) {
         return {ok: true, constraints: []};
