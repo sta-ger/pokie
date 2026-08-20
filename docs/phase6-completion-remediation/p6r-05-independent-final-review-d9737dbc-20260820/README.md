@@ -14,8 +14,9 @@ npm run test:targeted -- tests/cli/materialize/BlueprintProjectMaterializer.offl
 The offline production-resolver case exhausts both dependency-install attempts,
 observes a `BlueprintMaterializationError`, confirms the cache root is empty,
 then builds through a fresh staging directory and borrows that ready cache entry
-without another install.  The unit file covers the same lifecycle boundaries,
-including dependency failure cleanup, retry, and reuse.
+without another install. The unit file independently exhausts two dependency
+attempts, checks cleanup and typed failure, then verifies that the successful
+retry is borrowed without a second install.
 
 The exercised production path is
 `createMaterializingRuntimePackageResolver()` through
@@ -27,6 +28,10 @@ the verified cache entry.
 No official release or packaging gate was run.  This index records the current
 source, machine-owned coverage, and retained P6R-04 rendered evidence; it does
 not substitute for the post-approval lifecycle gate.
+
+The retained P6R-01--P6R-04 independent review found no unresolved P0, P1, or
+material P2 in those inspected surfaces. This correction reopens only the
+materializer recovery contract documented above.
 
 ## P6R-01 through P6R-04 traceability
 

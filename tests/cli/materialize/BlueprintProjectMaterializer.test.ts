@@ -338,7 +338,7 @@ describe("BlueprintProjectMaterializer", () => {
         expect(fs.existsSync(cacheRoot) ? fs.readdirSync(cacheRoot) : []).toEqual([]);
     });
 
-    it("recovers from a failed 'npm install' phase, leaving no cache directory or staging leftovers, and is retryable", async () => {
+    it("recovers from exhausted 'npm install' retries, leaving no cache artifacts, then reuses a successful retry", async () => {
         const failingRunner = createRecordingRunner("network unreachable");
         const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, failingRunner, createStubPackageValidator(validReport), cacheRoot);
         const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
@@ -352,12 +352,19 @@ describe("BlueprintProjectMaterializer", () => {
         expect(fs.readdirSync(cacheRoot)).toEqual([]);
 
         const workingRunner = createRecordingRunner();
-        const retried = await new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, workingRunner, createStubPackageValidator(validReport), cacheRoot).materialize(
+        const retryingMaterializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, workingRunner, createStubPackageValidator(validReport), cacheRoot);
+        const retried = await retryingMaterializer.materialize(
             blueprintProjectOf(blueprintPath),
         );
 
         expect(fs.existsSync(retried.runtimePath)).toBe(true);
         expect(fs.readdirSync(cacheRoot)).toEqual([path.basename(retried.runtimePath)]);
+        expect(workingRunner.calls).toHaveLength(1);
+
+        const cached = await retryingMaterializer.materialize(blueprintProjectOf(blueprintPath));
+
+        expect(cached.runtimePath).toBe(retried.runtimePath);
+        expect(workingRunner.calls).toHaveLength(1);
     });
 
     it("recovers from a failed verify phase, leaving no cache directory, and is retryable once the package becomes valid", async () => {
