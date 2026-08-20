@@ -138,7 +138,10 @@ function describeStakeEngineResultError(view: Exclude<StudioStakeEngineExportVie
 type ArtifactBuildRunView =
     | {status: "idle"}
     | {status: "running"; jobId: string; progress?: StudioArtifactBuildJobView["progress"]; cancellationRequested: boolean}
-    | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>}
+    // Keep the server's last in-flight preflight with the successful result. A very small build can
+    // complete between React renders; without retaining it, the user never sees the estimate that
+    // governed the build they just started.
+    | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
     | {status: "cancelled"}
     | {status: "error"; message: string};
 
@@ -409,16 +412,23 @@ function TargetCard({
                             Cancel
                         </Button>
                     )}
-                    {artifactBuildRun.status === "running" && (
+                    {(artifactBuildRun.status === "running" || artifactBuildRun.status === "ok") && artifactBuildRun.progress?.preflight !== undefined && (
                         <Text size="sm" c="dimmed" mt={4}>
-                            {artifactBuildRun.progress?.preflight && (
+                            {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
+                                `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
+                                `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
+                            {artifactBuildRun.status === "running" && artifactBuildRun.progress.status !== "preflight" && (
                                 <>
-                                    {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
-                                        `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
-                                        `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
                                     <br />
+                                    {`Building artifact${artifactBuildRun.progress.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                        `${artifactBuildRun.progress.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`}
                                 </>
                             )}
+                            {artifactBuildRun.status === "running" && artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
+                        </Text>
+                    )}
+                    {artifactBuildRun.status === "running" && artifactBuildRun.progress?.preflight === undefined && (
+                        <Text size="sm" c="dimmed" mt={4}>
                             {artifactBuildRun.progress?.status !== "preflight" &&
                                 (`Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
                                     `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
@@ -889,7 +899,14 @@ export function ExportDeployTab({capabilities, deployment}: {capabilities: reado
                     setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "cancelled"}}));
                 } else if (job.result !== undefined && job.result.status === "ok") {
                     const result = job.result;
-                    setArtifactBuildRuns((runs) => ({...runs, [target]: {status: "ok", result}}));
+                    setArtifactBuildRuns((runs) => ({
+                        ...runs,
+                        [target]: {
+                            status: "ok",
+                            result,
+                            progress: runs[target]?.status === "running" ? runs[target].progress : undefined,
+                        },
+                    }));
                 } else {
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
