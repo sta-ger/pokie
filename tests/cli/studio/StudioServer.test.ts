@@ -1623,12 +1623,14 @@ describe("StudioServer", () => {
             let managedBaseUrl: string;
             let managedWorkDir: string;
             let managedRegistry: InMemoryStudioProjectRegistry;
+            let managedProjectRegistrationService: StudioProjectRegistrationService;
 
             beforeEach(async () => {
                 managedWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-managed-work-"));
                 const managedLoadGame = jest.fn().mockResolvedValue(createFakeGame({id: "sample-slot", name: "Sample Slot", version: "0.1.0"}));
                 const managedHomeService = new StudioHomeService("1.0.0", undefined, managedLoadGame);
                 managedRegistry = new InMemoryStudioProjectRegistry();
+                managedProjectRegistrationService = new StudioProjectRegistrationService(managedRegistry);
                 // Points PokiePathResolver.resolveIndependentProjectDirectory's own "POKIE Projects/<name>"
                 // convention at this test's own temp directory instead of the real machine's Documents/Home
                 // -- everything else about saveManaged() (writing blueprint.json, registering it) runs for
@@ -1659,7 +1661,7 @@ describe("StudioServer", () => {
                         undefined,
                         {resolveIndependentProjectDirectory} as unknown as ConstructorParameters<typeof StudioBlueprintService>[11],
                     ),
-                    projectRegistrationService: new StudioProjectRegistrationService(managedRegistry),
+                    projectRegistrationService: managedProjectRegistrationService,
                 });
                 const address = await managedServer.start();
                 managedBaseUrl = `http://${address.host}:${address.port}`;
@@ -1732,6 +1734,23 @@ describe("StudioServer", () => {
                 expect(await managedRegistry.list()).toEqual([
                     expect.objectContaining({location: expectedPath, name: "starter-slot", origin: "managed", type: "blueprint"}),
                 ]);
+            });
+
+            it("retries a transient managed-project registration so Create Project can open the recommended model", async () => {
+                const registerManaged = jest.spyOn(managedProjectRegistrationService, "registerManaged");
+                registerManaged.mockRejectedValueOnce(new Error("temporarily locked project registry"));
+
+                const {status, body} = await post(`${managedBaseUrl}/api/home/blueprints/save-managed`, {
+                    blueprint: createRecommendedBlueprint(),
+                });
+
+                expect(status).toBe(201);
+                expect(body).toMatchObject({
+                    status: "ok",
+                    registeredProject: expect.objectContaining({origin: "managed", type: "blueprint", status: "ok"}),
+                });
+                expect(registerManaged).toHaveBeenCalledTimes(2);
+                expect(await managedRegistry.list()).toHaveLength(1);
             });
 
             it("serves only declared artwork from a reopened managed Blueprint directory", async () => {

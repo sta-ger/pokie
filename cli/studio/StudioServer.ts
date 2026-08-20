@@ -110,6 +110,11 @@ import type {StudioToolHandling} from "./StudioToolHandling.js";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3200;
 
+// Create Project has already persisted a fresh Blueprint before this registration boundary. A brief
+// registry I/O interruption must not strand a valid recommended model behind a generic completion
+// failure, so retry the idempotent registration once before rolling that new source back.
+const MANAGED_PROJECT_REGISTRATION_ATTEMPTS = 2;
+
 // The one "unavailable" outcome that isn't about the server's own display -- see isLoopbackRequest's
 // own doc comment for why this is reported instead of ever consulting nativePickerService for a remote
 // caller. `reason` deliberately never mentions displays/zenity/kdialog -- those would be misleading (a
@@ -1254,7 +1259,17 @@ export class StudioServer implements StudioServerHandling {
 
         const result = this.blueprintService.saveManaged(validated.blueprint, validated.sourceWorkbookPath);
         if (result.status === "ok") {
-            const registration = await this.projectRegistrationService.registerManaged(result.path, result.name, result.sourceWorkbookPath);
+            let registration;
+            try {
+                registration = await this.registerManagedProject(result.path, result.name, result.sourceWorkbookPath);
+            } catch {
+                // A managed save is not successful until its Blueprint Project is registered. Roll the
+                // freshly-created source back so users never receive a "saved" result for an orphan that
+                // disappears from Projects after restart.
+                this.blueprintService.discardManagedSave(result.path);
+                this.sendJson(res, 500, {status: "error", error: `Could not register the Blueprint Project at "${result.path}".`});
+                return;
+            }
             if (registration.status !== "ok") {
                 // A managed save is not successful until its Blueprint Project is registered.  Roll the
                 // freshly-created source back so users never receive a "saved" result for an orphan that
@@ -1269,6 +1284,18 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         this.sendJson(res, 200, result);
+    }
+
+    private async registerManagedProject(location: string, name: string, sourceWorkbookPath: string | undefined) {
+        let latestError: unknown;
+        for (let attempt = 1; attempt <= MANAGED_PROJECT_REGISTRATION_ATTEMPTS; attempt++) {
+            try {
+                return await this.projectRegistrationService.registerManaged(location, name, sourceWorkbookPath);
+            } catch (error) {
+                latestError = error;
+            }
+        }
+        throw latestError;
     }
 
     private async handleSymbolArtworkImport(req: IncomingMessage, res: ServerResponse): Promise<void> {
