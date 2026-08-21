@@ -1,9 +1,0 @@
-{
-  "modes": [
-    {
-      "modeName": "base",
-      "cost": 1,
-      "libraryPath": "./base-library.json"
-    }
-  ]
-}

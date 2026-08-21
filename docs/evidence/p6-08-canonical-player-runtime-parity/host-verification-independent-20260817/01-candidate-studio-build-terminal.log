@@ -1,5 +1,0 @@
-Script started on 2026-08-17 05:32:43+02:00 [COMMAND="./node_modules/.bin/tsc --project cli/studio-client/tsconfig.json --noEmit" <not executed on terminal>]
-cli/studio-client/src/components/project/ProjectDashboardPage.tsx(519,49): error TS2339: Property 'credits' does not exist on type 'ReplayDescriptor'.
-cli/studio-client/src/domain/interpret/Replay.ts(127,29): error TS2339: Property 'credits' does not exist on type 'ReplayDescriptor'.
-
-Script done on 2026-08-17 05:32:58+02:00 [COMMAND_EXIT_CODE="2"]
