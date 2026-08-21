@@ -198,6 +198,27 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
     };
 }
 
+// A materialized runtime executes the already-generated dist/index.js, so it needs POKIE at runtime
+// but neither TypeScript nor the generated package's development dependencies. Link the running local
+// POKIE installation directly instead of invoking npm merely to create that runtime dependency edge.
+// Node resolves POKIE's own dependencies from the linked installation, keeping Studio's disposable
+// runtime cache offline and usable in hosts where child npm processes are unavailable. Init/create keep
+// using withLocalPokieInstall above because they produce standalone, hand-editable npm packages.
+export function withLinkedLocalPokieRuntime(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
+    return (command, args, cwd) => {
+        if (command !== "npm" || args[0] !== "install") {
+            return base(command, args, cwd);
+        }
+        const nodeModules = path.join(cwd, "node_modules");
+        fs.mkdirSync(nodeModules, {recursive: true});
+        // "junction" is required for directory links on Windows and is accepted for directories on
+        // POSIX platforms too. A materializer staging directory is new, so an existing target is a
+        // lifecycle error rather than something this helper should silently replace.
+        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "pokie"), "junction");
+        return Promise.resolve({stdout: "", stderr: ""});
+    };
+}
+
 // execFile/execFileAsync's own rejection carries a failed command's real stderr as a plain "stderr"
 // property alongside its (much noisier, command-line-and-exit-code-prefixed) "message" -- shared by
 // every "dependencies" phase failure that wants that raw npm output as a secondary "details" field
