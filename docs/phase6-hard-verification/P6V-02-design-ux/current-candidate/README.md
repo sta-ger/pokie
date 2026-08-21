@@ -1,28 +1,27 @@
-# P6V-02 exact-HEAD rendered audit
+# P6V-02 exact-candidate rendered audit
 
-Candidate SHA: `1f700c9894be6dcec66abc1e08ed09876c2f7e30`.
+Candidate SHA: `734ddfe8ed1db338ad0b3a1224fc3fdace692dd0`.
 
-On 2026-08-21, a fresh headed Chromium profile drove only rendered controls
-against Studio launched from this checkout with `node ./dist/cli/pokie.js
---no-open`. `ACTION-TRANSCRIPT.txt` records the cold-start recovery and the
-semantic completion states. The temporary managed project, generated outcome
-library, Stake Engine export, browser profile, and diagnostic log were removed.
+On 2026-08-21, a fresh Chrome profile drove only rendered controls against the
+current Studio source browser client and its local Studio backend. The bounded
+run used no direct API calls for user actions. `ACTION-TRANSCRIPT.txt` records
+the cold-start invalid-draft recovery and semantic completion states.
 
 Desktop Design/Game Model/Play/Simulation/Replay/Build-Export all rendered and
-completed. At 405px the document has no root horizontal scroll (`scrollWidth=405`),
-but `08-build-export-mobile-405.png` shows the closed navigation still taking a
-large left offset: the primary exact-outcome action is clipped. This is a P2
-responsive-layout finding.
+completed. At 405px, `08-build-export-mobile-405.png` shows the exact-outcome
+action fully visible. The measured closed-navigation state was
+`scrollWidth=405`, `mainPaddingInlineStart=16px`, and action bounds
+`left=39`, `right=287.109375`; the audit fails if the action is clipped.
 
 | Capture | SHA-256 | Rendered surface/state |
 | --- | --- | --- |
-| `00-initial-render.png` | `7fee3ed3d26443b947885db8cd2c8a21f06b95ec3541710fd823aeaa142aa1de` | Fresh desktop Design Game |
-| `01-cold-start-design-desktop.png` | `7fee3ed3d26443b947885db8cd2c8a21f06b95ec3541710fd823aeaa142aa1de` | Desktop cold-start Design Game |
-| `02-workspace-overview-desktop.png` | `3d43f996452822ce2b462c7c3f7b17d6958aa1b781e62ee045c06dbfa21c7db3` | Created workspace |
-| `03-game-model-desktop.png` | `32c8ee254730fa4bf7dd6330ee8112a841b147862c952146db42712c592986b0` | Game Model |
-| `04-play-success-desktop.png` | `789f2661fa596bfeaae2a03f988e277eb674df0075c0810975a0f7998413f47d` | Settled Play spin |
-| `05-simulation-success-desktop.png` | `b55cb95657beadc02a46f4e1c04b1459da1b051ccb59b32f024a30dce0ecb29f` | One-round Simulation result |
-| `06-replay-session-spin-desktop.png` | `3678548989ea160eed5aaee3c7e159ec658c01adad931472770e5b4565571422` | Replay Session Spin surface |
-| `07-build-export-success-desktop.png` | `53a8ea2ebde062b6b164f292d79c8617889dc49a2604278ffd8d1726c19a0568` | Outcome and Stake Engine success |
-| `08-build-export-mobile-405.png` | `e2ea1634b99475822234b307a042b891567ac1cf12f4ac7e5eeb1461a10d5e65` | 405px clipped Build/Export action (P2) |
-| `09-reel-strip-modeler-mobile-405.png` | `f367c4ed066f08f8ff35b88fcd095ab838d84eebc9987d9a14eccc25d877a45a` | 405px Reel Strip Modeler |
+| `00-initial-render.png` | `036c4931612ec6873064a35b54a497f762bc61f798f4d075c58ae4066112ea7b` | Fresh desktop Design Game |
+| `01-cold-start-design-desktop.png` | `5b31eb149bd3af02f2e414b6efcd8a67f03fcdec1133d1bc8f48828f8f74f222` | Desktop cold-start Design Game |
+| `02-workspace-overview-desktop.png` | `355486db229fc62829fc03ae30366e2365acd3b1c9125fb218f64c3eb0ba9120` | Created workspace |
+| `03-game-model-desktop.png` | `4dcb065ff297c6d4c293424ee2f7622a0e16e79de7878a6bd7064dcd20919c56` | Game Model |
+| `04-play-success-desktop.png` | `566b5f058ab5d3f2eee56a0581953e717d8e5b9ebc75102a82fbb62249197397` | Settled Play spin |
+| `05-simulation-success-desktop.png` | `9299019a9679fdc9a0833a274c40a41341ae6501621d1f3595a38238542bf290` | One-round Simulation result |
+| `06-replay-session-spin-desktop.png` | `0c5ac742e769a1327a527d2ab7a23f17f0ec77ebd80963c6d2cb2786891eae82` | Replay Session Spin surface |
+| `07-build-export-success-desktop.png` | `e3269678a47261d23a6cebb2769adc7572c96eb263bdd0ceffb0ba625ae9ea83` | Outcome and Stake Engine success |
+| `08-build-export-mobile-405.png` | `4f4297003c2b42112c3d764eacf2ebf67501c6f19f370571c6e19b4b989e30fa` | 405px visible Build/Export action |
+| `09-reel-strip-modeler-mobile-405.png` | `471fea59d37e165ddcab1eca61bdf2bfc2772b4879a3c5fa5b31a6e9202a3cdf` | 405px Reel Strip Modeler |
