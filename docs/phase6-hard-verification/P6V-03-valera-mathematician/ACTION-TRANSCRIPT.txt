@@ -1,6 +1,11 @@
-[2026-08-21] Retained candidate-bound evidence was rechecked before this recovery; the existing exact-candidate/fresh-registry criterion remains passed.
-[2026-08-21] Fresh launch 1 used node ./dist/cli/pokie.js --no-open with new XDG registry and Chrome profile. It reached the visible generated-reel preview but stopped at a driver-only tab-label mismatch; no product error was rendered.
-[2026-08-21] Fresh launch 2 used the same required candidate command with another new registry/profile. Through rendered controls it edited the Recommended blueprint: id/name/description, fourth payline, Wild/Scatter, PNG artwork through the visible native picker, generated Reel 1 counts/lock/minimum-spacing, A ×3 payout, and an available bet.
-[2026-08-21] The visible Reel 1 Preview rendered "Generated successfully" and its Done/Apply controls were used.
-[2026-08-21] Clicking visible "Create Project" rendered a successful save to ".../POKIE Projects/p6v03-valera-math/blueprint.json", but remained on Design Game and changed the action to "Save Project". The promised Game Model Workspace navigation did not render. See 01-create-project-remains-design-game.png (SHA-256 f3fa44cb0ba67f8a5583ea4d6a142eb509d89e0bae5372b93949c10970ed8f08).
-[2026-08-21] The two-launch allowance was exhausted. Close/reopen, Play, Simulation, Replay, outcome-library generation, and Stake Engine export were not reached because they require the missing Workspace transition.
+[2026-08-21T17:59:13Z] FRESH LAUNCH 1: exact candidate build, fresh HOME/XDG registry/Documents and visible Chromium; typed the Valera metadata, opened Layout and added payline 4. The exact-text Symbols-tab driver target never exposed its expected controls; no product error or save request rendered.
+[2026-08-21T18:00:40.303Z] LAUNCH fresh registry/documents/profile with exact command node ./dist/cli/pokie.js --no-open
+[2026-08-21T18:00:53.657Z] RENDER fresh Recommended project surface
+[2026-08-21T18:00:53.743Z] INPUT Game id="p6v03-valera-mathematician"
+[2026-08-21T18:00:54.066Z] INPUT Game name="Valera Mathematician"
+[2026-08-21T18:00:54.437Z] INPUT Description (optional)="Independent fresh rendered persistence journey"
+[2026-08-21T18:00:54.849Z] CLICK Layout
+[2026-08-21T18:00:55.186Z] CLICK Add payline
+[2026-08-21T18:00:55.436Z] CHECKLIST fourth payline added
+[2026-08-21T18:00:55.587Z] CLICK Symbols
+[2026-08-21T18:01:25Z] DRIVER INCONCLUSIVE: second fresh run used a status-badge-aware visible Symbols-tab target but no expected Symbols controls rendered within the bounded observation. No rendered Studio error, save, generated-project request, Workspace transition, or downstream action was emitted; the two-launch allowance is exhausted.
