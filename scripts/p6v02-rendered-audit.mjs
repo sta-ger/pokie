@@ -180,6 +180,12 @@ async function main() {
     await capture("00-initial-render");
     await waitFor(async () => has("Design Your Game") && Boolean(await evaluate("[...document.querySelectorAll('input')].some((input) => input.value === 'Starter Slot')")), "cold-start Design Game");
     await capture("01-cold-start-design-desktop");
+    await input("Game id", "");
+    await waitFor(() => has("Invalid — 1 error(s).") && has("must be a non-empty string"), "visible invalid-draft recovery feedback");
+    note("RECOVERY: an empty Game id rendered precise invalid-draft feedback without leaving the Design Game surface");
+    await input("Game id", "starter-slot");
+    await waitFor(() => has("Valid — no issues found."), "recovered valid draft");
+    note("RECOVERY: correcting Game id through the rendered field restored valid feedback and left Create Project available");
     await click("Create Project");
     await waitFor(() => has("Overview") && has("Game Model") && has("Build/Export"), "created project workspace");
     note("COLD-START: Design Game → Create Project reached the runnable Workspace without a dead end");
@@ -238,4 +244,5 @@ main().catch(async (error) => {
     await terminate(chrome);
     await terminate(client);
     await terminate(studio);
+    await rm(profile, {recursive: true, force: true});
 });
