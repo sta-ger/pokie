@@ -36,3 +36,32 @@ candidate public launch.  No product error was rendered and no product code or
 tests were changed.  Consequently the requested Studio surface matrix and the
 separate cold-start exploration were not reached; this is recorded as a
 `readiness` inconclusive result, not as a defect in an unrendered surface.
+
+## Harness-recovery continuation (2026-08-21)
+
+The candidate was rebuilt successfully from the evidence descendant; its only
+delta from `976d9d887a6c02ce506c501e3cf38e40f38820e3` is this evidence file.
+The prescribed launch, `node ./dist/cli/pokie.js --no-open`, then rendered
+`POKIE Studio listening on http://127.0.0.1:3200`.
+
+With an isolated browser profile the public Studio UI rendered Design Game and
+the recommended `Starter Slot`. `Create Project` opened Workspace, and a fresh
+profile automatically reopened that saved project. The rendered Workspace
+included Game Model, Play, Simulation, Replay, and Build/Export navigation.
+
+Rendered functional observations:
+
+1. Play required the visible `New Play session` control before its `Spin`
+   control became available. One Spin completed normally: `Round complete —
+   no win this round`, with credits `999` and total win `0.00`.
+2. Simulation rendered its Configure/Run/Review/Export flow. The visible
+   rounds input was changed through normal keyboard input to `1`; one
+   `Run Simulation` action was accepted and rendered `queued — 0/1 rounds`.
+   No product error rendered before the browser-driver session ended, so it is
+   pending rather than a failure.
+
+This recovery established Studio readiness and the bounded create/reopen/Play
+path, but did not complete the required all-surfaces visual matrix, the
+separate uncoached cold-start audit, Replay, Build/Export, Outcome Library,
+Stake export, or the approximately 405px review. No P0/P1/material-P2 product
+defect was confirmed in the reached rendered surfaces.
