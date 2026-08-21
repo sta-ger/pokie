@@ -9,3 +9,5 @@
 [2026-08-21T16:31:54Z] RECOVERY INVOCATION LAUNCH 2: repeated the same fresh exact-candidate Studio workflow and selected PNG artwork through the rendered native picker.
 [2026-08-21T16:32:09Z] Pressed rendered Preview after the same visible Reel 1 edits. After a bounded observation, the visible Preview action was still enabled and no rendered alert appeared; one safe idempotent rendered retry was issued.
 [2026-08-21T16:34:15Z] READINESS INCONCLUSIVE: neither Preview action produced rendered pending, success, failure, or product-error state. No further Studio launch was made.
+[2026-08-21T16:42:11Z] FOCUSED RECOVERY LAUNCH 1: fresh candidate Studio/registry/profile reached rendered Select PNG; native chooser produced no rendered Change/artwork state after one visible chooser interaction. No Studio error, preview, save, or generation request was emitted.
+[2026-08-21T16:43:37Z] FOCUSED RECOVERY LAUNCH 2: fresh candidate Studio/registry/profile repeated rendered Select PNG and standard chooser location-entry interaction; again no rendered Change/artwork state appeared. No Studio error, preview, save, or generation request was emitted; launch allowance exhausted.
