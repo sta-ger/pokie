@@ -1,11 +1,15 @@
-# P6V-03 independent browser rerun — driver inconclusive
+# P6V-03 independent browser rerun — finding
 
-Candidate product: `b6ca7bccfc6fa28ca3abf504b030c1e5e4b52cc8`.
+Candidate product: `b6ca7bccfc6fa28ca3abf504b030c1e5e4b52cc8` (the product ancestor of this evidence-only descendant).
 
-The retained proof remains truthful: it used isolated HOME/XDG registries and fresh visible Chrome profiles, all launched from this checkout with exactly `node ./dist/cli/pokie.js --no-open`. This recovery invocation used the same exact candidate command with fresh isolated registries and profiles. Its stable rendered-control harness repaired the recorded selector causes (semantic prefix matching for status-badged controls), the native-picker focus path, autocomplete option commits, and the Workspace check (visible navigation rather than hidden stale text).
+Retained fresh-profile proof remains present and truthful. This focused recovery used one separate isolated HOME/XDG registry and a fresh visible Chrome profile, launching Studio from this checkout with exactly `node ./dist/cli/pokie.js --no-open`.
 
-The first fresh launch completed the rendered Valera edits through Create Project, but a stale-hidden-text check falsely treated that action as a Workspace transition; it was a harness error and no product result was claimed. The second fresh launch completed New Blueprint → Recommended; Valera metadata; a fourth payline; Wild/Scatter and a focused native PNG selection; Reel 1 generated counts, a locked A position, and a minimum-spacing constraint; successful Preview/Apply; an A ×3 payout and an available bet. It then visibly saved into the Workspace, saved Base Mode and the K-scatter 3×→5-free-games rule in Game Model, and issued the rendered Close project action.
+The rendered Valera Recommended workflow saved and opened Workspace, closed to Home, reopened from Projects, then completed Play (settled spin), a 25-round Simulation, Session Spin Replay inspection, exact outcome-library generation (1,024 outcomes), and the four-file Stake Engine export. The earlier Close and Simulation wait thresholds were harness observation mismatches: their subsequent rendered Home and 25/25-RTP states proved success.
 
-The Close-project observation then waited for a registry row rather than a Home transition. It showed neither a local success state nor a rendered product error before the bounded wait expired. The two-launch allowance is therefore exhausted before reopen, Play, Simulation, Replay, outcome-library, Stake export, Random, and Blank could be reached. This is a driver-inconclusive result, not a product finding.
+Finding: the rendered Random branch accepted a seeded generated blueprint and `Create Project` click, but remained on Design Game with the generated draft. No Workspace and no local error rendered during the bounded semantic wait. The screenshot below is the bounded proof; it contains no project output or profile data.
 
-`ACTION-TRANSCRIPT.txt` is the concise bounded proof. No generated projects, profiles, raw logs, screenshots, or harness source are retained.
+| Proof | SHA-256 |
+| --- | --- |
+| `random-create-no-workspace.png` (84,940 bytes) | `7bf5827fd83e9c3c41ab21d12e9f23379849507baae64a41c74d04d056f72f48` |
+
+`ACTION-TRANSCRIPT.txt` records the concise rendered-control evidence. No generated project/output tree, browser profile, raw log, PID file, or harness source is retained.
