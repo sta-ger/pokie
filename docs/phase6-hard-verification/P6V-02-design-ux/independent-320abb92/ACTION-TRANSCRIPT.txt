@@ -1,0 +1,9 @@
+[2026-08-21T14:25:22Z] Fresh visible Chrome profile: Desktop Design Game rendered. Empty Game id showed the precise invalid-draft feedback; restoring starter-slot returned Valid — no issues found.
+[2026-08-21T14:25:24Z] Create Project reached Workspace. Game Model summary rendered; Home Projects rendered registered-project and import controls.
+[2026-08-21T14:29:02Z] Play created a session and settled one Spin. Simulation completed one round with RTP/Recent runs. Replay rendered Session Spin.
+[2026-08-21T14:29:05Z] Build/Export exact-library request was issued once. Its first text matcher expired, but the still-rendered UI subsequently showed “Generated 1,024 outcomes …”; continuation used that success and did not retry generation.
+[2026-08-21T14:31:42Z] Stake Engine Export completed with its rendered success state.
+[2026-08-21T14:31:43Z] At 405px Build/Export had no horizontal overflow and its primary action was fully in view. Design Game measured scrollWidth=405 with full-width main content and 16px padding.
+[2026-08-21T14:32:05Z] The 405px Reel Strip entry control did not expose its next rendered state after a bounded coordinate action. This is retained as a selector/driver limitation, not a product finding. Capability-gated Provably Fair and Certification inventory was therefore not completed in this rerun.
+    at click (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-hard-verification-closeout/task_P6V-02-20260821112858/.p6v02-ui-audit.mjs:28:428)
+    at async main (file:///home/stager/Work/sta-ger/agents/worktrees/pokie-phase-6-hard-verification-closeout/task_P6V-02-20260821112858/.p6v02-ui-audit.mjs:31:158)
