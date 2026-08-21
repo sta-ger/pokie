@@ -1,15 +1,28 @@
-# P6V-03 independent browser rerun — finding
+# P6V-03 independent browser rerun — passed
 
-Candidate product: `b6ca7bccfc6fa28ca3abf504b030c1e5e4b52cc8` (the product ancestor of this evidence-only descendant).
+Candidate: `384750860547c312d67d10b913fa642470cbaad1`.
 
-Retained fresh-profile proof remains present and truthful. This focused recovery used one separate isolated HOME/XDG registry and a fresh visible Chrome profile, launching Studio from this checkout with exactly `node ./dist/cli/pokie.js --no-open`.
+One fresh visible Chrome profile and a separate empty HOME/XDG Studio registry
+were used. Studio launched from this checkout with exactly
+`node ./dist/cli/pokie.js --no-open`; no installed self-dependency, private
+Studio API action, DOM/state injection, or generated project/output tree is
+retained.
 
-The rendered Valera Recommended workflow saved and opened Workspace, closed to Home, reopened from Projects, then completed Play (settled spin), a 25-round Simulation, Session Spin Replay inspection, exact outcome-library generation (1,024 outcomes), and the four-file Stake Engine export. The earlier Close and Simulation wait thresholds were harness observation mismatches: their subsequent rendered Home and 25/25-RTP states proved success.
-
-Finding: the rendered Random branch accepted a seeded generated blueprint and `Create Project` click, but remained on Design Game with the generated draft. No Workspace and no local error rendered during the bounded semantic wait. The screenshot below is the bounded proof; it contains no project output or profile data.
+Rendered controls covered the Recommended, Random, and Blank choices. The
+Valera Recommended blueprint saved into Workspace, closed to Home, reopened
+from Projects, completed Play, a 25-round Simulation, Session Spin Replay,
+exact Outcome Library generation (1,024 outcomes), and Stake Engine Export
+(4 files). A seeded `Valera Random` blueprint generated, created Workspace,
+and reopened from Projects. Blank rendered its four actionable validation
+errors without being saved.
 
 | Proof | SHA-256 |
 | --- | --- |
-| `random-create-no-workspace.png` (84,940 bytes) | `7bf5827fd83e9c3c41ab21d12e9f23379849507baae64a41c74d04d056f72f48` |
+| `recommended-workspace.png` | `864e1a2583ebd65a643260a664a1b865578aacd914ee3090561c97b9ec974bfb` |
+| `build-export.png` | `83b394ca97abbb8c33fa38425f853c4910016a545f7a4ec5e5e3aa8aa1b5fc64` |
+| `random-reopen.png` | `5d37ffce3708af861b75ff8767a08e1dc3cb8332deb1d080fde58c1b9452a2e6` |
+| `blank-validation.png` | `35f7e8c4942613ebfa88608daf701b2b8752363b2fc97aa831d7d0842c381a73` |
 
-`ACTION-TRANSCRIPT.txt` records the concise rendered-control evidence. No generated project/output tree, browser profile, raw log, PID file, or harness source is retained.
+`ACTION-TRANSCRIPT.txt` is the concise rendered-control record. Each retained
+file is under 0.5 MiB; no temporary browser profile, registry, automation,
+raw log, PID file, or generated output is included.
