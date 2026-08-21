@@ -99,11 +99,31 @@ were discoverable and the hierarchy/terminology matched that goal.
 
 ### Remaining boundary
 
-This is still not a complete visual-audit acceptance: no rendered native host
-picker or product error state was available to assess, and the dedicated
-editable Reel Strip Modeler form was not opened. Those missing surfaces prevent
-claiming the complete requested state matrix or final approval; they are a
-browser/coverage inconclusive boundary, not a confirmed product defect.
+At the end of this second attempt, the native-host-picker, rendered-error, and
+editable-Modeler surfaces remained incomplete. The next recovery attempt below
+continued those specific gaps.
+
+## Harness-recovery attempt 3 (2026-08-21)
+
+One further fresh exact-candidate Studio launch reused the existing public
+workflow and browser profile only to cover the prior gaps; no already-passing
+test command or viewport was repeated.
+
+1. **Reel Strip Modeler:** Design Game → Reels → Per-reel (Reel Strip
+   Modeler) rendered the five-reel selector. The visible Reel 1 **Select**
+   action enabled **Configure**, **Done**, and Preview; Configure rendered the
+   editable Literal/Generated controls, Copy, Add symbol, Preview, and the
+   explicit **UNAPPLIED CHANGES** state. Validation returned `Valid — no
+   issues found.`
+2. **Artwork picker/error feedback:** Design Game → Symbols → visible
+   **Select PNG** was invoked normally. Instead of a silent no-op, Studio
+   rendered `No graphical display was detected on the machine running Studio's
+   server (DISPLAY/WAYLAND_DISPLAY is not set).` The server host therefore
+   could not open an OS-native picker for this headless verification machine.
+
+This closes the Modeler and rendered-error-state gaps, but an actual native
+host picker remains unrenderable without a graphical server. It is a
+readiness/coverage boundary, not a P0/P1/material-P2 product defect.
 
 ### Minimal screenshots
 
@@ -113,3 +133,4 @@ browser/coverage inconclusive boundary, not a confirmed product defect.
 | `replay-desktop.png` | `756fc4a190c7db1fcd981a4ae66e93ec7522a56cc4de2ae290eac089dd48a195` | Completed replay artifact. |
 | `build-mobile-405.png` | `19e2d352cacc3222c3bb39419a4e547631802686bee871a8e321cad68b53e6d4` | Build/Export success, disabled states, approximately 405px. |
 | `cold-start-play.png` | `a5d7c1f8310679ceda1d58f7208662d9d548f2b897225021b1c70bfa4ae1bd0d` | Separate cold-start Play discovery. |
+| `reel-strip-modeler.png` | `13658a08f215743673f0175ec1bb2d0fc4ab75de7103d1ebcc213405ed98ff1e` | Editable Reel 1 configuration and un-applied-change state. |
