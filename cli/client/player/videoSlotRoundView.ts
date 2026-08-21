@@ -283,7 +283,10 @@ export function deriveLineDefinitions(linesDefinitions: unknown): LineDefinition
 }
 
 export function deriveAvailableBets(availableBets: unknown): number[] {
-    return asNumberArray(availableBets);
+    // Session payloads can originate outside the generated Blueprint editor (for example, an imported
+    // project). Preserve the declared order while collapsing repeat values: consumers render this as a
+    // choice list, whose option values must be unique.
+    return [...new Set(asNumberArray(availableBets))];
 }
 
 // Only present at all when the session's own runtime opted into bet-mode selection (see

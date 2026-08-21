@@ -90,4 +90,33 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         expect(screen.getByText("1004")).toBeInTheDocument();
         expect(screen.queryByText(/Paytable unavailable/i)).toBeNull();
     });
+
+    it("renders the Bet control when a session payload repeats an available bet", () => {
+        const session: PlaySessionView = {
+            status: "ok",
+            session: {
+                sessionId: "duplicate-bet-session",
+                game: {id: "duplicate-bet", name: "Duplicate Bet", version: "1.0.0"},
+                credits: 1000,
+                bet: 2,
+                availableBets: [2, 2],
+            },
+        };
+
+        render(
+            <MantineProvider>
+                <PlayTab
+                    session={session}
+                    sessionId={session.session.sessionId}
+                    onNewSession={() => undefined}
+                    onSpin={() => undefined}
+                    onFindAnyWin={() => undefined}
+                    onFindSymbolWin={() => undefined}
+                    onFindFreeGames={() => undefined}
+                />
+            </MantineProvider>,
+        );
+
+        expect(screen.getByRole("combobox", {name: "Bet"})).toHaveValue("2.00");
+    });
 });
