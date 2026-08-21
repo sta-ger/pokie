@@ -4,6 +4,7 @@ import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {checkBlueprintSource, loadBlueprint, openProject, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {StudioProjectRegistryView} from "../../api/types";
+import {useAllowNextDesignNavigation} from "../../context/DesignNavigationGuardContext";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {clearPersistedBlueprintDraft, loadPersistedBlueprintDraft, savePersistedBlueprintDraft} from "../../domain/blueprintDraftStorage";
 import {createRecommendedBlueprint} from "../../domain/blueprintEditorState";
@@ -119,6 +120,7 @@ export function BlueprintEditorPage({
 } = {}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
+    const allowNextDesignNavigation = useAllowNextDesignNavigation();
     const confirm = useConfirm();
     // Design Game opens on a real, immediately playable Recommended Project. The raw editor remains
     // intentionally blank when used outside this guided entry point.
@@ -875,7 +877,10 @@ export function BlueprintEditorPage({
                         // The newly registered Blueprint Project is ready to use as-is; enter its
                         // Workspace rather than leaving the creator at a separate build step.
                         openProject(fetchImpl, registeredProject.location)
-                            .then(({context}) => navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`))
+                            .then(({context}) => {
+                                allowNextDesignNavigation();
+                                navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
+                            })
                             .catch((error: unknown) => setWorkspaceOpenError(errorMessage(error)));
                     }
                 }

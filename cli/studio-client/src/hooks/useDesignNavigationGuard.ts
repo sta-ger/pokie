@@ -23,6 +23,10 @@ const CONFIRM_MODAL = {
 // running `action` at all if the user cancels; the not-dirty case skips the modal and runs `action`
 // immediately.
 export type GuardedAction = (action: () => Promise<void>) => Promise<void>;
+export type DesignNavigationGuard = {
+    guardedAction: GuardedAction;
+    allowNextNavigation: () => void;
+};
 
 // The one centralized mechanism guarding a dirty Design Game draft against every way of leaving
 // Home. Two distinct kinds of exit need two distinct strategies:
@@ -45,7 +49,7 @@ export type GuardedAction = (action: () => Promise<void>) => Promise<void>;
 // "how many steps back" delta for an entry it never tracked, so it silently lets these through
 // unblocked (verified: `history.state` is `null` after a raw hash edit, vs `{idx: N}` for every
 // router-tracked transition).
-export function useDesignNavigationGuard(isDirty: boolean): GuardedAction {
+export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuard {
     // Consumed by the blocker predicate to let exactly one subsequent navigate() through unblocked --
     // set right before guardedAction's confirmed side effect runs, since that side effect's own eventual
     // navigate() call must not be blocked a second time. Reset by the predicate itself on the transition
@@ -60,11 +64,14 @@ export function useDesignNavigationGuard(isDirty: boolean): GuardedAction {
     // so the draft and focus are untouched for free.
     useNavigationBlockerConfirm(({currentLocation, nextLocation}) => {
         const leavingHome = currentLocation.pathname.startsWith("/home/") && !nextLocation.pathname.startsWith("/home/");
-        if (!isDirty || !leavingHome) {
-            return false;
-        }
+        // Consume the one-transition allowance even if Home has already rendered the saved draft clean.
+        // Otherwise a fast clean render leaves this flag armed and could let a later unrelated dirty
+        // navigation bypass the guard.
         if (suppressNextBlockRef.current) {
             suppressNextBlockRef.current = false;
+            return false;
+        }
+        if (!isDirty || !leavingHome) {
             return false;
         }
         return true;
@@ -146,5 +153,9 @@ export function useDesignNavigationGuard(isDirty: boolean): GuardedAction {
         return () => window.removeEventListener("beforeunload", handleBeforeUnload);
     }, [isDirty]);
 
-    return guardedAction;
+    const allowNextNavigation = useCallback(() => {
+        suppressNextBlockRef.current = true;
+    }, []);
+
+    return {guardedAction, allowNextNavigation};
 }

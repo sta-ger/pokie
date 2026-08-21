@@ -66,7 +66,7 @@ function createProjectDashboardFetchRoutes() {
 }
 
 describe("useOpenProject: guarded side effects", () => {
-    it("creates a Recommended Blueprint, then reopens its saved Projects row into the Workspace", async () => {
+    it("saves an edited Blueprint Project, then opens its Workspace without an unsaved-draft prompt", async () => {
         let saved = false;
         const blueprintLocation = "/games/starter-slot/blueprint.json";
         const generatedProjectRoot = "/games/starter-slot/generated";
@@ -128,9 +128,14 @@ describe("useOpenProject: guarded side effects", () => {
         });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
+        dirtyTheDesignDraft();
         fireEvent.click(screen.getByRole("button", {name: "Create Project"}));
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
+        expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+        const savedBlueprint = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/save-managed")?.init?.body ?? "{}")
+            .blueprint as {symbols: string[]};
+        expect(savedBlueprint.symbols).toContain("wild-draft");
 
         await act(() => router.navigate("/home/projects"));
         fireEvent.click(await screen.findByRole("button", {name: "Open"}));
