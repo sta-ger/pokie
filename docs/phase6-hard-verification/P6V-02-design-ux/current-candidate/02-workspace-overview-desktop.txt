@@ -27,7 +27,7 @@ ID	starter-slot
 Version	0.1.0
 Type	Blueprint
 Origin	Managed
-Location	/home/stager/Documents/POKIE Projects/starter-slot-28/blueprint.json
+Location	/home/stager/Documents/POKIE Projects/starter-slot-30/blueprint.json
 Editable	Editable — this project's Blueprint source file can be edited directly.
 Capabilities	
 BUILD FROM BLUEPRINT SOURCE

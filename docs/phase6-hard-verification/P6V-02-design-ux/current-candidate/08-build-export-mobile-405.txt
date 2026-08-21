@@ -71,7 +71,7 @@ A positive cost for every mode
 An output directory to write to
 Run Stake Engine Export (base)
 
-Exported 4 file(s) to /home/stager/Documents/POKIE Projects/starter-slot-28/stakeengine. 
+Exported 4 file(s) to /home/stager/Documents/POKIE Projects/starter-slot-30/stakeengine. 
 Open output folder
 
 Show advanced details (technical information)
@@ -103,7 +103,7 @@ Target: TypeScript Game Package
 
 Selected destination: Default destination
 
-Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-28/tsPackage
+Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-30/tsPackage
 
 Status: Ready to build
 
@@ -134,7 +134,7 @@ Target: Outcome library (republish)
 
 Selected destination: Default destination
 
-Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-28/outcomeLibrary
+Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-30/outcomeLibrary
 
 Status: Ready to build
 
@@ -165,7 +165,7 @@ Target: Stake Engine export (republish)
 
 Selected destination: Default destination
 
-Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-28/stakeAdapter
+Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-30/stakeAdapter
 
 Status: Ready to build
 

@@ -1,42 +1,43 @@
 # P6V-02 rendered design and UX closeout
 
-Audited candidate: `a84474587ee4c0677e66eb2d0ef25597271913d1`.
+Audited candidate: `aa8006458af28cb773f0ee31a7b36a9e9e0c914d`.
 
-The fresh audit used an isolated Chrome profile, the candidate Studio server,
-and Vite's candidate source client. CDP found only rendered controls, sent
-mouse/keyboard input at their visible coordinates, captured the rendered
-result, and never invoked product APIs to change client state. The complete
-machine transcript is `ACTION-TRANSCRIPT.txt`.
+This bounded audit launches the public Studio CLI on the audited candidate and
+serves its exact source client. A fresh Chrome profile uses only rendered
+controls (visible-coordinate mouse input and keyboard input); it does not use
+product APIs to change client state. The machine-owned sequence is recorded in
+`ACTION-TRANSCRIPT.txt`.
 
-## Result
+## Results
 
-The desktop visual inventory covered Design Game, Workspace/Overview, Game
-Model, Play success, Simulation success, Replay's Session Spin discovery,
+The desktop inventory covers Design Game, Workspace/Overview, Game Model, a
+completed Play spin, completed Simulation, Replay's Session Spin discovery,
 Build/Export exact Outcome Library plus Stake Engine Export, and editable Reel
-Strip Modeler. The separate cold-start route was Design Game -> Create Project
--> Workspace -> Play -> New Play session -> Spin. It reached each feedback
-state with no rendered error or dead end.
+Strip Modeler. The separate cold-start path is Design Game → Create Project →
+Workspace → Play → New Play session → Spin. It records the navigation and
+success feedback without a rendered error or dead end.
 
-The approximately 405px audit found and repaired a material P1: the closed
-navbar offset left only a narrow content sliver. The candidate's runtime
-mobile-width style now gives the main area its normal 16px padding; the final
-re-run records `main: "16px"` in the transcript and shows readable Build/Export
-and Modeler controls. No P0, P1, or material P2 remains.
+At 405px, the final rerun records `main: "16px"` and `scrollWidth: 405` in the
+transcript. The Build/Export and Reel Strip Modeler captures remain readable
+and operable. No P0, P1, or material P2 was observed in the rendered audit.
 
 ## Evidence hashes
 
 | Capture | SHA-256 |
 | --- | --- |
-| `01-cold-start-design-desktop.png` | `036c4931612ec6873064a35b54a497f762bc61f798f4d075c58ae4066112ea7b` |
+| `00-initial-render.png` | `036c4931612ec6873064a35b54a497f762bc61f798f4d075c58ae4066112ea7b` |
+| `01-cold-start-design-desktop.png` | `5b31eb149bd3af02f2e414b6efcd8a67f03fcdec1133d1bc8f48828f8f74f222` |
+| `02-workspace-overview-desktop.png` | `2b865cb155b5d753685bab9def3597c14f62c2c7eaedc74eef0c8991fc0fdbb9` |
 | `03-game-model-desktop.png` | `4dcb065ff297c6d4c293424ee2f7622a0e16e79de7878a6bd7064dcd20919c56` |
-| `04-play-success-desktop.png` | `7fec9c271c36fc966d136e3dffa55d2bc1e6db335cbd0ed06aa758f8e07b38d3` |
-| `05-simulation-success-desktop.png` | `6070e91113633907d2b9dcea22ab646f5e387edfe777d221e914471b28575989` |
+| `04-play-success-desktop.png` | `96f9a2f054586de09a3a184e69b6fef640bdb08023f3961aaf3ed3fa5046e7d7` |
+| `05-simulation-success-desktop.png` | `a1a6357eddf74f330d3e9978d5fad898db456012459509a0c89bb21a1619e51c` |
 | `06-replay-session-spin-desktop.png` | `0c5ac742e769a1327a527d2ab7a23f17f0ec77ebd80963c6d2cb2786891eae82` |
-| `07-build-export-success-desktop.png` | `d8162fc3e9c6a1834ad9d68ad718edc194e08fb0677c4558cdf282108b11b27e` |
-| `08-build-export-mobile-405.png` | `4c168351928af776980315f24f413a74cecbe9a3ce3f19b51d705591c9813c0c` |
+| `07-build-export-success-desktop.png` | `047ac7593b8dcde926744a9b889af0d4b034eaa00c5c22df414e15033a9794b4` |
+| `08-build-export-mobile-405.png` | `75d891c27731b15dfea3beda0c6a468beb77e1bb5841a26a6ed77627d77ea087` |
 | `09-reel-strip-modeler-mobile-405.png` | `d8c371b3b38444fce09e99c168d6ce4718c7594d5a579b6b0d8d65765bf53f5f` |
 
-Machine-owned targeted result: `npm run test:targeted --
+Machine-owned targeted validation: `npm run test:targeted --
 tests/cli/studio-client/src/components/layout/AppShellLayout.mobileNav.test.tsx`
-passed (4/4). The repository command policy rejected the named Studio
-typecheck wrapper before it launched, so no typecheck result is claimed.
+passed (4/4). `npm run typecheck-studio-client` was blocked by the repository's
+implementation-command policy before the TypeScript compiler launched, so this
+evidence does not claim a typecheck result.

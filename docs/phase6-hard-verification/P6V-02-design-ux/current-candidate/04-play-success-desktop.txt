@@ -47,17 +47,17 @@ Q
 J
 A
 	
-Q
-J
-J
-	
 J
 K
 Q
 	
 J
+J
+K
+	
 Q
 Q
+J
 Credits
 999
 Total win
