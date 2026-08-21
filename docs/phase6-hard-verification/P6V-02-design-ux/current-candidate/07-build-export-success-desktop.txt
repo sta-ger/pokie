@@ -1,0 +1,224 @@
+POKIE Studio
+/
+Starter Slot
+/
+
+Build/Export
+
+Overview
+Game Model
+Play
+Simulation
+Replay
+Build/Export
+Starter Slot
+
+starter-slot · v0.1.0
+
+Show project location
+
+Close project
+
+Build game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.
+
+Refresh registered targets
+Outcome libraries
+
+Create the game outcomes used by the export and delivery options below.
+
+Outcome library generator
+
+THIS COMPUTER
+
+Purpose: Create the outcome library used by the other export and delivery options.
+
+Destination: Choose a local folder for the outcome library. Nothing is sent outside Studio.
+
+Prerequisites
+
+A built, runnable package for this project
+Max outcome space size
+
+Exact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.
+
+Bounded coverage (sampled; not exact)
+
+Explicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.
+
+Generate exact outcome library (base)
+
+Generated 1,024 outcomes for mode "base" using exact (RTP 100.78%) into outcomelibrary. 
+Open output folder
+
+Show advanced details (technical information)
+
+Static export
+
+Create a standalone bundle for another system to use.
+
+Stake Engine Export
+
+THIS COMPUTER
+
+Purpose: Create a standalone Stake Engine bundle from this project's outcomes.
+
+Destination: Choose a local folder for the finished export. Studio checks it before creating the export.
+
+Prerequisites
+
+A canonical outcome library file per mode
+A positive cost for every mode
+An output directory to write to
+Run Stake Engine Export (base)
+
+Exported 4 file(s) to /home/stager/Documents/POKIE Projects/starter-slot-28/stakeengine. 
+Open output folder
+
+Show advanced details (technical information)
+
+Build artifact
+
+Create a project file or package that can be opened or shared.
+
+TypeScript Game Package
+
+THIS COMPUTER
+
+Purpose: Create a runnable game package from this project.
+
+Destination: Choose a folder for the finished game package, or use the default destination.
+
+Prerequisites
+
+This project is ready to build. Choose a destination or use the default.
+Output directory (optional)
+
+Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.
+
+Browse…
+
+Build preflight
+
+Target: TypeScript Game Package
+
+Selected destination: Default destination
+
+Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-28/tsPackage
+
+Status: Ready to build
+
+Build
+
+Show advanced details (technical information)
+
+Outcome library (republish)
+
+THIS COMPUTER
+
+Purpose: Copy this outcome library to a new location.
+
+Destination: Choose a folder for the copied outcome library, or use the default destination.
+
+Prerequisites
+
+This project is ready to build. Choose a destination or use the default.
+Output directory (optional)
+
+Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.
+
+Browse…
+
+Build preflight
+
+Target: Outcome library (republish)
+
+Selected destination: Default destination
+
+Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-28/outcomeLibrary
+
+Status: Ready to build
+
+Build
+
+Show advanced details (technical information)
+
+Stake Engine export (republish)
+
+THIS COMPUTER
+
+Purpose: Copy this Stake Engine export to a new location.
+
+Destination: Choose a folder for the copied Stake Engine export, or use the default destination.
+
+Prerequisites
+
+This project is ready to build. Choose a destination or use the default.
+Output directory (optional)
+
+Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.
+
+Browse…
+
+Build preflight
+
+Target: Stake Engine export (republish)
+
+Selected destination: Default destination
+
+Resolved absolute path: /home/stager/Documents/POKIE Projects/starter-slot-28/stakeAdapter
+
+Status: Ready to build
+
+Build
+
+Show advanced details (technical information)
+
+PAR sheet (.xlsx)
+
+THIS COMPUTER
+
+Purpose: Save a copy of this PAR sheet as an Excel workbook.
+
+Destination: Choose where to save the copied workbook, or use the default destination.
+
+Unavailable for this project
+
+Exports an already-loaded PAR sheet model to its own .xlsx workbook format only -- does not derive a PAR sheet from a package/blueprint on its own.
+
+Show advanced details (technical information)
+
+WASM
+
+THIS COMPUTER
+
+Purpose: This output is not available for the current project.
+
+Destination: This output is not available for the current project.
+
+Unavailable for this project
+
+No ProjectType grants the capability this target requires and no builder is registered for it -- POKIE has no arbitrary package-to-WASM compiler today (see ProjectType.ts's own "wasm" doc comment).
+
+Show advanced details (technical information)
+
+Remote deployment
+
+Check a configured delivery destination before publishing to it.
+
+Remote delivery is not set up
+
+REMOTE
+
+Purpose: Set up a remote destination before this project can be delivered outside Studio.
+
+Destination: Set up a remote destination before delivery can begin.
+
+Unavailable for this project
+
+Remote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.
+
+Prerequisites
+
+Add a remote delivery destination in Studio.
+
+Show advanced details (technical information)

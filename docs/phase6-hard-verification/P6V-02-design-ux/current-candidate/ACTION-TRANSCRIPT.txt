@@ -1,0 +1,34 @@
+[2026-08-21T11:13:40.699Z] START independent rendered visual inventory and cold-start audit on a fresh browser profile
+[2026-08-21T11:13:40.716Z] NAVIGATE / through public Studio URL
+[2026-08-21T11:13:42.214Z] INITIAL RENDERED TEXT "Starting POKIE Studio…"
+[2026-08-21T11:13:42.468Z] CAPTURE 00-initial-render: rendered screenshot and text inventory
+[2026-08-21T11:13:42.903Z] CAPTURE 01-cold-start-design-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:42.915Z] CLICK "Create Project" through rendered coordinates
+[2026-08-21T11:13:44.040Z] COLD-START: Design Game → Create Project reached the runnable Workspace without a dead end
+[2026-08-21T11:13:44.411Z] CAPTURE 02-workspace-overview-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:44.439Z] CLICK "Game Model" through rendered coordinates
+[2026-08-21T11:13:45.259Z] CAPTURE 03-game-model-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:45.282Z] CLICK "Play" through rendered coordinates
+[2026-08-21T11:13:45.740Z] CLICK "New Play session" through rendered coordinates
+[2026-08-21T11:13:46.226Z] CLICK "Spin" through rendered coordinates
+[2026-08-21T11:13:46.854Z] CAPTURE 04-play-success-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:46.878Z] CLICK "Simulation" through rendered coordinates
+[2026-08-21T11:13:47.355Z] INPUT "Rounds" through rendered keyboard input
+[2026-08-21T11:13:47.831Z] CLICK "Run Simulation" through rendered coordinates
+[2026-08-21T11:13:48.435Z] CAPTURE 05-simulation-success-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:48.452Z] CLICK "Replay" through rendered coordinates
+[2026-08-21T11:13:49.094Z] CAPTURE 06-replay-session-spin-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:49.110Z] CLICK "Build/Export" through rendered coordinates
+[2026-08-21T11:13:50.188Z] CLICK "Generate exact outcome library (base)" through rendered coordinates
+[2026-08-21T11:13:51.630Z] CLICK "Run Stake Engine Export (base)" through rendered coordinates
+[2026-08-21T11:13:52.865Z] CAPTURE 07-build-export-success-desktop: rendered screenshot and text inventory
+[2026-08-21T11:13:53.286Z] MOBILE METRICS {"innerWidth":405,"innerHeight":900,"devicePixelRatio":1,"small":true,"range":true,"smallPixels":true,"scrollWidth":405,"main":"16px","appPadding":"calc(1rem * 1)","mantinePadding":"calc(1rem * 1)","inline":"padding-inline: var(--mantine-spacing-md);","classes":"m_8983817 mantine-AppShell-main studio-app-main"}
+[2026-08-21T11:13:53.424Z] CAPTURE 08-build-export-mobile-405: rendered screenshot and text inventory
+[2026-08-21T11:13:53.452Z] NAVIGATE /home/design through public Studio URL
+[2026-08-21T11:13:54.356Z] CLICK "Reels" through rendered coordinates
+[2026-08-21T11:13:54.866Z] CLICK "Per-reel (Reel Strip Modeler)" through rendered coordinates
+[2026-08-21T11:13:55.233Z] CLICK "Select reel" through rendered coordinates
+[2026-08-21T11:13:55.810Z] CLICK "Select" through rendered coordinates
+[2026-08-21T11:13:56.174Z] CLICK "Configure" through rendered coordinates
+[2026-08-21T11:13:56.669Z] CAPTURE 09-reel-strip-modeler-mobile-405: rendered screenshot and text inventory
+[2026-08-21T11:13:56.669Z] COMPLETE: desktop and 405px rendered controls covered Design, Workspace, Game Model, Play, Simulation, Replay, Build/Export and Reel Strip Modeler; no rendered error/dead-end was encountered.

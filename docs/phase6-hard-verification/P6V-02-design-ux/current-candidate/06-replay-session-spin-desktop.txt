@@ -1,0 +1,43 @@
+POKIE Studio
+/
+Starter Slot
+/
+
+Replay
+
+Overview
+Game Model
+Play
+Simulation
+Replay
+Build/Export
+Starter Slot
+
+starter-slot · v0.1.0
+
+Show project location
+
+Close project
+
+Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not reproduce the original round.
+
+To inspect a round you just played, choose Session Spin and select it from the list. Once a round is loaded, its grid, wins, paylines, paytable, and export download are available below.
+
+Recreate from seed
+Replay Artifact
+Session Spin
+Recent Simulation
+Target round number in a new replay session *
+
+Reproducing plays a brand-new session forward from round 1 up to this round -- it doesn't look up an existing recorded round.
+
+Seed (optional)
+Load
+
+Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result.
+
+Download JSON
+Recent replays
+Refresh
+
+No replays run yet.

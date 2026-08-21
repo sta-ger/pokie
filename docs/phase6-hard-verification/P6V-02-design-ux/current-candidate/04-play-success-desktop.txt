@@ -1,0 +1,77 @@
+POKIE Studio
+/
+Starter Slot
+/
+
+Play
+
+Overview
+Game Model
+Play
+Simulation
+Replay
+Build/Export
+Starter Slot
+
+starter-slot · v0.1.0
+
+Show project location
+
+Close project
+Play
+Spin
+Scenarios
+
+Scenario searches use real settled spins and leave their final round in this Play session.
+
+Find any win
+Find symbol win
+Find free games
+Symbol
+
+The symbol Find symbol win searches for in a real, already-evaluated win.
+
+Session
+
+Show advanced details (seed)
+
+Reset Play session
+
+Round complete — no win this round.
+
+A
+K
+Q
+	
+Q
+J
+A
+	
+Q
+J
+J
+	
+J
+K
+Q
+	
+J
+Q
+Q
+Credits
+999
+Total win
+0.00 (0.00x)
+Line: 0
+Line: 1
+Line: 2
+Bet: 1125
+Symbol	3	4	5
+A	10	20	40
+K	6	12	24
+Q	4	8	16
+J	2	4	8
+
+No wins on this step.
+
+Inspect round artifact

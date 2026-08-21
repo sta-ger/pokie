@@ -1,0 +1,40 @@
+POKIE Studio
+/
+Starter Slot
+/
+
+Overview
+
+Overview
+Game Model
+Play
+Simulation
+Replay
+Build/Export
+Starter Slot
+
+starter-slot · v0.1.0
+
+Show project location
+
+Close project
+Start by playing a round
+
+Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.
+
+Open Play
+ID	starter-slot
+Version	0.1.0
+Type	Blueprint
+Origin	Managed
+Location	/home/stager/Documents/POKIE Projects/starter-slot-28/blueprint.json
+Editable	Editable — this project's Blueprint source file can be edited directly.
+Capabilities	
+BUILD FROM BLUEPRINT SOURCE
+OUTCOMELIBRARY.GENERATE
+STAKEADAPTER.EXPORT
+Validation
+
+Valid — no issues found.
+
+Re-check project

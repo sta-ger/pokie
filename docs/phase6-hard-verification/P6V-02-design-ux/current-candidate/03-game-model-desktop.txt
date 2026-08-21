@@ -1,0 +1,130 @@
+POKIE Studio
+/
+Starter Slot
+/
+
+Game Model
+
+Overview
+Game Model
+Play
+Simulation
+Replay
+Build/Export
+Starter Slot
+
+starter-slot · v0.1.0
+
+Show project location
+
+Close project
+Game basics
+Edit
+
+Id: starter-slot
+
+Name: Starter Slot
+
+Version: 0.1.0
+
+Description: (none)
+
+Author: (none)
+
+Layout
+Edit
+
+Reels: 5
+
+Rows: 3
+
+Win model: lines
+
+Paylines: 3
+
+Symbols
+Edit
+A
+K
+Q
+J
+Reels
+Edit
+
+Generation mode: Literal reel strips
+
+Use Game window to inspect a playable reel view. Open Full strips to inspect every reel stop, including its symbol, special status, and stack length.
+
+Game window
+Full strips
+Analysis
+
+5 reel column(s) × 3 row(s) (row 0 on top) -- every reel wraps back to its own start once it runs past its own end. Move the stop position below to see every window this configuration can show. Wild/scatter symbols are highlighted.
+
+‹ Prev stop
+Next stop ›
+A
+	
+A
+	
+K
+	
+K
+	
+Q
+
+
+K
+	
+K
+	
+Q
+	
+Q
+	
+Q
+
+
+Q
+	
+Q
+	
+J
+	
+J
+	
+J
+Paytable
+Edit
+Symbol	Match count	Payout (x bet)
+A	3	10
+A	4	20
+A	5	40
+J	3	2
+J	4	4
+J	5	8
+K	3	6
+K	4	12
+K	5	24
+Q	3	4
+Q	4	8
+Q	5	16
+Bets & Modes
+Edit
+
+Available bets: 1, 2, 5
+
+No bet modes configured.
+
+Mechanics
+Edit
+
+No mechanics/features configured.
+
+Limits
+
+Derived from Bets & Modes' own Available bets above -- edit there to change it.
+
+Bet range: 1 – 5
+
+Refresh
