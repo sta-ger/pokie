@@ -3,3 +3,9 @@
 [2026-08-21T16:19:34Z] DRIVER INCONCLUSIVE: the native-picker automation did not yield a rendered Change/artwork state within its bounded wait; no Studio product alert was rendered.
 [2026-08-21T16:20:27Z] RECOVERY LAUNCH 2: repeated the same fresh visible flow and reached rendered Select PNG.
 [2026-08-21T16:20:33Z] DRIVER INCONCLUSIVE: the inherited X display's window manager rejected xdotool's active-window query (_NET_ACTIVE_WINDOW unsupported) before any picker keystroke could be confirmed. No product error was rendered and no duplicate save/generation request was issued.
+[2026-08-21T16:28:41Z] RECOVERY INVOCATION LAUNCH 1: rebuilt exact candidate 5c334cf5657dca2f7235d6275a5f78ad7e9f3274; fresh registry/profile; Studio started as node ./dist/cli/pokie.js --no-open.
+[2026-08-21T16:28:49Z] Rendered native picker accepted PNG artwork; completed the rendered fourth-payline, Wild/Scatter, generated Reel 1 count/lock/minimum-spacing edits, then pressed Preview.
+[2026-08-21T16:29:57Z] READINESS INCONCLUSIVE: Preview showed no rendered pending, terminal, or product-error state before the bounded observation elapsed.
+[2026-08-21T16:31:54Z] RECOVERY INVOCATION LAUNCH 2: repeated the same fresh exact-candidate Studio workflow and selected PNG artwork through the rendered native picker.
+[2026-08-21T16:32:09Z] Pressed rendered Preview after the same visible Reel 1 edits. After a bounded observation, the visible Preview action was still enabled and no rendered alert appeared; one safe idempotent rendered retry was issued.
+[2026-08-21T16:34:15Z] READINESS INCONCLUSIVE: neither Preview action produced rendered pending, success, failure, or product-error state. No further Studio launch was made.
