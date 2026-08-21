@@ -5,9 +5,10 @@
  * visible controls, send browser input, read rendered text and take captures.
  */
 import {mkdir, rm, writeFile} from "node:fs/promises";
-import {spawn} from "node:child_process";
+import {execFile, spawn} from "node:child_process";
 import {dirname, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
+import {promisify} from "node:util";
 import WebSocket from "ws";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,6 +31,7 @@ const captureNames = [
     "09-reel-strip-modeler-mobile-405",
 ];
 const transcript = [];
+const execFileAsync = promisify(execFile);
 let studio;
 let client;
 let chrome;
@@ -97,7 +99,7 @@ async function main() {
     await mkdir(output, {recursive: true});
     await Promise.all([
         "ACTION-TRANSCRIPT.txt",
-        ...captureNames.flatMap((name) => [`${name}.png`, `${name}.txt`]),
+        ...captureNames.map((name) => `${name}.png`),
     ].map((file) => rm(resolve(output, file), {force: true})));
     await rm(profile, {recursive: true, force: true});
     studio = spawn(process.execPath, ["dist/cli/pokie.js", "--no-open", "--host", "127.0.0.1", "--port", studioPort], {cwd: root, stdio: "pipe"});
@@ -122,6 +124,8 @@ async function main() {
         try { return Array.isArray(await json(`${devtoolsUrl}/json/list`)); } catch { return false; }
     }, "fresh Chrome CDP");
     const cdp = await connect();
+    const {stdout: candidateShaOutput} = await execFileAsync("git", ["rev-parse", "HEAD"], {cwd: root});
+    const candidateSha = candidateShaOutput.trim();
     const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true})).result.value;
     const text = async () => evaluate("document.body.innerText");
     const has = async (phrase) => (await text()).includes(phrase);
@@ -163,8 +167,7 @@ async function main() {
     const capture = async (name, captureBeyondViewport = true) => {
         const image = await cdp.send("Page.captureScreenshot", {format: "png", captureBeyondViewport});
         await writeFile(resolve(output, `${name}.png`), Buffer.from(image.data, "base64"));
-        await writeFile(resolve(output, `${name}.txt`), `${await text()}\n`);
-        note(`CAPTURE ${name}: rendered screenshot and text inventory`);
+        note(`CAPTURE ${name}: rendered screenshot`);
     };
     const navigate = async (hash) => {
         await cdp.send("Page.navigate", {url: `${studioUrl}/#${hash}`});
@@ -172,10 +175,10 @@ async function main() {
         await pause(450);
     };
 
-    note("START independent rendered visual inventory and cold-start audit on a fresh browser profile");
+    note(`START independent rendered visual inventory and cold-start audit on a fresh browser profile for ${candidateSha}`);
     await setViewport(1440);
     await navigate("/");
-    await waitFor(async () => (await text()).trim().length > 0, "initial rendered document");
+    await waitFor(() => has("Design Your Game"), "initial Design Game");
     note(`INITIAL RENDERED TEXT ${JSON.stringify((await text()).slice(0, 800))}`);
     await capture("00-initial-render");
     await waitFor(async () => has("Design Your Game") && Boolean(await evaluate("[...document.querySelectorAll('input')].some((input) => input.value === 'Starter Slot')")), "cold-start Design Game");
@@ -218,7 +221,31 @@ async function main() {
     await capture("07-build-export-success-desktop");
     await setViewport(405, true);
     await pause(300);
-    note(`MOBILE METRICS ${JSON.stringify(await evaluate("(() => { const main = document.querySelector('.studio-app-main'); const style = getComputedStyle(main); return {innerWidth:window.innerWidth, innerHeight:window.innerHeight, devicePixelRatio:window.devicePixelRatio, small:matchMedia('(max-width: 48em)').matches, range:matchMedia('(width <= 48em)').matches, smallPixels:matchMedia('(max-width: 768px)').matches, scrollWidth:document.documentElement.scrollWidth, main:style.paddingInlineStart, appPadding:style.getPropertyValue('--app-shell-padding'), mantinePadding:style.getPropertyValue('--mantine-spacing-md'), inline:main.getAttribute('style'), classes:main.className}; })()"))}`);
+    await evaluate(`(() => [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('Generate exact outcome library'))?.scrollIntoView({block: 'center'}))()`);
+    await pause(150);
+    const mobileLayout = await evaluate(`(() => {
+        const main = document.querySelector('.studio-app-main');
+        const primaryAction = [...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('Generate exact outcome library'));
+        const mainStyle = getComputedStyle(main);
+        const actionRect = primaryAction?.getBoundingClientRect();
+        return {
+            innerWidth: window.innerWidth,
+            scrollWidth: document.documentElement.scrollWidth,
+            mainPaddingInlineStart: mainStyle.paddingInlineStart,
+            primaryAction: actionRect === undefined ? undefined : {left: actionRect.left, right: actionRect.right, width: actionRect.width},
+        };
+    })()`);
+    if (
+        mobileLayout.innerWidth !== 405 ||
+        mobileLayout.scrollWidth > mobileLayout.innerWidth ||
+        Number.parseFloat(mobileLayout.mainPaddingInlineStart) > 32 ||
+        mobileLayout.primaryAction === undefined ||
+        mobileLayout.primaryAction.left < 0 ||
+        mobileLayout.primaryAction.right > mobileLayout.innerWidth
+    ) {
+        throw new Error(`405px closed-navigation layout clipped the primary Build/Export action: ${JSON.stringify(mobileLayout)}`);
+    }
+    note(`MOBILE RESPONSIVE PASS ${JSON.stringify(mobileLayout)}`);
     await capture("08-build-export-mobile-405", false);
     await navigate("/home/design");
     await waitFor(() => has("Design Your Game"), "Design Game modeler review");
