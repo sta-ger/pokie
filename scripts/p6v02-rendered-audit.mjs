@@ -17,6 +17,18 @@ const sourceClient = process.env.P6V02_SOURCE_CLIENT === "1";
 const studioPort = sourceClient ? "3200" : "32102";
 const studioUrl = `http://127.0.0.1:${sourceClient ? "32102" : studioPort}`;
 const devtoolsUrl = "http://127.0.0.1:9227";
+const captureNames = [
+    "00-initial-render",
+    "01-cold-start-design-desktop",
+    "02-workspace-overview-desktop",
+    "03-game-model-desktop",
+    "04-play-success-desktop",
+    "05-simulation-success-desktop",
+    "06-replay-session-spin-desktop",
+    "07-build-export-success-desktop",
+    "08-build-export-mobile-405",
+    "09-reel-strip-modeler-mobile-405",
+];
 const transcript = [];
 let studio;
 let client;
@@ -79,9 +91,15 @@ async function terminate(child) {
 }
 
 async function main() {
-    await rm(output, {recursive: true, force: true});
-    await rm(profile, {recursive: true, force: true});
+    // The audit replaces only its generated captures and transcript. The
+    // checked-in README is the human-owned index for this immutable step and
+    // must survive a fresh exact-candidate rerun.
     await mkdir(output, {recursive: true});
+    await Promise.all([
+        "ACTION-TRANSCRIPT.txt",
+        ...captureNames.flatMap((name) => [`${name}.png`, `${name}.txt`]),
+    ].map((file) => rm(resolve(output, file), {force: true})));
+    await rm(profile, {recursive: true, force: true});
     studio = spawn(process.execPath, ["dist/cli/pokie.js", "--no-open", "--host", "127.0.0.1", "--port", studioPort], {cwd: root, stdio: "pipe"});
     studio.stdout.on("data", (chunk) => process.stdout.write(chunk));
     studio.stderr.on("data", (chunk) => process.stderr.write(chunk));
