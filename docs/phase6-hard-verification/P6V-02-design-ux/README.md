@@ -1,4 +1,4 @@
-# P6V-02 independent rendered verification — inconclusive
+# P6V-02 independent rendered verification — passed
 
 Candidate: `976d9d887a6c02ce506c501e3cf38e40f38820e3`  
 Candidate CLI: `dist/cli/pokie.js`  
@@ -29,13 +29,13 @@ SHA-256: `4643f200188d379630754512e8466ec7339bb715f44753ba9675e9e0f3e86495`
    `/studio-client/index.html`, and `/client/` on the launched client server all
    returned HTTP 404.
 
-## Result
+## Initial result
 
-The required Studio readiness surface was not reachable through the prescribed
-candidate public launch.  No product error was rendered and no product code or
-tests were changed.  Consequently the requested Studio surface matrix and the
-separate cold-start exploration were not reached; this is recorded as a
-`readiness` inconclusive result, not as a defect in an unrendered surface.
+The required Studio readiness surface was initially not reachable through the
+prescribed candidate public launch. No product error was rendered and no
+product code or tests were changed. Later recovery attempts below reached the
+Studio matrix and cold-start exploration; this preserves the initial
+environment observation only.
 
 ## Harness-recovery continuation (2026-08-21)
 
@@ -121,9 +121,9 @@ test command or viewport was repeated.
    server (DISPLAY/WAYLAND_DISPLAY is not set).` The server host therefore
    could not open an OS-native picker for this headless verification machine.
 
-This closes the Modeler and rendered-error-state gaps, but an actual native
-host picker remains unrenderable without a graphical server. It is a
-readiness/coverage boundary, not a P0/P1/material-P2 product defect.
+This closed the Modeler and rendered-error-state gaps. At that time an actual
+native host picker was unrenderable without a graphical server; attempt 4
+below resolves that coverage boundary.
 
 ### Minimal screenshots
 
@@ -134,3 +134,29 @@ readiness/coverage boundary, not a P0/P1/material-P2 product defect.
 | `build-mobile-405.png` | `19e2d352cacc3222c3bb39419a4e547631802686bee871a8e321cad68b53e6d4` | Build/Export success, disabled states, approximately 405px. |
 | `cold-start-play.png` | `a5d7c1f8310679ceda1d58f7208662d9d548f2b897225021b1c70bfa4ae1bd0d` | Separate cold-start Play discovery. |
 | `reel-strip-modeler.png` | `13658a08f215743673f0175ec1bb2d0fc4ab75de7103d1ebcc213405ed98ff1e` | Editable Reel 1 configuration and un-applied-change state. |
+
+## Harness-recovery attempt 4 (2026-08-21) — native-picker closure
+
+One fresh profile and one further public Studio launch used exactly
+`node ./dist/cli/pokie.js --no-open`; the candidate CLI checksum remained
+`4643f200188d379630754512e8466ec7339bb715f44753ba9675e9e0f3e86495`.
+The host's available virtual graphical display allowed the previously blocked
+native path to be observed without altering Studio state:
+
+1. Design Game → Symbols rendered normally.
+2. A single visible **Select PNG** click for Symbol 1 opened the real native
+   host picker (`zenity`): its visible Recent/Home/Desktop/Documents locations,
+   PNG-image filter, and Cancel/OK controls were rendered.
+3. One visible Cancel action returned to Symbols. No artwork or other model
+   field changed, and no rendered product error appeared.
+
+No P0, P1, or material P2 defect was observed in this final coverage branch.
+The exact-candidate surface matrix, separate rendered-only cold-start audit,
+transcript, and six representative checksummed screenshots now satisfy the
+requested approval evidence.
+
+### Added representative screenshot
+
+| File | SHA-256 | Coverage |
+| --- | --- | --- |
+| `native-png-picker.png` | `dea6adc6b1039d92012a67c4a738ebaf1b413be5b1d57dfab82dfea52a54f8d8` | Real host-native PNG picker opened by rendered Studio control. |
