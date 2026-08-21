@@ -1,6 +1,8 @@
 # P6T-01 independent traceability audit
 
-Candidate checked: `38ea7fc93221a6b532665e6dde4b470b7fd005ba` on 2026-08-21.
+Candidate checked: `ea20961d2357c3735c102d11eaf8989e5873bdf4` on
+2026-08-21. The checkout HEAD was this exact commit before the test command;
+the evidence commit follows it and does not change the tested source tree.
 
 ## Result: corrected selection reconciled
 
@@ -9,15 +11,17 @@ The prior saved selection used the absent
 its retained serial result name the tracked
 `tests/cli/studio-client/src/integration/happyPath.test.tsx` path instead.
 The corrected single serial invocation below completed with exit status 0,
-covering every complete test file named by the P6R-01--P6R-04 map. This is
-current machine verification of the selected boundaries, not replacement or
-republication of historical P6R evidence.
+covering every complete test file named by the P6R-01--P6R-04 map. Its bounded
+machine record is `P6T-01-targeted-results.txt`: 8/8 suites and 368/368 tests
+passed in 282.421 seconds. This is current machine verification of the selected
+boundaries, not replacement or republication of historical P6R evidence.
 
 ```text
-npm run test:targeted -- tests/cli/client/clientPresentation.test.ts tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts tests/cli/studio/StudioServer.test.ts tests/cli/studio-client/src/integration/happyPath.test.tsx
+npm run test:targeted -- tests/cli/client/clientPresentation.test.ts tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts tests/cli/studio-client/src/integration/happyPath.test.tsx tests/cli/studio/StudioServer.test.ts
 ```
 
-The prior absent path was traced at this candidate before this corrected run.
+The prior path is absent at this candidate; all eight requested paths are
+present before this corrected run.
 The retained P6R-04 serial record also names this tracked path and reports exit
 status 0, but remains historical evidence with its original provenance.
 

@@ -1,0 +1,22 @@
+P6T-01 targeted verification — bounded machine result
+
+Candidate source SHA: ea20961d2357c3735c102d11eaf8989e5873bdf4
+Command exit status: 0
+Command: npm run test:targeted -- tests/cli/client/clientPresentation.test.ts tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts tests/cli/studio-client/src/integration/happyPath.test.tsx tests/cli/studio/StudioServer.test.ts
+
+PASS tests/cli/client/clientPresentation.test.ts
+PASS tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.reelStripModeler.test.tsx
+PASS tests/cli/studio-client/src/components/home/ProjectsPanel.test.tsx
+PASS tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
+PASS tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx
+PASS tests/cli/studio-client/src/domain/interpret/ExportDeployTargets.test.ts
+PASS tests/cli/studio-client/src/integration/happyPath.test.tsx
+PASS tests/cli/studio/StudioServer.test.ts
+
+Test Suites: 8 passed, 8 total
+Tests:       368 passed, 368 total
+Snapshots:   0 total
+Time:        282.421 s
+
+The complete process emitted a post-run Jest open-handle advisory after the
+passing summary, then exited 0. This bounded record omits the raw log.
