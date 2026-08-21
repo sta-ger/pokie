@@ -43,7 +43,7 @@ describe("AppShellLayout - mobile navigation", () => {
 
         expect(document.querySelector(".studio-app-main")).toHaveTextContent("content");
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
-        expect(stylesheet).toMatch(/@media \(max-width: 48em\)[\s\S]*?\.studio-app-main \{[\s\S]*?padding-inline: var\(--app-shell-padding\) !important;/);
+        expect(stylesheet).toMatch(/@media \(max-width: 48em\)[\s\S]*?#root \.studio-app-main \{[\s\S]*?padding-inline: var\(--mantine-spacing-md\) !important;/);
     });
 
     it("closes the navbar after selecting a section, and returns focus to the burger", async () => {

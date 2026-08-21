@@ -1,5 +1,5 @@
 import {Anchor, AppShell, Breadcrumbs, Burger, Group, Text, Title} from "@mantine/core";
-import {useDisclosure} from "@mantine/hooks";
+import {useDisclosure, useMediaQuery} from "@mantine/hooks";
 import {createContext, useContext, useEffect, useRef, type ReactNode} from "react";
 
 export type StudioBreadcrumb = {label: string; onClick?: () => void};
@@ -64,6 +64,10 @@ export function AppShellLayout({
     children: ReactNode;
 }) {
     const [opened, {toggle, close}] = useDisclosure();
+    // Mantine calculates the AppShell main area's desktop navbar offset into its padding. Its own
+    // mobile CSS normally zeroes that offset, but keep the content width explicit at this boundary:
+    // a closed 260px drawer must never leave phone users only a narrow reading column.
+    const isPhoneWidth = useMediaQuery("(max-width: 48em)");
     const burgerRef = useRef<HTMLButtonElement>(null);
 
     const closeAndFocusBurger = (): void => {
@@ -120,7 +124,9 @@ export function AppShellLayout({
             <AppShell.Navbar p="md">
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
-            <AppShell.Main className="studio-app-main">{children}</AppShell.Main>
+            <AppShell.Main className="studio-app-main" style={isPhoneWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>
+                {children}
+            </AppShell.Main>
         </AppShell>
     );
 }
