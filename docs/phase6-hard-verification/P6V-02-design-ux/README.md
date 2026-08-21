@@ -1,7 +1,6 @@
 # P6V-02 rendered Design and UX audit
 
-Audited candidate: `734ddfe8ed1db338ad0b3a1224fc3fdace692dd0`, a descendant
-of the required base `1f700c9894be6dcec66abc1e08ed09876c2f7e30`.
+Audited candidate: `35e3388c1c8afab49ce3239adca4d7f63109dfed`.
 
 The separate cold-start rendered-controls audit and bounded screenshot
 inventory are in `current-candidate/`. Desktop Design/Game Model/Play/
