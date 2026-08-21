@@ -160,6 +160,36 @@ describe("StudioBlueprintService", () => {
             }
         });
 
+        it("rejects a structurally valid generated reel that cannot be materialized", () => {
+            const service = createService();
+            const result = service.validate(buildBlueprint({
+                reelStripGeneration: [
+                    {
+                        type: "generated",
+                        length: 4,
+                        symbolCounts: {A: 2, B: 2},
+                        seed: 7,
+                        lockedPositions: {0: "A"},
+                        constraints: [{type: "minimumCircularDistance", minimumDistance: 3, symbolIds: ["A"]}],
+                    },
+                    {type: "literal", strip: ["A", "B"]},
+                    {type: "literal", strip: ["A", "B"]},
+                ],
+            }));
+
+            expect(result).toMatchObject({status: "invalid"});
+            if (result.status === "invalid") {
+                expect(result.errors).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            code: "blueprint-reelstripgeneration-unsatisfiable",
+                            message: expect.stringContaining('"reelStripGeneration[0]" cannot satisfy its current configuration'),
+                        }),
+                    ]),
+                );
+            }
+        });
+
         it("never touches the filesystem", () => {
             const service = createService();
 

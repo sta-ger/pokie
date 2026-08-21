@@ -235,6 +235,33 @@ export class StudioBlueprintService {
         const issues = this.blueprintValidator.validate(blueprint);
         const errors = issues.filter((issue) => issue.severity === "error");
         const warnings = issues.filter((issue) => issue.severity !== "error");
+        // A generated reel's shape can be valid while its counts, fixed positions, and constraints
+        // cannot produce a strip together. The materialization boundary resolves those exact specs,
+        // so make that feasibility part of Studio's save-time validation too: a guided Save must not
+        // persist a model which only fails when its Project is reopened.
+        if (errors.length === 0 && isPlainObject(blueprint) && blueprint.reelStripGeneration !== undefined) {
+            try {
+                const resolution = this.resolveReelStripGeneration(blueprint as GameBlueprint);
+                if (!resolution.success) {
+                    resolution.reels
+                        .filter((reel) => !reel.success)
+                        .forEach((reel) => {
+                            const diagnostic = reel.diagnostics[reel.diagnostics.length - 1]?.violations[0]?.message;
+                            errors.push({
+                                code: "blueprint-reelstripgeneration-unsatisfiable",
+                                severity: "error",
+                                message: `"reelStripGeneration[${reel.reelIndex}]" cannot satisfy its current configuration${diagnostic === undefined ? "." : `: ${diagnostic}`}`,
+                            });
+                        });
+                }
+            } catch (error) {
+                errors.push({
+                    code: "blueprint-reelstripgeneration-unresolvable",
+                    severity: "error",
+                    message: `"reelStripGeneration" could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
+                });
+            }
+        }
         return errors.length > 0 ? {status: "invalid", errors, warnings} : {status: "ok", warnings};
     }
 
