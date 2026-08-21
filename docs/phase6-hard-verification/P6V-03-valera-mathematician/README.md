@@ -1,11 +1,9 @@
-# P6V-03 independent browser rerun — inconclusive
+# P6V-03 independent browser recovery — driver inconclusive
 
-Candidate: `5c334cf5657dca2f7235d6275a5f78ad7e9f3274`.
+Candidate product: `5c334cf5657dca2f7235d6275a5f78ad7e9f3274`. The checkout was rebuilt and launched only with `node ./dist/cli/pokie.js --no-open`; its current evidence-only ancestor has no product-source changes relative to that candidate.
 
-One fresh Studio registry (`XDG_CONFIG_HOME` was newly created) and one fresh visible Chrome profile were used. Studio was launched from this checkout with exactly `node ./dist/cli/pokie.js --no-open`; the candidate was rebuilt beforehand. The first launch stopped before product assessment because the audit driver omitted rendered checkbox inputs. The single allowed corrected rerun used only visible controls and the inherited native picker.
+The retained corrected run was verified before recovery: its transcript checksum is `112716092c04d90417d5924d4339f7cc2660069bccb7ed46d8a61bddb9fd4b8c`, matching the prior README. That run reached the rendered generated-Reel-1 preview after selecting artwork with the native picker, but neither rendered success nor error appeared within its bounded wait.
 
-The corrected run reached and recorded: Recommended Blueprint selection; metadata; a fourth payline; A as Wild with a selected PNG; K as Scatter; and generated Reel 1 configured through rendered controls with counts, locked position 0, and a minimum-spacing constraint. After **Preview**, the rendered UI did not reach either **Generated successfully** or a rendered error during the 120-second bounded interaction wait. No later rendered observation exists to supersede that threshold.
+This recovery used the two permitted fresh visible Studio launches. Both reached the rendered **Select PNG** action. The first did not return the rendered artwork state after the native-picker interaction; the second stopped when the display's window manager rejected the driver's `_NET_ACTIVE_WINDOW` query before a picker keystroke could be confirmed. Neither launch rendered a Studio product error, emitted a duplicate generation/save request, or reached the prior pending Preview state. This is driver-inconclusive under the request contract, not a product finding.
 
-This is a readiness-inconclusive result under the verification contract, not a product finding. Save/close/reopen and the downstream Play, Simulation, Replay, outcome-library, and Stake Export checks were therefore not reached. The exact rendered-control record is in `ACTION-TRANSCRIPT.txt`; no generated projects, browser profiles, automation, logs, or screenshots are retained.
-
-Checksum: `ACTION-TRANSCRIPT.txt` — `112716092c04d90417d5924d4339f7cc2660069bccb7ed46d8a61bddb9fd4b8c`.
+Only the concise rendered-action recovery record is retained in `ACTION-TRANSCRIPT.txt`; temporary registries, Chrome profiles, Studio processes, automation, and generated projects/output were removed. Current checksum: `ACTION-TRANSCRIPT.txt` — `b204d3ac941601157b149cc8fc48de9d29334c36c128b50f25884152b46e77da`.
