@@ -1,4 +1,4 @@
-# P6V-03 independent browser recovery — readiness inconclusive
+# P6V-03 independent browser recovery — driver inconclusive
 
 Candidate product: `5c334cf5657dca2f7235d6275a5f78ad7e9f3274`. The checkout was rebuilt and launched only with `node ./dist/cli/pokie.js --no-open`; its current evidence-only ancestor has no product-source changes relative to that candidate.
 
@@ -11,5 +11,7 @@ Neither rendered **Preview** action showed a pending, terminal, or product-error
 The subsequent focused harness-recovery invocation verified the retained checksum, then used both permitted additional fresh candidate Studio launches. Each reached **Select PNG** through rendered controls but the native chooser did not yield a rendered **Change** artwork state after standard visible location-entry interaction. No Studio error was rendered and no preview, save, or generation request was emitted. This is a driver-inconclusive retry, so the retained later workflow criteria remain not reached.
 
 The current follow-up corrected a driver flaw in the prior recovery: selecting text into a rendered Select did not itself commit the visible option. In the second fresh launch, every option was committed by clicking its rendered option. The generated Reel 1 then visibly reported **Generated successfully**, and its changes were applied; the A ×3 payout edit also rendered. The continuation then encountered a driver-only navigation mismatch: this Paytable editor rendered no **Bets** navigation button. With the two-launch allowance exhausted, save/reopen and the downstream workflow remain unreachable. No rendered product error was observed; this is driver-inconclusive, not a product finding.
+
+The newest focused recovery first rechecked the controller-retained transcript checksum (`9f8a696732a8ea2090a11b50c400d4556b77f529474c923222f611f6d2a90fcd`) before using its two permitted fresh visible launches. The current Design Game route rendered the Recommended model directly rather than a `New Blueprint` chooser. The second launch accepted rendered keyboard edits to its Game id, Game name, and description, then the driver could not resolve the status-badged rendered Layout tab into a coordinate target. No Studio alert, save, generation, or downstream request was emitted. This is a driver limitation; the remaining save/reopen, Play, Simulation, Replay, outcome-library, and Stake-export checks remain not reached.
 
 Only the concise rendered-action recovery record is retained in `ACTION-TRANSCRIPT.txt`; temporary registries, Chrome profiles, Studio processes, automation, and generated projects/output were removed.
