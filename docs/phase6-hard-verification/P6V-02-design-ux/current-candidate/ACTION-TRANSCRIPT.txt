@@ -8,4 +8,8 @@
 [2026-08-21T11:29:14Z] Desktop and 405px rendered workflow completed without a rendered product error or dead end.
 [2026-08-21T11:30:32Z] LAUNCH node ./dist/cli/pokie.js --no-open; fresh visible Chromium profile for the one remaining native-picker check.
 [2026-08-21T11:30:33Z] Design Game -> Symbols -> Select PNG click was accepted through rendered coordinates.
-[2026-08-21T11:31:03Z] No native picker window or rendered product error appeared during the bounded readiness check. This is readiness-inconclusive, not a product finding.
+[2026-08-21T11:31:03Z] No native picker window or rendered product error appeared during the bounded readiness check. This was retained as readiness-inconclusive pending a headed recovery run.
+[2026-08-21T11:49:55Z] RECOVERY LAUNCH node ./dist/cli/pokie.js --no-open; fresh headed Chromium profile on inherited DISPLAY=:100.
+RECOVERY: Design Game -> Symbols rendered four Select PNG controls. One rendered Select PNG click was accepted.
+RECOVERY: Native Zenity file-selection picker rendered on the inherited display with PNG image filter and visible Cancel/OK controls; 10-native-picker-headed.png captured at 2026-08-21T11:51:53Z.
+RECOVERY: Cancel clicked through the visible native picker. Picker closed; Symbols returned with four Select PNG controls and no rendered alert.
