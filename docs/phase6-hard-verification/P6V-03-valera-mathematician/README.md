@@ -2,26 +2,20 @@
 
 Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`.
 
-The candidate was rebuilt once. The retained, candidate-bound proof for the
-fresh registry/profile criterion remains present and truthful. This focused
-recovery then used all four permitted fresh public launches, each with a new
-isolated Studio registry and visible Chrome profile, launched from this source
-checkout with exactly `node ./dist/cli/pokie.js --no-open`.
+Retained candidate-bound proof still establishes the fresh Studio
+registry/profile criterion. This focused recovery then used all four permitted
+fresh public launches, each launched from this source checkout with exactly
+`node ./dist/cli/pokie.js --no-open` and a separate visible Chrome profile.
 
-The stable rendered-control harness repaired the recorded status-badged-tab,
-native-picker focus, and local-state causes. Its final fresh run completed
-Recommended Valera metadata, Layout's fourth rendered payline, a normal symbol,
-Wild/Scatter, an activated and focus-verified native PNG picker, and entry into
-the Per-reel Reel Strip Modeler. It selected Reel 1; the literal configuration
-form and its rendered `Check & preview` action were visible.
+The final launch reached the corrected candidate's Recommended metadata,
+fourth payline, normal N, Wild/Scatter, focus-verified PNG picker, and
+Per-reel Reel Strip Modeler. It clicked `Select reel 1`, but the rendered
+selected transition was not observed before the bounded wait expired; no
+rendered product error appeared. Earlier launches only exposed repaired
+harness expression, aria-text, and native-radio selector mistakes.
 
-The harness then made a selector-only error: it sought literal button text
-`Configure`, while the rendered workflow action's accessible name is `Edit or
-generate Literal or generated`. No product error was rendered, and no
-Create-Project, Play, Simulation, Replay, Outcome Library, or Stake Engine
-request was emitted after that point. With the four-launch allowance exhausted,
-the remaining workflow is not reached. This is a selector/driver inconclusive
-result, not a product finding.
-
-See `ACTION-TRANSCRIPT.txt`. No generated project/output tree, profile, raw
-log, automation source, or screenshot is retained.
+No save or downstream request was emitted in this invocation, so duplicate-bet
+Play, feature behavior, Simulation, Replay, Outcome Library, and Stake Engine
+remain not reached. This is selector/driver inconclusive, not a product
+finding. See `ACTION-TRANSCRIPT.txt`. No generated output, browser profile,
+raw log, or automation source is retained.
