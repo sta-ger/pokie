@@ -1,8 +1,0 @@
-{
-  "modes": [
-    {
-      "modeName": "base",
-      "libraryPath": "./base-library.json"
-    }
-  ]
-}
