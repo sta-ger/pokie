@@ -1,9 +1,9 @@
-# P6V-03 independent browser rerun — finding
+# P6V-03 independent browser rerun — inconclusive
 
-Candidate product: `ca14ba14b334fd2a041fe09c3f16024fe8d04fe5`; this is an evidence-only descendant. The retained candidate-bound evidence remains present and truthful: it used isolated Studio registries and browser profiles, launching this checkout with exactly `node ./dist/cli/pokie.js --no-open`.
+Candidate product: `b6ca7bccfc6fa28ca3abf504b030c1e5e4b52cc8`.
 
-The focused recovery repaired every recorded driver cause in one stable rendered-control harness, including status-badged tab names, native-picker focus, precise accessible names, and scrolling a visible modeler control into the viewport before input. The first fresh launch confirmed the repaired path through Recommended metadata, fourth payline, Wild/Scatter, and a successful native PNG import. The second fresh launch used a separate fresh HOME/XDG registry and profile, opened Recommended, edited Valera metadata, added the fourth payline, waited for terminal valid-with-warning feedback, and issued one rendered `Create Project` action.
+One candidate build completed, followed by two separate fresh Studio registries and visible Chrome profiles. Each Studio was launched from this checkout with exactly `node ./dist/cli/pokie.js --no-open`.
 
-After that action, Studio rendered: `The project could not be completed. Try again. If it continues, choose the location again and retry.` The draft remained on Design Game with a terminal valid state (`Valid, with warnings — 1 warning(s)`); no Workspace transition appeared. This is a material P1 create-project failure, not a readiness timeout. No duplicate save was sent. Since save/open is blocked, close/reopen, Play, Simulation, Replay, outcome-library, and Stake-export cannot be reached from this fresh project.
+The first launch reached Recommended and Valera metadata before a driver-only outdated description-field label stopped it. The second reached the rendered Layout control, but that status-badged tab did not activate during the bounded semantic wait and no rendered product error appeared. No save request was emitted, so Workspace open, close/reopen, Play, Simulation, Replay, outcome-library, and Stake-export could not be assessed. The two-launch allowance is exhausted. This is driver/selector inconclusive rather than a product finding.
 
-Bounded proof: `create-project-rendered-error.png` (SHA-256 `783561239568f9cfbfff3cb065f380e731efa527b459333f846f5d0729314c3c`). `ACTION-TRANSCRIPT.txt` records the rendered actions. Temporary profiles, registries, generated project/output trees, browser data, raw logs, and harness source were removed.
+`ACTION-TRANSCRIPT.txt` is the complete bounded proof. Prior candidate-ancestor create-error imagery was removed because it is not evidence for this candidate.
