@@ -1,0 +1,44 @@
+[2026-08-21T16:08:44.243Z] START P6V-03 fresh registry/profile against candidate 5c334cf5657dca2f7235d6275a5f78ad7e9f3274; Studio command was node ./dist/cli/pokie.js --no-open
+[2026-08-21T16:08:44.264Z] NAVIGATE public Studio route #/home/design
+[2026-08-21T16:08:44.689Z] CLICK "New Blueprint" through rendered BUTTON coordinates
+[2026-08-21T16:08:44.984Z] CLICK "Recommended" through rendered BUTTON coordinates
+[2026-08-21T16:08:45.244Z] INPUT "Game id"="p6v03-valera-math" through rendered keyboard input
+[2026-08-21T16:08:45.584Z] INPUT "Game name"="P6V-03 Valera Mathematician" through rendered keyboard input
+[2026-08-21T16:08:45.982Z] INPUT "Description (optional)"="Rendered full persistence and math workflow" through rendered keyboard input
+[2026-08-21T16:08:46.405Z] CLICK "Layout" through rendered BUTTON coordinates
+[2026-08-21T16:08:46.779Z] CLICK "Add payline" through rendered BUTTON coordinates
+[2026-08-21T16:08:47.000Z] EDIT Layout: added the fourth rendered payline
+[2026-08-21T16:08:47.150Z] CLICK "Symbols" through rendered BUTTON coordinates
+[2026-08-21T16:08:47.455Z] CLICK "Symbol 1 is wild" through rendered INPUT coordinates
+[2026-08-21T16:08:47.758Z] CLICK "Symbol 2 is scatter" through rendered INPUT coordinates
+[2026-08-21T16:08:48.015Z] CLICK "Select PNG" through rendered BUTTON coordinates
+[2026-08-21T16:08:49.813Z] NATIVE PICKER selected a PNG through the visible host chooser
+[2026-08-21T16:08:49.813Z] EDIT Symbols: A is Wild with PNG artwork; K is Scatter
+[2026-08-21T16:08:50.031Z] CLICK "Reels" through rendered BUTTON coordinates
+[2026-08-21T16:08:50.374Z] CLICK "Per-reel (Reel Strip Modeler)" through rendered LABEL coordinates
+[2026-08-21T16:08:50.693Z] CLICK "Select reel 1" through rendered BUTTON coordinates
+[2026-08-21T16:08:50.948Z] CLICK "Configure" through rendered BUTTON coordinates
+[2026-08-21T16:08:51.338Z] CLICK "Generated" through rendered LABEL coordinates
+[2026-08-21T16:08:51.589Z] CLICK "Counts" through rendered LABEL coordinates
+[2026-08-21T16:08:51.900Z] SELECT "A" in rendered "Symbol"
+[2026-08-21T16:08:52.257Z] INPUT "Count"="3" through rendered keyboard input
+[2026-08-21T16:08:52.570Z] CLICK "Add count" through rendered BUTTON coordinates
+[2026-08-21T16:08:52.869Z] SELECT "K" in rendered "Symbol"
+[2026-08-21T16:08:53.196Z] INPUT "Count"="3" through rendered keyboard input
+[2026-08-21T16:08:53.511Z] CLICK "Add count" through rendered BUTTON coordinates
+[2026-08-21T16:08:53.823Z] SELECT "Q" in rendered "Symbol"
+[2026-08-21T16:08:54.183Z] INPUT "Count"="3" through rendered keyboard input
+[2026-08-21T16:08:54.504Z] CLICK "Add count" through rendered BUTTON coordinates
+[2026-08-21T16:08:54.816Z] SELECT "J" in rendered "Symbol"
+[2026-08-21T16:08:55.184Z] INPUT "Count"="3" through rendered keyboard input
+[2026-08-21T16:08:55.498Z] CLICK "Add count" through rendered BUTTON coordinates
+[2026-08-21T16:08:55.809Z] INPUT "Position to lock for reel 1"="0" through rendered keyboard input
+[2026-08-21T16:08:56.169Z] SELECT "A" in rendered "Symbol to lock for reel 1"
+[2026-08-21T16:08:56.513Z] CLICK "Lock position" through rendered BUTTON coordinates
+[2026-08-21T16:08:56.820Z] INPUT "Common constraint value for reel 1"="1" through rendered keyboard input
+[2026-08-21T16:08:57.222Z] CLICK "Add constraint" through rendered BUTTON coordinates
+[2026-08-21T16:08:57.443Z] EDIT Reel 1: generated counts, locked A at position 0, and minimum-spacing constraint
+[2026-08-21T16:08:57.538Z] CLICK "Preview" through rendered BUTTON coordinates
+[2026-08-21T16:10:57.811Z] FAILED Error: Timed out waiting for successful generated reel preview
+    at waitFor (file:///tmp/p6v03-rendered-audit.mjs:21:157)
+    at async main (file:///tmp/p6v03-rendered-audit.mjs:92:27)
