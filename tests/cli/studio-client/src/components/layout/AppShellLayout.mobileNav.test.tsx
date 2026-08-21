@@ -38,12 +38,14 @@ function renderLayout() {
 }
 
 describe("AppShellLayout - mobile navigation", () => {
-    it("marks the main area for the phone-width navbar-offset safeguard", () => {
+    it("clears the inherited desktop navbar offset at phone width", () => {
         renderLayout();
 
         expect(document.querySelector(".studio-app-main")).toHaveTextContent("content");
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
-        expect(stylesheet).toMatch(/@media \(max-width: 48em\)[\s\S]*?\.studio-app-main \{[\s\S]*?padding-inline: var\(--app-shell-padding\) !important;/);
+        expect(stylesheet).toMatch(
+            /@media \(max-width: 48em\)[\s\S]*?#root \.studio-app-main \{[\s\S]*?--app-shell-navbar-offset: 0px !important;[\s\S]*?padding-inline: var\(--mantine-spacing-md\) !important;/,
+        );
     });
 
     it("closes the navbar after selecting a section, and returns focus to the burger", async () => {

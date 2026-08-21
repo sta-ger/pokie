@@ -94,11 +94,12 @@ body,
    little usable width. Keep each card's hierarchy, but stack its labels above full-width content so
    long project locations remain scannable and the controls stay practical to use. */
 @media (max-width: 48em) {
-    /* Mantine normally clears the desktop navbar offset at this breakpoint. Keep a local guarantee on
-       the application main area as well: when the mobile drawer is closed, its hidden desktop-width
-       offset must never leave Projects or its Open action outside the phone viewport. */
-    .studio-app-main {
-        padding-inline: var(--app-shell-padding) !important;
+    /* AppShell calculates main padding from its inherited desktop navbar offset. Override that input
+       on the main area itself at phone widths, so a stale 260px offset cannot shrink any Home surface
+       (including the initially rendered Design Game editor) to a thin right-hand column. */
+    #root .studio-app-main {
+        --app-shell-navbar-offset: 0px !important;
+        padding-inline: var(--mantine-spacing-md) !important;
     }
 
     .project-registry-entry > td,

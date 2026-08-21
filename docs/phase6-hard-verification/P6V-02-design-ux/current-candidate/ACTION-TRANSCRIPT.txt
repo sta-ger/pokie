@@ -1,0 +1,10 @@
+[2026-08-21] Candidate 540a60ebd2a1f3a5c9d4cdf0bfcde96f8085b4b0 built with npm run build-cli.
+[2026-08-21] Fresh Studio was started from this checkout using dist/cli/pokie.js; a fresh browser profile drove rendered controls only.
+[2026-08-21] Cold start: Design Game rendered; empty Game id showed precise validation feedback; correcting it restored Valid and Create Project created Workspace.
+[2026-08-21] Workspace: Overview, Game Model, Play (new session + settled Spin), Simulation (one-round result), Replay (Session Spin), and Build/Export (exact-library + Stake Engine export) reached rendered success states.
+[2026-08-21] Responsive: at 405px the Build/Export primary action was within viewport (left=39, right=287.109375, width=248.109375; scrollWidth=405; main padding=16px). Reel Strip Modeler rendered through Select, Configure, Literal/Generated.
+[2026-08-21] Supplemental rendered review: all eight Game Model sections rendered at 405px: Game basics, Layout, Symbols, Reels, Paytable, Bets & Modes, Mechanics, Limits.
+[2026-08-21] Recovery launch: Home Projects rendered its empty/disabled import state, then recognized and registered a real local package through visible controls. An intentionally non-enumerable fixture rendered a precise exact-generation error; it was not retried.
+[2026-08-21] Continuing from a visible Starter Slot Workspace, Studio built a TypeScript package, opened it as a project, generated an exact outcome library, and rendered a verified Provably Fair commitment, proof, and cross-check at desktop and 405px.
+[2026-08-21] The UI-generated outcome library was opened through Studio's public project URL. Certification rendered clean source validation; editing its source rendered the explicit stale-validation warning and the disabled downstream Build/Inspect/Export steps at desktop and 405px.
+[2026-08-21] Native picker: the first Browse click had no rendered transition. One safe retry opened the host zenity picker; Escape cancelled it without changing the path or writing output. No rendered product error or unresolved P0/P1/material-P2 was observed.

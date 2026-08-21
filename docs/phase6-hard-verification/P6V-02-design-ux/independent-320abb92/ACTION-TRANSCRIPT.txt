@@ -1,0 +1,10 @@
+[2026-08-21T14:25:22Z] Fresh visible Chrome profile: Desktop Design Game rendered. Empty Game id showed the precise invalid-draft feedback; restoring starter-slot returned Valid — no issues found.
+[2026-08-21T14:25:24Z] Create Project reached Workspace. Game Model summary rendered; Home Projects rendered registered-project and import controls.
+[2026-08-21T14:29:02Z] Play created a session and settled one Spin. Simulation completed one round with RTP/Recent runs. Replay rendered Session Spin.
+[2026-08-21T14:29:05Z] Build/Export exact-library request was issued once. Its first text matcher expired, but the still-rendered UI subsequently showed “Generated 1,024 outcomes …”; continuation used that success and did not retry generation.
+[2026-08-21T14:31:42Z] Stake Engine Export completed with its rendered success state.
+[2026-08-21T14:31:43Z] At 405px Build/Export had no horizontal overflow and its primary action was fully in view. Design Game measured scrollWidth=405 with full-width main content and 16px padding.
+[2026-08-21T14:44:28Z] Recovery: the fresh visible profile reached 405px Reel Strip Modeler through Select reel → Configure; scrollWidth=405 and main padding=16px.
+[2026-08-21T14:50:03Z] Public Build/Export built and opened a candidate TypeScript package; its rendered navigation exposed Provably Fair, which rendered successfully.
+[2026-08-21T14:51:36Z] Public Build/Export republished and opened a candidate outcome-library project; its rendered navigation exposed Certification, which rendered successfully.
+[2026-08-21T14:51:36Z] An earlier interaction threshold was followed by a rendered Unsaved changes navigation guard. Selecting rendered Leave completed the already accepted Open action; it was not treated as a product defect.
