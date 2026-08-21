@@ -1,38 +1,38 @@
-[2026-08-21T12:16:47.394Z] START independent rendered visual inventory and cold-start audit on a fresh browser profile
-[2026-08-21T12:16:47.408Z] NAVIGATE / through public Studio URL
-[2026-08-21T12:16:47.863Z] INITIAL RENDERED TEXT "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGett"
-[2026-08-21T12:16:48.062Z] CAPTURE 00-initial-render: rendered screenshot and text inventory
-[2026-08-21T12:16:48.318Z] CAPTURE 01-cold-start-design-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:48.445Z] INPUT "Game id" through rendered keyboard input
-[2026-08-21T12:16:49.114Z] RECOVERY: an empty Game id rendered precise invalid-draft feedback without leaving the Design Game surface
-[2026-08-21T12:16:49.143Z] INPUT "Game id" through rendered keyboard input
-[2026-08-21T12:16:49.809Z] RECOVERY: correcting Game id through the rendered field restored valid feedback and left Create Project available
-[2026-08-21T12:16:49.823Z] CLICK "Create Project" through rendered coordinates
-[2026-08-21T12:16:50.645Z] COLD-START: Design Game → Create Project reached the runnable Workspace without a dead end
-[2026-08-21T12:16:50.805Z] CAPTURE 02-workspace-overview-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:50.824Z] CLICK "Game Model" through rendered coordinates
-[2026-08-21T12:16:51.552Z] CAPTURE 03-game-model-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:51.569Z] CLICK "Play" through rendered coordinates
-[2026-08-21T12:16:51.981Z] CLICK "New Play session" through rendered coordinates
-[2026-08-21T12:16:52.405Z] CLICK "Spin" through rendered coordinates
-[2026-08-21T12:16:53.023Z] CAPTURE 04-play-success-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:53.040Z] CLICK "Simulation" through rendered coordinates
-[2026-08-21T12:16:53.425Z] INPUT "Rounds" through rendered keyboard input
-[2026-08-21T12:16:53.803Z] CLICK "Run Simulation" through rendered coordinates
-[2026-08-21T12:16:54.409Z] CAPTURE 05-simulation-success-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:54.449Z] CLICK "Replay" through rendered coordinates
-[2026-08-21T12:16:55.064Z] CAPTURE 06-replay-session-spin-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:55.080Z] CLICK "Build/Export" through rendered coordinates
-[2026-08-21T12:16:55.480Z] CLICK "Generate exact outcome library (base)" through rendered coordinates
-[2026-08-21T12:16:56.647Z] CLICK "Run Stake Engine Export (base)" through rendered coordinates
-[2026-08-21T12:16:57.927Z] CAPTURE 07-build-export-success-desktop: rendered screenshot and text inventory
-[2026-08-21T12:16:58.334Z] MOBILE METRICS {"innerWidth":405,"innerHeight":900,"devicePixelRatio":1,"small":true,"range":true,"smallPixels":true,"scrollWidth":405,"main":"16px","appPadding":"calc(1rem * 1)","mantinePadding":"calc(1rem * 1)","inline":"padding-inline: var(--mantine-spacing-md);","classes":"m_8983817 mantine-AppShell-main studio-app-main"}
-[2026-08-21T12:16:58.424Z] CAPTURE 08-build-export-mobile-405: rendered screenshot and text inventory
-[2026-08-21T12:16:58.426Z] NAVIGATE /home/design through public Studio URL
-[2026-08-21T12:16:58.999Z] CLICK "Reels" through rendered coordinates
-[2026-08-21T12:16:59.392Z] CLICK "Per-reel (Reel Strip Modeler)" through rendered coordinates
-[2026-08-21T12:16:59.789Z] CLICK "Select reel" through rendered coordinates
-[2026-08-21T12:17:00.187Z] CLICK "Select" through rendered coordinates
-[2026-08-21T12:17:00.564Z] CLICK "Configure" through rendered coordinates
-[2026-08-21T12:17:00.992Z] CAPTURE 09-reel-strip-modeler-mobile-405: rendered screenshot and text inventory
-[2026-08-21T12:17:00.992Z] COMPLETE: desktop and 405px rendered controls covered Design, Workspace, Game Model, Play, Simulation, Replay, Build/Export and Reel Strip Modeler; no rendered error/dead-end was encountered.
+[2026-08-21T12:49:38.839Z] STUDIO candidate launcher ready http://127.0.0.1:3200 via node ./dist/cli/pokie.js --no-open
+[2026-08-21T12:49:51.826Z] START exact-SHA independent rendered visual inventory and cold-start audit on fresh headed Chromium profile
+[2026-08-21T12:49:51.845Z] NAVIGATE / through public Studio URL
+[2026-08-21T12:49:52.471Z] CAPTURE 00-initial-render: rendered screenshot
+[2026-08-21T12:49:52.614Z] CAPTURE 01-cold-start-design-desktop: rendered screenshot
+[2026-08-21T12:49:52.667Z] INPUT "Game id" through rendered keyboard input
+[2026-08-21T12:49:53.461Z] RECOVERY empty Game id rendered precise invalid-draft feedback
+[2026-08-21T12:49:53.512Z] INPUT "Game id" through rendered keyboard input
+[2026-08-21T12:49:54.311Z] RECOVERY corrected Game id restored valid feedback and left Create Project available
+[2026-08-21T12:49:54.341Z] CLICK "Create Project" through rendered coordinates
+[2026-08-21T12:49:55.339Z] COLD-START Design Game → Create Project reached Workspace
+[2026-08-21T12:49:55.559Z] CAPTURE 02-workspace-overview-desktop: rendered screenshot
+[2026-08-21T12:49:55.576Z] CLICK "Game Model" through rendered coordinates
+[2026-08-21T12:49:55.928Z] CAPTURE 03-game-model-desktop: rendered screenshot
+[2026-08-21T12:49:55.944Z] CLICK "Play" through rendered coordinates
+[2026-08-21T12:49:56.158Z] CLICK "New Play session" through rendered coordinates
+[2026-08-21T12:49:56.354Z] CLICK "Spin" through rendered coordinates
+[2026-08-21T12:49:56.565Z] CAPTURE 04-play-success-desktop: rendered screenshot
+[2026-08-21T12:49:56.583Z] CLICK "Simulation" through rendered coordinates
+[2026-08-21T12:49:56.829Z] INPUT "Rounds" through rendered keyboard input
+[2026-08-21T12:49:56.853Z] CLICK "Run Simulation" through rendered coordinates
+[2026-08-21T12:49:57.057Z] CAPTURE 05-simulation-success-desktop: rendered screenshot
+[2026-08-21T12:49:57.069Z] CLICK "Replay" through rendered coordinates
+[2026-08-21T12:49:57.452Z] CAPTURE 06-replay-session-spin-desktop: rendered screenshot
+[2026-08-21T12:49:57.483Z] CLICK "Build/Export" through rendered coordinates
+[2026-08-21T12:49:57.753Z] CLICK "Generate exact outcome library (base)" through rendered coordinates
+[2026-08-21T12:49:58.743Z] CLICK "Run Stake Engine Export (base)" through rendered coordinates
+[2026-08-21T12:49:59.633Z] CAPTURE 07-build-export-success-desktop: rendered screenshot
+[2026-08-21T12:49:59.764Z] MOBILE METRICS {"innerWidth":405,"scrollWidth":405,"small":true}
+[2026-08-21T12:49:59.862Z] CAPTURE 08-build-export-mobile-405: rendered screenshot
+[2026-08-21T12:49:59.864Z] NAVIGATE /home/design through public Studio URL
+[2026-08-21T12:50:00.028Z] CLICK "Reels" through rendered coordinates
+[2026-08-21T12:50:00.091Z] CLICK "Per-reel (Reel Strip Modeler)" through rendered coordinates
+[2026-08-21T12:50:00.143Z] CLICK "Select reel" through rendered coordinates
+[2026-08-21T12:50:00.196Z] CLICK "Select" through rendered coordinates
+[2026-08-21T12:50:00.222Z] CLICK "Configure" through rendered coordinates
+[2026-08-21T12:50:00.330Z] CAPTURE 09-reel-strip-modeler-mobile-405: rendered screenshot
+[2026-08-21T12:50:00.330Z] COMPLETE desktop and 405px rendered controls covered Design, Workspace, Game Model, Play, Simulation, Replay, Build/Export and Reel Strip Modeler; no rendered product error or dead end observed.
