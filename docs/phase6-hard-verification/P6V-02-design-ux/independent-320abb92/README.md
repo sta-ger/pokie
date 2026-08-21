@@ -18,9 +18,14 @@ below are rendered UI observations, not private API calls or injected state.
 | `07-build-export-success.png` | `152b7e26f86c8cad4057394cbde8162f15d6be993735c594b429a5c3bcb6f629` | Exact library and Stake export success. |
 | `08-build-export-mobile-405.png` | `5010057de00cc772682e83c1dbc71d7353ac2c998be2a49d0af86aa31865c766` | 405px Build/Export action in viewport. |
 | `09-design-mobile-405.png` | `aa2a521c8ab997ed11dd2e059a406fc20e7936aa07f5ca1af8d45550191ba5ef` | Corrected 405px Design Game width. |
+| `10-reel-strip-modeler-mobile-405-recovery.png` | `9f220eb648751b22ccdd6ec5c64444696bd553370dbc413ce179ff354f731c25` | 405px Reel Strip Modeler through Select → Configure. |
+| `11-runtime-capability-provably-fair-recovery.png` | `3d342b8124b57f1e83c831d28e923de93b573d5f5e2d1a49fd9664eba37bdc8f` | Candidate-built runtime package’s Provably Fair surface. |
+| `12-outcome-library-certification-recovery.png` | `ea5331887ecc0c9d10c0eca3e455041b1a19ceea9f2ebc2d3a228562636a283a` | Candidate-built outcome-library project’s Certification surface. |
 
 The 405px Design Game measurement was `scrollWidth=405`, main bounds `[0,405]`,
 and inline padding `16px`; the Build/Export primary action was `[39,287.109375]`
-with `scrollWidth=405`. No rendered product error was observed in the surfaces
-reached. The transcript records the bounded selector limitation that prevented
-completion of the remaining capability-gated and mobile Reel Strip inventory.
+with `scrollWidth=405`. Recovery completed the formerly incomplete inventory:
+the Reel Strip Modeler was `scrollWidth=405` with 16px padding at 405px; a
+candidate-built TypeScript package exposed Provably Fair; its candidate-built
+outcome library exposed Certification. No P0/P1/material-P2 or rendered product
+error was observed.
