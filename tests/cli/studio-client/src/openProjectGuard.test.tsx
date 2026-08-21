@@ -132,6 +132,7 @@ describe("useOpenProject: guarded side effects", () => {
         fireEvent.click(screen.getByRole("button", {name: "Create Project"}));
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
         expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument();
+        expect(screen.queryByText("The project could not be completed. Try again. If it continues, choose the location again and retry.")).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         const savedBlueprint = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/save-managed")?.init?.body ?? "{}")
             .blueprint as {symbols: string[]};

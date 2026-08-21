@@ -135,6 +135,10 @@ export function BlueprintEditorPage({
     // whenever this action's own result needs to be seen.
     const [managedSaveView, setManagedSaveView] = useState<BlueprintSaveView>({status: "idle"});
     const [workspaceOpenError, setWorkspaceOpenError] = useState<string>();
+    // A successful managed save immediately continues into its Workspace. Keep that terminal
+    // navigation separate from the creator's save-result UI: once the Workspace has accepted the
+    // project, an older creator result must not remain (or reappear) beside the Workspace outcome.
+    const workspaceOpenRequestIdRef = useRef(0);
     const [showManagedConflictComparison, setShowManagedConflictComparison] = useState(false);
     const [validationView, setValidationView] = useState<BlueprintValidationView>({status: "idle"});
     // Read once, at mount, whatever a previous Design Game session left in this browser tab's own draft-
@@ -839,6 +843,10 @@ export function BlueprintEditorPage({
     // with overwrite:true, so it never re-asks either. A successful save also clears the draft-recovery
     // slot -- the content is now safely persisted, so there's nothing left to "recover".
     const saveGuidedProject = (savedRevision: number, savedBlueprint: Record<string, unknown>): void => {
+        // A retry begins a new Workspace-open lifecycle too, so an older open request cannot reconcile
+        // this attempt's UI after it settles.
+        workspaceOpenRequestIdRef.current += 1;
+        setWorkspaceOpenError(undefined);
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
         // Kept as `{raw, view}` pairs (rather than mapping straight to `describeSaveResult`/
@@ -876,12 +884,26 @@ export function BlueprintEditorPage({
                         onManagedProjectSaved?.(registeredProject);
                         // The newly registered Blueprint Project is ready to use as-is; enter its
                         // Workspace rather than leaving the creator at a separate build step.
+                        const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
                         openProject(fetchImpl, registeredProject.location)
                             .then(({context}) => {
+                                if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
+                                    return;
+                                }
+                                // The saved project is now visibly represented by its Workspace, not by
+                                // the hidden creator. Clear the creator result before navigating so a
+                                // late render cannot pair a successful Workspace with stale save error
+                                // remediation from the previous editor state.
+                                setManagedSaveView({status: "idle"});
+                                setWorkspaceOpenError(undefined);
                                 allowNextDesignNavigation();
                                 navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
                             })
-                            .catch((error: unknown) => setWorkspaceOpenError(errorMessage(error)));
+                            .catch((error: unknown) => {
+                                if (workspaceOpenRequestId === workspaceOpenRequestIdRef.current) {
+                                    setWorkspaceOpenError(errorMessage(error));
+                                }
+                            });
                     }
                 }
             })
