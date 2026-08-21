@@ -30,6 +30,12 @@ export type UnsafeStartDirectoryContext = {
     // path evaluated from a POSIX test host) is expected to throw; callers here always treat that as
     // "no physical destination to check, fall back to the lexical path" rather than propagating it.
     readonly realpath?: (target: string) => string;
+    // A deliberately isolated user profile may itself live below the OS temporary directory (for
+    // example, a disposable local Studio profile).  That profile is still the user's explicit Home,
+    // not an arbitrary scratch destination.  When supplied, only descendants that remain physically
+    // inside this exact root are exempt from the broad OS-temp check; every other unsafe-root and
+    // unsafe-segment check below remains in force.
+    readonly allowedTemporaryRoot?: string;
 };
 
 const UNSAFE_SEGMENT_NAMES = new Set(["node_modules", "dist"]);
@@ -134,7 +140,14 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
         return true;
     }
 
-    if (isUnsafeAgainst(platformPath.resolve(os.tmpdir()), resolvedCandidate, physicalCandidate, platformPath, realpath)) {
+    const allowedTemporaryRoot = context.allowedTemporaryRoot === undefined ? undefined : platformPath.resolve(context.allowedTemporaryRoot);
+    const physicalAllowedTemporaryRoot = allowedTemporaryRoot === undefined ? undefined : physicalAnchor(allowedTemporaryRoot, realpath);
+    const isInsideAllowedTemporaryRoot =
+        allowedTemporaryRoot !== undefined &&
+        physicalAllowedTemporaryRoot !== undefined &&
+        isWithin(allowedTemporaryRoot, resolvedCandidate, platformPath) &&
+        isWithin(physicalAllowedTemporaryRoot, physicalCandidate, platformPath);
+    if (!isInsideAllowedTemporaryRoot && isUnsafeAgainst(platformPath.resolve(os.tmpdir()), resolvedCandidate, physicalCandidate, platformPath, realpath)) {
         return true;
     }
     if (context.installRoot !== undefined && isUnsafeAgainst(platformPath.resolve(context.installRoot), resolvedCandidate, physicalCandidate, platformPath, realpath)) {

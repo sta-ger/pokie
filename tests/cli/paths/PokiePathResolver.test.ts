@@ -61,12 +61,9 @@ describe("PokiePathResolver", () => {
             expect(resolver.resolveIndependentProjectDirectory("nested/name").status).toBe("invalid-name");
         });
 
-        it("never silently resolves into the OS temp directory even when Home itself is inside it", () => {
-            // Simulates a broken/misconfigured environment where the computed Home directory happens to
-            // land inside the OS temp dir -- the unsafe-start-directory guard must still refuse it
-            // rather than silently handing back a temp-dir-rooted default. Uses a real, existing,
-            // writable directory (rather than a nonexistent path) so the fixture actually reaches the
-            // unsafe-directory guard instead of being rejected earlier as merely "absent".
+        it("uses an isolated temporary Home as the explicit root for a fresh Studio profile", () => {
+            // A fresh Studio/registry can intentionally use a disposable HOME. The project remains
+            // beneath that exact profile root; arbitrary temp paths and escaping symlinks stay unsafe.
             const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-test-"));
             try {
                 const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tempHome};
@@ -74,7 +71,24 @@ describe("PokiePathResolver", () => {
 
                 const result = resolver.resolveIndependentProjectDirectory("sample-slot");
 
-                expect(result.status).toBe("unsafe-path");
+                expect(result).toEqual({status: "valid", directory: path.join(tempHome, "POKIE Projects", "sample-slot"), source: "home"});
+            } finally {
+                fs.rmSync(tempHome, {recursive: true, force: true});
+            }
+        });
+
+        it("uses an isolated temporary Documents folder only when it stays inside that profile", () => {
+            const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-documents-test-"));
+            try {
+                const documents = path.join(tempHome, "Documents");
+                fs.mkdirSync(documents);
+                const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: tempHome};
+
+                expect(new PokiePathResolver({}, env).resolveIndependentProjectDirectory("valera-mathematician")).toEqual({
+                    status: "valid",
+                    directory: path.join(documents, "POKIE Projects", "valera-mathematician"),
+                    source: "documents",
+                });
             } finally {
                 fs.rmSync(tempHome, {recursive: true, force: true});
             }
