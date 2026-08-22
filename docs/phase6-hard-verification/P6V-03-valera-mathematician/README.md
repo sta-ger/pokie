@@ -61,3 +61,13 @@ After the final Recommended action, the rendered **Game id** field did not retai
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-attempt4-harness-recovery-transcript.txt` | Concise exact-SHA fresh-registry/profile rendered recovery observation | `83fa6dc6637ee0cd6f7df4f11b313f7bdf713afed9d2e8c1d00518af3ad1b525` |
+
+## Final bounded harness recovery (2026-08-22)
+
+The retained harness was repaired in place for the accepted Game-id keystrokes, status-badged section tabs, and generated-reel source selection. Four permitted fresh-registry/profile launches used only the required candidate-checkout command. They reached the exact candidate's empty Home, Recommended/Random/Blank/recommended replacement path, named Valera model validation, all six model tabs, literal and per-reel reel controls, and rendered generated constraints/stacks.
+
+The final run was blocked by a harness/native-picker focus transition before the generated `Weight` field could be reached. The picker was visibly present; it was activated, focus-verified, and completed using the controller contract, but the earlier transition had already left the harness's bounded semantic wait outstanding. No rendered Studio product error, browser console error, or failed network diagnostic occurred. The four-launch limit precludes another public workflow launch, so no downstream persistence or workspace claims are made and no product finding is asserted.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-harness-recovery-final-transcript.txt` | Bounded exact-SHA record of all four final recovery launches and their driver limitation | `1efb7f273fc4fae68c12d8bb438866e203b226c9aa185f0d4566830b3017d5d4` |
