@@ -31,3 +31,13 @@ The ordinary win, simulation, replay, Outcome Library, Stake Engine Export, and 
 | `free-games-scenario-error.png` | Second rendered failure of Find free games | `b90e74b82bc24f6e5bcba1ee66c178287d8c983cc72db56e5a6cfdfbfe8d2bc7` |
 | `simulation-results.png` | Completed Simulation results | `0d793cc4b4cfba5211cac326f12c17935dab4b2a15b2150a17ae32f397a4666b` |
 | `outcome-library-stake-export.png` | Rendered Outcome Library and Stake Engine export success | `ea755d18b1ebfd7c7fac071daef383cd7f193b25de47e48270dea7762b75abfa` |
+
+## Exact-current candidate attempt (2026-08-22)
+
+Candidate `92bd710ee5fc03e376134f7224eeba465e053a0e` was built, then launched once through the required source-checkout command, `node ./dist/cli/pokie.js --no-open`, with a new disposable `HOME` (therefore a fresh Studio registry) and a distinct Chrome profile. The rendered Home state was empty. Recommended replaced the draft successfully; Random was opened, named, and its visible **Generate** button was clicked. No rendered success, pending, or error state appeared during the bounded interaction wait, so the journey could not safely continue.
+
+This is readiness/driver-inconclusive rather than a product finding: the UI did not render a product error, and the allowed two public-workflow launches were exhausted (the first exited before Studio launch while resolving the harness's module dependency). The retained exact-SHA transcript records only rendered actions and observations. The screenshots above remain the preserved older failed-run evidence and do not claim to prove this candidate.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt2-transcript.txt` | Bounded fresh-registry exact-SHA rendered transcript | `9a8dda6304cba368f1390309ff00689b5097261722394741f543249d73b14567` |
