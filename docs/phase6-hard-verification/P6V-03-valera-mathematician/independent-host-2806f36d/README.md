@@ -108,3 +108,24 @@ the minimal Blank paytable in the same bounded recovery; paytable, bets/modes,
 and mechanics edits therefore remain unverified. The precise compact record is
 `recovery-20260823-attempt1-transcript.txt`; this remains a driver-inconclusive
 result rather than a product finding.
+
+## Focused recovery attempt 2 (2026-08-23)
+
+The retained checksums again matched and this checkout completed `npm run
+build-cli`. Four further isolated profiles launched only
+`node ./dist/cli/pokie.js --no-open`. The repaired stable harness used rendered
+field metadata and rendered combobox options, rather than ambiguous label
+matches. It reached a saved per-reel generated configuration: `A` count 4,
+one stack rule, a rendered invalid-spacing diagnostic, its local correction,
+and the local success state “Generated successfully” / “Satisfied every
+constraint after 1 attempt(s).” Create Project then opened the resulting
+Starter Slot. Its visible Game Model also saved a `mode-1` bet mode with cost
+multiplier 2. A mechanics draft correctly exposed the free-games award editor;
+it was not saved because its fresh model had no eligible scatter symbol.
+
+The fourth fresh profile was the uncoached path Create Project -> Open Play ->
+New Play session -> Spin; it rendered a settled 4.00 J-line win. No product
+error or P0/P1/material-P2 issue was rendered. Completed Blank creation and a
+single saved/reopened project covering every requested editing surface remain
+unreached at the launch limit. See
+`recovery-20260823-attempt2-transcript.txt` for the bounded exact record.
