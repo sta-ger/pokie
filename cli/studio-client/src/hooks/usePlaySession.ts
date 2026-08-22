@@ -70,7 +70,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // spinGuard so a user can't fire two of Play's own scenario actions against the same session at once
     // (see spinGuard's own declaration above).
     const runSpinAction = useCallback(
-        (action: (sid: string) => Promise<Parameters<typeof describePlaySpinResult>[0]>) => {
+        (subject: string, action: (sid: string) => Promise<Parameters<typeof describePlaySpinResult>[0]>) => {
             const activeSessionId = activeSessionIdRef.current;
             if (activeSessionId === undefined || !spinGuard.begin()) {
                 return;
@@ -83,14 +83,14 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         return;
                     }
                     const described = describePlaySpinResult(result);
-                    setSession(described);
+                    setSession(described.status === "error" ? {...described, subject} : described);
                     if (described.status === "ok") {
                         onRoundRecorded?.();
                     }
                 })
                 .catch((error: unknown) => {
                     if (requestId === requestIdRef.current) {
-                        setSession({status: "error", message: errorMessage(error)});
+                        setSession({status: "error", message: errorMessage(error), subject});
                     }
                 })
                 .finally(() => spinGuard.end());
@@ -100,7 +100,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     );
 
     const spin = useCallback((bet?: number, mode?: string) => {
-        runSpinAction((sid) => spinPlaySession(fetchImpl, sid, bet, mode));
+        runSpinAction("This spin", (sid) => spinPlaySession(fetchImpl, sid, bet, mode));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 
@@ -108,7 +108,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // StudioPlayService.findAnyWin()'s own doc comment) until one actually wins, then renders that round
     // through the exact same RoundSummary chain a plain Spin does.
     const findAnyWin = useCallback(() => {
-        runSpinAction((sid) => findAnyWinPlaySession(fetchImpl, sid));
+        runSpinAction("Find any win", (sid) => findAnyWinPlaySession(fetchImpl, sid));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 
@@ -117,7 +117,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // StudioPlayService.findSymbolWin().
     const findSymbolWin = useCallback(
         (symbolId: string) => {
-            runSpinAction((sid) => findSymbolWinPlaySession(fetchImpl, sid, symbolId));
+            runSpinAction("Find symbol win", (sid) => findSymbolWinPlaySession(fetchImpl, sid, symbolId));
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [runSpinAction, fetchImpl],
@@ -127,7 +127,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // abstraction (see StudioPlayService.findFreeGames()'s own doc comment); same real, authoritative
     // search as findAnyWin() above.
     const findFreeGames = useCallback(() => {
-        runSpinAction((sid) => findFreeGamesPlaySession(fetchImpl, sid));
+        runSpinAction("Find free games", (sid) => findFreeGamesPlaySession(fetchImpl, sid));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 

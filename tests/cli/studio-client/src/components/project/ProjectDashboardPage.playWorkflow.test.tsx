@@ -347,6 +347,29 @@ describe("ProjectDashboardPage - Play", () => {
         expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-1/find-free-games")).toBe(true);
     }, 30000);
 
+    it("explains a free-games scenario that the current Game Model has not configured instead of offering a misleading retry", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/play/session": () => ({ok: true, status: 201, body: {status: "ok", session: sessionFor()}}),
+            "/api/project/play/sessions/sess-1/find-free-games": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "This game doesn't support free games, so Find free games isn't available for it."},
+            }),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToPlayTab(user);
+        await user.click(await screen.findByRole("button", {name: "New Play session"}));
+        await user.click(await screen.findByRole("button", {name: "Find free games"}));
+
+        expect(
+            await screen.findByText("Find free games isn't available for this game. Configure the required game feature, then start a new session."),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/couldn't be completed/)).toBeNull();
+    }, 30000);
+
     it("Find symbol win is disabled until a symbol is chosen", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

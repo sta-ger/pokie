@@ -13,6 +13,11 @@ describe("classifyRuntimeActionErrorReason", () => {
         expect(classifyRuntimeActionErrorReason("is not valid JSON: Unexpected token o in JSON at position 1")).toBe("schema");
     });
 
+    it("classifies stable scenario capability and exhaustion diagnostics separately from retryable failures", () => {
+        expect(classifyRuntimeActionErrorReason("This game doesn't support free games, so Find free games isn't available for it.")).toBe("unsupported");
+        expect(classifyRuntimeActionErrorReason("No matching round was found within 2000 spins.")).toBe("scenario-not-found");
+    });
+
     it("falls back to other for an unrecognized message", () => {
         expect(classifyRuntimeActionErrorReason("Insufficient balance for this session.")).toBe("other");
         expect(classifyRuntimeActionErrorReason("boom")).toBe("other");
@@ -43,5 +48,14 @@ describe("describeRuntimeActionError", () => {
 
         expect(described).not.toContain(rawMessage);
         expect(described).toBe("This request couldn't be completed. Try again. If it continues, start a new session and retry.");
+    });
+
+    it("gives a scenario-specific modelling remedy for a configured feature that is unavailable or unreachable", () => {
+        expect(describeRuntimeActionError("Find free games", "This game doesn't support free games, so Find free games isn't available for it.")).toBe(
+            "Find free games isn't available for this game. Configure the required game feature, then start a new session.",
+        );
+        expect(describeRuntimeActionError("Find free games", "No matching round was found within 2000 spins.")).toBe(
+            "Find free games didn't find a matching round. Check the game feature configuration, then start a new session.",
+        );
     });
 });
