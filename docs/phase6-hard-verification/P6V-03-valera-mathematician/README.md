@@ -391,3 +391,35 @@ Stake Engine workflow is driver-inconclusive rather than a product finding.
 | --- | --- | --- |
 | `candidate-891197a-recovery14-full-journey-transcript.txt` | Exact-SHA fresh-profile recovery transcript | `c064998d2d5cdf2ab7b04bb8453a472f9cb2be2e8eab6779b2bcb5646798997b` |
 | `candidate-891197a-recovery14-model.png` | One rendered generated-reel success proof | `d2413fa0733eea14ab5fb2618fe0022b7b430da23b12a228a6353214f1335a1e` |
+
+## Recovery 18 — current-SHA rendered journey (2026-08-22)
+
+The candidate was rebuilt, then the retained harness made its fourth and final
+newly isolated Studio-registry/Chromium-profile launch using only
+`node ./dist/cli/pokie.js --no-open`. The visible journey completed Recommended,
+Random, Blank, and final Recommended; Valera identifiers; layout, symbols,
+reels, paytable, and bets; A wild and K scatter; a non-empty literal preview;
+generated weight, constraint, stack, Preview, and Apply; project creation;
+Bets & Modes and K-scatter `3x → 5` free-games persistence; ordinary-win Play;
+the local `freeGamesTriggered` feature event; Simulation; Replay; exact Outcome
+Library generation; Stake Engine Export; and Close → Projects → Open persistence.
+No rendered product error, browser diagnostic, or failed relevant request was
+observed.
+
+The reviewer checklist's native artwork-picker action was not reached in this
+launch. This bounded proof therefore does not claim complete checklist approval,
+despite the subsequent rendered workflow succeeding.
+
+| Persisted criterion | Result and current evidence |
+| --- | --- |
+| Fresh registry and browser profile on `891197a45d46900ec570aaba6001f9aaacb1436d` | Passed: a disposable Studio HOME/registry and distinct Chromium profile were used with the stipulated source-checkout command. |
+| Complete literal modelling and persistence through rendered controls | Not fully reached: literal/generated reels, constraints/stacks, section saves, and close/reopen persisted successfully, but artwork-picker coverage is absent. |
+| Ordinary/configured Play, Simulation, Replay, Outcome Library, and Stake Engine | Passed: transcript records local ordinary win, local `freeGamesTriggered`, RTP/results, Replay, exact-library success, and export success. |
+| Bounded exact-SHA transcript and minimal rendered proof | Passed: one concise transcript and three representative screenshots only. |
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery18-full-journey-transcript.txt` | Exact-SHA, fresh-profile rendered journey and incomplete-checklist disclosure | `fddb46a0b5f1178e767cb89b8c7d969a3c10b0575169f95f88c2012086d123b5` |
+| `candidate-891197a-recovery18-model.png` | Literal/generated reel preview and apply proof | `d2413fa0733eea14ab5fb2618fe0022b7b430da23b12a228a6353214f1335a1e` |
+| `candidate-891197a-recovery18-play.png` | Ordinary Play proof | `c8d67ba9398a67ee5ce6575ba0fa45c5a5595937d49d88e8ae8ee6ce6b8c072c` |
+| `candidate-891197a-recovery18-build-export.png` | Exact Outcome Library and Stake Engine Export proof | `7bb2a8cc9a3f25dd61ee30200c6df99ab7802e85d29751fc13747e236f470bd9` |
