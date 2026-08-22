@@ -1,30 +1,29 @@
-# P6V-03 independent browser rerun — inconclusive
+# P6V-03 independent browser rerun — driver inconclusive
 
 Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`.
 
 The retained candidate-bound registry/profile proof remains present and
-truthful: the candidate is an ancestor of this evidence checkout. Its two
-files had SHA-256 values
-`aa47011420370efc2b480bcec6ea0532289ac3e09cb43272609ad0a5cbf169dc`
-(transcript) and
-`c57a91bc66602b4a08469832dce895d968e79a6e73b7135ecf1c4cf4b028f30a`
-(README) before this recovery evidence update.
+truthful: the candidate is an ancestor of this evidence checkout. The candidate
+was built once, then exactly four fresh visible Studio launches used distinct
+HOME/XDG registries and Chrome profiles, all from this source checkout via
+exactly `node ./dist/cli/pokie.js --no-open`.
 
-The candidate was built once. Four fresh visible Studio launches then used
-separate HOME/XDG registries and Chrome profiles, all from this source
-checkout via exactly `node ./dist/cli/pokie.js --no-open`. The stable rendered
-driver repaired the recorded badge/role/picker/stepper causes. It reached
-focus-verified PNG selection and a successful literal Reel 1 Preview in every
-complete model pass. The first two passes then exposed harness-only Apply
-postcondition/stepper targeting mistakes; the third proved the attempted
-literal addition had not rendered and therefore correctly stopped before a
-disabled Apply action. The final fresh launch stopped after the rendered New
-Blueprint action without its chooser's local transition appearing. No rendered
-Studio product error, save, Play request, or duplicated non-idempotent request
-was observed.
+One stable rendered-control harness incorporated every listed earlier repair:
+semantic-prefix tab/action lookup, a single safe retry only when the visible
+Layout tab had not transitioned, literal-editor local preview checks, and a
+native-picker procedure that located the new visible picker window, attempted
+activation, and compared it with the active window before typing. The first
+launch stopped at the unaccepted Layout action; the second exposed the actual
+symbol controls and repaired their labels; the third reached the real picker
+but its title was not required/discoverable; the fourth located the new visible
+picker but Fluxbox left Chrome active (`2098306` requested versus `18874372`
+active). Per the controller contract, no path was typed into an inactive dialog.
 
-Consequently the duplicate-bet Play/win/feature path and downstream
-persistence, Simulation, Replay, Outcome Library, and Stake Engine portions
-remain not reached. This is driver inconclusive, not a product finding. See
-`ACTION-TRANSCRIPT.txt`; no profile, generated project/output, raw log,
-automation source, or screenshot is retained.
+The fourth run rendered fresh Recommended metadata, fourth payline, Symbol 1
+Wild, Symbol 2 Scatter, and the Select PNG action before this host-driver
+boundary. No rendered Studio product error, Create Project, Play, Simulation,
+Replay, Outcome Library, or Stake Engine request was observed. The duplicate-
+bet path and downstream persistence remain not reached; this is a driver
+inconclusive result, not a product finding. `ACTION-TRANSCRIPT.txt` is the
+concise record. No profile, generated project/output, raw log, screenshot, or
+automation source is retained.
