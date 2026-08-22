@@ -81,3 +81,19 @@ the one safe idempotent entry attempt. No rendered Studio error, Create Project
 request, duplicate-bet action, or downstream request was emitted. This remains
 driver-inconclusive, not a product finding; all temporary profiles, registry,
 logs, generated output, and harness source were removed.
+
+## Final bounded recovery attempt
+
+The retained screenshot checksum and candidate ancestry were again verified before
+this attempt. A single stable headed harness started four isolated source-checkout
+Studio instances, each exactly `node ./dist/cli/pokie.js --no-open`, with fresh
+HOME/XDG registries and Chrome profiles. The first launch repaired the default
+Studio-port assumption before Chrome was started. The other three reached rendered
+New Blueprint → Recommended, but each stopped at the Game id focus postcondition:
+the visibly rendered input did not become `document.activeElement` after its one
+safe idempotent retry. The final run also attached directly to Chrome's visible
+Studio target rather than a background tab, with the same result. No rendered
+Studio/product error, Create Project request, duplicate-bet action, or downstream
+action was emitted. The four-launch allowance is exhausted; this is a
+driver-inconclusive boundary, not a product finding. No temporary profile,
+registry, generated project/output, raw log, or harness source is retained.
