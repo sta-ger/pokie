@@ -882,10 +882,14 @@ export function BlueprintEditorPage({
                     if (!alreadyOwnsPath && "registeredProject" in raw && raw.registeredProject !== undefined) {
                         const registeredProject = raw.registeredProject;
                         onManagedProjectSaved?.(registeredProject);
-                        // The newly registered Blueprint Project is ready to use as-is; enter its
-                        // Workspace rather than leaving the creator at a separate build step.
+                        // Open the exact source that this Create Project request just persisted, rather
+                        // than treating the registry projection as the creation result. Registration is
+                        // durable Home-list metadata and may canonicalize a location independently;
+                        // `view.path` is the concrete Blueprint file save-managed confirmed exists.
+                        // This keeps a fresh registry from redirecting the first Workspace open to an
+                        // unresolved registry location.
                         const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
-                        openProject(fetchImpl, registeredProject.location)
+                        openProject(fetchImpl, view.path)
                             .then(({context}) => {
                                 if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
                                     return;
