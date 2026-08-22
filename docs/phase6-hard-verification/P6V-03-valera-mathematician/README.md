@@ -358,3 +358,36 @@ Export remain unreached.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery11-full-journey-transcript.txt` | Four-launch, exact-SHA rendered recovery and bounded driver diagnostic | `0b584e8e5e405ea91e2c7fff1cb8b1ea7a64215b0e49e64b96f13cb33f33d35f` |
+
+## Focused harness recovery 14 — exact candidate (2026-08-22)
+
+The retained candidate-bound checksums above were rechecked before the four
+fresh-profile recovery launches. The persistent harness was repaired in place
+for the recorded dropdown and modeler-step causes: it now selects the visible
+combobox option itself, confirms the labelled control's committed value (or its
+own rendered MultiSelect pill), and follows Preview → stop-window → Done →
+Apply. Every launch used a newly isolated Studio HOME/registry and Chromium
+profile, and launched only `node ./dist/cli/pokie.js --no-open` from this
+candidate checkout.
+
+The final launch created Recommended, Random, Blank, and final Recommended
+drafts; set the Valera identity; reached each model section; marked A wild and
+K scatter; locally previewed a non-empty literal strip; and rendered a
+successful generated A-weight reel with its occurrence constraint and stack
+rule. It applied that reel and created the project through rendered controls.
+The subsequent rendered Game Model Save produced no local success, pending, or
+error state in the bounded semantic wait. No product error was rendered, so
+the remaining persistence, Play, Simulation, Replay, Outcome Library, and
+Stake Engine workflow is driver-inconclusive rather than a product finding.
+
+| Persisted criterion | Result and current evidence |
+| --- | --- |
+| Fresh registry and browser profile on `891197a45d46900ec570aaba6001f9aaacb1436d` | Passed: retained recovery 11 and this recovery use disposable Studio registries and Chromium profiles with the stipulated source command. |
+| Complete literal modelling and persistence through rendered controls | Not reached: recovery 14 proves literal/generated model work, apply, and project creation; the unconfirmed Model Save prevents the complete persistence claim. |
+| Ordinary/configured Play, Simulation, Replay, Outcome Library, and Stake Engine | Not reached: these depend on the unconfirmed persistence transition. |
+| Bounded exact-SHA transcript and minimal rendered proof | Passed: this transcript and one model screenshot are exact-SHA bounded proof; no generated project/output tree or raw log is retained. |
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery14-full-journey-transcript.txt` | Exact-SHA fresh-profile recovery transcript | `c064998d2d5cdf2ab7b04bb8453a472f9cb2be2e8eab6779b2bcb5646798997b` |
+| `candidate-891197a-recovery14-model.png` | One rendered generated-reel success proof | `d2413fa0733eea14ab5fb2618fe0022b7b430da23b12a228a6353214f1335a1e` |

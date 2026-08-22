@@ -1,0 +1,72 @@
+[2026-08-22T19:18:12.241Z] START candidate 891197a45d46900ec570aaba6001f9aaacb1436d (evidence descendant fb254db21eb4f955d9dc9792d85b5d2cae686cbf); Studio source command node ./dist/cli/pokie.js --no-open; disposable registry/profile
+[2026-08-22T19:18:12.264Z] NAVIGATE rendered Studio URL /home/design
+[2026-08-22T19:18:13.441Z] CLICK rendered "New Blueprint"
+[2026-08-22T19:18:13.653Z] CLICK rendered "Recommended"
+[2026-08-22T19:18:13.902Z] CREATE rendered Recommended draft
+[2026-08-22T19:18:14.103Z] CLICK rendered "New Blueprint"
+[2026-08-22T19:18:14.362Z] CLICK rendered aria-label "Generate random"
+[2026-08-22T19:18:14.367Z] OBSERVE fresh default-seed Random form; use its local Generate control without a focus-changing form edit
+[2026-08-22T19:18:14.567Z] CLICK rendered Random modal Generate after direct stable hit-target verification (type=button, hit="Generate")
+[2026-08-22T19:18:14.581Z] OBSERVE Random local state ready; draft before={"id":"starter-slot","name":"Starter Slot"} after={"id":"starter-slot","name":"Starter Slot"} text="Create Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\n\nGenerated \"Royal Grand Stampede\" (id: \"royal-grand-stampede\") from seed 20260815.\n\nGenerator 1.1.0, strategy \"default-line-pay\".\n\nBack\nRandomize again\nUse this blueprint"
+[2026-08-22T19:18:14.786Z] CLICK rendered "Use this blueprint"
+[2026-08-22T19:18:14.788Z] CREATE rendered Random draft
+[2026-08-22T19:18:15.012Z] CLICK rendered "New Blueprint"
+[2026-08-22T19:18:17.134Z] RETRY rendered New Blueprint once after the first click showed no local modal transition
+[2026-08-22T19:18:17.346Z] CLICK rendered "New Blueprint"
+[2026-08-22T19:18:17.557Z] CLICK rendered "Blank"
+[2026-08-22T19:18:17.830Z] CREATE rendered Blank draft
+[2026-08-22T19:18:18.018Z] CLICK rendered "New Blueprint"
+[2026-08-22T19:18:18.254Z] CLICK rendered "Recommended"
+[2026-08-22T19:18:18.523Z] CREATE rendered Recommended draft
+[2026-08-22T19:18:19.023Z] INPUT rendered "Game id"="valera-mathematician"
+[2026-08-22T19:18:19.550Z] INPUT rendered "Game name"="Valera Mathematician"
+[2026-08-22T19:18:19.767Z] CLICK rendered tab prefix "Layout"
+[2026-08-22T19:18:19.770Z] MODEL rendered Layout section reached
+[2026-08-22T19:18:19.990Z] CLICK rendered tab prefix "Symbols"
+[2026-08-22T19:18:19.993Z] MODEL rendered Symbols section reached
+[2026-08-22T19:18:20.198Z] CLICK rendered tab prefix "Reels"
+[2026-08-22T19:18:20.259Z] MODEL rendered Reels section reached
+[2026-08-22T19:18:20.626Z] CLICK rendered tab prefix "Paytable"
+[2026-08-22T19:18:20.630Z] MODEL rendered Paytable section reached
+[2026-08-22T19:18:20.819Z] CLICK rendered tab prefix "Bets"
+[2026-08-22T19:18:20.821Z] MODEL rendered Bets section reached
+[2026-08-22T19:18:21.012Z] CLICK rendered tab prefix "Symbols"
+[2026-08-22T19:18:21.204Z] MODEL marked A wild through rendered native checkbox
+[2026-08-22T19:18:21.482Z] MODEL marked K scatter through rendered native checkbox
+[2026-08-22T19:18:21.744Z] CLICK rendered tab prefix "Reels"
+[2026-08-22T19:18:21.950Z] CLICK rendered "Per-reel (Reel Strip Modeler)"
+[2026-08-22T19:18:22.192Z] CLICK rendered aria-label "Select reel 1"
+[2026-08-22T19:18:22.423Z] CLICK rendered aria-label "Edit or generate Literal or generated"
+[2026-08-22T19:18:22.697Z] CLICK rendered "Literal"
+[2026-08-22T19:18:23.041Z] INPUT rendered "New symbol id for reel 1"="A"
+[2026-08-22T19:18:23.272Z] CLICK rendered aria-label "Add symbol to reel 1"
+[2026-08-22T19:18:23.495Z] CLICK rendered Check & preview after direct stable hit-target verification (hit="Preview")
+[2026-08-22T19:18:23.508Z] MODEL literal reel preview succeeded
+[2026-08-22T19:18:23.727Z] CLICK rendered aria-label "Edit or generate Literal or generated"
+[2026-08-22T19:18:23.942Z] CLICK rendered "Generated"
+[2026-08-22T19:18:24.219Z] CLICK rendered "Weights"
+[2026-08-22T19:18:39.968Z] SELECT rendered "Symbol"="A" through its visible option
+[2026-08-22T19:18:40.331Z] INPUT rendered "Weight"="2"
+[2026-08-22T19:18:40.533Z] CLICK rendered "Add weight"
+[2026-08-22T19:18:40.921Z] INPUT rendered "Length"="2"
+[2026-08-22T19:18:41.356Z] SELECT rendered "Common constraint type for reel 1"="Maximum consecutive occurrences" through its visible option
+[2026-08-22T19:18:41.698Z] INPUT rendered "Common constraint value for reel 1"="2"
+[2026-08-22T19:18:41.903Z] CLICK rendered "Add constraint"
+[2026-08-22T19:18:42.344Z] SELECT rendered "Eligible stack symbols for reel 1"="A" through its visible option
+[2026-08-22T19:18:42.720Z] INPUT rendered "Stack minimum length for reel 1"="2"
+[2026-08-22T19:18:42.926Z] CLICK rendered "Add stack rule"
+[2026-08-22T19:18:43.131Z] CLICK rendered Check & preview after direct stable hit-target verification (hit="Preview")
+[2026-08-22T19:18:43.393Z] CAPTURE candidate-891197a-recovery14-model.png
+[2026-08-22T19:18:43.604Z] CLICK rendered aria-label "Continue to Preview stop windows"
+[2026-08-22T19:18:43.813Z] CLICK rendered aria-label "Continue to Apply"
+[2026-08-22T19:18:44.031Z] CLICK rendered aria-label "Apply"
+[2026-08-22T19:18:44.036Z] MODEL generated reel, weights, constraint, and stack applied
+[2026-08-22T19:18:44.231Z] CLICK rendered "Create Project"
+[2026-08-22T19:18:44.832Z] PERSIST created managed project through rendered Create Project
+[2026-08-22T19:18:45.039Z] CLICK rendered "Game Model"
+[2026-08-22T19:18:45.361Z] CLICK rendered "Edit"
+[2026-08-22T19:18:45.563Z] CLICK rendered "Save"
+[2026-08-22T19:20:45.673Z] DIAGNOSTIC rendered-preview-response="{\"status\":\"ok\",\"errors\":[],\"warnings\":[{\"code\":\"blueprint-paytable-wild-symbol\",\"severity\":\"warning\",\"message\":\"\\\"paytable\\\" defines a payout for wild symbol \\\"A\\\", but an all-wild line resolves to no winning symbol id — this entry is never looked up.\",\"suggestion\":\"Remove wild symbols from \\\"paytable\\\"; wild wins are paid as whatever symbol they substitute for.\"}],\"reels\":[{\"reelIndex\":0,\"type\":\"generated\",\"seed\":1,\"success\":true,\"attemptsUsed\":1,\"diagnostics\":[{\"attempt\":1,\"accepted\":true,\"violations\":[]}],\"strip\":[\"A\",\"A\"],\"analysis\":{\"length\":2,\"symbolCounts\":{\"A\":2},\"symbolFrequencies\":{\""
+[2026-08-22T19:20:45.674Z] DIAGNOSTIC random-network=[{"url":"http://127.0.0.1:3200/api/home/blueprints/random","status":200},{"url":"http://127.0.0.1:3200/api/home/blueprints/reel-strip-generation-preview","status":200},{"url":"http://127.0.0.1:3200/api/home/blueprints/reel-strip-generation-preview","status":200}]
+[2026-08-22T19:20:45.674Z] DIAGNOSTIC browser=[]
+[2026-08-22T19:20:45.674Z] FAILED Timed out waiting for persisted model
