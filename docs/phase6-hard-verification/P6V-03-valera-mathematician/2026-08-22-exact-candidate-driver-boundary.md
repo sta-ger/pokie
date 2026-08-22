@@ -18,3 +18,26 @@ not a product finding.
 
 No screenshot, generated project/output tree, browser profile, registry, raw
 log, PID file, or automation source is retained for this boundary.
+
+## Focused harness-recovery continuation
+
+The candidate ancestry and retained screenshot checksums were rechecked, and
+`npm run build-cli` completed before this continuation. Four fresh HOME/XDG
+registries and visible Chrome profiles launched Studio from this checkout only
+as `node ./dist/cli/pokie.js --no-open`.
+
+The first three bounded launches repaired the native-picker active-window
+inspection, New Blueprint chooser readiness, and native-radio selector
+handling respectively; each stopped before its next rendered product action.
+The fourth reached Recommended Valera metadata, a fourth payline, PNG artwork
+for A through the verified active native picker, A Wild, K Scatter, and
+generated Reel 1 counts (A=2, K=1, Q=1, J=1). It stopped in the driver before
+the next rendered locked-position/constraint action. No rendered Studio/product
+error, Create Project request, duplicate non-idempotent request, save, close,
+or reopen action occurred. With the four-launch allowance exhausted, stack,
+constraint, paytable, mode persistence, and reopen verification remain
+driver-inconclusive rather than product findings.
+
+All temporary registries, profiles, projects, logs, processes, and the
+temporary harness were removed. No new screenshot or generated artifact is
+retained.
