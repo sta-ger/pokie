@@ -176,3 +176,26 @@ because no additional successful state was rendered.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-full-journey-transcript.txt` | Exact-SHA, fresh-registry/profile rendered-action transcript and bounded readiness outcome | `dcfc255d19d3708bc54b567dce8b175156cf6964d0c1a33950be4847500eae3b` |
+
+## Focused Random-render recovery (2026-08-22)
+
+The retained current-SHA evidence and its checksum were rechecked before this
+recovery. Two further fresh Studio HOME/registry and visible Chromium-profile
+launches used only `node ./dist/cli/pokie.js --no-open` from this checkout,
+whose source differs from `891197a45d46900ec570aaba6001f9aaacb1436d` only by
+this evidence directory. The repaired harness proved Random through the
+specific enabled **Use this blueprint** control rather than an exact generated
+sentence.
+
+The first launch used the prior seeded rendered form; the second used the
+rendered unseeded default. Each accepted exactly one visible **Generate**
+click, and the second ordinary UI request returned HTTP 200. Neither rendered
+an enabled **Use this blueprint**, a pending transition, or a local product
+error within the bounded semantic wait. No click was repeated and no later
+workflow operation was reachable. This is readiness-inconclusive under the
+controller contract, not a product finding.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery-full-journey-transcript.txt` | Seeded fresh-profile recovery attempt | `85e18bbf553f5a514c96b31e0eacf59df208eeafaa97e3b1c391c27b2046a38c` |
+| `candidate-891197a-recovery2-full-journey-transcript.txt` | Unseeded fresh-profile recovery with bounded request-status diagnostic | `832608f5f67983a2c11d31e0eacf59df208eeafaa97e3b1c391c27b2046a38c` |
