@@ -82,3 +82,13 @@ The final run rendered Recommended, Random (successful Generated card and **Use 
 | --- | --- | --- |
 | `candidate-92bd710-focused-recovery-transcript.txt` | Concise four-launch, exact-SHA driver record | `85dd8f9cf43e65426f36c1f2de7ab12638a742a3d00979254dd33cea1d78d09d` |
 | `candidate-92bd710-focused-recovery-model-artwork.png` | Final fresh-profile rendered Valera Symbols state with imported A artwork | `34ab38be6517ea283530920ac9728ed12a01d2a9915c347261e84688421008ac` |
+
+## Final exact-candidate recovery (2026-08-22)
+
+Four additional permitted fresh-profile launches used the same repaired harness in place. Each used the exact source-checkout Studio command, a new disposable Studio registry and Chrome profile, and rendered an empty Home. The final run completed the retained successful creation path and rendered the Valera model through generated-reel setup: imported artwork, literal strips, per-reel selection, Generated, Weights, rendered A selection, weight `1`, length `8`, and an added stack rule.
+
+The rendered **Check & preview** action was accepted, but did not render a local Preview, Validation, pending, or error result in the bounded wait. With the four-launch allowance exhausted, persistence and all workspace-only actions remain not reached. This is driver/readiness-inconclusive, not a product defect.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-final-harness-recovery-transcript.txt` | Concise exact-SHA four-launch final recovery record | `e31c5c793b7f12059a9bcf3f674bff2b27847ee4dc62b707dc378d6b2f0cb066` |
