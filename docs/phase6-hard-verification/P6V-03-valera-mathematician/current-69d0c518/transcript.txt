@@ -1,11 +1,84 @@
-[2026-08-22T20:51:01Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; a new Studio HOME/registry and visible Chromium profile were created.
-[2026-08-22T20:51:03Z] LAUNCH public Studio from the exact detached source checkout: node ./dist/cli/pokie.js --no-open.
-[2026-08-22T20:51:14Z] OBSERVE empty fresh Studio registry, then CREATE Recommended through rendered controls.
-[2026-08-22T20:51:17Z] CREATE Random through rendered Generate, rendered generated result, and Use this blueprint controls.
-[2026-08-22T20:51:18Z] CREATE Blank through rendered controls.
-[2026-08-22T20:51:19Z] CREATE final Recommended through rendered controls; the previously reported Recommended fresh-project P1 did not recur.
-[2026-08-22T20:51:19Z] INPUT Game id=valera-mathematician and Game name=Valera Mathematician; rendered Layout, Symbols, Reels, Paytable, and Bets editors.
-[2026-08-22T20:51:23Z] TOGGLE rendered native wild and scatter controls, then CLICK rendered Select PNG.
-[2026-08-22T20:51:27Z] NATIVE PICKER was visible, activated with xdotool windowactivate --sync, focus-checked as active, and received the absolute PNG path.
-[2026-08-22T20:51:42Z] OBSERVE the Symbol 1 row's rendered Change and Remove actions after picker return; no rendered alert was present. This later local observation proves artwork import succeeded, so the earlier wait threshold is not a product finding.
-[2026-08-22T20:51:42Z] CLICK rendered Reels tab. The next harness selector incorrectly expected Per-reel (Reel Strip Modeler) to be a button, but the rendered native radio is not included in that selector. No product error was rendered; launch limit prevented repairing that selector and continuing.
+[2026-08-22T21:09:07.916Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; fresh Studio HOME and fresh visible Chromium profile created
+[2026-08-22T21:09:10.175Z] LAUNCH rendered public Studio using exactly node ./dist/cli/pokie.js --no-open at http://127.0.0.1:3200
+[2026-08-22T21:09:20.694Z] NAVIGATE rendered public URL #/home/design
+[2026-08-22T21:09:20.709Z] OBSERVE empty fresh Studio registry inferred from isolated HOME; initial rendered Home has no persisted Valera project
+[2026-08-22T21:09:20.760Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:09:21.033Z] CLICK rendered "Recommended" (hit="Recommended")
+[2026-08-22T21:09:21.235Z] CREATE Recommended through rendered controls
+[2026-08-22T21:09:21.243Z] CLICK rendered "New Blueprint" (hit="DIV")
+[2026-08-22T21:09:23.776Z] RETRY New Blueprint once after no rendered modal transition
+[2026-08-22T21:09:23.831Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:09:24.070Z] CLICK rendered aria-label "Generate random" (hit="Random")
+[2026-08-22T21:09:24.324Z] CLICK rendered "Generate" (hit="Generate")
+[2026-08-22T21:09:24.624Z] CLICK rendered "Use this blueprint" (hit="Use this blueprint")
+[2026-08-22T21:09:24.849Z] CREATE Random through rendered controls
+[2026-08-22T21:09:24.876Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:09:25.128Z] CLICK rendered "Blank" (hit="Blank")
+[2026-08-22T21:09:25.331Z] CREATE Blank through rendered controls
+[2026-08-22T21:09:25.352Z] CLICK rendered "New Blueprint" (hit="DIV")
+[2026-08-22T21:09:25.599Z] CLICK rendered "Recommended" (hit="Recommended")
+[2026-08-22T21:09:25.802Z] CREATE final Recommended through rendered controls; prior P1 entry point absent
+[2026-08-22T21:09:25.825Z] INPUT rendered "Game id"="valera-mathematician"
+[2026-08-22T21:09:26.157Z] INPUT rendered "Game name"="Valera Mathematician"
+[2026-08-22T21:09:27.015Z] CLICK rendered prefix "Layout"
+[2026-08-22T21:09:27.316Z] MODEL rendered Layout section reached
+[2026-08-22T21:09:27.445Z] CLICK rendered prefix "Symbols"
+[2026-08-22T21:09:27.746Z] MODEL rendered Symbols section reached
+[2026-08-22T21:09:27.897Z] CLICK rendered prefix "Reels"
+[2026-08-22T21:09:28.197Z] MODEL rendered Reels section reached
+[2026-08-22T21:09:28.389Z] CLICK rendered prefix "Paytable"
+[2026-08-22T21:09:28.690Z] MODEL rendered Paytable section reached
+[2026-08-22T21:09:28.826Z] CLICK rendered prefix "Bets"
+[2026-08-22T21:09:29.126Z] MODEL rendered Bets section reached
+[2026-08-22T21:09:29.302Z] CLICK rendered prefix "Symbols"
+[2026-08-22T21:09:29.641Z] CLICK rendered aria-label "Symbol 1 is wild" (hit="Symbol 1 is wild")
+[2026-08-22T21:09:29.949Z] CLICK rendered aria-label "Symbol 2 is scatter" (hit="Symbol 2 is scatter")
+[2026-08-22T21:09:30.183Z] CLICK rendered "Select PNG" (hit="Select PNG")
+[2026-08-22T21:09:33.515Z] NATIVE PICKER focused and received rendered absolute PNG path
+[2026-08-22T21:09:34.022Z] CAPTURE model.png
+[2026-08-22T21:09:34.135Z] CLICK rendered prefix "Reels"
+[2026-08-22T21:09:34.555Z] CLICK rendered native radio "Per-reel (Reel Strip Modeler)"
+[2026-08-22T21:09:34.847Z] CLICK rendered aria-label "Select reel 1" (hit="Select")
+[2026-08-22T21:09:35.082Z] CLICK rendered aria-label "Edit or generate Literal or generated" (hit="Configure")
+[2026-08-22T21:09:35.377Z] CLICK rendered native radio "Literal" (already selected)
+[2026-08-22T21:09:35.642Z] INPUT rendered "New symbol id for reel 1"="A"
+[2026-08-22T21:09:35.971Z] CLICK rendered aria-label "Add symbol to reel 1" (hit="Add symbol")
+[2026-08-22T21:09:36.238Z] CLICK rendered aria-label "Check & preview" (hit="Preview")
+[2026-08-22T21:09:36.448Z] MODEL literal reel and local preview rendered
+[2026-08-22T21:09:36.544Z] CLICK rendered aria-label "Edit or generate Literal or generated" (hit="Configure")
+[2026-08-22T21:09:36.907Z] CLICK rendered native radio "Generated"
+[2026-08-22T21:09:37.188Z] CLICK rendered native radio "Weights"
+[2026-08-22T21:09:37.494Z] INPUT rendered "Length"="5"
+[2026-08-22T21:09:37.847Z] CLICK rendered aria-label "Symbol" (hit="Symbol")
+[2026-08-22T21:09:38.109Z] SELECT rendered "Symbol"="A"
+[2026-08-22T21:09:38.453Z] INPUT rendered "Weight"="2"
+[2026-08-22T21:09:38.816Z] CLICK rendered "Add weight" (hit="Add weight")
+[2026-08-22T21:09:39.063Z] CLICK rendered aria-label "Symbol" (hit="Symbol")
+[2026-08-22T21:09:39.319Z] SELECT rendered "Symbol"="K"
+[2026-08-22T21:09:39.689Z] INPUT rendered "Weight"="1"
+[2026-08-22T21:09:40.045Z] CLICK rendered "Add weight" (hit="Add weight")
+[2026-08-22T21:09:40.273Z] CLICK rendered aria-label "Common constraint type for reel 1" (hit="Common constraint type for reel 1")
+[2026-08-22T21:09:40.559Z] SELECT rendered "Common constraint type for reel 1"="Maximum consecutive occurrences"
+[2026-08-22T21:09:40.880Z] INPUT rendered "Common constraint value for reel 1"="2"
+[2026-08-22T21:09:41.221Z] CLICK rendered "Add constraint" (hit="Add constraint")
+[2026-08-22T21:09:41.500Z] CLICK rendered aria-label "Eligible stack symbols for reel 1" (hit="Eligible stack symbols for reel 1")
+[2026-08-22T21:09:41.771Z] SELECT rendered "Eligible stack symbols for reel 1"="A"
+[2026-08-22T21:09:42.103Z] INPUT rendered "Stack minimum length for reel 1"="2"
+[2026-08-22T21:09:42.460Z] CLICK rendered "Add stack rule" (hit="Add stack rule")
+[2026-08-22T21:09:42.737Z] CLICK rendered aria-label "Check & preview" (hit="Preview")
+[2026-08-22T21:09:43.337Z] CAPTURE model.png
+[2026-08-22T21:09:43.375Z] CLICK rendered aria-label "Continue to Preview stop windows" (hit="Open stop-window preview")
+[2026-08-22T21:09:43.615Z] CLICK rendered aria-label "Continue to Apply" (hit="Continue to Done")
+[2026-08-22T21:09:44.003Z] CLICK rendered aria-label "Apply" (hit="Use changes")
+[2026-08-22T21:09:44.208Z] MODEL generated reel weights, stack and constraint preview/applied through rendered controls
+[2026-08-22T21:09:44.232Z] CLICK rendered "Create Project" (hit="Create Project")
+[2026-08-22T21:09:44.957Z] PERSIST project created through rendered Create Project
+[2026-08-22T21:09:44.988Z] CLICK rendered "Game Model" (hit="Game Model")
+[2026-08-22T21:09:45.248Z] CLICK rendered prefix "Edit"
+[2026-08-22T21:09:45.492Z] CLICK rendered prefix "Save"
+[2026-08-22T21:09:45.693Z] PERSIST Bets & Modes saved
+[2026-08-22T21:09:45.727Z] CLICK rendered prefix "Edit"
+[2026-08-22T21:09:45.929Z] FAILED Error: rendered control Add free games unavailable: ["POKIE Studio","Valera Mathematician","Overview","Game Model","Play","Simulation","Replay","Build/Export","Show project location","Close project","Save","Cancel","Game window","Full strips","Analysis","Previous stop","Stop position","Next stop"]
+    at click (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-28bad8c111cf68d8/current.mjs:93:121)
+    at async main (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-28bad8c111cf68d8/current.mjs:184:32)
+    at async file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-28bad8c111cf68d8/current.mjs:194:7
