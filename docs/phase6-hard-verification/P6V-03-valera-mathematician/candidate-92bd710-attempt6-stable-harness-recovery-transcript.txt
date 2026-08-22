@@ -1,0 +1,12 @@
+P6V-03 stable harness recovery — 2026-08-22
+Candidate: 92bd710ee5fc03e376134f7224eeba465e053a0e
+Launch command: node ./dist/cli/pokie.js --no-open (from the source checkout)
+
+The retained harness was repaired in place before launch for the literal-add local transition, status-suffixed Select options, and the previously observed retained-A Select frame. Four fresh launches used separate disposable Studio HOME/registry and Chrome profile directories; each rendered an empty Studio Home registry. No generated runtime tree, profile, full raw log, or harness source is retained as evidence.
+
+1. Launch 1 reached the per-reel literal editor. The first accepted Add symbol action had no local clear/row confirmation, so this run stopped at that driver transition.
+2. Launch 2 proved literal Preview success (rendered “Literal strip”) and reached generated Weights with a committed A weight. The existing Select retained A but exposed no Q pointer option after its one permitted reopen.
+3. Launch 3 repeated the repaired path and used the same rendered Select's normal ArrowDown/Enter interaction. Its displayed value did not become Q, with no rendered Studio error.
+4. Launch 4 avoided that nonessential second-source selection. It rendered Recommended, Random (Generated and Use), Blank, final Recommended, valid Valera identifiers, Layout/Symbols/Reels/Paytable/Bets, A wild, K scatter, focused native artwork import, literal Preview success, generated Weights/A=2, automatic length 2, and an accepted Add stack rule action. No “Stack 1:” local row, success, or error appeared in the bounded wait. Studio output contained only its listening line; browser diagnostics contained no console error or failed request.
+
+The workflow was not advanced to generated apply, Create Project, persistence, Play, Simulation, Replay, Outcome Library, or Stake Engine after this unconfirmed local UI transition. The fixed four-launch allowance is exhausted. This is driver-inconclusive and does not assert a product defect.

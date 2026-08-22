@@ -112,3 +112,13 @@ The generated editor's rendered Symbol picker never exposed Q after its one safe
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-attempt5-rendered-recovery-transcript.txt` | Concise final exact-SHA rendered recovery and bounded driver outcome | `e7653e7567acb1dd671d613adb0c994fb512dec09c8d7d3549fc5cd29f12980b` |
+
+## Stable harness recovery attempt 6 (2026-08-22)
+
+The retained harness was repaired in place for every listed driver cause, then used for its four permitted exact-candidate fresh-profile launches. Each used the required source-checkout command, a distinct disposable Studio `HOME`/registry, and a distinct Chrome profile; each rendered an empty Home registry. The final run rendered the full blueprint entry sequence, valid Valera identifiers, all model tabs, wild/scatter, focused native artwork import, literal Preview success, generated `A` weight, automatic length, and an accepted **Add stack rule** action.
+
+No local `Stack 1:` row, success, or error rendered in the bounded action wait. There was no Studio product error, console diagnostic, or failed request, and the four-launch limit prevents another public workflow run. Generated apply, project persistence, and workspace-only flows remain unclaimed. The retained focused-model screenshot remains the minimal representative proof; this attempt adds no generated artifact or raw log.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt6-stable-harness-recovery-transcript.txt` | Bounded four-launch exact-SHA recovery observation | `a892b6730554c3bf254f8d8fff19ada70ad24ba960c05b4fb6ac043ee6dd2228` |
