@@ -41,3 +41,13 @@ This is readiness/driver-inconclusive rather than a product finding: the UI did 
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-attempt2-transcript.txt` | Bounded fresh-registry exact-SHA rendered transcript | `9a8dda6304cba368f1390309ff00689b5097261722394741f543249d73b14567` |
+
+## Exact-current candidate recovery attempt (2026-08-22)
+
+The repaired retained harness again launched the required source-checkout command with a new disposable Studio `HOME` and distinct Chrome profile. It rendered an empty Home registry, then completed Recommended and entered Random. The harness confirmed the supplied seed and name in their rendered fields before clicking **Generate**. The same visible Generate button immediately rendered disabled with `data-loading=true`; this proves the rendered action was accepted, so no retry was made.
+
+After the bounded semantic-result wait, the Random dialog was absent, but the UI had rendered neither generated-success text nor a product error nor a state that could confirm Random replaced the draft. Studio's bounded output contained only its normal listening line. This is readiness-inconclusive, not a product finding. No later workflow action was performed, because Blank/final modelling and all project tabs depend on a confirmable Random outcome.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt3-recovery-transcript.txt` | Concise second fresh-registry/profile exact-SHA recovery observation | `0235893b9e865ba00ae657919e30dfa440afeb47cd03ff208f6a743b36a72b2c` |

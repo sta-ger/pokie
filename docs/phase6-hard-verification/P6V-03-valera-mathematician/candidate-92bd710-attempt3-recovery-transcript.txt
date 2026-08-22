@@ -1,0 +1,7 @@
+[2026-08-22T14:08:35.959Z] START exact-candidate recovery journey SHA=92bd710ee5fc03e376134f7224eeba465e053a0e with isolated Studio HOME/registry and isolated Chrome profile.
+[2026-08-22T14:08:36.966Z] OBSERVE fresh Studio registry state=empty from rendered Home.
+[2026-08-22T14:08:37.017Z] CLICK rendered New Blueprint; [2026-08-22T14:08:37.099Z] CLICK rendered Recommended; rendered draft replacement succeeded.
+[2026-08-22T14:08:37.127Z] CLICK rendered New Blueprint; [2026-08-22T14:08:37.162Z] CLICK rendered Random.
+[2026-08-22T14:08:37.197Z] INPUT rendered Seed (optional)=20260815; [2026-08-22T14:08:37.224Z] INPUT rendered Name (optional)=P6V03 Random.
+[2026-08-22T14:08:37.242Z] CLICK rendered Generate. The same rendered Generate control immediately became disabled with data-loading=true, proving the action was accepted and pending; no retry was issued.
+[2026-08-22T14:09:37.395Z] INCONCLUSIVE: after the bounded semantic result wait, the rendered Random dialog was absent. No generated-success text, rendered product error, or confirmable random-replacement state appeared. Studio output contained only its normal listening line.
