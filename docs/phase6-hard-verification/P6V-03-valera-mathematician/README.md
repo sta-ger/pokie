@@ -102,3 +102,13 @@ Generated **Check & preview** produced no local Preview, Validation, pending, or
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-final-focused-harness-recovery-transcript.txt` | Final bounded exact-SHA recovery record | `7af7e43a97116f00a9dab9ac34841d4cdc9065b8651c1ce6f4041f2c87d4118b` |
+
+## Attempt 5 rendered harness recovery (2026-08-22)
+
+Four permitted fresh-profile launches used the retained harness in place and only `node ./dist/cli/pokie.js --no-open` from this source checkout. The final launch rendered an empty Home registry on `92bd710ee5fc03e376134f7224eeba465e053a0e`, completed Recommended/Random/Blank/final-Recommended, final Valera identifiers, all editor sections, wild/scatter, focused native artwork selection, literal preview success, and the generated Weights editor through an accepted A weight.
+
+The generated editor's rendered Symbol picker never exposed Q after its one safe local reopen. No rendered Studio product error, browser-console error, or failed preview request occurred. This is driver-inconclusive; generated apply/persistence and every workspace-only operation were not reached before the launch limit. The retained evidence remains unchanged.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt5-rendered-recovery-transcript.txt` | Concise final exact-SHA rendered recovery and bounded driver outcome | `e7653e7567acb1dd671d613adb0c994fb512dec09c8d7d3549fc5cd29f12980b` |
