@@ -1,0 +1,14 @@
+P6V-03 exact-candidate stack-transition recovery
+Candidate: 92bd710ee5fc03e376134f7224eeba465e053a0e
+Date: 2026-08-22
+
+Retained passing evidence was checked before this run: its files remain present and its recorded SHA-256 values match. Four new launches used only `node ./dist/cli/pokie.js --no-open` from this checkout. Each used a distinct disposable Studio HOME/registry and Chrome profile, and each rendered an empty Studio Home.
+
+Each final path rendered Recommended, Random (Generated card and Use), Blank, final Recommended, valid Valera identifiers, all model tabs, A wild, K scatter, focused native artwork import, literal reel Preview success, Generated/Weights, A source weight 2, and auto Length 2. No rendered product error, browser-console error, or failed Studio request occurred.
+
+1. The visible Eligible stack symbols picker rendered no options after its one permitted safe reopen; no stack row was added.
+2. Explicit rendered Stack length=2 and Add N stacks=1 followed by Add stack rule rendered no local Stack 1 row, success, or error.
+3. The rendered No stacks action likewise rendered no local Stack 1 row, success, or error.
+4. The rendered Show advanced details (constraints JSON) action did not reveal its labelled Constraints textarea during its bounded local-state wait.
+
+The four-launch limit is exhausted. Generated apply, save/close/reopen, Play, configured-feature Play, Simulation, Replay, Outcome Library, and Stake Engine Export were not reached. This is driver-inconclusive evidence, not a product finding.

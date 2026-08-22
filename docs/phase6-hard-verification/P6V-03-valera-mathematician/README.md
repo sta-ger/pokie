@@ -122,3 +122,13 @@ No local `Stack 1:` row, success, or error rendered in the bounded action wait. 
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-attempt6-stable-harness-recovery-transcript.txt` | Bounded four-launch exact-SHA recovery observation | `a892b6730554c3bf254f8d8fff19ada70ad24ba960c05b4fb6ac043ee6dd2228` |
+
+## Stack-transition harness recovery attempt 7 (2026-08-22)
+
+The retained evidence files were rechecked and remain present with their recorded SHA-256 values. Four newly isolated exact-candidate launches used only the required source-checkout command, `node ./dist/cli/pokie.js --no-open`; every launch rendered an empty Studio Home with a distinct disposable registry and Chrome profile.
+
+All four reached the complete retained entry/model path through native artwork import, literal Preview success, generated Weights, source `A` weight `2`, and automatic length `2`. The repaired harness then tried four distinct rendered stack/constraint routes: the Eligible stack symbols picker (one safe reopen), explicit stack length/count plus **Add stack rule**, **No stacks**, and **Show advanced details (constraints JSON)**. None rendered a committed local stack row or advanced textarea; Studio rendered no product error, console error, or failed request. The four-launch allowance is exhausted, so generated apply, persistence, Play, Simulation, Replay, Outcome Library, and Stake Engine Export remain unclaimed.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt7-stack-recovery-transcript.txt` | Concise four-launch exact-SHA stack-transition recovery record | `905794277835091617568c2351858810f8546ddd57ad5d222778ea5fb781d4a1` |
