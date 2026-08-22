@@ -199,3 +199,27 @@ controller contract, not a product finding.
 | --- | --- | --- |
 | `candidate-891197a-recovery-full-journey-transcript.txt` | Seeded fresh-profile recovery attempt | `85e18bbf553f5a514c96b31e0eacf59df208eeafaa97e3b1c391c27b2046a38c` |
 | `candidate-891197a-recovery2-full-journey-transcript.txt` | Unseeded fresh-profile recovery with bounded request-status diagnostic | `832608f5f67983a2c11d31e0eacf59df208eeafaa97e3b1c391c27b2046a38c` |
+
+## Current-SHA Random control recovery (2026-08-22)
+
+The retained current-SHA transcripts were rechecked before this focused recovery.
+The candidate Studio client was rebuilt once, and four permitted fresh visible
+Studio launches each used a distinct disposable Studio HOME/registry and Chrome
+profile, with only `node ./dist/cli/pokie.js --no-open` launched from this
+checkout. The final run scoped the action to the rendered Random modal's
+**Generate** control and verified its screen hit target before dispatching the
+one click.
+
+The displayed Random modal then closed. Its underlying rendered draft identity
+remained `starter-slot` / `Starter Slot`; no generated result, pending state,
+local product error, browser-console diagnostic, or Random request failure
+rendered. The request completed with HTTP 200. Because no success was rendered
+and the four-launch recovery allowance is exhausted, the literal model,
+persistence, Play, Simulation, Replay, Outcome Library, and Stake Engine
+workflow portions were not safely reachable. This is driver-inconclusive under
+the controller contract, not a product finding. No screenshot is retained
+because this recovery reached no additional successful rendered state.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery3-full-journey-transcript.txt` | Fourth fresh-registry/profile, exact-SHA rendered-control recovery | `699af45e551de77c18c33f89c6878ebf7e807a167ef6b3194cf9ce1024084573` |
