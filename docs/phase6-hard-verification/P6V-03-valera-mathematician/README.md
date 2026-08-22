@@ -156,3 +156,23 @@ The visible **Generate exact outcome library** action rendered a local product e
 | --- | --- | --- |
 | `candidate-92bd710-attempt9-conclusive-rendered-transcript.txt` | Concise exact-SHA, fresh-profile rendered journey and blocked downstream state | `0afe38271c3a46351c3654528609ff51756e1b6dedd5882a400097036a3a6643` |
 | `candidate-92bd710-attempt9-outcome-library-error.png` | Rendered Outcome Library error after the visible UI action | `79e27d8aaca975673630ea44039293f35420d3a09db038efc3521867569f1914` |
+
+## Candidate `891197a45d46900ec570aaba6001f9aaacb1436d` independent rerun (2026-08-22)
+
+The current candidate was built before the rerun. Two isolated launches used
+only `node ./dist/cli/pokie.js --no-open`, each with a new Studio HOME/registry
+and a new visible Chromium profile. The second, repaired launch rendered the
+empty Design Game entry, Recommended, and the Random form; it accepted the
+rendered seed `20260815` and name `P6V03 Random`, then accepted one visible
+**Generate** click.
+
+No generated result, pending state, or rendered product error appeared during
+the bounded semantic wait. The click was not duplicated and, after the second
+permitted public-workflow launch, no later operation was reachable. This is
+readiness-inconclusive rather than a product finding; it neither confirms nor
+contradicts the current free-game enumeration repair. No screenshot is retained
+because no additional successful state was rendered.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-full-journey-transcript.txt` | Exact-SHA, fresh-registry/profile rendered-action transcript and bounded readiness outcome | `dcfc255d19d3708bc54b567dce8b175156cf6964d0c1a33950be4847500eae3b` |
