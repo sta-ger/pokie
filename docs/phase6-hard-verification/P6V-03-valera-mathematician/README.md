@@ -1,16 +1,33 @@
-# P6V-03 — bounded independent browser rerun
+# P6V-03 — Valera Mathematician independent rendered rerun
 
-Candidate: `0777df5e48f320e899ee988f70b8dba0c2577f9c`
-Run: 2026-08-22; fresh XDG-backed Studio registry and Chrome profile; candidate Studio launched with `node ./dist/cli/pokie.js --no-open`.
+Candidate: `de77dccac23f2fdae8ae92ef29d43d3b351fba4d` (verified with `git rev-parse HEAD` before launch).
 
-## Rendered record
+## Scope and environment
 
-The fresh Design Game screen rendered the three creation choices **Recommended**, **Blank**, and **Random**. Recommended rendered a valid 5×3 / three-payline model with literal reel strips, normal symbols, paytable and bets. Layout, Symbols, Reels, Paytable, and Bets were individually opened through the visible accordion controls.
+The sole Studio launch was the candidate checkout command required by the request:
 
-The verifier added visible `W` and `S` symbols and selected their Wild and Scatter controls. Studio then correctly rendered its validation that these referenced symbols were absent from literal strips. On the visible Reel Strip Modeler, replacing the first two displayed strip values with `W` and `S` caused every rendered strip list to become empty. Studio rendered eleven errors: five non-empty-strip errors and six missing-symbol errors. The action was not retried because the model was already pending/invalid and the operation changes persisted modelling data.
+```text
+node ./dist/cli/pokie.js --no-open
+```
 
-Consequently Create Project, save/close/reopen, Play/feature, Simulation, Replay, Outcome Library, and Stake Engine were not reachable on a valid Valera model. No product files, test files, generated output, browser profile, or automation script are retained here. This file supersedes all prior P6V-03 recovery and duplicate reports.
+It used a new Chrome profile at `.../P6V-03-14cb5fcfbadb0962/run-2026-08-22T12-58-48-397Z/browser-profile`; the first rendered page had no browser-console or network diagnostic. The Studio UI nevertheless saved the created project under its visible default `/home/stager/Documents/POKIE Projects/valera-mathematician-3/` location and the Projects page listed prior projects. This is not a fresh Studio registry, so the fresh-registry requirement is not met.
 
-## Scope result
+## Rendered journey transcript
 
-This is a finding record, not a passing workflow record: a normal rendered literal-strip edit destructively clears the complete strip model and blocks the required journey.
+1. Opened **New Blueprint** and selected **Recommended**, **Random**, then **Blank**, observing the rendered “Replaced the current blueprint” state after each; selected Recommended again for the final model.
+2. Set `valera-mathematician` / `Valera Mathematician`; the rendered validation became **Valid — no issues found**. Visited Layout (5 reels × 3 rows, lines, three paylines), Symbols, Reels, Paytable, and Bets. The saved model rendered `A • WILD`, `K • SCATTER`, `Q`, `J`, and **Generation mode: Literal reel strips**. The planned artwork picker did not render a native picker, and generated-reel, stacks/constraints, modes, and mechanics were not completed before the later feature failure.
+3. Created the project. **Find any win** rendered **Round complete — You won 6.00**. **Find free games** rendered “This session couldn't be completed. Try again.” The one safe retry rendered the identical product error; no further retry was made.
+4. Ran the rendered 10,000-round Simulation: **RTP 897.36%**, hit frequency **92.67%**, volatility **5.75**, max win **36.00**, duration **0.7s**. Replayed round 1 from seed `42`; rendered status was **Full — round artifact captured** and **Inspectable AVAILABLE**.
+5. Build/Export rendered exact Outcome Library success: **1,024 outcomes**, exact RTP **895.31%**. Stake Engine Export then rendered **Exported 4 file(s)**. Closed the project, reopened its rendered Projects-row entry, and observed the same Valera Mathematician overview and saved ID.
+
+## Result
+
+The ordinary win, simulation, replay, Outcome Library, Stake Engine Export, and close/reopen persistence were independently observed through visible controls. The required free-games feature behavior failed with a rendered product error after its permitted retry. The run therefore has a P1 finding and is not approval evidence.
+
+## Retained rendered proof
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `free-games-scenario-error.png` | Second rendered failure of Find free games | `b90e74b82bc24f6e5bcba1ee66c178287d8c983cc72db56e5a6cfdfbfe8d2bc7` |
+| `simulation-results.png` | Completed Simulation results | `0d793cc4b4cfba5211cac326f12c17935dab4b2a15b2150a17ae32f397a4666b` |
+| `outcome-library-stake-export.png` | Rendered Outcome Library and Stake Engine export success | `ea755d18b1ebfd7c7fac071daef383cd7f193b25de47e48270dea7762b75abfa` |
