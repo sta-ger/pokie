@@ -67,3 +67,17 @@ request, duplicate-bet action, or downstream action was emitted. The four-run
 allowance is exhausted, so the remaining journey is driver-inconclusive. No
 new generated project tree, browser profile, raw log, or automation source is
 retained.
+
+## Current focused harness recovery
+
+The independent verifier again checked the retained screenshot checksum and
+candidate ancestry, built the candidate CLI once, then used four fresh visible
+Chrome profiles and registries. Every Studio launch was exactly `node
+./dist/cli/pokie.js --no-open`. The repaired harness used rendered-coordinate
+clicks, then controller-compliant active-window verification before physical
+keyboard input for the `Game id` field. Its final, client-to-window-coordinate
+repair still left the visibly rendered field at its original identifier after
+the one safe idempotent entry attempt. No rendered Studio error, Create Project
+request, duplicate-bet action, or downstream request was emitted. This remains
+driver-inconclusive, not a product finding; all temporary profiles, registry,
+logs, generated output, and harness source were removed.

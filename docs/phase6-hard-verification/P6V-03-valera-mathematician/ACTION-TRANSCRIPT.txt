@@ -1,38 +1,5 @@
-[2026-08-22T04:08:23.453Z] START candidate about:blank with fresh registry/profile; http://127.0.0.1:3200
-[2026-08-22T04:08:23.932Z] CLICK "New Blueprint"
-[2026-08-22T04:08:24.022Z] CLICK "Recommended"
-[2026-08-22T04:08:24.418Z] INPUT Game id
-[2026-08-22T04:08:24.860Z] INPUT Game name
-[2026-08-22T04:08:25.322Z] INPUT Description (optional)
-[2026-08-22T04:08:25.484Z] CLICK "Layout"
-[2026-08-22T04:08:26.024Z] CLICK "Add payline"
-[2026-08-22T04:08:26.145Z] CLICK "Symbols"
-[2026-08-22T04:08:26.668Z] CLICK "Symbol 1 is wild"
-[2026-08-22T04:08:26.790Z] CLICK "Symbol 2 is scatter"
-[2026-08-22T04:08:26.862Z] CLICK "Select PNG"
-[2026-08-22T04:08:28.636Z] NATIVE PICKER selected retained PNG through active visible dialog
-[2026-08-22T04:08:31.115Z] CLICK "Reels"
-[2026-08-22T04:08:31.663Z] CLICK "Per-reel (Reel Strip Modeler)"
-[2026-08-22T04:08:31.804Z] CLICK "Select reel 1"
-[2026-08-22T04:08:31.840Z] CLICK "Literal"
-[2026-08-22T04:08:32.238Z] INPUT New symbol id for reel 1
-[2026-08-22T04:08:32.361Z] CLICK "Add symbol to reel 1"
-[2026-08-22T04:08:32.403Z] CLICK "Check & preview"
-[2026-08-22T04:08:32.574Z] SELECTOR STOP: local Literal Preview had succeeded; its next rendered accessible control was `Apply Commit or discard`, not the harness's assumed `Done`. No Create Project action or product error was rendered.
-[2026-08-22T04:30:03.134Z] FOCUSED RECOVERY START: fresh source-launched Studio and visible fresh-profile Chrome on the rebuilt candidate.
-[2026-08-22T04:30:03.166Z] CLICK "New Blueprint"
-[2026-08-22T04:30:03.191Z] CLICK "Recommended"
-[2026-08-22T04:30:03.328Z] INPUT Game id
-[2026-08-22T04:30:03.356Z] INPUT Game name
-[2026-08-22T04:30:03.376Z] INPUT Description (optional)
-[2026-08-22T04:30:03.383Z] CLICK "Layout"
-[2026-08-22T04:30:33.383Z] DRIVER/READINESS STOP: bounded local Paylines-panel state did not render after the visible Layout click; no rendered Studio/product error, Create Project action, or downstream request occurred.
-[2026-08-22T04:38:43Z] FINAL RECOVERY launch 1: fresh registry/profile, exact source Studio command, rendered New Blueprint → Recommended; the first Game name text-insertion retry exposed a CDP character-parameter driver error before any product action.
-[2026-08-22T04:39:12Z] FINAL RECOVERY launch 2: the same harness used per-character rendered CDP input; Game name remained `Starter Slot` after its one safe retry, with no Studio error or Create Project request.
-[2026-08-22T04:40:31Z] FINAL RECOVERY launch 3: the same harness used verified-active visible-Chrome host keyboard input after the rendered attempt; Game name remained `Starter Slot`, with no Studio error or Create Project request.
-[2026-08-22T04:41:54Z] FINAL RECOVERY launch 4: direct rendered-control diagnostics showed `active: ""`; Game name remained `Starter Slot` after the one safe per-character retry. No rendered Studio/product error, Create Project request, duplicate-bet action, or downstream workflow action occurred.
-[2026-08-22T04:42:13Z] FINAL RECOVERY STOP: four fresh-launch allowance exhausted at the input-driver boundary. Temporary registry/profile, raw logs, and automation were discarded; retained proof remains unchanged.
-[2026-08-22T04:51Z] STABLE RECOVERY launch 1: fresh exact-source Studio reached rendered Layout; its local panel did not render after the first tab click. No product error or request was rendered.
-[2026-08-22T04:54Z] STABLE RECOVERY launch 2: prefix/Enter tab repair reached Add payline. The action was emitted; the harness's plain-text `Payline 4` postcondition was wrong (the rendered control is `Payline 4 reel 1 row`). No product error was rendered.
-[2026-08-22T04:56Z] STABLE RECOVERY launch 3: reached rendered `Select reel`; the harness attempted to serialize a DOM object for its local postcondition. No product action after reel selection or product error was rendered.
-[2026-08-22T04:57Z] STABLE RECOVERY launch 4: repaired boolean postcondition reached Reel Strip Modeler. The harness clicked navigation control `Select reel Which reel`, not rendered item `Select reel 1`; `Edit or generate Literal or generated` correctly remained absent. No Create Project, duplicate-bet, Play, Simulation, Replay, Outcome Library, Stake Engine, or rendered product error was reached. Four-launch allowance exhausted.
+[2026-08-22T05:05Z] CURRENT RECOVERY launch 1: exact candidate source Studio, fresh registry/profile, rendered New Blueprint -> Recommended. The Game id rendered-input postcondition did not arrive; no Studio error or Create Project request rendered.
+[2026-08-22T05:07Z] CURRENT RECOVERY launch 2: same stable harness with active-window Chrome keyboard repair. A harness xdotool argument error occurred before text entry; no product action or product error rendered.
+[2026-08-22T05:07Z] CURRENT RECOVERY launch 3: corrected xdotool invocation reached the rendered input, but used viewport rather than browser-window coordinates; Game id remained unchanged and no product action or error rendered.
+[2026-08-22T05:09Z] CURRENT RECOVERY launch 4: corrected client-to-window coordinate conversion plus active-window verification; the rendered Game id value still did not change after one safe idempotent attempt. No Studio error, Create Project request, duplicate-bet action, or downstream request rendered.
+[2026-08-22T05:10Z] STOP: four fresh-launch allowance exhausted at the input-driver boundary. Retained screenshot checksum and candidate ancestry were verified; temporary profile, HOME/XDG registry, generated project/output, logs, and harness source were removed.
