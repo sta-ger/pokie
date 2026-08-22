@@ -22,3 +22,8 @@
 [2026-08-22T00:53:53.924Z] RECOVERY selected rendered native Per-reel reel-strip modeler control.
 [2026-08-22T00:53:54.612Z] RECOVERY selected reel 1 and reached the local Edit or generate control.
 [2026-08-22T00:53:55.500Z] RECOVERY entered literal `K`; the following Add-symbol rendered-control selector did not match. No Studio error rendered; downstream workflow not reached.
+[2026-08-22T01:06:49.886Z] FINAL fresh isolated registry/profile launched exact candidate with `node ./dist/cli/pokie.js --no-open`.
+[2026-08-22T01:06:50.370Z] FINAL rendered Recommended workflow accepted metadata; fourth payline, normal PNG import, Wild/Scatter, literal N add, local literal Preview, and Apply each reached their specific rendered transition.
+[2026-08-22T01:06:59.394Z] FINAL CLICK rendered `Duplicate bet 1`; local fourth available-bet row rendered.
+[2026-08-22T01:06:59.781Z] FINAL CLICK rendered `Create Project` once. Required Workspace controls (`Close project`, Overview, Game Model) did not render by 2026-08-22T01:08:59.953Z; no rendered local product error appeared. No duplicate click was sent.
+[2026-08-22T01:08:59.953Z] FINAL readiness-inconclusive: four fresh launches exhausted; downstream Play, persistence, Simulation, Replay, Outcome Library, and Stake Engine not reached.
