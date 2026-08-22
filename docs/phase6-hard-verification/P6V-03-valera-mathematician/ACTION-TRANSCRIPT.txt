@@ -1,7 +1,5 @@
 [2026-08-22] Rechecked retained candidate-bound fresh-profile proof: candidate 1fd51406388799fdcf65873ed9a2674769859cbf remains an ancestor; the retained PNG SHA-256 remains 645918afbbc2240ac3b8b427736848ea5cc81246137e179861e05cacd71c9273.
-[2026-08-22] Read all eight bounded harness-failure records before launching one stable visible-control harness.
-[2026-08-22] Launch 1: exact source Studio command with fresh registry/profile reached New Blueprint → Recommended; the harness's initial field lookup omitted associated labels. No product error.
-[2026-08-22] Launch 2: repaired associated-label lookup reached Recommended; its readiness check still addressed the field incorrectly. No Create Project action or product error.
-[2026-08-22] Launch 3: repaired lookup targeted the visible Game id and used verified-active Chrome host keyboard input; its local value postcondition did not settle. No product error.
-[2026-08-22] Launch 4: the same rendered input used CDP key events/insert text; the local value postcondition again did not settle. No Create Project action or product error.
-[2026-08-22] Four-launch allowance exhausted. This is driver-inconclusive; no downstream rendered workflow was reached and no generated material was retained.
+[2026-08-22] Read all eight bounded harness-failure records before the one stable recovery harness launched.
+[2026-08-22] Launch 1: exact source command used an available dynamic Studio address; the initial static-address readiness assumption was repaired before further runs. No rendered product error.
+[2026-08-22] Launches 2–4: each fresh visible run rendered New Blueprint → Recommended. The repaired associated-label readiness check still could not establish the rendered Game id control, before typing or Create Project. No Studio error was rendered and no product request was emitted.
+[2026-08-22] Four-launch allowance exhausted. This is selector-inconclusive; no downstream rendered workflow was reached and no generated material was retained.
