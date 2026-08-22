@@ -71,3 +71,14 @@ The final run was blocked by a harness/native-picker focus transition before the
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-harness-recovery-final-transcript.txt` | Bounded exact-SHA record of all four final recovery launches and their driver limitation | `1efb7f273fc4fae68c12d8bb438866e203b226c9aa185f0d4566830b3017d5d4` |
+
+## Focused exact-candidate harness recovery (2026-08-22)
+
+The retained harness was repaired in place for every prior driver issue, then used for the four permitted fresh-profile runs. `92bd710ee5fc03e376134f7224eeba465e053a0e` is an ancestor of this evidence-only checkout; the only `candidate..HEAD` paths are in this directory. Every launch ran exactly `node ./dist/cli/pokie.js --no-open` with a new disposable Studio `HOME`/registry and Chrome profile, and each rendered an empty Home.
+
+The final run rendered Recommended, Random (successful Generated card and **Use this blueprint**), Blank, final Recommended, valid Valera game ID/name, all model tabs, literal and per-reel/generated reel controls, the native artwork import, and a selected generated-reel `A` symbol. The rendered artwork row changed to **Change**. The subsequent local Weight control never rendered after the accepted selection; no Studio error, browser-console error, or failed network request rendered. The launch limit was then exhausted, so no downstream workspace criterion is claimed and no product defect is asserted.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-focused-recovery-transcript.txt` | Concise four-launch, exact-SHA driver record | `85dd8f9cf43e65426f36c1f2de7ab12638a742a3d00979254dd33cea1d78d09d` |
+| `candidate-92bd710-focused-recovery-model-artwork.png` | Final fresh-profile rendered Valera Symbols state with imported A artwork | `34ab38be6517ea283530920ac9728ed12a01d2a9915c347261e84688421008ac` |
