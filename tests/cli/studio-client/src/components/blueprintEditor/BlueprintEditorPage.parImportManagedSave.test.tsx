@@ -102,13 +102,15 @@ describe("BlueprintEditorPage (guided) - PAR Apply -> managed Save lifecycle", (
 
         await waitFor(() => expect(saveManagedBodies).toHaveLength(1));
         expect(saveManagedBodies[0].sourceWorkbookPath).toBe("/games/in.par.xlsx");
-        expect(await screen.findByText('Saved to "/POKIE Projects/imported-game/blueprint.json".')).toBeInTheDocument();
+        // A successful managed save immediately opens its Workspace, which deliberately clears the
+        // creator-only success message before navigation. The observable persistence boundary is the
+        // exact project location supplied to the Workspace-open request.
+        await waitFor(() => expect(openedProjectLocations).toEqual([REGISTERED_PROJECT.location]));
 
         // The label survives the save -- this project's identity, not a one-request-only fact.
         expect(screen.getByText("Imported from PAR")).toBeInTheDocument();
         expect(screen.getByText(/Source:.*\/games\/in\.par\.xlsx/)).toBeInTheDocument();
         expect(savedProjects).toEqual([REGISTERED_PROJECT]);
-        expect(openedProjectLocations).toEqual([REGISTERED_PROJECT.location]);
     });
 
     it("does not show the 'Imported from PAR' label, and never sends sourceWorkbookPath, for an ordinary first Save with no PAR import behind it", async () => {
