@@ -1,0 +1,8 @@
+[2026-08-22T20:35:04.317Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; fresh Studio HOME and visible Chromium profile created
+[2026-08-22T20:35:06.727Z] LAUNCH 1 using exactly node ./dist/cli/pokie.js --no-open
+[2026-08-22T20:35:29.487Z] CLICK rendered Select PNG after fresh Recommended, Random, Blank, final Recommended, valid Valera model, model tabs, wild, and scatter
+[2026-08-22T20:35:31.763Z] OBSERVE visible Zenity picker; activated, active-window focus verified, and absolute PNG path typed
+[2026-08-22T20:36:01.772Z] DRIVER/READINESS: no local artwork transition or rendered Studio error before bounded semantic wait; no duplicate Studio action emitted
+[2026-08-22T20:37:12.935Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; second fresh Studio HOME and visible Chromium profile created
+[2026-08-22T20:37:15.344Z] LAUNCH 2 using exactly node ./dist/cli/pokie.js --no-open
+[2026-08-22T20:37:25.489Z] DRIVER: CDP body-text evaluation returned undefined before first Studio page rendered (TypeError reading includes); no rendered product control or product error observed
