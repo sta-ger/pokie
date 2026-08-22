@@ -223,3 +223,24 @@ because this recovery reached no additional successful rendered state.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery3-full-journey-transcript.txt` | Fourth fresh-registry/profile, exact-SHA rendered-control recovery | `699af45e551de77c18c33f89c6878ebf7e807a167ef6b3194cf9ce1024084573` |
+
+## Current-SHA harness-coordinate recovery (2026-08-22)
+
+The retained current-SHA files and checksums were rechecked. The candidate was
+built once, then four newly isolated registry/profile launches used the repaired
+persisted harness and only `node ./dist/cli/pokie.js --no-open`. The final
+launch removed its incorrect second viewport emulation and reached the exact
+visible Random modal **Generate** button by verified rendered hit target; its
+single click issued `POST /api/home/blueprints/random` with HTTP 200.
+
+The modal closed while the underlying rendered draft remained `starter-slot` /
+`Starter Slot`; no generated card, pending state, local error, or browser
+diagnostic rendered. The action was not duplicated. With the four-launch limit
+exhausted, Random replacement, Blank/final-model entry, modelling, persistence,
+Play, Simulation, Replay, Outcome Library, and Stake Engine Export were not
+safely reachable. This is driver-inconclusive, not a rendered product finding;
+no screenshot is retained because no additional success was rendered.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery4-full-journey-transcript.txt` | Fourth fresh-registry/profile current-SHA, rendered-control coordinate recovery | `b2b99cd4b7c5ed3707ecb1fc26b308015fb3d46a04e1f431ef4a57bbd98204f6` |
