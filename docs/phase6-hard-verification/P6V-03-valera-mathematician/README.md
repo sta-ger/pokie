@@ -145,3 +145,14 @@ The repaired retained harness used four new isolated exact-candidate Studio regi
 | `candidate-92bd710-attempt8-configured-feature.png` | Rendered free-games feature event | `0f7073c7ecd0a297a42e7399e0c508e12d0f87215b97d0e5e3725b24600db175` |
 | `candidate-92bd710-attempt8-simulation.png` | Rendered Simulation results | `606dc3d4bcb1836fbf7dc1f17506bdb9701f4507b148c8f0563e0ce6324a469f` |
 | `candidate-92bd710-attempt8-replay.png` | Rendered Replay surface, with no available inspect/reproduce control | `f003c0d6db1b14045ce78eabade4558c335811fc11a903ada2daeab8267dc045` |
+
+## Conclusive exact-candidate recovery attempt 9 (2026-08-22)
+
+The retained harness was repaired in place and run with a fourth newly isolated registry/profile. It used only `node ./dist/cli/pokie.js --no-open` from this source checkout, rendered an empty Home, and completed Recommended/Random/Blank/final-Recommended, all model sections, native-picker artwork import, literal and generated reel preview/apply, project creation, Bets & Modes save, persisted scatter-triggered free games, ordinary and configured-feature Play, and a 1,000-round Simulation. Replay rendered, but offered no Inspect/Reproduce action.
+
+The visible **Generate exact outcome library** action rendered a local product error: `"valera-mathematician" does not implement createExactEnumerationSession(); its outcome space cannot be exactly enumerated.` Its one UI request completed; it was not retried. After that failure, **Run Stake Engine Export** was unavailable, so Stake Export and close/reopen persistence were not reached. This is a P1 finding: the required exact Outcome Library workflow is unsupported for the model that Studio's own rendered journey creates.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt9-conclusive-rendered-transcript.txt` | Concise exact-SHA, fresh-profile rendered journey and blocked downstream state | `0afe38271c3a46351c3654528609ff51756e1b6dedd5882a400097036a3a6643` |
+| `candidate-92bd710-attempt9-outcome-library-error.png` | Rendered Outcome Library error after the visible UI action | `79e27d8aaca975673630ea44039293f35420d3a09db038efc3521867569f1914` |
