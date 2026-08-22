@@ -97,3 +97,17 @@ Studio/product error, Create Project request, duplicate-bet action, or downstrea
 action was emitted. The four-launch allowance is exhausted; this is a
 driver-inconclusive boundary, not a product finding. No temporary profile,
 registry, generated project/output, raw log, or harness source is retained.
+
+## Follow-up stable-harness check
+
+The retained screenshot checksum and candidate ancestry were rechecked, and the
+candidate CLI was rebuilt once. Two additional isolated headed source-Studio runs
+used exactly `node ./dist/cli/pokie.js --no-open`. Both reached rendered New
+Blueprint → Recommended, but neither reached a text-entry product action: first
+the Game id rendered value remained unchanged after visible-coordinate browser
+input; then the repaired stable harness required its local focus postcondition
+before typing and observed that the same rendered Game id never became the active
+element. The permitted safe retry was therefore not emitted. Neither run rendered
+a Studio error or Create Project request. This is recurring driver-inconclusive
+evidence, not a product finding; all temporary profile, registry, raw-log,
+generated-output, and automation files were removed.
