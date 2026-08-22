@@ -1,29 +1,9 @@
-[2026-08-22T00:38:57.594Z] Fresh isolated HOME/XDG registry and Chrome profile prepared for candidate ancestor 1fd51406388799fdcf65873ed9a2674769859cbf.
-[2026-08-22T00:39:10.539Z] CLICK rendered BUTTON "New Blueprint"; chooser then rendered.
-[2026-08-22T00:39:10.636Z] CLICK rendered BUTTON "Recommended".
-[2026-08-22T00:39:10.698Z] INPUT rendered "Game id" = "valera-mathematician".
-[2026-08-22T00:39:10.716Z] INPUT rendered "Game name" = "Valera Mathematician".
-[2026-08-22T00:39:10.724Z] CLICK rendered Layout; its local panel required the one safe idempotent retry.
-[2026-08-22T00:39:15.969Z] CLICK rendered "Add payline"; fourth payline control rendered.
-[2026-08-22T00:39:16.331Z] CLICK rendered "Select PNG".
-[2026-08-22T00:39:17.841Z] Native Zenity picker 18874372 activated and verified active before typing.
-[2026-08-22T00:39:20.070Z] PNG picker completed; local artwork control changed to "Change".
-[2026-08-22T00:39:20.297Z] Rendered Wild and Scatter controls each reached their checked local state.
-[2026-08-22T00:39:20.571Z] SELECT rendered native radio "Per-reel (Reel Strip Modeler)".
-[2026-08-22T00:39:20.725Z] CLICK rendered "Select reel 1"; local "Edit or generate" control rendered.
-[2026-08-22T00:39:20.793Z] INPUT rendered "New symbol id for reel 1" = "K".
-[2026-08-22T00:39:20.830Z] CLICK rendered "Add symbol to reel 1".
-[2026-08-22T00:39:20.876Z] CLICK rendered "Check & preview"; local literal preview completed.
-[2026-08-22T00:39:21.050Z] OBSERVE next rendered action visibly text "Done", accessible name "Apply Commit or discard".
-[2026-08-22T00:39:21.050Z] HARNESS_INCONCLUSIVE selector matched the accessible name and could not locate visible-text prefix "Done"; no Studio error rendered.
-[2026-08-22T00:53:50.686Z] RECOVERY fresh isolated registry/profile launched candidate with exact `node ./dist/cli/pokie.js --no-open` command.
-[2026-08-22T00:53:51.346Z] RECOVERY rendered metadata controls accepted `valera-mathematician` / `Valera Mathematician`.
-[2026-08-22T00:53:52.569Z] RECOVERY Add payline rendered the fourth-payline duplicate warning (paylines[3]).
-[2026-08-22T00:53:53.924Z] RECOVERY selected rendered native Per-reel reel-strip modeler control.
-[2026-08-22T00:53:54.612Z] RECOVERY selected reel 1 and reached the local Edit or generate control.
-[2026-08-22T00:53:55.500Z] RECOVERY entered literal `K`; the following Add-symbol rendered-control selector did not match. No Studio error rendered; downstream workflow not reached.
-[2026-08-22T01:06:49.886Z] FINAL fresh isolated registry/profile launched exact candidate with `node ./dist/cli/pokie.js --no-open`.
-[2026-08-22T01:06:50.370Z] FINAL rendered Recommended workflow accepted metadata; fourth payline, normal PNG import, Wild/Scatter, literal N add, local literal Preview, and Apply each reached their specific rendered transition.
-[2026-08-22T01:06:59.394Z] FINAL CLICK rendered `Duplicate bet 1`; local fourth available-bet row rendered.
-[2026-08-22T01:06:59.781Z] FINAL CLICK rendered `Create Project` once. Required Workspace controls (`Close project`, Overview, Game Model) did not render by 2026-08-22T01:08:59.953Z; no rendered local product error appeared. No duplicate click was sent.
-[2026-08-22T01:08:59.953Z] FINAL readiness-inconclusive: four fresh launches exhausted; downstream Play, persistence, Simulation, Replay, Outcome Library, and Stake Engine not reached.
+[2026-08-22T01:24:54.724Z] Final fresh isolated HOME/XDG registry and visible Chrome profile launched candidate ancestor 1fd51406388799fdcf65873ed9a2674769859cbf with exactly `node ./dist/cli/pokie.js --no-open`.
+[2026-08-22T01:25:00.484Z] The idempotent retry on rendered Layout produced its local panel; Add payline rendered the fourth payline.
+[2026-08-22T01:25:03.516Z] The visible native PNG picker was activated and verified active before its absolute path was typed; local artwork then rendered Change.
+[2026-08-22T01:25:05.095Z] Rendered Wild and Scatter controls reached their local checked states.
+[2026-08-22T01:25:05.584Z] The visible native Per-reel radio was proved through the next local `Select reel 1` action; the actual `Edit or generate Literal or generated` workflow added literal K, completed local Preview, and applied it.
+[2026-08-22T01:25:06.627Z] Paytable A x3 was edited to 11; rendered `Duplicate bet 1` produced the fourth visible available-bet row.
+[2026-08-22T01:25:06.653Z] One rendered Create Project action opened Workspace and its `Close project` control; `workspace-and-persistence.png` captures that state. Its rendered identity is `Starter Slot`, so the preceding typed Valera metadata is not claimed as committed.
+[2026-08-22T01:25:07.662Z] One rendered Close project action returned to Home. The harness then waited for Open before selecting Home Projects; no Studio error rendered and no additional action was sent.
+[2026-08-22T01:25:37.852Z] Four fresh-launch allowance exhausted: full Valera persistence and downstream Play/Simulation/Replay/Outcome Library/Stake Engine not reached. Selector-inconclusive, not a product finding.
