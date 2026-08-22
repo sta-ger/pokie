@@ -666,6 +666,25 @@ describe("blueprintFormOps", () => {
             ]);
         });
 
+        it("recovers every missing per-reel entry from complete literal strips instead of clearing them", () => {
+            const b: Record<string, unknown> = {
+                reels: 3,
+                reelStrips: [["A", "K"], ["Q", "J"], ["A", "Q"]],
+                // A stale partial per-reel draft must not win over the actual literal model when the
+                // user opens the rendered Reel Strip Modeler again.
+                reelStripGeneration: [{type: "literal", strip: ["A", "K"]}],
+            };
+
+            setReelGenerationMode(b, "reelStripGeneration");
+
+            expect(b.reelStrips).toBeUndefined();
+            expect(b.reelStripGeneration).toEqual([
+                {type: "literal", strip: ["A", "K"]},
+                {type: "literal", strip: ["Q", "J"]},
+                {type: "literal", strip: ["A", "Q"]},
+            ]);
+        });
+
         it("switching to symbolWeights clears reelStrips/reelStripGeneration", () => {
             const b: Record<string, unknown> = {reelStrips: [["A"]]};
 

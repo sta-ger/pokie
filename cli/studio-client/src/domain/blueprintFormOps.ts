@@ -940,6 +940,13 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
         let entries: Record<string, unknown>[];
         if (blueprint.reelStripGeneration !== undefined) {
             entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
+            // A legacy/later-interrupted editor session can leave both representations behind, with
+            // only a partial per-reel array alongside the complete literal strips.  Do not let those
+            // missing entries turn a rendered switch to the Modeler into empty literal reels: retain
+            // every already-authored per-reel entry and materialize the remaining literal strips.
+            if (literalStrips !== undefined && entries.length < reelCount(blueprint)) {
+                entries = Array.from({length: reelCount(blueprint)}, (_, reelIndex) => entries[reelIndex] ?? {type: "literal", strip: literalStrips[reelIndex] ?? []});
+            }
         } else if (literalStrips !== undefined) {
             entries = Array.from({length: reelCount(blueprint)}, (_, reelIndex) => ({type: "literal", strip: literalStrips[reelIndex] ?? []}));
         } else {
