@@ -92,3 +92,13 @@ The rendered **Check & preview** action was accepted, but did not render a local
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-final-harness-recovery-transcript.txt` | Concise exact-SHA four-launch final recovery record | `e31c5c793b7f12059a9bcf3f674bff2b27847ee4dc62b707dc378d6b2f0cb066` |
+
+## Final focused harness recovery (2026-08-22)
+
+Four additional isolated exact-candidate runs repaired the retained selector/readiness causes in place. The final run rendered an empty registry, Recommended/Random/Blank/final-Recommended replacement, a valid Valera model, all model tabs, A wild, K scatter, native-picker artwork import, warning-free wild paytable cleanup, and literal preview success. It then rendered the generated-reel controls through Weight, Length, and stack entry.
+
+Generated **Check & preview** produced no local Preview, Validation, pending, or error result and no preview request in bounded diagnostics. No action was duplicated; the fresh-launch limit exhausted before persistence or workspace workflows. This remains readiness-inconclusive rather than a product finding.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-final-focused-harness-recovery-transcript.txt` | Final bounded exact-SHA recovery record | `7af7e43a97116f00a9dab9ac34841d4cdc9065b8651c1ce6f4041f2c87d4118b` |
