@@ -4,21 +4,21 @@ Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, which remains
 an ancestor of this evidence checkout. The retained fresh-registry/profile
 proof remains present and truthful.
 
-This focused recovery read the complete recorded driver history and used the
-same rendered-control harness with isolated HOME/XDG registries and Chrome
-profiles. Four Studio launches used exactly
+This focused recovery read the complete recorded driver history and used one
+repaired rendered-control harness with isolated HOME/XDG registries and Chrome
+profiles. Every Studio launch used exactly
 `node ./dist/cli/pokie.js --no-open` from this source checkout.
 
-The repaired native-picker step split visible X IDs correctly, identified
-Zenity by WM_CLASS, activated that one window, verified active focus, and
-then imported the selected PNG. The final fresh pass reached the literal
-reel: it entered `K`, added it through the rendered control, completed local
-`Check & preview`, and rendered the next control visibly as `Done`.
+The retained native-picker proof remains valid: it activated Zenity, verified
+active focus, imported the PNG, and reached the literal-reel preview. This
+recovery then used the actual accessible `Apply Commit or discard` name for
+the visible Done action. Its final fresh pass independently reached metadata,
+the fourth payline warning, per-reel selection, and rendered entry of literal
+`K`.
 
-The harness then stopped because its locator used the accessible name, which
-was `Apply Commit or discard`, rather than the visible child text `Done`.
-This is a selector/driver defect; the rendered local transition was visible
-and there was no Studio error. The allowed four fresh launches are exhausted,
-so Create Project, duplicate-bet Play, persistence, Simulation, Replay,
-Outcome Library, and Stake Engine remain not reached. No generated project,
-profile, raw log, screenshot, or automation source is retained.
+The next Add-symbol control had a different rendered name from the harness's
+literal-string selector. This is a harness selector defect; no Studio error
+was rendered. The allowed launches are exhausted, so Create Project,
+duplicate-bet Play, persistence, Simulation, Replay, Outcome Library, and
+Stake Engine remain not reached. No generated project, profile, raw log,
+screenshot, or automation source is retained.

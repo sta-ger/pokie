@@ -16,3 +16,9 @@
 [2026-08-22T00:39:20.876Z] CLICK rendered "Check & preview"; local literal preview completed.
 [2026-08-22T00:39:21.050Z] OBSERVE next rendered action visibly text "Done", accessible name "Apply Commit or discard".
 [2026-08-22T00:39:21.050Z] HARNESS_INCONCLUSIVE selector matched the accessible name and could not locate visible-text prefix "Done"; no Studio error rendered.
+[2026-08-22T00:53:50.686Z] RECOVERY fresh isolated registry/profile launched candidate with exact `node ./dist/cli/pokie.js --no-open` command.
+[2026-08-22T00:53:51.346Z] RECOVERY rendered metadata controls accepted `valera-mathematician` / `Valera Mathematician`.
+[2026-08-22T00:53:52.569Z] RECOVERY Add payline rendered the fourth-payline duplicate warning (paylines[3]).
+[2026-08-22T00:53:53.924Z] RECOVERY selected rendered native Per-reel reel-strip modeler control.
+[2026-08-22T00:53:54.612Z] RECOVERY selected reel 1 and reached the local Edit or generate control.
+[2026-08-22T00:53:55.500Z] RECOVERY entered literal `K`; the following Add-symbol rendered-control selector did not match. No Studio error rendered; downstream workflow not reached.
