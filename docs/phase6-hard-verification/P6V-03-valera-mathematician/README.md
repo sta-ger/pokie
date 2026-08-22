@@ -420,6 +420,38 @@ despite the subsequent rendered workflow succeeding.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery18-full-journey-transcript.txt` | Exact-SHA, fresh-profile rendered journey and incomplete-checklist disclosure | `fddb46a0b5f1178e767cb89b8c7d969a3c10b0575169f95f88c2012086d123b5` |
+
+## Recovery 19 — native artwork and persistence closeout (2026-08-22)
+
+The retained recovery-18 proof was rechecked before this focused continuation.
+The same candidate-source command, `node ./dist/cli/pokie.js --no-open`, started
+with a new disposable Studio `HOME`/registry and a distinct Chromium profile.
+The source delta from `891197a45d46900ec570aaba6001f9aaacb1436d` to the evidence
+descendant was documentation-only in this evidence directory.
+
+The fresh rendered run completed Recommended, Random, Blank, and final
+Recommended blueprint choices; set the final Valera identifiers; visited the
+Layout, Symbols, Reels, Paytable, and Bets editors; marked A wild and K scatter;
+then selected **Select PNG**.  The visible Zenity picker was activated and its
+active-window focus was verified before the absolute PNG path was typed.  The
+Symbols row subsequently rendered **Change**, captured below.  The same run
+completed literal and generated reel preview/apply, constraints and stacks,
+project creation, Bets & Modes and Mechanics saves, close/reopen persistence,
+ordinary and configured-feature Play, Simulation, Replay, exact Outcome Library
+generation, and Stake Engine export.  No rendered product error or unresolved
+P0, P1, or material P2 appeared.
+
+| Persisted criterion | Result and concrete evidence |
+| --- | --- |
+| Use a genuinely fresh Studio registry and browser profile on `891197a45d46900ec570aaba6001f9aaacb1436d`. | Passed: the transcript records the exact candidate, stipulated source-checkout command, and disposable registry/profile before the first rendered navigation. |
+| Complete every literal modelling and persistence item through rendered controls. | Passed: rendered native artwork selection and **Change**, literal/generated reel previews and Apply, constraint/stack commit, section saves, and close/reopen persistence are recorded in the transcript. |
+| Record successful ordinary-win and configured-feature Play, Simulation, Replay, Outcome Library, and Stake Engine Build/Export. | Passed: the transcript records local ordinary Play, `freeGamesTriggered`, RTP/results, Replay, exact-library success, and export success; recovery-18 representative screenshots remain retained. |
+| Retain bounded exact-SHA transcript and minimal representative proof. | Passed: this 8.1 KiB transcript and one 125 KiB artwork screenshot are the only new proof; prior retained proof is preserved. |
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery19-artwork-persistence-transcript.txt` | Exact-SHA focused rendered closeout, including focused native-picker and full persistence record | `97dde8b773b1d3322510fcd3cc2ef21fc76bd4e838e3af0e238cf70410a8df3a` |
+| `candidate-891197a-recovery19-artwork-persistence.png` | Rendered A-symbol artwork state after focused native-picker import (**Change**) | `9d6ebaceb890933de3ef556b09470a862883c6855460c2d7ea3f459c8314a143` |
 | `candidate-891197a-recovery18-model.png` | Literal/generated reel preview and apply proof | `d2413fa0733eea14ab5fb2618fe0022b7b430da23b12a228a6353214f1335a1e` |
 | `candidate-891197a-recovery18-play.png` | Ordinary Play proof | `c8d67ba9398a67ee5ce6575ba0fa45c5a5595937d49d88e8ae8ee6ce6b8c072c` |
 | `candidate-891197a-recovery18-build-export.png` | Exact Outcome Library and Stake Engine Export proof | `7bb2a8cc9a3f25dd61ee30200c6df99ab7802e85d29751fc13747e236f470bd9` |
