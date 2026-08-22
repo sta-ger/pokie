@@ -1,41 +1,11 @@
-[2026-08-22T20:31:14.626Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; fresh Studio HOME and fresh visible Chromium profile created
-[2026-08-22T20:31:17.034Z] LAUNCH rendered public Studio using exactly node ./dist/cli/pokie.js --no-open at http://127.0.0.1:3200
-[2026-08-22T20:31:27.545Z] NAVIGATE rendered public URL #/home/design
-[2026-08-22T20:31:27.563Z] OBSERVE empty fresh Studio registry inferred from isolated HOME; initial rendered Home has no persisted Valera project
-[2026-08-22T20:31:27.612Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
-[2026-08-22T20:31:27.884Z] CLICK rendered "Recommended" (hit="Recommended")
-[2026-08-22T20:31:28.093Z] CREATE Recommended through rendered controls
-[2026-08-22T20:31:28.121Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
-[2026-08-22T20:31:28.358Z] CLICK rendered aria-label "Generate random" (hit="Random")
-[2026-08-22T20:31:28.580Z] CLICK rendered "Generate" (hit="Generate")
-[2026-08-22T20:31:28.864Z] CLICK rendered "Use this blueprint" (hit="Use this blueprint")
-[2026-08-22T20:31:29.067Z] CREATE Random through rendered controls
-[2026-08-22T20:31:29.076Z] CLICK rendered "New Blueprint" (hit="DIV")
-[2026-08-22T20:31:31.603Z] RETRY New Blueprint once after no rendered modal transition
-[2026-08-22T20:31:31.648Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
-[2026-08-22T20:31:31.899Z] CLICK rendered "Blank" (hit="Blank")
-[2026-08-22T20:31:32.119Z] CREATE Blank through rendered controls
-[2026-08-22T20:31:32.135Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
-[2026-08-22T20:31:32.394Z] CLICK rendered "Recommended" (hit="Recommended")
-[2026-08-22T20:31:32.597Z] CREATE final Recommended through rendered controls; prior P1 entry point absent
-[2026-08-22T20:31:32.623Z] INPUT rendered "Game id"="valera-mathematician"
-[2026-08-22T20:31:32.954Z] INPUT rendered "Game name"="Valera Mathematician"
-[2026-08-22T20:31:33.824Z] CLICK rendered prefix "Layout"
-[2026-08-22T20:31:34.125Z] MODEL rendered Layout section reached
-[2026-08-22T20:31:34.253Z] CLICK rendered prefix "Symbols"
-[2026-08-22T20:31:34.554Z] MODEL rendered Symbols section reached
-[2026-08-22T20:31:34.701Z] CLICK rendered prefix "Reels"
-[2026-08-22T20:31:35.002Z] MODEL rendered Reels section reached
-[2026-08-22T20:31:35.167Z] CLICK rendered prefix "Paytable"
-[2026-08-22T20:31:35.468Z] MODEL rendered Paytable section reached
-[2026-08-22T20:31:35.612Z] CLICK rendered prefix "Bets"
-[2026-08-22T20:31:35.912Z] MODEL rendered Bets section reached
-[2026-08-22T20:31:36.061Z] CLICK rendered prefix "Symbols"
-[2026-08-22T20:31:36.456Z] CLICK rendered aria-label "Symbol 1 is wild" (hit="Symbol 1 is wild")
-[2026-08-22T20:31:36.787Z] CLICK rendered aria-label "Symbol 2 is scatter" (hit="Symbol 2 is scatter")
-[2026-08-22T20:31:37.008Z] CLICK rendered "Select PNG" (hit="Select PNG")
-[2026-08-22T20:31:52.293Z] FAILED Error: Timed out waiting for visible native artwork picker
-    at waitFor (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-28bad8c111cf68d8/current.mjs:38:69)
-    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
-    at async main (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-28bad8c111cf68d8/current.mjs:103:5)
-    at async file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-28bad8c111cf68d8/current.mjs:123:7
+[2026-08-22T20:51:01Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; a new Studio HOME/registry and visible Chromium profile were created.
+[2026-08-22T20:51:03Z] LAUNCH public Studio from the exact detached source checkout: node ./dist/cli/pokie.js --no-open.
+[2026-08-22T20:51:14Z] OBSERVE empty fresh Studio registry, then CREATE Recommended through rendered controls.
+[2026-08-22T20:51:17Z] CREATE Random through rendered Generate, rendered generated result, and Use this blueprint controls.
+[2026-08-22T20:51:18Z] CREATE Blank through rendered controls.
+[2026-08-22T20:51:19Z] CREATE final Recommended through rendered controls; the previously reported Recommended fresh-project P1 did not recur.
+[2026-08-22T20:51:19Z] INPUT Game id=valera-mathematician and Game name=Valera Mathematician; rendered Layout, Symbols, Reels, Paytable, and Bets editors.
+[2026-08-22T20:51:23Z] TOGGLE rendered native wild and scatter controls, then CLICK rendered Select PNG.
+[2026-08-22T20:51:27Z] NATIVE PICKER was visible, activated with xdotool windowactivate --sync, focus-checked as active, and received the absolute PNG path.
+[2026-08-22T20:51:42Z] OBSERVE the Symbol 1 row's rendered Change and Remove actions after picker return; no rendered alert was present. This later local observation proves artwork import succeeded, so the earlier wait threshold is not a product finding.
+[2026-08-22T20:51:42Z] CLICK rendered Reels tab. The next harness selector incorrectly expected Per-reel (Reel Strip Modeler) to be a button, but the rendered native radio is not included in that selector. No product error was rendered; launch limit prevented repairing that selector and continuing.
