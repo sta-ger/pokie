@@ -4,25 +4,21 @@ Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, which remains
 an ancestor of this evidence checkout. The retained fresh-registry/profile
 proof remains present and truthful.
 
-This recovery read the complete recorded harness history and used one repaired
-rendered-control harness. Four isolated Studio registries were started from
-this source checkout with exactly `node ./dist/cli/pokie.js --no-open`; every
-browser attempt used a fresh visible Chrome profile. The first start exposed a
-harness-only default-port mistake before Chrome. The next two reached the
-Recommended Valera editor; the single safe retry on the visible Layout tab
-opened its local controls, and the third attempt proved that a fourth payline
-had been added. The fixed interaction wait for a warning was therefore not
-treated as a product finding.
+This focused recovery read the complete recorded driver history and used the
+same rendered-control harness with isolated HOME/XDG registries and Chrome
+profiles. Four Studio launches used exactly
+`node ./dist/cli/pokie.js --no-open` from this source checkout.
 
-The final fresh rendered pass reached Valera metadata, the fourth payline, the
-normal `N` symbol, and the real `Select PNG` action. Zenity appeared, but the
-harness parsed two visible X window identifiers as one picker identifier.
-`xdotool windowactivate --sync` consequently could not satisfy the required
-active-window equality check; no path was entered and no picker result was
-fabricated. The bounded transcript records this exact host-driver boundary.
+The repaired native-picker step split visible X IDs correctly, identified
+Zenity by WM_CLASS, activated that one window, verified active focus, and
+then imported the selected PNG. The final fresh pass reached the literal
+reel: it entered `K`, added it through the rendered control, completed local
+`Check & preview`, and rendered the next control visibly as `Done`.
 
-No Studio product error, Create Project, Play, Simulation, Replay, Outcome
-Library, or Stake Engine request was observed in this invocation. The
-duplicate-bet and persistence workflow therefore remains not reached. No
-profile, generated project/output tree, raw log, screenshot, or automation
-source is retained.
+The harness then stopped because its locator used the accessible name, which
+was `Apply Commit or discard`, rather than the visible child text `Done`.
+This is a selector/driver defect; the rendered local transition was visible
+and there was no Studio error. The allowed four fresh launches are exhausted,
+so Create Project, duplicate-bet Play, persistence, Simulation, Replay,
+Outcome Library, and Stake Engine remain not reached. No generated project,
+profile, raw log, screenshot, or automation source is retained.

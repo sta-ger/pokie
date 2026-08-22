@@ -1,16 +1,18 @@
-[2026-08-22T00:27:09.441Z] Fresh isolated HOME/XDG registry and Chrome profile prepared for candidate ancestor 1fd51406388799fdcf65873ed9a2674769859cbf.
-[2026-08-22T00:27:23.132Z] CLICK rendered BUTTON "New Blueprint"
-[2026-08-22T00:27:23.246Z] CLICK rendered BUTTON "Recommended"
-[2026-08-22T00:27:23.296Z] INPUT rendered "Game id" = "valera-mathematician"
-[2026-08-22T00:27:23.318Z] INPUT rendered "Game name" = "Valera Mathematician"
-[2026-08-22T00:27:23.326Z] CLICK rendered BUTTON "Layout"
-[2026-08-22T00:27:28.334Z] Layout remained visibly available without its local panel; one safe idempotent rendered retry.
-[2026-08-22T00:27:28.444Z] CLICK rendered BUTTON "Layout\nvalid"
-[2026-08-22T00:27:28.569Z] CLICK rendered BUTTON "Add payline"
-[2026-08-22T00:27:28.582Z] MODELLING: fourth payline rendered in the Layout editor.
-[2026-08-22T00:27:28.676Z] CLICK rendered BUTTON "Symbols"
-[2026-08-22T00:27:28.731Z] INPUT rendered "New symbol id" = "N"
-[2026-08-22T00:27:28.854Z] CLICK rendered BUTTON "Add symbol"
-[2026-08-22T00:27:28.911Z] CLICK rendered BUTTON "Select PNG"
-[2026-08-22T00:27:30.449Z] HARNESS_FAILURE Native picker focus contract failed: requested 4194307
-18874372, active 4194307
+[2026-08-22T00:38:57.594Z] Fresh isolated HOME/XDG registry and Chrome profile prepared for candidate ancestor 1fd51406388799fdcf65873ed9a2674769859cbf.
+[2026-08-22T00:39:10.539Z] CLICK rendered BUTTON "New Blueprint"; chooser then rendered.
+[2026-08-22T00:39:10.636Z] CLICK rendered BUTTON "Recommended".
+[2026-08-22T00:39:10.698Z] INPUT rendered "Game id" = "valera-mathematician".
+[2026-08-22T00:39:10.716Z] INPUT rendered "Game name" = "Valera Mathematician".
+[2026-08-22T00:39:10.724Z] CLICK rendered Layout; its local panel required the one safe idempotent retry.
+[2026-08-22T00:39:15.969Z] CLICK rendered "Add payline"; fourth payline control rendered.
+[2026-08-22T00:39:16.331Z] CLICK rendered "Select PNG".
+[2026-08-22T00:39:17.841Z] Native Zenity picker 18874372 activated and verified active before typing.
+[2026-08-22T00:39:20.070Z] PNG picker completed; local artwork control changed to "Change".
+[2026-08-22T00:39:20.297Z] Rendered Wild and Scatter controls each reached their checked local state.
+[2026-08-22T00:39:20.571Z] SELECT rendered native radio "Per-reel (Reel Strip Modeler)".
+[2026-08-22T00:39:20.725Z] CLICK rendered "Select reel 1"; local "Edit or generate" control rendered.
+[2026-08-22T00:39:20.793Z] INPUT rendered "New symbol id for reel 1" = "K".
+[2026-08-22T00:39:20.830Z] CLICK rendered "Add symbol to reel 1".
+[2026-08-22T00:39:20.876Z] CLICK rendered "Check & preview"; local literal preview completed.
+[2026-08-22T00:39:21.050Z] OBSERVE next rendered action visibly text "Done", accessible name "Apply Commit or discard".
+[2026-08-22T00:39:21.050Z] HARNESS_INCONCLUSIVE selector matched the accessible name and could not locate visible-text prefix "Done"; no Studio error rendered.
