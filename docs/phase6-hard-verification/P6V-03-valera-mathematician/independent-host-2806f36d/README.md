@@ -64,3 +64,27 @@ product failure was observed.  It did not complete the remaining saved
 layout/payline, generated-reel, paytable, bets/modes, and mechanics edits, so the
 full P6V-03 journey remains driver-inconclusive.  See
 `recovery-20260822-transcript.txt` for the compact action record.
+
+## Continued focused recovery (2026-08-23)
+
+After one `npm run build-cli`, three further fresh profiles used exactly
+`node ./dist/cli/pokie.js --no-open`.  The retained proof files above remained
+present and their checksums matched.  The stable harness then created a fresh
+Recommended project and saved a rendered Layout edit from 3 to 4 rows plus a
+duplicated payline; the Game Model immediately rendered `Rows: 4` and
+`Paylines: 4`.  Literal strips were also visibly edited and persisted in a
+separate fresh project.
+
+The repaired reel selector reached the visible per-reel modeler, selected Reel
+1, and displayed the actual `Literal` and `Generated` controls.  Selecting
+`Generated` rendered its count, locked-position, spacing/occurrence-constraint,
+and stack-constraint editors.  The native artwork action did not surface a
+visible picker window within the bounded wait and Studio showed no local error;
+this is retained as a driver/readiness limitation, not a product finding.  A
+later harness fill mis-targeted an editor and Studio visibly rejected the
+resulting empty reel-strip draft with specific validation errors; it was not
+saved and is not a product finding.
+
+No P0, P1, or material P2 was rendered.  Because saved generated-reel,
+paytable, bets/modes, mechanics, and the required uncoached journey remain
+uncompleted, this independent host result remains inconclusive.
