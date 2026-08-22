@@ -339,3 +339,22 @@ were not reached; no P0, P1, or material P2 is asserted.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery10-full-journey-transcript.txt` | Current-SHA bounded rendered recovery transcript | `0955c33fa2372b86259624bf74efb349c68d548021d12cd23506b62e5d564fd1` |
+
+## Focused harness recovery 11 — exact candidate (2026-08-22)
+
+The retained exact-SHA evidence was rechecked before four newly isolated
+Studio registry/Chromium-profile runs using only `node ./dist/cli/pokie.js
+--no-open`. The repaired persistent harness reached Recommended, Random,
+Blank, final Recommended, Valera identifiers, all model sections, wild/scatter,
+literal preview, generated Weights, a common constraint, and a committed stack
+rule. Its Preview click was verified against the rendered control; the browser
+observed HTTP 200, but no generated local Preview result rendered. A bounded
+passive diagnostic showed the returned validation payload lacked symbolWeights,
+so no unconfirmed select action was promoted to product evidence. No rendered
+product error or P0/P1/material-P2 defect was observed; generated apply,
+persistence, Play, Simulation, Replay, Outcome Library, and Stake Engine
+Export remain unreached.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery11-full-journey-transcript.txt` | Four-launch, exact-SHA rendered recovery and bounded driver diagnostic | `0b584e8e5e405ea91e2c7fff1cb8b1ea7a64215b0e49e64b96f13cb33f33d35f` |
