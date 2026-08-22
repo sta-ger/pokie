@@ -1,22 +1,20 @@
-# P6V-03 — exact-candidate browser recovery
+# P6V-03 — exact-candidate full rendered verification
 
-Candidate source: `69d0c518a088a2d414400c30782417fa1c2e2a36`.
+Candidate source: `69d0c518a088a2d414400c30782417fa1c2e2a36` (clean detached checkout).
+The retained persistent harness launched it only as `node ./dist/cli/pokie.js
+--no-open`, with a new Studio `HOME`/registry and visible Chromium profile.
 
-The persistent harness used a newly built detached checkout at that SHA and
-fresh Studio `HOME`/registry plus Chromium-profile pairs. It launched Studio
-only as `node ./dist/cli/pokie.js --no-open`. The final rendered run proved
-Recommended, Random, Blank, and final Recommended creation (the prior P1 did
-not recur); Valera modelling; native artwork import; literal and generated
-reels; a weight, constraint, stack and applied preview; Create Project; and a
-Game Model save.
-
-No rendered product error was observed. The four-launch recovery budget ended
-when the next generic `Edit` action selected Game window rather than Mechanics,
-so free-games persistence and later Play, Simulation, Replay, Outcome Library,
-Stake Engine, close/reopen actions remain unexercised. This is a harness
-selector/workflow boundary, not a product finding.
+The successful final run used Recommended, Random, Blank, then Recommended
+creation; modelled Valera Mathematician with imported PNG artwork, literal and
+generated reels, weights, constraint and stack; persisted K 3x → 5 free games;
+observed an ordinary win and `freeGamesTriggered`; ran 1,000-round Simulation,
+Replay, Outcome Library, and Stake Engine; then closed, reopened, and directly
+read the persisted Mechanics section. No rendered product error occurred; the
+prior Recommended-project P1 did not recur.
 
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
-| `transcript.txt` | Concise exact-SHA rendered provenance and boundary | `5fbcca200fb13ae6c6d2d4405335518cc18f3e42b7061936e80498577659b1b9` |
-| `model.png` | Representative rendered artwork and reel-model proof | `a817ad8a1bf858258a356e539736f13b4afb0381e3bf11652e3d76e074885119` |
+| `transcript.txt` | Bounded exact-SHA rendered-action provenance | `9e77cfb4bd330bcad8ce865e5352bae218636dd0ecff79c1b98e1b9785581fdf` |
+| `model.png` | Artwork and generated-reel representative proof | `a817ad8a1bf858258a356e539736f13b4afb0381e3bf11652e3d76e074885119` |
+| `play-simulation.png` | Ordinary/feature Play and Simulation proof | `d3456933804fd4508eb94f430aab3806572df09815f59ef7909249dda529c386` |
+| `build-export.png` | Outcome Library and Stake Engine proof | `77384ed8fc808ae24313d448d06f5ca1f28ec87a0784dcd5168cdf07a851649b` |
