@@ -979,6 +979,6 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         const savedReel = managedSaveBodies[0].blueprint.reelStripGeneration[0];
         expect(savedReel).toMatchObject({type: "generated", length: 6, seed: 7});
         expect(Object.values(savedReel.symbolWeights as Record<string, number>)).toContain(2);
-        await waitFor(() => expect(openedProjectRoots).toEqual(["/POKIE Projects/modeler"]));
+        await waitFor(() => expect(openedProjectRoots).toEqual(["/POKIE Projects/modeler/blueprint.json"]));
     }, 90000);
 });
