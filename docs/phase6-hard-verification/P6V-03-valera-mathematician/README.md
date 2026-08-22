@@ -138,3 +138,34 @@ Outcome Library, and Stake Engine remain unreached.
 No generated project/output tree, Chrome profile, registry, raw log, PID file,
 or automation source is retained. The evidence directory remains three files
 and under 110 KiB.
+
+## Passing rendered completion
+
+The retained screenshot checksum and candidate ancestry were checked again
+before this single fresh-profile run. The exact candidate CLI was rebuilt once
+and Studio was launched from this checkout only as `node ./dist/cli/pokie.js
+--no-open`, with a new HOME/XDG registry and visible Chrome profile.
+
+The one repaired coordinate-aware visible-control harness completed the full
+journey. It set `valera-mathematician` / `Valera Mathematician`; added the
+fourth payline; selected PNG artwork for A; marked A Wild and K Scatter;
+selected Per-reel Reel Strip Modeler, Reel 1, Literal Preview, and its local
+Apply; and duplicated rendered bet 2, yielding `1, 2, 2, 5`. Create Project
+opened the Valera Workspace. It then found an ordinary win (18.00), configured
+and saved K scatter free-games (3x -> 5), reset the real Play session, and
+found a rendered `freeGamesTriggered` feature event. Simulation completed
+10,000 rounds; Replay loaded the recorded Find-any-win round; exact Outcome
+Library generation completed with 1,024 outcomes; and Stake Engine Export
+rendered `Exported 4 file(s)`.
+
+Only bounded proof is retained. The screenshot below is the final rendered
+Valera Play state after the successful feature search. The now-deleted temporary project's last blueprint checksum was
+`7912bc04c16372254382c10b416dbc2f6ec38c7029abc31bfb372d586d7aca15`;
+the manifest-of-checksums digests for the generated Outcome Library and Stake
+Engine trees were respectively
+`499f7a057bf148093c42fb2321cac6360dc960cf8fa77a3923e2470efd22022d`
+and `14abae312bef6c11576e6f56da0cd1461ca83d95ca6572b5318a9257e7cacc18`.
+
+| Retained proof | SHA-256 |
+| --- | --- |
+| `final-play-feature.png` (66,348 bytes; Valera Play after Find free games) | `b80794689b1bf62d3fd5e5fcdf72b6ce32587c6d659d80bf1815c2fa88847150` |
