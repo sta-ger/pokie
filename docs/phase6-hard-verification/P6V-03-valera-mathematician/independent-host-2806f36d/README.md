@@ -148,3 +148,21 @@ had no eligible scatter in the generated-reel project, so a saved/reopened
 mechanics configuration in the comprehensive edit journey was not reached.
 This remains driver-inconclusive, rather than a product finding. See
 `recovery-20260823-attempt3-transcript.txt` for the compact literal checklist.
+
+## Focused recovery attempt 4 (2026-08-23)
+
+The retained files and their SHA-256 values were rechecked, and this exact source
+checkout completed `npm run build-cli`. Four new Studio/Chromium profiles were
+then isolated and launched only with `node ./dist/cli/pokie.js --no-open`.
+
+The first profile reached a temporarily blank rendered surface after its Studio
+loading state and contained no rendered application error. The harness was
+repaired in place to record browser diagnostics and to require nonempty rendered
+content. The other profiles reached the fresh Recommended project, opened Game
+Model, and opened the local Symbols editor. That editor's labelled special-symbol
+checkboxes are mounted only after its local rendered transition; the bounded
+harness attempted them too early, recorded no product error, and therefore could
+not save a new scatter before opening the mechanics editor. No product defect was
+rendered. The four-launch allowance ended before the repaired transition could be
+rerun, so saved/reopened mechanics remains unreached. See
+`recovery-20260823-attempt4-transcript.txt`.
