@@ -50,3 +50,20 @@ automation source is retained as evidence.
 | Retained proof | SHA-256 |
 | --- | --- |
 | `workspace-and-persistence.png` (103,158 bytes; prior Workspace transition, rendered `Starter Slot` identity) | `645918afbbc2240ac3b8b427736848ea5cc81246137e179861e05cacd71c9273` |
+
+## Bounded stable-harness recovery
+
+The retained screenshot checksum and candidate ancestry were rechecked before
+this run. One stable source-built harness used four fresh HOME/XDG registries
+and headed profiles, launching Studio only as `node ./dist/cli/pokie.js
+--no-open`.
+
+It repaired the prior tab-name, payline-postcondition, and CDP-object driver
+causes and reached the visible Reel Strip Modeler. The fourth launch then
+clicked its rendered workflow button `Select reel Which reel`, rather than the
+required rendered `Select reel 1` item; the local `Edit or generate Literal or
+generated` control therefore did not appear. No Studio error, Create Project
+request, duplicate-bet action, or downstream action was emitted. The four-run
+allowance is exhausted, so the remaining journey is driver-inconclusive. No
+new generated project tree, browser profile, raw log, or automation source is
+retained.
