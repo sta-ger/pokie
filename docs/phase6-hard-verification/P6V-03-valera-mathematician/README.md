@@ -1,25 +1,25 @@
-# P6V-03 independent browser rerun — driver inconclusive
+# P6V-03 independent browser rerun — selector inconclusive
 
 Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, an ancestor
 of this evidence-only checkout. The retained fresh-registry/profile proof and
 its screenshot remain present and truthful.
 
-This recovery read the full retained failure history, built the candidate once,
-and used the public source command exactly `node ./dist/cli/pokie.js --no-open`
-for four new isolated HOME/XDG registries and Chrome profiles. A single
-visible-control harness repaired its labelled-field focus handling: it reached
-Recommended, committed Game id/name/description, added a payline and normal
-symbol, then exposed the actual Reel generation choices. The final rendered
-state showed `Reel strips` as the initial mode and `Per-reel (Reel Strip
-Modeler)` as the needed choice; the harness had assumed the next Modeler
-control existed before choosing that mode. Its final same-launch continuation
-then stopped at the unsaved-draft dialog. No rendered Studio/product error was
-observed and no Create Project request occurred.
+This focused recovery read the complete retained history, built the candidate
+once, and used exactly `node ./dist/cli/pokie.js --no-open` for four isolated
+HOME/XDG registries and visible Chrome profiles. The final fresh run repaired
+the earlier field/tab/native-picker causes: it completed Recommended metadata,
+fourth payline, Wild/Scatter, and active-window PNG selection; selected
+`Per-reel (Reel Strip Modeler)`; selected Reel 1; made the visibly empty
+Literal editor non-empty; and received its local `Literal strip` Preview
+result. No Studio/product error rendered.
 
-The permitted launch allowance is exhausted. Valera persistence, duplicate-bet
-Play/win/feature, Simulation, Replay, Outcome Library, and Stake Engine remain
-unassessed. No generated project/output tree, browser profile, raw log, PID
-file, or automation source is retained.
+The next rendered control's actual accessible name was `Apply Commit or
+discard`, whereas the harness sought `Done`. This is a selector boundary, not
+a product result; the action was not emitted, so Create Project and all
+downstream persistence/Play/Simulation/Replay/export checks were not reached.
+
+The permitted launch allowance is exhausted. No generated project/output tree,
+browser profile, raw log, PID file, or automation source is retained.
 
 | Retained proof | SHA-256 |
 | --- | --- |
