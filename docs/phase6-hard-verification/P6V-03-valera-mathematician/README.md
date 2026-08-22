@@ -293,3 +293,27 @@ additional successful rendered product state.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery8-full-journey-transcript.txt` | Exact-SHA fresh-profile direct-hit-target recovery observation | `ec97beb78bab6bd7c89a91c87bfca80e8d6525c7ca58b7422b06e3a1ed6065a0` |
+
+## Current-SHA focused harness recovery (2026-08-22)
+
+Retained candidate-bound evidence and checksums were rechecked before this
+recovery. Four permitted fresh Studio registries and Chromium profiles used the
+persisted harness repaired in place for the complete recorded failure history.
+Each launch used only `node ./dist/cli/pokie.js --no-open` from this checkout.
+The final fresh run reached the rendered New Blueprint dialog on its safe retry,
+then the rendered **Recommended** action did not produce its specific local
+dialog-close transition. No Studio error, browser diagnostic, or failed Random
+request rendered. The prior three launches respectively exposed the harness's
+idle-as-pending classifier, the New Blueprint transition race, and the invalid
+identity assertion for the intentionally identical Recommended draft; those
+causes were repaired in the same retained harness before the final launch.
+
+The four-launch allowance is exhausted. This is driver-inconclusive, not a
+product finding: Random, Blank/final modelling, persistence, Play, Simulation,
+Replay, Outcome Library, and Stake Engine Export were not safely reachable. No
+new screenshot is retained because no additional successful product state
+rendered.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery9-full-journey-transcript.txt` | Final exact-SHA fresh-profile rendered-control recovery observation | `e0324f42bd0962f48f3419f08ba49a8fac8df81ffda948974258e49fc9986102` |
