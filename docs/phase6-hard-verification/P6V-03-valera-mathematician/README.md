@@ -51,3 +51,13 @@ After the bounded semantic-result wait, the Random dialog was absent, but the UI
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-attempt3-recovery-transcript.txt` | Concise second fresh-registry/profile exact-SHA recovery observation | `0235893b9e865ba00ae657919e30dfa440afeb47cd03ff208f6a743b36a72b2c` |
+
+## Exact-current candidate harness-recovery attempt 4 (2026-08-22)
+
+The retained harness was repaired in place for all prior driver causes: it makes one safe rendered retry only when the New Blueprint dialog did not open during a closing-modal transition, recognizes the Random card by its local rendered result, and does not mistake an earlier replacement toast for a later Random replacement. A newly isolated registry/profile launch then rendered Recommended, Random (including its Generated card and enabled **Use this blueprint** action), Blank, and final Recommended on `92bd710ee5fc03e376134f7224eeba465e053a0e`.
+
+After the final Recommended action, the rendered **Game id** field did not retain the browser-entered `valera-mathematician` value during the bounded semantic transition. No rendered product error, browser-console diagnostic, or network diagnostic appeared. This is driver-inconclusive, not a product finding; the downstream model, persistence, Play, Simulation, Replay, Outcome Library, and Stake Engine workflow was not reached before the launch limit.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt4-harness-recovery-transcript.txt` | Concise exact-SHA fresh-registry/profile rendered recovery observation | `83fa6dc6637ee0cd6f7df4f11b313f7bdf713afed9d2e8c1d00518af3ad1b525` |
