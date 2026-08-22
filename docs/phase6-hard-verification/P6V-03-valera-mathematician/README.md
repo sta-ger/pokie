@@ -269,3 +269,28 @@ successful rendered state appeared.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery5-full-journey-transcript.txt` | Exact-SHA fresh-profile stabilized rendered Random recovery | `91b8b9c7fde93a4762a8227d07a6c928843592dca839843ea9d92d9456145788` |
+
+## Focused current-SHA harness recovery 8 (2026-08-22)
+
+The retained current-SHA files were rechecked before recovery. Four newly
+isolated Studio HOME/registry and Chromium-profile launches used only
+`node ./dist/cli/pokie.js --no-open` from this checkout; its only
+candidate-to-HEAD changes are this evidence directory. The retained harness
+was repaired in place for the prior coordinate and readiness causes, with no
+duplicate Random request: a pointer-position attempt closed the dialog without
+a request; a rendered pointer attempt and a semantic wait each produced the
+ordinary UI POST with HTTP 200 but no rendered result, error, or replacement;
+the final rendered Name-to-Generate Tab/Enter interaction emitted no request
+and likewise produced no local result.
+
+Every attempt began with a fresh visible Studio registry and profile and
+created Recommended before the required Random step. The Random step therefore
+remains driver-inconclusive, not a rendered product finding. The permitted
+launches are exhausted, so Blank/final modelling, persistence, Play,
+Simulation, Replay, Outcome Library, and Stake Engine Export remain unclaimed.
+No screenshot is retained because this recovery yielded no additional
+successful rendered product state.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery8-full-journey-transcript.txt` | Final exact-SHA fresh-profile rendered-focus recovery observation | `71f3774da58ffd25ba79f70b185f19684a7b7b52cddfac344914c3f4a80526b0` |
