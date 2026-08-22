@@ -129,3 +129,22 @@ error or P0/P1/material-P2 issue was rendered. Completed Blank creation and a
 single saved/reopened project covering every requested editing surface remain
 unreached at the launch limit. See
 `recovery-20260823-attempt2-transcript.txt` for the bounded exact record.
+
+## Focused recovery attempt 3 (2026-08-23)
+
+The retained checksums matched before this invocation and the source checkout
+completed `npm run build-cli`. Four newly isolated Studio/Chromium profiles
+then used only `node ./dist/cli/pokie.js --no-open`. The stable harness recovered
+native-radio and exact-field targeting. It recorded fresh Recommended
+layout/payline, paytable, and bet edits; a literal reel preview; and a generated
+reel with a count, spacing constraint, stack rule, and successful local preview.
+It saved `mode-1` with multiplier 2. A valid Blank project and the generated
+Random project both completed. The fourth fresh profile performed the required
+uncoached Create Project -> Open Play -> New Play session -> Spin path and
+settled a real no-win round. No rendered P0/P1/material-P2 issue appeared.
+
+The full criterion remains incomplete: the free-games mechanics form correctly
+had no eligible scatter in the generated-reel project, so a saved/reopened
+mechanics configuration in the comprehensive edit journey was not reached.
+This remains driver-inconclusive, rather than a product finding. See
+`recovery-20260823-attempt3-transcript.txt` for the compact literal checklist.
