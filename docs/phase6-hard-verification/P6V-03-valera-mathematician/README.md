@@ -1,29 +1,28 @@
 # P6V-03 independent browser rerun — driver inconclusive
 
-Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`.
+Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, which remains
+an ancestor of this evidence checkout. The retained fresh-registry/profile
+proof remains present and truthful.
 
-The retained candidate-bound registry/profile proof remains present and
-truthful: the candidate is an ancestor of this evidence checkout. The candidate
-was built once, then exactly four fresh visible Studio launches used distinct
-HOME/XDG registries and Chrome profiles, all from this source checkout via
-exactly `node ./dist/cli/pokie.js --no-open`.
+This recovery read the complete recorded harness history and used one repaired
+rendered-control harness. Four isolated Studio registries were started from
+this source checkout with exactly `node ./dist/cli/pokie.js --no-open`; every
+browser attempt used a fresh visible Chrome profile. The first start exposed a
+harness-only default-port mistake before Chrome. The next two reached the
+Recommended Valera editor; the single safe retry on the visible Layout tab
+opened its local controls, and the third attempt proved that a fourth payline
+had been added. The fixed interaction wait for a warning was therefore not
+treated as a product finding.
 
-One stable rendered-control harness incorporated every listed earlier repair:
-semantic-prefix tab/action lookup, a single safe retry only when the visible
-Layout tab had not transitioned, literal-editor local preview checks, and a
-native-picker procedure that located the new visible picker window, attempted
-activation, and compared it with the active window before typing. The first
-launch stopped at the unaccepted Layout action; the second exposed the actual
-symbol controls and repaired their labels; the third reached the real picker
-but its title was not required/discoverable; the fourth located the new visible
-picker but Fluxbox left Chrome active (`2098306` requested versus `18874372`
-active). Per the controller contract, no path was typed into an inactive dialog.
+The final fresh rendered pass reached Valera metadata, the fourth payline, the
+normal `N` symbol, and the real `Select PNG` action. Zenity appeared, but the
+harness parsed two visible X window identifiers as one picker identifier.
+`xdotool windowactivate --sync` consequently could not satisfy the required
+active-window equality check; no path was entered and no picker result was
+fabricated. The bounded transcript records this exact host-driver boundary.
 
-The fourth run rendered fresh Recommended metadata, fourth payline, Symbol 1
-Wild, Symbol 2 Scatter, and the Select PNG action before this host-driver
-boundary. No rendered Studio product error, Create Project, Play, Simulation,
-Replay, Outcome Library, or Stake Engine request was observed. The duplicate-
-bet path and downstream persistence remain not reached; this is a driver
-inconclusive result, not a product finding. `ACTION-TRANSCRIPT.txt` is the
-concise record. No profile, generated project/output, raw log, screenshot, or
-automation source is retained.
+No Studio product error, Create Project, Play, Simulation, Replay, Outcome
+Library, or Stake Engine request was observed in this invocation. The
+duplicate-bet and persistence workflow therefore remains not reached. No
+profile, generated project/output tree, raw log, screenshot, or automation
+source is retained.

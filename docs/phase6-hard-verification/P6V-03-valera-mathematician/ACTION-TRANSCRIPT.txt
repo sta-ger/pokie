@@ -1,7 +1,16 @@
-[2026-08-22] Rechecked retained candidate-bound evidence: candidate 1fd51406388799fdcf65873ed9a2674769859cbf remains an ancestor and retained files are present.
-[2026-08-22] Read every bounded harness-history entry; built the candidate once. One stable harness used four new HOME/XDG registries and visible Chrome profiles, each launched exactly as node ./dist/cli/pokie.js --no-open.
-[2026-08-22] Launch 1: rendered Recommended, Valera metadata, then Layout did not make its local transition; no product error.
-[2026-08-22] Launch 2: one safe rendered Layout retry reached Paylines and Add payline. Symbols rendered; the harness corrected its invented Wild/Scatter labels from the visible Symbol 1/2 controls. No product error.
-[2026-08-22] Launch 3: rendered fourth payline, Symbol 1 Wild, Symbol 2 Scatter, and real Select PNG. The new picker had no discoverable title; no Studio error or request beyond the picker action.
-[2026-08-22] Launch 4: repeated the rendered model path. The stable picker procedure found new visible X window 2098306, activated it, then verified the active X window was still Chrome 18874372. No inactive-dialog typing occurred.
-[2026-08-22] Four-launch allowance exhausted. No Create Project, duplicate-bet Play, ordinary win/feature, Simulation, Replay, Outcome Library, or Stake Engine request was emitted. Result: driver-inconclusive; no generated runtime material, browser profile, raw log, automation source, or screenshot retained.
+[2026-08-22T00:27:09.441Z] Fresh isolated HOME/XDG registry and Chrome profile prepared for candidate ancestor 1fd51406388799fdcf65873ed9a2674769859cbf.
+[2026-08-22T00:27:23.132Z] CLICK rendered BUTTON "New Blueprint"
+[2026-08-22T00:27:23.246Z] CLICK rendered BUTTON "Recommended"
+[2026-08-22T00:27:23.296Z] INPUT rendered "Game id" = "valera-mathematician"
+[2026-08-22T00:27:23.318Z] INPUT rendered "Game name" = "Valera Mathematician"
+[2026-08-22T00:27:23.326Z] CLICK rendered BUTTON "Layout"
+[2026-08-22T00:27:28.334Z] Layout remained visibly available without its local panel; one safe idempotent rendered retry.
+[2026-08-22T00:27:28.444Z] CLICK rendered BUTTON "Layout\nvalid"
+[2026-08-22T00:27:28.569Z] CLICK rendered BUTTON "Add payline"
+[2026-08-22T00:27:28.582Z] MODELLING: fourth payline rendered in the Layout editor.
+[2026-08-22T00:27:28.676Z] CLICK rendered BUTTON "Symbols"
+[2026-08-22T00:27:28.731Z] INPUT rendered "New symbol id" = "N"
+[2026-08-22T00:27:28.854Z] CLICK rendered BUTTON "Add symbol"
+[2026-08-22T00:27:28.911Z] CLICK rendered BUTTON "Select PNG"
+[2026-08-22T00:27:30.449Z] HARNESS_FAILURE Native picker focus contract failed: requested 4194307
+18874372, active 4194307
