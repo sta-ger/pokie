@@ -244,3 +244,28 @@ no screenshot is retained because no additional success was rendered.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery4-full-journey-transcript.txt` | Fourth fresh-registry/profile current-SHA, rendered-control coordinate recovery | `b2b99cd4b7c5ed3707ecb1fc26b308015fb3d46a04e1f431ef4a57bbd98204f6` |
+
+## Stabilized current-SHA Random recovery (2026-08-22)
+
+The retained current-SHA evidence and checksums were rechecked before this
+fresh-profile recovery. The repaired persistent harness stabilized the rendered
+control after scrolling, used complete pointer press/release events, and then
+performed one visible **Generate** action in a new disposable Studio
+HOME/registry and Chromium profile. Studio was launched only with
+`node ./dist/cli/pokie.js --no-open` from this checkout.
+
+The rendered action issued `POST /api/home/blueprints/random` with HTTP 200,
+but the modal closed while the underlying draft remained `starter-slot` /
+`Starter Slot`. No generated result, pending state, local product error, or
+browser diagnostic rendered. The action was not duplicated. The later
+keyboard/native probes did not emit a UI request and are deliberately not
+retained as product evidence. With the invocation launch allowance exhausted,
+Random replacement and every downstream modelling, persistence, Play,
+Simulation, Replay, Outcome Library, and Stake Engine workflow remain
+unreached. This is driver-inconclusive under the controller contract, not a
+rendered product finding. No screenshot is retained because no additional
+successful rendered state appeared.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery5-full-journey-transcript.txt` | Exact-SHA fresh-profile stabilized rendered Random recovery | `91b8b9c7fde93a4762a8227d07a6c928843592dca839843ea9d92d9456145788` |
