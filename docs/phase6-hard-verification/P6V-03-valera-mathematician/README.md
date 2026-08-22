@@ -1,21 +1,25 @@
-# P6V-03 independent browser rerun — selector inconclusive
+# P6V-03 independent browser rerun — driver inconclusive
 
 Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, an ancestor
 of this evidence-only checkout. The retained fresh-registry/profile proof and
 its screenshot remain present and truthful.
 
-This focused recovery read every retained harness failure before launching.
-Four fresh, isolated HOME/XDG registries and Chrome profiles used the public
-source command exactly `node ./dist/cli/pokie.js --no-open`. The first launch
-repaired the command's dynamically assigned address. The remaining fresh runs
-rendered New Blueprint → Recommended, but their field-readiness selector could
-not establish the associated `Game id` control. Studio rendered no product
-error and no Create Project request occurred.
+This recovery read the full retained failure history, built the candidate once,
+and used the public source command exactly `node ./dist/cli/pokie.js --no-open`
+for four new isolated HOME/XDG registries and Chrome profiles. A single
+visible-control harness repaired its labelled-field focus handling: it reached
+Recommended, committed Game id/name/description, added a payline and normal
+symbol, then exposed the actual Reel generation choices. The final rendered
+state showed `Reel strips` as the initial mode and `Per-reel (Reel Strip
+Modeler)` as the needed choice; the harness had assumed the next Modeler
+control existed before choosing that mode. Its final same-launch continuation
+then stopped at the unsaved-draft dialog. No rendered Studio/product error was
+observed and no Create Project request occurred.
 
-The launch allowance is exhausted. Valera persistence, duplicate-bet
+The permitted launch allowance is exhausted. Valera persistence, duplicate-bet
 Play/win/feature, Simulation, Replay, Outcome Library, and Stake Engine remain
 unassessed. No generated project/output tree, browser profile, raw log, PID
-file, screenshot, or automation source is retained.
+file, or automation source is retained.
 
 | Retained proof | SHA-256 |
 | --- | --- |
