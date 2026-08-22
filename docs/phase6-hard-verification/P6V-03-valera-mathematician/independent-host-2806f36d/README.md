@@ -88,3 +88,23 @@ saved and is not a product finding.
 No P0, P1, or material P2 was rendered.  Because saved generated-reel,
 paytable, bets/modes, mechanics, and the required uncoached journey remain
 uncompleted, this independent host result remains inconclusive.
+
+## Focused recovery attempt 1 (2026-08-23)
+
+The retained files and listed SHA-256 values above were rechecked before this
+attempt. Three newly isolated profiles launched this source checkout only with
+`node ./dist/cli/pokie.js --no-open`. A visible Recommended project saved a
+Layout change to 4 rows and 4 paylines. Its rendered per-reel editor reached
+Literal and Generated modes; Generated rendered count, locked-position,
+spacing/occurrence, and stack-rule controls. A separate fresh profile created
+the generated Random `Royal Grand Stampede` project and exercised Blank through
+its visible required-field validation. The final fresh profile performed the
+uncoached, one-sentence path Create Project → Open Play → New Play session →
+Spin and rendered a settled no-win round.
+
+No rendered product error, P0, P1, or material P2 was observed. The harness's
+ambiguous form-field target prevented completing and saving a generated reel or
+the minimal Blank paytable in the same bounded recovery; paytable, bets/modes,
+and mechanics edits therefore remain unverified. The precise compact record is
+`recovery-20260823-attempt1-transcript.txt`; this remains a driver-inconclusive
+result rather than a product finding.
