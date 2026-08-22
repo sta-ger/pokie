@@ -111,3 +111,30 @@ element. The permitted safe retry was therefore not emitted. Neither run rendere
 a Studio error or Create Project request. This is recurring driver-inconclusive
 evidence, not a product finding; all temporary profile, registry, raw-log,
 generated-output, and automation files were removed.
+
+## Corrected focused recovery
+
+The retained candidate ancestry and screenshot checksum were rechecked, then
+`npm run build-cli` rebuilt the exact unchanged product candidate. One stable
+headed harness made four new isolated HOME/XDG registry and Chrome-profile
+launches, each using exactly `node ./dist/cli/pokie.js --no-open` from this
+checkout. It repaired the former foreground/input and literal-step selector
+causes: the Game id committed after one safe physical-keyboard retry; the
+active native PNG picker was activated and verified before typing; and the
+literal workflow used the rendered `Apply Commit or discard` control followed
+by the exact local `Apply` action.
+
+Launches 2–4 reached all reachable P6V-03 modelling controls: fourth payline,
+normal symbol with artwork, Wild and Scatter, non-empty Literal Reel 1 Preview
+and apply, and rendered duplicate available bet `2`. The first post-repair
+launch stopped before Create Project at a now-corrected selector. The next two
+emitted Create Project once each, but neither showed a Workspace nor a rendered
+local product error within the bounded semantic wait. The fourth waited for the
+rendered `Valid — no issues found.` precondition and never received it, so it
+did not issue another Create Project request. These are readiness/driver
+observations, not product findings. Persistence, Play, Simulation, Replay,
+Outcome Library, and Stake Engine remain unreached.
+
+No generated project/output tree, Chrome profile, registry, raw log, PID file,
+or automation source is retained. The evidence directory remains three files
+and under 110 KiB.
