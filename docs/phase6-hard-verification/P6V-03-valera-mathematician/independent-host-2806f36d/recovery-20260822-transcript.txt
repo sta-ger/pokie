@@ -1,0 +1,24 @@
+P6V-03 focused host recovery — 2026-08-22
+Candidate: 2806f36d1d08126bfc40572e16fde6d6fe0359c0
+Launch command: node ./dist/cli/pokie.js --no-open
+Freshness: each launch used a new XDG_CONFIG_HOME and Chromium user-data dir.
+
+Launch 1: Studio rendered the fresh Design Game surface.  The non-PTY harness
+stdin was unavailable; no product error appeared.  Repaired current.mjs in place.
+
+Launch 2: confirmed a managed Starter Slot workspace from the visible Create
+Project action; it exposed the Game Model summary.  This run established the
+required PTY and serialized-command repairs.
+
+Launch 3: fresh visible New Blueprint flow generated Random “Royal Grand
+Stampede” from seed 20260815; Use this blueprint replaced the draft and Create
+Project opened its managed workspace.  Blank visibly replaced the draft and
+rendered its expected four missing-required-value validation errors.
+
+Launch 4 (uncoached): a fresh user-level Create Project action opened Starter
+Slot, then Game Model exposed layout, symbols, reels, paytable, bets/modes, and
+mechanics summaries with local Edit actions.  No rendered error occurred.
+
+Outcome: no P0/P1/material-P2 rendered product finding.  The launch budget ended
+before all remaining persisted checklist edits could be performed; status is
+driver-inconclusive, not a product finding.

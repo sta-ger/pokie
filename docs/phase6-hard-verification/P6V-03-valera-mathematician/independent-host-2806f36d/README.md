@@ -38,3 +38,29 @@ Representative rendered screenshots:
 - `symbols-wild-scatter.png` — SHA-256 `8ba5d9c394132f717f4519da44c22d4ef3cdb0310c352457eadcedc6b21a526b`
 - `play-round.png` — SHA-256 `08caab6959ad4a1fbb0a1e6823b6e59f05030011ad29598e928fb8b786a9496d`
 - `outcome-stake-export.png` — SHA-256 `245ab5ee63117abd4ec6f7e951b5a2571714885fb1ed0bfe205fd33d8230abd8`
+
+## Focused harness-recovery addendum (2026-08-22)
+
+The candidate source checkout was rebuilt, then every Studio run used exactly
+`node ./dist/cli/pokie.js --no-open` with a new `XDG_CONFIG_HOME` and Chromium
+profile.  The first recovery launch rendered the fresh Design Game page but its
+non-PTY command channel was closed; it produced no rendered application error.
+The harness was repaired in place to use a PTY, serialized its rendered actions,
+and retained semantic-prefix controls plus focused native-picker support.
+
+In the subsequent fresh rendered preflight, direct Create Project opened the
+recommended Starter Slot workspace.  The visible New Blueprint flow generated
+and used the Random blueprint `Royal Grand Stampede` (seed `20260815`) and then
+created its workspace.  The visible Blank selection replaced the current
+blueprint and correctly rendered four prerequisite validation errors for its
+empty id, name, symbols, and paytable; it cannot yet be created until those
+user-editable required values are supplied.  The final fresh-profile, uncoached
+one-sentence exploration created Starter Slot from the sole obvious Create
+Project control and reached the visible Game Model overview and its local Edit
+actions without documentation or source inspection.
+
+This recovery consumed its four permitted public-workflow launches.  No rendered
+product failure was observed.  It did not complete the remaining saved
+layout/payline, generated-reel, paytable, bets/modes, and mechanics edits, so the
+full P6V-03 journey remains driver-inconclusive.  See
+`recovery-20260822-transcript.txt` for the compact action record.
