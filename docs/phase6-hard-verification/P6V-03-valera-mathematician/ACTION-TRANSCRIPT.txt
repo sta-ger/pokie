@@ -19,3 +19,11 @@
 [2026-08-22T04:08:32.361Z] CLICK "Add symbol to reel 1"
 [2026-08-22T04:08:32.403Z] CLICK "Check & preview"
 [2026-08-22T04:08:32.574Z] SELECTOR STOP: local Literal Preview had succeeded; its next rendered accessible control was `Apply Commit or discard`, not the harness's assumed `Done`. No Create Project action or product error was rendered.
+[2026-08-22T04:30:03.134Z] FOCUSED RECOVERY START: fresh source-launched Studio and visible fresh-profile Chrome on the rebuilt candidate.
+[2026-08-22T04:30:03.166Z] CLICK "New Blueprint"
+[2026-08-22T04:30:03.191Z] CLICK "Recommended"
+[2026-08-22T04:30:03.328Z] INPUT Game id
+[2026-08-22T04:30:03.356Z] INPUT Game name
+[2026-08-22T04:30:03.376Z] INPUT Description (optional)
+[2026-08-22T04:30:03.383Z] CLICK "Layout"
+[2026-08-22T04:30:33.383Z] DRIVER/READINESS STOP: bounded local Paylines-panel state did not render after the visible Layout click; no rendered Studio/product error, Create Project action, or downstream request occurred.
