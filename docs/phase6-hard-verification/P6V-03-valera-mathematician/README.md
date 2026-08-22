@@ -132,3 +132,16 @@ All four reached the complete retained entry/model path through native artwork i
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-92bd710-attempt7-stack-recovery-transcript.txt` | Concise four-launch exact-SHA stack-transition recovery record | `905794277835091617568c2351858810f8546ddd57ad5d222778ea5fb781d4a1` |
+
+## Focused full rendered journey attempt 8 (2026-08-22)
+
+The repaired retained harness used four new isolated exact-candidate Studio registries and Chrome profiles; every rendered an empty Home, and all launches used only `node ./dist/cli/pokie.js --no-open` from this checkout. The final fresh profile completed the literal and generated reel paths, stack and common constraints, generated Preview/Apply, project creation, persisted Bets & Modes and free-game mechanics, ordinary Play win, configured-feature Play, and 1,000-round Simulation. The rendered Replay screen had no Inspect/Reproduce action, and the rendered Outcome Library action returned no local result or error after its 120-second semantic wait despite its one public UI request returning 200. It was not repeated; Stake Engine Export and close/reopen persistence were therefore not reached. No rendered product error or P0/P1/material-P2 product defect was observed.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-92bd710-attempt8-full-journey-transcript.txt` | Bounded exact-SHA rendered journey record | `d82869ded10548778c36c8da46ab52c71457724c11cd241b7f357afbda357f2c` |
+| `candidate-92bd710-attempt8-generated-reel.png` | Rendered generated-reel success | `d2413fa0733eea14ab5fb2618fe0022b7b430da23b12a228a6353214f1335a1e` |
+| `candidate-92bd710-attempt8-ordinary-win.png` | Rendered ordinary Play win | `49919fa808e00ff4dbb46adafc492f61513a4149165193d1852657fb904161d6` |
+| `candidate-92bd710-attempt8-configured-feature.png` | Rendered free-games feature event | `0f7073c7ecd0a297a42e7399e0c508e12d0f87215b97d0e5e3725b24600db175` |
+| `candidate-92bd710-attempt8-simulation.png` | Rendered Simulation results | `606dc3d4bcb1836fbf7dc1f17506bdb9701f4507b148c8f0563e0ce6324a469f` |
+| `candidate-92bd710-attempt8-replay.png` | Rendered Replay surface, with no available inspect/reproduce control | `f003c0d6db1b14045ce78eabade4558c335811fc11a903ada2daeab8267dc045` |

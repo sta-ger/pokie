@@ -1,0 +1,11 @@
+P6V-03 focused full rendered journey — 2026-08-22
+Candidate SHA: 92bd710ee5fc03e376134f7224eeba465e053a0e
+Studio command: node ./dist/cli/pokie.js --no-open
+
+The harness was repaired in place for all prior driver causes before these four permitted launches: it scrolls a rendered target into the visible viewport before pointer input, proves Mantine MultiSelect changes through its local visible pill, and distinguishes a valid-with-warning model from a rendered error. Each launch used a distinct disposable Studio HOME/registry and Chrome profile and rendered an empty Studio Home.
+
+The final fresh profile completed Recommended, Random (seed 20260815; Generated card and Use), Blank, then Recommended. It entered Valera Mathematician; rendered Layout, Paylines, Symbols, Reels, Paytable, and Bets; marked A wild and K scatter; imported A artwork through the focused native picker; added and previewed literal A; selected Generated/Weights; added A=2; auto-set length 2; added a maximum-consecutive constraint and A stack rule; and rendered Generated successfully. It applied the generated reel, created the project, and saved rendered Bets & Modes and scatter-triggered free games (K, 3 matches, 5 awards).
+
+Rendered workspace successes: Find any win completed; Find free games completed with a freeGamesTriggered feature event; 1,000-round Simulation rendered RTP 775.20%; the Replay tab rendered. The Replay screen exposed no rendered Inspect or Reproduce action, so no successful replay result is claimed.
+
+The public Build/Export action Generate exact outcome library was clicked once. Its ordinary Studio request returned 200, but no local rendered outcome result, pending state, or product error appeared during the bounded 120-second semantic wait. It was not repeated. Stake Engine Export and close/reopen persistence were not reached because they depend on a confirmed Outcome Library result. This is readiness-inconclusive, not a product finding.
