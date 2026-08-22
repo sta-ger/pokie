@@ -4,6 +4,7 @@ import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFr
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
 import type {RoundArtifactProvenance} from "../../artifact/RoundArtifactProvenance.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
+import {determineStakeAmount} from "../../server/session/determineStakeAmount.js";
 import {SeededWeightedOutcomeRandomSource} from "../../pregenerated/SeededWeightedOutcomeRandomSource.js";
 import type {ValidationRule} from "../../validation/ValidationRule.js";
 import {buildWeightedOutcomeLibrary, type WeightedOutcomeInput} from "../buildWeightedOutcomeLibrary.js";
@@ -282,13 +283,17 @@ export async function *streamExactWeightedOutcomes(
                     `(bet ${session.getBet()} > credits ${session.getCreditsAmount()}); it must return a session with enough credits for one round.`,
             );
         }
+        // The stake belongs to the paid entry spin. A free-games session reports the stake for its
+        // *next* spin, which becomes zero immediately after this spin awards free games, so capture it
+        // before play() changes that state and pass it through to the artifact explicitly.
+        const stake = options.stake ?? determineStakeAmount(session, session.getBet());
         session.play();
 
         const artifact = buildRoundArtifactFromSession(session, {
             roundId: id,
             provenance,
             ...(options.betMode !== undefined ? {betMode: options.betMode} : {}),
-            ...(options.stake !== undefined ? {stake: options.stake} : {}),
+            stake,
         });
 
         yield {id, weight: toSafeWeightNumber(entry.weight, id), artifact};

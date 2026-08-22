@@ -442,9 +442,8 @@ describe("generateExactWeightedOutcomeLibrary", () => {
     // Integration: proves the public producer works against a real "pokie build" package -- loaded
     // exactly the way loadPokieGame() would, via require() of its built dist/index.js -- not just a
     // hand-built test double (see GenerateTestFixtures.ts). renderBuiltGameModule.ts wires
-    // createExactEnumerationSession() onto every generated finite video-slot package (any blueprint
-    // without mechanics.freeGames), driving the exact same createConfig()/VideoSlotSession
-    // construction createSession() itself uses.
+    // createExactEnumerationSession() onto every generated package with finite paid-spin reel stops,
+    // driving the exact same createSession() construction its live paid spins use.
     describe("against a real generated \"pokie build\" package", () => {
         let cwd: string;
 
@@ -512,37 +511,34 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             expect(winners[0].artifact.provenance.pokieVersion).toBe("1.3.0");
         });
 
-        it("still fails closed with \"weighted-outcome-library-generation-unsupported\" for a real generated package whose mechanic isn't finite reel-enumerable (mechanics.freeGames)", async () => {
+        it("enumerates a real generated free-games entry spin and preserves its feature trigger", async () => {
             const blueprint: GameBlueprint = {
                 manifest: {id: "exact-enum-freegames-slot", name: "Exact Enum Free Games Slot", version: "1.0.0"},
                 reels: 3,
-                rows: 3,
-                symbols: ["A", "B", "S"],
+                rows: 1,
+                symbols: ["S"],
                 scatters: ["S"],
-                paytable: {A: {3: 5}, B: {3: 2}, S: {3: 2}},
+                paytable: {S: {3: 2}},
                 mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 10}}},
                 reelStrips: [
-                    ["A", "A", "A"],
-                    ["A", "A", "A"],
-                    ["A", "A", "A"],
+                    ["S"],
+                    ["S"],
+                    ["S"],
                 ],
             };
             const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const game = require(path.join(result.projectRoot, "dist", "index.js")) as PokieGame;
 
-            expect(game.createExactEnumerationSession).toBeUndefined();
+            expect(typeof game.createExactEnumerationSession).toBe("function");
 
-            await expect(generateExactWeightedOutcomeLibrary({libraryId: "freegames-lib", game, pokieVersion: "1.3.0"})).rejects.toMatchObject({
-                name: "WeightedOutcomeLibraryGenerationError",
-            });
+            const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({libraryId: "freegames-lib", game, pokieVersion: "1.3.0"});
 
-            try {
-                await generateExactWeightedOutcomeLibrary({libraryId: "freegames-lib", game, pokieVersion: "1.3.0"});
-                fail("expected generation to reject");
-            } catch (error) {
-                expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-unsupported");
-            }
+            expect(diagnostics.strategy).toBe("exact");
+            expect(diagnostics.totalOutcomeSpaceSize).toBe(1);
+            expect(library.outcomes).toHaveLength(1);
+            expect(library.outcomes[0].artifact.stake).toBeGreaterThan(0);
+            expect(library.outcomes[0].artifact.featureEvents).toEqual([{type: "freeGamesTriggered", data: {count: 10}}]);
         });
     });
 });
