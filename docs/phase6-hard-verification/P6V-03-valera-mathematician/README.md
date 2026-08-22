@@ -33,6 +33,20 @@ inconclusive boundary, not a product finding. No Create Project or downstream
 request was emitted in that run, and the temporary profile, registry, logs, and
 automation were removed.
 
+## Final focused recovery
+
+The retained checksum and candidate ancestry were rechecked before this recovery.
+One stable headed harness then used four fresh registry/profile launches of exactly
+`node ./dist/cli/pokie.js --no-open`. All four reached rendered New Blueprint →
+Recommended. The first produced a CDP character-parameter driver error; the next
+two tried the repaired per-character CDP and verified-active visible-Chrome keyboard
+paths, respectively. The last rendered run recorded that the Game name input never
+received focus (`active: ""`) and its visible value remained `Starter Slot` after
+the one safe idempotent retry. No rendered Studio/product error, Create Project
+request, or downstream workflow action occurred. The allowance is exhausted, so
+this remains driver-inconclusive; no temporary profile, registry, raw log, or
+automation source is retained as evidence.
+
 | Retained proof | SHA-256 |
 | --- | --- |
 | `workspace-and-persistence.png` (103,158 bytes; prior Workspace transition, rendered `Starter Slot` identity) | `645918afbbc2240ac3b8b427736848ea5cc81246137e179861e05cacd71c9273` |

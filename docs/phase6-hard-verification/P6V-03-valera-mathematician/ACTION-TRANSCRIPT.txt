@@ -27,3 +27,8 @@
 [2026-08-22T04:30:03.376Z] INPUT Description (optional)
 [2026-08-22T04:30:03.383Z] CLICK "Layout"
 [2026-08-22T04:30:33.383Z] DRIVER/READINESS STOP: bounded local Paylines-panel state did not render after the visible Layout click; no rendered Studio/product error, Create Project action, or downstream request occurred.
+[2026-08-22T04:38:43Z] FINAL RECOVERY launch 1: fresh registry/profile, exact source Studio command, rendered New Blueprint → Recommended; the first Game name text-insertion retry exposed a CDP character-parameter driver error before any product action.
+[2026-08-22T04:39:12Z] FINAL RECOVERY launch 2: the same harness used per-character rendered CDP input; Game name remained `Starter Slot` after its one safe retry, with no Studio error or Create Project request.
+[2026-08-22T04:40:31Z] FINAL RECOVERY launch 3: the same harness used verified-active visible-Chrome host keyboard input after the rendered attempt; Game name remained `Starter Slot`, with no Studio error or Create Project request.
+[2026-08-22T04:41:54Z] FINAL RECOVERY launch 4: direct rendered-control diagnostics showed `active: ""`; Game name remained `Starter Slot` after the one safe per-character retry. No rendered Studio/product error, Create Project request, duplicate-bet action, or downstream workflow action occurred.
+[2026-08-22T04:42:13Z] FINAL RECOVERY STOP: four fresh-launch allowance exhausted at the input-driver boundary. Temporary registry/profile, raw logs, and automation were discarded; retained proof remains unchanged.
