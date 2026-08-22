@@ -1,0 +1,31 @@
+P6V-03 focused host recovery attempt 5 — 2026-08-23
+Candidate: 2806f36d1d08126bfc40572e16fde6d6fe0359c0
+
+Preconditions
+- Candidate source had no product-code delta from the candidate SHA; npm run
+  build-cli completed once before Studio.
+- Retained candidate-bound files existed and the three README SHA-256 values
+  matched. No retained passing test or viewport was rerun.
+- Each of three launches used a new XDG_CONFIG_HOME and Chromium profile and
+  exactly: node ./dist/cli/pokie.js --no-open.
+
+Newly reached rendered workflow (launch 3)
+1. Created the fresh Recommended Starter Slot and opened Game Model.
+2. Opened Symbols. The actual rendered controls were labelled “Symbol 1 is
+   wild” and “Symbol 2 is scatter”; selecting them saved A as WILD and K as
+   SCATTER.
+3. Opened Mechanics, selected Add free games, selected K from the rendered
+   Scatter symbol picker, added award match count 3 / free games 10, and saved.
+   Game Model rendered: “Scatter-triggered free games — scatter symbol: K” and
+   “Awards: 3x → 10 free games”.
+4. Closed the project, opened its visible fresh-registry entry, reopened Game
+   Model, and again rendered the same persisted Free Games text.
+
+Retained completed checklist (not rerun)
+- Recommended, Random, and valid Blank creation; layout/payline; literal and
+  generated reels, constraints and stacks; paytable; bets/modes; wild/scatter
+  artwork; Play ordinary/feature behavior; Simulation; Replay; Outcome Library;
+  Stake Engine; and their bounded persistence evidence remain present in this
+  candidate-bound directory.
+
+Outcome: passed. No rendered P0, P1, or material P2 product defect observed.

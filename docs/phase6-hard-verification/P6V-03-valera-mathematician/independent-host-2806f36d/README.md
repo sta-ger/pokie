@@ -166,3 +166,23 @@ not save a new scatter before opening the mechanics editor. No product defect wa
 rendered. The four-launch allowance ended before the repaired transition could be
 rerun, so saved/reopened mechanics remains unreached. See
 `recovery-20260823-attempt4-transcript.txt`.
+
+## Focused recovery attempt 5 (2026-08-23)
+
+Candidate `2806f36d1d08126bfc40572e16fde6d6fe0359c0` was rebuilt once from
+this checkout. Three fresh Studio/Chromium profiles used a new registry and
+profile each and launched only `node ./dist/cli/pokie.js --no-open`.
+The final profile repaired the remaining mechanics path through rendered
+controls: it created Recommended, marked A wild and K scatter using the
+controls' rendered accessible names, selected K from the rendered Free Games
+picker, added the 3-to-10 award, saved, closed, and reopened the registered
+project. The reopened Game Model rendered `Scatter-triggered free games —
+scatter symbol: K` and `Awards: 3x → 10 free games`.
+
+Together with the retained, checksum-verified candidate-bound evidence, this
+reaches every P6V-03 checklist item: Recommended/Random/Blank creation;
+layout/paylines; wild/scatter and artwork; literal/generated reels,
+constraints/stacks; paytable; bets/modes; saved/reopened persistence; Play
+(ordinary and feature); Simulation; Replay; Outcome Library; and Stake Engine.
+No rendered P0, P1, or material P2 defect was observed. The bounded literal
+record is `recovery-20260823-attempt5-transcript.txt`.
