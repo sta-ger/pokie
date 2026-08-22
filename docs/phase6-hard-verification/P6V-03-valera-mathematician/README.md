@@ -317,3 +317,25 @@ rendered.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-891197a-recovery9-full-journey-transcript.txt` | Final exact-SHA fresh-profile rendered-control recovery observation | `e0324f42bd0962f48f3419f08ba49a8fac8df81ffda948974258e49fc9986102` |
+
+## Focused harness recovery 10 — exact candidate (2026-08-22)
+
+The candidate Studio client was rebuilt, then four disposable Studio `HOME`
+registries and Chromium profiles were used only with
+`node ./dist/cli/pokie.js --no-open`. The final fresh-profile run completed
+Recommended, Random (its rendered Generated card and enabled **Use this
+blueprint**), Blank, final Recommended, the Valera identity fields,
+Layout/Symbols/Reels/Paytable/Bets, A wild, K scatter, literal reel input and
+its local **Literal strip** preview, and generated-reel A weight plus a common
+constraint.
+
+After the visible Eligible stack symbols picker accepted A, its next rendered
+Minimum stack length control did not appear. No rendered Studio error,
+browser-console diagnostic, or failed network diagnostic appeared, so this is
+driver-inconclusive rather than a product finding. Generated apply, project
+persistence, Play, Simulation, Replay, Outcome Library, and Stake Engine Export
+were not reached; no P0, P1, or material P2 is asserted.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-891197a-recovery10-full-journey-transcript.txt` | Current-SHA bounded rendered recovery transcript | `0955c33fa2372b86259624bf74efb349c68d548021d12cd23506b62e5d564fd1` |
