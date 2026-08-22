@@ -1,28 +1,27 @@
 # P6V-03 independent browser rerun — driver inconclusive
 
-Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, an
-ancestor of this evidence-only checkout. The retained fresh-registry/profile
-proof and its screenshot remain intact and truthful.
+Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, an ancestor
+of this evidence-only checkout. The retained fresh-registry/profile proof and
+its screenshot remain present and truthful.
 
-This focused recovery read the entire retained failure history, rebuilt the
-candidate once, and made all four permitted fresh, headed Studio launches with
-exactly `node ./dist/cli/pokie.js --no-open`. Each launch used a fresh isolated
-HOME/XDG registry and visible Chrome profile. No product error rendered.
+This focused recovery read the complete retained failure history, rebuilt the
+candidate once, and used the required public source command, exactly
+`node ./dist/cli/pokie.js --no-open`, for fresh headed Studio instances. Each
+visible retry used an isolated HOME/XDG registry and Chrome profile. No rendered
+Studio/product error occurred.
 
-The single stable harness repaired the historic picker, radio, reel-control,
-Home-Projects selection, and readiness issues before launch. It then stopped
-at its shared metadata-input boundary: the rendered labels were found and
-clicked, but neither CDP text input nor verified-active-window host keyboard
-input changed the visible `Game id`/`Game name` values from `starter-slot` /
-`Starter Slot`. The final launch directly read those still-rendered field values
-before its semantic postcondition expired. This is driver evidence, not a
-product finding; no Create Project request was emitted and no downstream
-operation was duplicated.
+The stable harness corrected the earlier labelled-field issue by locating the
+rendered `<input>` rather than its label and, after Recommended was visibly
+settled, tried direct browser keyboard events. The final directly-read rendered
+controls still showed `Game id`=`starter-slot` and `Game name`=`Starter Slot`;
+the target Game name did not appear and its local semantic postcondition timed
+out. Therefore no Create Project action was emitted. This is driver evidence,
+not a product finding.
 
-With the four-launch allowance exhausted, the Valera persistence, duplicate-bet
-Play/win/feature, Simulation, Replay, Outcome Library, and Stake Engine
-portions remain unassessed. No generated project/output tree, profile, raw
-log, PID file, or automation source is retained.
+The allowed recovery launches are exhausted. Valera persistence, duplicate-bet
+Play/win/feature, Simulation, Replay, Outcome Library, and Stake Engine remain
+unassessed. No generated project/output tree, profile, raw log, PID file, or
+automation source is retained.
 
 | Retained proof | SHA-256 |
 | --- | --- |
