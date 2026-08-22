@@ -1,5 +1,7 @@
-[2026-08-22T02:00:11Z] Started the exact source command with fresh isolated HOME/XDG registry and visible Chrome profile.
-[2026-08-22T02:00:12Z] Rendered New Blueprint → Recommended completed.
-[2026-08-22T02:00:13Z] The repaired direct-input driver targeted rendered inputs and sent browser keyboard events for Game name.
-[2026-08-22T02:00:58Z] Direct rendered reads still showed Game id=starter-slot and Game name=Starter Slot; target Game name never appeared before the local semantic wait expired.
-[2026-08-22T02:00:58Z] No Create Project action or rendered product error occurred; downstream workflow was not reached.
+[2026-08-22] Rechecked retained candidate-bound fresh-profile proof: candidate 1fd51406388799fdcf65873ed9a2674769859cbf remains an ancestor; the retained PNG SHA-256 remains 645918afbbc2240ac3b8b427736848ea5cc81246137e179861e05cacd71c9273.
+[2026-08-22] Read all eight bounded harness-failure records before launching one stable visible-control harness.
+[2026-08-22] Launch 1: exact source Studio command with fresh registry/profile reached New Blueprint → Recommended; the harness's initial field lookup omitted associated labels. No product error.
+[2026-08-22] Launch 2: repaired associated-label lookup reached Recommended; its readiness check still addressed the field incorrectly. No Create Project action or product error.
+[2026-08-22] Launch 3: repaired lookup targeted the visible Game id and used verified-active Chrome host keyboard input; its local value postcondition did not settle. No product error.
+[2026-08-22] Launch 4: the same rendered input used CDP key events/insert text; the local value postcondition again did not settle. No Create Project action or product error.
+[2026-08-22] Four-launch allowance exhausted. This is driver-inconclusive; no downstream rendered workflow was reached and no generated material was retained.

@@ -4,24 +4,17 @@ Product candidate: `1fd51406388799fdcf65873ed9a2674769859cbf`, an ancestor
 of this evidence-only checkout. The retained fresh-registry/profile proof and
 its screenshot remain present and truthful.
 
-This focused recovery read the complete retained failure history, rebuilt the
-candidate once, and used the required public source command, exactly
-`node ./dist/cli/pokie.js --no-open`, for fresh headed Studio instances. Each
-visible retry used an isolated HOME/XDG registry and Chrome profile. No rendered
-Studio/product error occurred.
+This recovery read every retained harness failure before launching. Four fresh,
+isolated HOME/XDG registries and Chrome profiles used the public source command
+exactly `node ./dist/cli/pokie.js --no-open`. A single harness repaired the
+labelled-input lookup, then tried both active-window host keyboard input and
+CDP keyboard input against the visible `Game id` control. Each local value
+postcondition timed out before Create Project; Studio rendered no product error.
 
-The stable harness corrected the earlier labelled-field issue by locating the
-rendered `<input>` rather than its label and, after Recommended was visibly
-settled, tried direct browser keyboard events. The final directly-read rendered
-controls still showed `Game id`=`starter-slot` and `Game name`=`Starter Slot`;
-the target Game name did not appear and its local semantic postcondition timed
-out. Therefore no Create Project action was emitted. This is driver evidence,
-not a product finding.
-
-The allowed recovery launches are exhausted. Valera persistence, duplicate-bet
+The launch allowance is exhausted. Valera persistence, duplicate-bet
 Play/win/feature, Simulation, Replay, Outcome Library, and Stake Engine remain
-unassessed. No generated project/output tree, profile, raw log, PID file, or
-automation source is retained.
+unassessed. No generated project/output tree, browser profile, raw log, PID
+file, screenshot, or automation source is retained.
 
 | Retained proof | SHA-256 |
 | --- | --- |
