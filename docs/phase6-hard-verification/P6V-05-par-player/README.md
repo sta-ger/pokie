@@ -27,6 +27,17 @@ mismatch was observed. Therefore physical XLSX export, re-import, semantic compa
 and the dependent exact-companion package/npm-start/Studio-Play/public-client-dev/Replay
 parity matrix were not reached. This is selector-inconclusive, not a product finding.
 
+In the focused recovery rerun, the Stepper binding was repaired to use the rendered
+ordinal/label/description control text. A fresh isolated Studio journey again accepted
+the exact visible `Browse…` action: its local availability request and native-browse
+request were issued, after which Studio visibly rendered its `Server filesystem browser`
+fallback. No native dialog or product error was rendered. Zenity itself is available on
+the controller display, so this is a host/browser-driver inconclusive transition rather
+than evidence of a rendered Studio defect. The required physical native-picker workflow
+could not reach import in that fresh journey; the retained successful pre-Stepper proof
+above remains the newest candidate-bound proof for import, diagnostic, preview, Apply,
+edit, and managed save.
+
 No runtime trees, browser profiles, generated workbooks, screenshots, raw logs, harness
 source, symlinks, or generated output are retained. This README is the sole evidence
 artifact.
