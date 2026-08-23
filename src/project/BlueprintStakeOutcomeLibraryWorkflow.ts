@@ -156,9 +156,13 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         preflight: ArtifactBuildPreflight,
     ): Promise<void> {
         const declaredModes = game.getBetModes?.();
-        // A package without the optional bet-mode contract still has the canonical base runtime.  Do not
-        // pretend that base is selectable, though: only a declared runtime mode is passed to the exact
-        // session selector below.
+        // getBetModes() deliberately exposes both the legacy declarative shape and the explicit runtime
+        // contract.  Only the latter wraps createExactEnumerationSession() in
+        // VideoSlotWithBetModesSession, so selecting a metadata-only mode would fail even for its
+        // harmless base entry.  Keep those declared modes as separately-labelled library outputs, but
+        // do not ask the unwrapped executable session to select one.
+        const hasRuntimeBetModes = declaredModes !== undefined && declaredModes.length > 0 && declaredModes.every((mode) => mode.runtimeType !== undefined);
+        // A package without the optional bet-mode contract still has the canonical base runtime.
         const modes = declaredModes && declaredModes.length > 0 ? declaredModes : [{id: "base"}];
         const generated = await Promise.all(
             modes.map(async (mode) => ({
@@ -169,7 +173,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     pokieVersion: this.pokieVersion,
                     configHash,
                     ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
-                    selectBetMode: declaredModes !== undefined && declaredModes.length > 0,
+                    selectBetMode: hasRuntimeBetModes,
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});

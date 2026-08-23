@@ -27,6 +27,9 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
                 paytable: {A: {2: 1, 3: 2}},
                 reelStrips: [["A"], ["A"], ["A"]],
                 availableBets: [1],
+                // Studio's basic Bets & Modes editor can save this legacy declarative mode without
+                // opting into runtime selection. Blueprint -> Outcome/Stake must still build it.
+                betModes: [{id: "base", isDefault: true, targetRtp: 0.96}],
             }),
         );
         const blueprintProject: PokieProject = {
@@ -45,6 +48,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
             const manifestBeforeStake = fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8");
 
             expect(outcome).toEqual({project: expect.objectContaining({type: "outcomeLibrary", rootPath: outcomeDir}), reused: false});
+            expect(JSON.parse(manifestBeforeStake).modes).toEqual([expect.objectContaining({modeName: "base", betMode: "base"})]);
 
             const stake = await registry.build("stakeAdapter", blueprintProject, stakeDir);
 
