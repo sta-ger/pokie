@@ -103,3 +103,28 @@ claimed.  Every terminal UI still rendered **Valid — no issues found**, with
 no Studio error, browser error, or rendered failed request.  No generated
 profile, registry, output, full log, screenshot, or harness source is retained
 in the evidence tree.
+
+## Focused harness recovery closeout, 2026-08-23
+
+Four final fresh isolated HOME/XDG-registry and Chrome-profile launches ran the
+same repaired persistent harness with only
+`node ./dist/cli/pokie.js --no-open` from this checkout. The exact candidate
+remains `940d5f48c62ff4ebb906aaf488bad8158ac5e685` (this evidence-only commit
+is its descendant).
+
+The last three launches explicitly rendered and confirmed: payline 1/reel 1
+row `2`; `A ×3` payout `9`; bet 1 `3`; a wild role, scatter role, and focused
+native PNG artwork selection (the rendered **Change** control); and a
+non-empty literal reel containing `A` whose local **Literal strip** Preview
+appeared. The next rendered generated-reel transition was also confirmed from
+Counts to **Weights** by the newly rendered local **Length** control.
+
+The bounded driver then could not confirm selecting the visible `A` option in
+the generated reel's Mantine **Symbol** picker: its search input clears after
+the rendered option acceptance, while neither picker-chip confirmation used by
+the repaired harness appeared. No local Studio error, browser error, failed
+request, or product error rendered. Replay export, workspace outcomes, and
+close/reopen persistence consequently remain unclaimed; no duplicate
+non-idempotent action was issued. Temporary profiles, registries, generated
+projects, full logs, harness source, and terminal screenshots remain outside
+the evidence tree.
