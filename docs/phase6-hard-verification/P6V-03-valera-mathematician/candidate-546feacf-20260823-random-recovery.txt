@@ -94,3 +94,23 @@ committed):
   a6f315a6ec919d40694a7596fe06a36da3c57ef220c4dcc196b6d5850686eeac  run-2026-08-23T04-47-03-528Z/transcript.txt
   ab2b50c0fc1b4d1cfd2bf302181da222d8d538ef253afb1e04ec9c1690002b07  run-2026-08-23T04-48-01-505Z/transcript.txt
   1391a008663a2babb6bb64b9496987090d3c5130f72525246c37ad2a71b29916  run-2026-08-23T04-48-43-260Z/transcript.txt
+
+Focused harness-recovery rerun — 04:59
+
+One new isolated HOME/XDG registry and Chromium profile launched only
+`node ./dist/cli/pokie.js --no-open` from this checkout. It rendered
+Recommended replacement, the Random form, its default seed, and the specific
+enabled **Generate** control. One focus-verified physical click produced
+`POST /api/home/blueprints/random`; the rendered-browser network observer
+recorded HTTP 200. The Random modal then disappeared, but no local generated
+card, enabled **Use this blueprint**, pending state, or rendered error appeared;
+the remaining rendered draft was the earlier Recommended model.
+
+This does not prove Random replacement, so Blank and the downstream literal,
+persistence, Play, Simulation, Replay/export, Outcome Library, and Stake Engine
+work remain not reached. Per the verification contract, the absent local
+semantic result without a rendered product error is readiness-inconclusive, not
+a product finding.
+
+Controller-owned raw transcript (not committed):
+  5dfdac7fd0561c46d3e0d96fb7b991b0a08a9ddced97833b4fd1600929fdf572  run-2026-08-23T04-59-38-772Z/transcript.txt
