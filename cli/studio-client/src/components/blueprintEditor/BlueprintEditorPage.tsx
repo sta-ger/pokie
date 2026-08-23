@@ -1012,6 +1012,7 @@ export function BlueprintEditorPage({
             blueprint={blueprint}
             mutate={mutateBlueprint}
             drafts={editor.drafts}
+            modeDrafts={editor.modeDrafts}
             revision={revision}
             validationView={validationView}
         />
@@ -1023,7 +1024,7 @@ export function BlueprintEditorPage({
             <BetsList blueprint={blueprint} mutate={mutateBlueprint} />
             <PaylinesEditor blueprint={blueprint} mutate={mutateBlueprint} />
             <PaytableEditor blueprint={blueprint} mutate={mutateBlueprint} />
-            <ReelGenerationModeSelector blueprint={blueprint} mutate={mutateBlueprint} drafts={editor.drafts} revision={revision} />
+            <ReelGenerationModeSelector blueprint={blueprint} mutate={mutateBlueprint} drafts={editor.drafts} modeDrafts={editor.modeDrafts} revision={revision} />
         </div>
     );
 

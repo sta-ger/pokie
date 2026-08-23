@@ -72,6 +72,29 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
     });
 
+    it("keeps every literal reel strip when rendered controls switch to Symbol weights and back", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/blueprints/validate") {
+                return jsonResponse({status: "ok", warnings: []});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+        await user.click(await screen.findByRole("tab", {name: /Reels/}));
+        await user.click(screen.getByRole("radio", {name: "Symbol weights"}));
+        await user.click(screen.getByRole("radio", {name: "Reel strips"}));
+
+        expect(screen.getAllByLabelText(/Reel \d symbol 1/)).toHaveLength(5);
+        expect(screen.getByLabelText("Reel 1 symbol 1")).toHaveValue("A");
+        expect(screen.getByLabelText("Reel 2 symbol 1")).toHaveValue("A");
+        expect(screen.getByLabelText("Reel 3 symbol 1")).toHaveValue("K");
+        expect(screen.getByLabelText("Reel 4 symbol 1")).toHaveValue("K");
+        expect(screen.getByLabelText("Reel 5 symbol 1")).toHaveValue("Q");
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
+    });
+
     it("edits a literal reel's strip as a local draft, and only Apply commits it to the blueprint", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));

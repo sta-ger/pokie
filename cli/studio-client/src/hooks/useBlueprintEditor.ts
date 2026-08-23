@@ -6,10 +6,11 @@ import {
     withFieldUpdate,
     type BlueprintEditorState,
 } from "../domain/blueprintEditorState";
-import type {ReelStripGenerationDrafts} from "../domain/blueprintFormOps";
+import type {ReelGenerationModeDrafts, ReelStripGenerationDrafts} from "../domain/blueprintFormOps";
 
 export type BlueprintMutate = (mutate: (blueprint: Record<string, unknown>) => void) => void;
 export type ReelStripGenerationDraftsRef = RefObject<ReelStripGenerationDrafts>;
+export type ReelGenerationModeDraftsRef = RefObject<ReelGenerationModeDrafts>;
 
 // Owns the Blueprint Editor's one BlueprintEditorState (ported unchanged) for the lifetime of the page.
 //
@@ -39,6 +40,7 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
     const stateRef = useRef(state);
     const [formGeneration, setFormGeneration] = useState(0);
     const draftsRef = useRef<ReelStripGenerationDrafts>(new Map());
+    const modeDraftsRef = useRef<ReelGenerationModeDrafts>({});
 
     const mutate: BlueprintMutate = useCallback((fn) => {
         const next = withFieldUpdate(stateRef.current, fn);
@@ -48,6 +50,7 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
 
     const newBlueprint = useCallback(() => {
         draftsRef.current.clear();
+        modeDraftsRef.current = {};
         const next = createEmptyBlueprintEditorState(stateRef.current.revision);
         stateRef.current = next;
         setState(next);
@@ -56,6 +59,7 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
 
     const loadFrom = useCallback((blueprint: unknown) => {
         draftsRef.current.clear();
+        modeDraftsRef.current = {};
         const next = loadBlueprintEditorState(blueprint, stateRef.current.revision);
         stateRef.current = next;
         setState(next);
@@ -79,6 +83,7 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
                 // reel's literal<->generated/counts<->weights memory from the *old* blueprint could
                 // resurrect via a type/source toggle against the new one (same reelIndex, unrelated data).
                 draftsRef.current.clear();
+                modeDraftsRef.current = {};
                 setFormGeneration((g) => g + 1);
             }
         },
@@ -87,5 +92,5 @@ export function useBlueprintEditor(initialBlueprint?: Record<string, unknown>) {
 
     const getCurrentState = useCallback(() => stateRef.current, []);
 
-    return {state, formGeneration, mutate, newBlueprint, loadFrom, applyJson, getCurrentState, drafts: draftsRef};
+    return {state, formGeneration, mutate, newBlueprint, loadFrom, applyJson, getCurrentState, drafts: draftsRef, modeDrafts: modeDraftsRef};
 }

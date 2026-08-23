@@ -18,7 +18,7 @@ import type {
 } from "../../api/types";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {classifyIssuesBySection, crossFieldOnly, type BlueprintSectionId} from "../../domain/interpret/BlueprintSections";
-import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {BetsList} from "../blueprintEditor/BetsList";
 import {BetModesEditor} from "../blueprintEditor/BetModesEditor";
 import {FreeGamesFieldset} from "../blueprintEditor/FreeGamesFieldset";
@@ -74,6 +74,7 @@ export type GameModelEditController = {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
     drafts: ReelStripGenerationDraftsRef;
+    modeDrafts: ReelGenerationModeDraftsRef;
     revision: number;
 };
 
@@ -798,7 +799,7 @@ export function GameModelSections({
                 {editingReels && edit ? (
                     <>
                         <SectionValidationIssues id="reels" edit={edit} />
-                        <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} revision={edit.revision} />
+                        <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} />
                     </>
                 ) : (
                     <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} />

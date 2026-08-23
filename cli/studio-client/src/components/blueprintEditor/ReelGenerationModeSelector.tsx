@@ -1,6 +1,6 @@
 import {Group, Radio, Text} from "@mantine/core";
 import {getReelGenerationMode, setReelGenerationMode, type ReelGenerationMode} from "../../domain/blueprintFormOps";
-import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {PageSection} from "../common/PageSection";
 import {ReelStripGenerationEditor} from "./ReelStripGenerationEditor";
 import {ReelStripsEditor} from "./ReelStripsEditor";
@@ -10,11 +10,13 @@ export function ReelGenerationModeSelector({
     blueprint,
     mutate,
     drafts,
+    modeDrafts,
     revision,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
     drafts: ReelStripGenerationDraftsRef;
+    modeDrafts: ReelGenerationModeDraftsRef;
     revision: number;
 }) {
     const mode = getReelGenerationMode(blueprint);
@@ -24,7 +26,7 @@ export function ReelGenerationModeSelector({
             <Text size="sm" c="dimmed" mb="sm">
                 Optional — omit all three to use the engine&apos;s default weighted reel generator.
             </Text>
-            <Radio.Group value={mode} onChange={(value) => mutate((b) => setReelGenerationMode(b, value as ReelGenerationMode))} mb="md">
+            <Radio.Group value={mode} onChange={(value) => mutate((b) => setReelGenerationMode(b, value as ReelGenerationMode, modeDrafts.current))} mb="md">
                 <Group gap="md">
                     <Radio value="default" label="Default" />
                     <Radio value="reelStrips" label="Reel strips" />

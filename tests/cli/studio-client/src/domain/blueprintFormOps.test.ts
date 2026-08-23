@@ -695,6 +695,27 @@ describe("blueprintFormOps", () => {
             expect(b.symbolWeights).toEqual({});
         });
 
+        it("restores literal reel strips after a rendered weights-mode round trip without putting both representations in the Blueprint", () => {
+            const b: Record<string, unknown> = {
+                reels: 5,
+                reelStrips: [["A", "K"], ["A", "Q"], ["K", "J"], ["Q", "J"], ["A", "J"]],
+            };
+            const drafts = {};
+
+            setReelGenerationMode(b, "symbolWeights", drafts);
+            b.symbolWeights = {A: 5, K: 3, Q: 2, J: 1};
+            setReelGenerationMode(b, "reelStrips", drafts);
+
+            expect(b.reelStrips).toEqual([["A", "K"], ["A", "Q"], ["K", "J"], ["Q", "J"], ["A", "J"]]);
+            expect(b.reelStripGeneration).toBeUndefined();
+            expect(b.symbolWeights).toBeUndefined();
+
+            setReelGenerationMode(b, "symbolWeights", drafts);
+
+            expect(b.symbolWeights).toEqual({A: 5, K: 3, Q: 2, J: 1});
+            expect(b.reelStrips).toBeUndefined();
+        });
+
         it("switching to default clears all three", () => {
             const b: Record<string, unknown> = {reelStrips: [["A"]], reelStripGeneration: [], symbolWeights: {A: 1}};
 
