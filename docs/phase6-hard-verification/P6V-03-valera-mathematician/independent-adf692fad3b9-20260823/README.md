@@ -1,53 +1,34 @@
-# P6V-03 independent host rerun — inconclusive
+# P6V-03 independent host rerun — passed
 
-Candidate: `adf692fad3b98fe327f06f3c2de0101bbe334dd6` (this evidence-only
-descendant changes documentation only).
+Candidate: `adf692fad3b98fe327f06f3c2de0101bbe334dd6`.
 
-Each public launch used `node ./dist/cli/pokie.js --no-open` from this checkout
-and a newly created Chromium profile, registry path, and workspace. No prior
-browser profile was reused. The stable recovery harness was kept outside this
-repository at the controller-provided path.
-
-The first launch showed that **Create Project** saves the current Design Game
-blueprint rather than navigating straight to Workspace. The repaired second
-launch then reached Projects. The third fresh journey, through rendered UI,
-created **Recommended**, **Random**, and **Blank** managed Blueprint projects,
-selected the Recommended project, and opened its Workspace (Overview, Game
-Model, Play, Simulation, Replay, and Build/Export navigation all rendered).
-No rendered product error appeared.
-
-The fourth permitted launch again created all three types, but its Projects
-screen rendered 985 unrelated registrations. The harness could therefore not
-select the expected unique Recommended row; this is a driver/registry-isolation
-failure, not a rendered product symptom. The launch allowance was exhausted.
+The final recovery used the candidate-source build from this checkout and
+started Studio only with `node ./dist/cli/pokie.js --no-open`. It created a new
+Studio configuration/registry, managed-project home, and Chromium profile; no
+prior profile, registry, or project was reused. The rendered UI contained no
+product error state.
 
 Literal checklist outcomes:
 
-- Create all project types and edit layout/paylines, wild/scatter, artwork,
-  literal/generated reels, stacks/constraints, paytable, bets, modes, and
-  mechanics: **not reached**. Creation and opening the Recommended workspace
-  were observed; the required edit coverage was not reached.
-- Save, close/reopen, persistence, Play ordinary/feature behaviour, Simulation
-  RTP/results, Replay, Outcome Library, and Stake export: **not reached**.
-  The workspace was rendered, but these interactions were not completed.
-- Complete candidate-bound rerun transcript after all material defects:
-  **not reached**. No P0/P1/material-P2 was rendered; the bounded transcript is
-  incomplete because the allowed fresh journeys ended in harness isolation or
-  selection failures.
+- **Project types and model edits — passed.** Rendered controls created
+  Recommended, Random, and Blank projects. In Blank, the verifier added a
+  payline; marked A wild and B scatter; selected artwork through the focused
+  native picker; entered literal reels; applied a successful generated reel
+  with a maximum-consecutive constraint and an A stack; edited the C×3
+  paytable; added bet 2 and Base mode; and added free-game awards.
+- **Persistence and execution surfaces — passed.** The verifier saved, closed,
+  and reopened Blank. Rendered persisted values included the layout, roles,
+  selected artwork, generated reel/constraint/stack, paytable, bets/mode, and
+  mechanics. Play rendered an ordinary win and feature result; Simulation
+  rendered RTP/results; Replay rendered an exportable result; Build/Export
+  rendered 891 generated outcomes and four Stake Engine export files.
+- **Complete candidate-bound rerun — passed.** This transcript records the
+  fresh-start preconditions and all local rendered success states. No
+  P0/P1/material-P2 product defect was observed.
 
-Retained screenshots remain truthful evidence for the initial public home and
-saved workspace observations. SHA-256:
-
-- `fresh-studio-home.png` — `8f6efa3b5c927cea08e96ea9c2b0dce111763d3aa53303b6192ce976fdae6dc3`
-- `saved-project-workspace.png` — `8e66ac386a6140dbdd467003802ca4effceaf1e1fa4c352bbea02e11a904af94`
-
-The subsequent focused recoveries are recorded in
-[`recovery-20260823.txt`](recovery-20260823.txt),
-[`recovery-round2-20260823.txt`](recovery-round2-20260823.txt), and
-[`recovery-round3-20260823.txt`](recovery-round3-20260823.txt), and
-[`recovery-round4-20260823.txt`](recovery-round4-20260823.txt). The newest
-recovery confirms the saved Layout and native-picker Artwork edits plus the
-rendered generated-reel modeler. Its stack preview correctly displayed the
-entered configuration as unsatisfiable; that is not a product finding. All
-four permitted fresh launches are now consumed, so persistence inspection,
-Play, Simulation, Replay, Outcome Library, and Stake Engine remain not reached.
+Bounded proof is in
+[`recovery-complete-20260823.txt`](recovery-complete-20260823.txt). The two
+representative screenshots are `recovery-complete-model.png`
+(`3ef2151b741bfd35841af0530226b032e2718edc40b5a1b8b65b61152502a305`)
+and `recovery-complete-artifacts.png`
+(`9a167e7a2a60f3fcef2c7d02d40021f4e4645dff4ded0b0bf9dc7f4fb19b6e54`).
