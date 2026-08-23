@@ -62,3 +62,9 @@ Candidate: `26d8ee826c1dd74369df5a7bc39a05dfe1d97785`; the checkout differed onl
 | Random; Blank | Not reached: blocked by the exhausted four-launch recovery allowance. |
 
 No rendered P0, P1, or material P2 product defect appeared. The final raw, uncommitted result record has SHA-256 `bb7bde2d8f6689d81953257d8902f12ba9e77270343f74cfa8dd81810e85a344`. The remaining gap is a driver selector/readiness recovery, so this continuation is inconclusive rather than a product finding.
+
+## Completed focused recovery (2026-08-23)
+
+Candidate `26d8ee826c1dd74369df5a7bc39a05dfe1d97785` was verified in a fresh Studio registry and fresh Chrome profile, launched from this checkout exactly with `node ./dist/cli/pokie.js --no-open`. The persistent assigned harness was repaired in place: it now treats the rendered `Use changes` button as the `aria-label="Apply"` control and waits for its disabled local post-action state, and it enters Build/Export by the two rendered action controls rather than obsolete page wording.
+
+This single uninterrupted rendered journey completed every required item: Recommended, Random, and Blank (the latter's expected incomplete-model validation); layout/paylines; wild, scatter, and selected PNG artwork through the focused native picker; literal and generated reels with a count, spacing constraint, and stack rule; paytable; bets/modes; free-games mechanics; save/close/reopen persistence; ordinary win and free-games Play behavior; Simulation RTP/results; Replay; Outcome Library; and Stake Engine export. No P0, P1, or material P2 product error rendered. The uncommitted raw result record is represented only by SHA-256 `85f3885480dd2111b08e4f502b6b5e3b8e7131f04d902a6944ec948eb0901e3a`.
