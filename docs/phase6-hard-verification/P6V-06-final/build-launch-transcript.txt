@@ -1,20 +1,16 @@
-P6V-06 exact-candidate build and launch transcript
-candidate=101ec244b8e922af919a4c3c2e7644f850884dbc
+P6V-06 fresh exact-candidate build and CLI launch
+candidate=2c70d14e04f22d490bca8ab85af67e4be8f5c563
 
 $ npm run build-cli
 exit=0
-completed: tsc --project tsconfig.cli.json; build-client; build-studio-client
+completed: build-esm; cli TypeScript; client build; Studio client build
 
-$ test -x dist/cli/pokie.js
+$ test -x dist/cli/pokie.js && test -f dist/esm/index.js
 exit=0
-$ sha256sum dist/cli/pokie.js
+$ sha256sum dist/cli/pokie.js dist/esm/index.js
 4643f200188d379630754512e8466ec7339bb715f44753ba9675e9e0f3e86495  dist/cli/pokie.js
-$ test -e dist/esm/index.js
-exit=1 (missing)
+6dead910166ebb1f4cdfa323f4a6327ceebee5c05486fada04b62d1fb8a36532  dist/esm/index.js
 
 $ node ./dist/cli/pokie.js --help
-exit=1
-Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../dist/esm/index.js'
-imported from .../dist/cli/findPokieProjectRoot.js
-
-No Studio process was started.
+exit=0
+result=top-level CLI usage rendered; no self-package resolution failure
