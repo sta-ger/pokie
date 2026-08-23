@@ -1,0 +1,48 @@
+P6V-03 final fresh-profile host recovery — 2026-08-23
+
+Candidate source: bb826ee2b234e8151e48a7ac7228429875e71e8c.
+Launch checkout HEAD: da63c545357f856220578d4af36b9bda4289ec2c, a
+documentation-only descendant of the candidate. Studio was launched exactly as
+`node ./dist/cli/pokie.js --no-open` from this checkout. The run used a newly
+absent isolated HOME/XDG registry and fresh Chromium profile in the
+controller-owned harness workspace. Product interactions were ordinary visible
+pointer/keyboard actions on rendered controls; no product API or state/DOM
+injection was used.
+
+Observed rendered outcomes
+- Fresh chooser: Recommended and Blank each rendered "Replaced the current
+  blueprint". Random accepted seed/name and Generate, but did not render the
+  enabled Use-this-blueprint transition within its bounded wait and no product
+  error was rendered.
+- Named `valera-mathematician` / `Valera Mathematician`; Create Project opened
+  a valid managed workspace.
+- Game Model: opened and saved Layout (5 reels, 3 rows, 3 paylines); Symbols
+  (A rendered WILD and K SCATTER after distinct labelled checkbox actions);
+  Reels (Per-reel model, selected literal Reel 1 through the rendered
+  `Select reel 1` then `Edit or generate Literal or generated` controls, and
+  added a symbol); Paytable; Bets & Modes; and Mechanics. The visible model
+  projected the saved Per-reel generation mode and the role badges.
+- Artwork: the rendered Select PNG action was accepted, but no visible native
+  picker window appeared within the bounded wait, so artwork is not claimed.
+- Play: Find any win settled and replay later rendered its recorded win.
+  Find free games settled to the explicit local state that the feature is not
+  available for this game. Simulation completed 10/10 rounds (RTP 1140.00%).
+- Replay: selected a recorded Session Spin, rendered a complete inspectable
+  replay, and enabled/activated Download JSON.
+- Build/Export: exact Outcome Library rendered 1,024 outcomes at 895.31% RTP;
+  Stake Engine Export rendered its 4-file completion result.
+- Close Project returned to Design Game; Projects then rendered its loading
+  view, but the registered project entry did not render before the bounded
+  reopen wait. Close/reopen persistence is therefore not claimed.
+
+No rendered P0/P1/material-P2 product error was observed. This evidence is
+inconclusive for the required artwork, generated-reel, configured-mode/
+mechanic, Random completion, and close/reopen portions; it does not convert a
+wait threshold into a product finding.
+
+Bounded harness-only proof checksums (no generated output or harness tree was
+committed)
+- 03-model.png: a53d2e8780fe57f3498e57ed61e614798c52090726849d16c003f27bbc7ba98f
+- 06-replay.png: 6699a579a791d759c699fa5b32707dda0e07051f18a9e7f7f9622008811a6b9e
+- 07-build-export.png: e1b74fe56f83942546862a86dcd4c9b9765bacd231b8c56cc24e24395ecfd21c
+- 08-reopened.png: 88dbf91d77e1fcf01e9e37385dc1047d037f4a382088a3abda1438e845e0bbe4
