@@ -1,0 +1,24 @@
+P6V-03 focused exact-candidate Random recovery — 2026-08-23
+
+Candidate SHA: 546feacf0731a3bf403410816d4419776214989c
+Evidence HEAD before this record: e8f3401481eaa7d72d261e43af64f3e29ac2213a
+Candidate boundary: candidate..evidence-HEAD contains only previously-pruned P6V-03 evidence files; no product source differs.
+
+Harness: /home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-e761a7ffcf399aaa/current.mjs
+Every launched Studio used exactly, from this source checkout:
+  node ./dist/cli/pokie.js --no-open
+
+Fresh isolated runs:
+1. 04:21:17 — a distinct HOME/XDG registry and Chrome profile rendered an empty Design Game. Recommended replacement succeeded. The physical Random-choice pointer route did not render its form, so it was repaired before any Random Generate action.
+2. 04:22:14 — a new isolated registry/profile rendered empty Design Game, successful Recommended replacement, then Random. The repaired rendered dialog route opened the Generate form and one visible Generate action was issued. For 30 seconds, no local Generated card, product error, or pending state rendered. Studio diagnostics contained only its listening line.
+3. 04:24:55 — a new isolated registry/profile repeated the same initial rendered path. The Random default visible seed makes generation idempotent, so the one permitted alternate rendered Generate route was tried. It also produced no local Generated card, product error, or pending state in 30 seconds. No action was duplicated while pending.
+
+Therefore no successful Random replacement was observed. Blank creation, final modelling, project persistence, Play, Simulation, Replay export, Outcome Library, and Stake Engine Export were not reached. This is driver/readiness-inconclusive rather than a product finding: no rendered Studio product error was observed.
+
+Controller-owned bounded transcript SHA-256 values (raw transcripts are intentionally not committed):
+  73272125a018f943097db3100021c72cee03e29b567a07039212d94e4b9ea554  run-2026-08-23T04-21-17-562Z/transcript.txt
+  0deccf76b11ef3904556b077092c484962eeaa34ba25eb6ecff57a597a428b7c  run-2026-08-23T04-22-14-766Z/transcript.txt
+  07d2e3e29a4b0fa01af5afaa5b34b617816e13316a03859b16e9cfba4654749d  run-2026-08-23T04-24-55-097Z/transcript.txt
+
+Representative fresh-home screenshot checksum (not copied into evidence):
+  8f6efa3b5c927cea08e96ea9c2b0dce111763d3aa53303b6192ce976fdae6dc3
