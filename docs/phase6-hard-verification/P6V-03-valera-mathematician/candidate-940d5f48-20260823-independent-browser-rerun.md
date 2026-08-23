@@ -86,3 +86,20 @@ reel apply, workspace actions, Replay export, or post-reopen persistence.
 The persistent-harness-only terminal transcript and temporary profiles remain
 outside this evidence tree. The retained rendered Home screenshot checksum is
 unchanged: `2f5dfbe26bc88f25c08d464655f0555fce9b31a7f8a432110ad3488829ea6bb3`.
+
+## Focused harness recovery follow-up, 2026-08-23
+
+This invocation used the same persistent `current.mjs` harness for all four
+permitted new fresh HOME/XDG-registry and Chrome-profile launches, again using
+only `node ./dist/cli/pokie.js --no-open` from this exact checkout.  The
+retained isolated Home screenshot was reproduced byte-for-byte.  The harness
+first replaced its CDP keyboard text with an activated-window physical input,
+then repaired the renderer's negative emulation chrome-offset calculation.
+Neither approach committed text to the controlled rendered `Game id` field.
+On the final guarded physical-click attempt, the visible UI instead switched
+to the Symbols section; consequently the computed driver coordinate was not a
+reliable field target and no edit, replay export, or persistence assertion was
+claimed.  Every terminal UI still rendered **Valid — no issues found**, with
+no Studio error, browser error, or rendered failed request.  No generated
+profile, registry, output, full log, screenshot, or harness source is retained
+in the evidence tree.
