@@ -46,3 +46,19 @@ Candidate: `26d8ee826c1dd74369df5a7bc39a05dfe1d97785`; source differences from t
 The repaired rendered journey consistently created Recommended, saved four paylines, saved `A · WILD` and `K · SCATTER`, and used the focused native picker for `/usr/share/pixmaps/debian-logo.png`. The final launch repaired the generated-reel Symbol combobox path via the real focused combobox keyboard interaction. It reached the generated Reel 1 confirmation view, which rendered `Reel 1 has unapplied changes`, `Use changes`, `Discard`, and `Back to Preview`; this demonstrates the preceding generated preview/apply transition completed. The harness had awaited its superseded `Modified — not saved` phrase rather than that local success screen. No rendered product error appeared.
 
 The launch allowance was exhausted before `Use changes` could be selected and before paytable, bets/modes, mechanics, close/reopen, Play, Simulation, Replay, Outcome Library, Stake Engine, Random, and Blank could be independently completed. This is driver-inconclusive, not a product finding. The temporary final result record had SHA-256 `08df4458b4df9ef784b8597999436e9f1b067255aa4378df937abc1221eb9999`; it is intentionally not committed.
+
+## Focused recovery continuation (2026-08-23)
+
+Candidate: `26d8ee826c1dd74369df5a7bc39a05dfe1d97785`; the checkout differed only by evidence documentation. Four fresh starts used the already-current candidate build and exactly `node ./dist/cli/pokie.js --no-open` from this checkout. Each had a new Studio XDG config/data/cache registry and Chrome profile. The persistent assigned harness was repaired only in place; no product/test source, DOM/state injection, or private API was used.
+
+| Literal checklist item | Final rendered outcome |
+| --- | --- |
+| Recommended; layout/paylines; wild/scatter/artwork | Passed: Recommended Project was created; four paylines, `A · WILD`, `K · SCATTER`, and `/usr/share/pixmaps/debian-logo.png` selected through the focused native picker were saved. |
+| Literal/generated reels; constraints/stacks | Passed: literal preview and generated Reel 1 (`A: 3`, minimum-spacing constraint, fixed length-2 stack) were previewed, applied through the exact `Use changes` control, and saved as `Generation mode: Per-reel generation`. |
+| Paytable; bets/modes; mechanics | Passed: `A ×3` payout `11`, available bets `1, 2, 5, 10`, a Base default mode, and free games `K`, `3x → 5` were saved. |
+| Save, close, reopen | Passed: the reopened Project rendered the saved paylines, scatter, free-games, and bets. |
+| Play; Simulation; Replay | Passed: a settled ordinary win and free-games behavior rendered; one-round Simulation rendered RTP/results; Replay rendered the recorded Play scenario. |
+| Outcome Library; Stake Engine | Not reached: the final run rendered the real `Build/Export` page, but the harness awaited obsolete `Build Export` text and did not issue either action. |
+| Random; Blank | Not reached: blocked by the exhausted four-launch recovery allowance. |
+
+No rendered P0, P1, or material P2 product defect appeared. The final raw, uncommitted result record has SHA-256 `bb7bde2d8f6689d81953257d8902f12ba9e77270343f74cfa8dd81810e85a344`. The remaining gap is a driver selector/readiness recovery, so this continuation is inconclusive rather than a product finding.
