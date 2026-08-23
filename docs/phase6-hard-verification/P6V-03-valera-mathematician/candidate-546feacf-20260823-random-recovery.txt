@@ -63,3 +63,34 @@ and all downstream checklist portions remain not reached.
 Controller-owned bounded transcript checksum (raw transcript intentionally not
 committed):
   9a04c880db21063edab7d4beab1a5792cfbd2bb41c2a7d1929d6c2061ac6bfe3  run-2026-08-23T04-40-03-575Z/transcript.txt
+
+Focused harness-recovery continuation — 04:45–04:49
+
+The persistent harness was repaired in place, retaining its earlier rendered
+selector and transition fixes.  Four fresh isolated HOME/XDG registries and
+Chrome profiles used exactly this source-checkout command:
+  node ./dist/cli/pokie.js --no-open
+
+Each rendered an empty Design Game, then successfully replaced it with
+Recommended and opened the rendered Random form.  The first physical Seed-field
+route missed its local result before a Generate action; the next two repairs
+proved that the rendered Seed field retained 20260823 but the optional Name
+field did not remain available.  The final repaired route omitted that optional
+field, confirmed the rendered Seed value, and issued exactly one visible
+Generate action.  For 30 seconds it rendered no Random generated card, enabled
+"Use this blueprint" control, pending state, or local product error.  The form
+then closed and the only visible success remained the earlier Recommended
+replacement; it was not counted as Random success.  Studio diagnostics contained
+only its listening line.  No Generate action was duplicated after the request.
+
+No rendered product defect was observed.  Since successful Random replacement
+was still unconfirmable, Blank and the required same-journey modelling,
+persistence, Play, Simulation, Replay/export, Outcome Library, and Stake Engine
+checks remain not reached.  This is readiness-inconclusive.
+
+Additional controller-owned transcript SHA-256 values (raw transcripts are not
+committed):
+  6e810a5e49d9e951d1db002bc701098fa0de2c8149da9244a92a6ca920efd29f  run-2026-08-23T04-45-51-881Z/transcript.txt
+  a6f315a6ec919d40694a7596fe06a36da3c57ef220c4dcc196b6d5850686eeac  run-2026-08-23T04-47-03-528Z/transcript.txt
+  ab2b50c0fc1b4d1cfd2bf302181da222d8d538ef253afb1e04ec9c1690002b07  run-2026-08-23T04-48-01-505Z/transcript.txt
+  1391a008663a2babb6bb64b9496987090d3c5130f72525246c37ad2a71b29916  run-2026-08-23T04-48-43-260Z/transcript.txt
