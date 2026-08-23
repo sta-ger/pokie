@@ -45,3 +45,21 @@ rendered product finding.
 Additional controller-owned transcript SHA-256 values (raw transcripts not committed):
   ed15cbeb5a1c5edc1ed85052dc19fc6d6766122e4c721b1a2a1320e3b91421fc  run-2026-08-23T04-33-44-500Z/transcript.txt
   760a64b645d99bcd6663de4238bc764d0d3ba16093b55d0a7db9a3e2a738234b  run-2026-08-23T04-35-32-528Z/transcript.txt
+
+Focused harness-recovery rerun — 04:40
+
+The retained harness was repaired in place to use its already focus-verified,
+physical rendered-control path for the Random form's mutation controls.  A new
+isolated HOME/XDG registry and Chrome profile rendered an empty Design Game,
+then successfully replaced it with Recommended.  It opened the rendered Random
+form and accepted exactly one focus-verified visible Generate action.  The form
+closed without a local generated card, enabled "Use this blueprint", pending
+state, or rendered product error during the 30-second semantic-result wait; the
+underlying Recommended draft remained.  No second Generate action was issued.
+Studio diagnostics contained only its listening line.  This additional attempt
+is readiness-inconclusive, not a product finding; Random replacement, Blank,
+and all downstream checklist portions remain not reached.
+
+Controller-owned bounded transcript checksum (raw transcript intentionally not
+committed):
+  9a04c880db21063edab7d4beab1a5792cfbd2bb41c2a7d1929d6c2061ac6bfe3  run-2026-08-23T04-40-03-575Z/transcript.txt
