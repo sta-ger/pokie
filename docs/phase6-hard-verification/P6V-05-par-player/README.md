@@ -27,3 +27,22 @@ sha256 a2e88ad5962551e8be9b2710b141965cfbae354ca8e9f254b6e9f53a9f9b4924
 The visible Simulation tab rendered its `Rounds` control (default `10000`) and `Run Simulation` button.  The harness could not re-resolve that rendered input by its label after tab navigation, and the second-launch cap prevented repair/retry.  No rendered product error or reproducible product symptom was observed.  Consequently the native-picker PAR import/export/re-import, managed canonical semantic comparison, Replay, outcome generation, Stake export, and the exact `pokie-examples` parity matrix were not reached.  No companion workspace was supplied in the persisted request, so an exact second repository SHA could not be bound.
 
 No generated profiles, worktrees, screenshots, raw logs, or harness files are included in this evidence commit.
+
+## Recovery attempt (native PAR picker)
+
+Candidate product source remained exactly `49d5fccc517f5a7f964ecc7fa32148edeb18d588`; this evidence-only descendant is `5bb883229c008bd7fc8133343a8c7ac28e8a10fe` before the present record.  The retained fixture remains:
+
+```text
+examples/parsheets/starter.par.xlsx
+sha256 a2e88ad5962551e8be9b2710b141965cfbae354ca8e9f254b6e9f53a9f9b4924
+```
+
+On 2026-08-23 the persistent candidate-source harness was repaired in place to bind `Browse…` to the rendered `PAR sheet path` control by its local geometry, then launched fresh with:
+
+```text
+node ./dist/cli/pokie.js --no-open
+```
+
+The visible Design Game page opened its advanced PAR panel.  The physical `Browse…` action was issued for the fixture, but no native picker window, rendered fallback picker, local pending state, or rendered product error appeared within the bounded semantic wait.  A single safe retry after repairing the prior over-broad Browse binding produced the same unconfirmed interaction.  No product symptom was rendered, so this is driver-inconclusive rather than a product finding.  The import/export/re-import path and canonical comparison were not reached; generated runtime directories, screenshots, and logs are not committed.
+
+The required exact `pokie-examples` companion checkout was still absent from the persisted request, so the package/client/dev/Replay parity matrix and the second recorded SHA cannot be independently verified.
