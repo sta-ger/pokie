@@ -1,17 +1,19 @@
-P6V-06 exact-candidate visible Studio rerun
-candidate=2c70d14e04f22d490bca8ab85af67e4be8f5c563
+P6V-06 exact-candidate visible Studio finding
+candidate product tree=2c70d14e04f22d490bca8ab85af67e4be8f5c563
+evidence-only source descendant=ebd65635646bfbc8ec933488111c5c3ae1f51180
 companion=1e2c8c00457f3af389c0168432c08e63ca441465 (clean, read-only)
 
-Launch 1: fresh Studio HOME and visible Chrome profile; launched from this
-source checkout only with `node ./dist/cli/pokie.js --no-open`. Design Game
-rendered. The initial Create Project click preceded visible automatic-validation
-completion; it did not create a workspace and rendered no error.
+Fresh Studio HOME and a visible Chrome profile launched from this source
+checkout only with `node ./dist/cli/pokie.js --no-open`. The repaired persistent
+harness waited for rendered `Valid — no issues found.` and clicked the rendered
+`Create Project` action once.
 
-Launch 2: fresh Studio HOME and visible Chrome profile; same exact command.
-The harness waited for rendered `Valid — no issues found.` then made the one
-safe Create Project retry. For 45 seconds the rendered page remained Design
-Game: no Workspace, success/pending state, or product error appeared.
+Rendered local result: `Saved to ".../POKIE Projects/starter-slot/blueprint.json"`.
+Rendered local error: `The project was saved, but its Workspace could not open`;
+the materialized package's `dist/index.js` could not load because
+`node_modules/pokie/dist/cjs/index.js` was absent. Studio's rendered recovery
+guidance was `npm install && npm run build` in the materialized package.
 
-Result: readiness-inconclusive. No third launch, duplicate click, private API,
-native-picker injection, release action, or stale node_modules CLI was used.
-fresh-studio-initial.png sha256=b2fbf8d3be5eec563121dc473b8cea4958df199b59609c6396ec7ba018d3cd60
+Result: P1. The action was accepted and persisted, so it was not duplicated;
+no private API, native-picker injection, release action, or stale node_modules
+CLI was used.
