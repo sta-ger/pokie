@@ -1,16 +1,17 @@
 P6V-06 fresh exact-candidate build and CLI launch
-candidate=2c70d14e04f22d490bca8ab85af67e4be8f5c563
+candidate=cf26cd3110cdf5d3f01deb533efb7b031039d9ed
 
 $ npm run build-cli
 exit=0
-completed: build-esm; cli TypeScript; client build; Studio client build
+completed: build-esm; build-cjs; CLI TypeScript; client build; Studio client build
 
-$ test -x dist/cli/pokie.js && test -f dist/esm/index.js
+$ test -x dist/cli/pokie.js && test -f dist/esm/index.js && test -f dist/cjs/index.js
 exit=0
-$ sha256sum dist/cli/pokie.js dist/esm/index.js
+$ sha256sum dist/cli/pokie.js dist/esm/index.js dist/cjs/index.js
 4643f200188d379630754512e8466ec7339bb715f44753ba9675e9e0f3e86495  dist/cli/pokie.js
 6dead910166ebb1f4cdfa323f4a6327ceebee5c05486fada04b62d1fb8a36532  dist/esm/index.js
+44676492650a55b2aacac6ad1c29432d9025a2f53df1e8438c912f0e91f3b99a  dist/cjs/index.js
 
 $ node ./dist/cli/pokie.js --help
 exit=0
-result=top-level CLI usage rendered; no self-package resolution failure
+result=top-level CLI usage rendered; no self-package or dist/cjs resolution failure

@@ -1,41 +1,53 @@
-# P6V-06 independent exact-candidate hard closeout — finding
+# P6V-06 independent exact-candidate hard closeout — inconclusive
 
-Audited product: `2c70d14e04f22d490bca8ab85af67e4be8f5c563`.
-Read-only companion: `1e2c8c00457f3af389c0168432c08e63ca441465`.
-Both were clean and at those exact SHAs before the audit. This commit is an
-evidence-only descendant; its product tree is identical to the audited tree.
+Candidate audited: `cf26cd3110cdf5d3f01deb533efb7b031039d9ed`.
+Read-only companion checked before the workflow:
+`1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
 
-## Fresh candidate result
+This evidence-only descendant changes no product or companion source. It
+replaces the superseded P6V-06 final finding rather than creating a parallel
+evidence directory.
 
-`npm run build-cli` completed once, produced executable `dist/cli/pokie.js`
-(`4643f200188d379630754512e8466ec7339bb715f44753ba9675e9e0f3e86495`),
-and `node ./dist/cli/pokie.js --help` succeeded. The fresh build also produced
-`dist/esm/index.js`.
+## Fresh build and rendered workflow
 
-One fresh isolated Studio launch used only
-`node ./dist/cli/pokie.js --no-open`, with a new Studio home and visible Chrome
-profile. The repaired harness waited for rendered **Valid — no issues found.**
-and then made one visible **Create Project** action. Studio visibly saved the
-Blueprint, then rendered a Workspace-open error: its materialized package could
-not load `node_modules/pokie/dist/cjs/index.js`. The bounded action record is
-`rerun-transcript.txt`.
+One `npm run build-cli` completed. The fresh CLI artifact, ESM runtime, and
+CJS runtime all existed, and `node ./dist/cli/pokie.js --help` completed
+without a resolution failure. Two isolated, visible Chromium/Studio launches
+then used exactly `node ./dist/cli/pokie.js --no-open` from this checkout, each
+with a new Studio home/registry and browser profile. The second launch rendered
+a valid cold-start Blueprint; **Create Project** opened the Workspace, then
+rendered Play (one settled round), Simulation (one result), Replay, and the
+exact Outcome Library result. The retained image is the minimal rendered proof
+of the materialized Workspace and its candidate capabilities.
 
-This is a **P1 finding**, not a readiness result: the primary public action was
-accepted, persisted its Blueprint, and rendered the concrete product error. A
-second creation request was not sent. The PAR/XLSX native-picker round trip and
-subsequent Player surfaces remain blocked by the failed Workspace transition;
-no controller-owned release, packaging, push, publication, or Drive action was
-run.
+`Run Stake Engine Export (base)` was clicked once after the exact Outcome
+Library success. It rendered neither success, pending, nor product error in
+the bounded wait. The isolated project contains the generated outcome-library
+files but no Stake Engine output. The first launch's Replay text expectation
+was repaired in the persisted harness; the second launch reached the Replay
+route. The two-launch allowance is exhausted, so no third launch or duplicate
+export action was sent. This is a **readiness-inconclusive** interaction, not
+a rendered product finding.
 
-## One-to-one P6V-01–P6V-05 matrix
+## Criterion mapping
 
-| Immutable step | Result | Current exact evidence / reason |
+| Immutable step | Result | Exact current evidence / reason |
 | --- | --- | --- |
-| P6V-01 retained-evidence hygiene | passed | The hard-verification evidence tree is 12 MiB, its largest file is below 5 MiB, and this final delta contains only this index and two concise transcripts; no generated output, raw log, harness, or superseded screenshot is retained. The companion is clean at its required SHA. |
-| P6V-02 Design/UX | finding | Exact-candidate Design Game accepted Create Project and saved its Blueprint, but visibly failed to open Workspace because the materialized package lacks `node_modules/pokie/dist/cjs/index.js`. |
-| P6V-03 Valera Mathematician | not reached | Its required distinct workspace, model, Play, Simulation, Replay and export journey is blocked by the P6V-02 Workspace-open P1. |
-| P6V-04 Valera Producer | not reached | Its distinct workspace journey is blocked by the same exact-candidate P6V-02 Workspace-open P1. |
-| P6V-05 physical PAR/XLSX and canonical Player surfaces | not reached | The exact companion is available and clean, but the candidate Studio cannot reach the Workspace/Home flow required for the public PAR picker and Player surfaces. No private API substitution was used. |
+| P6V-01 retained-evidence hygiene | passed | `docs/phase6-hard-verification` is 11,428,994 bytes; every file is below 5 MiB. This final delta has four files (one 84,580-byte screenshot and three concise text records), no generated output tree, log, profile, harness, or PID. The companion is clean at its required SHA. |
+| P6V-02 Design/UX | not reached | Fresh current evidence covers cold start, materialization, Workspace, Play, Simulation, Replay route, and Outcome Library. The Stake Engine action has no rendered terminal state, so the complete Design/UX closeout cannot be approved. |
+| P6V-03 Valera Mathematician | not reached | Its distinct rendered model, mechanic, export, and persistence journey was not started; the two permitted public launches were consumed by the fresh CJS-materialization and export readiness check. |
+| P6V-04 Valera Producer | not reached | Its distinct workspace journey was not started for the same launch-budget reason. |
+| P6V-05 physical PAR/XLSX and canonical Player surfaces | not reached | The exact companion was verified clean, but no current physical native-picker round trip or all-surface Player rerun occurred. No private API was substituted. |
 
-This is not a passing release verdict. The unresolved P1 must return to
-correction and affected verification before final review.
+No P0, P1, or material P2 was rendered by the completed portions. This is not
+a release-ready verdict; correction of the export readiness/harness evidence and
+a fresh affected-verification allocation are required before controller release,
+packaging, push, publication, or Drive actions.
+
+## Retained files
+
+| File | SHA-256 | Purpose |
+| --- | --- | --- |
+| `build-launch-transcript.txt` | n/a | One build, runtime-entry, and CLI-help record. |
+| `rerun-transcript.txt` | n/a | Bounded two-launch rendered-action record. |
+| `workspace-after-materialization.png` | `190dd8662cec6d49f5f8d1f5212e3ffbfad7ad0f410a95d690214d70b8fe178d` | Current rendered Workspace after fresh CJS materialization. |

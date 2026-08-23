@@ -1,19 +1,20 @@
-P6V-06 exact-candidate visible Studio finding
-candidate product tree=2c70d14e04f22d490bca8ab85af67e4be8f5c563
-evidence-only source descendant=ebd65635646bfbc8ec933488111c5c3ae1f51180
+P6V-06 current-candidate visible Studio rerun
+candidate=cf26cd3110cdf5d3f01deb533efb7b031039d9ed
 companion=1e2c8c00457f3af389c0168432c08e63ca441465 (clean, read-only)
 
-Fresh Studio HOME and a visible Chrome profile launched from this source
-checkout only with `node ./dist/cli/pokie.js --no-open`. The repaired persistent
-harness waited for rendered `Valid — no issues found.` and clicked the rendered
-`Create Project` action once.
+Launch 1: fresh Studio registry/profile, command exactly
+`node ./dist/cli/pokie.js --no-open`. Rendered Valid — no issues found.;
+Create Project opened Workspace; Play spin settled; Simulation completed.
+Replay did not expose the harness's older `Session Spin` text before its
+bounded wait. No product error rendered; no action was duplicated.
 
-Rendered local result: `Saved to ".../POKIE Projects/starter-slot/blueprint.json"`.
-Rendered local error: `The project was saved, but its Workspace could not open`;
-the materialized package's `dist/index.js` could not load because
-`node_modules/pokie/dist/cjs/index.js` was absent. Studio's rendered recovery
-guidance was `npm install && npm run build` in the materialized package.
+Launch 2: a new registry/profile, same exact command. Rendered Valid — no
+issues found.; Create Project opened Workspace; Play spin settled; Simulation
+completed; Replay route rendered; exact Outcome Library generated. The one
+visible `Run Stake Engine Export (base)` action then rendered no success,
+pending, or error state in 180 seconds. Isolated output contained Outcome
+Library files but no Stake Engine output. No second export request or third
+Studio launch was sent.
 
-Result: P1. The action was accepted and persisted, so it was not duplicated;
-no private API, native-picker injection, release action, or stale node_modules
-CLI was used.
+Outcome: readiness-inconclusive. These observations are not a rendered product
+failure and do not approve unreached Valera or physical PAR/Player criteria.
