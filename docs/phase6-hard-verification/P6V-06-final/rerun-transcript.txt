@@ -1,20 +1,29 @@
-P6V-06 current-candidate visible Studio rerun
+P6V-06 focused exact-candidate harness recovery
 candidate=cf26cd3110cdf5d3f01deb533efb7b031039d9ed
 companion=1e2c8c00457f3af389c0168432c08e63ca441465 (clean, read-only)
+harness=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-06-867a74503125332d/current.mjs
 
-Launch 1: fresh Studio registry/profile, command exactly
-`node ./dist/cli/pokie.js --no-open`. Rendered Valid — no issues found.;
-Create Project opened Workspace; Play spin settled; Simulation completed.
-Replay did not expose the harness's older `Session Spin` text before its
-bounded wait. No product error rendered; no action was duplicated.
+The complete bounded prior failure history was readiness-only: after Outcome
+Library success, Stake Export had no observed local terminal state. The
+persistent harness was repaired in place before these launches to scope that
+check to the rendered Stake card; its later repaired navigation locates
+Build/Export through the Sections control's semantic prefix rather than an
+exact whole-string label.
 
-Launch 2: a new registry/profile, same exact command. Rendered Valid — no
-issues found.; Create Project opened Workspace; Play spin settled; Simulation
-completed; Replay route rendered; exact Outcome Library generated. The one
-visible `Run Stake Engine Export (base)` action then rendered no success,
-pending, or error state in 180 seconds. Isolated output contained Outcome
-Library files but no Stake Engine output. No second export request or third
-Studio launch was sent.
+Launch 1: a new Studio HOME/registry and Chromium profile used exactly
+`node ./dist/cli/pokie.js --no-open`. Valid cold-start Blueprint, Create
+Project/Workspace, a settled Play round, and a one-round Simulation result
+rendered. Replay rendered as the selected section. The generic whole-page
+Build/Export selector did not expose a local Outcome Library action in its
+bounded wait. No Export request, duplicate click, pending, or product error
+was observed.
 
-Outcome: readiness-inconclusive. These observations are not a rendered product
-failure and do not approve unreached Valera or physical PAR/Player criteria.
+Launch 2: a new Studio HOME/registry and Chromium profile, again using exactly
+the required candidate CLI command, rendered valid cold start, Workspace,
+Play, and Simulation. One rendered Replay action was accepted. No local Replay
+completion, pending state, or product error appeared before the bounded wait
+expired. It was not repeated and no additional Studio launch is permitted.
+
+Result: readiness-inconclusive. These waits are driver/readiness observations,
+not product findings. P6V-03, P6V-04, and P6V-05 rendered/physical journeys
+were not started in this focused recovery.

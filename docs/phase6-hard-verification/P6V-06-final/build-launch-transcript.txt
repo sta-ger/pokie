@@ -1,4 +1,4 @@
-P6V-06 fresh exact-candidate build and CLI launch
+P6V-06 fresh exact-candidate CLI build
 candidate=cf26cd3110cdf5d3f01deb533efb7b031039d9ed
 
 $ npm run build-cli
