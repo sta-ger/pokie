@@ -381,15 +381,16 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
     private validateBetModeRuntimeSemantics(entries: Record<string, unknown>[], mechanics: unknown, issues: ValidationIssue[]): void {
         const withRuntimeType = entries.filter((e) => e.runtimeType !== undefined);
         if (withRuntimeType.length === 0) {
-            // Nobody opted in -- still validate isDefault/forcedFreeGames aren't used without
-            // runtimeType (using either without the other is itself an incomplete opt-in attempt).
+            // Nobody opted in. `isDefault` remains useful declarative metadata (for example, a
+            // Studio-authored catalogue can mark its preferred offer without changing runtime
+            // behaviour), while forced free games would promise runtime behaviour that is absent.
             entries.forEach((e, index) => {
-                if (e.isDefault !== undefined || e.forcedFreeGames !== undefined) {
+                if (e.forcedFreeGames !== undefined) {
                     issues.push({
                         code: "blueprint-betmode-runtimetype-required",
                         severity: "error",
-                        message: `"betModes[${index}]" sets isDefault/forcedFreeGames but no "runtimeType" -- ` +
-                            'set "runtimeType" on every bet mode to opt into explicit runtime semantics, or remove isDefault/forcedFreeGames entirely.',
+                        message: `"betModes[${index}]" sets forcedFreeGames but no "runtimeType" -- ` +
+                            'set "runtimeType" on every bet mode to opt into explicit runtime semantics, or remove forcedFreeGames.',
                         path: `betModes[${index}]`,
                     });
                 }
