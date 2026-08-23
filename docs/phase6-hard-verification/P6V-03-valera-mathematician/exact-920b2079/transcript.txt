@@ -1,0 +1,53 @@
+[2026-08-23T00:29:56.543Z] START exact candidate 920b2079acde4a581bd9b520df38aa3268753205; fresh Studio registry and fresh Chromium profile; required command node ./dist/cli/pokie.js --no-open
+[2026-08-23T00:29:56.565Z] NAVIGATE public Studio route /home/design
+[2026-08-23T00:29:57.139Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:29:57.343Z] CLICK rendered "Recommended"
+[2026-08-23T00:29:57.498Z] CREATE rendered Recommended blueprint
+[2026-08-23T00:29:57.655Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:29:57.833Z] CLICK rendered aria-label "Generate random"
+[2026-08-23T00:29:58.008Z] CLICK rendered "Generate"
+[2026-08-23T00:29:58.242Z] CLICK rendered "Use this blueprint"
+[2026-08-23T00:29:58.398Z] CREATE rendered Random blueprint
+[2026-08-23T00:29:58.556Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:29:58.743Z] CLICK rendered "Blank"
+[2026-08-23T00:29:58.898Z] CREATE rendered Blank blueprint
+[2026-08-23T00:29:59.055Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:29:59.247Z] CLICK rendered "Recommended"
+[2026-08-23T00:29:59.403Z] CREATE rendered Recommended blueprint
+[2026-08-23T00:29:59.694Z] INPUT rendered "Game id"="valera-mathematician"
+[2026-08-23T00:30:00.301Z] INPUT rendered "Game name"="Valera Mathematician"
+[2026-08-23T00:30:00.514Z] CLICK rendered tab "Layout"
+[2026-08-23T00:30:00.519Z] MODEL rendered Layout editor
+[2026-08-23T00:30:00.748Z] CLICK rendered tab "Symbols"
+[2026-08-23T00:30:00.751Z] MODEL rendered Symbols editor
+[2026-08-23T00:30:01.022Z] CLICK rendered tab "Reels"
+[2026-08-23T00:30:01.099Z] MODEL rendered Reels editor
+[2026-08-23T00:30:01.406Z] CLICK rendered tab "Paytable"
+[2026-08-23T00:30:01.409Z] MODEL rendered Paytable editor
+[2026-08-23T00:30:01.665Z] CLICK rendered tab "Bets"
+[2026-08-23T00:30:01.668Z] MODEL rendered Bets editor
+[2026-08-23T00:30:01.998Z] CLICK rendered tab "Symbols"
+[2026-08-23T00:30:02.257Z] CLICK rendered aria-label "Symbol 1 is wild"
+[2026-08-23T00:30:02.484Z] CLICK rendered aria-label "Symbol 2 is scatter"
+[2026-08-23T00:30:02.639Z] CLICK rendered "Select PNG"
+[2026-08-23T00:30:04.497Z] NATIVE PICKER focused and selected absolute artwork path
+[2026-08-23T00:30:06.074Z] MODEL rendered A wild, K scatter, and imported artwork
+[2026-08-23T00:30:06.454Z] CLICK rendered tab "Reels"
+[2026-08-23T00:30:06.711Z] CLICK rendered "Per-reel (Reel Strip Modeler)"
+[2026-08-23T00:30:06.929Z] CLICK rendered aria-label "Select reel 1"
+[2026-08-23T00:30:07.081Z] CLICK rendered aria-label "Edit or generate Literal or generated"
+[2026-08-23T00:30:07.259Z] CLICK rendered "Literal"
+[2026-08-23T00:30:07.465Z] INPUT rendered "New symbol id for reel 1"="A"
+[2026-08-23T00:30:07.633Z] CLICK rendered aria-label "Add symbol to reel 1"
+[2026-08-23T00:30:07.919Z] CAPTURE 01-literal-reels.png
+[2026-08-23T00:30:08.091Z] CLICK rendered aria-label "Edit or generate Literal or generated"
+[2026-08-23T00:30:08.416Z] CLICK rendered "Generated"
+[2026-08-23T00:30:08.623Z] CLICK rendered "Weights"
+[2026-08-23T00:30:09.025Z] SELECT rendered "Symbol"="A"
+[2026-08-23T00:30:09.284Z] INPUT rendered "Weight"="2"
+[2026-08-23T00:30:09.494Z] CLICK rendered "Add weight"
+[2026-08-23T00:30:09.980Z] CAPTURE 02-symbol-weights.png
+[2026-08-23T00:30:10.160Z] CLICK rendered "Literal"
+[2026-08-23T00:31:10.193Z] FAILED Error: Timed out waiting for literal reels restored after Symbol weights
+    at until (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-cf7972350afb69cf/current.mjs:24:151)
+    at async main (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-cf7972350afb69cf/current.mjs:74:26)
