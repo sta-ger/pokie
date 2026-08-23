@@ -446,12 +446,12 @@ export function readFreeGames(blueprint: Record<string, unknown>): {scatterSymbo
     };
 }
 
-// Turns this mechanic on, starting from nothing (no scatter symbol, no awards yet) -- the same
-// "start editable, then fill in" pattern addBet/addPayline already follow for their own optional
-// collections.
+// Turns this mechanic on with the first configured scatter preselected when one exists. That keeps
+// the primary producer flow actionable after Add free games: the remaining award is still explicit,
+// while a valid, already-visible scatter is never needlessly reselected through a dropdown.
 export function addFreeGames(blueprint: Record<string, unknown>): void {
     const mechanics = asMechanics(blueprint.mechanics);
-    mechanics.freeGames = {scatterSymbol: "", awardsByCount: {}};
+    mechanics.freeGames = {scatterSymbol: asStringArray(blueprint.scatters)[0] ?? "", awardsByCount: {}};
     blueprint.mechanics = mechanics;
 }
 
