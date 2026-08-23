@@ -106,3 +106,26 @@ The product content remains candidate `49d5fccc517f5a7f964ecc7fa32148edeb18d588`
 The repaired journey rendered native selection of `examples/parsheets/starter.par.xlsx` (`a2e88ad5962551e8be9b2710b141965cfbae354ca8e9f254b6e9f53a9f9b4924`), `Imported with warnings`, provenance, canonical hash `ed4953d3c1e8bc2c8eaa6670bdbe3aee564a65c8245f2b52c7449e7e4e14f4cc`, confirmation Apply, a confirmed visible edit to `PAR Sheet Starter round-trip`, and a real native Save selection.  The resulting isolated saved Blueprint hash was `43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b`.
 
 The remaining Stepper export control required an ordinal-prefixed rendered-selector repair.  Before that repaired journey could reach it, the final fresh launch opened the real native import picker only after its one safe retry but the selected path never returned to the rendered input.  There was no local pending/error state or rendered product error.  The physical XLSX export/re-import semantic comparison and dependent companion/package/Studio Play/public client-dev/Replay parity matrix therefore remain not reached.  This is driver-inconclusive, not a product finding.  All isolated runtime/profile/output directories and screenshots were removed; this README is the sole retained proof.
+
+## Focused harness-recovery follow-up (2026-08-23)
+
+Product content remains exactly `49d5fccc517f5a7f964ecc7fa32148edeb18d588`; this checkout is an evidence-only README descendant.  `npm run build` completed before the four fresh, isolated candidate-source Studio launches, each started exclusively with:
+
+```text
+node ./dist/cli/pokie.js --no-open
+```
+
+The companion checkout was again independently clean at exact SHA `b7b043e0e722da917f1b60c4f107c8cc35fdd725`.  The physical fixture hash remains:
+
+```text
+examples/parsheets/starter.par.xlsx
+sha256 a2e88ad5962551e8be9b2710b141965cfbae354ca8e9f254b6e9f53a9f9b4924
+```
+
+The final rendered journey selected that workbook through the activated native picker, showed `Imported with warnings`, provenance, and canonical preview hash `ed4953d3c1e8bc2c8eaa6670bdbe3aee564a65c8245f2b52c7449e7e4e14f4cc`; it then applied the managed Blueprint, visibly changed its name to `PAR Sheet Starter round-trip`, and saved it through the activated native Save picker.  The isolated saved expected Blueprint hash was:
+
+```text
+sha256 43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b
+```
+
+After Apply remounted the PAR panel, its rendered `Apply / Export` Stepper control could not be resolved as an interactive control by the repaired harness.  No rendered error, failed export, or canonical mismatch was observed.  The physical export/re-import semantic comparison and the dependent exact-companion package/Studio Play/public client-dev/Replay parity matrix were therefore not reached.  This is selector-inconclusive, not a product finding.  No runtime directories, profiles, workbooks, raw diagnostics, screenshots, or harness source are retained in this evidence commit.
