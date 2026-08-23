@@ -9,6 +9,7 @@ import {BufferedTextInput} from "../common/BufferedTextInput";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {RowActions} from "../common/RowActions";
+import {PathBrowseModal} from "../common/PathBrowseModal";
 import {symbolArtworkFromBlueprint, SymbolPresentation} from "../common/SymbolPresentation";
 
 export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unknown>; mutate: BlueprintMutate}) {
@@ -18,18 +19,13 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
     const scatters = asStringList(blueprint.scatters);
     const [newSymbolId, setNewSymbolId] = useState("");
     const [diagnostic, setDiagnostic] = useState<string>();
+    const [artworkBrowserSymbolId, setArtworkBrowserSymbolId] = useState<string>();
     const artwork = symbolArtworkFromBlueprint(blueprint);
 
-    const selectArtwork = async (symbolId: string): Promise<void> => {
+    const importArtwork = async (symbolId: string, sourcePath: string): Promise<void> => {
         setDiagnostic(undefined);
         try {
-            const picked = await pickNativePath(fetchImpl, {kind: "file", fileFilters: [{name: "PNG image", extensions: ["png"]}]});
-            if (picked.status === "cancelled") return;
-            if (picked.status !== "selected") {
-                setDiagnostic(picked.status === "error" ? `Could not select artwork: ${picked.message}` : picked.reason);
-                return;
-            }
-            const imported = await importSymbolArtwork(fetchImpl, picked.path);
+            const imported = await importSymbolArtwork(fetchImpl, sourcePath);
             if (imported.status === "error") {
                 setDiagnostic(imported.error);
                 return;
@@ -42,6 +38,26 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
             });
         } catch (error) {
             setDiagnostic(error instanceof Error ? error.message : String(error));
+        }
+    };
+
+    const selectArtwork = async (symbolId: string): Promise<void> => {
+        setDiagnostic(undefined);
+        try {
+            const picked = await pickNativePath(fetchImpl, {kind: "file", fileFilters: [{name: "PNG image", extensions: ["png"]}]});
+            if (picked.status === "selected") {
+                await importArtwork(symbolId, picked.path);
+                return;
+            }
+            if (picked.status !== "cancelled") {
+                // A remote/headless Studio server cannot show an OS picker. Its rendered filesystem
+                // browser is the same truthful fallback PathInput uses, so artwork selection remains
+                // actionable instead of stopping at an environment-specific picker message.
+                setArtworkBrowserSymbolId(symbolId);
+            }
+        } catch (error) {
+            setDiagnostic(error instanceof Error ? error.message : String(error));
+            setArtworkBrowserSymbolId(symbolId);
         }
     };
 
@@ -146,6 +162,18 @@ export function SymbolsTable({blueprint, mutate}: {blueprint: Record<string, unk
                 A symbol cannot be both wild and scatter. Renaming updates all reel, paytable, generated-reel, and free-games references; referenced symbols cannot be deleted.
             </Text>
             {diagnostic && <Text role="alert" size="sm" c="red" mt="xs">{diagnostic}</Text>}
+            <PathBrowseModal
+                opened={artworkBrowserSymbolId !== undefined}
+                onClose={() => setArtworkBrowserSymbolId(undefined)}
+                onSelect={(path) => {
+                    if (artworkBrowserSymbolId !== undefined) {
+                        importArtwork(artworkBrowserSymbolId, path);
+                    }
+                }}
+                kind="file"
+                initialPath=""
+                title="Select PNG artwork"
+            />
             <QuickActions>
                 <Group gap="xs">
                     <TextInput
