@@ -66,3 +66,23 @@ No runtime profile, registry, project/output tree, full log, or automation
 source is retained. The original screenshot remains the sole representative
 rendered artifact; the complete recovery transcript remains in the
 controller-owned harness workspace.
+
+## Persistent-harness recovery, 2026-08-23
+
+Four further fresh isolated launches used the same repaired persistent harness
+and the exact checkout command above. The first launch repaired the checkbox
+name collision and explicitly rendered **A wild**, **K scatter**, the focused
+native PNG selection followed by the **Change** artwork control, and a
+non-empty literal reel **Preview** after adding `A`. It then exposed a second
+harness collision: the generic `Symbol` picker lookup selected the visible
+`Symbol weights` mode radio rather than the generated-reel picker. The
+in-place repair made labels direct/aria-first and switched section navigation
+to rendered tab roles; the two remaining fresh launches then showed that the
+controlled Game id field did not accept the harness's CDP keyboard events.
+Each stayed visibly **Valid — no issues found**; no rendered product error was
+observed. The exhausted bounded recovery therefore does not attest generated
+reel apply, workspace actions, Replay export, or post-reopen persistence.
+
+The persistent-harness-only terminal transcript and temporary profiles remain
+outside this evidence tree. The retained rendered Home screenshot checksum is
+unchanged: `2f5dfbe26bc88f25c08d464655f0555fce9b31a7f8a432110ad3488829ea6bb3`.
