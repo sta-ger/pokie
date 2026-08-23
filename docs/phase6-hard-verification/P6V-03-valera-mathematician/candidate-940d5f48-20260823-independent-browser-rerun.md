@@ -128,3 +128,36 @@ close/reopen persistence consequently remain unclaimed; no duplicate
 non-idempotent action was issued. Temporary profiles, registries, generated
 projects, full logs, harness source, and terminal screenshots remain outside
 the evidence tree.
+
+## Final rendered-harness recovery, 2026-08-23
+
+The same persistent harness ran four fresh isolated HOME/XDG-registry and
+Chrome-profile launches from this source checkout using only
+`node ./dist/cli/pokie.js --no-open`. It repaired picker selection by clicking
+the rendered listbox option, scoped Workspace Edit/Save actions by the rendered
+section legend, and selected a rendered Replay Session Spin before export.
+
+The final run explicitly observed through rendered controls: payline 1/reel 1
+row `2`; `A ×3` payout `9`; bet 1 `3`; J wild and K scatter; selected PNG
+artwork (the **Change** control); a non-empty literal `A` strip with local
+**Literal strip** Preview; a generated Reel 1 with weights `A=5`, `Q=1`, a
+maximum-consecutive constraint of `6`, an A stack of length `2`, successful
+preview, and Apply. It also added and saved `mode-1`, then added and saved the
+K ×3 → 6 free-games mechanic. Play rendered an ordinary win and a
+`freeGamesTriggered` feature result; Simulation rendered RTP/results. Replay
+rendered the selected Session Spin as exportable and the exact click created
+`spin-3b538e87-84bd-442a-b6eb-804bba78fc0e.json` (16,889 bytes, SHA-256
+`7cc31523496384657f1ac246c663393ccdc3359d866f74d9d111c9ca44b4907e`) in
+that run's isolated HOME/Downloads.
+
+The harness initially watched a separate downloads directory, so its bounded
+wait expired even though the rendered download had completed in HOME/Downloads.
+This is driver/readiness evidence, not a product finding. The fourth and final
+permitted launch had therefore ended before Close/Open persistence, Outcome
+Library, and Stake Engine checks; those are not claimed. No rendered product,
+browser, or failed-network error was observed.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-940d5f48-20260823-recovery-model.png` | Rendered generated-reel Apply state | `6c3aa67977f2d7ef1ee6bc1a3e7fa75d212f702d0809d2e3d29327398beea313` |
+| `candidate-940d5f48-20260823-recovery-replay-feature.png` | Rendered selected Replay Session Spin with `freeGamesTriggered` | `e984cf254c06df6d4d4334a2fdfa9e84c3ceea96104b8e8c73132ff453be6441` |
