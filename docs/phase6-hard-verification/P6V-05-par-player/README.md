@@ -2,16 +2,23 @@
 
 Candidate product SHA: `bdbe36151ddaf2b37807fc099d6fe9245251e059`.
 Read-only companion SHA: `1e2c8c00457f3af389c0168432c08e63ca441465`.
-Both checkout status checks were clean before the attempt.
+Both checkouts were clean before this retry and remain unmodified.
 
-The candidate was built before verification. Two permitted fresh Studio launches then used exactly
-`node ./dist/cli/pokie.js --no-open`, each with a separate Chrome profile and isolated XDG registry.
-The first stopped before any rendered Studio action because the verifier attached CDP to Chrome's
-browser endpoint rather than its visible page. The harness was repaired in place for the second launch.
+This focused harness-recovery attempt used the persistent controller-provided harness, repaired in
+place before launch. It rebuilt neither product nor companion: the existing candidate `dist/cli`
+build was used. Each of the two permitted fresh Studio launches used exactly
+`node ./dist/cli/pokie.js --no-open`, a new XDG registry, and a new Chrome profile.
 
-On the second launch, the rendered Studio UI reached Design Game and its Recommended model, then received
-the visible `Create Project` action. The harness incorrectly treated the instructional sentence mentioning
-"Workspace" as completion, then could not find a rendered Home control. Studio displayed no product error.
-The launch limit forbids a third Studio run, so the required native-picker XLSX round trip and Player
-parity matrix were not reached. This is driver inconclusive, not a product finding. No screenshots,
-workbooks, profiles, logs, automation files, or generated project/output trees are retained in this repo.
+In both launches, the rendered Studio page reached **Design Game**, the visible **Show advanced
+options (JSON mode, load/save by path)** action, and the rendered PAR import control. The harness
+then clicked that control and waited for a real native picker while using the controller display
+contract (search visible dialog, activate it, verify active-window focus before typing). No native
+picker window appeared in either bounded wait, so no path was typed and no Import request was
+accepted. Studio rendered no product error. The second launch retained the first launch's CDP
+page-target repair and additionally used title-independent visible-dialog discovery; it reproduced
+the same driver symptom.
+
+Consequently the native-picker import/export round trip was never begun, and the same launch budget
+could not safely reach the companion Studio Play/Replay or the separate public Player surfaces.
+No product defect was observed. No generated project, workbook, browser profile, log, screenshot,
+automation source, or output tree is retained here; this transcript is the bounded evidence.
