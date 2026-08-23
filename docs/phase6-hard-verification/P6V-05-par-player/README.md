@@ -46,3 +46,17 @@ node ./dist/cli/pokie.js --no-open
 The visible Design Game page opened its advanced PAR panel.  The physical `Browse…` action was issued for the fixture, but no native picker window, rendered fallback picker, local pending state, or rendered product error appeared within the bounded semantic wait.  A single safe retry after repairing the prior over-broad Browse binding produced the same unconfirmed interaction.  No product symptom was rendered, so this is driver-inconclusive rather than a product finding.  The import/export/re-import path and canonical comparison were not reached; generated runtime directories, screenshots, and logs are not committed.
 
 The required exact `pokie-examples` companion checkout was still absent from the persisted request, so the package/client/dev/Replay parity matrix and the second recorded SHA cannot be independently verified.
+
+## Focused harness recovery (2026-08-23)
+
+The candidate source was rebuilt successfully, and the fixture was rechecked before the fresh Studio work:
+
+```text
+candidate product SHA 49d5fccc517f5a7f964ecc7fa32148edeb18d588
+examples/parsheets/starter.par.xlsx
+sha256 a2e88ad5962551e8be9b2710b141965cfbae354ca8e9f254b6e9f53a9f9b4924
+```
+
+The persistent harness at the controller-supplied workspace was repaired in place for all four permitted fresh-profile launches.  It now scopes `Browse…` to the rendered `PAR sheet path` control, sends a complete visible mouse transition, discovers Zenity/KDialog by X11 window/PID rather than a localised title, and activates plus verifies a native dialog before typing.  The last attempt confirmed that its target was the rendered `Browse…` button next to `PAR sheet path`; nevertheless the control produced neither a native dialog, the rendered server-filesystem fallback, a local pending/error state, nor an `/api/home/fs/native-browse` resource request.  Only the normal initial blueprint validation request appeared.  The control's visible state contained no product error.
+
+This is therefore driver-inconclusive, not a product finding: the real native-picker selection was never accepted, so neither the physical import/export/re-import nor canonical semantic comparison could begin.  No screenshot, raw log, runtime/profile, generated workbook, or harness script is retained in this evidence.  The exact `pokie-examples` companion workspace remains absent, so its required SHA and full cross-repository parity matrix remain not reached.
