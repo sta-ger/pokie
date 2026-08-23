@@ -29,10 +29,12 @@ export type BetMode = {
     //     modes is supported -- the generated-session wiring routes each to its own handler by mode id
     //     (see PerModeForcedFeatureEntryHandler), never hard-coding a specific mode/cost/grant.
     runtimeType?: BetModeRuntimeType;
-    // Exactly one mode in the array must set this true when runtimeType is used at all -- the mode
-    // VideoSlotWithBetModesSession starts (and reverts to after a one-shot purchase) with. Must not be
-    // the mode whose runtimeType is "buyFeature" (a one-shot purchase can never be a safe landing
-    // mode -- see BetModesConfig's own same constraint on its runtime default).
+    // A declarative marker for the preferred mode. When runtimeType is used at all, exactly one mode
+    // must set this true -- the mode VideoSlotWithBetModesSession starts (and reverts to after a
+    // one-shot purchase) with. A metadata-only mode may also carry this marker without opting into
+    // runtime behaviour. A runtime default must not be the mode whose runtimeType is "buyFeature"
+    // (a one-shot purchase can never be a safe landing mode -- see BetModesConfig's own same
+    // constraint on its runtime default).
     isDefault?: boolean;
     // Only meaningful (and required) on a "buyFeature"-runtimeType mode: how many free games buying
     // this mode forces entry into. Requires mechanics.freeGames to be configured on the same blueprint

@@ -2,6 +2,8 @@ import {
     buildRoundArtifact,
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
+    GamePackageGenerator,
+    type GameBlueprint,
     OutcomeLibraryBundleModeInput,
     OutcomeLibraryBundleWriter,
     PokieGame,
@@ -752,6 +754,50 @@ describe("StudioPlayService", () => {
             // Proves the search actually played 4 real, settled rounds to get there, not a single check --
             // each of the first 3 genuinely didn't trigger free games (see wonFreeGamesAtAttempt above).
             expect(getAttempts()).toBe(4);
+        });
+
+        it("findFreeGames completes against a real configured 5x3 Blueprint with literal scatter reels", async () => {
+            const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-free-games-"));
+            try {
+                const blueprint: GameBlueprint = {
+                    manifest: {id: "literal-free-games", name: "Literal Free Games", version: "0.1.0"},
+                    reels: 5,
+                    rows: 3,
+                    symbols: ["A", "K"],
+                    scatters: ["K"],
+                    availableBets: [1],
+                    paytable: {A: {3: 5}, K: {3: 2}},
+                    // Each of the first three reels contributes exactly one K to the 3-row window,
+                    // so the configured 3x award is deterministic while still exercising literal
+                    // 5x3 strips rather than a hand-shaped session fake.
+                    reelStrips: [
+                        ["K", "A", "A"],
+                        ["K", "A", "A"],
+                        ["K", "A", "A"],
+                        ["A", "A", "A"],
+                        ["A", "A", "A"],
+                    ],
+                    mechanics: {freeGames: {scatterSymbol: "K", awardsByCount: {3: 10}}},
+                };
+                const generated = new GamePackageGenerator("1.3.0").generate(blueprint, packageRoot);
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const game = require(path.join(generated.projectRoot, "dist", "index.js")) as PokieGame;
+                const service = new StudioPlayService(() => Promise.resolve(game));
+                const created = await service.newSession(generated.projectRoot);
+                if (created.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+
+                const result = await service.findFreeGames(created.session.sessionId);
+
+                expect(result.status).toBe("ok");
+                if (result.status !== "ok") {
+                    throw new Error("expected ok");
+                }
+                expect(result.session.debug?.artifact?.featureEvents).toEqual([{type: "freeGamesTriggered", data: {count: 10}}]);
+            } finally {
+                fs.rmSync(packageRoot, {recursive: true, force: true});
+            }
         });
 
         it("findFreeGames reports an honest 'error' for a game that doesn't support free games, never throwing, and never burning a spin first", async () => {

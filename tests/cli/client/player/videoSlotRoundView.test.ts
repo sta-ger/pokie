@@ -233,6 +233,10 @@ describe("deriveAvailableBets", () => {
     it("filters out non-numeric entries", () => {
         expect(deriveAvailableBets([1, "2", 3])).toEqual([1, 3]);
     });
+
+    it("preserves the first occurrence of each numeric bet", () => {
+        expect(deriveAvailableBets([1, 2, 1, 5, 2])).toEqual([1, 2, 5]);
+    });
 });
 
 describe("deriveAvailableBetModeIds", () => {

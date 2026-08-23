@@ -425,7 +425,7 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         expect(gameModelCalls).toBeGreaterThanOrEqual(2);
     });
 
-    it("Edit -> mutate -> Save on Bets & Modes persists a real bet mode instead of presenting a read-only placeholder", async () => {
+    it("Edit -> mutate -> Save on Bets & Modes persists a metadata default mode instead of trapping the editor", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -439,16 +439,32 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await goToGameModelTab(user);
         const bets = sectionFieldset("Bets & Modes");
         await user.click(within(bets).getByRole("button", {name: "Edit"}));
+        await user.type(await within(bets).findByLabelText("New bet amount"), "10");
+        await user.click(within(bets).getByRole("button", {name: "Add bet"}));
         await user.click(await within(bets).findByRole("button", {name: "Add bet mode"}));
         const id = within(bets).getByLabelText("Bet mode 1 id");
         await user.clear(id);
         await user.type(id, "base");
         fireEvent.blur(id);
+        const label = within(bets).getByLabelText("Bet mode 1 label");
+        await user.clear(label);
+        await user.type(label, "Valera mode");
+        fireEvent.blur(label);
+        const costMultiplier = within(bets).getByLabelText("Bet mode 1 cost multiplier");
+        await user.type(costMultiplier, "1");
+        fireEvent.blur(costMultiplier);
+        const targetRtp = within(bets).getByLabelText("Bet mode 1 target RTP");
+        await user.type(targetRtp, "96");
+        fireEvent.blur(targetRtp);
+        await user.click(within(bets).getByLabelText("Bet mode 1 is default"));
         await user.click(within(bets).getByRole("button", {name: "Save"}));
 
         await within(bets).findByRole("button", {name: "Edit"});
         const saved = calls.find((call) => call.url === "/api/home/blueprints/save");
-        expect(JSON.parse(saved!.init!.body!).blueprint.betModes).toEqual([{id: "base", label: "Mode 1"}]);
+        expect(JSON.parse(saved!.init!.body!).blueprint.availableBets).toEqual([1, 10]);
+        expect(JSON.parse(saved!.init!.body!).blueprint.betModes).toEqual([
+            {id: "base", label: "Valera mode", costMultiplier: 1, targetRtp: 96, isDefault: true},
+        ]);
     });
 
     it("Save includes an available-bet edit committed by the field blur that triggered it", async () => {

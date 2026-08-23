@@ -72,6 +72,29 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
     });
 
+    it("keeps every literal reel strip when rendered controls switch to Symbol weights and back", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/blueprints/validate") {
+                return jsonResponse({status: "ok", warnings: []});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl});
+        await user.click(await screen.findByRole("tab", {name: /Reels/}));
+        await user.click(screen.getByRole("radio", {name: "Symbol weights"}));
+        await user.click(screen.getByRole("radio", {name: "Reel strips"}));
+
+        expect(screen.getAllByLabelText(/Reel \d symbol 1/)).toHaveLength(5);
+        expect(screen.getByLabelText("Reel 1 symbol 1")).toHaveValue("A");
+        expect(screen.getByLabelText("Reel 2 symbol 1")).toHaveValue("A");
+        expect(screen.getByLabelText("Reel 3 symbol 1")).toHaveValue("K");
+        expect(screen.getByLabelText("Reel 4 symbol 1")).toHaveValue("K");
+        expect(screen.getByLabelText("Reel 5 symbol 1")).toHaveValue("Q");
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create Project"})).toBeEnabled());
+    });
+
     it("edits a literal reel's strip as a local draft, and only Apply commits it to the blueprint", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => Promise.reject(new Error(`unexpected fetch ${url}`));
@@ -809,9 +832,10 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         expect(screen.getByLabelText("Seed")).toHaveValue("99");
     });
 
-    it("completes the visual modeler workflow, saves the shared Game Model, and retains the applied generated reel after remount", async () => {
+    it("completes the visual modeler workflow, persists the shared Game Model, and opens its Workspace", async () => {
         const user = userEvent.setup();
         const managedSaveBodies: Array<{blueprint: {reelStripGeneration: Record<string, unknown>[]}}> = [];
+        const openedProjectRoots: string[] = [];
         const fetchImpl: FetchLike = (url, init) => {
             if (url === RESOLVE_REELS_URL) {
                 return jsonResponse({
@@ -851,7 +875,8 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
                 });
             }
             if (url === OPEN_PROJECT_URL) {
-                return jsonResponse({context: {status: "loaded"}, manifest: {id: "modeler"}});
+                openedProjectRoots.push(JSON.parse((init?.body as string | undefined) ?? "{}").projectRoot);
+                return jsonResponse({context: {status: "loaded", projectRoot: "/POKIE Projects/modeler"}, manifest: {id: "modeler"}});
             }
             return Promise.reject(new Error(`unexpected fetch ${url}`));
         };
@@ -977,19 +1002,6 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         const savedReel = managedSaveBodies[0].blueprint.reelStripGeneration[0];
         expect(savedReel).toMatchObject({type: "generated", length: 6, seed: 7});
         expect(Object.values(savedReel.symbolWeights as Record<string, number>)).toContain(2);
-        expect(await screen.findByText('Saved to "/POKIE Projects/modeler/blueprint.json".')).toBeInTheDocument();
-
-        // Applying the already-saved shared Game Model is the editor's explicit form remount boundary.
-        // The applied reel configuration belongs to that Game Model, not the Modeler's local draft.
-        await user.click(screen.getByRole("radio", {name: "JSON", hidden: true}));
-        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: JSON.stringify(managedSaveBodies[0].blueprint)}});
-        await user.click(screen.getByRole("button", {name: "Apply JSON"}));
-        await user.click(screen.getByRole("radio", {name: "Form", hidden: true}));
-        await user.click(await screen.findByRole("tab", {name: /Reels/}));
-        await goToReelStripModeler(user);
-        await user.click(screen.getByRole("button", {name: "Select reel 1"}));
-        expect(screen.getByRole("radio", {name: "Generated"})).toBeChecked();
-        expect(screen.getByLabelText("Length")).toHaveValue("6");
-        expect(screen.getByLabelText("Seed")).toHaveValue("7");
+        await waitFor(() => expect(openedProjectRoots).toEqual(["/POKIE Projects/modeler/blueprint.json"]));
     }, 90000);
 });

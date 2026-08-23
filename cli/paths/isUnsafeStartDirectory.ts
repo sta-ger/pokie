@@ -30,6 +30,12 @@ export type UnsafeStartDirectoryContext = {
     // path evaluated from a POSIX test host) is expected to throw; callers here always treat that as
     // "no physical destination to check, fall back to the lexical path" rather than propagating it.
     readonly realpath?: (target: string) => string;
+    // A deliberately isolated user profile may itself live below the OS temporary directory (for
+    // example, a disposable local Studio profile).  That profile is still the user's explicit Home,
+    // not an arbitrary scratch destination.  When supplied, only descendants that remain physically
+    // inside this exact root are exempt from the broad OS-temp check; every other unsafe-root and
+    // unsafe-segment check below remains in force.
+    readonly allowedTemporaryRoot?: string;
 };
 
 const UNSAFE_SEGMENT_NAMES = new Set(["node_modules", "dist"]);
@@ -81,14 +87,16 @@ function physicalAnchor(root: string, realpath: (target: string) => string): str
 // unrelated host path via "." once separators stop matching.
 function physicalDestination(resolvedCandidate: string, platformPath: PlatformPathModule, realpath: (target: string) => string): string {
     let current = resolvedCandidate;
+    const missingSuffix: string[] = [];
     for (;;) {
         try {
-            return realpath(current);
+            return missingSuffix.reduce((destination, segment) => platformPath.join(destination, segment), realpath(current));
         } catch {
             const parent = platformPath.dirname(current);
             if (parent === current) {
                 return resolvedCandidate;
             }
+            missingSuffix.unshift(platformPath.basename(current));
             current = parent;
         }
     }
@@ -134,7 +142,18 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
         return true;
     }
 
-    if (isUnsafeAgainst(platformPath.resolve(os.tmpdir()), resolvedCandidate, physicalCandidate, platformPath, realpath)) {
+    const allowedTemporaryRoot = context.allowedTemporaryRoot === undefined ? undefined : platformPath.resolve(context.allowedTemporaryRoot);
+    // Unlike the other forbidden roots, an isolated HOME may be intentionally absent until the
+    // first managed project save creates it. Resolve that planned path through its nearest existing
+    // ancestor so a missing /tmp/profile stays a narrow exemption rather than collapsing to /tmp.
+    const physicalAllowedTemporaryRoot =
+        allowedTemporaryRoot === undefined ? undefined : physicalDestination(allowedTemporaryRoot, platformPath, realpath);
+    const isInsideAllowedTemporaryRoot =
+        allowedTemporaryRoot !== undefined &&
+        physicalAllowedTemporaryRoot !== undefined &&
+        isWithin(allowedTemporaryRoot, resolvedCandidate, platformPath) &&
+        isWithin(physicalAllowedTemporaryRoot, physicalCandidate, platformPath);
+    if (!isInsideAllowedTemporaryRoot && isUnsafeAgainst(platformPath.resolve(os.tmpdir()), resolvedCandidate, physicalCandidate, platformPath, realpath)) {
         return true;
     }
     if (context.installRoot !== undefined && isUnsafeAgainst(platformPath.resolve(context.installRoot), resolvedCandidate, physicalCandidate, platformPath, realpath)) {

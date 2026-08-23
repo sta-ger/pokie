@@ -9,7 +9,7 @@ import {
     type BlueprintSectionId,
 } from "../../domain/interpret/BlueprintSections";
 import type {BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
-import type {BlueprintMutate, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
+import type {BlueprintMutate, ReelGenerationModeDraftsRef, ReelStripGenerationDraftsRef} from "../../hooks/useBlueprintEditor";
 import {IssueList} from "../common/IssueList";
 import {StatusBadge} from "../common/StatusBadge";
 import {BetsList} from "./BetsList";
@@ -40,12 +40,14 @@ export function SectionedFormEditor({
     blueprint,
     mutate,
     drafts,
+    modeDrafts,
     revision,
     validationView,
 }: {
     blueprint: Record<string, unknown>;
     mutate: BlueprintMutate;
     drafts: ReelStripGenerationDraftsRef;
+    modeDrafts: ReelGenerationModeDraftsRef;
     revision: number;
     validationView: BlueprintValidationView;
 }) {
@@ -161,7 +163,7 @@ export function SectionedFormEditor({
                     {visitedSections.has("reels") && <>
                         <IssueList title="Errors" issues={crossFieldOnly(classifiedErrors.bySection.reels)} />
                         <IssueList title="Warnings" issues={crossFieldOnly(classifiedWarnings.bySection.reels)} />
-                        <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} revision={revision} />
+                        <ReelGenerationModeSelector blueprint={blueprint} mutate={mutate} drafts={drafts} modeDrafts={modeDrafts} revision={revision} />
                     </>}
                 </Tabs.Panel>
 

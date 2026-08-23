@@ -832,8 +832,14 @@ describe("GameBlueprintValidator", () => {
                 expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmodes-incomplete-runtimetype");
             });
 
-            it("flags isDefault/forcedFreeGames used without any runtimeType at all", () => {
+            it("accepts a metadata-only default without opting into runtime semantics", () => {
                 const blueprint = {...validBlueprint(), betModes: [{id: "base", isDefault: true}]};
+
+                expect(validator.validate(blueprint).filter((issue) => issue.severity === "error")).toEqual([]);
+            });
+
+            it("flags forcedFreeGames used without any runtimeType at all", () => {
+                const blueprint = {...validBlueprint(), betModes: [{id: "base", forcedFreeGames: 5}]};
 
                 expect(codesOf(validator.validate(blueprint))).toContain("blueprint-betmode-runtimetype-required");
             });

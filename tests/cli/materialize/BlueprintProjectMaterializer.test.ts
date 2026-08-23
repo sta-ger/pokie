@@ -20,7 +20,7 @@ import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintM
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../../../cli/materialize/UnsupportedProjectOperationError.js";
-import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandResult, PackageCommandRunning, withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
 
 type RecordedCommand = {command: string; args: string[]; cwd: string};
 
@@ -167,6 +167,27 @@ describe("BlueprintProjectMaterializer", () => {
         expect(runner.calls[0].args).toEqual(["install", "--omit=dev"]);
         expect(runner.calls[0].cwd).toContain(`${path.basename(result.runtimePath)}.staging-`);
         expect(packageValidator.calls).toEqual([runner.calls[0].cwd]);
+    });
+
+    it("creates a loadable runtime from the local POKIE installation without spawning npm", async () => {
+        const base = createRecordingRunner();
+        const materializer = new BlueprintProjectMaterializer(
+            "1.3.0",
+            undefined,
+            undefined,
+            undefined,
+            withLinkedLocalPokieRuntime(path.join(__dirname, "..", "..", ".."), base),
+            undefined,
+            cacheRoot,
+        );
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+
+        const result = await materializer.materialize(blueprintProjectOf(blueprintPath));
+
+        expect(fs.realpathSync(path.join(result.runtimePath, "node_modules", "pokie"))).toBe(
+            fs.realpathSync(path.join(__dirname, "..", "..", "..")),
+        );
+        expect(base.calls).toEqual([]);
     });
 
     it("materializes identically when the source blueprint directory, cache root, and blueprint file name all contain spaces", async () => {

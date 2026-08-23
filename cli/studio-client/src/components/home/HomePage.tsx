@@ -86,14 +86,14 @@ export function HomePage() {
     const [isDesignDirty, setIsDesignDirty] = useState(false);
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
     const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
-    const guardedAction = useDesignNavigationGuard(isDesignDirty);
+    const navigationGuard = useDesignNavigationGuard(isDesignDirty);
 
     return (
         <AppShellLayout
             navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => navigate(`/home/${value}`)} />}
             breadcrumbs={[]}
         >
-            <DesignNavigationGuardProvider value={guardedAction}>
+            <DesignNavigationGuardProvider value={navigationGuard}>
                 <Stack gap="lg">
                     <div ref={designRef} tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                         <BlueprintEditorPage

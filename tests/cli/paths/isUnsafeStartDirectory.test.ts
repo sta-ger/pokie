@@ -1,3 +1,4 @@
+import fs from "fs";
 import os from "os";
 import path from "path";
 import {isUnsafeStartDirectory} from "../../../cli/paths/isUnsafeStartDirectory.js";
@@ -20,6 +21,39 @@ describe("isUnsafeStartDirectory", () => {
     it("rejects the OS temp directory and anything inside it", () => {
         expect(isUnsafeStartDirectory(os.tmpdir(), {cwd: "/elsewhere"})).toBe(true);
         expect(isUnsafeStartDirectory(path.join(os.tmpdir(), "pokie-scratch"), {cwd: "/elsewhere"})).toBe(true);
+    });
+
+    it("allows only the explicitly isolated temporary profile root", () => {
+        const profile = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-isolated-profile-"));
+        try {
+            expect(isUnsafeStartDirectory(path.join(profile, "Documents", "POKIE Projects", "valera-mathematician"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(false);
+            expect(isUnsafeStartDirectory(path.join(os.tmpdir(), "other-profile", "project"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(true);
+        } finally {
+            fs.rmSync(profile, {recursive: true, force: true});
+        }
+    });
+
+    it("keeps a not-yet-created isolated profile narrowly scoped", () => {
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-isolated-profile-parent-"));
+        const profile = path.join(parent, "fresh-profile");
+        try {
+            expect(isUnsafeStartDirectory(path.join(profile, "POKIE Projects", "valera-mathematician"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(false);
+            expect(isUnsafeStartDirectory(path.join(parent, "another-profile", "project"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(true);
+        } finally {
+            fs.rmSync(parent, {recursive: true, force: true});
+        }
     });
 
     it("rejects the install root and paths inside it", () => {

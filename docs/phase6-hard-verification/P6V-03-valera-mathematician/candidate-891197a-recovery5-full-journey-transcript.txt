@@ -1,0 +1,13 @@
+[2026-08-22T17:54:55.200Z] START candidate 891197a45d46900ec570aaba6001f9aaacb1436d (evidence descendant b0ff94fcdf2ad35b9596697a2179f3ee9c1c21d9); Studio source command node ./dist/cli/pokie.js --no-open; disposable registry/profile
+[2026-08-22T17:54:55.222Z] NAVIGATE rendered Studio URL /home/design
+[2026-08-22T17:54:55.683Z] CLICK rendered "New Blueprint"
+[2026-08-22T17:54:55.807Z] CLICK rendered "Recommended"
+[2026-08-22T17:54:55.827Z] CREATE rendered Recommended draft
+[2026-08-22T17:54:55.859Z] CLICK rendered "New Blueprint"
+[2026-08-22T17:54:55.918Z] CLICK rendered aria-label "Generate random"
+[2026-08-22T17:54:55.921Z] OBSERVE fresh Random form; using its rendered unseeded default after the prior seeded readiness threshold
+[2026-08-22T17:54:55.973Z] CLICK rendered Random modal Generate after settled hit-target verification (type="button", viewport={"width":1042,"height":967}, scrollY=0)
+[2026-08-22T17:54:56.130Z] OBSERVE Random local state closed; draft before={"id":"starter-slot","name":"Starter Slot"} after={"id":"starter-slot","name":"Starter Slot"} text=""
+[2026-08-22T17:54:56.131Z] DIAGNOSTIC random-network=[{"url":"http://127.0.0.1:3200/api/home/blueprints/random","status":200}]
+[2026-08-22T17:54:56.131Z] DIAGNOSTIC browser=[]
+[2026-08-22T17:54:56.131Z] FAILED Random generation did not expose a rendered result or replacement identity: closed

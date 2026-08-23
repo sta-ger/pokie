@@ -1,0 +1,36 @@
+P6V-03 focused host recovery attempt 2 — 2026-08-23
+Candidate: 2806f36d1d08126bfc40572e16fde6d6fe0359c0
+
+Preconditions: the retained three screenshot SHA-256 values matched; this
+checkout completed `npm run build-cli`. Each of four public Studio launches
+used exactly `node ./dist/cli/pokie.js --no-open`, a fresh XDG_CONFIG_HOME, and
+a fresh Chromium profile. No installed self-dependency or private API was used.
+
+Launch 1: a fresh Recommended model visibly changed Rows from 3 to 4, duplicated
+the third payline, changed A x3 payout from 10 to 11, and changed bet 3 from 5
+to 6. The visible Reel Strip Modeler exposed literal/generated mode, counts,
+locked positions, spacing/occurrence constraints, and stack rules.
+
+Launch 2: repaired combobox targeting selected A through its rendered option;
+the count entry and stack/constraint editors rendered. This launch established
+the selector repair but did not claim a saved model.
+
+Launch 3: fresh Recommended -> per-reel -> Reel 1 -> Generated selected A and
+count 4, added a stack rule, and previewed it. An intentionally incompatible
+minimum-spacing rule produced Studio's rendered diagnostic; after removing that
+rule, Preview rendered “Generated successfully” and “Satisfied every constraint
+after 1 attempt(s).” Use changes followed by Create Project opened Starter Slot.
+In its Game Model, a Bet Mode `mode-1` with cost multiplier 2 was saved. A
+mechanics draft added a 3 -> 6 free-games award, but its scatter selector had no
+eligible option because this fresh project had not been configured with a
+scatter symbol; it was not saved or claimed. No rendered product error occurred.
+
+Launch 4 (uncoached one-sentence exploration): the visible path Create Project
+-> Open Play -> New Play session -> Spin settled normally with “You won 4.00”
+and a J line win. No documentation, source, prior evidence, or private API was
+consulted during this path.
+
+Outcome: retained criterion 2 remains passed. No P0/P1/material-P2 defect was
+rendered. Completed Blank creation and a single-project, saved/reopened proof
+covering all requested editing surfaces remain unreached after the four-launch
+limit, so the overall result is driver-inconclusive.

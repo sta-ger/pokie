@@ -1,0 +1,111 @@
+[2026-08-22T21:22:19.563Z] START exact candidate 69d0c518a088a2d414400c30782417fa1c2e2a36; fresh Studio HOME and fresh visible Chromium profile created
+[2026-08-22T21:22:21.822Z] LAUNCH rendered public Studio using exactly node ./dist/cli/pokie.js --no-open at http://127.0.0.1:3200
+[2026-08-22T21:22:32.376Z] NAVIGATE rendered public URL #/home/design
+[2026-08-22T21:22:32.390Z] OBSERVE empty fresh Studio registry inferred from isolated HOME; initial rendered Home has no persisted Valera project
+[2026-08-22T21:22:32.439Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:22:32.708Z] CLICK rendered "Recommended" (hit="Recommended")
+[2026-08-22T21:22:32.911Z] CREATE Recommended through rendered controls
+[2026-08-22T21:22:32.920Z] CLICK rendered "New Blueprint" (hit="DIV")
+[2026-08-22T21:22:35.447Z] RETRY New Blueprint once after no rendered modal transition
+[2026-08-22T21:22:35.502Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:22:35.753Z] CLICK rendered aria-label "Generate random" (hit="Random")
+[2026-08-22T21:22:36.010Z] CLICK rendered "Generate" (hit="Generate")
+[2026-08-22T21:22:36.319Z] CLICK rendered "Use this blueprint" (hit="Use this blueprint")
+[2026-08-22T21:22:36.532Z] CREATE Random through rendered controls
+[2026-08-22T21:22:36.566Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:22:36.821Z] CLICK rendered "Blank" (hit="Blank")
+[2026-08-22T21:22:37.045Z] CREATE Blank through rendered controls
+[2026-08-22T21:22:37.067Z] CLICK rendered "New Blueprint" (hit="New Blueprint")
+[2026-08-22T21:22:37.318Z] CLICK rendered "Recommended" (hit="Recommended")
+[2026-08-22T21:22:37.527Z] CREATE final Recommended through rendered controls; prior P1 entry point absent
+[2026-08-22T21:22:37.554Z] INPUT rendered "Game id"="valera-mathematician"
+[2026-08-22T21:22:37.851Z] INPUT rendered "Game name"="Valera Mathematician"
+[2026-08-22T21:22:38.725Z] CLICK rendered prefix "Layout"
+[2026-08-22T21:22:39.026Z] MODEL rendered Layout section reached
+[2026-08-22T21:22:39.147Z] CLICK rendered prefix "Symbols"
+[2026-08-22T21:22:39.448Z] MODEL rendered Symbols section reached
+[2026-08-22T21:22:39.605Z] CLICK rendered prefix "Reels"
+[2026-08-22T21:22:39.907Z] MODEL rendered Reels section reached
+[2026-08-22T21:22:40.116Z] CLICK rendered prefix "Paytable"
+[2026-08-22T21:22:40.417Z] MODEL rendered Paytable section reached
+[2026-08-22T21:22:40.589Z] CLICK rendered prefix "Bets"
+[2026-08-22T21:22:40.890Z] MODEL rendered Bets section reached
+[2026-08-22T21:22:41.065Z] CLICK rendered prefix "Symbols"
+[2026-08-22T21:22:41.429Z] CLICK rendered aria-label "Symbol 1 is wild" (hit="Symbol 1 is wild")
+[2026-08-22T21:22:41.726Z] CLICK rendered aria-label "Symbol 2 is scatter" (hit="Symbol 2 is scatter")
+[2026-08-22T21:22:41.965Z] CLICK rendered "Select PNG" (hit="Select PNG")
+[2026-08-22T21:22:45.458Z] NATIVE PICKER focused and received rendered absolute PNG path
+[2026-08-22T21:22:45.987Z] CAPTURE model.png
+[2026-08-22T21:22:46.105Z] CLICK rendered prefix "Reels"
+[2026-08-22T21:22:46.525Z] CLICK rendered native radio "Per-reel (Reel Strip Modeler)"
+[2026-08-22T21:22:46.808Z] CLICK rendered aria-label "Select reel 1" (hit="Select")
+[2026-08-22T21:22:47.041Z] CLICK rendered aria-label "Edit or generate Literal or generated" (hit="Configure")
+[2026-08-22T21:22:47.246Z] CLICK rendered native radio "Literal" (already selected)
+[2026-08-22T21:22:47.485Z] INPUT rendered "New symbol id for reel 1"="A"
+[2026-08-22T21:22:47.809Z] CLICK rendered aria-label "Add symbol to reel 1" (hit="Add symbol")
+[2026-08-22T21:22:48.076Z] CLICK rendered aria-label "Check & preview" (hit="Preview")
+[2026-08-22T21:22:48.281Z] MODEL literal reel and local preview rendered
+[2026-08-22T21:22:48.360Z] CLICK rendered aria-label "Edit or generate Literal or generated" (hit="Configure")
+[2026-08-22T21:22:48.746Z] CLICK rendered native radio "Generated"
+[2026-08-22T21:22:49.038Z] CLICK rendered native radio "Weights"
+[2026-08-22T21:22:49.344Z] INPUT rendered "Length"="5"
+[2026-08-22T21:22:49.708Z] OPEN rendered select "Symbol"
+[2026-08-22T21:22:49.961Z] SELECT rendered "Symbol"="A"
+[2026-08-22T21:22:50.305Z] INPUT rendered "Weight"="2"
+[2026-08-22T21:22:50.677Z] CLICK rendered "Add weight" (hit="Add weight")
+[2026-08-22T21:22:50.937Z] OPEN rendered select "Symbol"
+[2026-08-22T21:22:51.204Z] SELECT rendered "Symbol"="K"
+[2026-08-22T21:22:51.498Z] INPUT rendered "Weight"="1"
+[2026-08-22T21:22:51.854Z] CLICK rendered "Add weight" (hit="Add weight")
+[2026-08-22T21:22:52.105Z] OPEN rendered select "Common constraint type for reel 1"
+[2026-08-22T21:22:52.385Z] SELECT rendered "Common constraint type for reel 1"="Maximum consecutive occurrences"
+[2026-08-22T21:22:52.746Z] INPUT rendered "Common constraint value for reel 1"="2"
+[2026-08-22T21:22:53.057Z] CLICK rendered "Add constraint" (hit="Add constraint")
+[2026-08-22T21:22:53.322Z] OPEN rendered select "Eligible stack symbols for reel 1"
+[2026-08-22T21:22:53.579Z] SELECT rendered "Eligible stack symbols for reel 1"="A"
+[2026-08-22T21:22:53.932Z] INPUT rendered "Stack minimum length for reel 1"="2"
+[2026-08-22T21:22:54.273Z] CLICK rendered "Add stack rule" (hit="Add stack rule")
+[2026-08-22T21:22:54.540Z] CLICK rendered aria-label "Check & preview" (hit="Preview")
+[2026-08-22T21:22:55.114Z] CAPTURE model.png
+[2026-08-22T21:22:55.189Z] CLICK rendered aria-label "Continue to Preview stop windows" (hit="Open stop-window preview")
+[2026-08-22T21:22:55.410Z] CLICK rendered aria-label "Continue to Apply" (hit="Continue to Done")
+[2026-08-22T21:22:55.815Z] CLICK rendered aria-label "Apply" (hit="Use changes")
+[2026-08-22T21:22:56.019Z] MODEL generated reel weights, stack and constraint preview/applied through rendered controls
+[2026-08-22T21:22:56.037Z] CLICK rendered "Create Project" (hit="Create Project")
+[2026-08-22T21:22:56.724Z] PERSIST project created through rendered Create Project
+[2026-08-22T21:22:56.755Z] CLICK rendered "Game Model" (hit="Game Model")
+[2026-08-22T21:22:57.000Z] CLICK rendered "Edit" in "Bets & Modes" section
+[2026-08-22T21:22:57.260Z] CLICK rendered "Save" in "Bets & Modes" section
+[2026-08-22T21:22:57.461Z] PERSIST Bets & Modes saved
+[2026-08-22T21:22:57.503Z] CLICK rendered "Edit" in "Mechanics" section
+[2026-08-22T21:22:57.764Z] CLICK rendered "Add free games" (hit="Add free games")
+[2026-08-22T21:22:58.017Z] OPEN rendered select "Scatter symbol"
+[2026-08-22T21:22:58.303Z] SELECT rendered "Scatter symbol"="K"
+[2026-08-22T21:22:58.622Z] INPUT rendered "New match count"="3"
+[2026-08-22T21:22:58.936Z] INPUT rendered "New free games awarded"="5"
+[2026-08-22T21:22:59.262Z] CLICK rendered "Add award" (hit="Add award")
+[2026-08-22T21:22:59.537Z] CLICK rendered "Save" in "Mechanics" section
+[2026-08-22T21:22:59.737Z] PERSIST mechanics saved with K 3x to 5 free games
+[2026-08-22T21:22:59.772Z] CLICK rendered "Play" (hit="Play")
+[2026-08-22T21:23:00.028Z] CLICK rendered "New Play session" (hit="New Play session")
+[2026-08-22T21:23:00.297Z] CLICK rendered "Find any win" (hit="Find any win")
+[2026-08-22T21:23:00.550Z] CLICK rendered "Find free games" (hit="Find free games")
+[2026-08-22T21:23:00.756Z] PLAY ordinary win and configured free-games behavior rendered
+[2026-08-22T21:23:00.790Z] CLICK rendered "Simulation" (hit="Simulation")
+[2026-08-22T21:23:01.044Z] INPUT rendered "Rounds"="1000"
+[2026-08-22T21:23:01.355Z] CLICK rendered "Run Simulation" (hit="Run Simulation")
+[2026-08-22T21:23:01.817Z] CAPTURE play-simulation.png
+[2026-08-22T21:23:01.817Z] SIMULATION rendered 1,000-round result
+[2026-08-22T21:23:01.836Z] CLICK rendered "Replay" (hit="Replay")
+[2026-08-22T21:23:02.045Z] REPLAY rendered recorded round artifacts
+[2026-08-22T21:23:02.071Z] CLICK rendered "Build/Export" (hit="Build/Export")
+[2026-08-22T21:23:02.335Z] CLICK rendered prefix "Generate exact outcome library (base)"
+[2026-08-22T21:23:03.656Z] CLICK rendered prefix "Run Stake Engine Export (base)"
+[2026-08-22T21:23:05.437Z] CAPTURE build-export.png
+[2026-08-22T21:23:05.437Z] OUTCOME LIBRARY and STAKE ENGINE rendered successes
+[2026-08-22T21:23:05.452Z] CLICK rendered "Close project" (hit="Close project")
+[2026-08-22T21:23:05.695Z] CLICK rendered prefix "Projects"
+[2026-08-22T21:23:05.924Z] CLICK rendered "Open" (hit="Open")
+[2026-08-22T21:23:06.164Z] CLICK rendered "Game Model" (hit="Game Model")
+[2026-08-22T21:23:06.369Z] PERSIST close/reopen rendered Valera project with saved Mechanics K 3x to 5 free games and artwork model
+[2026-08-22T21:23:06.369Z] COMPLETE all P6V-03 rendered criteria reached without rendered product error

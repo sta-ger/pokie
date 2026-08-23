@@ -1,0 +1,33 @@
+P6V-03 focused host recovery attempt 1 — 2026-08-23
+Candidate: 2806f36d1d08126bfc40572e16fde6d6fe0359c0
+Every displayed Studio was launched from this checkout with:
+  node ./dist/cli/pokie.js --no-open
+Each used a fresh XDG_CONFIG_HOME and Chromium profile. No installed
+self-dependency, private API, DOM/state injection, generated project tree, or
+browser artifact is included in this evidence commit.
+
+Retained evidence check: README's three screenshot SHA-256 values matched their
+files before launch.
+
+Launch 1 (fresh Recommended): Create Project reached Starter Slot. Game Model
+Layout saved Rows 4 and Paylines 4. Per-reel mode selected Reel 1 and rendered
+Literal and Generated. Generated rendered count, locked position, spacing /
+occurrence constraint, and stack-rule controls. A later ambiguous harness form
+field selected a mode control instead of a count field; its unsaved draft was
+discarded. No rendered product error occurred.
+
+Launch 2 (fresh): New Blueprint > Random > Generate visibly produced Royal
+Grand Stampede from seed 20260815; Use this blueprint and Create Project opened
+its managed workspace. New Blueprint > Blank visibly rendered the four expected
+required-field errors. ID, name, and symbol were supplied through visible
+controls, but a duplicated accessible name made the minimal paytable field
+unconfirmed; Blank project completion was not claimed.
+
+Launch 3 (fresh uncoached exploration): the visible path Create Project > Open
+Play > New Play session > Spin produced a settled no-win round (credits 999,
+total win 0.00). No rendered product error appeared.
+
+Outcome: no P0/P1/material-P2 finding. The remaining saved generated-reel,
+paytable, bets/modes, mechanics, and completed Blank-project coverage are
+driver-inconclusive; retained save/reopen, Play win, Simulation, Replay,
+Outcome Library, and Stake export proof remains passed.

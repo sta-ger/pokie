@@ -1,0 +1,52 @@
+P6V-03 complete rendered rerun — 2026-08-23
+
+Candidate SHA: 546feacf0731a3bf403410816d4419776214989c
+Evidence HEAD before this record: ceb082ee4e4847d5d85384db41102ed6ae9cbace
+Candidate boundary: candidate..evidence-HEAD contains evidence only; no product source differs.
+
+One fresh isolated HOME/XDG Studio registry and distinct Chromium profile were
+used. Studio was launched only from this checkout with:
+  node ./dist/cli/pokie.js --no-open
+
+Rendered creation journey, in order:
+  1. Recommended rendered and replaced the initial draft.
+  2. Random rendered; Generate's first POST returned 200 but its dialog closed
+     without a local result. The single safe deterministic default-seed retry
+     rendered a generated card and enabled “Use this blueprint”; that visible
+     action successfully replaced the draft.
+  3. Blank rendered after one safe chooser-open retry and successfully replaced
+     the Random draft.
+  4. Recommended again successfully replaced the blank draft for modelling.
+
+Complete rendered P6V-03 outcome:
+  - Layout's local Reels control rendered; a payline was added and its first
+    cell was set to 2. Paytable A x3 was set to 9 and Bet 1 to 3.
+  - J was made wild and K scatter; the focused native PNG picker selected
+    /usr/share/pixmaps/debian-logo.png and the rendered symbol action changed
+    to Change.
+  - A non-empty literal reel strip (A) produced its local Preview result.
+    The same reel then rendered Generated/Weights, A=5 and Q=1 weights, a
+    maximum-consecutive-occurrences constraint of 6, a stack rule, successful
+    preview, and Apply.
+  - Create Project opened the managed workspace. Bets & Modes added/saved
+    mode-1; Mechanics saved K x3 awarding 6 free games.
+  - Play rendered an ordinary win and a freeGamesTriggered result. Simulation
+    rendered RTP/results. Replay loaded Session 1 Round 4 and enabled Download
+    JSON; its isolated exported JSON checksum is below.
+  - Build/Export rendered successful exact Outcome Library generation and
+    enabled/successfully completed Stake Engine Export.
+  - Close → Projects → Open retained payline=2, A x3=9, bet=3, mode-1,
+    K x3 free games=6, selected artwork (Change), and the generated-reel model.
+
+No rendered product error, console diagnostic, or failed request was observed.
+The raw controller-owned transcript and generated project/output trees are not
+committed. Bounded checksums:
+  eaf6f303f51d2de83ca56599f16e944fe1cb26282af7165b2307686152434095  controller transcript
+  8f6efa3b5c927cea08e96ea9c2b0dce111763d3aa53303b6192ce976fdae6dc3  fresh-home screenshot
+  61512a4eb09f865967d10da2f959cd27f20cf5fcaba27c47a6cd1c3f205bde63  model-edits screenshot
+  72e981cea61c2136920bf3936351cf2674e7ae96e270f4ce60911d1b94b10647  build-export screenshot
+  a670200b1b6053f0c3d7820849879eadf59355354184db37a51f69b147c7ce04  reopened screenshot
+  f289079702d152aaa82fe4548db46685b1da806cc14ea8d29853fd2ec6f757c3  isolated Replay JSON export
+
+Controller-owned raw transcript location (not repository evidence):
+  /home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-e761a7ffcf399aaa/run-2026-08-23T05-24-59-916Z/transcript.txt

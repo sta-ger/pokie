@@ -1,0 +1,22 @@
+P6V-03 focused host recovery attempt 4 — 2026-08-23
+Candidate: 2806f36d1d08126bfc40572e16fde6d6fe0359c0
+
+Preconditions: retained evidence files and SHA-256 values were present and
+matched. This source checkout completed one npm run build-cli. Every fresh
+profile launched this checkout only as node ./dist/cli/pokie.js --no-open with a
+new XDG registry and Chromium profile; no installed self-dependency was used.
+
+Launch 1: Studio's loading state became temporarily blank without a rendered
+application error. This is driver/readiness inconclusive, not a product finding.
+
+Launches 2–4: fresh Recommended creation, Game Model, and local Symbols editing
+rendered. The harness repair established that special-symbol inputs mount after
+the Symbols editor's local transition. Earlier input attempts therefore found no
+rendered labelled checkbox and emitted no request or product error. The launch
+allowance ended before a rerun using that repaired transition could set scatter,
+save, and reach the Free Games mechanics editor.
+
+Outcome: no rendered P0, P1, or material P2 defect. Retained candidate-bound
+proof for save/reopen, Play, Simulation, Replay, Outcome Library, and Stake
+Engine remains passed. The complete mechanics branch is not reached due driver
+sequencing and launch limit.

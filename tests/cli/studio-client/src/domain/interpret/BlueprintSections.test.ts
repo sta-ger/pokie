@@ -28,6 +28,8 @@ describe("classifyIssuesBySection", () => {
             issue("blueprint-paytable-empty"),
             issue("blueprint-symbol-missing-payout"),
             issue("blueprint-availablebets-duplicate"),
+            issue("blueprint-betmode-invalid-runtimetype"),
+            issue("blueprint-betmodes-missing-default"),
         ];
 
         const {bySection, unclassified} = classifyIssuesBySection(issues);
@@ -42,7 +44,11 @@ describe("classifyIssuesBySection", () => {
             "blueprint-weighting-dominant-symbol",
         ]);
         expect(bySection.paytable.map((i) => i.code)).toEqual(["blueprint-paytable-empty", "blueprint-symbol-missing-payout"]);
-        expect(bySection.bets.map((i) => i.code)).toEqual(["blueprint-availablebets-duplicate"]);
+        expect(bySection.bets.map((i) => i.code)).toEqual([
+            "blueprint-availablebets-duplicate",
+            "blueprint-betmode-invalid-runtimetype",
+            "blueprint-betmodes-missing-default",
+        ]);
         expect(unclassified).toEqual([]);
     });
 

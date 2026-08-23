@@ -1,0 +1,9 @@
+[2026-08-22T18:38:46.808Z] START candidate 891197a45d46900ec570aaba6001f9aaacb1436d (evidence descendant a52e07fb781007ecb726b16609475bd3c1de87e3); Studio source command node ./dist/cli/pokie.js --no-open; disposable registry/profile
+[2026-08-22T18:38:46.832Z] NAVIGATE rendered Studio URL /home/design
+[2026-08-22T18:38:47.948Z] CLICK rendered "New Blueprint"
+[2026-08-22T18:38:50.063Z] RETRY rendered New Blueprint once after the first click showed no local modal transition
+[2026-08-22T18:38:50.267Z] CLICK rendered "New Blueprint"
+[2026-08-22T18:38:50.492Z] CLICK rendered "Recommended"
+[2026-08-22T18:39:20.544Z] DIAGNOSTIC random-network=[]
+[2026-08-22T18:39:20.545Z] DIAGNOSTIC browser=[]
+[2026-08-22T18:39:20.545Z] FAILED Timed out waiting for Recommended dialog close

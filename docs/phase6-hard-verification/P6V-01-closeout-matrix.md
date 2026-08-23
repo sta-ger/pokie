@@ -38,6 +38,13 @@ paths. The removed trees were generated copies or diagnostics and are
 recoverable from their ordinary Git history; they are not moved into another
 evidence directory or replaced with newly generated proof.
 
+A later bounded-hygiene correction also pruned the missed historical
+`docs/evidence/p6-04-independent-rerun` runtime payload: four browser profiles,
+Studio registries/generated Projects, PID files, automation source, raw logs,
+debug captures and repeated failed attempts. Its local `README.md` identifies
+the two retained representative rendered checkpoints. The ordinary Git
+history still preserves every removed artifact.
+
 The next verifier must reject this closeout if a retained relative link is
 broken, if a removed generated copy was the sole proof of a distinct claim, or
 if either scoped repository is dirty or no longer at its declared SHA before a

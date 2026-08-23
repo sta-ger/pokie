@@ -925,14 +925,55 @@ export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelG
     return "default";
 }
 
+// The authored Blueprint must keep exactly one reel representation, but changing the rendered radio
+// control must not silently erase the configuration on the side being left.  This editor-only draft is
+// deliberately kept out of the Blueprint for the same reason as ReelStripGenerationDraft: Validate,
+// Save and every runtime consumer see one canonical representation, while a user can still reverse an
+// in-progress mode choice without rebuilding their reels from scratch.
+export type ReelGenerationModeDrafts = {
+    reelStrips?: string[][];
+    reelStripGeneration?: Record<string, unknown>[];
+    symbolWeights?: Record<string, number>;
+};
+
+function cloneReelGenerationDraft<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function rememberReelGenerationMode(blueprint: Record<string, unknown>, mode: ReelGenerationMode, drafts: ReelGenerationModeDrafts): void {
+    if (mode === "reelStrips" && blueprint.reelStrips !== undefined) {
+        drafts.reelStrips = cloneReelGenerationDraft(asReelStrips(blueprint.reelStrips));
+    } else if (mode === "reelStripGeneration" && blueprint.reelStripGeneration !== undefined) {
+        drafts.reelStripGeneration = cloneReelGenerationDraft(asReelStripGenerationEntries(blueprint.reelStripGeneration));
+    } else if (mode === "symbolWeights" && blueprint.symbolWeights !== undefined) {
+        drafts.symbolWeights = cloneReelGenerationDraft(asSymbolWeights(blueprint.symbolWeights));
+    }
+}
+
 // Switching modes keeps the blueprint exclusive: fields for every mode being left are removed. Moving
 // from literal reel strips to the per-reel model is a representation-preserving conversion, though:
 // each existing strip becomes that reel's literal entry instead of being silently replaced by an empty
-// one. GameBlueprintValidator only warns/errors about carrying multiple modes, but the editor's toggle
-// makes the choice explicit and canonical.
-export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: ReelGenerationMode): void {
+// one. When supplied by the rendered editor, `drafts` restores a previously entered inactive mode;
+// callers without UI drafts retain the canonical conversion behavior used by import and tests.
+export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: ReelGenerationMode, drafts?: ReelGenerationModeDrafts): void {
+    const currentMode = getReelGenerationMode(blueprint);
+    if (currentMode === mode) {
+        return;
+    }
+    if (drafts !== undefined) {
+        rememberReelGenerationMode(blueprint, currentMode, drafts);
+    }
+
     if (mode === "reelStrips") {
-        blueprint.reelStrips = blueprint.reelStrips !== undefined ? asReelStrips(blueprint.reelStrips) : new Array(reelCount(blueprint)).fill([]).map(() => []);
+        let strips: string[][];
+        if (blueprint.reelStrips !== undefined) {
+            strips = asReelStrips(blueprint.reelStrips);
+        } else if (drafts?.reelStrips !== undefined) {
+            strips = cloneReelGenerationDraft(drafts.reelStrips);
+        } else {
+            strips = new Array(reelCount(blueprint)).fill([]).map(() => []);
+        }
+        blueprint.reelStrips = strips;
         Reflect.deleteProperty(blueprint, "reelStripGeneration");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     } else if (mode === "reelStripGeneration") {
@@ -940,6 +981,15 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
         let entries: Record<string, unknown>[];
         if (blueprint.reelStripGeneration !== undefined) {
             entries = asReelStripGenerationEntries(blueprint.reelStripGeneration);
+            // A legacy/later-interrupted editor session can leave both representations behind, with
+            // only a partial per-reel array alongside the complete literal strips.  Do not let those
+            // missing entries turn a rendered switch to the Modeler into empty literal reels: retain
+            // every already-authored per-reel entry and materialize the remaining literal strips.
+            if (literalStrips !== undefined && entries.length < reelCount(blueprint)) {
+                entries = Array.from({length: reelCount(blueprint)}, (_, reelIndex) => entries[reelIndex] ?? {type: "literal", strip: literalStrips[reelIndex] ?? []});
+            }
+        } else if (drafts?.reelStripGeneration !== undefined) {
+            entries = cloneReelGenerationDraft(drafts.reelStripGeneration);
         } else if (literalStrips !== undefined) {
             entries = Array.from({length: reelCount(blueprint)}, (_, reelIndex) => ({type: "literal", strip: literalStrips[reelIndex] ?? []}));
         } else {
@@ -949,7 +999,7 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
         Reflect.deleteProperty(blueprint, "reelStrips");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     } else if (mode === "symbolWeights") {
-        blueprint.symbolWeights = blueprint.symbolWeights !== undefined ? asSymbolWeights(blueprint.symbolWeights) : {};
+        blueprint.symbolWeights = blueprint.symbolWeights !== undefined ? asSymbolWeights(blueprint.symbolWeights) : cloneReelGenerationDraft(drafts?.symbolWeights ?? {});
         Reflect.deleteProperty(blueprint, "reelStrips");
         Reflect.deleteProperty(blueprint, "reelStripGeneration");
     } else {

@@ -1,0 +1,72 @@
+[2026-08-23T00:36:34.945Z] START candidate source 920b2079acde4a581bd9b520df38aa3268753205 (evidence descendant 8469e63bbacfe32d5294ca1837b675f63e005f56); fresh Studio registry and fresh Chromium profile; required command node ./dist/cli/pokie.js --no-open
+[2026-08-23T00:36:34.966Z] NAVIGATE public Studio route /home/design
+[2026-08-23T00:36:36.114Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:36:36.307Z] CLICK rendered "Recommended"
+[2026-08-23T00:36:36.463Z] CREATE rendered Recommended blueprint
+[2026-08-23T00:36:36.647Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:36:36.833Z] CLICK rendered aria-label "Generate random"
+[2026-08-23T00:36:36.993Z] CLICK rendered "Generate"
+[2026-08-23T00:36:37.197Z] CLICK rendered "Use this blueprint"
+[2026-08-23T00:36:37.353Z] CREATE rendered Random blueprint
+[2026-08-23T00:36:37.530Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:36:37.718Z] CLICK rendered "Blank"
+[2026-08-23T00:36:37.878Z] CREATE rendered Blank blueprint
+[2026-08-23T00:36:38.057Z] CLICK rendered "New Blueprint"
+[2026-08-23T00:36:38.243Z] CLICK rendered "Recommended"
+[2026-08-23T00:36:38.400Z] CREATE rendered Recommended blueprint
+[2026-08-23T00:36:38.722Z] INPUT rendered "Game id"="valera-mathematician"
+[2026-08-23T00:36:39.326Z] INPUT rendered "Game name"="Valera Mathematician"
+[2026-08-23T00:36:39.560Z] CLICK rendered tab "Layout"
+[2026-08-23T00:36:39.564Z] MODEL rendered Layout editor
+[2026-08-23T00:36:39.799Z] CLICK rendered tab "Symbols"
+[2026-08-23T00:36:39.801Z] MODEL rendered Symbols editor
+[2026-08-23T00:36:40.084Z] CLICK rendered tab "Reels"
+[2026-08-23T00:36:40.169Z] MODEL rendered Reels editor
+[2026-08-23T00:36:40.501Z] CLICK rendered tab "Paytable"
+[2026-08-23T00:36:40.503Z] MODEL rendered Paytable editor
+[2026-08-23T00:36:40.773Z] CLICK rendered tab "Bets"
+[2026-08-23T00:36:40.776Z] MODEL rendered Bets editor
+[2026-08-23T00:36:41.059Z] CLICK rendered tab "Symbols"
+[2026-08-23T00:36:41.342Z] CLICK rendered aria-label "Symbol 1 is wild"
+[2026-08-23T00:36:41.577Z] CLICK rendered aria-label "Symbol 2 is scatter"
+[2026-08-23T00:36:41.732Z] CLICK rendered "Select PNG"
+[2026-08-23T00:36:43.611Z] NATIVE PICKER focused and selected absolute artwork path
+[2026-08-23T00:36:45.405Z] MODEL rendered A wild, K scatter, and imported artwork
+[2026-08-23T00:36:45.746Z] CLICK rendered tab "Reels"
+[2026-08-23T00:36:45.993Z] CLICK rendered "Per-reel (Reel Strip Modeler)"
+[2026-08-23T00:36:46.203Z] CLICK rendered aria-label "Select reel 1"
+[2026-08-23T00:36:46.359Z] CLICK rendered aria-label "Edit or generate Literal or generated"
+[2026-08-23T00:36:46.524Z] CLICK rendered "Literal"
+[2026-08-23T00:36:46.775Z] INPUT rendered "New symbol id for reel 1"="A"
+[2026-08-23T00:36:46.938Z] CLICK rendered aria-label "Add symbol to reel 1"
+[2026-08-23T00:36:47.268Z] CAPTURE 01-literal-reels.png
+[2026-08-23T00:36:47.420Z] CLICK rendered aria-label "Edit or generate Literal or generated"
+[2026-08-23T00:36:47.754Z] CLICK rendered "Generated"
+[2026-08-23T00:36:47.982Z] CLICK rendered "Weights"
+[2026-08-23T00:36:48.368Z] SELECT rendered "Symbol"="A"
+[2026-08-23T00:36:48.599Z] INPUT rendered "Weight"="2"
+[2026-08-23T00:36:48.798Z] CLICK rendered "Add weight"
+[2026-08-23T00:36:48.993Z] CLICK rendered "Literal"
+[2026-08-23T00:36:49.172Z] CLICK rendered aria-label "Check & preview"
+[2026-08-23T00:36:49.349Z] CLICK rendered aria-label "Apply Commit or discard"
+[2026-08-23T00:36:49.684Z] CLICK rendered aria-label "Apply"
+[2026-08-23T00:36:49.996Z] CAPTURE 03-literal-round-trip-applied.png
+[2026-08-23T00:36:49.996Z] OBSERVE literal reel A survives Symbol weights edit, passes local Literal strip Preview, and is applied
+[2026-08-23T00:36:50.150Z] CLICK rendered "Create Project"
+[2026-08-23T00:36:50.902Z] CLICK rendered "Game Model"
+[2026-08-23T00:36:51.489Z] CLICK rendered "Play"
+[2026-08-23T00:36:51.649Z] CLICK rendered "New Play session"
+[2026-08-23T00:36:51.837Z] CLICK rendered "Find any win"
+[2026-08-23T00:36:51.998Z] CLICK rendered "Simulation"
+[2026-08-23T00:36:52.253Z] INPUT rendered "Rounds"="100"
+[2026-08-23T00:36:52.431Z] CLICK rendered "Run Simulation"
+[2026-08-23T00:36:52.594Z] CLICK rendered "Replay"
+[2026-08-23T00:36:52.772Z] CLICK rendered "Build/Export"
+[2026-08-23T00:36:52.995Z] CLICK rendered prefix "Generate exact outcome library"
+[2026-08-23T00:36:54.713Z] CLICK rendered prefix "Run Stake Engine Export"
+[2026-08-23T00:36:56.343Z] CAPTURE 04-workspace-success.png
+[2026-08-23T00:36:56.497Z] CLICK rendered "Close project"
+[2026-08-23T00:36:56.504Z] FAILED Error: Rendered control unavailable: ([...document.querySelectorAll('[role=tab]')].find(e=>e.getClientRects().length&&!e.disabled&&((e.getAttribute('aria-label')||'').startsWith("Projects")||(e.textContent||'').trim().startsWith("Projects"))))
+    at point (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-cf7972350afb69cf/current.mjs:56:377)
+    at async clickTab (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-cf7972350afb69cf/current.mjs:61:46)
+    at async main (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-cf7972350afb69cf/current.mjs:86:106)

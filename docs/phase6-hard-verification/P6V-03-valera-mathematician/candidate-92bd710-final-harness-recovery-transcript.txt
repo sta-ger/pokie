@@ -1,0 +1,6 @@
+[2026-08-22] Exact candidate: 92bd710ee5fc03e376134f7224eeba465e053a0e. HEAD is an evidence-only descendant; candidate..HEAD changes are confined to this evidence directory.
+[2026-08-22] Four permitted isolated Studio HOME/registry plus Chrome-profile launches used exactly `node ./dist/cli/pokie.js --no-open`; each rendered empty Home. No browser-console or failed-network diagnostic rendered.
+[2026-08-22] The retained harness repaired, in place: final-Recommendation inputs, status-badged tabs, artwork native-picker focus, Reels-tab retry, native Weights-radio retry, and source-symbol selection from the rendered option list.
+[2026-08-22] The final fresh profile rendered Recommended, Random (Generated card and Use), Blank, final Recommended, valid Valera id/name, Layout/Symbols/Reels/Paytable/Bets, imported artwork, literal strips, per-reel select/edit, Generated, Weights, selected A, Weight=1, Length=8, and Add stack rule.
+[2026-08-22] `Check & preview` was then clicked. No local Preview, Validation, pending, or error state rendered within the bounded wait. This is driver/readiness-inconclusive, not a product finding.
+[2026-08-22] Launch limit exhausted: Create Project, persistence/reopen, ordinary/feature Play, Simulation, Replay, Outcome Library, and Stake Engine export were not reached. No product defect is asserted.

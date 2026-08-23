@@ -1,0 +1,29 @@
+P6V-03 final focused harness recovery
+Candidate SHA: adf692fad3b98fe327f06f3c2de0101bbe334dd6
+Launch: candidate source checkout; node ./dist/cli/pokie.js --no-open
+Fresh start: new XDG_CONFIG_HOME registry, managed-project HOME, and Chromium
+profile for this one journey.
+
+Rendered local outcomes:
+- Fresh Studio home rendered; Recommended project created and Workspace rendered.
+- Random blueprint generated, created, and Workspace rendered.
+- Blank project created with A/B/C; A marked wild, B scatter; literal A/B/C
+  strips added on reels 1–5; C×3 payout and bet 1 saved; Workspace rendered.
+- Projects showed exactly the three new projects; Blank was opened row-locally.
+- Layout payline saved; artwork was selected via the focused native picker and
+  Symbols saved.
+- Generated reel preview succeeded, then its generated configuration was
+  applied and Reels saved with maximum consecutive occurrences 2 and A stack
+  minimum length 2.
+- Paytable C×3 payout 2, bet 2, Base default mode, and free-games awards
+  B×4→5 and B×5→8 were saved.
+- Project closed and reopened. Rendered persistence check confirmed layout,
+  wild/scatter, artwork, generated reel/constraint/stack, paytable, bets/mode,
+  and mechanics.
+- Play rendered an ordinary win and a free-games feature result.
+- Simulation rendered completed RTP/results.
+- Replay rendered a completed, Download JSON-capable result.
+- Outcome Library rendered “Generated 891 outcomes” (RTP 267.90%); Stake Engine
+  rendered “Exported 4 file(s)”.
+
+No rendered product error state was observed.

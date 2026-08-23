@@ -215,13 +215,14 @@ interface PokieGame {
 }
 ```
 
-Optional and feature-detected, same convention as `getSessionSerializer`/`getBetModes`. A game whose entire outcome
-space is a finite, enumerable set of reel-stop combinations (a base-game video slot with fixed reel strips) MAY
+Optional and feature-detected, same convention as `getSessionSerializer`/`getBetModes`. A game whose paid-spin
+outcome space is a finite, enumerable set of reel-stop combinations (a video slot with fixed reel strips) MAY
 implement this: the returned session must be the same concrete `VideoSlotSessionHandling` `createSession()` itself
 builds, just constructed with the caller-supplied `combinationsGenerator` swapped in for the game's own
-randomness-backed one — the DI seam `VideoSlotSession`'s own constructor already exposes. A game that doesn't
-implement this — any stateful or otherwise non-reel-enumerable mechanic (free games, cascades, hold-and-win, a
-resizable grid, ...) — simply has no exact strategy: generation fails closed with a
+randomness-backed one — the DI seam `VideoSlotSession`'s own constructor already exposes. A paid spin that triggers
+free games remains exactly enumerable: its artifact carries the real `freeGamesTriggered` event from that entry
+spin. A game with no finite paid-spin enumeration (cascades, hold-and-win, a resizable grid, ...) simply has no
+exact strategy: generation fails closed with a
 `WeightedOutcomeLibraryGenerationError` (`weighted-outcome-library-generation-unsupported`) rather than guessing
 at one.
 
@@ -308,8 +309,8 @@ inspects an already-built bundle. `generate` is the one outcomelibrary verb that
 
 - `<packageRoot>` — required. The game must opt into exact enumeration via
   `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that
-  doesn't — any stateful or non-reel-enumerable mechanic such as free games, cascades, or hold-and-win — has no
-  exact strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
+  doesn't — one with no finite paid-spin reel enumeration, such as cascades or hold-and-win — has no exact
+  strategy, and `generate` fails closed with exit code `1` and the `WeightedOutcomeLibraryGenerationError`'s
   `weighted-outcome-library-generation-unsupported` code rather than guessing at one.
 - `--mode <betModeId>` — the `betMode` threaded onto every generated outcome's artifact; also folds into the
   default `--library-id` (`<manifest.id>-<mode>` instead of just `<manifest.id>`) when `--library-id` isn't given.

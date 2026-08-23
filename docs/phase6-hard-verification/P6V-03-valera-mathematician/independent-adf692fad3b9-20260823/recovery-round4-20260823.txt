@@ -1,0 +1,32 @@
+P6V-03 focused harness recovery, round 4 — inconclusive
+Candidate SHA: adf692fad3b98fe327f06f3c2de0101bbe334dd6
+
+Fresh-start contract: this source checkout launched Studio only as
+`node ./dist/cli/pokie.js --no-open`; the run used a new Chromium profile,
+HOME, XDG_CONFIG_HOME, registry, and managed-project root. Rendered controls
+created Recommended, Random, and Blank, then reopened Blank from its own
+three-row registry.
+
+Rendered, locally successful edits: one payline was added and saved; artwork
+was selected for Symbol 1 through Zenity's active native window (verified with
+xdotool before typing the absolute source path) and saved; A remained wild and
+B scatter; all five literal strips and C x3 payout remained present. The
+reel modeler selected Reel 1 through its actual `Edit or generate Literal or
+generated` control, changed it to Generated, added A/B/C counts, and added a
+stack rule. Its local Preview rendered `Generation failed`: the entered stack
+rule required exactly one stack while the generated configuration found 37–46.
+This is an explicit configuration validation result, not a rendered product
+failure.
+
+Literal checklist outcomes:
+- Full create/edit checklist: not reached — layout, symbols/wild/scatter,
+  literal reels, and artwork were rendered and saved; generated reels,
+  valid stacks/constraints, paytable/bets/modes/mechanics completion were not.
+- Persistence, Play/feature, Simulation, Replay, Outcome Library, and Stake
+  Engine: not reached after the valid generated-reel preview was not reached.
+- Complete candidate-bound final journey: not reached. No P0, P1, or material
+  P2 was rendered; the four-launch recovery allowance is exhausted.
+
+No generated runtime project, browser profile, output tree, raw log, or
+automation script is retained here. The two pre-existing screenshot checksums
+in README remain unchanged and truthful.

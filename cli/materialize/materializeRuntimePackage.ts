@@ -10,7 +10,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
 } from "pokie";
-import {withLocalPokieInstall} from "../prepare/PackageCommandRunner.js";
+import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
@@ -148,7 +148,7 @@ export function createMaterializingRuntimePackageResolver(
             undefined,
             undefined,
             undefined,
-            pokiePackageRoot !== undefined ? withLocalPokieInstall(pokiePackageRoot) : undefined,
+            pokiePackageRoot !== undefined ? withLinkedLocalPokieRuntime(pokiePackageRoot) : undefined,
             undefined,
             undefined,
             pokiePackageRoot !== undefined ? createLocalRuntimeIdentity(pokiePackageRoot) : pokieVersion,

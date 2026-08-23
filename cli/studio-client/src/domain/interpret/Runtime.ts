@@ -14,7 +14,7 @@ import type {StudioRuntimeSessionView} from "../../api/types";
 export type PlaySessionResultView =
     | {status: "idle"}
     | {status: "loading"}
-    | {status: "error"; message: string}
+    | {status: "error"; message: string; subject?: string}
     | {status: "no-active-project"; message: string}
     | {status: "ok"; session: StudioRuntimeSessionView};
 
@@ -28,7 +28,7 @@ export function describePlaySessionResult(result: PlaySessionResult): PlaySessio
 export type PlaySpinResultView =
     | {status: "idle"}
     | {status: "loading"}
-    | {status: "error"; message: string}
+    | {status: "error"; message: string; subject?: string}
     | {status: "not-found"; message: string}
     | {status: "blocked"; message: string}
     | {status: "no-active-project"; message: string}

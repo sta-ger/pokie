@@ -92,7 +92,7 @@ export function PlayTab({
     // read as subject-specific status + remediation copy instead of an internal message verbatim.
     let errorNotice: ReactNode;
     if (session.status === "error") {
-        errorNotice = <ErrorState message={describeRuntimeActionError("This session", session.message)} />;
+        errorNotice = <ErrorState message={describeRuntimeActionError(session.subject ?? "This session", session.message)} />;
     } else if (session.status === "blocked") {
         errorNotice = <ErrorState message={describeRuntimeActionError("This spin", session.message)} />;
     } else if (session.status === "not-found" || session.status === "no-active-project") {

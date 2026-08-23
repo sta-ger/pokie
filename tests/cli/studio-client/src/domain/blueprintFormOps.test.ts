@@ -666,6 +666,25 @@ describe("blueprintFormOps", () => {
             ]);
         });
 
+        it("recovers every missing per-reel entry from complete literal strips instead of clearing them", () => {
+            const b: Record<string, unknown> = {
+                reels: 3,
+                reelStrips: [["A", "K"], ["Q", "J"], ["A", "Q"]],
+                // A stale partial per-reel draft must not win over the actual literal model when the
+                // user opens the rendered Reel Strip Modeler again.
+                reelStripGeneration: [{type: "literal", strip: ["A", "K"]}],
+            };
+
+            setReelGenerationMode(b, "reelStripGeneration");
+
+            expect(b.reelStrips).toBeUndefined();
+            expect(b.reelStripGeneration).toEqual([
+                {type: "literal", strip: ["A", "K"]},
+                {type: "literal", strip: ["Q", "J"]},
+                {type: "literal", strip: ["A", "Q"]},
+            ]);
+        });
+
         it("switching to symbolWeights clears reelStrips/reelStripGeneration", () => {
             const b: Record<string, unknown> = {reelStrips: [["A"]]};
 
@@ -674,6 +693,27 @@ describe("blueprintFormOps", () => {
             expect(b.reelStrips).toBeUndefined();
             expect(b.reelStripGeneration).toBeUndefined();
             expect(b.symbolWeights).toEqual({});
+        });
+
+        it("restores literal reel strips after a rendered weights-mode round trip without putting both representations in the Blueprint", () => {
+            const b: Record<string, unknown> = {
+                reels: 5,
+                reelStrips: [["A", "K"], ["A", "Q"], ["K", "J"], ["Q", "J"], ["A", "J"]],
+            };
+            const drafts = {};
+
+            setReelGenerationMode(b, "symbolWeights", drafts);
+            b.symbolWeights = {A: 5, K: 3, Q: 2, J: 1};
+            setReelGenerationMode(b, "reelStrips", drafts);
+
+            expect(b.reelStrips).toEqual([["A", "K"], ["A", "Q"], ["K", "J"], ["Q", "J"], ["A", "J"]]);
+            expect(b.reelStripGeneration).toBeUndefined();
+            expect(b.symbolWeights).toBeUndefined();
+
+            setReelGenerationMode(b, "symbolWeights", drafts);
+
+            expect(b.symbolWeights).toEqual({A: 5, K: 3, Q: 2, J: 1});
+            expect(b.reelStrips).toBeUndefined();
         });
 
         it("switching to default clears all three", () => {

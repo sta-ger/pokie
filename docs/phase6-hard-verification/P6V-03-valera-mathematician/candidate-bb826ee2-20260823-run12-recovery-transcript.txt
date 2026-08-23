@@ -1,0 +1,47 @@
+P6V-03 exact-candidate host recovery — 2026-08-23, run-12
+
+Candidate source: bb826ee2b234e8151e48a7ac7228429875e71e8c.
+Launch checkout: 6827892b8d2abd5d69b45a2f75d0982847a84069, an evidence-only
+descendant of the candidate. Candidate build completed before launch. Studio
+was started once, from this source checkout, exactly with
+`node ./dist/cli/pokie.js --no-open`. The run used a newly absent isolated
+HOME/XDG registry and a new Chrome profile under the controller-owned harness
+workspace. Product interaction was limited to visible Studio controls and the
+native-picker focus contract; no Studio API, state/DOM injection, source
+inspection, or documentation-guided product action was used.
+
+Observed rendered outcomes
+- Recommended replaced the draft; seeded Random generated a valid blueprint;
+  Blank replaced it; final Recommended was selected. The named
+  valera-mathematician / Valera Mathematician project opened a managed workspace.
+- Layout rendered 5 reels, 3 rows, and 3 paylines. A saved as WILD and K as
+  SCATTER. The literal editor received A before preview; the per-reel Generated
+  editor rendered weights (A=2), length, constraint, and stack-rule actions.
+  Paytable saved, a mode was added, and K scatter 3x -> 5 free games saved.
+- Find any win and Find free games both settled. The latter rendered a 6.00x
+  K scatter win and a freeGamesTriggered feature event. Simulation completed
+  10 rounds (860.00% RTP); Replay loaded the feature artifact and its Download
+  JSON action. Exact Outcome Library generated 1,024 outcomes (895.31% RTP),
+  package build and Stake Engine Export completed (4 files), and Close ->
+  Projects -> Open reopened the same managed project.
+
+Bounded incomplete transitions
+- Select PNG was accepted but no visible native picker window appeared during
+  its semantic wait. Literal and Generated Check & preview actions were
+  accepted after rendered inputs, but neither editor rendered a local Preview,
+  Validation, pending, or error result before its bounded wait. No duplicate
+  action was safe after acceptance. These are driver/readiness-inconclusive,
+  not rendered product defects; artwork persistence and reel preview/apply
+  remain unconfirmed.
+
+Raw, uncommitted harness proof checksums
+- run-12/03-model.png:
+  0d2a11f8f16d37a7c1c797e5166afb585efa0824fec93a03564ad3453d58e793
+- run-12/07-build-export.png:
+  06f18df12b93f70852332f013e419235b7c6776e9d696abbeb14adc6703f24a
+- run-12/08-reopened.png:
+  7316534a1c85a26142f6e3369443f9532a24ad31ed79327005ee0c65dc1fb24a
+
+The complete automation transcript, profile, native-dialog state, and generated
+project/output trees remain outside version control. Existing retained model,
+build/export, and reopened screenshots remain the minimal committed proof.

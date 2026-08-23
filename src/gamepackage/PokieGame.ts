@@ -37,13 +37,14 @@ export interface PokieGame {
     getBetModes?(): BetMode[];
 
     // Optional, feature-detected (same pattern as getSessionSerializer/getBetModes above): a game whose
-    // entire outcome space is a finite, enumerable set of reel-stop combinations MAY implement this so
+    // paid-spin outcome space is a finite, enumerable set of reel-stop combinations MAY implement this so
     // weightedoutcome/generate can build a canonical, exact WeightedOutcomeLibrary straight off this
-    // executable package — driving the exact same session/win-calculation runtime a live round uses
+    // executable package — driving the exact same session/win-calculation runtime a live paid spin uses
     // (createSession's own concrete VideoSlotSessionHandling), just with its randomness-backed
     // SymbolsCombinationsGenerating swapped for the caller-supplied deterministic one, never a second
-    // calculation path. A game that doesn't implement this — any stateful or otherwise non-reel-enumerable
-    // mechanic (free games, cascades, hold-and-win, ...) — simply has no exact strategy: generation fails
-    // closed rather than guessing at one. See docs/weighted-outcome-library.md#generation.
+    // calculation path. A paid spin that triggers a feature still belongs to this finite space and reports
+    // that trigger on its artifact; a mechanic with no finite paid-spin reel enumeration (cascades,
+    // hold-and-win, a resizable grid, ...) simply has no exact strategy. See
+    // docs/weighted-outcome-library.md#generation.
     createExactEnumerationSession?(combinationsGenerator: SymbolsCombinationsGenerating): VideoSlotSessionHandling;
 }

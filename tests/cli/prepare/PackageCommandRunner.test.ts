@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
+import {PackageCommandResult, PackageCommandRunning, withLinkedLocalPokieRuntime, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 
 type RecordedCall = {command: string; args: string[]; cwd: string};
@@ -299,5 +299,37 @@ describe("withLocalPokieInstall", () => {
 
             expect(fs.existsSync(path.join(projectDir, "package-lock.json"))).toBe(false);
         });
+    });
+});
+
+describe("withLinkedLocalPokieRuntime", () => {
+    let runtimeDir: string;
+
+    beforeEach(() => {
+        runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-linked-runtime-test-"));
+    });
+
+    afterEach(() => {
+        fs.rmSync(runtimeDir, {recursive: true, force: true});
+    });
+
+    it("links the running POKIE installation for a runtime install without spawning npm", async () => {
+        const base = createRecordingBase();
+        const runner = withLinkedLocalPokieRuntime(REPO_ROOT, base);
+
+        await expect(runner("npm", ["install", "--omit=dev"], runtimeDir)).resolves.toEqual({stdout: "", stderr: ""});
+
+        const linkedPokie = path.join(runtimeDir, "node_modules", "pokie");
+        expect(fs.realpathSync(linkedPokie)).toBe(fs.realpathSync(REPO_ROOT));
+        expect(base.calls).toEqual([]);
+    });
+
+    it("delegates commands other than npm install", async () => {
+        const base = createRecordingBase();
+        const runner = withLinkedLocalPokieRuntime(REPO_ROOT, base);
+
+        await runner("npm", ["run", "build"], runtimeDir);
+
+        expect(base.calls).toEqual([{command: "npm", args: ["run", "build"], cwd: runtimeDir}]);
     });
 });

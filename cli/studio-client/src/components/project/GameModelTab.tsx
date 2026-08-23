@@ -295,6 +295,7 @@ export function GameModelTab({
                                 blueprint: editor.state.blueprint,
                                 mutate: editor.mutate,
                                 drafts: editor.drafts,
+                                modeDrafts: editor.modeDrafts,
                                 revision: editor.state.revision,
                             }
                             : undefined

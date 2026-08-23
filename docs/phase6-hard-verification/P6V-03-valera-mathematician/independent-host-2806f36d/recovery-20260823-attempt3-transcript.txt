@@ -1,0 +1,38 @@
+P6V-03 focused host recovery attempt 3 — 2026-08-23
+Candidate: 2806f36d1d08126bfc40572e16fde6d6fe0359c0
+
+Preconditions: retained screenshot checksums matched. After one successful
+`npm run build-cli`, every one of four new Studio profiles launched this source
+checkout only as `node ./dist/cli/pokie.js --no-open`, with fresh XDG registry
+and fresh Chromium data. No installed self-dependency or private API was used.
+
+Launch 1: fresh Recommended rendered and applied Rows 4, a fourth payline,
+A x3 payout 11, and bet 3 = 6. The native artwork picker did not surface a
+visible window after one accepted click and rendered no local error; that
+driver-only outcome was not treated as a product issue. Retained exact-SHA
+proof already covers wild, scatter, and artwork persistence.
+
+Launch 2: fresh Recommended entered the rendered per-reel modeler. Reel 1
+added literal A and previewed `Sequence: A, K, Q, J, A`; Reel 2 used generated
+A count 4, minimum-spacing constraint 1, and one length-2 stack rule. Preview
+rendered `Generated successfully` and `Satisfied every constraint after 1
+attempt(s).` The changes were applied and created a project. Its Game Model
+saved Bet Mode `mode-1` with multiplier 2. Free-games editing exposed its
+scatter selector but had no eligible symbol in this project, so no mechanics
+configuration was saved.
+
+Launch 3: fresh Studio completed valid Blank project `blank-gate` by entering
+its id/name, symbols A and K, and A/K 3-match payouts; the rendered Overview
+reported `Valid — no issues found.` It then generated Random `Royal Grand
+Stampede` from seed 20260815, used the generated blueprint, and created its
+valid project.
+
+Launch 4 (uncoached one-sentence exploration): without documentation, source,
+prior evidence, or a prepared audit path, visible controls led through Create
+Project -> Open Play -> New Play session -> Spin. The real round settled with
+`Round complete — no win this round.`
+
+Outcome: no rendered P0/P1/material-P2 defect. Retained downstream workflow
+criterion remains passed. The remaining full-scope gap is saved/reopened
+mechanics in the same comprehensive edit journey; it is driver-inconclusive,
+not a product finding.

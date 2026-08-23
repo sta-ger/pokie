@@ -133,15 +133,11 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     },`
         : "";
 
-    // Optional, feature-detected (see PokieGame.createExactEnumerationSession's own doc comment): a
-    // plain, finite video-slot mechanic (no mechanics.freeGames -- the one currently-generated
-    // stateful/non-reel-enumerable mechanic) always has a finite reel-stop space, so every generated
-    // package for one opts in automatically, driving the exact same session/win-calculation runtime
-    // createSession() does -- just with the caller-supplied deterministic combinationsGenerator in
-    // place of the random one, never a second calculation path. A blueprint with mechanics.freeGames
-    // simply omits this export -- weightedoutcome/generate fails closed rather than guessing at a
-    // strategy for a mechanic whose outcome space isn't a finite set of reel-stop combinations.
-    const exactWinCalculatorArgs = winModel.type === "lines" ? "" : ", winCalculator";
+    // Optional, feature-detected (see PokieGame.createExactEnumerationSession's own doc comment): every
+    // generated blueprint has a finite paid-spin reel-stop space, including one whose paid spin can
+    // trigger free games. The exact session retains the same free-games decorator as createSession(),
+    // so the enumerated entry spin exposes its real trigger event; only the caller-supplied deterministic
+    // combinationsGenerator replaces randomness, never the calculation path.
     // "combinationsGenerator" has no annotation to contextually infer from (this object literal is
     // never assigned to a typed PokieGame variable -- see the "typeImport"/"blueprintDeclaration" doc
     // comment above for why not) -- an explicit "unknown" annotation satisfies noImplicitAny for the
@@ -157,11 +153,11 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     // TypeScript source needs an explicit empty-array type under strict checking.
     const sequencesDeclaration = format === "ts" ? "const sequences: unknown[] = [];" : "const sequences = [];";
     let exactEnumerationSessionExport = "";
-    if (!freeGames && betModeWiring) {
+    if (betModeWiring) {
         exactEnumerationSessionExport = `
     createExactEnumerationSession(${combinationsGeneratorParam}) {
         const config = createConfig();
-${winCalculatorDeclaration}        const session = new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
+${winCalculatorDeclaration}        const session = ${sessionConstructionExpression};
         const betModes = (blueprint.betModes || []).map((mode) => new BetModeDefinition(mode.id, {
             stakeMultiplier: mode.costMultiplier,
             forcesFeatureEntry: mode.runtimeType === "buyFeature",
@@ -171,11 +167,11 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
     betModeWiring.buyFeatureModes.length > 0 ? ", forcedFeatureEntryHandler" : ""
 });
     },`;
-    } else if (!freeGames) {
+    } else {
         exactEnumerationSessionExport = `
     createExactEnumerationSession(${combinationsGeneratorParam}) {
         const config = createConfig();
-${winCalculatorDeclaration}        return new VideoSlotSession(config, combinationsGenerator${exactWinCalculatorArgs});
+${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     },`;
     }
 

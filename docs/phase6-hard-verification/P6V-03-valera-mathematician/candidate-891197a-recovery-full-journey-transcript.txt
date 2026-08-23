@@ -1,0 +1,14 @@
+[2026-08-22T17:26:58.749Z] START candidate 891197a45d46900ec570aaba6001f9aaacb1436d (evidence descendant 7e5a6d2950713662b4204e3087ddbdd6da24d2e0); Studio source command node ./dist/cli/pokie.js --no-open; disposable registry/profile
+[2026-08-22T17:26:58.775Z] NAVIGATE rendered Studio URL /home/design
+[2026-08-22T17:26:59.247Z] CLICK rendered "New Blueprint"
+[2026-08-22T17:26:59.370Z] CLICK rendered "Recommended"
+[2026-08-22T17:26:59.384Z] CREATE rendered Recommended draft
+[2026-08-22T17:26:59.406Z] CLICK rendered "New Blueprint"
+[2026-08-22T17:26:59.460Z] CLICK rendered aria-label "Generate random"
+[2026-08-22T17:26:59.509Z] INPUT rendered "Seed (optional)"="20260815"
+[2026-08-22T17:26:59.540Z] INPUT rendered "Name (optional)"="P6V03 Random"
+[2026-08-22T17:26:59.561Z] CLICK rendered "Generate"
+[2026-08-22T17:27:59.649Z] FAILED Error: Timed out waiting for enabled rendered Use this blueprint after Random generation
+    at waitFor (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-00d09777ca25536d/current.mjs:23:146)
+    at async newChoice (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-00d09777ca25536d/current.mjs:62:535)
+    at async main (file:///home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-03-00d09777ca25536d/current.mjs:71:35)
