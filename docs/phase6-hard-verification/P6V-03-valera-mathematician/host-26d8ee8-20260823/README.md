@@ -24,3 +24,11 @@ Fresh-start conditions: candidate `npm run build` completed before launch; Studi
 | Blank Project | Selected Blank, filled ID/name, and Create Project rendered the expected incomplete-blueprint validation (missing symbols and paytable), rather than creating an invalid managed project. |
 
 This was not a full pass: a saved scatter configuration, saved mechanics/free-games behavior, and a saved paytable/bet-mode edit were not completed. Consequently the required uncoached second launch was not started. No rendered product defect was observed in the completed branches.
+
+## Focused harness recovery (2026-08-23)
+
+Candidate: `26d8ee826c1dd74369df5a7bc39a05dfe1d97785`. The candidate was rebuilt once before the rerun. Each of the four permitted browser launches used `node ./dist/cli/pokie.js --no-open` from this checkout, with a new XDG Studio registry and a new Chrome profile. The persistent assigned harness was repaired in place between runs; no source or test files were changed.
+
+The last rendered fresh journey created Recommended and saved these values in its managed Project: four paylines; `A · WILD`; `K · SCATTER`; `A ×3` payout `11`; available bets `1, 2, 5, 10`; one Base default bet mode; and free games `K`, `3x → 5`. It closed and reopened the Project and rendered those persisted values. Play rendered both a settled `Find any win` result and feature behavior from `Find free games`.
+
+This recovery run did not reach Simulation, Replay, Build/Export, Random, or Blank. The last action was a rendered Simulation transition; the harness could not locate its required `Rounds` field through the label structure, and no rendered product error appeared. This is recorded as browser-driver selector inconclusive, not a product finding. Earlier retained rendered observations for Simulation, Replay, Outcome Library, Stake Engine, Random and Blank remain above, but this recovery did not independently complete the full journey.
