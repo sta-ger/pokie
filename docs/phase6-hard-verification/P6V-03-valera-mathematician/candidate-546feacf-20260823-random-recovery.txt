@@ -114,3 +114,26 @@ a product finding.
 
 Controller-owned raw transcript (not committed):
   5dfdac7fd0561c46d3e0d96fb7b991b0a08a9ddced97833b4fd1600929fdf572  run-2026-08-23T04-59-38-772Z/transcript.txt
+
+Focused harness-recovery continuation — 05:13
+
+On the exact candidate `546feacf0731a3bf403410816d4419776214989c`, a
+fresh isolated HOME/XDG registry and Chromium profile again launched only
+`node ./dist/cli/pokie.js --no-open` from this checkout.  Rendered Recommended
+replacement succeeded.  Random's first physical Generate action returned HTTP
+200 but closed without a local result; its one safe deterministic default-seed
+retry rendered the generated card and enabled **Use this blueprint**.  The
+rendered use action then succeeded.  A rendered New Blueprint action needed one
+safe no-transition retry, after which **Blank** rendered and successfully
+replaced the Random draft.  A final rendered Recommended replacement succeeded.
+
+The remaining journey is not claimed: the rendered Layout tab did not acquire
+its own `aria-selected=true` state after the click or its one safe Enter retry,
+and its local payline control did not render.  No Studio product error,
+console diagnostic, or failed request rendered.  With the four-launch allowance
+spent, literal modelling, persistence, Play, Simulation, Replay/export, Outcome
+Library, and Stake Engine remain driver-inconclusive rather than product
+findings.
+
+Controller-owned raw transcript (not committed):
+  f03790a04ec36dd3a376f48d58a822747af91a0ac3782dd1f7f4b7e92999cccb  run-2026-08-23T05-13-02-297Z/transcript.txt
