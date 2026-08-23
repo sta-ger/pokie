@@ -1,5 +1,5 @@
 import {Button, Group, Stack, Text, TextInput, type TextInputProps} from "@mantine/core";
-import {useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {browseFilesystem, checkNativePickerAvailability, pickNativePath} from "../../api/apiClient";
 import type {StudioFsBrowseErrorReason, StudioNativePickerFileFilter} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -61,6 +61,12 @@ type HintState =
     | {status: "error"; reason: StudioFsBrowseErrorReason | "network"; path: string};
 
 type PathIssue = {status: string; remediation: string};
+
+// A native dialog completes outside the browser's ordinary input event sequence.  Keep its last
+// accepted value rendered until a controlled owner has observed that selection and supplied a new
+// value of its own.  This is deliberately a short bridge, not a second source of truth: once the
+// owner changes `value`, the field goes straight back to that owner-controlled value.
+type NativeSelection = {path: string; valueBeforeSelection: string};
 
 // Subject-specific status/remediation copy for each resolver outcome -- deliberately never forwards the
 // backend's own `error` string (an ENOENT/EACCES/JSON message meant for logs, not this field's own user),
@@ -130,12 +136,22 @@ export function PathInput({
     const [modalKind, setModalKind] = useState<PathBrowseKind>(kind);
     const [hint, setHint] = useState<HintState>({status: "idle"});
     const [browsing, setBrowsing] = useState(false);
+    const [nativeSelection, setNativeSelection] = useState<NativeSelection | undefined>(undefined);
     // Bumped on every resolveHint/rememberAndSelect call so a response for an earlier value -- one that
     // arrives after the field has since moved on to a newer value -- can recognize itself as stale (its
     // captured id no longer matches the latest) and skip setHint instead of clobbering the current hint.
     const resolveRequestIdRef = useRef(0);
 
-    const currentValue = String(value ?? defaultValue ?? "");
+    const currentValue = nativeSelection?.path ?? String(value ?? defaultValue ?? "");
+
+    // A controlled caller normally updates `value` in the same React batch as onPathSelected.  If it
+    // does, remove the bridge without changing what is shown.  If it has not updated yet, retain the
+    // accepted native result instead of briefly restoring the stale value that launched the dialog.
+    useEffect(() => {
+        if (nativeSelection !== undefined && value !== undefined && String(value) !== nativeSelection.valueBeforeSelection) {
+            setNativeSelection(undefined);
+        }
+    }, [nativeSelection, value]);
 
     // A blank field has nothing of the user's own to "resolve" -- what it shows is wherever an omitted/
     // default value would actually land (e.g. Build's own "use the project's default output directory"),
@@ -166,6 +182,7 @@ export function PathInput({
     };
 
     const rememberAndSelect = (path: string): void => {
+        setNativeSelection({path, valueBeforeSelection: String(value ?? defaultValue ?? "")});
         onPathSelected(path);
         resolveRequestIdRef.current += 1;
         setHint({status: "ok", text: path, auto: false});
@@ -261,11 +278,12 @@ export function PathInput({
                         resolveHint(currentValue);
                     }}
                     onChange={(event) => {
+                        setNativeSelection(undefined);
                         onChange?.(event);
                         resolveHint(event.currentTarget.value);
                     }}
                     {...rest}
-                    value={value}
+                    value={nativeSelection?.path ?? value}
                     defaultValue={defaultValue}
                 />
                 <Button variant="default" onClick={handleBrowseClick} loading={browsing}>
