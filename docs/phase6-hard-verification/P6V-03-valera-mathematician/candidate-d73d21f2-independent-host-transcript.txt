@@ -1,0 +1,17 @@
+P6V-03 independent host-side browser verification
+
+Candidate SHA: d73d21f2e4c1b6b02356279ea957f44417599b91
+Invocation: browser_ui_rerun, attempt 1
+Fresh-start preconditions: a newly created temporary POKIE home/config/data/cache and a newly created Chrome profile. Studio was launched from this checkout with exactly `node ./dist/cli/pokie.js --no-open`; the candidate build reported `POKIE Studio listening on http://127.0.0.1:3200` and the visible Chrome window rendered `Design Your Game`.
+
+Rendered workflow observations:
+- Recommended: passed. `Create Project` opened the managed Starter Slot project.
+- Layout/paylines: passed. Added a fourth rendered payline and saved; the model summary rendered `Paylines: 4`.
+- Symbols/artwork: passed. Selected a PNG through the visible native picker, saved A as scatter with artwork, and saved K as wild. The model summary rendered `A · SCATTER` with artwork and `K · WILD`.
+- Literal/generated reels and constraints: passed. Changed a literal Reel 1 stop, selected per-reel generation, configured Reel 1 as generated with an A count of 6, added and rendered a minimum-spacing constraint, then removed the deliberately incompatible constraint and saved the per-reel generation configuration. The model summary rendered `Generation mode: Per-reel generation (literal or generated per reel)`.
+- Paytable: passed. Changed A / match 3 payout from 10 to 11 and saved; the rendered table showed 11.
+- Bets/modes/mechanics: finding. Adding bet 10 and a mode rendered the editable row. With mode label `Valera mode`, cost multiplier 1, target RTP 96, runtime Metadata, and Default selected, the visible Save button left the editor in exactly the same edit state without success, pending, or rendered validation. One safe retry had the same result. The visible Cancel control and sidebar Play control also left that same edit state rendered. No product error text was rendered.
+
+Not reached because the stalled Bets & Modes editor prevented project navigation: Random and Blank project creation; mechanics; close/reopen persistence proof; Play ordinary/feature rounds; Simulation; Replay; Outcome Library; Stake export; cold-start exploration.
+
+Conclusion: finding. The rendered Bet Modes editor becomes non-dismissable and cannot persist the completed editable mode, blocking the affected end-to-end workflow. No generated projects, profiles, logs, scripts, or screenshots are included in this evidence commit.
