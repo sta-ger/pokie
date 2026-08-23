@@ -51,7 +51,7 @@
         "typecheck-studio-client": "tsc --project cli/studio-client/tsconfig.json --noEmit",
         "build-studio-client": "npm run typecheck-studio-client && vite build --config cli/studio-client/vite.config.ts && shx test -f dist/cli/studio-client/index.html",
         "dev-studio-client": "npm run build-cli && node scripts/start-studio-client-dev.mjs",
-        "build-cli": "tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
+        "build-cli": "npm run build-esm && tsc --project tsconfig.cli.json && npm run build-client && npm run build-studio-client && shx chmod +x dist/cli/pokie.js",
         "prebuild": "npm run lint",
         "build": "npm run generate-barrels && shx rm -rf ./dist && npm run build-esm && npm run build-cjs && npm run build-cli",
         "prepack": "npm run build"
