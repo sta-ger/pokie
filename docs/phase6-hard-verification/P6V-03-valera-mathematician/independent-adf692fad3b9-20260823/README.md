@@ -42,8 +42,11 @@ saved workspace observations. SHA-256:
 - `saved-project-workspace.png` — `8e66ac386a6140dbdd467003802ca4effceaf1e1fa4c352bbea02e11a904af94`
 
 The subsequent focused recoveries are recorded in
-[`recovery-20260823.txt`](recovery-20260823.txt) and
-[`recovery-round2-20260823.txt`](recovery-round2-20260823.txt). The latter
-confirmed a fully saved Blank project with literal reels and three isolated
-registrations. Its final Projects-row selector was harness-only; no rendered
-product error appeared before the permitted launches were exhausted.
+[`recovery-20260823.txt`](recovery-20260823.txt),
+[`recovery-round2-20260823.txt`](recovery-round2-20260823.txt), and
+[`recovery-round3-20260823.txt`](recovery-round3-20260823.txt). The last
+record confirms a fully saved Blank project with literal reels, three isolated
+registrations, reopening through its own row-local Open control, and the
+rendered Game Model. No rendered product error appeared. The fourth permitted
+launch stopped on a text-projection selector despite the rendered local Edit
+controls, so the remaining journey was not reached.
