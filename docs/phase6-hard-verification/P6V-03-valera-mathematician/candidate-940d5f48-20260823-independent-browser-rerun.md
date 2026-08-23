@@ -39,3 +39,30 @@ browser profile, runtime registry, full log, or automation source is retained.
 | File | Purpose | SHA-256 |
 | --- | --- | --- |
 | `candidate-940d5f48-20260823-fresh-home.png` | Fresh isolated rendered Studio Home on the exact candidate | `2f5dfbe26bc88f25c08d464655f0555fce9b31a7f8a432110ad3488829ea6bb3` |
+
+## Focused harness recovery (same candidate; still inconclusive)
+
+After rebuilding the candidate, four further fresh HOME/XDG and Chrome-profile
+launches again used only `node ./dist/cli/pokie.js --no-open`. The persistent
+harness was repaired in place between launches: its Random form lookup was
+scoped to the visible modal and its focused numeric-field replacement sends a
+complete Control+A/Backspace/text sequence.
+
+- The scoped visible **Generate** action was accepted once, but the Random
+  modal then closed without a rendered pending, result, or error state. It was
+  not repeated.
+- The last fresh run rendered and retained the requested focused edits:
+  payline 1/reel 1 row **2**, `A ×3` payout **9**, and bet 1 **2**. The
+  previous run exposed the old harness defect by visibly appending `9` to the
+  initial payout; its rendered validation warning was diagnostic evidence for
+  repairing the driver, not a product error.
+- The next rendered Symbols surface did not expose the `Symbol 1 is wild`
+  checkbox to the harness's visible-control locator. No product error,
+  console error, or failed request rendered. With the launch limit exhausted,
+  artwork, literal/generated reel transitions, workspace/export outcomes, and
+  close/reopen persistence were not claimed.
+
+No runtime profile, registry, project/output tree, full log, or automation
+source is retained. The original screenshot remains the sole representative
+rendered artifact; the complete recovery transcript remains in the
+controller-owned harness workspace.
