@@ -1,27 +1,27 @@
 # P6V-05 host verification — inconclusive (native-picker readiness)
 
-Product source SHA: `bdbe36151ddaf2b37807fc099d6fe9245251e059`.
-Read-only companion checkout SHA: `1e2c8c00457f3af389c0168432c08e63ca441465`.
-Both were clean before and after this retry; the product tree remains the exact candidate, with
-this documentation-only descendant as the sole retained delta.
+Candidate product SHA: `bdbe36151ddaf2b37807fc099d6fe9245251e059`.
+Candidate companion SHA: `1e2c8c00457f3af389c0168432c08e63ca441465`.
+The product checkout is a clean documentation-only descendant of the product candidate; the
+read-only companion checkout was clean and exactly at its recorded SHA before and after this run.
 
-The persistent controller harness was repaired in place and used the exact candidate command
-`node ./dist/cli/pokie.js --no-open`, a fresh Studio registry, a fresh Chromium profile, and the
-inherited controller X display. It exercised the rendered **Design Game** → **Show advanced
-options (JSON mode, load/save by path)** → **PAR sheet path** **Browse…** workflow. The first
-trusted browser pointer had no local pending state or emitted request, so the harness made the one
-permitted safe OS-level retry after activating and verifying the Chromium window. That retry emitted
-the browser's normal native-browse request, opened a new native picker window, activated and verified
-that window, and entered the absolute fixture path `starter.par.xlsx`.
+The retained evidence was present and truthful: it contained no successful criterion. The persistent
+controller harness was repaired in place for the complete recorded history, then used for four fresh,
+isolated launches. Each launch started Studio directly from this checkout with
+`node ./dist/cli/pokie.js --no-open`, with a new registry/profile and the inherited controller display.
 
-After the picker completed, the rendered **PAR sheet path** field never received that path within
-the bounded semantic wait. Studio showed no rendered error. The interaction therefore did reach the
-physical native picker, but did not reach an accepted physical import; this is readiness/driver
-inconclusive rather than a product defect. It is not evidence of any successful import, export, or
-Player result.
+On each launch the visible Studio workflow reached **Design Game** → **Show advanced options** →
+**PAR sheet path** → **Browse…**. The harness activated the visible Chromium window, used the one
+permitted safe OS-level retry only after its first rendered click had no local state, and then observed a
+new top-level Zenity native picker. It activated that picker, verified it as the active window, and
+entered the absolute copied `starter.par.xlsx` fixture path. No Studio product error rendered. In the
+final bounded inspection, the picker-request response capture was shown to be tied to the availability
+preflight rather than the picker completion; it cannot establish a selected/cancelled result. Most
+importantly, the visible **PAR sheet path** control never rendered the selected path after the picker
+closed.
 
-The native-picker transition is the earliest prerequisite for PAR diagnostics, managed Blueprint
-save, physical export/reimport and canonical comparison. Consequently those steps, Studio Play and
-Replay, companion `npm start`, candidate public `dev`, and CLI Replay were not reached. No generated
-project/output tree, XLSX export, browser profile, raw log, screenshot, automation source, PID file,
-or symlink is retained here.
+Therefore physical import was not established. Diagnostics, managed Blueprint save, physical export,
+reimport/hash/semantic comparison, Studio Play/Replay, companion `npm start`, public client/dev, and CLI
+Replay remain unreached. This is a driver/readiness inconclusive result, not a product finding. No
+generated project/output tree, browser profile, automation source, raw log, screenshot, PID file, or
+symlink is retained; the assigned harness workspace is outside this evidence directory.
