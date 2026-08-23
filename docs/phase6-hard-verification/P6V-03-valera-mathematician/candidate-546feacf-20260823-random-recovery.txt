@@ -22,3 +22,26 @@ Controller-owned bounded transcript SHA-256 values (raw transcripts are intentio
 
 Representative fresh-home screenshot checksum (not copied into evidence):
   8f6efa3b5c927cea08e96ea9c2b0dce111763d3aa53303b6192ce976fdae6dc3
+
+Focused harness recovery continuation — 04:33 and 04:35
+
+After rebuilding the exact candidate runtime, two further fresh isolated HOME/XDG
+registries and Chrome profiles used the same required source-checkout command.
+In each, rendered Recommended replacement succeeded, the rendered Random form
+opened, and exactly one rendered Generate action was accepted. The first used the
+already repaired physical control route; the second used the repaired CDP route.
+Both forms then closed without rendering Random's local generated card, an enabled
+"Use this blueprint" control, pending state, or product error within 30 seconds.
+The remaining rendered page showed only the earlier Recommended replacement toast;
+it was not treated as Random success. Studio diagnostics contained only its
+listening line. No Generate action was retried while pending and no third duplicate
+route was launched.
+
+Random replacement remains unobserved, so Blank creation and the downstream
+modelling, persistence, Play, Simulation, Replay/export, Outcome Library, and
+Stake Engine checks remain not reached. This is readiness-inconclusive, not a
+rendered product finding.
+
+Additional controller-owned transcript SHA-256 values (raw transcripts not committed):
+  ed15cbeb5a1c5edc1ed85052dc19fc6d6766122e4c721b1a2a1320e3b91421fc  run-2026-08-23T04-33-44-500Z/transcript.txt
+  760a64b645d99bcd6663de4238bc764d0d3ba16093b55d0a7db9a3e2a738234b  run-2026-08-23T04-35-32-528Z/transcript.txt
