@@ -87,14 +87,16 @@ function physicalAnchor(root: string, realpath: (target: string) => string): str
 // unrelated host path via "." once separators stop matching.
 function physicalDestination(resolvedCandidate: string, platformPath: PlatformPathModule, realpath: (target: string) => string): string {
     let current = resolvedCandidate;
+    const missingSuffix: string[] = [];
     for (;;) {
         try {
-            return realpath(current);
+            return missingSuffix.reduce((destination, segment) => platformPath.join(destination, segment), realpath(current));
         } catch {
             const parent = platformPath.dirname(current);
             if (parent === current) {
                 return resolvedCandidate;
             }
+            missingSuffix.unshift(platformPath.basename(current));
             current = parent;
         }
     }
@@ -141,7 +143,11 @@ export function isUnsafeStartDirectory(candidate: string, context: UnsafeStartDi
     }
 
     const allowedTemporaryRoot = context.allowedTemporaryRoot === undefined ? undefined : platformPath.resolve(context.allowedTemporaryRoot);
-    const physicalAllowedTemporaryRoot = allowedTemporaryRoot === undefined ? undefined : physicalAnchor(allowedTemporaryRoot, realpath);
+    // Unlike the other forbidden roots, an isolated HOME may be intentionally absent until the
+    // first managed project save creates it. Resolve that planned path through its nearest existing
+    // ancestor so a missing /tmp/profile stays a narrow exemption rather than collapsing to /tmp.
+    const physicalAllowedTemporaryRoot =
+        allowedTemporaryRoot === undefined ? undefined : physicalDestination(allowedTemporaryRoot, platformPath, realpath);
     const isInsideAllowedTemporaryRoot =
         allowedTemporaryRoot !== undefined &&
         physicalAllowedTemporaryRoot !== undefined &&

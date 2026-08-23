@@ -39,6 +39,23 @@ describe("isUnsafeStartDirectory", () => {
         }
     });
 
+    it("keeps a not-yet-created isolated profile narrowly scoped", () => {
+        const parent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-isolated-profile-parent-"));
+        const profile = path.join(parent, "fresh-profile");
+        try {
+            expect(isUnsafeStartDirectory(path.join(profile, "POKIE Projects", "valera-mathematician"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(false);
+            expect(isUnsafeStartDirectory(path.join(parent, "another-profile", "project"), {
+                cwd: "/elsewhere",
+                allowedTemporaryRoot: profile,
+            })).toBe(true);
+        } finally {
+            fs.rmSync(parent, {recursive: true, force: true});
+        }
+    });
+
     it("rejects the install root and paths inside it", () => {
         expect(
             isUnsafeStartDirectory("/opt/pokie/some/nested/dir", {cwd: "/elsewhere", installRoot: "/opt/pokie"}),

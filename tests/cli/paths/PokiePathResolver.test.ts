@@ -77,6 +77,22 @@ describe("PokiePathResolver", () => {
             }
         });
 
+        it("resolves a not-yet-created isolated Home so the first managed save can bootstrap it", () => {
+            const profileParent = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-parent-test-"));
+            const missingHome = path.join(profileParent, "fresh-profile");
+            try {
+                const env: PlatformDirectoryEnvironment = {platform: "linux", env: {}, homeDir: missingHome};
+
+                expect(new PokiePathResolver({}, env).resolveIndependentProjectDirectory("valera-mathematician")).toEqual({
+                    status: "valid",
+                    directory: path.join(missingHome, "POKIE Projects", "valera-mathematician"),
+                    source: "home",
+                });
+            } finally {
+                fs.rmSync(profileParent, {recursive: true, force: true});
+            }
+        });
+
         it("uses an isolated temporary Documents folder only when it stays inside that profile", () => {
             const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-temp-home-documents-test-"));
             try {

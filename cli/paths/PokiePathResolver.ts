@@ -69,12 +69,29 @@ export class PokiePathResolver {
             return {status: "invalid-name", message: `"${name}" is not a valid project name. Use a plain directory name, e.g. "sample-slot".`};
         }
 
+        const platformPath = this.env.platform === "win32" ? path.win32 : path.posix;
+        const home = resolvePlatformHomeDirectory(this.env);
         const base = this.resolveBase(this.env);
         if (base.status === "unresolved") {
             return {status: "unresolved", message: "Could not determine the current user's home directory."};
         }
-        if (base.status !== "valid") {
+        // A deliberately fresh Studio profile can name its HOME before anything has created that
+        // directory yet. A managed first save owns creating its full destination below, so an absent
+        // Home itself is usable for that one creation flow just as an existing Home is. Do not extend
+        // this to a missing Documents directory or any other missing base: only the explicit platform
+        // Home fallback gets this bootstrap treatment.
+        const missingHome = base.status === "absent" && home.trim().length > 0 && base.directory === home;
+        if (base.status !== "valid" && !missingHome) {
             return {status: base.status, message: `The default project location "${base.directory}" ${describeUnusability(base.status)}.`};
+        }
+        let baseDirectory: string;
+        let source: "documents" | "home";
+        if (base.status === "valid") {
+            baseDirectory = base.directory;
+            source = base.source;
+        } else {
+            baseDirectory = home;
+            source = "home";
         }
 
         // Constructed and evaluated with the *target* platform's path semantics (path.win32/path.posix),
@@ -82,8 +99,7 @@ export class PokiePathResolver {
         // directory with the host's own `path.join` would silently mix backslash and forward-slash
         // separators whenever the host isn't actually Windows (e.g. under test, or a cross-platform
         // Studio backend).
-        const platformPath = this.env.platform === "win32" ? path.win32 : path.posix;
-        const directory = platformPath.join(base.directory, POKIE_PROJECTS_FOLDER_NAME, trimmedName);
+        const directory = platformPath.join(baseDirectory, POKIE_PROJECTS_FOLDER_NAME, trimmedName);
         // Judged with the *target* platform's containment semantics too (see isUnsafeStartDirectory.ts),
         // not whatever this.unsafeContext's own caller happened to assume -- so a win32 base directory
         // resolved above is checked against Windows drive/UNC rules even when this runs on a POSIX host.
@@ -92,7 +108,6 @@ export class PokiePathResolver {
         // temp-dir guard for every path outside it (including a Documents symlink escaping elsewhere
         // under /tmp).  This keeps a fresh Studio able to create and reopen its first project instead
         // of reporting a generic completion error solely because the profile is isolated.
-        const home = resolvePlatformHomeDirectory(this.env);
         const unsafeContext: UnsafeStartDirectoryContext = {
             ...this.unsafeContext,
             platform: this.env.platform,
@@ -104,7 +119,7 @@ export class PokiePathResolver {
                 message: `Could not determine a safe default project location (resolved to "${directory}"). Choose a destination directory explicitly.`,
             };
         }
-        return {status: "valid", directory, source: base.source};
+        return {status: "valid", directory, source};
     }
 
     public resolveProjectRelativeDirectory(projectRoot: string, relativePath: string): ResolveProjectDirectoryResult {

@@ -30,6 +30,7 @@ import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.j
 import {FileStudioProjectRegistry} from "../../../../cli/studio/FileStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
 import {createRecommendedBlueprint} from "../../../../cli/studio-client/src/domain/blueprintEditorState.js";
+import {PokiePathResolver} from "../../../../cli/paths/PokiePathResolver.js";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {
@@ -931,6 +932,33 @@ describe("StudioBlueprintService", () => {
             expect(result).toEqual({status: "ok", path: expectedPath, name: "sample-slot", blueprintHash: computeGameBlueprintHash(buildBlueprint())});
             expect(fs.existsSync(expectedPath)).toBe(true);
             expect(fs.readFileSync(expectedPath, "utf-8")).toContain('"sample-slot"');
+        });
+
+        it("bootstraps a missing isolated Home and persists the first managed Blueprint within it", () => {
+            const freshHome = path.join(tmpDir, "fresh-profile");
+            const service = new StudioBlueprintService(
+                "1.2.1",
+                studioRoot,
+                homeService,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                new PokiePathResolver({cwd: "/elsewhere"}, {platform: "linux", env: {}, homeDir: freshHome}),
+            );
+
+            const result = service.saveManaged(buildBlueprint({manifest: {id: "valera-mathematician", name: "Valera Mathematician", version: "0.1.0"}}));
+
+            expect(result).toMatchObject({
+                status: "ok",
+                path: path.join(freshHome, "POKIE Projects", "valera-mathematician", "blueprint.json"),
+                name: "valera-mathematician",
+            });
+            expect(fs.existsSync(path.join(freshHome, "POKIE Projects", "valera-mathematician", "blueprint.json"))).toBe(true);
         });
 
         it("persists the complete Recommended model as the managed Blueprint source a later Projects Open materializes", () => {
