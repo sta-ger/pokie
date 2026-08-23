@@ -1,5 +1,0 @@
-[2026-08-16T09:55:29.918Z] START fresh Chrome/profile against fresh local Studio; only rendered UI is driven.
-[2026-08-16T09:55:29.938Z] NAVIGATE public Studio URL #/home/design
-[2026-08-16T09:55:31.377Z] CLICK "New Blueprint" at rendered BUTTON coordinates (342, 298)
-[2026-08-16T09:55:32.504Z] CLICK "Recommended" at rendered BUTTON coordinates (585, 186)
-[2026-08-16T09:55:33.343Z] INPUT "Game name"="P6 Recommended Owner" using rendered browser input
