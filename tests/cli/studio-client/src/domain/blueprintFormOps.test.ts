@@ -277,13 +277,13 @@ describe("blueprintFormOps", () => {
 
     describe("mechanics (scatter-triggered free games)", () => {
         it("reports no free games configured until addFreeGames turns the mechanic on", () => {
-            const b: Record<string, unknown> = {};
+            const b: Record<string, unknown> = {scatters: ["S"]};
 
             expect(readFreeGames(b)).toBeUndefined();
 
             addFreeGames(b);
 
-            expect(readFreeGames(b)).toEqual({scatterSymbol: "", awardsByCount: {}});
+            expect(readFreeGames(b)).toEqual({scatterSymbol: "S", awardsByCount: {}});
         });
 
         it("sets the scatter symbol and awards, independent of each other", () => {

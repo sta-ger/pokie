@@ -402,12 +402,10 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
 
         await user.click(await within(mechanics).findByRole("button", {name: "Add free games"}));
         await user.click(within(mechanics).getByRole("combobox", {name: "Scatter symbol"}));
-        // Mantine's own dropdown positioning never settles to visible under jsdom's layout-less
-        // environment (its Popover stays "display: none" even once opened -- a jsdom limitation, not a
-        // real hidden state), so the option is targeted directly with fireEvent rather than a visibility-
-        // checking userEvent.click; the option element itself is real and already in the DOM (see
-        // ProjectDashboardPage.playWorkflow.test.tsx's own "Symbol" chooser for the same pattern).
-        fireEvent.click(await screen.findByRole("option", {name: "S", hidden: true}));
+        // Mantine's dropdown positioning never becomes visible under jsdom's layout-less environment.
+        // Its real option-selection handler runs on mousedown, so dispatch that browser event directly
+        // against the hidden-but-mounted option rather than using visibility-checking userEvent.click.
+        fireEvent.mouseDown(await screen.findByRole("option", {name: "S", hidden: true}));
         await user.type(within(mechanics).getByLabelText("New match count"), "3");
         await user.type(within(mechanics).getByLabelText("New free games awarded"), "10");
         await user.click(within(mechanics).getByRole("button", {name: "Add award"}));

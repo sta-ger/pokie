@@ -122,6 +122,44 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         );
     });
 
+    it("opens the saved Workspace even when the managed-save response has no registry projection", async () => {
+        const user = userEvent.setup();
+        const savedPath = "/projects/starter-slot/blueprint.json";
+        const {fetchImpl, calls} = createFakeFetch((call) => {
+            if (call.url === "/api/home/blueprints/validate") {
+                return {ok: true, status: 200, body: {status: "ok", warnings: []}};
+            }
+            if (call.url === "/api/home/blueprints/save-managed") {
+                return {ok: true, status: 201, body: {status: "ok", path: savedPath, name: "starter-slot", blueprintHash: "starter-hash"}};
+            }
+            if (call.url === "/api/home/projects/open") {
+                return {
+                    ok: true,
+                    status: 200,
+                    body: {
+                        context: {mode: "project", projectRoot: savedPath},
+                        manifest: {id: "starter-slot", name: "Starter Slot", version: "0.1.0"},
+                    },
+                };
+            }
+            throw new Error(`unexpected fetch to ${call.url}`);
+        });
+
+        renderWithProviders(
+            <>
+                <BlueprintEditorPage guided />
+                <LocationProbe />
+            </>,
+            {fetchImpl},
+        );
+
+        await user.click(screen.getByRole("button", {name: "Create Project"}));
+
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1));
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/projects/open")?.init?.body ?? "{}")).toEqual({projectRoot: savedPath});
+        await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent(`/project/${encodeURIComponent(savedPath)}/overview`));
+    });
+
     it("opens the just-persisted Blueprint path instead of an unresolved registry projection", async () => {
         const user = userEvent.setup();
         const savedPath = "/projects/starter-slot/blueprint.json";

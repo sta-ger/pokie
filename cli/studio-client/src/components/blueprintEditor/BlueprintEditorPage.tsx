@@ -879,15 +879,18 @@ export function BlueprintEditorPage({
                     // Home keeps Projects mounted beside this editor, but Projects fetches only when
                     // visible. Give its owner the just-persisted row as well as asking it to reconcile
                     // its list, so the visible Projects update never waits on that request settling.
-                    if (!alreadyOwnsPath && "registeredProject" in raw && raw.registeredProject !== undefined) {
-                        const registeredProject = raw.registeredProject;
-                        onManagedProjectSaved?.(registeredProject);
+                    if (!alreadyOwnsPath) {
+                        if ("registeredProject" in raw && raw.registeredProject !== undefined) {
+                            onManagedProjectSaved?.(raw.registeredProject);
+                        }
                         // Open the exact source that this Create Project request just persisted, rather
                         // than treating the registry projection as the creation result. Registration is
                         // durable Home-list metadata and may canonicalize a location independently;
                         // `view.path` is the concrete Blueprint file save-managed confirmed exists.
                         // This keeps a fresh registry from redirecting the first Workspace open to an
-                        // unresolved registry location.
+                        // unresolved registry location. The saved Blueprint is sufficient to open its
+                        // Workspace; a missing optional registry projection must not strand Create
+                        // Project on Design Your Game after a successful save.
                         const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
                         openProject(fetchImpl, view.path)
                             .then(({context}) => {
