@@ -40,3 +40,8 @@ saved workspace observations. SHA-256:
 
 - `fresh-studio-home.png` — `8f6efa3b5c927cea08e96ea9c2b0dce111763d3aa53303b6192ce976fdae6dc3`
 - `saved-project-workspace.png` — `8e66ac386a6140dbdd467003802ca4effceaf1e1fa4c352bbea02e11a904af94`
+
+The subsequent focused recovery is recorded in
+[`recovery-20260823.txt`](recovery-20260823.txt). It confirmed rendered
+Recommended and Random creation/workspace transitions and identified a
+harness-only Blank-entry defect before its remaining coverage could begin.
