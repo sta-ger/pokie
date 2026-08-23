@@ -44,9 +44,10 @@ saved workspace observations. SHA-256:
 The subsequent focused recoveries are recorded in
 [`recovery-20260823.txt`](recovery-20260823.txt),
 [`recovery-round2-20260823.txt`](recovery-round2-20260823.txt), and
-[`recovery-round3-20260823.txt`](recovery-round3-20260823.txt). The last
-record confirms a fully saved Blank project with literal reels, three isolated
-registrations, reopening through its own row-local Open control, and the
-rendered Game Model. No rendered product error appeared. The fourth permitted
-launch stopped on a text-projection selector despite the rendered local Edit
-controls, so the remaining journey was not reached.
+[`recovery-round3-20260823.txt`](recovery-round3-20260823.txt), and
+[`recovery-round4-20260823.txt`](recovery-round4-20260823.txt). The newest
+recovery confirms the saved Layout and native-picker Artwork edits plus the
+rendered generated-reel modeler. Its stack preview correctly displayed the
+entered configuration as unsatisfiable; that is not a product finding. All
+four permitted fresh launches are now consumed, so persistence inspection,
+Play, Simulation, Replay, Outcome Library, and Stake Engine remain not reached.
