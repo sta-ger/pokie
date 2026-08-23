@@ -17,6 +17,10 @@
         "./client/player": {
             "types": "./dist/cli/client/player/index.d.ts",
             "default": "./dist/cli/client/player/index.js"
+        },
+        "./browser": {
+            "types": "./dist/esm/browser.d.ts",
+            "default": "./dist/esm/browser.js"
         }
     },
     "main": "./dist/cjs/index.js",

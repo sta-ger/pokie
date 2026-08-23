@@ -117,6 +117,31 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(screen.getByRole("button", {name: "Apply"})).not.toBeDisabled();
     });
 
+    it("reflects an accepted native PAR workbook selection in the rendered path field", async () => {
+        const user = userEvent.setup();
+        const selectedPath = "/physical-fixtures/starter.par.xlsx";
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/fs/default-location") {
+                return jsonResponse({status: "unavailable"});
+            }
+            if (url === "/api/home/fs/native-browse/availability") {
+                return jsonResponse({status: "available"});
+            }
+            if (url === "/api/home/fs/native-browse") {
+                return jsonResponse({status: "selected", path: selectedPath});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+
+        const parSheetPathInput = screen.getByLabelText("PAR sheet path");
+        await user.click(within(parSheetPathInput.closest(".mantine-Stack-root") as HTMLElement).getByRole("button", {name: "Browse…"}));
+
+        expect(parSheetPathInput).toHaveValue(selectedPath);
+    });
+
     it("blocks Apply and shows a clear invalid-sheet state when the import has errors", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {
