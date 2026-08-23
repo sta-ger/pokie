@@ -1,19 +1,22 @@
 # P6V-05 independent host verification — driver inconclusive
 
 Product candidate: `caf8132177b23abc34096c6c3ce4079330b34080`.
-Read-only companion candidate, clean before and after: `1e2c8c00457f3af389c0168432c08e63ca441465`.
+Read-only companion candidate, verified clean at its required SHA before and after:
+`1e2c8c00457f3af389c0168432c08e63ca441465`.
 
-The candidate Studio client was already built. Every one of the four permitted fresh
-Studio profiles used this checkout command exactly:
+The candidate Studio client was already built. This recovery invocation used its four
+permitted fresh Studio profiles with this checkout command exactly:
 
 ```text
 node ./dist/cli/pokie.js --no-open
 ```
 
-The stable persistent harness was repaired in place for the host's Zenity 4/Xvfb
-renderer (scoped `GSK_RENDERER=cairo`) and to scroll each rendered control into view
-before acting. It drove the real native picker with its active native window verified
-before entering the absolute source path. The final rendered journey established:
+The stable persistent harness was repaired in place for every recorded prior driver
+cause: Zenity 4/Xvfb rendering (scoped `GSK_RENDERER=cairo`), active native-window
+verification before typing, scroll-to-rendered-control, semantic tab lookup, and
+filtering hidden inactive-tab control duplicates. It drove the real native picker with
+its active native window verified before entering the absolute source path. Every
+fresh journey established:
 
 1. Picker selection rendered the exact source XLSX in Studio's labelled **Location** field:
    `examples/parsheets/starter.par.xlsx` — SHA-256
@@ -26,14 +29,18 @@ before entering the absolute source path. The final rendered journey established
    `sha256:ed4953d3c1e8bc2c8eaa6670bdbe3aee564a65c8245f2b52c7449e7e4e14f4cc`,
    and its planned package destination.
 4. **Continue to Apply / Export** → **Apply** → rendered confirmation → **Confirm**
-   was accepted; **Game basics** rendered for the applied model. No product error
-   rendered at any reached surface.
+   was accepted; **Game basics** rendered for the applied model.
 
-The fourth and final permitted fresh launch ended when the harness tried to edit the
-now off-screen **Game name** input before its scroll repair was added. This is a
-driver interaction failure, not a rendered/reproducible product symptom. Launch quota
-was exhausted, so save, physical export, reimport/semantic comparison, and the
-dependent exact-SHA companion/package/Studio Play/public client-dev/Studio Replay/CLI
-Replay parity matrix were not run. No generated project, workbook, profile, log,
-screenshot, or harness is committed; this concise transcript is the complete evidence
-delta.
+The first three recovery profiles reached the selected visible **Game name** editor
+only through a hidden inactive-tab duplicate, so no edit event reached the product.
+The fourth used the repaired visible-control resolver and the rendered **Game basics**
+tab, but the controlled field still did not expose the requested changed value before
+the bounded semantic wait expired. No local validation, save, alert, or product error
+rendered. This is a driver interaction failure, not a rendered/reproducible product
+symptom. The four-launch quota is exhausted, so managed save, physical export,
+native-picker reimport/semantic comparison, and the dependent exact-SHA companion /
+package `npm start` / Studio Play / public client-dev / Studio Replay / CLI Replay
+parity matrix were not run.
+
+No generated project, workbook, profile, log, screenshot, or harness is committed;
+this concise transcript is the complete retained evidence delta.
