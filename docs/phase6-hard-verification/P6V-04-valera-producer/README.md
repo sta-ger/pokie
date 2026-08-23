@@ -11,10 +11,11 @@ Mode: fresh Studio registry and Chrome profile; candidate `node ./dist/cli/pokie
 - Ran the rendered 10,000-round Simulation to Review: RTP 101.72%, hit frequency 11.39%, volatility 3.69, max win 36.00, duration 0.5s.  Studio truthfully warned that no seed was supplied.
 - Opened Replay and chose the rendered `Session Spin` source.  It listed `Session 1 — Round 1 — Spin — win 0`; however the row offered no stable rendered driver control to select it, so Load/Download JSON were not verified.  No rendered product error was shown.
 - Build/Export showed `Status: Ready to build`; the rendered TypeScript Game Package action completed with `Built to .../starter-slot-94/tsPackage`.
+- Focused recovery reruns used four further fresh registries/profiles from the same candidate build.  A rendered local `Edit` saved a literal-strip change (Reel 1 became `A A K Q J`), and the project then closed and reopened successfully.  The native PNG picker accepted `/usr/share/pixmaps/debian-logo.png` through its active rendered dialog, but Studio exposed no local rendered confirmation that made the selected artwork independently verifiable.
 
 ## Scope outcome
 
-This is inconclusive, not a product finding: four fresh-launch allowance was consumed while repairing the existing driver’s project/open, Play, and native-radio transitions.  Artwork selection, edit/save of literal reels/stacks and parameters, and Replay selection/export remain unverified.  No P0/P1/material-P2 product symptom was rendered.
+This is inconclusive, not a product finding: the four fresh recovery launches were consumed while repairing the driver’s local-`Save`, native-picker, section-`Edit`, and Session-Spin transitions.  Literal reel editing and save/reopen were rendered.  Artwork verification, changes to bets/modes/mechanics, and Replay selection/export remain unverified because their rendered controls did not expose a stable driver transition; no P0/P1/material-P2 product symptom was rendered.
 
 ## Screenshot checksums
 
