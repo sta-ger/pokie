@@ -161,3 +161,45 @@ browser, or failed-network error was observed.
 | --- | --- | --- |
 | `candidate-940d5f48-20260823-recovery-model.png` | Rendered generated-reel Apply state | `6c3aa67977f2d7ef1ee6bc1a3e7fa75d212f702d0809d2e3d29327398beea313` |
 | `candidate-940d5f48-20260823-recovery-replay-feature.png` | Rendered selected Replay Session Spin with `freeGamesTriggered` | `e984cf254c06df6d4d4334a2fdfa9e84c3ceea96104b8e8c73132ff453be6441` |
+
+## Completed rendered closeout, 2026-08-23
+
+The retained checksums above were rechecked before this final independent
+fresh-profile run. The candidate remains
+`940d5f48c62ff4ebb906aaf488bad8158ac5e685`; the current evidence commit is
+documentation-only and descends from it. One new, isolated Studio HOME/XDG
+registry and one new Chrome profile launched this source checkout only with:
+
+```text
+node ./dist/cli/pokie.js --no-open
+```
+
+Rendered controls then confirmed Recommended → Blank → Recommended replacement;
+payline 1/reel 1/row `2`; `A ×3` payout `9`; bet 1 `3`; J wild; K scatter; and
+focused native selection of `/usr/share/pixmaps/debian-logo.png`, followed by
+the rendered A-artwork **Change** control. Reel 1 accepted non-empty literal
+`A` and showed its local Literal strip Preview. Its generated Weights journey
+then rendered `Length 6`, `A=5`, `Q=1`, maximum-consecutive constraint `6`,
+an A stack of minimum length `2`, successful Preview, and Apply.
+
+The same rendered workspace journey added and saved `mode-1`, added and saved
+the K `3x → 6` free-games award, observed an ordinary Play win and a
+`freeGamesTriggered` feature outcome, and observed Simulation RTP/results.
+Replay loaded the rendered Session Spin and **Download JSON** completed:
+`spin-95871167-abb6-4dac-beb3-34feb396ae93.json` was 23,475 bytes with SHA-256
+`5be0a7ee73b6436b20050591c0f460bf2b7dabc659d2faea6fd15769ea682c0d` in the
+fresh run's isolated download directory (the JSON is deliberately not
+retained).
+
+Build/Export rendered exact Outcome Library completion for 1,024 base outcomes
+at RTP 1715.62%, then rendered **Exported 4 file(s)** for Stake Engine Export.
+After rendered **Close project** → **Projects** → **Open**, the Game Model
+controls and overview explicitly retained payline `2`, `A ×3=9`, bet `3`,
+`mode-1`, K `3x → 6` free games, the selected artwork (**Change**), and the
+generated reel model. No rendered product error, browser error, or failed
+workflow result appeared.
+
+| File | Purpose | SHA-256 |
+| --- | --- | --- |
+| `candidate-940d5f48-20260823-recovery-build-export.png` | Rendered exact-library result and Stake Engine **Exported 4 file(s)** result | `5207be980e38df778fcc8f7c87af47fd01af7b2308269b2fff11d9fd9c625929` |
+| `candidate-940d5f48-20260823-recovery-reopened.png` | Rendered post-close/reopen model values, modes, mechanics, and symbol roles | `fd896e1f4535a55412c6be819ed145f28f36bbcae198cd05e0c40bbd497e261b` |
