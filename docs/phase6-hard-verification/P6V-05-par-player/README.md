@@ -63,3 +63,37 @@ fresh Studio profiles were consumed recovering and finishing the real physical P
 workflow. This is a driver/quota inconclusive result, not a rendered product defect
 and not cross-repository parity evidence. The companion remains unmodified at its
 required SHA.
+
+## Focused Player recovery — still inconclusive
+
+This recovery invocation rechecked the retained files and both clean exact SHAs,
+then repaired the persistent harness in place before using its four fresh Studio
+profiles. It uses a candidate-built temporary Fixture Slot package and a byte-for-byte
+copy of the companion's committed public source, resolving that copy against candidate
+`dist` rather than the companion's stale installed `pokie` (which lacks the required
+`./browser` export). Neither temporary runtime is evidence or a source change.
+
+The fourth and final fresh Studio profile reached the real rendered sequence:
+
+```text
+Projects → Import Project → Location (candidate Fixture Slot package) → Detect
+→ Detected a Package → Register → Registered → Open → Overview → Play → Start Play
+```
+
+The first three profiles established a driver-only physical-keyboard routing issue:
+the field remained visibly empty without a product error. The repaired harness then
+activated the rendered browser window and used ordinary browser key-down/key-up events;
+the fourth profile rendered the exact selected package path and completed Detect,
+Register, Open, and Play as listed above. It then timed out looking for the wrong
+semantic prefix `Show seed`. The rendered control's actual accessible label is
+`Show advanced details (seed)`; the persistent harness has been repaired to that prefix,
+but the four-profile allowance was exhausted before it could be rerun. No Play session,
+Replay, package `npm start`, companion public client/dev, or CLI Replay was started in
+this recovery after that point, so no conditional/sibling skip is being offered as
+parity evidence.
+
+This is a **selector/driver inconclusive** result only: no rendered product error,
+wrong screen, payout mismatch, or failed Studio operation was observed. The full Player
+matrix and the acceptance criterion that depends on it remain not reached. The companion
+checkout remained clean at `1e2c8c00457f3af389c0168432c08e63ca441465`; product source
+remained `caf8132177b23abc34096c6c3ce4079330b34080` plus this evidence-only descendant.
