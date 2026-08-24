@@ -1,39 +1,35 @@
-# P6V-06 exact-candidate hard-closeout — passed
+# P6V-06 exact-candidate hard-closeout — inconclusive
 
-Product candidate: `29bdb8945a6c6dcfbb15a6ff560dae453c505375`.
-This audit HEAD is an evidence-only descendant with an empty product-tree delta.
-The read-only companion is clean at
-`1e2c8c00457f3af389c0168432c08e63ca441465`.
+Product candidate: `23860d7aeee8f5b477c9185c08496715ac2eaa30`.
+Read-only companion: clean at `1e2c8c00457f3af389c0168432c08e63ca441465`.
 
-| Immutable step | Exact-candidate evidence and result |
-| --- | --- |
-| P6V-01 | Passed: the retained P6V-02–P6V-05 results were mapped one-to-one, SHA-bound, checksum-rechecked, and no stale, merged, omitted, duplicated, or self-asserted row was retained. |
-| P6V-02 | Passed retained 405px Design/UX proof, bound through the identical product tree and checksum-rechecked. |
-| P6V-03 | Passed fresh candidate-built Studio journey: empty registry; Recommended/Random/Blank/final Recommended; Valera identity; native artwork; literal and generated reel preview/apply; persisted modes/mechanics; Play; Simulation; Replay **Load** then **Run again**; Outcome Library; Stake export; reopen. |
-| P6V-04 | Passed retained fresh Producer journey: project lifecycle, native artwork, literal reels, paytable, bets/modes, mechanics, Play, Simulation, Replay JSON download, Build, Outcome Library, Stake export, and reopen. |
-| P6V-05 | Passed retained fresh physical PAR/XLSX round trip and five-surface Player parity: candidate CLI Replay, built-package Player, Studio Play, Studio Replay, and exact committed companion Player agreed on grid, A payline, win, paytable, bet, base mode, and no feature state. |
+`npm run generate-barrels` completed on the candidate. `git diff --exit-code -- src/index.ts` and `git status --porcelain` were both empty afterwards.
+`src/index.ts` SHA-256: `78aba3ce9a79d4d54470d851c6edaad212ce64f6c3b0557ce103b8735b5ee283`.
 
-The preserved P6V-02 Design/UX, separate P6V-03 and P6V-04 Valera journeys,
-P6V-05 physical PAR/XLSX, and canonical Player proof are exact-tree-bound. The
-fresh P6V-03 Replay completion repaired the sole prior selector gap. No rendered
-P0, P1, or material P2 remains unresolved.
+The candidate was built once, then two isolated visible Studio launches used exactly `node ./dist/cli/pokie.js --no-open`.
+Both reached the rendered Design Game Home, but automatic validation stayed at “Studio is checking this model automatically.”
+Neither Create Project action produced a rendered pending, success, or error state.
+The first control state proved the action was not accepted; the second launch used the one permitted safe retry after repairing the visible-control selector.
+This is a readiness/driver inconclusive result, not a rendered product defect.
 
-This approves only the independent P6V-06 audit. Controller-owned
-`check:release`, packaging, post-merge tree exactness, push, publication, and
-Drive round trip remain separate and unclaimed.
+| Step | Exact-candidate mapping | Result |
+| --- | --- | --- |
+| P6V-01 | The older retained-evidence audit does not bind P6V-02–P6V-05 to `23860d7`. | Not reached. |
+| P6V-02 | Its rendered Design/UX evidence names an older candidate. | Not reached. |
+| P6V-03 | Its completed Mathematician journey names an older candidate. | Not reached. |
+| P6V-04 | Its completed Producer journey names an older candidate. | Not reached. |
+| P6V-05 | The companion SHA is exact and clean, but its PAR/Player product evidence names an older product SHA. | Not reached. |
 
-## Retained bounded proof
+Therefore this audit does not confirm the absence of unresolved P0, P1, or material P2 across P6V-01–P6V-05.
+It observed no rendered product error in the two current-candidate launches.
+Controller-owned release, packaging, post-merge, push, publication, and Drive checks remain unclaimed.
+
+## Bounded proof
 
 | File | SHA-256 | Purpose |
 | --- | --- | --- |
-| `01-design-build-mobile-405.png` | `7c6b050d578378bba179dea92dd425edf698db1d0d7c6130d30761efc5b6e53d` | P6V-02 Design/UX surface. |
-| `02-producer-replay-exact.png` | `3204c40ad3611d4814e20601c093fc70ce87ba3a27bdd389c7e5bd3921effafe` | P6V-04 Replay artifact/JSON control. |
-| `03-producer-build-exact.png` | `d79d2761b103aa79b2de08866bfaf4274b429c2794d2bc482773a689cd979f4e` | P6V-04 Build, Outcome Library, and Stake export. |
-| `04-mathematician-persisted-exact.png` | `514cef96e616af97a04158f24eac8dfc8eb2969493560f86c2993f30c6c103c6` | P6V-03 persisted K-scatter 3x→5 mechanic. |
-| `05-mathematician-replay-exact.png` | `46f0b8f3068f29d1953be3fb7a2c16e84c815bc437bdb7a09d34d954adabe7fc` | Fresh P6V-03 Replay Load → Run again completion. |
-| `transcript.txt` | `c156f92886849365fd330e181702a87c0e5e780220a4d93be355741497a88429` | Concise identity, full map, and fresh Replay observation. |
+| `01-studio-home-validation-pending.png` | `7b88c2d0ad219a6cabc83ecc9feeb1a1747a88bc58d650e85b20476c40a5f954` | Current-candidate visible Studio Home showing the validation-pending state. |
+| `transcript.txt` | `12b1d479b32429560629e2207c333004f020b8545b054a4a4b32de3ae65d2206` | Exact commands, identities, and the rendered-state result. |
 
-Only this README, a concise transcript, and five sub-0.3 MiB screenshots are
-retained (under 0.8 MiB total). No profile, generated project/output, raw log,
-harness source, download, automation script, package tree, or browser artifact
-is committed.
+Superseded prior-candidate screenshots and transcript were removed from this P6V-06 folder.
+The retained evidence is one screenshot plus this concise record; no generated project/output, profile, raw log, harness source, or download is committed.
