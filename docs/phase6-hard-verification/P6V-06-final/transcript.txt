@@ -20,3 +20,9 @@ Visible Studio workflow (one new isolated profile/registry)
   No fixed delay or page-wide text was used as proof; no rendered product error occurred.
 
 Exact-candidate mapping: P6V-01 hygiene/identity checks pass; P6V-02 has only its common current Create Project entry rerun; P6V-03, P6V-04 and P6V-05 retain only older-product-SHA specialised evidence. Verdict: inconclusive, not a product finding. The absence of unresolved P0/P1/material-P2 cannot be approved. Controller-owned release, packaging, post-merge, push, publication, and Drive checks remain unclaimed.
+
+Focused harness recovery (four fresh isolated Studio launches, same assigned current.mjs)
+  launch 1–2: physical native Rounds * edit did not retain a value in the controlled field; no rendered product error.
+  launch 3: Play, Simulation, Replay and Build/Export rendered; the harness attempted export during the visibly pending outcome-generation transition.
+  launch 4: repaired outcome-generation completion gate; no terminal rendered result was recorded before the wrapper yielded.
+  Result: driver-inconclusive specialised paths; no new product finding and no added approval beyond the retained barrel invariant.

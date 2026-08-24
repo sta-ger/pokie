@@ -30,8 +30,29 @@ Controller-owned release, packaging, post-merge, push, publication, and Drive ch
 | File | SHA-256 | Purpose |
 | --- | --- | --- |
 | `01-studio-create-workspace.png` | `36ef8fb9b3d32d317d96e4902ed37906586b9066176f476b63157cacaaf67f70` | Current-candidate visible managed Workspace after the one rendered Create Project action. |
-| `transcript.txt` | `b4f90356f6bb37955753fb7935f0b0d4e873908d2b80dc77e32a08f32f7433c4` | Exact identities, invariant, launch command, and rendered-state result. |
+| `transcript.txt` | `db5392c076135cc207d3fb7b8fd76a885f6423bb50154326fabd3e1def002bfb` | Exact identities, invariant, launch command, and rendered-state result. |
 
 The superseded validation-pending screenshot was removed rather than retained in parallel. The retained evidence is
 one screenshot plus this concise record; no generated project/output, profile, raw log, harness source, or download
 is committed.
+
+## Focused harness recovery (2026-08-24)
+
+The assigned persistent harness was extended in place and used for all four
+new, isolated visible-Studio launches.  It continued to launch only
+`node ./dist/cli/pokie.js --no-open`.  The first two launches reached the
+rendered Simulation control but could not prove a physical edit of its
+controlled native `Rounds *` field; the safe repair retained its rendered valid
+default rather than injecting a DOM value.  The third launch then reached
+rendered Play, Simulation, Replay, and Build/Export but exposed a harness
+sequencing error: it looked for Stake Engine export while outcome generation
+was still visibly pending.  The fourth launch repaired that exact local
+transition by waiting for generated outcomes before looking for export.  Its
+wrapper yielded before recording a terminal rendered state, so it supplies no
+additional approval evidence.
+
+Those are driver/readiness limitations, not rendered product errors or product
+findings.  The four-launch budget is exhausted.  This record therefore remains
+inconclusive for the specialized current-SHA P6V-02 through P6V-05 paths and
+does not claim a release, packaging, publication, push, post-merge, or Drive
+result.
