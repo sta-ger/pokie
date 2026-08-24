@@ -50,3 +50,21 @@ P6V-01 through P6V-05 criterion on one exact accepted SHA, (2) `check:release`
 runs exactly once and saves its successful packaging result, and (3) the
 controller records exact post-merge/push/publication/Drive-round-trip results
 with `completion_resolution: satisfied`.
+
+## Binding correction (2026-08-24)
+
+The later P6V-06 README incorrectly promoted the closeout to passed by calling
+the separate P6V-04 and P6V-05 records machine-owned current-candidate runs.
+That assertion is withdrawn. P6V-04 names only
+`bc810a69dba8ee4e036906fd9c10dda9fefb5680`; no retained
+`run-11-producer` record binds it to the later candidate. P6V-05 names POKIE
+`caf8132177b23abc34096c6c3ce4079330b34080` and companion
+`1e2c8c00457f3af389c0168432c08e63ca441465`, while its claimed `run-10`
+does not record a POKIE candidate SHA.
+
+The correction review starts at POKIE
+`782810b91be076b254ae110e0037725101fb90c1`, which is later than the false
+passing README and includes a changed targeted integration test after
+`cf26cd3110cdf5d3f01deb533efb7b031039d9ed`. The companion remains clean at
+the recorded `1e2c8c0` adoption SHA. These facts preserve the prior evidence
+and make the missing exact binding explicit; they do not approve either tree.
