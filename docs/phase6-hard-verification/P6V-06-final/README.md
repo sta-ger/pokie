@@ -1,57 +1,23 @@
-# P6V-06 exact-candidate hard-closeout — report repair
+# P6V-06 independent exact-candidate closeout — incomplete
 
-Candidate required by this request: `aa091dd0290c53e4cc4f4638b27790c10aabe930`.
-Read-only companion: `1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
-This evidence-only descendant has no product-tree change from the candidate.
+Product candidate: `0560176d6974986c322adf3af8c5413ef48247a6`.
+Read-only companion candidate: `1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
 
-The former closeout summary incorrectly promoted inherited/older-candidate
-workflow material to a pass. The controller-retained record has **no passed
-criteria**: P6V-05's current-candidate PAR preview did not render a continuation,
-pending state, or error after its permitted retry. That is a readiness
-inconclusive, not a rendered product defect. This repair runs no workflow,
-build, test, package or browser process and makes no product or test change.
+This evidence-only descendant records fresh Studio launches from this source
+checkout using only `node ./dist/cli/pokie.js --no-open` with isolated runtime
+profiles and registries.
 
-## Focused harness recovery, 2026-08-24
+Completed: separate rendered P6V-03 mathematician and P6V-04 producer journeys;
+P6V-05 physical native-picker XLSX import/edit/export/reimport/save (export
+SHA-256 `0c2fc97b32e2f0accb77980cf63497dea50b6abb85c81beed3a282ca71138a73`);
+and P6V-05 Player parity. CLI Replay, package `npm start`, Studio Play, Studio
+Replay and the exact companion client agreed on 3x3 `[[A,C,A],[A,A,C],[A,A,A]]`,
+winning positions `[[0,0],[1,0],[2,0]]`, win `5`, paytable `A 3→5; B 3→3; C
+3→1`, bet `1`, base mode and no feature state.
 
-The controller-owned persistent harness was repaired in place and used with
-fresh isolated profiles and the mandated exact source-checkout command. The
-recovered rendered path reached native XLSX selection, PAR
-diagnostics/provenance, canonical preview, Apply → Confirm, a retained
-`Game name` edit, physical XLSX export, a second native-picker reimport,
-rendered edited-name preservation, and managed-project save. The last export
-hash was `e1174f61bbb369ff6c9d2b1fbda0bfa6cdebae1f84da06486a917d3593c45856`.
-The bounded transcript is `par-recovery-20260824.txt`.
+Fail closed: P6V-02's full independent Design/UX inventory and P6V-01's fresh
+criterion-by-criterion mapping were not reached. This is not release approval;
+no P0/P1/material-P2 defect was observed in the completed journeys.
 
-This remains **inconclusive**, not a product finding: the full semantic
-comparison and canonical Player-parity matrix, and separate P6V-02–P6V-04
-current-candidate journeys, were not reached. No release-readiness conclusion
-is permitted.
-
-## Literal closeout matrix
-
-| Immutable prerequisite | Retained, truthful state | Current closeout result |
-| --- | --- | --- |
-| P6V-01 | Evidence-only cleanup/history and clean-tree assertions are retained. | Not sufficient to certify all dependent fresh evidence. |
-| P6V-02 | Historical rendered desktop/mobile material remains present. | Not reapproved for this candidate from inherited evidence. |
-| P6V-03 | Historical mathematician material remains present. | Not reapproved for this candidate from inherited evidence. |
-| P6V-04 | Historical producer material remains present. | Not reapproved for this candidate from inherited evidence. |
-| P6V-05 | Fresh native-picker import/diagnostics, preview, Apply → Confirm, edited export, native reimport and managed save rendered on the candidate. | Not reached: full canonical semantic comparison and exact-current Player parity remain incomplete. |
-
-Accordingly, all three P6V-06 acceptance criteria remain **not reached**.
-There is no observed P0, P1, or material P2 finding, but neither is there
-evidence for a release-readiness pass. Future verification must resume the
-rendered P6V-05 path before it can rely on the prerequisite matrix.
-
-## Retained minimal rendered proof (historical, not passing proof)
-
-| File | SHA-256 | State |
-| --- | --- | --- |
-| `01-studio-create-workspace.png` | `36ef8fb9b3d32d317d96e4902ed37906586b9066176f476b63157cacaaf67f70` | Managed Workspace. |
-| `02-current-common-workflow.png` | `8ae18644de5e885a34480a3f826e6ce07f02fd5fbc3da415ad1ef63a69791bbf` | Outcome/Stake Export. |
-| `03-reel-modeler-mobile-405.png` | `edbacfc1905d73b8812a488e38e232f5bbe51e405ab8eb0f42af1837116a33dd` | 405px reel editor. |
-| `04-mathematician-reopened.png` | `305bc3be6d7add813e4e064bec7c8f028d4921756454fe3e6a6fe35a4db36b98` | Reopened workspace. |
-| `par-recovery-20260824.txt` | `6708a6691f90a9ff822d2e5b54ee13ba5a5f9c94db8e65dd693f3a0148f58302` | Bounded fresh PAR recovery transcript. |
-
-Only this index, the bounded recovery transcript, and four representative screenshots remain. No profile,
-generated output, automation, raw log, package tree, lockfile, PID file or
-tarball is committed here.
+`transcript.txt` is the bounded record. Generated workbooks, profiles,
+automation, raw logs and screenshots are transient and uncommitted.
