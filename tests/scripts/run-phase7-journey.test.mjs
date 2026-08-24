@@ -97,9 +97,13 @@ process.exitCode = result.status;
         assert.equal(concurrentResult.status, 0, concurrentResult.stderr);
         const directControl = await driver(directory, `
 import net from "node:net";
+import {readFile} from "node:fs/promises";
 import path from "node:path";
+let readable = true;
+try { await readFile(process.env.P7_PUBLIC_CLI, "utf8"); } catch { readable = false; }
+if (readable) throw new Error("driver could read the control credential client");
 const socket = net.createConnection(path.join(path.dirname(process.env.P7_PUBLIC_CLI), ".p7-public-cli.sock"));
-await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("close", resolve); });
+await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({secret: "extracted-without-access", args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("close", resolve); });
 `);
         const directControlResult = run(await cli(directory), directControl, path.join(directory, "control"));
         assert.equal(directControlResult.status, 1);

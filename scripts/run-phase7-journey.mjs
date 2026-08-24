@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Run a Phase 7 workflow twice in clean rooms and retain wrapper-observed CLI evidence. */
-import {cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
+import {chmod, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {spawn, spawnSync} from "node:child_process";
 import {createHash, randomBytes} from "node:crypto";
@@ -53,23 +53,53 @@ async function digest(target) {
     return createHash("sha256").update(await readFile(target)).digest("hex");
 }
 
-function wrapperSource(socketPath, secret) {
-    return `#!/usr/bin/env node
-import net from "node:net";
-const socket = net.createConnection(${JSON.stringify(socketPath)});
-let response = "";
-socket.on("connect", () => socket.end(JSON.stringify({secret: ${JSON.stringify(secret)}, args: process.argv.slice(2)}) + "\\n"));
-socket.on("data", (chunk) => { response += chunk; });
-socket.on("error", (error) => { console.error(error.message); process.exitCode = 1; });
-socket.on("close", () => {
-    try {
-        const result = JSON.parse(response);
-        process.stdout.write(result.stdout ?? "");
-        process.stderr.write(result.stderr ?? "");
-        process.exitCode ??= result.exitCode;
-    } catch (error) { console.error(error.message); process.exitCode = 1; }
-});
-`;
+async function compilePrivateClient(socketPath, secret, destination) {
+    const source = `${destination}.c`;
+    // This deliberately is a native, execute-only capability: the untrusted driver can execute
+    // public CLI requests, but its user namespace cannot read the credential or submit directly
+    // to the separately mounted socket.  A JavaScript request client would expose any embedded
+    // secret as ordinary driver-readable text.
+    await writeFile(source, `
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+static const char *socket_path = ${JSON.stringify(socketPath)};
+static const char *secret = ${JSON.stringify(secret)};
+static void quoted(FILE *stream, const char *value) {
+    fputc('"', stream);
+    for (; *value; value++) {
+        if (*value == '"' || *value == '\\\\') { fputc('\\\\', stream); fputc(*value, stream); }
+        else if (*value == '\\n') fputs("\\\\n", stream);
+        else if (*value == '\\r') fputs("\\\\r", stream);
+        else if (*value == '\\t') fputs("\\\\t", stream);
+        else fputc(*value, stream);
+    }
+    fputc('"', stream);
+}
+int main(int argc, char **argv) {
+    struct sockaddr_un address; memset(&address, 0, sizeof(address)); address.sun_family = AF_UNIX;
+    if (strlen(socket_path) >= sizeof(address.sun_path)) return 1;
+    strcpy(address.sun_path, socket_path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0 || connect(fd, (struct sockaddr *)&address, sizeof(address)) != 0) return 1;
+    FILE *stream = fdopen(fd, "r+"); if (!stream) return 1;
+    fputs("{\\\"secret\\\":", stream); quoted(stream, secret); fputs(",\\\"args\\\":[", stream);
+    for (int index = 1; index < argc; index++) { if (index > 1) fputc(',', stream); quoted(stream, argv[index]); }
+    fputs("]}\\n", stream); fflush(stream); shutdown(fd, SHUT_WR);
+    char response[1048577]; size_t size = fread(response, 1, sizeof(response) - 1, stream); response[size] = 0;
+    fputs(response, stdout);
+    char *exit_code = strstr(response, "\\\"exitCode\\\":");
+    return exit_code ? (int)strtol(exit_code + 11, NULL, 10) : 1;
+}
+`);
+    const result = spawnSync("cc", ["-D_POSIX_C_SOURCE=200809L", "-std=c99", "-O2", source, "-o", destination], {encoding: "utf8"});
+    await rm(source, {force: true});
+    if (result.error || result.status !== 0) throw new Error(`could not build the private journey request client: ${result.stderr ?? result.error?.message ?? "unknown compiler error"}`);
+    await chmod(destination, 0o511);
 }
 
 async function directoryProvenance(directory) {
@@ -91,7 +121,7 @@ async function directoryProvenance(directory) {
     return `directory files=${entries.length} manifest-sha256=${createHash("sha256").update(manifest).digest("hex")} entries=${JSON.stringify(entries)}`;
 }
 
-function driverResult(script, driverDirectory, socketPath, environment) {
+function driverResult(script, driverDirectory, socketPath, clientPath, environment) {
     return new Promise((resolve) => {
         const sandbox = "/usr/bin/bwrap";
         if (!existsSync(sandbox)) {
@@ -100,8 +130,8 @@ function driverResult(script, driverDirectory, socketPath, environment) {
         }
         const visibleSocket = path.join(driverDirectory, ".p7-public-cli.sock");
         const child = spawn(sandbox, [
-            "--die-with-parent", "--new-session", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dir", path.dirname(driverDirectory),
-            "--bind", driverDirectory, driverDirectory, "--bind", socketPath, visibleSocket, "--chdir", driverDirectory,
+            "--die-with-parent", "--new-session", "--unshare-user", "--uid", "65534", "--gid", "65534", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dir", path.dirname(driverDirectory),
+            "--bind", driverDirectory, driverDirectory, "--bind", socketPath, visibleSocket, "--ro-bind", clientPath, path.join(driverDirectory, "invoke-public-pokie"), "--chdir", driverDirectory,
             "--", process.execPath, script,
         ], {cwd: driverDirectory, env: environment});
         let stdout = "";
@@ -158,6 +188,7 @@ async function wrapperServer(socketPath, secret, cli, artifactDirectory, expecte
         });
     });
     await new Promise((resolve, reject) => server.once("error", reject).listen(socketPath, resolve));
+    server.unref();
     return server;
 }
 
@@ -174,7 +205,8 @@ async function runOnce(label, arguments_) {
     const artifactDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-journey-artifacts-"));
     const inputDirectory = path.join(driverDirectory, "inputs");
     const driverScript = path.join(driverDirectory, "journey.mjs");
-    const wrapperPath = path.join(driverDirectory, "invoke-public-pokie.mjs");
+    const wrapperPath = path.join(driverDirectory, "invoke-public-pokie");
+    const privateClientPath = path.join(artifactDirectory, "private-public-cli");
     const socketPath = path.join(artifactDirectory, "public-cli.sock");
     const visibleSocket = path.join(driverDirectory, ".p7-public-cli.sock");
     const secret = randomBytes(32).toString("hex");
@@ -183,7 +215,9 @@ async function runOnce(label, arguments_) {
     try {
         await mkdir(inputDirectory);
         await cp(arguments_.script, driverScript);
-        await writeFile(wrapperPath, wrapperSource(visibleSocket, secret), {mode: 0o500});
+        await writeFile(wrapperPath, "", {mode: 0o511});
+        await chmod(driverScript, 0o555);
+        await chmod(driverDirectory, 0o755);
         for (const input of arguments_.inputs) {
             if (!existsSync(input)) usage(`input does not exist: ${input}`);
             const destination = path.join(inputDirectory, path.basename(input));
@@ -192,8 +226,9 @@ async function runOnce(label, arguments_) {
             provenance.push(`${input} -> ${destination} (${stat.isDirectory() ? await directoryProvenance(destination) : `sha256=${await digest(destination)}`})`);
         }
         const server = await wrapperServer(socketPath, secret, arguments_.cli, artifactDirectory, arguments_.expected, state);
-        const result = await driverResult(driverScript, driverDirectory, socketPath, {...process.env, P7_INPUT_DIR: inputDirectory, P7_PUBLIC_CLI: wrapperPath});
-        await new Promise((resolve) => server.close(resolve));
+        await compilePrivateClient(visibleSocket, secret, privateClientPath);
+        const result = await driverResult(driverScript, driverDirectory, socketPath, privateClientPath, {...process.env, P7_INPUT_DIR: inputDirectory, P7_PUBLIC_CLI: wrapperPath});
+        server.close();
         if (state.failure) throw new Error(`${label}: ${state.failure}`);
         if (result.outputExceeded) throw new Error(`${label}: driver output exceeds the ${MAX_DRIVER_OUTPUT_CHARS}-character evidence limit.`);
         if (state.records.length === 0) throw new Error(`${label}: journey did not invoke the wrapper-controlled public CLI.${result.stderr ? ` ${result.stderr}` : ""}`);

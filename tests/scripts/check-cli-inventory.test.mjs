@@ -40,6 +40,13 @@ process.stdout.write(help);
             {id: "value:build:--source-type:blueprint", owner: "test"},
             {id: "value:build:--format:json", owner: "test"},
             {id: "value:build:--mode:base", owner: "test"},
+            {id: "target:supported", owner: "test"},
+            {id: "source-type:blueprint", owner: "test"},
+            {id: "output-format:json", owner: "test"},
+            {id: "mode:base", owner: "test"},
+            {id: "finding:version-help", owner: "test"},
+            {id: "finding:implicit-studio", owner: "test"},
+            {id: "finding:documentation-claims", owner: "test"},
         ],
     }));
     return {directory, cli, coverage};
@@ -126,6 +133,15 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
+test("keeps command context for ordinary claims below a CLI heading", async () => {
+    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nThe command accepts --target obsolete.\n");
+    try {
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /stale documented capability value:build:--target:obsolete/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
 test("rejects documentation options that belong to another executable command", async () => {
     const {directory, cli, coverage} = await fixture("", "pokie build --dry-run\n");
     try {
@@ -179,7 +195,7 @@ test("checks the freshly built production CLI against the complete public docume
         runBuildStep([path.join(root, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
-        const {collect, documentationCapabilities} = await import(checker);
+        const {checkCoverage, collect, documentationCapabilities} = await import(checker);
         const collected = await collect(path.join(root, "dist/cli/pokie.js"));
         const inventory = collected.inventory;
         assert.equal(inventory.rootCommands.length, 20);
@@ -187,5 +203,6 @@ test("checks the freshly built production CLI against the complete public docume
         const coverageMap = JSON.parse(await readFile(path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"), "utf8"));
         const publicClaims = await documentationCapabilities(coverageMap, inventory, path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"));
         assert.ok(publicClaims.has("command:build"));
+        assert.doesNotThrow(() => checkCoverage(inventory, coverageMap, publicClaims));
     } finally { await rm(directory, {recursive: true, force: true}); }
 }, 180000);

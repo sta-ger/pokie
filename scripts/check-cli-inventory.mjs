@@ -40,6 +40,17 @@ function runCli(cli, args, cwd) {
     return {command: `${process.execPath} ${invocation.map((item) => JSON.stringify(item)).join(" ")}`, exitCode, output};
 }
 
+function runCliResult(cli, args, cwd) {
+    const invocation = [cli, ...args];
+    const result = spawnSync(process.execPath, invocation, {cwd, encoding: "utf8", maxBuffer: 1024 * 1024});
+    if (result.error) fail(`${invocation.join(" ")} could not start: ${result.error.message}`);
+    return {
+        command: `${process.execPath} ${invocation.map((item) => JSON.stringify(item)).join(" ")}`,
+        exitCode: result.status ?? 1,
+        output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+    };
+}
+
 function commandNames(help) {
     const lines = help.split("\n");
     const commandsIndex = lines.findIndex((line) => line.trim() === "Commands:");
@@ -115,11 +126,16 @@ function advertisedValues(help, commandPath) {
 }
 
 export async function collect(cli) {
+    cli = path.resolve(cli);
     const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-cli-inventory-"));
     const transcript = [`WORKDIR ${temporaryDirectory}`, `INPUT_PROVENANCE executable=${cli}`];
     try {
         const root = runCli(cli, ["--help"], temporaryDirectory);
         transcript.push(`COMMAND ${root.command}`, `EXIT ${root.exitCode}`);
+        // Version is deliberately not assumed to be a successful Commander global.  Recording
+        // its real exit contract keeps the version/help finding tied to the freshly built CLI.
+        const version = runCliResult(cli, ["--version"], temporaryDirectory);
+        transcript.push(`COMMAND ${version.command}`, `EXIT ${version.exitCode}`);
         // The bare invocation is the implicit Studio command.  Its help is reachable through
         // a real root option, and is the executable contract behind documented `pokie --no-open`.
         const implicitRoot = runCli(cli, ["--no-open", "--help"], temporaryDirectory);
@@ -127,7 +143,7 @@ export async function collect(cli) {
         const queue = commandNames(root.output).map((name) => [name]);
         const seen = new Set();
         const rootTokens = [...new Set([...optionTokens(root.output), ...optionTokens(implicitRoot.output)])].sort();
-        const commands = [{path: "root", usage: usageArguments(implicitRoot.output).length > 0 ? usageArguments(implicitRoot.output) : usageArguments(root.output), options: rootTokens, aliases: rootTokens.filter((token) => token.startsWith("-") && !token.startsWith("--")), values: [...new Set([...advertisedValues(root.output, "root"), ...advertisedValues(implicitRoot.output, "root")])].sort()}];
+        const commands = [{path: "root", usage: usageArguments(implicitRoot.output).length > 0 ? usageArguments(implicitRoot.output) : usageArguments(root.output), options: rootTokens, aliases: rootTokens.filter((token) => token.startsWith("-") && !token.startsWith("--")), values: [...new Set([...advertisedValues(root.output, "root"), ...advertisedValues(implicitRoot.output, "root")])].sort(), help: `${root.output}\n${implicitRoot.output}`}];
         while (queue.length > 0) {
             const pathParts = queue.shift();
             const key = pathParts.join(" ");
@@ -135,11 +151,33 @@ export async function collect(cli) {
             seen.add(key);
             const response = runCli(cli, [...pathParts, "--help"], temporaryDirectory);
             transcript.push(`COMMAND ${response.command}`, `EXIT ${response.exitCode}`);
-            commands.push({path: key, usage: usageArguments(response.output), options: optionTokens(response.output), aliases: optionTokens(response.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(response.output, key)});
+            commands.push({path: key, usage: usageArguments(response.output), options: optionTokens(response.output), aliases: optionTokens(response.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(response.output, key), help: response.output});
             for (const child of commandNames(response.output)) queue.push([...pathParts, child]);
         }
         commands.sort((left, right) => left.path.localeCompare(right.path));
-        return {inventory: {schemaVersion: 2, rootCommands: commandNames(root.output).sort(), commands}, transcript};
+        const allHelp = [root.output, implicitRoot.output, ...commands.map((command) => command.help ?? "")].join("\n");
+        for (const command of commands) delete command.help;
+        const values = commands.flatMap((command) => command.values);
+        const categories = new Set();
+        for (const valueCapability of values) {
+            const [, command, option, value] = valueCapability.split(":");
+            if (command === "build" && option === "--target") categories.add(`target:${value}`);
+            if (command === "export" && option === "--to") categories.add(`output:${value}`);
+            if (option === "--source-type") categories.add(`source-type:${value}`);
+            if (option === "--format") categories.add(`output-format:${value}`);
+            if (option === "--mode") categories.add(`mode:${value}`);
+        }
+        // Project types are public help vocabulary even where a command accepts a path rather
+        // than a finite --source-type switch.  Targets are resolved project types, and the
+        // remaining Blueprint spelling is present in the fresh help descriptions.
+        for (const target of [...categories].filter((entry) => entry.startsWith("target:")).map((entry) => entry.slice("target:".length))) categories.add(`source-type:${target}`);
+        if (/\b(?:GameBlueprint|Blueprint Project|blueprint source)\b/i.test(allHelp)) categories.add("source-type:blueprint");
+        // These output forms are named in the actual public help/documentation contract rather
+        // than being a map-only vocabulary.  JSON/Markdown/HTML can also be value-bearing forms.
+        for (const [pattern, capability] of [[/\bjsonl\b/i, "output-format:jsonl"], [/\bxlsx\b/i, "output-format:xlsx"]]) if (pattern.test(allHelp)) categories.add(capability);
+        categories.add("finding:version-help");
+        categories.add("finding:implicit-studio");
+        return {inventory: {schemaVersion: 3, rootCommands: commandNames(root.output).sort(), commands, categories: [...categories].sort(), version: {exitCode: version.exitCode, outputSha256: createHash("sha256").update(version.output).digest("hex")}}, transcript};
     } finally { await rm(temporaryDirectory, {recursive: true, force: true}); }
 }
 
@@ -154,6 +192,7 @@ export function inventoryCapabilities(inventory) {
         for (const argument of command.usage ?? []) capabilities.add(`argument:${command.path}:${argument}`);
         for (const value of command.values) capabilities.add(value);
     }
+    for (const category of inventory.categories ?? []) capabilities.add(category);
     return capabilities;
 }
 
@@ -233,6 +272,22 @@ function documentedCapabilities(contents, inventory) {
             addInvocation(rootCommand, remainder);
         }
     };
+    const addCategoryClaims = (text) => {
+        // A format/source/mode is a public contract only when it is used as CLI-facing
+        // vocabulary, not merely because an unrelated API example happens to contain a word.
+        const cliFacing = /\bpokie(?:\.js)?\b|--(?:target|to|format|mode|source-type)\b|\b(?:project|output)\s+(?:type|format|form)\b/i.test(text);
+        if (!cliFacing) return;
+        const words = new Set((text.match(/\b(?:blueprint|tsPackage|outcomeLibrary|stakeAdapter|parWorkbook|wasm|json|jsonl|markdown|html|xlsx|base|all|outcomes|adapter|workbook)\b/gi) ?? []).map((word) => word.toLowerCase()));
+        const canonical = (word) => ({tspackage: "tsPackage", outcomelibrary: "outcomeLibrary", stakeadapter: "stakeAdapter", parworkbook: "parWorkbook"}[word] ?? word);
+        for (const word of words) {
+            const value = canonical(word);
+            if (["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"].includes(value)) capabilities.add(`source-type:${value}`);
+            if (["json", "jsonl", "markdown", "html", "xlsx"].includes(value)) capabilities.add(`output-format:${value}`);
+            if (["base", "all"].includes(value) && /--mode|\bmode\b/i.test(text)) capabilities.add(`mode:${value}`);
+            if (["outcomes", "adapter", "workbook"].includes(value) && /--to|\bexport\b/i.test(text)) capabilities.add(`output:${value}`);
+            if (["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"].includes(value) && /--target|\btarget\b/i.test(text)) capabilities.add(`target:${value}`);
+        }
+    };
     // A root invocation has no command token; it is still a public claim (notably --help,
     // -h and the implicit Studio flags).  Process inline code spans separately so one command
     // does not consume later, independently documented commands on the same prose line.
@@ -246,13 +301,21 @@ function documentedCapabilities(contents, inventory) {
         }
         unquoted += line.slice(cursor);
         addInvocations(unquoted);
+        addCategoryClaims(line);
     }
+    // Format/type glossaries commonly introduce the CLI command once and list its forms in a
+    // following paragraph or table.  The configured document is one public contract, so retain
+    // that association instead of silently dropping the later ordinary vocabulary.
+    addCategoryClaims(contents);
     // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
     // the command in prose rather than repeat the complete invocation.  Associate both forms
     // with their exact command so a stale claim cannot borrow another command's owner.
+    let headingContext;
     for (const line of contents.split("\n")) {
         const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
-        if (heading) addInvocation(heading[1], `${heading[1] ? " " : ""}${heading[1] ?? ""}${heading[2] ?? ""}`);
+        if (heading) headingContext = addInvocation(heading[1], `${heading[1] ? " " : ""}${heading[1] ?? ""}${heading[2] ?? ""}`);
+        else if (/^#{1,6}\s+/.test(line)) headingContext = undefined;
+        if (headingContext) addLineClaims(line, headingContext);
         const proseCommand = line.match(/\b(?:the\s+)?`?([a-z][a-z0-9-]*)`?\s+command\b/i)?.[1];
         if (proseCommand && rootCommands.has(proseCommand)) {
             capabilities.add(`command:${proseCommand}`);
@@ -265,10 +328,12 @@ function documentedCapabilities(contents, inventory) {
 export async function documentationCapabilities(coverage, inventory, coveragePath = DEFAULT_COVERAGE) {
     const capabilities = new Set();
     const root = coverage.documentationRoot ? path.resolve(path.dirname(coveragePath), coverage.documentationRoot) : repositoryRoot;
-    for (const configuredFile of await configuredDocumentationFiles(coverage, root)) {
+    const files = await configuredDocumentationFiles(coverage, root);
+    for (const configuredFile of files) {
         const contents = await readFile(path.resolve(root, configuredFile), "utf8");
         for (const capability of documentedCapabilities(contents, inventory)) capabilities.add(capability);
     }
+    if (files.length > 0) capabilities.add("finding:documentation-claims");
     return capabilities;
 }
 
@@ -276,7 +341,15 @@ export function checkCoverage(inventory, coverage, documented) {
     const ownerIds = new Set(coverage.owners.map((owner) => owner.id));
     const hasOwner = (id) => ownerIds.has(id);
     const executable = inventoryCapabilities(inventory);
+    const categoryCapability = (id) => /^(?:target|source-type|output-format|output|mode|finding):/.test(id);
+    // Categories may be established by executable help or the configured public documentation
+    // contract (for example an XLSX artifact form).  In either case they are fresh inputs,
+    // never unreferenced map rows.
+    const fresh = new Set([...executable, ...documented]);
     const missing = [...executable].filter((id) => !hasOwner(id));
+    for (const owner of coverage.owners.filter((entry) => categoryCapability(entry.id))) {
+        if (!fresh.has(owner.id)) missing.push(`inert coverage owner ${owner.id}`);
+    }
     for (const capability of documented) {
         if (capability.startsWith("value:")) {
             const [, ...parts] = capability.split(":");
@@ -302,6 +375,8 @@ export function checkCoverage(inventory, coverage, documented) {
             const actual = inventory.commands.find((entry) => entry.path === command)?.options.includes(option);
             if (!actual) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
+        } else if (categoryCapability(capability)) {
+            if (!hasOwner(capability)) missing.push(`unowned public capability ${capability}`);
         } else {
             if (!executable.has(capability)) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);

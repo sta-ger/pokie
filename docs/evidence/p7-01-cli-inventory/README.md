@@ -55,12 +55,13 @@ node scripts/run-phase7-journey.mjs \
   --expect package.json
 ```
 
-The journey script receives `P7_INPUT_DIR` (copied input provenance),
-`P7_JOURNEY_DIR` (where public CLI output is written), and `P7_PUBLIC_CLI`, an
-executable request client around the supplied built `pokie` CLI. Its command
-records are retained only by the runner's in-memory control server; the driver
-does not receive a record-file path or writable control channel. Replacing the
-request client therefore produces no record and is rejected. The control server
+The journey script receives `P7_INPUT_DIR` (copied input provenance) and
+`P7_PUBLIC_CLI`, an execute-only native request client around the supplied built
+`pokie` CLI. The runner does **not** provide an artifact-directory path, a
+command-record file, a control credential, or a readable client binary to the
+driver. Its command records are retained only by the runner's in-memory control
+server. Replacing the request client therefore produces no record and is
+rejected. The control server
 records each command and exit code, and hashes only expected artifacts whose
 bytes changed during a successful CLI invocation. Every `--expect` artifact
 must therefore have a successful wrapper-observed SHA-256 record — a direct
