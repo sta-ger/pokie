@@ -13,19 +13,19 @@ build, test, package or browser process and makes no product or test change.
 
 ## Focused harness recovery, 2026-08-24
 
-The controller-owned persistent harness was repaired in place and used for its
-full eight fresh-profile Studio launches. It used the mandated exact source
-checkout command, a fresh isolated profile each time, and the real active
-native picker. The recovered rendered path reached native XLSX selection,
-PAR diagnostics/provenance, canonical preview, the local Apply/Export state,
-and Apply → Confirm. The last two launches could not retain a value through
-the directly labelled Game name control; no rendered product error, pending
-state, or error state appeared. The bounded transcript is
-`par-recovery-20260824.txt`.
+The controller-owned persistent harness was repaired in place and used with
+fresh isolated profiles and the mandated exact source-checkout command. The
+recovered rendered path reached native XLSX selection, PAR
+diagnostics/provenance, canonical preview, Apply → Confirm, a retained
+`Game name` edit, physical XLSX export, a second native-picker reimport,
+rendered edited-name preservation, and managed-project save. The last export
+hash was `e1174f61bbb369ff6c9d2b1fbda0bfa6cdebae1f84da06486a917d3593c45856`.
+The bounded transcript is `par-recovery-20260824.txt`.
 
-This is a **driver inconclusive**, not a product finding. Physical export and
-reimport, semantic comparison, and canonical Player parity were therefore
-not reached; no release-readiness conclusion is permitted.
+This remains **inconclusive**, not a product finding: the full semantic
+comparison and canonical Player-parity matrix, and separate P6V-02–P6V-04
+current-candidate journeys, were not reached. No release-readiness conclusion
+is permitted.
 
 ## Literal closeout matrix
 
@@ -35,7 +35,7 @@ not reached; no release-readiness conclusion is permitted.
 | P6V-02 | Historical rendered desktop/mobile material remains present. | Not reapproved for this candidate from inherited evidence. |
 | P6V-03 | Historical mathematician material remains present. | Not reapproved for this candidate from inherited evidence. |
 | P6V-04 | Historical producer material remains present. | Not reapproved for this candidate from inherited evidence. |
-| P6V-05 | Fresh native-picker import, diagnostics, preview, and Apply → Confirm rendered on the candidate; the recovered harness then could not retain the required editor input. | Not reached: edited save, physical export/reimport, semantic comparison, and exact-current parity remain incomplete. |
+| P6V-05 | Fresh native-picker import/diagnostics, preview, Apply → Confirm, edited export, native reimport and managed save rendered on the candidate. | Not reached: full canonical semantic comparison and exact-current Player parity remain incomplete. |
 
 Accordingly, all three P6V-06 acceptance criteria remain **not reached**.
 There is no observed P0, P1, or material P2 finding, but neither is there

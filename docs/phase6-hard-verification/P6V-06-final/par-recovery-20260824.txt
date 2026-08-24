@@ -12,5 +12,10 @@ Rendered successes on the final recovered workflow:
 - The recovered Apply / Export step rendered Apply and Export. The preview backend request completed.
 - Apply → Confirm rendered the canonical PAR model in the Design Game editor.
 
-Unresolved driver observation:
-- The directly labelled Game name input did not show the typed rendered value in the final two launches and no local pending/error state appeared. This prevents the remaining edited-save, physical export/reimport, semantic comparison, and Player-parity workflow. No rendered product error or product defect was observed.
+Focused recovery continuation:
+- After repairing focus, local confirmation, local export, and field-scoped native-browse transitions, the directly labelled Game name rendered `PAR physical round-trip`.
+- Studio rendered a physical XLSX export (SHA-256 `e1174f61bbb369ff6c9d2b1fbda0bfa6cdebae1f84da06486a917d3593c45856`), then the active native picker selected that exported workbook for a second import.
+- The reimport rendered the edited name in its canonical preview and the reimported model saved as a managed Studio project.
+
+Still not reached:
+- This compact rendered marker does not replace the required complete canonical semantic comparison or the exact-current canonical Player parity matrix. Separate current-candidate P6V-02, P6V-03, and P6V-04 journeys also remain incomplete. No rendered product error or product defect was observed.
