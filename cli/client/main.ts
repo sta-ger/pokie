@@ -21,7 +21,8 @@ import {
     VideoSlotRoundResponse,
 } from "./player/videoSlotRoundView.js";
 import {ensureSession} from "./sessionFlow.js";
-import {clearSessionId} from "./sessionStorage.js";
+import {clearSessionId, StorageLike} from "./sessionStorage.js";
+import {bindSessionControls, readSessionControlValue} from "./sessionControls.js";
 import type {SessionResponse} from "./types.js";
 
 type Elements = {
@@ -78,6 +79,22 @@ type StaticVideoSlotView = {
 // Each connect/restore/new-session request owns one UI generation. A response from an older request
 // must never re-enable Spin or render a round after a newer session has started booting.
 let bootGeneration = 0;
+
+function storageForBootGeneration(generation: number): StorageLike {
+    return {
+        getItem: (key) => window.localStorage.getItem(key),
+        setItem: (key, value) => {
+            if (generation === bootGeneration) {
+                window.localStorage.setItem(key, value);
+            }
+        },
+        removeItem: (key) => {
+            if (generation === bootGeneration) {
+                window.localStorage.removeItem(key);
+            }
+        },
+    };
+}
 
 function requireElement<T extends HTMLElement>(id: string): T {
     const el = document.getElementById(id);
@@ -145,16 +162,6 @@ async function fetchConfig(fetchImpl: FetchLike): Promise<{apiBaseUrl: string}> 
 function readPreferredSessionId(): string | undefined {
     const sessionId = new URLSearchParams(window.location.search).get("session")?.trim();
     return sessionId && sessionId.length > 0 ? sessionId : undefined;
-}
-
-function readSessionSeed(elements: Elements): string | undefined {
-    const seed = elements.sessionSeed.value;
-    return seed.trim().length > 0 ? seed : undefined;
-}
-
-function readSessionId(elements: Elements): string | undefined {
-    const sessionId = elements.sessionId.value.trim();
-    return sessionId.length > 0 ? sessionId : undefined;
 }
 
 function renderSessionId(elements: Elements, sessionId: string): void {
@@ -339,7 +346,13 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
             return;
         }
 
-        let current = await ensureSession(fetchImpl, window.localStorage, apiBaseUrl, preferredSessionId ?? readPreferredSessionId(), seed);
+        let current = await ensureSession(
+            fetchImpl,
+            storageForBootGeneration(generation),
+            apiBaseUrl,
+            preferredSessionId ?? readPreferredSessionId(),
+            seed,
+        );
         if (generation !== bootGeneration) {
             return;
         }
@@ -375,19 +388,6 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
         renderStatus(elements.status, `Connected to ${apiBaseUrl}`);
         rerender();
         elements.spinButton.disabled = false;
-        elements.startSessionButton.onclick = () => {
-            clearSessionId(window.localStorage);
-            boot(elements, fetchImpl, undefined, readSessionSeed(elements)).catch((error: unknown) => console.error(error));
-        };
-        elements.restoreSessionButton.onclick = () => {
-            const sessionId = readSessionId(elements);
-            if (sessionId === undefined) {
-                renderStatus(elements.status, "Enter a session ID to restore it.");
-                return;
-            }
-            boot(elements, fetchImpl, sessionId).catch((error: unknown) => console.error(error));
-        };
-
         const attemptSpin = (): void => {
             elements.spinButton.disabled = true;
             spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet, selectedMode)
@@ -434,12 +434,22 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
 // would already recover from.
 function reconnect(elements: Elements, fetchImpl: FetchLike): void {
     clearSessionId(window.localStorage);
-    boot(elements, fetchImpl, undefined, readSessionSeed(elements)).catch((error: unknown) => console.error(error));
+    boot(elements, fetchImpl, undefined, readSessionControlValue(elements.sessionSeed)).catch((error: unknown) => console.error(error));
 }
 
 async function main(): Promise<void> {
     const elements = queryElements();
     const fetchImpl = window.fetch.bind(window) as FetchLike;
+    bindSessionControls(
+        elements,
+        (seed) => {
+            clearSessionId(window.localStorage);
+            boot(elements, fetchImpl, undefined, seed).catch((error: unknown) => console.error(error));
+        },
+        (sessionId) => {
+            boot(elements, fetchImpl, sessionId).catch((error: unknown) => console.error(error));
+        },
+    );
     await boot(elements, fetchImpl);
 }
 

@@ -58,20 +58,25 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     // `npm install` are both genuinely slow — far outside the rest of the suite's normal budget.
     jest.setTimeout(300000);
 
+    let packDir: string | undefined;
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
 
     beforeAll(() => {
-        // `npm pack --json`'s own JSON array and a lifecycle script's output share the same stdout
-        // stream. Running the real build explicitly first, then packing with --ignore-scripts (build
-        // is already fresh, so skipping prepack/postpack loses nothing), keeps npm pack's stdout as
-        // just its JSON -- otherwise ESLint's pre-existing warn-level output (printed via prepack ->
-        // npm run build -> prebuild -> npm run lint) lands on the same stream and corrupts the parse.
+        // Build explicitly, then keep the real tarball and npm's output outside the candidate tree.
+        // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
+        // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
+        // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
         execFileSync("npm", ["run", "build"], {cwd: REPO_ROOT, stdio: "inherit"});
-        const packOutput = execFileSync("npm", ["pack", "--json", "--ignore-scripts"], {cwd: REPO_ROOT, encoding: "utf-8"});
-        const [{filename}] = JSON.parse(packOutput) as Array<{filename: string}>;
-        tarballPath = path.join(REPO_ROOT, filename);
+        packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+        const filename = execFileSync(
+            "npm",
+            ["pack", "--ignore-scripts", "--silent", "--pack-destination", packDir],
+            {cwd: REPO_ROOT, encoding: "utf-8"},
+        ).trim();
+        expect(filename).toBe(path.basename(filename));
+        tarballPath = path.join(packDir, filename);
         expect(fs.existsSync(tarballPath)).toBe(true);
 
         installDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-smoke-"));
@@ -96,8 +101,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         if (installDir !== undefined) {
             fs.rmSync(installDir, {recursive: true, force: true});
         }
-        if (tarballPath !== undefined && fs.existsSync(tarballPath)) {
-            fs.rmSync(tarballPath);
+        if (packDir !== undefined) {
+            fs.rmSync(packDir, {recursive: true, force: true});
         }
     });
 

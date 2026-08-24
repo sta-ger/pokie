@@ -175,14 +175,16 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(manifest.modes.map((mode) => mode.modeName).sort()).toEqual(["base", "bonus"]);
     });
 
-    it("fails closed with weighted-outcome-library-generation-unsupported for a package whose mechanic isn't exactly enumerable (free games)", async () => {
+    it("enumerates a free-games package's finite paid-spin outcome space and preserves its trigger", async () => {
         const packageRoot = await buildPackage(freeGamesBlueprint("freegames-cli-slot"), "pkg");
 
-        const exitCode = await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot]);
+        const libraryFile = path.join(workDir, "freegames.json");
+        const exitCode = await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--out", libraryFile]);
 
-        expect(exitCode).toBe(1);
-        const printedErrors = (console.error as jest.Mock).mock.calls.flat().join("\n");
-        expect(printedErrors).toContain("weighted-outcome-library-generation-unsupported");
+        expect(exitCode).toBe(0);
+        const library = readLibrary(libraryFile);
+        expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(27);
+        expect(library.outcomes.some((outcome) => outcome.artifact.featureEvents?.some((event) => event.type === "freeGamesTriggered") ?? false)).toBe(true);
     });
 
     it("resume/cancel: a SIGINT-cancelled sweep's checkpoint resumes into the exact same complete library an uninterrupted sweep would produce", async () => {

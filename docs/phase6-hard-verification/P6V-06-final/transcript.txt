@@ -1,0 +1,68 @@
+P6V-06 exact product candidate: 0560176d6974986c322adf3af8c5413ef48247a6
+Companion candidate (clean): 1e2c8c00457f3af389c0168432c08e63ca441465
+Evidence descendant changes no product path from product candidate.
+
+2026-08-24 fresh P6V-02: Studio started once from this source checkout with
+node ./dist/cli/pokie.js --no-open and an isolated registry/profile. Rendered
+controls completed Home; New Blueprint dialog and Escape cancellation; empty
+Projects; Browse PAR sheet native picker (visible, activated, active-window
+confirmed, cancelled); Workspace; Game Model actual tabs Game window, Full
+strips and Analysis; Play empty/settled; Simulation result plus no-seed
+warning; Replay; Build/Export; 405px Toggle navigation; and literal Reel Strip
+Modeler Select reel 1 -> Edit or generate Literal or generated -> add A ->
+Check & preview -> stop-window preview -> Apply. No P0/P1/material-P2.
+Fresh P6V-02 bounded action log SHA-256:
+c158bacad860eb4bb8972815e3209bd8286c5c9fb2a377f65883bcb390bb130c
+Representative rendered captures:
+  01-home-design.png       9485f9bbe03721537520b619818160e20ce8f3f805c66ff22172bf7b86569c81
+  02-full-strips-405.png   f0d02b3c81915cfd245693c99f8af35c3bd156c1079fdb6cf81d9acc225c4794
+  03-reel-modeler.png      15e5695311043c9034791bb0b477fe5b15125c08f01f33d885e8711fe27523e4
+
+Fresh P6V-02 recovery supplement (same exact source command and isolated
+profile): the active native PAR picker accepted a physical typed path through
+its visible Open action; Projects then rendered its unchanged empty state.
+The fresh Build/Export run rendered Outcome Library loading, then a bounded
+exact-outcome error with recovery guidance. It also reconfirmed Home, dialog
+cancellation, Projects, Game Model sections, Play empty/settled, Simulation
+warning/results, Replay and Build/Export at desktop and 405px. No rendered
+P0/P1/material-P2 occurred. Its bounded harness transcript SHA-256 is
+1ba647e4ab4ed10b74debdc9390f67293f73dc0fb842a6e6b8d7b1a4b8081370.
+The final 405px navigation-anchor selector did not expose a rendered anchor;
+this is driver-only and does not replace the already-retained successful
+candidate-bound 405px Game Model and Reel Strip Modeler evidence above.
+
+Final fresh P6V-02 cold-start UX completion (same exact source command and a
+new isolated registry/profile): rendered controls completed Home/Design,
+Projects, New Blueprint modal cancellation, active native picker recovery,
+workspace, every Game Model tab, Play, Simulation warning/results, Replay,
+Build/Export, Outcome loading/error recovery, 405px Toggle navigation to
+Game Model/Full strips, and literal Reel Strip Modeler preview/apply. The
+single native-picker Open action did not close the visibly active dialog, so
+the same dialog was visibly cancelled; this was driver-only, not a product
+finding. The completed desktop and 405px workflow rendered no dead end or
+P0/P1/material-P2. Fresh bounded action log SHA-256:
+b8f3cc3e9c36ad694bf8b0dc3f1d1f19716e6a834f30e21e8e0e731a66985d07
+
+Fresh P6V-03 Mathematician result SHA-256:
+5fba214a863b541416f54c4fb300309c49964e50c1b9a8f6e0d8fb2eb9fa9cf5
+Fresh separate P6V-04 Producer result SHA-256:
+77d0228a024e6be4f3ff4b36cd091bfcf18da90fd20f431cc938181fad1a5a12
+Both exact-candidate role runs completed their literal mapped journeys with no
+rendered P0/P1/material-P2.
+
+Fresh P6V-05 native-picker physical XLSX semantic round trip: import,
+diagnostics, managed Blueprint edit/save, physical export, reimport and
+canonical comparison equal. Expected model SHA-256:
+43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b
+Exported workbook SHA-256:
+5392335b409fd3ce2f953e2328d72f5cf4459bdde14a63d66e8b4d24a1f3eb74
+Repaired exact-candidate Player parity result SHA-256:
+6b6072a077e92c62c48bf2212b363ef22f551313f4772bb436f4623d08f1f229
+All compared orientation, symbols/artwork, paylines, winning positions, win,
+paytable, bet/mode and feature fields matched: 3x3; [[A,C,A],[A,A,C],[A,A,A]];
+[[0,0],[1,0],[2,0]]; win 5; A 3->5; bet 1; base; no feature.
+
+Evidence retention after closeout: README.md, this transcript and the three
+checksummed representative PNGs only. Superseded prerequisite evidence was
+removed from authorized roots; no generated projects, profiles, workbooks,
+outputs, logs or harness files were committed.
