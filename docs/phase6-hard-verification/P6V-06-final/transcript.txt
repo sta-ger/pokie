@@ -12,17 +12,22 @@ Barrel invariant
 Candidate build
   npm run build-cli                                exit 0 (one build only)
 
-Visible Studio workflow (one new isolated profile/registry)
+Visible Studio workflow (new isolated profile/registry)
   Launch command: node ./dist/cli/pokie.js --no-open
   The persistent assigned harness was repaired in place: its semantic-prefix rendered-control lookup now verifies the current hit target, pressed/released coordinates, and a local Create Project transition.
   Studio Home rendered. One enabled visible Create Project action was sent.
   Local semantic success: Starter Slot Workspace rendered with Valid — no issues found, managed Blueprint location, and Game Model / Play / Simulation / Replay / Build/Export controls.
+  Game Model: rendered local Game Model inventory.
+  Play: one visible Spin reached Round complete — no win this round.
+  Simulation: Run Simulation reached RTP 102.60%, 10000/10000 rounds, and one Recent runs entry.
+  Replay: rendered Replay entry after the Play round.
+  Build/Export: Generate exact outcome library reached Generated 1,024 outcomes; the rendered Run Stake Engine Export control then reached Exported 4 file(s).
   No fixed delay or page-wide text was used as proof; no rendered product error occurred.
 
-Exact-candidate mapping: P6V-01 hygiene/identity checks pass; P6V-02 has only its common current Create Project entry rerun; P6V-03, P6V-04 and P6V-05 retain only older-product-SHA specialised evidence. Verdict: inconclusive, not a product finding. The absence of unresolved P0/P1/material-P2 cannot be approved. Controller-owned release, packaging, post-merge, push, publication, and Drive checks remain unclaimed.
+Exact-candidate mapping: P6V-01 hygiene/identity checks pass; P6V-02 has its common current Create Project and Game Model entry rerun; P6V-03 retains only older-product-SHA specialised evidence; P6V-04 has common current Play/Simulation/Replay/Build evidence but retains its edited Producer model evidence only on an older SHA; P6V-05 retains its specialised physical evidence only on an older product SHA. Verdict: inconclusive, not a product finding. The absence of unresolved P0/P1/material-P2 cannot be approved. Controller-owned release, packaging, post-merge, push, publication, and Drive checks remain unclaimed.
 
-Focused harness recovery (four fresh isolated Studio launches, same assigned current.mjs)
-  launch 1–2: physical native Rounds * edit did not retain a value in the controlled field; no rendered product error.
-  launch 3: Play, Simulation, Replay and Build/Export rendered; the harness attempted export during the visibly pending outcome-generation transition.
-  launch 4: repaired outcome-generation completion gate; no terminal rendered result was recorded before the wrapper yielded.
-  Result: driver-inconclusive specialised paths; no new product finding and no added approval beyond the retained barrel invariant.
+Focused harness recovery (same assigned current.mjs)
+  Preserved repair: retain the rendered valid default controlled Rounds field; do not inject a browser value.
+  Preserved repair: wait for Generated 1,024 outcomes before locating the local Stake Engine Export control.
+  Final isolated execution: terminal exported-4-files result recorded; representative image SHA-256 8ae18644de5e885a34480a3f826e6ce07f02fd5fbc3da415ad1ef63a69791bbf.
+  Result: specialised current-SHA paths remain incomplete; no new product finding.
