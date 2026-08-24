@@ -115,8 +115,8 @@ test("rejects unowned executable commands, aliases, and advertised values", asyn
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
-test("rejects an ordinary unowned documentation claim without a marker", async () => {
-    const {directory, cli, coverage} = await fixture("", "```sh\npokie build --target supported\npokie deploy --target experimental\n```\n");
+test("rejects an ordinary unowned documentation invocation without a marker", async () => {
+    const {directory, cli, coverage} = await fixture("", "Run pokie deploy --target experimental.\n");
     try {
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
@@ -147,7 +147,7 @@ test("keeps command context for ordinary claims below a CLI heading", async () =
 });
 
 test("rejects arbitrary narrative category and heading-scoped positional claims", async () => {
-    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nThe command supports target futureTarget. It supports source type rareSource. It supports output format orbital. It supports output form archive. It supports mode turbo. It accepts <obsolete> [optional-profile].\n");
+    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nThe target is futureTarget. The source type is rareSource. The output format is orbital. The output form is archive. The mode is turbo. Use <obsolete> [optional-profile] as the arguments.\n");
     try {
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);

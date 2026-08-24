@@ -53,15 +53,12 @@ async function digest(target) {
 }
 
 async function createPublicCommandRequestClient(destination) {
-    // The driver can inspect this client without gaining an authority that the runner trusts.
-    // It only writes an untrusted request plan; after the sandbox exits, the runner validates
-    // each request and performs the public CLI invocation itself.  There is intentionally no
-    // socket, credential, or command-record endpoint for a driver to replay or forge.
+    // This is the sole driver-facing capability.  Its plan endpoint is mounted only at this
+    // fixed capability path inside the sandbox; it is deliberately not an environment control
+    // channel and it never accepts command records or artifact hashes from the driver.
     await writeFile(destination, `#!/usr/bin/env node
 import {appendFileSync} from "node:fs";
-const requestFile = process.env.P7_COMMAND_REQUEST_FILE;
-if (!requestFile) process.exit(1);
-appendFileSync(requestFile, JSON.stringify({args: process.argv.slice(2)}) + "\\n", {encoding: "utf8", mode: 0o600});
+appendFileSync("/tmp/p7-public-command-capability/plan", JSON.stringify({args: process.argv.slice(2)}) + "\\n", {encoding: "utf8", mode: 0o600});
 `);
     await chmod(destination, 0o555);
 }
@@ -85,7 +82,7 @@ async function directoryProvenance(directory) {
     return `directory files=${entries.length} manifest-sha256=${createHash("sha256").update(manifest).digest("hex")} entries=${JSON.stringify(entries)}`;
 }
 
-function driverResult(script, driverDirectory, clientPath, environment) {
+function driverResult(script, driverDirectory, inputDirectory, requestDirectory, clientPath, environment) {
     return new Promise((resolve) => {
         const sandbox = "/usr/bin/bwrap";
         if (!existsSync(sandbox)) {
@@ -93,8 +90,8 @@ function driverResult(script, driverDirectory, clientPath, environment) {
             return;
         }
         const child = spawn(sandbox, [
-            "--die-with-parent", "--new-session", "--unshare-user", "--uid", "65534", "--gid", "65534", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dir", path.dirname(driverDirectory),
-            "--bind", driverDirectory, driverDirectory, "--ro-bind", clientPath, path.join(driverDirectory, "invoke-public-pokie"), "--chdir", driverDirectory,
+            "--die-with-parent", "--new-session", "--unshare-user", "--uid", "65534", "--gid", "65534", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dir", path.dirname(driverDirectory), "--dir", "/tmp/p7-inputs", "--dir", "/tmp/p7-public-command-capability",
+            "--bind", driverDirectory, driverDirectory, "--ro-bind", inputDirectory, "/tmp/p7-inputs", "--bind", requestDirectory, "/tmp/p7-public-command-capability", "--ro-bind", clientPath, path.join(driverDirectory, "invoke-public-pokie"), "--chdir", driverDirectory,
             "--", process.execPath, script,
         ], {cwd: driverDirectory, env: environment});
         let stdout = "";
@@ -116,7 +113,23 @@ function requestIsBounded(parsed) {
     return Array.isArray(parsed.args) && parsed.args.length <= MAX_COMMAND_ARGUMENTS && parsed.args.every((argument) => typeof argument === "string") && parsed.args.join("").length <= MAX_COMMAND_ARGUMENT_CHARS;
 }
 
-async function executeRequestedCommands(requestFile, cli, artifactDirectory, expected) {
+function provenanceBoundArguments(args, inputDirectory) {
+    return args.map((argument) => {
+        if (!path.isAbsolute(argument)) {
+            if (argument.split(/[\\/]+/).includes("..")) throw new Error(`journey request contains an unprovenanced relative path: ${argument}`);
+            return argument;
+        }
+        const virtualInput = "/tmp/p7-inputs";
+        if (argument !== virtualInput && !argument.startsWith(`${virtualInput}/`)) throw new Error(`journey request contains an arbitrary host-path input: ${argument}`);
+        const relative = path.relative(virtualInput, argument);
+        const resolved = path.resolve(inputDirectory, relative);
+        if (resolved !== inputDirectory && !resolved.startsWith(`${inputDirectory}${path.sep}`)) throw new Error(`journey request escapes provenance-bound inputs: ${argument}`);
+        if (!existsSync(resolved)) throw new Error(`journey request names a missing provenance-bound input: ${argument}`);
+        return resolved;
+    });
+}
+
+async function executeRequestedCommands(requestFile, cli, artifactDirectory, inputDirectory, expected) {
     const requests = (await readFile(requestFile, "utf8")).trim().split("\n").filter(Boolean);
     if (requests.length > MAX_COMMAND_RECORDS) throw new Error(`journey exceeds the ${MAX_COMMAND_RECORDS}-record evidence limit.`);
     const records = [];
@@ -124,11 +137,12 @@ async function executeRequestedCommands(requestFile, cli, artifactDirectory, exp
         let parsed;
         try { parsed = JSON.parse(request); } catch { throw new Error("journey contains an invalid public CLI request plan."); }
         if (!requestIsBounded(parsed)) throw new Error("journey contains an invalid public CLI request plan.");
+        const arguments_ = provenanceBoundArguments(parsed.args, inputDirectory);
         const before = Object.fromEntries(await Promise.all(expected.map(async (entry) => {
             const target = path.join(artifactDirectory, entry);
             return [entry, existsSync(target) ? await digest(target) : undefined];
         })));
-        const result = spawnSync(process.execPath, [cli, ...parsed.args], {cwd: artifactDirectory, encoding: "utf8", maxBuffer: 1024 * 1024});
+        const result = spawnSync(process.execPath, [cli, ...arguments_], {cwd: artifactDirectory, encoding: "utf8", maxBuffer: 1024 * 1024});
         const artifacts = [];
         for (const entry of expected) {
             const target = path.join(artifactDirectory, entry);
@@ -153,16 +167,25 @@ async function runOnce(label, arguments_) {
     // The driver never receives this directory or the control endpoint. Expected artifacts are
     // observable only through the wrapper's pre/post execution snapshots.
     const artifactDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-journey-artifacts-"));
-    const inputDirectory = path.join(driverDirectory, "inputs");
+    // Inputs and the request capability are separate from the writable driver directory.
+    // The sandbox sees inputs only at /tmp/p7-inputs; the runner maps those names back to these
+    // copied bytes before it invokes the real CLI in its private artifact directory.
+    const inputDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-journey-inputs-"));
+    const requestDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-journey-capability-"));
     const driverScript = path.join(driverDirectory, "journey.mjs");
     const wrapperPath = path.join(driverDirectory, "invoke-public-pokie");
     const publicClientPath = path.join(artifactDirectory, "public-command-request-client");
-    const requestFile = path.join(driverDirectory, "public-cli-requests.jsonl");
+    const requestFile = path.join(requestDirectory, "plan");
     const provenance = [];
     const state = {records: [], failure: undefined};
     try {
-        await mkdir(inputDirectory);
         await cp(arguments_.script, driverScript);
+        await writeFile(requestFile, "", {mode: 0o600});
+        // The sandboxed uid needs append-only access to the capability endpoint, but cannot
+        // enumerate or read its directory.  The endpoint is intentionally not exported in
+        // the environment; only P7_PUBLIC_CLI addresses it.
+        await chmod(requestDirectory, 0o733);
+        await chmod(requestFile, 0o622);
         await writeFile(wrapperPath, "", {mode: 0o511});
         await chmod(driverScript, 0o555);
         await chmod(driverDirectory, 0o755);
@@ -173,10 +196,10 @@ async function runOnce(label, arguments_) {
             const stat = await lstat(destination);
             provenance.push(`${input} -> ${destination} (${stat.isDirectory() ? await directoryProvenance(destination) : `sha256=${await digest(destination)}`})`);
         }
-        await writeFile(requestFile, "", {mode: 0o666});
+        await chmod(inputDirectory, 0o755);
         await createPublicCommandRequestClient(publicClientPath);
-        const result = await driverResult(driverScript, driverDirectory, publicClientPath, {...process.env, P7_INPUT_DIR: inputDirectory, P7_PUBLIC_CLI: wrapperPath, P7_COMMAND_REQUEST_FILE: requestFile});
-        state.records = await executeRequestedCommands(requestFile, arguments_.cli, artifactDirectory, arguments_.expected);
+        const result = await driverResult(driverScript, driverDirectory, inputDirectory, requestDirectory, publicClientPath, {...process.env, P7_INPUT_DIR: "/tmp/p7-inputs", P7_PUBLIC_CLI: wrapperPath});
+        state.records = await executeRequestedCommands(requestFile, arguments_.cli, artifactDirectory, inputDirectory, arguments_.expected);
         if (result.outputExceeded) throw new Error(`${label}: driver output exceeds the ${MAX_DRIVER_OUTPUT_CHARS}-character evidence limit.`);
         if (state.records.length === 0) throw new Error(`${label}: journey did not invoke the wrapper-controlled public CLI.${result.stderr ? ` ${result.stderr}` : ""}`);
         const checks = [];
@@ -205,6 +228,8 @@ async function runOnce(label, arguments_) {
     } finally {
         await rm(driverDirectory, {recursive: true, force: true});
         await rm(artifactDirectory, {recursive: true, force: true});
+        await rm(inputDirectory, {recursive: true, force: true});
+        await rm(requestDirectory, {recursive: true, force: true});
     }
 }
 

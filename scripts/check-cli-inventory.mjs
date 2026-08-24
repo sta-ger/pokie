@@ -291,8 +291,8 @@ function documentedCapabilities(contents, inventory) {
             if (!match) continue;
             const rootCommand = match[2];
             // Prose regularly uses the package name (for example, "POKIE documentation")
-            // without advertising an executable.  Unknown commands remain checked in literal
-            // CLI examples, while prose is limited to the known command tree.
+            // without advertising an executable.  Once prose presents it as an invocation,
+            // however, an unknown command is a public claim just like one in a shell block.
             if (rootCommand && !rootCommands.has(rootCommand) && !allowUnknownCommand) continue;
             const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
             addInvocation(rootCommand, remainder);
@@ -329,6 +329,7 @@ function documentedCapabilities(contents, inventory) {
             }
         }
     };
+    const hasScopedCategoryClaim = (line) => /(?:^|[.;]\s*)(?:[-*>]\s*)?(?:the\s+)?(?:(?:[a-z-]+\s+){0,2}command\s+)?(?:targets?|(?:project\s+)?source\s+types?|output\s+forms?|output\s+formats?|formats?|modes?)\b|\b(?:supports?|accepts?|allows?)\s+(?:the\s+)?(?:targets?|(?:project\s+)?source\s+types?|output\s+forms?|output\s+formats?|formats?|modes?)\b/i.test(line);
     // A root invocation has no command token; it is still a public claim (notably --help,
     // -h and the implicit Studio flags).  Process inline code spans separately so one command
     // does not consume later, independently documented commands on the same prose line.
@@ -346,14 +347,19 @@ function documentedCapabilities(contents, inventory) {
             cursor = (match.index ?? 0) + match[0].length;
         }
         unquoted += line.slice(cursor);
-        addInvocations(unquoted, fencedCliCode);
-        if (/\bpokie(?:\.js)?\b/i.test(line) && /\b(?:supports?|accepts?|allows?|uses?)\b/i.test(line)) addCategoryClaims(line);
+        addInvocations(unquoted, fencedCliCode || /\b(?:run|use|execute|invoke|start)\s+(?:npx\s+)?pokie(?:\.js)?\b/i.test(unquoted));
     }
     // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
     // the command in prose rather than repeat the complete invocation.  Associate both forms
     // with their exact command so a stale claim cannot borrow another command's owner.
     let headingContext;
+    let fencedCode = false;
     for (const line of contents.split("\n")) {
+        if (/^\s*```/.test(line)) {
+            fencedCode = !fencedCode;
+            continue;
+        }
+        if (fencedCode) continue;
         const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
         if (heading && (!heading[1] || rootCommands.has(heading[1])) && !/\bpokie(?:\.js)?\b/i.test(heading[2] ?? "")) {
             headingContext = heading[1] ? commandFor(heading[1], ` ${heading[1]}${heading[2] ?? ""}`) : "root";
@@ -363,15 +369,18 @@ function documentedCapabilities(contents, inventory) {
         else if (heading) headingContext = undefined;
         else if (/^#{1,6}\s+/.test(line)) headingContext = undefined;
         if (headingContext && !/\bpokie(?:\.js)?\b/i.test(line)) {
-            if (/\b(?:supports?|accepts?|allows?)\b/i.test(line)) {
-                addCategoryClaims(line);
-                addLineClaims(line, headingContext);
-            }
+            // Claims below a command heading are command-scoped whether they use a familiar
+            // verb ("supports") or plain declarative prose ("the target is wasm").
+            if (hasScopedCategoryClaim(line)) addCategoryClaims(line);
+            // Angle brackets and square brackets appear throughout explanatory prose, so they
+            // become positional contracts only when the prose actually presents an argument.
+            // This leaves declarative category claims independent of any claim-verb allowlist.
+            if (/\b(?:arguments?|positionals?|supports?|accepts?|allows?)\b/i.test(line) || /^\s*use\s+(?:<|\[)/i.test(line)) addLineClaims(line, headingContext);
         }
         const proseCommand = line.match(/\b(?:the\s+)?`?([a-z][a-z0-9-]*)`?\s+command\b/i)?.[1];
         if (proseCommand && rootCommands.has(proseCommand)) {
             capabilities.add(`command:${proseCommand}`);
-            if (/\b(?:supports?|accepts?|allows?|uses?)\b/i.test(line)) addCategoryClaims(line);
+            if (hasScopedCategoryClaim(line)) addCategoryClaims(line);
             addLineClaims(line, proseCommand);
         }
     }

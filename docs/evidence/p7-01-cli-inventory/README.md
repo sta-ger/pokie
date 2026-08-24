@@ -55,12 +55,16 @@ node scripts/run-phase7-journey.mjs \
   --expect package.json
 ```
 
-The journey script receives `P7_INPUT_DIR` (copied input provenance) and
-`P7_PUBLIC_CLI`, a read-only request-plan client. It carries no credential and
-has no control socket: after each isolated driver exits, the runner validates
-its bounded request plan and performs every recorded public `pokie` invocation
-itself in the private artifact directory. Reading, instrumenting, or replacing
-the client therefore cannot yield reusable authority or forge a command record.
+The journey script receives `P7_INPUT_DIR`, a read-only mount of the copied
+input provenance, and `P7_PUBLIC_CLI`, the only invocation capability. It does
+not receive a request-plan pathname, artifact pathname, socket, credential, or
+any other control channel. The capability writes only bounded command arguments
+to its private endpoint; after each isolated driver exits, the runner validates
+that plan and performs every public `pokie` invocation itself in the private
+artifact directory. Input paths supplied to the wrapper must be below
+`P7_INPUT_DIR`; they are rebound to the copied, hashed bytes before execution.
+An arbitrary host path or an attempted input mutation is rejected, and a direct
+JSONL record in the driver's writable directory is never consumed.
 The runner records each actual command and exit code, and hashes only expected
 artifacts whose bytes changed during a successful CLI invocation. Every
 `--expect` artifact must therefore have a successful wrapper-observed SHA-256

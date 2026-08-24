@@ -82,6 +82,20 @@ process.exitCode = result.status;
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
+test("rejects a direct request-plan attempt that does not use the invocation capability", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const directRequest = await driver(directory, `
+import {appendFile} from "node:fs/promises";
+if (process.env.P7_COMMAND_REQUEST_FILE) throw new Error("runner exposed a direct request channel");
+await appendFile("public-cli-requests.jsonl", JSON.stringify({args: ["build", "--out", "result.txt"]}) + "\\n");
+`);
+        const result = run(await cli(directory), directRequest, path.join(directory, "direct-request"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /did not invoke the wrapper-controlled public CLI/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
 test("isolates expected artifacts and cannot turn a runtime-inspected client into a direct control request", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
     try {
@@ -150,6 +164,33 @@ test("retains a bounded recursive manifest for directory inputs", async () => {
         const transcript = await readFile(path.join(directory, "evidence/journey-transcript.txt"), "utf8");
         assert.match(transcript, /directory files=1 manifest-sha256=/);
         assert.match(transcript, /nested\/input.txt sha256=/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("makes copied inputs immutable and rejects arbitrary host-path request arguments", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const input = path.join(directory, "input.txt");
+        await writeFile(input, "original input");
+        const mutateInput = await driver(directory, `
+import {writeFile} from "node:fs/promises";
+import {spawnSync} from "node:child_process";
+let immutable = false;
+try { await writeFile(process.env.P7_INPUT_DIR + "/input.txt", "mutated input"); } catch { immutable = true; }
+if (!immutable) throw new Error("driver changed provenance-captured input");
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const immutableResult = run(await cli(directory), mutateInput, path.join(directory, "immutable-input"), input);
+        assert.equal(immutableResult.status, 0, immutableResult.stderr);
+        const arbitraryPath = await driver(directory, `
+import {spawnSync} from "node:child_process";
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--input", "/etc/hosts", "--out", "result.txt"], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const arbitraryResult = run(await cli(directory), arbitraryPath, path.join(directory, "arbitrary-path"), input);
+        assert.equal(arbitraryResult.status, 1);
+        assert.match(arbitraryResult.stderr, /arbitrary host-path input/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
