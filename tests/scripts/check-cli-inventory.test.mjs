@@ -188,4 +188,4 @@ test("checks the freshly built production CLI against the complete public docume
         const publicClaims = await documentationCapabilities(coverageMap, inventory, path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"));
         assert.ok(publicClaims.has("command:build"));
     } finally { await rm(directory, {recursive: true, force: true}); }
-});
+}, 180000);

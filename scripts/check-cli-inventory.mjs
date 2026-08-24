@@ -189,7 +189,12 @@ function documentedCapabilities(contents, inventory) {
     };
     const addValueClaims = (text, command) => {
         const entry = inventory.commands.find((candidate) => candidate.path === command);
-        const knownOptions = [...new Set((entry?.values ?? []).map((value) => value.split(":")[2]))];
+        // These option kinds publish a finite vocabulary even when a stale document names an
+        // option which the currently collected executable no longer exposes.
+        const knownOptions = [...new Set([
+            ...(entry?.values ?? []).map((value) => value.split(":")[2]),
+            "--format", "--mode", "--source-type", "--target", "--to",
+        ])];
         for (const option of knownOptions) {
             const escapedOption = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             const bareOption = option.slice(2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -221,16 +226,26 @@ function documentedCapabilities(contents, inventory) {
         addLineClaims(remainder, command);
         return command;
     };
-    // A root invocation has no command token; it is still a public claim (notably --help,
-    // -h and the implicit Studio flags).
-    for (const line of contents.split("\n")) {
-        const trimmed = line.trim();
-        if (!/^(?:\$\s*)?(?:npx\s+)?pokie(?:\.js)?\b/.test(trimmed) && !line.includes("`pokie")) continue;
-        for (const match of line.matchAll(/(?:\bnpx\s+)?\bpokie(?:\.js)?(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/g)) {
+    const addInvocations = (text) => {
+        for (const match of text.matchAll(/(?:^|\s)(?:npx\s+)?pokie(?:\.js)?(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/g)) {
             const rootCommand = match[2];
             const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
             addInvocation(rootCommand, remainder);
         }
+    };
+    // A root invocation has no command token; it is still a public claim (notably --help,
+    // -h and the implicit Studio flags).  Process inline code spans separately so one command
+    // does not consume later, independently documented commands on the same prose line.
+    for (const line of contents.split("\n")) {
+        let unquoted = "";
+        let cursor = 0;
+        for (const match of line.matchAll(/`([^`]*)`/g)) {
+            unquoted += line.slice(cursor, match.index);
+            addInvocations(match[1]);
+            cursor = (match.index ?? 0) + match[0].length;
+        }
+        unquoted += line.slice(cursor);
+        addInvocations(unquoted);
     }
     // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
     // the command in prose rather than repeat the complete invocation.  Associate both forms
