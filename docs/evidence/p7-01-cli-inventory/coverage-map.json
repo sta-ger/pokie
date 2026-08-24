@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "documentationFiles": ["README.md", "docs/cli.md", "docs/evidence/p7-01-cli-inventory/README.md"],
+  "documentationClaimFiles": ["docs/evidence/p7-01-cli-inventory/README.md"],
   "initialInventory": {
     "rootCommands": ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "reel", "replay", "report", "sample", "serve", "sim", "validate"],
     "nestedVerbs": ["certification build", "certification verify", "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "reel generate"]

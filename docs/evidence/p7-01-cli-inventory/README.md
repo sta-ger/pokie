@@ -10,29 +10,12 @@ The initial executable inventory is 20 root commands and seven nested verbs.
 POKIE Studio is intentionally absent: it is the implicit `pokie` entry, not a
 `pokie studio` public alias. `-h` is the one uniformly owned built-in alias.
 The recorded version/help finding is that `--help` is public whereas bare
-`pokie` starts Studio; documentation claims must remain tagged and owned.
-
-<!-- pokie-cli-capability: finding=version-help -->
-<!-- pokie-cli-capability: finding=implicit-studio -->
-<!-- pokie-cli-capability: finding=documentation-claims -->
-<!-- pokie-cli-capability: target=tsPackage -->
-<!-- pokie-cli-capability: target=outcomeLibrary -->
-<!-- pokie-cli-capability: target=stakeAdapter -->
-<!-- pokie-cli-capability: target=parWorkbook -->
-<!-- pokie-cli-capability: target=wasm -->
-<!-- pokie-cli-capability: source-type=blueprint -->
-<!-- pokie-cli-capability: source-type=tsPackage -->
-<!-- pokie-cli-capability: source-type=outcomeLibrary -->
-<!-- pokie-cli-capability: source-type=stakeAdapter -->
-<!-- pokie-cli-capability: source-type=parWorkbook -->
-<!-- pokie-cli-capability: source-type=wasm -->
-<!-- pokie-cli-capability: output-format=json -->
-<!-- pokie-cli-capability: output-format=markdown -->
-<!-- pokie-cli-capability: output-format=html -->
-<!-- pokie-cli-capability: output-format=xlsx -->
-<!-- pokie-cli-capability: output-format=jsonl -->
-<!-- pokie-cli-capability: mode=base -->
-<!-- pokie-cli-capability: mode=all -->
+`pokie` starts Studio. The collector reads configured public documentation as
+ordinary text, not author-added markers. Its initial owned vocabulary is:
+targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and
+`wasm`; source types: `blueprint`, `tsPackage`, `outcomeLibrary`,
+`stakeAdapter`, `parWorkbook`, and `wasm`; output formats: `json`, `markdown`,
+`html`, `xlsx`, and `jsonl`; and modes: `base` and `all`.
 
 ## Collector protocol
 
@@ -52,11 +35,10 @@ inventory JSON documents, verifies their hashes match, and writes a bounded
 text transcript. `inventory.json`, `inventory-rerun.json`, and
 `collector-transcript.txt` are generated evidence only; do not edit them.
 
-For every later public-surface change, update the coverage map and add the
-appropriate `pokie-cli-capability` marker to the public docs in the same
-change. The check rejects an unowned command, subcommand, option, short alias,
-target, project/source type, output format, mode, or tagged documentation
-claim.
+For every later public-surface change, update the coverage map and its
+configured public documentation in the same change. The check rejects an
+unowned command, subcommand, option, root or command short alias, target,
+project/source type, output format, mode, or ordinary documentation claim.
 
 ## Journey protocol
 
@@ -70,10 +52,14 @@ node scripts/run-phase7-journey.mjs \
   --expect package.json
 ```
 
-The journey script receives only `P7_INPUT_DIR` (copied input provenance) and
-`P7_JOURNEY_DIR` (where it may create artifacts). The wrapper invokes it twice
-in distinct new temporary directories, checks every named artifact, records
-commands, exit codes, provenance, SHA-256 artifact checks, stdout/stderr, and
-an independent rerun record in `journey-transcript.txt`. Evidence is accepted
-only when produced by this wrapper; no hand-edited internal artifact is a
-workflow result.
+The journey script receives only `P7_INPUT_DIR` (copied input provenance),
+`P7_JOURNEY_DIR` (where it may create artifacts), and
+`P7_COMMAND_RECORD_FILE`. It must append one JSON object per actual public
+`pokie` invocation to that file: `command`, integer `exitCode`, and an
+`artifacts` array of `{path, sha256}` records. Every `--expect` artifact must
+appear in a command record with the SHA-256 the wrapper independently computes.
+The wrapper invokes it twice in distinct new temporary directories and retains
+the public commands, exit codes, provenance, checks, stdout/stderr, and an
+independent rerun record in `journey-transcript.txt`. Evidence is accepted only
+when produced by this wrapper; no unprovenanced internal artifact is a workflow
+result.
