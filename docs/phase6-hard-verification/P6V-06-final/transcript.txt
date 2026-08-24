@@ -31,6 +31,18 @@ The final 405px navigation-anchor selector did not expose a rendered anchor;
 this is driver-only and does not replace the already-retained successful
 candidate-bound 405px Game Model and Reel Strip Modeler evidence above.
 
+Final fresh P6V-02 cold-start UX completion (same exact source command and a
+new isolated registry/profile): rendered controls completed Home/Design,
+Projects, New Blueprint modal cancellation, active native picker recovery,
+workspace, every Game Model tab, Play, Simulation warning/results, Replay,
+Build/Export, Outcome loading/error recovery, 405px Toggle navigation to
+Game Model/Full strips, and literal Reel Strip Modeler preview/apply. The
+single native-picker Open action did not close the visibly active dialog, so
+the same dialog was visibly cancelled; this was driver-only, not a product
+finding. The completed desktop and 405px workflow rendered no dead end or
+P0/P1/material-P2. Fresh bounded action log SHA-256:
+b8f3cc3e9c36ad694bf8b0dc3f1d1f19716e6a834f30e21e8e0e731a66985d07
+
 Fresh P6V-03 Mathematician result SHA-256:
 5fba214a863b541416f54c4fb300309c49964e50c1b9a8f6e0d8fb2eb9fa9cf5
 Fresh separate P6V-04 Producer result SHA-256:
