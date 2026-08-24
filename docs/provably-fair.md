@@ -315,7 +315,7 @@ The full commit-reveal-verify flow, end to end:
 
 ```
 pokie fairness seed-commit serverSeed.txt --out seed-commitment.json
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode base --out commitment.json
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
 pokie fairness reveal commitment.json --server-seed serverSeed.txt --source ../bundle --out proof.json
 pokie fairness verify proof.json --commitment commitment.json --source ../bundle
 ```

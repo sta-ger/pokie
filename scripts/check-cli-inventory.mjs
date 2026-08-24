@@ -176,6 +176,15 @@ export async function collect(cli) {
         // fixture and future CLIs may advertise target-only values, which must not be recast as
         // a distinct source contract.
         if (/\b(?:GameBlueprint|Blueprint Project|blueprint source)\b/i.test(allHelp)) categories.add("source-type:blueprint");
+        // Public help describes the project resolver in prose rather than a dedicated
+        // `--source-type` switch. Derive its finite source vocabulary from that executable
+        // sentence instead of treating build targets as source types by assumption.
+        const normalizedHelp = allHelp.replaceAll("\n", " ");
+        for (const match of normalizedHelp.matchAll(/\b(?:resolves? to|recognizes?)\s+(?:a\s+)?((?:[a-z][a-z0-9-]*\s*\/\s*)+[a-z][a-z0-9-]*)\s+project\b/gi)) {
+            for (const value of match[1].match(/[a-z][a-z0-9-]*/gi) ?? []) {
+                if (!VALUE_WORDS_TO_IGNORE.has(value.toLowerCase())) categories.add(`source-type:${value}`);
+            }
+        }
         // These output forms are named in the actual public help/documentation contract rather
         // than being a map-only vocabulary.  JSON/Markdown/HTML can also be value-bearing forms.
         for (const [pattern, capability] of [[/\bjsonl\b/i, "output-format:jsonl"], [/\bxlsx\b/i, "output-format:xlsx"]]) if (pattern.test(allHelp)) categories.add(capability);
@@ -258,14 +267,17 @@ function documentedCapabilities(contents, inventory) {
             for (const value of values) capabilities.add(`value:${command}:${option}:${value}`);
         }
     };
-    const addLineClaims = (line, command) => {
-        for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
+    const addLineClaims = (line, command, includePositionals = true) => {
+        for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) {
+            const escaped = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (!new RegExp(`\\b(?:no|not|without)\\b[^\\n]{0,32}${escaped}`, "i").test(line)) capabilities.add(`option:${command}:${option}`);
+        }
         for (const alias of line.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
-        const documentedPositionals = [...line.matchAll(/(?:<[^>\n]+>|\[[^\]\n]+\])/g)].filter((match) => {
+        const documentedPositionals = includePositionals ? [...line.matchAll(/(?:<[^>\n]+>|\[[^\]\n]+\])/g)].filter((match) => {
             const positional = match[0];
             const immediatelyPrecededByOption = /--[a-z][a-z0-9-]*\s*$/i.test(line.slice(0, match.index));
             return !/^\[options\]$/i.test(positional) && !/[\s`"']|--/.test(positional) && !immediatelyPrecededByOption;
-        }).map((match) => match[0]);
+        }).map((match) => match[0]) : [];
         const executablePositionals = inventory.commands.find((entry) => entry.path === command)?.usage ?? [];
         for (const [index, positional] of documentedPositionals.entries()) {
             const executable = executablePositionals[index];
@@ -283,17 +295,21 @@ function documentedCapabilities(contents, inventory) {
         addLineClaims(remainder, command);
         return command;
     };
-    const addInvocations = (text, allowUnknownCommand = false) => {
+    const addInvocations = (text) => {
         const starts = [...text.matchAll(/(?<![\w-])(?:npx\s+)?pokie(?:\.js)?(?![a-z0-9-])/g)];
         for (const [index, start] of starts.entries()) {
             const invocation = text.slice(start.index, starts[index + 1]?.index);
             const match = invocation.match(/^(?:npx\s+)?pokie(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);
             if (!match) continue;
             const rootCommand = match[2];
-            // Prose regularly uses the package name (for example, "POKIE documentation")
-            // without advertising an executable.  Once prose presents it as an invocation,
-            // however, an unknown command is a public claim just like one in a shell block.
-            if (rootCommand && !rootCommands.has(rootCommand) && !allowUnknownCommand) continue;
+            // A command token after the executable name is an invocation claim in prose as
+            // well as in code. Do not depend on a fixed lead-verb list: "Try pokie deploy"
+            // is checked just like "Run pokie deploy". A bare package mention followed by
+            // ordinary explanatory prose is not an invocation; unknown commands need either
+            // shell-shaped arguments or to terminate the prose clause.
+            const tail = match[3] ?? "";
+            const unknownInvocation = rootCommand && !rootCommands.has(rootCommand) && tail.trim().length > 0 && !/(?:--[a-z]|<[^>]+>|\[[^\]]+\])/.test(tail);
+            if (unknownInvocation) continue;
             const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
             addInvocation(rootCommand, remainder);
         }
@@ -333,21 +349,22 @@ function documentedCapabilities(contents, inventory) {
     // A root invocation has no command token; it is still a public claim (notably --help,
     // -h and the implicit Studio flags).  Process inline code spans separately so one command
     // does not consume later, independently documented commands on the same prose line.
-    let fencedCliCode = false;
     for (const line of contents.split("\n")) {
         if (/^\s*```/.test(line)) {
-            fencedCliCode = /^\s*```(?:sh|bash|shell|console)\s*$/i.test(line);
             continue;
         }
         let unquoted = "";
         let cursor = 0;
-        for (const match of line.matchAll(/`([^`]*)`/g)) {
+        for (const match of line.matchAll(/`([^`\n]*)`/g)) {
             unquoted += line.slice(cursor, match.index);
-            if (!/\b(?:no|not)\s*$/i.test(line.slice(0, match.index))) addInvocations(match[1], true);
+            if (!/\b(?:no|not)\s*$/i.test(line.slice(0, match.index))) addInvocations(match[1]);
             cursor = (match.index ?? 0) + match[0].length;
+            // Removing an inline span must not glue the adjacent prose into a fabricated
+            // command token (for example, `pokie serve`; `npx`).
+            unquoted += " ";
         }
         unquoted += line.slice(cursor);
-        addInvocations(unquoted, fencedCliCode || /\b(?:run|use|execute|invoke|start)\s+(?:npx\s+)?pokie(?:\.js)?\b/i.test(unquoted));
+        addInvocations(unquoted);
     }
     // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
     // the command in prose rather than repeat the complete invocation.  Associate both forms
@@ -372,10 +389,11 @@ function documentedCapabilities(contents, inventory) {
             // Claims below a command heading are command-scoped whether they use a familiar
             // verb ("supports") or plain declarative prose ("the target is wasm").
             if (hasScopedCategoryClaim(line)) addCategoryClaims(line);
-            // Angle brackets and square brackets appear throughout explanatory prose, so they
-            // become positional contracts only when the prose actually presents an argument.
-            // This leaves declarative category claims independent of any claim-verb allowlist.
-            if (/\b(?:arguments?|positionals?|supports?|accepts?|allows?)\b/i.test(line) || /^\s*use\s+(?:<|\[)/i.test(line)) addLineClaims(line, headingContext);
+            // An option token is inherently command-scoped under a CLI heading. This handles
+            // ordinary prose such as "Use --target futureTarget" without prescribing an
+            // author's lead verb or sentence shape.
+            const presentsPositionals = /\b(?:arguments?|positionals?)\b/i.test(line) || /^\s*use\s+(?:<|\[)/i.test(line);
+            if (/--[a-z][a-z0-9-]*/i.test(line) || presentsPositionals) addLineClaims(line, headingContext, presentsPositionals);
         }
         const proseCommand = line.match(/\b(?:the\s+)?`?([a-z][a-z0-9-]*)`?\s+command\b/i)?.[1];
         if (proseCommand && rootCommands.has(proseCommand)) {
@@ -403,14 +421,7 @@ export function checkCoverage(inventory, coverage, documented) {
     const ownerIds = new Set(coverage.owners.map((owner) => owner.id));
     const hasOwner = (id) => ownerIds.has(id);
     const executable = inventoryCapabilities(inventory);
-    const categoryCapability = (id) => /^(?:target|source-type|output-format|output|mode|finding):/.test(id);
-    const categoryForValue = (option, value) => ({
-        "--target": `target:${value}`,
-        "--source-type": `source-type:${value}`,
-        "--format": `output-format:${value}`,
-        "--mode": `mode:${value}`,
-        "--to": `output:${value}`,
-    })[option];
+    const categoryCapability = (id) => /^(?:target|source-type|output-format|output|mode):/.test(id);
     // Categories may be established by executable help or the configured public documentation
     // contract (for example an XLSX artifact form).  In either case they are fresh inputs,
     // never unreferenced map rows.
@@ -443,11 +454,9 @@ export function checkCoverage(inventory, coverage, documented) {
             const option = parts.pop();
             const command = parts.join(":");
             const actual = inventory.commands.find((entry) => entry.path === command)?.values.includes(`value:${command}:${option}:${value}`);
-            // Commander help frequently names a value placeholder without enumerating its
-            // accepted vocabulary.  The checked-in target/source/output/mode owner is the
-            // canonical executable contract for those finite vocabularies; a documented
-            // command still has to expose the option itself in the branch below.
-            if (!actual && !hasOwner(categoryForValue(option, value) ?? "")) missing.push(`stale documented capability ${capability}`);
+            // Documentation-derived values must match the freshly collected command/value
+            // contract. An owner for a similarly named category cannot bless a stale value.
+            if (!actual) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
         } else if (capability.startsWith("argument:")) {
             const [, command, ...parts] = capability.split(":");
@@ -466,6 +475,9 @@ export function checkCoverage(inventory, coverage, documented) {
             if (!actual) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
         } else if (categoryCapability(capability)) {
+            if (!executable.has(capability)) missing.push(`stale documented capability ${capability}`);
+            if (!hasOwner(capability)) missing.push(`unowned public capability ${capability}`);
+        } else if (capability.startsWith("finding:")) {
             if (!hasOwner(capability)) missing.push(`unowned public capability ${capability}`);
         } else {
             if (!executable.has(capability)) missing.push(`stale documented capability ${capability}`);

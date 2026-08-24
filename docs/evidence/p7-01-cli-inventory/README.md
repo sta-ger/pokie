@@ -18,7 +18,7 @@ ordinary text, not author-added markers. Its initial owned vocabulary is:
 targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and
 `wasm`; source types: `blueprint`, `tsPackage`, `outcomeLibrary`,
 `stakeAdapter`, `parWorkbook`, and `wasm`; output formats: `json`, `markdown`,
-`html`, `xlsx`, and `jsonl`; and modes: `base` and `all`.
+and `html`; and the executable `all` mode form.
 
 ## Collector protocol
 
@@ -57,11 +57,13 @@ node scripts/run-phase7-journey.mjs \
 
 The journey script receives `P7_INPUT_DIR`, a read-only mount of the copied
 input provenance, and `P7_PUBLIC_CLI`, the only invocation capability. It does
-not receive a request-plan pathname, artifact pathname, socket, credential, or
-any other control channel. The capability writes only bounded command arguments
-to its private endpoint; after each isolated driver exits, the runner validates
-that plan and performs every public `pokie` invocation itself in the private
-artifact directory. Input paths supplied to the wrapper must be below
+not receive a request-plan pathname, artifact pathname, socket pathname,
+credential, or any other direct control channel. The capability sends only
+bounded command arguments to the runner's private in-memory request queue; no
+request-plan pathname is mounted in the driver sandbox. After each isolated
+driver exits, the runner validates those requests and performs every public
+`pokie` invocation itself in the private artifact directory. Input paths
+supplied to the wrapper must be below
 `P7_INPUT_DIR`; they are rebound to the copied, hashed bytes before execution.
 An arbitrary host path or an attempted input mutation is rejected, and a direct
 JSONL record in the driver's writable directory is never consumed.

@@ -112,7 +112,7 @@ export class BuildCommand implements CliCommandHandling {
     private buildCommand(exitCodeRef: {value: number} = {value: 0}): Command {
         return createCommanderCliCommand("build")
             .description(this.getDescription())
-            .argument("<project>", "a path pokie resolves to a POKIE project (see docs/cli.md#pokie-build-project)")
+            .argument("<project>", PROJECT_HINT)
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option(
                 "--target <artifact>",

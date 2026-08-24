@@ -88,7 +88,7 @@ test("rejects a direct request-plan attempt that does not use the invocation cap
         const directRequest = await driver(directory, `
 import {appendFile} from "node:fs/promises";
 if (process.env.P7_COMMAND_REQUEST_FILE) throw new Error("runner exposed a direct request channel");
-await appendFile("public-cli-requests.jsonl", JSON.stringify({args: ["build", "--out", "result.txt"]}) + "\\n");
+await appendFile("/tmp/p7-public-command-capability/plan", JSON.stringify({args: ["build", "--out", "result.txt"]}) + "\\n");
 `);
         const result = run(await cli(directory), directRequest, path.join(directory, "direct-request"));
         assert.equal(result.status, 1);

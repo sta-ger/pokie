@@ -354,7 +354,7 @@ it, writing the result to `--out <path>` (default: a `<target>`-named sibling of
 
 The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
 It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
-The public CLI supports output formats: `json`, `markdown`, `html`, `xlsx`, and `jsonl`, and modes: `base` and `all`.
+The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
 ```
 pokie build <project> --target <artifact> [--out <path>] [--dry-run]
@@ -1154,8 +1154,8 @@ game-model calculation.
 
 ```
 pokie report bundle
-pokie sample bundle --mode base
-pokie sample bundle --mode base --seed demo-seed
+pokie sample bundle --mode <modeName>
+pokie sample bundle --mode <modeName> --seed demo-seed
 pokie diff bundle-v1 bundle-v2
 pokie diff bundle stake-export --format json --out diff.json
 ```
@@ -1270,7 +1270,7 @@ the same reader `FairnessRoundProofBuilder`/`Verifier` themselves use), so a com
 `libraryId`/`libraryHash` a real bundle actually has, never one a caller merely claims.
 
 ```
-pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode base --out commitment.json
+pokie fairness commit seed-commitment.json --client-seed player-seed --nonce 0 --source ../bundle --mode <modeName> --out commitment.json
 ```
 
 Options:

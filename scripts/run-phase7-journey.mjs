@@ -3,7 +3,8 @@
 import {chmod, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {spawn, spawnSync} from "node:child_process";
-import {createHash} from "node:crypto";
+import {createHash, randomBytes} from "node:crypto";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -52,15 +53,49 @@ async function digest(target) {
     return createHash("sha256").update(await readFile(target)).digest("hex");
 }
 
-async function createPublicCommandRequestClient(destination) {
-    // This is the sole driver-facing capability.  Its plan endpoint is mounted only at this
-    // fixed capability path inside the sandbox; it is deliberately not an environment control
-    // channel and it never accepts command records or artifact hashes from the driver.
+async function createPublicCommandRequestClient(destination, endpoint) {
+    // This is the sole driver-facing capability.  Requests never pass through a driver-visible
+    // file: the runner owns the in-memory queue and returns only an acknowledgement to this
+    // invocation client.  In particular, a JSONL file in the driver's /tmp or work directory
+    // is not a command request channel.
     await writeFile(destination, `#!/usr/bin/env node
-import {appendFileSync} from "node:fs";
-appendFileSync("/tmp/p7-public-command-capability/plan", JSON.stringify({args: process.argv.slice(2)}) + "\\n", {encoding: "utf8", mode: 0o600});
+import net from "node:net";
+const connection = net.createConnection(${JSON.stringify(endpoint)});
+connection.on("connect", () => connection.end(JSON.stringify({args: process.argv.slice(2)}) + "\\n"));
+connection.on("data", (data) => { process.exitCode = data.toString("utf8").startsWith("ok") ? 0 : 1; });
+connection.on("error", () => { process.exitCode = 1; });
 `);
     await chmod(destination, 0o555);
+}
+
+async function publicCommandCapability() {
+    const endpoint = `\0pokie-p7-public-command-${randomBytes(24).toString("hex")}`;
+    const requests = [];
+    const server = net.createServer((connection) => {
+        let input = "";
+        connection.setEncoding("utf8");
+        connection.on("data", (chunk) => { input = `${input}${chunk}`; });
+        connection.on("end", () => {
+            try {
+                if (input.length > MAX_COMMAND_ARGUMENT_CHARS + 256 || !input.endsWith("\n")) throw new Error("invalid request");
+                const parsed = JSON.parse(input);
+                if (!requestIsBounded(parsed)) throw new Error("invalid request");
+                requests.push(parsed);
+                connection.end("ok\n");
+            } catch {
+                connection.end("invalid\n");
+            }
+        });
+    });
+    await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(endpoint, resolve);
+    });
+    return {
+        endpoint,
+        requests,
+        async close() { await new Promise((resolve) => server.close(resolve)); },
+    };
 }
 
 async function directoryProvenance(directory) {
@@ -82,7 +117,7 @@ async function directoryProvenance(directory) {
     return `directory files=${entries.length} manifest-sha256=${createHash("sha256").update(manifest).digest("hex")} entries=${JSON.stringify(entries)}`;
 }
 
-function driverResult(script, driverDirectory, inputDirectory, requestDirectory, clientPath, environment) {
+function driverResult(script, driverDirectory, inputDirectory, clientPath, environment) {
     return new Promise((resolve) => {
         const sandbox = "/usr/bin/bwrap";
         if (!existsSync(sandbox)) {
@@ -90,8 +125,8 @@ function driverResult(script, driverDirectory, inputDirectory, requestDirectory,
             return;
         }
         const child = spawn(sandbox, [
-            "--die-with-parent", "--new-session", "--unshare-user", "--uid", "65534", "--gid", "65534", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dir", path.dirname(driverDirectory), "--dir", "/tmp/p7-inputs", "--dir", "/tmp/p7-public-command-capability",
-            "--bind", driverDirectory, driverDirectory, "--ro-bind", inputDirectory, "/tmp/p7-inputs", "--bind", requestDirectory, "/tmp/p7-public-command-capability", "--ro-bind", clientPath, path.join(driverDirectory, "invoke-public-pokie"), "--chdir", driverDirectory,
+            "--die-with-parent", "--new-session", "--unshare-user", "--uid", "65534", "--gid", "65534", "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dir", path.dirname(driverDirectory), "--dir", "/tmp/p7-inputs",
+            "--bind", driverDirectory, driverDirectory, "--ro-bind", inputDirectory, "/tmp/p7-inputs", "--ro-bind", clientPath, path.join(driverDirectory, "invoke-public-pokie"), "--chdir", driverDirectory,
             "--", process.execPath, script,
         ], {cwd: driverDirectory, env: environment});
         let stdout = "";
@@ -129,13 +164,10 @@ function provenanceBoundArguments(args, inputDirectory) {
     });
 }
 
-async function executeRequestedCommands(requestFile, cli, artifactDirectory, inputDirectory, expected) {
-    const requests = (await readFile(requestFile, "utf8")).trim().split("\n").filter(Boolean);
+async function executeRequestedCommands(requests, cli, artifactDirectory, inputDirectory, expected) {
     if (requests.length > MAX_COMMAND_RECORDS) throw new Error(`journey exceeds the ${MAX_COMMAND_RECORDS}-record evidence limit.`);
     const records = [];
-    for (const request of requests) {
-        let parsed;
-        try { parsed = JSON.parse(request); } catch { throw new Error("journey contains an invalid public CLI request plan."); }
+    for (const parsed of requests) {
         if (!requestIsBounded(parsed)) throw new Error("journey contains an invalid public CLI request plan.");
         const arguments_ = provenanceBoundArguments(parsed.args, inputDirectory);
         const before = Object.fromEntries(await Promise.all(expected.map(async (entry) => {
@@ -171,21 +203,14 @@ async function runOnce(label, arguments_) {
     // The sandbox sees inputs only at /tmp/p7-inputs; the runner maps those names back to these
     // copied bytes before it invokes the real CLI in its private artifact directory.
     const inputDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-journey-inputs-"));
-    const requestDirectory = await mkdtemp(path.join(os.tmpdir(), "pokie-p7-journey-capability-"));
     const driverScript = path.join(driverDirectory, "journey.mjs");
     const wrapperPath = path.join(driverDirectory, "invoke-public-pokie");
     const publicClientPath = path.join(artifactDirectory, "public-command-request-client");
-    const requestFile = path.join(requestDirectory, "plan");
     const provenance = [];
     const state = {records: [], failure: undefined};
+    let capability;
     try {
         await cp(arguments_.script, driverScript);
-        await writeFile(requestFile, "", {mode: 0o600});
-        // The sandboxed uid needs append-only access to the capability endpoint, but cannot
-        // enumerate or read its directory.  The endpoint is intentionally not exported in
-        // the environment; only P7_PUBLIC_CLI addresses it.
-        await chmod(requestDirectory, 0o733);
-        await chmod(requestFile, 0o622);
         await writeFile(wrapperPath, "", {mode: 0o511});
         await chmod(driverScript, 0o555);
         await chmod(driverDirectory, 0o755);
@@ -197,9 +222,10 @@ async function runOnce(label, arguments_) {
             provenance.push(`${input} -> ${destination} (${stat.isDirectory() ? await directoryProvenance(destination) : `sha256=${await digest(destination)}`})`);
         }
         await chmod(inputDirectory, 0o755);
-        await createPublicCommandRequestClient(publicClientPath);
-        const result = await driverResult(driverScript, driverDirectory, inputDirectory, requestDirectory, publicClientPath, {...process.env, P7_INPUT_DIR: "/tmp/p7-inputs", P7_PUBLIC_CLI: wrapperPath});
-        state.records = await executeRequestedCommands(requestFile, arguments_.cli, artifactDirectory, inputDirectory, arguments_.expected);
+        capability = await publicCommandCapability();
+        await createPublicCommandRequestClient(publicClientPath, capability.endpoint);
+        const result = await driverResult(driverScript, driverDirectory, inputDirectory, publicClientPath, {...process.env, P7_INPUT_DIR: "/tmp/p7-inputs", P7_PUBLIC_CLI: wrapperPath});
+        state.records = await executeRequestedCommands(capability.requests, arguments_.cli, artifactDirectory, inputDirectory, arguments_.expected);
         if (result.outputExceeded) throw new Error(`${label}: driver output exceeds the ${MAX_DRIVER_OUTPUT_CHARS}-character evidence limit.`);
         if (state.records.length === 0) throw new Error(`${label}: journey did not invoke the wrapper-controlled public CLI.${result.stderr ? ` ${result.stderr}` : ""}`);
         const checks = [];
@@ -226,10 +252,10 @@ async function runOnce(label, arguments_) {
             result.stderr,
         ], label);
     } finally {
+        if (capability) await capability.close();
         await rm(driverDirectory, {recursive: true, force: true});
         await rm(artifactDirectory, {recursive: true, force: true});
         await rm(inputDirectory, {recursive: true, force: true});
-        await rm(requestDirectory, {recursive: true, force: true});
     }
 }
 

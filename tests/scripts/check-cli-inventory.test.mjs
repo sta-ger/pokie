@@ -116,7 +116,7 @@ test("rejects unowned executable commands, aliases, and advertised values", asyn
 });
 
 test("rejects an ordinary unowned documentation invocation without a marker", async () => {
-    const {directory, cli, coverage} = await fixture("", "Run pokie deploy --target experimental.\n");
+    const {directory, cli, coverage} = await fixture("", "Try pokie deploy --target experimental.\n");
     try {
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
@@ -138,11 +138,23 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
 });
 
 test("keeps command context for ordinary claims below a CLI heading", async () => {
-    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nThe command accepts --target obsolete.\n");
+    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nUse --target futureTarget.\n");
     try {
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
-        assert.match(result.stderr, /stale documented capability value:build:--target:obsolete/);
+        assert.match(result.stderr, /stale documented capability value:build:--target:futureTarget/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects an owned category claim when fresh help does not advertise its value", async () => {
+    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nThe target is obsolete.\n");
+    try {
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.owners.push({id: "target:obsolete", owner: "stale fixture owner"});
+        await writeFile(coverage, JSON.stringify(map));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /stale documented capability target:obsolete/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
