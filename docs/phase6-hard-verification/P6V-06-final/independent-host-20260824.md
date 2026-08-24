@@ -22,3 +22,26 @@ therefore not approved in this follow-up.
 
 Transient profile, picker output, screenshot and harness transcript remain in
 the controller-owned harness workspace and are intentionally not committed.
+
+## Focused recovery follow-up
+
+On the exact candidate evidence descendant, the persistent harness was repaired
+in place to discover visible controls by semantic prefix and to record bounded
+local control/network diagnostics. A freshly isolated Studio used exactly
+`node ./dist/cli/pokie.js --no-open`; its real active-window native picker
+selected `examples/parsheets/starter.par.xlsx`, then Studio rendered the PAR
+diagnosis and its warning/provenance details.
+
+The rendered **Continue to Preview canonical model** remained enabled and
+unchanged after the initial click. Its bounded diagnostics contained the
+successful registry-preview, PAR-import and validation resources, but no
+preview transition resource and no rendered error. Because the unchanged
+enabled idempotent action proved the first click was not accepted, the harness
+made its one permitted rendered retry. The same control still produced no
+local preview continuation, validation result, pending state, or error.
+
+This is a readiness-inconclusive interaction under the contract, not a product
+finding. It does not approve the required physical export/reimport comparison
+or the dependent exact-current closeout rows. The full raw transient log,
+profile, picker data, and automation remain outside Git in the assigned harness
+workspace.
