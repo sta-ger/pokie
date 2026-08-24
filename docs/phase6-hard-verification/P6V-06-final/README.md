@@ -20,9 +20,11 @@ A new isolated Studio launch reached Home/Design, Projects empty/import state,
 workspace Overview, Game Model (Game window, Full strips and Analysis), Play
 empty and settled-spin states, Simulation result, Replay, Build/Export and an
 unclipped 405px Build/Export surface through rendered controls.  At 405px, the
-rendered Game Model navigation did not accept its click twice while Build/Export
-remained rendered and no local pending/error state appeared.  This is a
-readiness-inconclusive driver observation, not a product defect.  The required
+rendered Game Model navigation did not accept its first click while Build/Export
+remained rendered and no local pending/error state appeared.  One safe
+idempotent retry was emitted, but its semantic result was not captured before
+the verifier driver ended.  This is a driver-inconclusive observation, not a
+product defect.  The required
 complete P6V-02 inventory (including editor, dialogs and native picker) was
 therefore not completed and no release claim is made.
 
