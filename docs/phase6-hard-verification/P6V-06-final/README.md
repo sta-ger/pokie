@@ -4,33 +4,51 @@ Product candidate: `0560176d6974986c322adf3af8c5413ef48247a6`.
 Companion candidate: `1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
 This evidence descendant changes no product files from the product candidate.
 
-## Fresh P6V-02 recovery
+## Fresh exact-candidate public-workflow results
 
-After one candidate build, fresh Studio was launched from this checkout only by
-`node ./dist/cli/pokie.js --no-open`, with a new registry and browser profile.
-The rendered audit completed Home; New Blueprint and Escape recovery; empty
-Projects and disabled import detection; focused native **Browse PAR sheet**
-picker cancellation; Workspace; all Game Model tabs; Play empty/session/settled
-states; Simulation result and no-seed warning; Replay; Build/Export; 405px
-Build/Export and Full strips; and Reel Strip Modeler literal **edit → preview →
-stop-window → Apply**. The picker was visibly activated and confirmed as the
-active X11 window before Escape. No rendered P0, P1, or material P2 occurred.
+A fresh P6V-02 source-checkout Studio session used only
+`node ./dist/cli/pokie.js --no-open`, an isolated registry and a new browser
+profile. It completed Home, New Blueprint/Escape recovery, empty Projects,
+disabled Detect, the active focused native PAR picker, Workspace, every Game
+Model tab, Play, Simulation, Replay, Build/Export, 405px navigation, and
+literal Reel Strip Modeler edit → preview → stop-window → Apply. No rendered
+P0, P1, or material P2 occurred.
 
-The final successful transient run is identified in `transcript.txt`; its sole
-representative reel-preview capture has SHA-256
-`15e5695311043c9034791bb0b477fe5b15125c08f01f33d885e8711fe27523e4`.
-The transient profile, captures, Studio registry, and harness remain outside
-Git.
+The fresh P6V-03 Mathematician journey independently completed Recommended,
+Random and Blank creation; symbols/wild/scatter and selected artwork; literal
+and generated reels, stacks and constraints; layout/paylines/paytable/bets/
+modes/mechanics; save/reopen; ordinary and feature rounds; Simulation; Replay;
+Outcome Library; and Stake Engine export. The separate fresh P6V-04 Producer
+journey completed its producer workflow, including Replay JSON export and the
+rendered package Build. Neither journey rendered a P0, P1, or material P2.
+
+The real P6V-05 native-picker flow imported the physical starter XLSX, rendered
+diagnostics/canonical preview, saved an edited managed Blueprint, exported a
+physical XLSX, re-imported it, and compared its rendered canonical model with
+the saved model: equal. Expected-model SHA-256:
+`43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b`.
+Exported-workbook SHA-256:
+`5392335b409fd3ce2f953e2328d72f5cf4459bdde14a63d66e8b4d24a1f3eb74`.
+
+The first parity child was rejected as driver-only because it was pinned to
+another candidate. After the persistent harness was repaired, the exact
+candidate parity matrix passed: CLI Replay, package `npm start`, public
+client/dev, Studio Play, Studio Replay and the companion Player all agreed on
+3×3 orientation, `[[A,C,A],[A,A,C],[A,A,A]]`, positions `[[0,0],[1,0],[2,0]]`,
+win `5`, `A 3→5`, bet `1`, base mode and no feature state. The bounded hashes
+of every transient result are in `transcript.txt`; profiles, workbooks, logs,
+harness sources and screenshots remain outside Git.
 
 ## Prerequisite map and closeout result
 
 | Prerequisite | Current result |
 | --- | --- |
-| P6V-01 | Not approved: the inherited Phase-6 evidence remains 157 files / 11,345,361 bytes, including repeated historical P6V-02/P6V-03 attempts. Removing it within this invocation would exceed the 30-file evidence-delta limit; its earlier audit is also not an exact-candidate rerun. |
-| P6V-02 | Fresh rendered audit completed above. |
-| P6V-03 / P6V-04 / P6V-05 | The controller-retained candidate-bound results were rechecked as present: separate Valera journeys, physical native-picker PAR/XLSX semantic round trip, and the five-surface Player parity matrix. Their historical directories contain older SHA-labelled records, so they cannot independently repair the unresolved P6V-01 retention/exact-binding approval. |
+| P6V-01 | Not approved: the inherited Phase-6 set is 157 files / 11,345,150 bytes with repeated historical attempts. Its stale cleanup requires more than this invocation's permitted 30 changed files, and the old matrix predates the candidate. |
+| P6V-02 | Fresh rendered audit completed. |
+| P6V-03 | Fresh separate Mathematician journey completed. |
+| P6V-04 | Fresh separate Producer journey completed. |
+| P6V-05 | Fresh physical XLSX semantic round trip and repaired exact-candidate Player parity completed. |
 
-This is an **evidence** inconclusive result, not a product finding. It makes no
-release, packaging, push, publication, or Drive claim. The retained set must be
-consolidated under a controller-authorized bounded cleanup before this candidate
-can be release-ready.
+This is an **evidence** inconclusive result, not a product finding. The literal
+P6V-01 retention/matrix requirements remain unmet, so this report makes no
+release, packaging, push, publication or Drive claim.

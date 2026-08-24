@@ -1,32 +1,37 @@
-P6V-06 candidate 0560176d6974986c322adf3af8c5413ef48247a6.
-Companion 1e2c8c00457f3af389c0168432c08e63ca441465: clean and exact.
-Candidate to evidence-HEAD product paths: none.
+P6V-06 candidate: 0560176d6974986c322adf3af8c5413ef48247a6.
+Evidence descendant: ec28e74d922b75f509c5f7fa192cee71de1374e4;
+product paths versus candidate: none. Companion: clean exact
+1e2c8c00457f3af389c0168432c08e63ca441465.
 
-Retained controller-owned candidate results checked:
-- P6V-03 Mathematician: full model, persistence, Play/feature, Simulation,
-  Replay, Outcome Library and Stake export passed.
-- P6V-04 separate Producer: model, persistence, Play, Simulation, Replay and
-  Build/Export passed; its four retained screenshot hashes match its README.
-- P6V-05: native-picker XLSX import/edit/export/reimport semantic comparison
-  and Studio Play/Replay, package public client, companion public client and
-  CLI Replay canonical Player matrix passed.
+Fresh P6V-02 Studio (`node ./dist/cli/pokie.js --no-open`), isolated
+registry/profile: Home, dialog/Escape, empty Projects, disabled Detect, active
+native PAR-picker cancellation, Workspace, Game window/Full strips/Analysis,
+Play, Simulation warning/result, Replay, Build/Export, 405px navigation and
+literal Reel Strip Modeler preview/apply passed. No P0/P1/material-P2.
+Transient transcript SHA-256:
+bbc05042ec5f643440fb613cb6b96830e4b0d9492fb342ffac4e4900e2724a43.
 
-Fresh P6V-02 rendered recovery, 2026-08-24T08:18:57Z:
-- candidate rebuilt once; source-checkout Studio started only with
-  node ./dist/cli/pokie.js --no-open using a fresh isolated registry/profile;
-- Home, New Blueprint dialog/Escape recovery, empty Projects, disabled Detect,
-  Workspace, Game window/Full strips/Analysis, Play, Simulation, Replay,
-  Build/Export, 405px Build/Export and 405px Full strips rendered successfully;
-- Browse PAR sheet opened a visible native picker; xdotool activated it and
-  getactivewindow matched before Escape cancelled it;
-- Reel Strip Modeler: selected reel 1, used the rendered actual
-  Edit or generate Literal or generated control, added literal A, received the
-  local Literal strip preview, opened stop-window preview, and exact Apply
-  rendered Modified — not saved.
-- final representative transient reel-preview SHA-256:
-  15e5695311043c9034791bb0b477fe5b15125c08f01f33d885e8711fe27523e4.
+Fresh P6V-03 Mathematician: Recommended/Random/Blank; wild/scatter/artwork;
+literal/generated reels, constraints/stacks; model sections; persistence;
+ordinary/feature, Simulation, Replay, Outcome Library and Stake export passed.
+Result SHA-256: 5fba214a863b541416f54c4fb300309c49964e50c1b9a8f6e0d8fb2eb9fa9cf5.
 
-No rendered product error or P0/P1/material-P2 was observed. The inconclusive
-result is evidence-only: inherited retention remains 157 files / 11,345,361
-bytes and historical P6V-02/P6V-03 records are not independently exact-SHA
-proof. Do not make release, packaging, push, publication or Drive claims.
+Fresh separate P6V-04 Producer: artwork/symbols/literal reels/stacks,
+layout/paylines/paytable, bets/modes/mechanics, save/reopen, Play, Simulation,
+Replay JSON export, package Build, Outcome Library and Stake export passed.
+Result SHA-256: 77d0228a024e6be4f3ff4b36cd091bfcf18da90fd20f431cc938181fad1a5a12.
+
+Fresh P6V-05 native-picker XLSX semantic round trip passed. Expected model:
+43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b.
+Exported XLSX: 5392335b409fd3ce2f953e2328d72f5cf4459bdde14a63d66e8b4d24a1f3eb74.
+Re-import canonical model equals saved expected model. The initial combined
+runner's stale-29bdb parity child was rejected; repaired exact-candidate parity
+passed CLI Replay, package npm start, public client/dev, Studio Play/Replay and
+companion Player: 3×3, [[A,C,A],[A,A,C],[A,A,A]], positions [[0,0],[1,0],[2,0]],
+win 5, A 3→5, bet 1, base mode, no feature. Result SHA-256:
+6b6072a077e92c62c48bf2212b363ef22f551313f4772bb436f4623d08f1f229.
+
+Closeout is evidence-inconclusive, not a product finding. P6V-01 remains not
+established: inherited Phase-6 evidence is 157 files / 11,345,150 bytes and
+its stale duplicate cleanup exceeds the 30-file delta limit. No release,
+packaging, push, publication or Drive claim is made.
