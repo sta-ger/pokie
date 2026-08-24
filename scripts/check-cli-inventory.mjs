@@ -11,11 +11,7 @@ import {fileURLToPath} from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_COVERAGE = path.join(repositoryRoot, "docs/evidence/p7-01-cli-inventory/coverage-map.json");
-const HELP_ALIAS = "-h";
-// Keep this list deliberately tied to public switches, rather than to a hand-maintained
-// vocabulary.  A new enum-like switch is a public contract and must be added here with an
-// owner before it can be documented.
-const VALUE_KINDS = [["target", "--target"], ["source-type", "--source-type"], ["output-format", "--format"], ["mode", "--mode"], ["output", "--to"]];
+const VALUE_WORDS_TO_IGNORE = new Set(["a", "an", "and", "are", "as", "default", "for", "is", "must", "of", "one", "or", "the", "to", "value", "values"]);
 
 function fail(message) { throw new Error(`P7 CLI inventory: ${message}`); }
 
@@ -53,7 +49,10 @@ function commandNames(help) {
         if (!line.trim()) continue;
         if (!/^\s{2,}/.test(line)) break;
         const match = line.trim().match(/^([a-z][a-z0-9-]*)\b/);
-        if (match) names.push(match[1]);
+        // Commander prints its implementation-only `help [command]` helper alongside real
+        // nested verbs. The public help flags are inventoried separately, so do not recurse
+        // through that dispatcher implementation detail.
+        if (match && match[1] !== "help") names.push(match[1]);
     }
     return [...new Set(names)];
 }
@@ -77,29 +76,39 @@ function usageArguments(help) {
 
 function valuesFromText(text) {
     const values = new Set();
-    for (const match of text.matchAll(/(?:["'`])([a-z][a-z0-9-]*)(?:["'`])/gi)) values.add(match[1]);
     for (const match of text.matchAll(/\bone of\s*:?\s*([^\n.]+)|\b(?:supports?|values?|types?|formats?|modes?)\b\s*(?::|are|is)\s*([^\n.]+)/gi)) {
         for (const value of (match[1] ?? match[2]).match(/[a-z][a-z0-9-]*/gi) ?? []) values.add(value);
     }
-    return [...values].filter((value) => !["a", "an", "and", "are", "default", "for", "is", "of", "one", "or", "target", "the", "to", "value", "values"].includes(value.toLowerCase()));
+    for (const match of text.matchAll(/\bonly\s+(?:["'`])([a-z][a-z0-9-]*)(?:["'`])/gi)) values.add(match[1]);
+    for (const match of text.matchAll(/(?:["'`])([a-z][a-z0-9-]*)(?:["'`])(?=\s*(?:,|\bor\b|\band\b))/gi)) values.add(match[1]);
+    for (const match of text.matchAll(/\b(?:or|and)\s+(?:["'`])([a-z][a-z0-9-]*)(?:["'`])/gi)) values.add(match[1]);
+    return [...values].filter((value) => !VALUE_WORDS_TO_IGNORE.has(value.toLowerCase()));
 }
 
-function advertisedValues(help) {
-    const capabilities = new Set();
-    const lines = help.split("\n");
-    for (const [kind, option] of VALUE_KINDS) {
-        for (const line of lines.filter((candidate) => candidate.includes(option))) {
-            for (const value of valuesFromText(line)) capabilities.add(`${kind}:${value}`);
-            // Export's Commander synopsis intentionally keeps the value placeholder generic;
-            // its public description names the three accepted artifact forms in prose.
-            if (option === "--to") for (const value of line.match(/\b(?:outcomes|adapter|workbook)\b/gi) ?? []) capabilities.add(`${kind}:${value.toLowerCase()}`);
-            const inline = line.match(new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "i"));
-            for (const value of inline?.[1].split("|").map((item) => item.trim()) ?? []) capabilities.add(`${kind}:${value}`);
-        }
+function optionDefinitions(help) {
+    const options = [];
+    for (const line of help.split("\n")) {
+        if (!/^\s{2,}-/.test(line)) continue;
+        const tokens = line.match(/(?:^|[\s,])(-{1,2}[a-z][a-z0-9-]*)\b/gi) ?? [];
+        const long = tokens.map((token) => token.trim().replace(/,$/, "")).filter((token) => token.startsWith("--"));
+        if (long.length === 0) continue;
+        options.push({tokens: long, takesValue: /--[a-z][a-z0-9-]*\s+(?:<[^>]+>|\[[^\]]+\])/i.test(line), text: line});
     }
-    for (const [kind, label] of [["source-type", "(?:source(?:[- ]type)?|project type)"], ["target", "target"], ["output-format", "(?:output )?format"], ["mode", "mode"]]) {
-        for (const match of help.matchAll(new RegExp(`${label}s?\\s*(?::|are|is)\\s*([^\\n.]+)`, "gi"))) {
-            for (const value of valuesFromText(match[1])) capabilities.add(`${kind}:${value}`);
+    return options;
+}
+
+function advertisedValues(help, commandPath) {
+    const capabilities = new Set();
+    for (const definition of optionDefinitions(help)) {
+        if (!definition.takesValue) continue;
+        for (const option of definition.tokens) {
+            const values = new Set();
+            for (const value of valuesFromText(definition.text)) values.add(value);
+            const proseList = definition.text.match(/([a-z][a-z0-9-]*(?:,\s+[a-z][a-z0-9-]*)*,\s+(?:or|and)\s+[a-z][a-z0-9-]*)/i)?.[1];
+            for (const value of proseList?.match(/[a-z][a-z0-9-]*/gi) ?? []) {
+                if (!VALUE_WORDS_TO_IGNORE.has(value.toLowerCase())) values.add(value);
+            }
+            for (const value of values) capabilities.add(`value:${commandPath}:${option}:${value}`);
         }
     }
     return [...capabilities].sort();
@@ -118,7 +127,7 @@ export async function collect(cli) {
         const queue = commandNames(root.output).map((name) => [name]);
         const seen = new Set();
         const rootTokens = [...new Set([...optionTokens(root.output), ...optionTokens(implicitRoot.output)])].sort();
-        const commands = [{path: "root", usage: usageArguments(implicitRoot.output).length > 0 ? usageArguments(implicitRoot.output) : usageArguments(root.output), options: rootTokens, aliases: rootTokens.filter((token) => token.startsWith("-") && !token.startsWith("--")), values: [...new Set([...advertisedValues(root.output), ...advertisedValues(implicitRoot.output)])].sort()}];
+        const commands = [{path: "root", usage: usageArguments(implicitRoot.output).length > 0 ? usageArguments(implicitRoot.output) : usageArguments(root.output), options: rootTokens, aliases: rootTokens.filter((token) => token.startsWith("-") && !token.startsWith("--")), values: [...new Set([...advertisedValues(root.output, "root"), ...advertisedValues(implicitRoot.output, "root")])].sort()}];
         while (queue.length > 0) {
             const pathParts = queue.shift();
             const key = pathParts.join(" ");
@@ -126,7 +135,7 @@ export async function collect(cli) {
             seen.add(key);
             const response = runCli(cli, [...pathParts, "--help"], temporaryDirectory);
             transcript.push(`COMMAND ${response.command}`, `EXIT ${response.exitCode}`);
-            commands.push({path: key, usage: usageArguments(response.output), options: optionTokens(response.output), aliases: optionTokens(response.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(response.output)});
+            commands.push({path: key, usage: usageArguments(response.output), options: optionTokens(response.output), aliases: optionTokens(response.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(response.output, key)});
             for (const child of commandNames(response.output)) queue.push([...pathParts, child]);
         }
         commands.sort((left, right) => left.path.localeCompare(right.path));
@@ -139,11 +148,10 @@ export function inventoryCapabilities(inventory) {
     for (const command of inventory.commands) {
         if (command.path !== "root" && command.path.includes(" ")) capabilities.add(`subcommand:${command.path}`);
         for (const option of command.options) {
-            if (option.startsWith("--") && option !== "--help") capabilities.add(`option:${command.path}:${option}`);
-            else if (option.startsWith("-") && !option.startsWith("--") && option !== HELP_ALIAS) capabilities.add(`alias:${command.path}:${option}`);
+            if (option.startsWith("--")) capabilities.add(`option:${command.path}:${option}`);
+            else if (option.startsWith("-") && !option.startsWith("--")) capabilities.add(`alias:${command.path}:${option}`);
         }
         for (const argument of command.usage ?? []) capabilities.add(`argument:${command.path}:${argument}`);
-        if (command.aliases.includes(HELP_ALIAS)) capabilities.add("alias:help");
         for (const value of command.values) capabilities.add(value);
     }
     return capabilities;
@@ -174,48 +182,66 @@ async function configuredDocumentationFiles(coverage, root) {
 function documentedCapabilities(contents, inventory) {
     const capabilities = new Set();
     const nestedVerbs = new Set(inventory.commands.filter((command) => command.path.includes(" ")).map((command) => command.path));
+    const rootCommands = new Set(inventory.rootCommands);
     const commandFor = (rootCommand, remainder) => {
-        const verb = remainder.match(/^\s+([a-z][a-z0-9-]*)\b/i)?.[1];
+        const verb = remainder.match(new RegExp(`^\\s*(?:${rootCommand}\\s+)?([a-z][a-z0-9-]*)\\b`, "i"))?.[1];
         return verb && nestedVerbs.has(`${rootCommand} ${verb}`) ? `${rootCommand} ${verb}` : rootCommand;
+    };
+    const addValueClaims = (text, command) => {
+        const entry = inventory.commands.find((candidate) => candidate.path === command);
+        const knownOptions = [...new Set((entry?.values ?? []).map((value) => value.split(":")[2]))];
+        for (const option of knownOptions) {
+            const escapedOption = option.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const bareOption = option.slice(2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const values = new Set();
+            for (const match of text.matchAll(new RegExp(`${escapedOption}\\s+(?!<|\\[)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi"))) {
+                for (const value of match[1].split("|").map((item) => item.trim())) values.add(value);
+            }
+            // Narrative docs often say "the build command supports target foo" rather than
+            // repeating a shell invocation.  A command context plus an option name makes this a
+            // public contract just as much as an invocation does.
+            for (const match of text.matchAll(new RegExp(`\\b(?:supports?|accepts?|allows?|uses?)\\s+(?:the\\s+)?(?:--)?${bareOption}(?:\\s+(?:value|form|type))?\\s*(?:is|are|:)?\\s*(?:\\x60)?([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi"))) {
+                for (const value of match[1].split("|").map((item) => item.trim())) values.add(value);
+            }
+            for (const value of values) capabilities.add(`value:${command}:${option}:${value}`);
+        }
+    };
+    const addLineClaims = (line, command) => {
+        for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
+        for (const alias of line.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
+        for (const argument of line.match(/(?:<[^>]+>|\[[^\]]+\])/g) ?? []) {
+            if (!argument.includes("--")) capabilities.add(`argument:${command}:${argument}`);
+        }
+        addValueClaims(line, command);
     };
     const addInvocation = (rootCommand, remainder = "") => {
         const command = rootCommand ? commandFor(rootCommand, remainder) : "root";
         capabilities.add(command.includes(" ") ? `subcommand:${command}` : `command:${command}`);
         if (command === "root") capabilities.delete("command:root");
-        for (const option of remainder.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
-        for (const alias of remainder.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
-        for (const argument of remainder.match(/(?:<[^>]+>|\[[^\]]+\])/g) ?? []) capabilities.add(`argument:${command}:${argument}`);
-        for (const [kind, option] of VALUE_KINDS) {
-            const expression = new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi");
-            for (const valueMatch of remainder.matchAll(expression)) for (const value of valueMatch[1].split("|").map((value) => value.trim())) capabilities.add(`value:${kind}:${command}:${value}`);
-        }
+        addLineClaims(remainder, command);
         return command;
     };
     // A root invocation has no command token; it is still a public claim (notably --help,
     // -h and the implicit Studio flags).
-    for (const match of contents.matchAll(/(?:\bnpx\s+)?\bpokie(?:\.js)?(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*?)(?=(?:\bnpx\s+)?\bpokie(?:\.js)?\b|\n|$)/gi)) {
-        const rootCommand = match[2];
-        const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
-        addInvocation(rootCommand, remainder);
-    }
-    // Narrative option/value claims frequently sit below a `pokie …` heading rather than
-    // repeat the complete invocation. Associate those claims with that public heading.
-    let currentCommand;
     for (const line of contents.split("\n")) {
-        const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
-        if (heading) currentCommand = addInvocation(heading[1], `${heading[1] ? " " : ""}${heading[1] ?? ""}${heading[2] ?? ""}`);
-        if (!currentCommand) continue;
-        for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${currentCommand}:${option}`);
-        for (const alias of line.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${currentCommand}:${alias}`);
-        for (const argument of line.match(/(?:<[^>]+>|\[[^\]]+\])/g) ?? []) capabilities.add(`argument:${currentCommand}:${argument}`);
-        for (const [kind, option] of VALUE_KINDS) {
-            const expression = new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi");
-            for (const valueMatch of line.matchAll(expression)) for (const value of valueMatch[1].split("|").map((value) => value.trim())) capabilities.add(`value:${kind}:${currentCommand}:${value}`);
+        const trimmed = line.trim();
+        if (!/^(?:\$\s*)?(?:npx\s+)?pokie(?:\.js)?\b/.test(trimmed) && !line.includes("`pokie")) continue;
+        for (const match of line.matchAll(/(?:\bnpx\s+)?\bpokie(?:\.js)?(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/g)) {
+            const rootCommand = match[2];
+            const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
+            addInvocation(rootCommand, remainder);
         }
     }
-    for (const [kind, label] of [["target", "targets?"], ["source-type", "source types?"], ["output-format", "output formats?"], ["mode", "modes?"]]) {
-        for (const match of contents.matchAll(new RegExp(`\\b${label}:([^\\n]+)`, "gi"))) {
-            for (const value of match[1].matchAll(/`([a-z][a-z0-9-]*)`/gi)) capabilities.add(`value:${kind}:${value[1]}`);
+    // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
+    // the command in prose rather than repeat the complete invocation.  Associate both forms
+    // with their exact command so a stale claim cannot borrow another command's owner.
+    for (const line of contents.split("\n")) {
+        const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
+        if (heading) addInvocation(heading[1], `${heading[1] ? " " : ""}${heading[1] ?? ""}${heading[2] ?? ""}`);
+        const proseCommand = line.match(/\b(?:the\s+)?`?([a-z][a-z0-9-]*)`?\s+command\b/i)?.[1];
+        if (proseCommand && rootCommands.has(proseCommand)) {
+            capabilities.add(`command:${proseCommand}`);
+            addLineClaims(line, proseCommand);
         }
     }
     return capabilities;
@@ -233,15 +259,18 @@ export async function documentationCapabilities(coverage, inventory, coveragePat
 
 export function checkCoverage(inventory, coverage, documented) {
     const ownerIds = new Set(coverage.owners.map((owner) => owner.id));
-    const hasOwner = (id) => ownerIds.has(id) || (id.startsWith("argument:") && ownerIds.has(`${id.split(":").slice(0, 2).join(":")}:*`));
+    const hasOwner = (id) => ownerIds.has(id);
     const executable = inventoryCapabilities(inventory);
     const missing = [...executable].filter((id) => !hasOwner(id));
     for (const capability of documented) {
         if (capability.startsWith("value:")) {
-            const [, kind, command, value] = capability.split(":");
-            const actual = command ? inventory.commands.find((entry) => entry.path === command)?.values.includes(`${kind}:${value}`) : inventory.commands.some((entry) => entry.values.includes(`${kind}:${value}`));
+            const [, ...parts] = capability.split(":");
+            const value = parts.pop();
+            const option = parts.pop();
+            const command = parts.join(":");
+            const actual = inventory.commands.find((entry) => entry.path === command)?.values.includes(`value:${command}:${option}:${value}`);
             if (!actual) missing.push(`stale documented capability ${capability}`);
-            if (!ownerIds.has(`${kind}:${value}`)) missing.push(`unowned public capability ${kind}:${value}`);
+            if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
         } else if (capability.startsWith("argument:")) {
             const [, command, ...parts] = capability.split(":");
             const argument = parts.join(":");
@@ -252,7 +281,7 @@ export function checkCoverage(inventory, coverage, documented) {
             const [, command, alias] = capability.split(":");
             const actual = inventory.commands.find((entry) => entry.path === command)?.aliases.includes(alias);
             if (!actual) missing.push(`stale documented capability ${capability}`);
-            if (!ownerIds.has(alias === HELP_ALIAS ? "alias:help" : capability)) missing.push(`unowned public capability ${capability}`);
+            if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
         } else if (capability.startsWith("option:")) {
             const [, command, option] = capability.split(":");
             const actual = inventory.commands.find((entry) => entry.path === command)?.options.includes(option);

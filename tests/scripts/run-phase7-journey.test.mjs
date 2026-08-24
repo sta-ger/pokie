@@ -78,7 +78,32 @@ process.exitCode = result.status;
 `);
         const mixedResult = run(await cli(directory), mixed, path.join(directory, "mixed"));
         assert.equal(mixedResult.status, 1);
-        assert.match(mixedResult.stderr, /lacks wrapper-observed public CLI provenance/);
+        assert.match(mixedResult.stderr, /did not invoke the wrapper-controlled public CLI/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("isolates expected artifacts from concurrent driver writes and rejects an unauthenticated control request", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const concurrentWriter = await driver(directory, `
+import {spawn, spawnSync} from "node:child_process";
+import {once} from "node:events";
+const attacker = spawn(process.execPath, ["-e", 'setTimeout(() => require("fs").writeFileSync("result.txt", "forged"), 5)'], {cwd: process.cwd()});
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+await once(attacker, "close");
+process.exitCode = result.status;
+`);
+        const concurrentResult = run(await cli(directory), concurrentWriter, path.join(directory, "concurrent"));
+        assert.equal(concurrentResult.status, 0, concurrentResult.stderr);
+        const directControl = await driver(directory, `
+import net from "node:net";
+import path from "node:path";
+const socket = net.createConnection(path.join(path.dirname(process.env.P7_PUBLIC_CLI), ".p7-public-cli.sock"));
+await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("close", resolve); });
+`);
+        const directControlResult = run(await cli(directory), directControl, path.join(directory, "control"));
+        assert.equal(directControlResult.status, 1);
+        assert.match(directControlResult.stderr, /did not invoke the wrapper-controlled public CLI/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -118,5 +143,26 @@ test("retains a bounded recursive manifest for directory inputs", async () => {
         const transcript = await readFile(path.join(directory, "evidence/journey-transcript.txt"), "utf8");
         assert.match(transcript, /directory files=1 manifest-sha256=/);
         assert.match(transcript, /nested\/input.txt sha256=/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects aggregate command-record and transcript volume beyond the evidence bounds", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const excessiveRecords = await driver(directory, `
+import {spawnSync} from "node:child_process";
+for (let index = 0; index < 65; index += 1) spawnSync(process.env.P7_PUBLIC_CLI, ["inspect"], {encoding: "utf8"});
+`);
+        const recordsResult = run(await cli(directory), excessiveRecords, path.join(directory, "records"));
+        assert.equal(recordsResult.status, 1);
+        assert.match(recordsResult.stderr, /64-record evidence limit/);
+        const excessiveOutput = await driver(directory, `
+import {spawnSync} from "node:child_process";
+spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.stdout.write("x".repeat(8193));
+`);
+        const outputResult = run(await cli(directory), excessiveOutput, path.join(directory, "output"));
+        assert.equal(outputResult.status, 1);
+        assert.match(outputResult.stderr, /driver output exceeds the 8192-character evidence limit/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });

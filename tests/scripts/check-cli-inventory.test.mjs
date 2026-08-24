@@ -25,19 +25,21 @@ process.stdout.write(help);
         initialInventory: {rootCommands: ["build"], nestedVerbs: []},
         owners: [
             {id: "command:build", owner: "test"},
-            {id: "alias:help", owner: "test"},
+            {id: "alias:root:-h", owner: "test"},
+            {id: "alias:build:-h", owner: "test"},
             {id: "option:root:--help", owner: "test"},
             {id: "option:root:--no-open", owner: "test"},
+            {id: "option:build:--help", owner: "test"},
             {id: "argument:root:[projectRoot]", owner: "test"},
             {id: "argument:build:<project>", owner: "test"},
             {id: "option:build:--target", owner: "test"},
             {id: "option:build:--source-type", owner: "test"},
             {id: "option:build:--format", owner: "test"},
             {id: "option:build:--mode", owner: "test"},
-            {id: "target:supported", owner: "test"},
-            {id: "source-type:blueprint", owner: "test"},
-            {id: "output-format:json", owner: "test"},
-            {id: "mode:base", owner: "test"},
+            {id: "value:build:--target:supported", owner: "test"},
+            {id: "value:build:--source-type:blueprint", owner: "test"},
+            {id: "value:build:--format:json", owner: "test"},
+            {id: "value:build:--mode:base", owner: "test"},
         ],
     }));
     return {directory, cli, coverage};
@@ -72,16 +74,16 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
 `);
         const map = JSON.parse(await readFile(coverage, "utf8"));
         map.initialInventory.rootCommands = ["build", "export"];
-        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "output:outcomes", owner: "test"}, {id: "output:adapter", owner: "test"}, {id: "output:workbook", owner: "test"});
+        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--help", owner: "test"}, {id: "alias:export:-h", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "value:export:--to:outcomes", owner: "test"}, {id: "value:export:--to:adapter", owner: "test"}, {id: "value:export:--to:workbook", owner: "test"});
         await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 0, result.stderr);
         const mapWithoutOutputOwner = JSON.parse(await readFile(coverage, "utf8"));
-        mapWithoutOutputOwner.owners = mapWithoutOutputOwner.owners.filter((entry) => entry.id !== "output:workbook");
+        mapWithoutOutputOwner.owners = mapWithoutOutputOwner.owners.filter((entry) => entry.id !== "value:export:--to:workbook");
         await writeFile(coverage, JSON.stringify(mapWithoutOutputOwner));
         const rejected = run(cli, coverage, path.join(directory, "rejected"));
         assert.equal(rejected.status, 1);
-        assert.match(rejected.stderr, /output:workbook/);
+        assert.match(rejected.stderr, /value:export:--to:workbook/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -95,10 +97,10 @@ test("rejects unowned executable commands, aliases, and advertised values", asyn
         const valueResult = run(cli, coverage, path.join(directory, "evidence-value"));
         assert.equal(valueResult.status, 1);
         assert.match(valueResult.stderr, /alias:root:-x/);
-        assert.match(valueResult.stderr, /target:experimental/);
-        assert.match(valueResult.stderr, /source-type:rogue-source/);
-        assert.match(valueResult.stderr, /output-format:rogue-format/);
-        assert.match(valueResult.stderr, /mode:rogue-mode/);
+        assert.match(valueResult.stderr, /value:build:--target:experimental/);
+        assert.match(valueResult.stderr, /value:build:--source-type:rogue-source/);
+        assert.match(valueResult.stderr, /value:build:--format:rogue-format/);
+        assert.match(valueResult.stderr, /value:build:--mode:rogue-mode/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -108,7 +110,7 @@ test("rejects an ordinary unowned documentation claim without a marker", async (
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
         assert.match(result.stderr, /command:deploy/);
-        assert.match(result.stderr, /target:experimental/);
+        assert.match(result.stderr, /option:deploy:--target/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -119,7 +121,7 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
         await writeFile(path.join(directory, "public-guides/narrative.md"), "A stale example is npx pokie build --source-type rogue-source --target supported --mode base -x.\n");
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
-        assert.match(result.stderr, /stale documented capability value:source-type:build:rogue-source/);
+        assert.match(result.stderr, /stale documented capability value:build:--source-type:rogue-source/);
         assert.match(result.stderr, /stale documented capability alias:build:-x/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
@@ -133,5 +135,57 @@ test("rejects documentation options that belong to another executable command", 
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
         assert.match(result.stderr, /stale documented capability option:build:--dry-run/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("requires individual owners for newly advertised positionals, help flags, and arbitrary value switches", async () => {
+    const {directory, cli, coverage} = await fixture("", "The build command supports --flavor pistachio.\n");
+    try {
+        await writeFile(cli, `
+const key = process.argv.slice(2).join(" ");
+const root = "Usage: pokie\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  build  build\\n";
+const studio = "Usage: pokie [projectRoot]\\n\\nOptions:\\n  -h, --help  help\\n  --no-open  do not open\\n";
+        const build = "Usage: pokie build <project> [profile]\\n\\nOptions:\\n  -h, --help  help\\n  --target <target> one of: supported\\n  --flavor <flavor> one of: vanilla or pistachio\\n";
+process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : build);
+`);
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.owners = map.owners.filter((entry) => entry.id !== "option:build:--help" && entry.id !== "alias:build:-h");
+        await writeFile(coverage, JSON.stringify(map));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /argument:build:\[profile\]/);
+        assert.match(result.stderr, /option:build:--help/);
+        assert.match(result.stderr, /alias:build:-h/);
+        assert.match(result.stderr, /value:build:--flavor:pistachio/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("checks the freshly built production CLI against the complete public documentation scope", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-production-inventory-test-"));
+    try {
+        const runBuildStep = (arguments_) => {
+            const result = spawnSync(process.execPath, arguments_, {cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+            assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+        };
+        const tsc = path.join(root, "node_modules/typescript/bin/tsc");
+        const shx = path.join(root, "node_modules/shx/lib/cli.js");
+        // This is the smallest fresh CLI build boundary: the command module plus the ESM/CJS
+        // package entry points that its `pokie` imports resolve through. Browser assets are not
+        // loaded by recursive `--help` collection.
+        runBuildStep([path.join(root, "generate-barrels.js")]);
+        runBuildStep([tsc, "--project", "tsconfig.prod.json"]);
+        runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+        runBuildStep([tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]);
+        runBuildStep([path.join(root, "write-cjs-package-json.js")]);
+        runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+        runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
+        const {collect, documentationCapabilities} = await import(checker);
+        const collected = await collect(path.join(root, "dist/cli/pokie.js"));
+        const inventory = collected.inventory;
+        assert.equal(inventory.rootCommands.length, 20);
+        assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 7);
+        const coverageMap = JSON.parse(await readFile(path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"), "utf8"));
+        const publicClaims = await documentationCapabilities(coverageMap, inventory, path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"));
+        assert.ok(publicClaims.has("command:build"));
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
