@@ -1,48 +1,40 @@
 P6V-06 candidate 0560176d6974986c322adf3af8c5413ef48247a6.
-Companion 1e2c8c00457f3af389c0168432c08e63ca441465, clean.
-Candidate..HEAD contains only P6V-06-final evidence paths.
+Companion 1e2c8c00457f3af389c0168432c08e63ca441465 was clean.
+Candidate..evidence-HEAD has no product-tree delta.
 
-P6V-02 fresh desktop and 405px Studio: Home/Projects/Overview/Game Model,
-Game window/Full strips/Analysis, Play empty/settled, Simulation, Replay and
-Build/Export rendered. At 405px, Toggle navigation → Game Model → Full strips
-rendered after repairing the hidden-navigation selector. No product error.
+Retained candidate-bound results checked before this continuation:
+- P6V-03 mathematician: Recommended/Random/Blank, artwork, literal/generated
+  reels, constraints/stacks, persistence, ordinary and feature Play,
+  Simulation, Replay, Outcome Library and Stake export passed.
+- P6V-04 separate Producer: artwork, literal reels/stacks, parameters,
+  persistence, Play, Simulation, Replay export and Build/Export passed.
+- P6V-05: real native-picker import -> diagnostics -> managed edit/save ->
+  XLSX export -> reimport semantic comparison passed; Player parity passed on
+  candidate CLI Replay, package public client, Studio Play, Studio Replay and
+  exact companion. No material mismatch was retained.
 
-P6V-03 fresh mathematician: Recommended/Random/Blank, native artwork,
-literal/generated reels, constraints/stacks, persistence, ordinary and feature
-Play, Simulation, Replay, Outcome Library and Stake export completed through
-rendered controls. No product error.
+Fresh P6V-02 recovered run, 2026-08-24T07:58:39Z:
+- source-checkout Studio launched by `node ./dist/cli/pokie.js --no-open` with
+  a new isolated registry/profile;
+- Design Game -> New Blueprint dialog -> Escape recovery -> Projects showed
+  empty state and disabled Detect -> Design Game -> Create Project succeeded;
+- Workspace Overview; Game Model Game window, Full strips and Analysis; Play
+  empty/New Play session/settled Spin; Simulation RTP/results plus unseeded
+  warning; Replay; Build/Export; 405px Build/Export; Toggle navigation ->
+  Game Model -> Full strips all rendered without a product error.
+- transient rendered SHA-256: Home
+  9485f9bbe03721537520b619818160e20ce8f3f805c66ff22172bf7b86569c81;
+  New Blueprint dialog
+  216a25fca46290258e38a28520412c19185ce3d29fe950c16e585f77f4696632;
+  empty Projects
+  8e843c3648bbd7c8054f5399ded57208b51309e006d2790e3f699fedb3029b8f;
+  Simulation success
+  d9378fec4cf271ae345f7967e3d80fe17874f14671a6943da87d18c4d5dbe6eb;
+  Full strips at 405px
+  1c1e650704300fd052e11cc4dba4f1906aa0205b213102a1b3c2c98aaff9d938.
 
-P6V-04 separate fresh Producer: artwork, literal reels/stacks, visible
-parameters, paylines/paytable/bets/modes/mechanics, persistence, Play,
-Simulation, Replay download, package build, Outcome Library, Stake export and
-reopen all rendered successfully. No product error.
-
-P6V-05 physical PAR/XLSX: real native picker → diagnostics/preview → apply →
-managed edit/save → physical export → native-picker reimport. Canonical semantic
-comparison equal; exported XLSX SHA-256
-0aa24c97e9ae0f41d9930048481758c42b3ebfa4b0204f2fe5190d53cecefad2.
-
-Fresh P6V-05 Player parity after D-Bus launch recovery: source-checkout Studio
-announced its address; candidate CLI Replay, built package npm start/public
-client, Studio Play, Studio Replay and exact companion public client all passed.
-Canonical comparison: orientation [[A,C,A],[A,A,C],[A,A,A]], positions
-[[0,0],[1,0],[2,0]], total win 5, payline 1 (0,0,0), paytable A3=5 at bet 1,
-bet 1, base mode, no feature state. Exactness: candidate 0560176d is an
-ancestor of evidence HEAD; companion 1e2c8c00457f3af389c0168432c08e63ca441465
-was clean. Transient rendered SHA-256: public client
-5d880009c33f0cdaeaabf347a4e266fbb0acbdc873e5dcd5d60b6ef7fcd090df;
-Studio Play afd7eaf85b5214f46608baae0d39d6ad2292ade89a82546c5eae9c3eddc613ad;
-Studio Replay f0e110edee14874d47cd56b9fda1cc650fbbea8af922f3a3171b1d77168b7f3f;
-companion a325610a8108f8ce7e81e3aef7362bb4b4f026003be047e2eaee28b53c695d31.
-
-P6V-02 fresh core inventory: desktop Home/Design Game, empty Projects,
-Overview, Game Model Game window/Full strips/Analysis, empty and settled Play,
-Simulation result plus unseeded warning, Replay, and Build/Export rendered.
-At 405px, Toggle navigation → Game Model → Full strips rendered. Transient
-Home and mobile Full-strips SHA-256: 9485f9bbe03721537520b619818160e20ce8f3f805c66ff22172bf7b86569c81;
-e2ac5e06aec7769ec3112981ff287cada8b2cdc6d6d35496c7c7de3ca9706b35.
-
-P6V-01 retained evidence audit: 11,344,605 bytes / 157 files; historic repeated
-P6V-03 captures remain, so bounded-retention approval is not claimed. P6V-02
-complete fresh editor/dialog/native-picker inventory is likewise not claimed.
-No release approval.
+The repaired persistent harness used all four bounded recovery launches. The
+successful launch did not freshly reach configured Reel Strip Modeler
+edit/preview/apply or a separate P6V-02 native picker. No fixed wait or
+unconfirmed click is reported as a product defect. Status: driver-inconclusive;
+do not make release, packaging, push, publication or Drive claims.
