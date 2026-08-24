@@ -1,15 +1,14 @@
-P6V-06 fresh independent audit
-candidate=29bdb8945a6c6dcfbb15a6ff560dae453c505375 clean before evidence finalization
+P6V-06 focused exact-candidate recovery
+candidate=29bdb8945a6c6dcfbb15a6ff560dae453c505375; active HEAD was its evidence-only docs descendant
 companion=1e2c8c00457f3af389c0168432c08e63ca441465 clean read-only
+machine: npm run build-cli -> passed; generated src/index.ts barrel drift was reverted before audit finalization.
 
-machine: npm run test:targeted -- tests/cli/client/main.test.ts tests/cli/client/sessionControls.test.ts tests/cli/client/player/renderPlayer.test.ts tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts tests/PackageJsonScripts.test.ts
-machine result: 5 suites passed; 33 passed, 2 skipped.
-machine: npm run build-cli -> passed; generated src/index.ts barrel drift restored before evidence.
+retained: 01-design-build-mobile-405.png SHA-256=7c6b050d578378bba179dea92dd425edf698db1d0d7c6130d30761efc5b6e53d (matches retained record).
 
-Studio launch 1: candidate only, `node ./dist/cli/pokie.js --no-open`, fresh visible Chromium profile.
-Rendered: cold Design Game validation error and recovery; Create Project -> Workspace; Game Model; Play spin; 1-round Simulation; Replay session-spin state; exact-outcome generation; Stake Engine Export; 405px Build/Export layout (scrollWidth=405, primary action left=39/right=287.109375); 405px Reel Strip Modeler. No rendered product error.
-Studio launch 2: same exact command and fresh visible profile. Replay's rendered actionable controls were Load and Refresh only; Inspect/Reproduce were not rendered for the recorded Session Spin. This is retained as an unproved replay route, not a product finding.
+Studio launch 1, source checkout command `node ./dist/cli/pokie.js --no-open`: real native picker selected starter.par.xlsx; Studio rendered imported-with-warnings diagnostics, 3x3/four-symbol canonical preview, managed Blueprint save, physical XLSX export and re-import. The rendered re-imported raw model equalled the saved model after key-sorted comparison. Legacy Player continuation then timed out parsing a Studio address and named obsolete candidate 88894fdb; no Player result is retained.
 
-Player runtime isolation: exact companion source copied read-only into an uncommitted runtime directory and resolved against a tarball made from the candidate build; the source companion remained clean. Candidate CLI Replay for seed fixture-round, round 1 returned screen [[A,C,A],[A,A,C],[A,A,A]], totalBet 1, totalWin 5.
+Studio launch 2: Producer route rendered literal reels/stacks, native PNG selection, scatter/free-games, Play, Simulation, Replay JSON download, package build, exact library, Stake export and close/reopen. Its retained runner wrote obsolete candidate 11ff577a, therefore it is diagnostic only.
 
-Not reached within the two Studio-launch limit: Valera Mathematician inspect/reproduce; Valera Producer journey; physical native-picker PAR/XLSX round trip; package, Studio Play, Studio Replay and visible companion Player parity matrix. No release, packaging gate, push, publication, or Drive claim.
+Studio launch 3: exact candidate guard passed. Empty Home; Recommended/Random/Blank/Recommended; Random generated P6V03 Random from seed 20260815 and rendered enabled Use this blueprint; literal preview showed its local Preview result after a completed 200 response; generated-reel A weight, constraint and stack rule rendered; project creation rendered. On the Game Model free-games route, the visible Scatter symbol option K was clicked but its local value did not commit during the bounded wait. No rendered product error appeared. This is selector-inconclusive; no replay, outcome-library, Stake export, persistence, or Player-parity claim follows.
+
+No product defect was rendered. P6V-01 one-to-one mapping and P6V-05 exact canonical Player matrix remain incomplete; controller release/publication/Drive gates were not run.
