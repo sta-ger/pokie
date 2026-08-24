@@ -37,7 +37,7 @@ type PokieWasmComponentManifest = {
 ```
 
 - **Metadata** — `component.id`/`component.version` identify the component build itself, independent of
-  `schemaVersion` (POKIE's own contract version) and `minPokieVersion` (the lowest POKIE release the component
+  `schemaVersion` (POKIE's own contract version) and `minPokieVersion` (the lowest package release the component
   claims compatibility with — declared, not yet enforced by any check in this package).
 - **Session/play/state serialization** — three format ids naming the wire shape the component's own host
   boundary expects for a session's config, one played round, and persisted state. POKIE places no constraint on
@@ -102,7 +102,7 @@ this scan finds.**
 
 - A WASM execution backend: loading, instantiating, and driving session/play/state through a `.wasm` component.
 - A package-to-WASM compiler: turning an arbitrary `tsPackage` into a `.wasm` build.
-- Enforcing `minPokieVersion` against the running POKIE release — declared metadata today, not yet checked by
+- Enforcing `minPokieVersion` against the running package release — declared metadata today, not yet checked by
   anything.
 
 None of the above is implied by a `"wasm"` project resolving successfully, or by `assessWasmPackagingPreflight`

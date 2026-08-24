@@ -276,7 +276,7 @@ function documentedCapabilities(contents, inventory) {
         const documentedPositionals = includePositionals ? [...line.matchAll(/(?:<[^>\n]+>|\[[^\]\n]+\])/g)].filter((match) => {
             const positional = match[0];
             const immediatelyPrecededByOption = /--[a-z][a-z0-9-]*\s*$/i.test(line.slice(0, match.index));
-            return !/^\[options\]$/i.test(positional) && !/[\s`"']|--/.test(positional) && !immediatelyPrecededByOption;
+            return !/^\[options\]$/i.test(positional) && !/^<(?:void|number)>$/i.test(positional) && !/[\s`"']|--/.test(positional) && !immediatelyPrecededByOption;
         }).map((match) => match[0]) : [];
         const executablePositionals = inventory.commands.find((entry) => entry.path === command)?.usage ?? [];
         for (const [index, positional] of documentedPositionals.entries()) {
@@ -296,20 +296,15 @@ function documentedCapabilities(contents, inventory) {
         return command;
     };
     const addInvocations = (text) => {
-        const starts = [...text.matchAll(/(?<![\w-])(?:npx\s+)?pokie(?:\.js)?(?![a-z0-9-])/g)];
+        const starts = [...text.matchAll(/(?<![\w-])(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])/g)];
         for (const [index, start] of starts.entries()) {
             const invocation = text.slice(start.index, starts[index + 1]?.index);
-            const match = invocation.match(/^(?:npx\s+)?pokie(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);
+            const match = invocation.match(/^(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);
             if (!match) continue;
             const rootCommand = match[2];
             // A command token after the executable name is an invocation claim in prose as
-            // well as in code. Do not depend on a fixed lead-verb list: "Try pokie deploy"
-            // is checked just like "Run pokie deploy". A bare package mention followed by
-            // ordinary explanatory prose is not an invocation; unknown commands need either
-            // shell-shaped arguments or to terminate the prose clause.
-            const tail = match[3] ?? "";
-            const unknownInvocation = rootCommand && !rootCommands.has(rootCommand) && tail.trim().length > 0 && !/(?:--[a-z]|<[^>]+>|\[[^\]]+\])/.test(tail);
-            if (unknownInvocation) continue;
+            // well as in code. Do not depend on a fixed lead-verb or shell-shaped-tail rule:
+            // "Pokie deploy is available." claims the same public command as a fenced example.
             const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
             addInvocation(rootCommand, remainder);
         }
@@ -377,7 +372,7 @@ function documentedCapabilities(contents, inventory) {
             continue;
         }
         if (fencedCode) continue;
-        const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
+        const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?![a-z0-9-])(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/);
         if (heading && (!heading[1] || rootCommands.has(heading[1])) && !/\bpokie(?:\.js)?\b/i.test(heading[2] ?? "")) {
             headingContext = heading[1] ? commandFor(heading[1], ` ${heading[1]}${heading[2] ?? ""}`) : "root";
             capabilities.add(headingContext.includes(" ") ? `subcommand:${headingContext}` : `command:${headingContext}`);

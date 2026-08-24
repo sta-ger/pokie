@@ -368,9 +368,9 @@ npm install
 
 Options:
 
-- `<project>` — a path pokie resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
+- `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
   already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
-  unrecognized throws, naming the project types pokie understands.
+  unrecognized throws, naming the project types the CLI understands.
 - `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, `wasm`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building
@@ -680,7 +680,7 @@ Failure modes:
 
 - `<project>` missing, or not recognized as a POKIE project at all (`pokie build` with no arguments, or an unknown
   option) throws a `Usage: pokie build <project> --target <artifact> [--out <path>]` error naming the project types
-  pokie understands.
+  the CLI understands.
 - `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`,
   throws before `<project>` is even resolved, listing the full accepted vocabulary.
 - `--target` given a value `<project>`'s own resolved type can't build (e.g. `outcomeLibrary` from a `blueprint`

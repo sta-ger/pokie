@@ -78,8 +78,8 @@ The manifest also carries two distinct, deliberately-never-conflated pokie-versi
 ```ts
 type OutcomeLibraryBundleManifest = {
     // ...
-    pokieVersion: string;         // which pokie release built *this bundle file* (ran "pokie outcomelibrary build")
-    artifactPokieVersion: string; // which pokie release *computed* the outcomes themselves
+    pokieVersion: string;         // which package release built *this bundle file* (ran the Outcome Library build)
+    artifactPokieVersion: string; // which package release *computed* the outcomes themselves
     // ...
 };
 ```
@@ -88,7 +88,7 @@ type OutcomeLibraryBundleManifest = {
 (`StakeEngineManifest`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
 `artifact.provenance.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
 checks) and cross-checked, in deep validation, against every outcome's own provenance. The two are never required
-to match: a bundle can legitimately be (re)packaged by a newer or different pokie release than the one that
+to match: a bundle can legitimately be (re)packaged by a newer or different package release than the one that
 originally computed its outcomes (e.g. outcomes simulated once, bundled repeatedly afterward) — treating a
 difference there as corruption would reject a perfectly valid bundle.
 

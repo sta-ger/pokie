@@ -96,7 +96,7 @@ await appendFile("/tmp/p7-public-command-capability/plan", JSON.stringify({args:
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
-test("isolates expected artifacts and cannot turn a runtime-inspected client into a direct control request", async () => {
+test("isolates expected artifacts and rejects an abstract-endpoint request extracted from the readable client", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
     try {
         const concurrentWriter = await driver(directory, `
@@ -116,8 +116,12 @@ import {spawnSync} from "node:child_process";
 import path from "node:path";
 const inspectedClient = await readFile(process.env.P7_PUBLIC_CLI, "utf8");
 if (/secret|socket/i.test(inspectedClient)) throw new Error("runtime-inspected client exposed a reusable control credential");
-const socket = net.createConnection(path.join(path.dirname(process.env.P7_PUBLIC_CLI), ".p7-public-cli.sock"));
-await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({secret: "extracted-at-runtime", args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("error", resolve); socket.on("close", resolve); });
+const endpoint = inspectedClient.match(/net\\.createConnection\\(([^)]+)\\)/)?.[1];
+if (!endpoint) throw new Error("could not extract the current abstract endpoint");
+const socket = net.createConnection(JSON.parse(endpoint));
+let reply = "";
+await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({pid: process.pid, args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("data", (data) => { reply += data; }); socket.on("error", resolve); socket.on("close", resolve); });
+if (reply.startsWith("ok")) throw new Error("direct endpoint request was accepted without the invocation capability");
 const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
 process.exitCode = result.status;
 `);

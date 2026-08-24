@@ -60,26 +60,42 @@ async function createPublicCommandRequestClient(destination, endpoint) {
     // is not a command request channel.
     await writeFile(destination, `#!/usr/bin/env node
 import net from "node:net";
+import {readFileSync} from "node:fs";
+const hostPid = Number((readFileSync("/proc/self/status", "utf8").match(/^NSpid:\\s+(.+)$/m)?.[1].trim().split(/\\s+/)[0]) ?? process.pid);
 const connection = net.createConnection(${JSON.stringify(endpoint)});
-connection.on("connect", () => connection.end(JSON.stringify({args: process.argv.slice(2)}) + "\\n"));
+connection.on("connect", () => connection.end(JSON.stringify({pid: hostPid, args: process.argv.slice(2)}) + "\\n"));
 connection.on("data", (data) => { process.exitCode = data.toString("utf8").startsWith("ok") ? 0 : 1; });
 connection.on("error", () => { process.exitCode = 1; });
 `);
     await chmod(destination, 0o555);
 }
 
-async function publicCommandCapability() {
+async function requestComesFromInvocationClient(parsed, invocationClientPath) {
+    if (!Number.isSafeInteger(parsed.pid) || parsed.pid < 1) return false;
+    try {
+        const commandLine = (await readFile(`/proc/${parsed.pid}/cmdline`)).toString("utf8").split("\0").filter(Boolean);
+        // An abstract socket name is intentionally visible to the client. It is not, by
+        // itself, a capability: only the immutable client process invoked at P7_PUBLIC_CLI may
+        // submit a request, and its kernel-visible command line must agree with that request.
+        return commandLine[1] === invocationClientPath
+            && JSON.stringify(commandLine.slice(2)) === JSON.stringify(parsed.args);
+    } catch {
+        return false;
+    }
+}
+
+async function publicCommandCapability(invocationClientPath) {
     const endpoint = `\0pokie-p7-public-command-${randomBytes(24).toString("hex")}`;
     const requests = [];
     const server = net.createServer((connection) => {
         let input = "";
         connection.setEncoding("utf8");
         connection.on("data", (chunk) => { input = `${input}${chunk}`; });
-        connection.on("end", () => {
+        connection.on("end", async () => {
             try {
                 if (input.length > MAX_COMMAND_ARGUMENT_CHARS + 256 || !input.endsWith("\n")) throw new Error("invalid request");
                 const parsed = JSON.parse(input);
-                if (!requestIsBounded(parsed)) throw new Error("invalid request");
+                if (!requestIsBounded(parsed) || !await requestComesFromInvocationClient(parsed, invocationClientPath)) throw new Error("invalid request");
                 requests.push(parsed);
                 connection.end("ok\n");
             } catch {
@@ -145,7 +161,7 @@ function driverResult(script, driverDirectory, inputDirectory, clientPath, envir
 }
 
 function requestIsBounded(parsed) {
-    return Array.isArray(parsed.args) && parsed.args.length <= MAX_COMMAND_ARGUMENTS && parsed.args.every((argument) => typeof argument === "string") && parsed.args.join("").length <= MAX_COMMAND_ARGUMENT_CHARS;
+    return Number.isSafeInteger(parsed.pid) && parsed.pid > 0 && Array.isArray(parsed.args) && parsed.args.length <= MAX_COMMAND_ARGUMENTS && parsed.args.every((argument) => typeof argument === "string") && parsed.args.join("").length <= MAX_COMMAND_ARGUMENT_CHARS;
 }
 
 function provenanceBoundArguments(args, inputDirectory) {
@@ -222,7 +238,7 @@ async function runOnce(label, arguments_) {
             provenance.push(`${input} -> ${destination} (${stat.isDirectory() ? await directoryProvenance(destination) : `sha256=${await digest(destination)}`})`);
         }
         await chmod(inputDirectory, 0o755);
-        capability = await publicCommandCapability();
+        capability = await publicCommandCapability(wrapperPath);
         await createPublicCommandRequestClient(publicClientPath, capability.endpoint);
         const result = await driverResult(driverScript, driverDirectory, inputDirectory, publicClientPath, {...process.env, P7_INPUT_DIR: "/tmp/p7-inputs", P7_PUBLIC_CLI: wrapperPath});
         state.records = await executeRequestedCommands(capability.requests, arguments_.cli, artifactDirectory, inputDirectory, arguments_.expected);

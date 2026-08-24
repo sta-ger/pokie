@@ -125,6 +125,15 @@ test("rejects an ordinary unowned documentation invocation without a marker", as
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
+test("rejects a punctuated narrative claim for an unknown command", async () => {
+    const {directory, cli, coverage} = await fixture("", "Pokie deploy is available.\n");
+    try {
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /command:deploy/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
 test("discovers narrative documentation and rejects command-scoped stale claims", async () => {
     const {directory, cli, coverage} = await fixture("", "The normal command is pokie build --target supported.\n");
     try {
