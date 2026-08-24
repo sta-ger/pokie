@@ -1,47 +1,45 @@
-# P6V-06 independent exact-candidate hard closeout — verification required
+# P6V-06 exact-candidate hard closeout — incomplete
 
-## Corrected candidate binding
+Candidate verified: `88894fdb1a300978ccdcee1e9ae831de5423c9e1`.
+Companion inspected read-only: `1e2c8c00457f3af389c0168432c08e63ca441465`
+(clean). The candidate is an evidence-only descendant of
+`782810b91be076b254ae110e0037725101fb90c1`: its intervening paths are only
+this final record and the independent audit record.
 
-The prior passing heading and closeout table were incorrect. Their fresh
-P6V-06 work was run against
-`cf26cd3110cdf5d3f01deb533efb7b031039d9ed`, while the correction review starts
-from `782810b91be076b254ae110e0037725101fb90c1`. Those candidates are
-different, and the latter includes a changed targeted integration test after
-the former. This documentation correction is an evidence-only descendant of
-`782810b9`; it does not make either candidate an accepted product SHA.
+One fresh, isolated 405px Studio run used the candidate build and exactly
+`node ./dist/cli/pokie.js --no-open`. Its concise rendered transcript is
+[`transcript.txt`](transcript.txt). It reached empty Home, Recommended/Random/
+Blank/recommended replacement, Valera model editing, artwork, literal and
+generated reels, modes/mechanics, ordinary and free-games Play, Simulation,
+Outcome Library, Stake Export, close and reopen. No browser console diagnostic
+or failed Studio request was recorded. The Replay page had no rendered
+Inspect/Reproduce action, so this run does not claim an inspectable replay
+result. The screenshots are representative rendered mobile proof, not a
+substitute for the missing journeys.
 
-The companion checkout is clean at
-`1e2c8c00457f3af389c0168432c08e63ca441465`. That SHA remains the committed
-P6V-05 browser-runtime adoption, but it is not a substitute for binding the
-P6V-05 physical PAR/XLSX and Player results to one accepted POKIE candidate.
+## One-to-one final map
 
-The retained build, CLI and 405px rendered observations below are preserved as
-the historical `cf26cd31` record. They do not establish an exact-candidate
-closeout for `782810b9` or this evidence-only descendant. No controller-owned
-release, packaging, push, publication, or Drive action ran.
-
-## One-to-one closeout map
-
-| Immutable step | Retained result and exact binding | Current final-verifier outcome |
+| Immutable step | Exact-candidate evidence now available | Closeout verdict |
 | --- | --- | --- |
-| P6V-01 retained-evidence hygiene | The independent audit is bound to `768849aee11881c653a4c224603e8aacb64123e2`; its P6-10 index finding was later corrected by `d2512414`. It is bounded retained evidence, not a rerun on `782810b9`. | **Verification required.** Recheck the retained matrix, links, bounded set, and both exact trees on the accepted SHA. |
-| P6V-02 Design/UX | The rendered audit is bound to `540a60ebd2a1f3a5c9d4cdf0bfcde96f8085b4b0`. | **Verification required.** Its Design/UX and canonical Studio-surface result cannot approve a later candidate. |
-| P6V-03 Valera Mathematician | The retained final passed rerun is bound to `adf692fad3b98fe327f06f3c2de0101bbe334dd6`; the P6V-06 405px journey is separately bound to `cf26cd31`. | **Verification required.** Neither record is a fresh independent result for `782810b9`. |
-| P6V-04 Valera Producer | The separate Producer README is bound to `bc810a69dba8ee4e036906fd9c10dda9fefb5680`. No retained machine-owned `run-11-producer` record provides a different exact candidate binding. | **Verification required.** Fresh Producer artwork/reels/modes, Play, Simulation, Replay download, Build, Outcome Library, Stake Export, and reopen evidence must name the accepted SHA. |
-| P6V-05 PAR/XLSX and Player | The physical PAR/XLSX and Player matrix is bound to POKIE `caf8132177b23abc34096c6c3ce4079330b34080` and companion `1e2c8c00457f3af389c0168432c08e63ca441465`. Its claimed `run-10` has no recorded POKIE candidate SHA. | **Verification required.** Fresh native-picker import/edit/export/reimport, public CLI equality, and every Player surface must be bound to the same accepted POKIE SHA and the committed companion tree. |
+| P6V-01 retained-evidence hygiene | This directory contains one README, one concise transcript, and two PNGs (about 0.51 MiB total); every file is below 5 MiB. Superseded `cf26cd31` transcript/build/screenshot files were removed rather than retained as parallel current proof. | **Not complete.** The current audit did not independently revalidate every retained P6/P6R/P6T link and unique-proof claim. |
+| P6V-02 Design/UX | Fresh 405px rendered model and Build/Export states are retained below. The historical full Design/UX record names `540a60ebd2a1f3a5c9d4cdf0bfcde96f8085b4b0`, not this SHA. | **Not complete.** The desktop/cold-start/canonical-surface inventory was not freshly rerun. |
+| P6V-03 Valera Mathematician | Fresh candidate-bound rendered journey completed the listed model, Play, Simulation, Outcome Library, Stake Export, and reopen paths. | **Not complete.** Replay offered no action, so its required inspect/reproduce result is unproved. |
+| P6V-04 Valera Producer | The retained Producer record names `bc810a69dba8ee4e036906fd9c10dda9fefb5680`; no fresh Producer journey ran here. | **Not complete.** Do not reuse that historical row as current proof. |
+| P6V-05 PAR/XLSX and Player | The companion is exact and clean. The retained physical PAR/Player record names product `caf8132177b23abc34096c6c3ce4079330b34080`, not this SHA. | **Not complete.** No fresh native-picker round trip or five-surface Player comparison ran here. |
 
-No unresolved P0, P1, or material P2 can be ruled out for a final candidate
-until this complete map is rerun. Historical passed observations remain useful
-evidence for their recorded candidates only; they are not a final verdict.
+Accordingly this audit finds no newly rendered P0/P1/material-P2 product error
+in the one completed journey, but it cannot rule out such issues for the
+unreached criteria and is not approval evidence. `check:release`, packaging,
+push, publication, and Drive round trip remain controller-owned and were not
+run or claimed.
 
 ## Retained files
 
 | File | SHA-256 | Purpose |
 | --- | --- | --- |
-| `build-launch-transcript.txt` | `57bd57d0ae629b2d1a9c561cf2f78bf6e89cb843468db152e8dbc2ac042c44a8` | Historical `cf26cd31` build and CLI runtime record. |
-| `rerun-transcript.txt` | `9b28224d8cc62cf9a82b4bf081a3e26fc7190ad3a4c5d9b5dedc3794e961163f` | Historical `cf26cd31` 405px rendered closeout record. |
-| `workspace-after-materialization.png` | `cb17008479dc4abd87ad69f79b799221b7012ea005ab406bbc10771f07ab4ca8` | Historical `cf26cd31` reopened-Workspace proof. |
+| `transcript.txt` | `8043521c84e5dc526d35794a0aa1f1060b1a4616f2b99b33dfd3fc13b318f9a3` | Concise exact-candidate rendered and tree-state record. |
+| `03-model-mobile-405.png` | `62b00117c93f2f0d2a973697f637f342688627075a80f4b282c49b05e8bc7397` | 405px model/reels/paytable/bets state. |
+| `10-stake-export-mobile-405.png` | `f5d6fd34be55e69a87494e33f5103eae98ede9f8c77f57ed46eaeba48f004c1f` | 405px successful Stake Engine export state. |
 
-No generated project/output tree, browser profile, harness, raw full log, or
-automation source is retained. Each retained file is below 5 MiB; the P6V-06
-evidence set remains below 20 MiB.
+No generated project/output tree, browser profile, harness, PID file, raw log,
+or generated workbook is retained.

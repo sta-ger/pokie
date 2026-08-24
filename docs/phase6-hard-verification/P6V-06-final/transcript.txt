@@ -1,0 +1,16 @@
+P6V-06 exact-candidate partial hard-closeout audit
+candidate=88894fdb1a300978ccdcee1e9ae831de5423c9e1
+companion=1e2c8c00457f3af389c0168432c08e63ca441465 clean
+candidate..HEAD paths: docs/phase6-hard-verification/P6V-06-final/README.md; docs/phase6-hard-verification/P6V-06-independent-final-audit.md
+build: npm run build-cli completed successfully before launch
+launch: node ./dist/cli/pokie.js --no-open; fresh HOME/XDG Studio registry; fresh Chrome profile; 405px viewport
+fresh Home registry rendered empty
+Blueprint choices rendered: Recommended, Random generated and applied, Blank, final Recommended
+Model rendered: valid Valera name/id; all model sections; artwork selection; literal preview; generated weights, constraint and stack; Apply
+Workspace rendered: persisted modes and scatter 3x -> 5 free-games mechanic; ordinary win; configured free-games result; 1,000-round Simulation
+Build/Export rendered: exact Outcome Library success; Stake Engine Export success (HTTP 201)
+Persistence rendered: project closed, listed in Projects, reopened
+Diagnostics: no browser console diagnostic; no failed Studio request
+Replay rendered with no Inspect/Reproduce action; not claimed as passed
+unreached: P6V-02 complete inventory; P6V-04 Producer journey; P6V-05 physical PAR/XLSX and all Player surfaces
+verdict: incomplete; no release, packaging, publication, push, or Drive claim
