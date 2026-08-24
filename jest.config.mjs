@@ -222,6 +222,14 @@ export default {
             ],
         },
         {
+            // P7 contract checks are executable Node ESM scripts. Keep them isolated from the
+            // TypeScript source lane so an exact --runTestsByPath invocation can discover them.
+            displayName: "p7-scripts",
+            testEnvironment: "node",
+            moduleFileExtensions: ["mjs", "js"],
+            testMatch: ["<rootDir>/tests/scripts/**/*.test.mjs"],
+        },
+        {
             displayName: "pokie-examples",
             testEnvironment: "jsdom",
             // jest-environment-jsdom defaults package "exports" resolution to the "browser" condition,
