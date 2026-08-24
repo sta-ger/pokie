@@ -19,3 +19,12 @@ and exact companion Vite client rendered identical 3x3 symbols/highlights,
 win 5, paytable A3=5/B3=3/C3=1, bet 1, base mode and no feature state.
 
 P6V-01 and P6V-02 remain not reached. No release approval.
+
+P6V-02 resume on exact candidate after one `npm run build-cli`: fresh isolated
+Studio launches from `node ./dist/cli/pokie.js --no-open` rendered Home/Design,
+Projects, Overview, Game Model tabs, Play empty/settled, Simulation RTP/results,
+Replay, Build/Export and 405px Build/Export.  At mobile Game Model the rendered
+navigation click had no local state, pending indicator or error; its one safe
+idempotent retry also remained on Build/Export.  The driver/readiness result is
+inconclusive; it is not a product finding, and the remaining P6V-02 editor,
+dialog and picker inventory was not claimed.
