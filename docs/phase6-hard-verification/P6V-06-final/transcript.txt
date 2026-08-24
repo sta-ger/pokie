@@ -12,13 +12,11 @@ Barrel invariant
 Candidate build
   npm run build-cli                                exit 0 (one build only)
 
-Visible Studio workflow (two fresh isolated profiles/registries)
+Visible Studio workflow (one new isolated profile/registry)
   Launch command: node ./dist/cli/pokie.js --no-open
-  Launch 1: Studio Home rendered. Create Project was clicked before a semantic validation result.
-  The still-rendered Home/Create Project control showed the action had not been accepted.
-  Launch 2: the assigned harness was repaired in place to scroll the enabled, visible control into view and exclude aria-disabled controls.
-  Studio Home again rendered, with “Studio is checking this model automatically.”
-  No validation success, pending transition, or rendered error appeared before the bounded semantic wait.
-  Create Project did not reach a project-only control. No duplicate non-idempotent action was sent.
+  The persistent assigned harness was repaired in place: its semantic-prefix rendered-control lookup now verifies the current hit target, pressed/released coordinates, and a local Create Project transition.
+  Studio Home rendered. One enabled visible Create Project action was sent.
+  Local semantic success: Starter Slot Workspace rendered with Valid — no issues found, managed Blueprint location, and Game Model / Play / Simulation / Replay / Build/Export controls.
+  No fixed delay or page-wide text was used as proof; no rendered product error occurred.
 
-Verdict: readiness/driver inconclusive. No product defect was rendered, but P6V-01 through P6V-05 cannot be approved from older-SHA records.
+Exact-candidate mapping: P6V-01 hygiene/identity checks pass; P6V-02 has only its common current Create Project entry rerun; P6V-03, P6V-04 and P6V-05 retain only older-product-SHA specialised evidence. Verdict: inconclusive, not a product finding. The absence of unresolved P0/P1/material-P2 cannot be approved. Controller-owned release, packaging, post-merge, push, publication, and Drive checks remain unclaimed.
