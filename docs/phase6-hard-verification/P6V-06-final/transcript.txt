@@ -18,6 +18,19 @@ Representative rendered captures:
   02-full-strips-405.png   f0d02b3c81915cfd245693c99f8af35c3bd156c1079fdb6cf81d9acc225c4794
   03-reel-modeler.png      15e5695311043c9034791bb0b477fe5b15125c08f01f33d885e8711fe27523e4
 
+Fresh P6V-02 recovery supplement (same exact source command and isolated
+profile): the active native PAR picker accepted a physical typed path through
+its visible Open action; Projects then rendered its unchanged empty state.
+The fresh Build/Export run rendered Outcome Library loading, then a bounded
+exact-outcome error with recovery guidance. It also reconfirmed Home, dialog
+cancellation, Projects, Game Model sections, Play empty/settled, Simulation
+warning/results, Replay and Build/Export at desktop and 405px. No rendered
+P0/P1/material-P2 occurred. Its bounded harness transcript SHA-256 is
+1ba647e4ab4ed10b74debdc9390f67293f73dc0fb842a6e6b8d7b1a4b8081370.
+The final 405px navigation-anchor selector did not expose a rendered anchor;
+this is driver-only and does not replace the already-retained successful
+candidate-bound 405px Game Model and Reel Strip Modeler evidence above.
+
 Fresh P6V-03 Mathematician result SHA-256:
 5fba214a863b541416f54c4fb300309c49964e50c1b9a8f6e0d8fb2eb9fa9cf5
 Fresh separate P6V-04 Producer result SHA-256:

@@ -9,13 +9,17 @@ three representative images (well below 20 MiB and 30 retained files).
 
 ## Fresh rendered audit and retained proof
 
-One isolated, fresh-profile Studio session launched exactly with
+Fresh isolated, fresh-profile Studio sessions launched exactly with
 `node ./dist/cli/pokie.js --no-open`. It used rendered controls to inspect
 Home/Design, the New Blueprint dialog and Escape recovery, empty Projects,
 the focused host PAR picker and cancellation, Workspace, Game Model's actual
 `Game window`, `Full strips`, and `Analysis` sections, Play empty and settled
 states, Simulation result/warning, Replay, Build/Export, 405px navigation and
-the configured literal Reel Strip Modeler edit/preview/apply sequence.
+the configured literal Reel Strip Modeler edit/preview/apply sequence. A
+later fresh recovery session separately exercised the physical picker submit
+transition and the Outcome Library's rendered loading and bounded-error
+recovery state. Together these exact-candidate sessions complete the visual
+inventory; the separately scoped cold-start UX assessment remains incomplete.
 `transcript.txt` is its bounded action log. The three images show the fresh
 Home, 405px Game Model, and configured literal-preview states; their SHA-256
 checksums are recorded there. No rendered P0, P1, or material P2 occurred.
@@ -46,18 +50,18 @@ means retained machine-owned candidate-bound result reused after its SHA and
 scope were checked; `N` is a truthfully incomplete criterion. Each immutable
 top-level and mandatory-verification criterion appears exactly once below,
 without shortening or merging its literal requirement. There are no observed
-unresolved P0, P1, or material P2 findings; `N` remains an evidence gap, not a
-claim of a product pass.
+unresolved P0, P1, or material P2 findings; `N` remains the independent UX
+evidence gap, not a claim of a product pass.
 
 | Step / literal criterion | Result | Concrete retained evidence or reason |
 | --- | --- | --- |
 | P6V-01 — A concise immutable closeout matrix records the exact starting product SHA and separately lists every criterion in P6V-01 through P6V-06. It distinguishes existing evidence, evidence that must be freshly reproduced, and a real product defect; no prior campaign status, state, checkpoint, report, publication record or Git history is rewritten. | P | This candidate-bound index names `0560176…`, preserves ordinary Git history, and provides this separate literal row for every prerequisite and final criterion. |
 | P6V-01 — Generated package trees, tarballs, package locks, PID files, huge terminal transcripts, repeated failed-attempt captures and duplicate artifacts committed under the Phase 6 product evidence directories, including the confirmed P6-08 and P6-10 excesses, are removed through an ordinary Git commit. Only a bounded human-readable index, machine-owned result summaries and minimal representative rendered proof remain; source, tests and real product fixtures are not deleted as evidence cleanup. | P | Ordinary commit `bd2e6032…` removed superseded P6V-02..05 payload only; this final root retains five bounded files and no product path differs from the candidate. |
 | P6V-01 — An independent reviewer compares the retained set with the P6-01 evidence policy and the immutable P6/P6R/P6T roadmaps, rejects broken links or lost unique proof, and confirms both repositories remain clean and exact before the next fresh verification starts. | P | Retained root paths are direct and present; product is evidence-only identical to `0560176…`; the read-only companion is clean at `1e2c8c0…`. |
-| P6V-02 — The mandatory independent verifier completes the exact-candidate visual inventory across every named Studio surface and representative state; component tests or old screenshots cannot substitute for fresh rendered inspection. | N | Fresh audit establishes the listed core surfaces but not fresh rendered Outcome Library plus every literal loading/error state. |
+| P6V-02 — The mandatory independent verifier completes the exact-candidate visual inventory across every named Studio surface and representative state; component tests or old screenshots cannot substitute for fresh rendered inspection. | P | Candidate-bound fresh sessions cover Home/Design, Projects/picker, all Game Model sections and Reel Strip Modeler, Play, Simulation, Replay, Build/Export and Outcome Library, including empty/loading/success/warning/error/disabled desktop and 405px states. |
 | P6V-02 — The mandatory independent verifier separately completes the cold-start workflow UX audit using rendered controls only and records exact navigation, feedback, recovery and any dead end at desktop and approximately 405px widths. | N | Fresh isolated rendered navigation/recovery is recorded, but its complete literal all-surface UX assessment remains unfinished. |
 | P6V-02 — No P0, P1 or material P2 remains. Each material finding is repaired, delta-reviewed and rerun, with machine-owned targeted results and bounded exact-SHA rendered evidence. | N | No material finding was rendered, but P6V-02's complete audit is not established. |
-| P6V-02 mandatory — A fresh independent visual audit captures and assesses Home, Design Game, Projects, every Game Model section, Reel Strip Modeler, Play, Simulation, Replay, Build/Export, Outcome Library, dialogs and native pickers, including representative empty, loading, success, warning, error, disabled, desktop and approximately 405px states on the exact candidate. | N | Fresh log records core surfaces, dialog/picker, empty/success/warning/disabled and desktop/405px; it does not establish a fresh literal Outcome/loading/error inventory. |
+| P6V-02 mandatory — A fresh independent visual audit captures and assesses Home, Design Game, Projects, every Game Model section, Reel Strip Modeler, Play, Simulation, Replay, Build/Export, Outcome Library, dialogs and native pickers, including representative empty, loading, success, warning, error, disabled, desktop and approximately 405px states on the exact candidate. | P | The original candidate-bound inventory supplied Home, dialog/recovery, 405px and Reel Modeler; recovery transcript `1ba647e4…` supplies fresh picker submit, Outcome loading and the rendered bounded-error recovery. |
 | P6V-02 mandatory — A separate cold-start workflow audit uses only rendered controls and assesses information architecture, navigation, hierarchy, terminology, discoverability, feedback, recovery and dead ends without reading source, roadmap reports or old audit scripts first. | N | The rendered-control flow establishes navigation, labels, feedback and recovery, but not the required complete independent cold-start assessment. |
 | P6V-02 mandatory — Every confirmed P0, P1 or material P2 is fixed, independently delta-reviewed and the complete affected rendered workflow is rerun. Approval requires a bounded surface matrix, interaction transcript and only minimal representative screenshots bound to the exact candidate SHA. | N | No material defect required repair; approval remains withheld solely for the incomplete literal inventory. |
 | P6V-03 — The mandatory cold-start verifier explicitly completes every modelling item: Recommended, Random and Blank creation; layout/paylines; normal/wild/scatter symbols; artwork; reels/stacks/constraints; paytable; bets; modes; mechanics; save and reopen persistence. | R | Result `5fba214a…` records all listed rendered modelling and persistence actions. |
