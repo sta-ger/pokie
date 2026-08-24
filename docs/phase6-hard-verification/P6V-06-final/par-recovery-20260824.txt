@@ -1,0 +1,16 @@
+P6V-06 focused exact-candidate PAR recovery — concise rendered transcript
+
+Candidate product SHA: aa091dd0290c53e4cc4f4638b27790c10aabe930
+Companion SHA: 1e2c8c00457f3af389c0168432c08e63ca441465 (clean)
+Command for each fresh Studio launch: node ./dist/cli/pokie.js --no-open
+Harness: controller-owned P6V-06-58cc862de6cc8aff/current.mjs; eight fresh-profile launches.
+
+Rendered successes on the final recovered workflow:
+- The native picker was activated and verified active before it selected starter.par.xlsx.
+- Studio Detect diagnosed the selected workbook as a PAR sheet and rendered provenance/warnings.
+- The recovered preview step rendered Preview canonical model; its request completed and rendered Continue to Apply / Export.
+- The recovered Apply / Export step rendered Apply and Export. The preview backend request completed.
+- Apply → Confirm rendered the canonical PAR model in the Design Game editor.
+
+Unresolved driver observation:
+- The directly labelled Game name input did not show the typed rendered value in the final two launches and no local pending/error state appeared. This prevents the remaining edited-save, physical export/reimport, semantic comparison, and Player-parity workflow. No rendered product error or product defect was observed.
