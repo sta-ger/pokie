@@ -1,36 +1,33 @@
-# P6V-06 independent exact-candidate closeout — incomplete
+# P6V-06 independent exact-candidate closeout — driver inconclusive
 
 Product candidate: `0560176d6974986c322adf3af8c5413ef48247a6`.
-Read-only companion candidate: `1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
+This committed evidence descendant has no product-tree delta from that SHA.
+Read-only companion: `1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
 
-This evidence-only descendant records fresh Studio launches from this source
-checkout using only `node ./dist/cli/pokie.js --no-open` with isolated runtime
-profiles and registries.
+Fresh isolated Studio launches used only `node ./dist/cli/pokie.js --no-open`.
+P6V-02's recovered 405px route opened the rendered **Toggle navigation** before
+selecting **Game Model**, then reached **Full strips**. P6V-03 completed its
+fresh mathematician journey, including Recommended/Random/Blank, native
+artwork, literal/generated reels, constraints/stacks, persistence, ordinary and
+feature Play, Simulation, Replay, Outcome Library and Stake export. The
+separate P6V-04 Producer journey completed its whole rendered checklist,
+including artwork, parameters, Play, Simulation, Replay export, Build/Export,
+and close/reopen.
 
-Completed: separate rendered P6V-03 mathematician and P6V-04 producer journeys;
-P6V-05 physical native-picker XLSX import/edit/export/reimport/save (export
-SHA-256 `0c2fc97b32e2f0accb77980cf63497dea50b6abb85c81beed3a282ca71138a73`);
-and P6V-05 Player parity. CLI Replay, package `npm start`, Studio Play, Studio
-Replay and the exact companion client agreed on 3x3 `[[A,C,A],[A,A,C],[A,A,A]]`,
-winning positions `[[0,0],[1,0],[2,0]]`, win `5`, paytable `A 3→5; B 3→3; C
-3→1`, bet `1`, base mode and no feature state.
+P6V-05's physical native-picker path passed: import → diagnostics/preview →
+managed edit/save → XLSX export → reimport. The saved canonical model and the
+model visibly rendered after reimport compared equal; the recorded output hash
+is `0aa24c97e9ae0f41d9930048481758c42b3ebfa4b0204f2fe5190d53cecefad2`.
+Its candidate-bound Player continuation did not produce a result: the repaired
+parity runner timed out waiting for its fresh Studio address after the package
+surface. This is a driver/readiness limitation, not a rendered product defect.
 
-P6V-02 was freshly resumed from this exact candidate after `npm run build-cli`.
-A new isolated Studio launch reached Home/Design, Projects empty/import state,
-workspace Overview, Game Model (Game window, Full strips and Analysis), Play
-empty and settled-spin states, Simulation result, Replay, Build/Export and an
-unclipped 405px Build/Export surface through rendered controls.  At 405px, the
-rendered Game Model navigation did not accept its first click while Build/Export
-remained rendered and no local pending/error state appeared.  One safe
-idempotent retry was emitted, but its semantic result was not captured before
-the verifier driver ended.  This is a driver-inconclusive observation, not a
-product defect.  The required
-complete P6V-02 inventory (including editor, dialogs and native picker) was
-therefore not completed and no release claim is made.
+P6V-01 also remains unapproved: the retained Phase 6 tree is 11,344,771 bytes
+across 157 files, including historic repeated P6V-03 captures. This run did
+not prune or relabel that historical evidence. P6V-02 remains incomplete
+because its complete editor/dialog/native-picker visual inventory was not
+freshly reproduced after the later Studio changes. No release, packaging,
+publication, push, or Drive claim is made.
 
-Fail closed: P6V-02's full independent Design/UX inventory and P6V-01's fresh
-criterion-by-criterion mapping were not reached. This is not release approval;
-no P0/P1/material-P2 defect was observed in the completed journeys.
-
-`transcript.txt` is the bounded record. Generated workbooks, profiles,
-automation, raw logs and screenshots are transient and uncommitted.
+`transcript.txt` is the bounded record. Generated profiles, workbooks,
+automation and raw logs are transient and uncommitted.

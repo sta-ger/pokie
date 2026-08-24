@@ -1,31 +1,31 @@
-P6V-06 candidate 0560176d6974986c322adf3af8c5413ef48247a6
+P6V-06 candidate 0560176d6974986c322adf3af8c5413ef48247a6.
 Companion 1e2c8c00457f3af389c0168432c08e63ca441465, clean.
+Candidate..HEAD contains only P6V-06-final evidence paths.
 
-P6V-03 fresh mathematician: Recommended, Random, Blank, layout/paylines,
-wild/scatter, native artwork, literal/generated reels, stacks/constraints,
-paytable, bets/modes/mechanics, persistence, Play, Simulation, Replay,
-Outcome Library and Stake Engine export all completed through rendered controls.
+P6V-02 fresh desktop and 405px Studio: Home/Projects/Overview/Game Model,
+Game window/Full strips/Analysis, Play empty/settled, Simulation, Replay and
+Build/Export rendered. At 405px, Toggle navigation → Game Model → Full strips
+rendered after repairing the hidden-navigation selector. No product error.
 
-P6V-04 fresh producer: native artwork, literal reels/stacks, parameters,
-paylines/paytable/bets/modes/mechanics, persistence, Play, Simulation, Replay
-download and Build/Export all completed through rendered controls.
+P6V-03 fresh mathematician: Recommended/Random/Blank, native artwork,
+literal/generated reels, constraints/stacks, persistence, ordinary and feature
+Play, Simulation, Replay, Outcome Library and Stake export completed through
+rendered controls. No product error.
 
-P6V-05 PAR: native picker → diagnostics → preview → Apply/Confirm → edit →
-export → native-picker reimport → edited preview → managed project save.
-Export SHA-256: 0c2fc97b32e2f0accb77980cf63497dea50b6abb85c81beed3a282ca71138a73
+P6V-04 separate fresh Producer: artwork, literal reels/stacks, visible
+parameters, paylines/paytable/bets/modes/mechanics, persistence, Play,
+Simulation, Replay download, package build, Outcome Library, Stake export and
+reopen all rendered successfully. No product error.
 
-P6V-05 parity: CLI Replay, package public client, Studio Play, Studio Replay
-and exact companion Vite client rendered identical 3x3 symbols/highlights,
-win 5, paytable A3=5/B3=3/C3=1, bet 1, base mode and no feature state.
+P6V-05 physical PAR/XLSX: real native picker → diagnostics/preview → apply →
+managed edit/save → physical export → native-picker reimport. Canonical semantic
+comparison equal; exported XLSX SHA-256
+0aa24c97e9ae0f41d9930048481758c42b3ebfa4b0204f2fe5190d53cecefad2.
+The candidate-bound Player matrix did not reach a result: repaired runner timed
+out waiting for fresh Studio address after package npm-start. Driver/readiness
+inconclusive; no Player mismatch or rendered product error.
 
-P6V-01 and P6V-02 remain not reached. No release approval.
-
-P6V-02 resume on exact candidate after one `npm run build-cli`: fresh isolated
-Studio launches from `node ./dist/cli/pokie.js --no-open` rendered Home/Design,
-Projects, Overview, Game Model tabs, Play empty/settled, Simulation RTP/results,
-Replay, Build/Export and 405px Build/Export.  At mobile Game Model the rendered
-navigation click had no local state, pending indicator or error; one safe
-idempotent retry was emitted but its semantic result was not captured before
-the verifier driver ended.  The driver result is inconclusive; it is not a
-product finding, and the remaining P6V-02 editor, dialog and picker inventory
-was not claimed.
+P6V-01 retained evidence audit: 11,344,771 bytes / 157 files; historic repeated
+P6V-03 captures remain, so bounded-retention approval is not claimed. P6V-02
+complete fresh editor/dialog/native-picker inventory is likewise not claimed.
+No release approval.
