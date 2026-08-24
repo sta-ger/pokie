@@ -13,6 +13,7 @@ export * from "./artifact/buildRoundArtifact.js";
 export * from "./artifact/buildRoundArtifactFromSession.js";
 export * from "./artifact/buildRoundStepArtifact.js";
 export * from "./artifact/computeRoundArtifactHash.js";
+export * from "./browser.js";
 export * from "./certification/CertificationEvidenceBundleBuildResult.js";
 export * from "./certification/CertificationEvidenceBundleBuilder.js";
 export * from "./certification/CertificationEvidenceBundleBuilding.js";
