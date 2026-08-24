@@ -24,22 +24,32 @@ and the Stake Engine card's local `Exported 4 file(s)` success. The one safe
 Replay-navigation retry followed a visibly unchanged navigation state; it did
 not duplicate a product operation. No rendered error occurred.
 
-Consequently there is no rendered P0/P1/material-P2 product finding, but the
-current exact candidate has not received the complete P6V-02 through P6V-05
-fresh physical/rendered closeout required for release. The exhausted recovery
-is driver-inconclusive: neither a wait threshold nor the final harness error is
-a product finding. No controller-owned release, packaging, publication, push,
-or Drive action was run.
+This recovery then completed three further isolated visible journeys with the
+same candidate CLI: physical PAR/XLSX import-edit-export-reimport plus public
+CLI semantic equality; deterministic Studio Play/Replay, generated-package,
+and exact-companion Player parity; and the independent Producer journey through
+literal reels, artwork picker, modes/mechanics, Play, Simulation, Replay,
+package Build, Outcome Library, Stake Engine Export, and reopen persistence.
+The remaining Mathematician launch completed its fresh design, Random/Blank/
+Recommended, model, picker, literal preview, generated constraints/stack, and
+project-persistence portions. Its rendered Scatter-symbol combobox did not
+confirm its selected K value before the bounded wait; no product error was
+rendered. This is selector/readiness-inconclusive, not a product finding.
+
+Consequently no rendered P0/P1/material-P2 product finding was observed, but
+the exact candidate has not received the complete P6V-02/P6V-03 closeout needed
+for a release verdict. No controller-owned release, packaging, publication,
+push, or Drive action was run.
 
 ## One-to-one closeout map
 
 | Immutable step | Result | Current evidence boundary |
 | --- | --- | --- |
 | P6V-01 retained-evidence hygiene | not reached | The P6V-06 delta remains four bounded files with truthful checksums and no generated tree, profile, harness, raw log, or automation source. Product and test trees equal the candidate; companion SHA is clean. Full one-to-one approval remains blocked by the incomplete fresh continuation. |
-| P6V-02 Design/UX | not reached | Fresh exact-candidate Studio evidence now reaches cold start, materialized Workspace, Play, Simulation, the labelled Replay control, Outcome Library, and local Stake Engine export success. Its complete multi-viewport Design/UX matrix remains outside this focused continuation. |
-| P6V-03 Valera Mathematician | not reached | Distinct literal-model, native-picker, feature, persistence, Outcome Library, and Stake Export journey was not reached after the recovery allowance was consumed. |
-| P6V-04 Valera Producer | not reached | The separate Producer journey was not reached in this focused recovery. |
-| P6V-05 physical PAR/XLSX and Player matrix | not reached | Companion SHA was freshly confirmed clean and exact, but no native-picker PAR/XLSX round trip or canonical Player-surface workflow was reached. |
+| P6V-02 Design/UX | not reached | Fresh exact-candidate Studio evidence reaches cold start, materialized Workspace, Play, Simulation, Replay, Outcome Library and local Stake Export, plus the Producer journey. Its full multi-viewport matrix remains outside this focused continuation. |
+| P6V-03 Valera Mathematician | not reached | Fresh journey reached literal-model, native picker, literal preview, generated constraints/stack and project persistence. The post-edit Scatter-symbol K selection had no local rendered confirmation or error before the bounded wait; downstream feature, replay and artifact checks remain unreached. |
+| P6V-04 Valera Producer | reached without finding | A fresh isolated candidate run reached artwork picker, literal reels, bet/mode and mechanic edits, Play, Simulation, Replay export, package Build, Outcome Library, Stake Engine Export, and reopen persistence without a rendered product error. |
+| P6V-05 physical PAR/XLSX and Player matrix | reached without finding | Fresh native-picker PAR import/export/reimport and public CLI equality passed. Studio Play/Replay, generated package, exact-companion public client, and candidate CLI replay rendered the identical deterministic Player round. |
 
 ## Retained files
 

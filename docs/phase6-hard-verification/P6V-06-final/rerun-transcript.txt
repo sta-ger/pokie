@@ -20,3 +20,20 @@ error rendered and no non-idempotent operation was duplicated.
 This repairs the retained driver/readiness boundary for the default Studio
 journey. P6V-03, P6V-04, and P6V-05 remain distinct unreached rendered or
 physical workflows; this transcript does not substitute for them.
+
+Continuation, exact candidate cf26cd3110cdf5d3f01deb533efb7b031039d9ed:
+- Fresh Player matrix: Studio Play/Replay, built package npm start, committed
+  companion public client, and candidate CLI replay all rendered/reported the
+  same fixture-round 3x3 screen and win 5.
+- Fresh physical PAR/XLSX: native Browse selected starter workbook after one
+  visibly settled idempotent retry; Studio imported, edited, saved, exported,
+  reselected exported workbook, and the public CLI normalized reimport equalled
+  the saved Blueprint.
+- Fresh Producer: rendered literal reels/artwork picker/modes/mechanics, Play,
+  Simulation, Replay Download JSON, package Build, Outcome Library, Stake
+  Engine Export and persisted reopen, with no rendered product error.
+- Fresh Mathematician: rendered Random/Blank/Recommended, native artwork,
+  literal Preview, generated A weight/constraint/stack and project save. The
+  rendered Scatter symbol K option was clicked but its labelled combobox never
+  confirmed K and showed no error before the bounded wait. This is a
+  selector/readiness inconclusive; downstream P6V-03 actions were not claimed.
