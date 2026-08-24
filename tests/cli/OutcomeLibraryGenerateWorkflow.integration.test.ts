@@ -184,7 +184,7 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         expect(exitCode).toBe(0);
         const library = readLibrary(libraryFile);
         expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(27);
-        expect(library.outcomes.some((outcome) => outcome.artifact.featureEvents.some((event) => event.type === "freeGamesTriggered"))).toBe(true);
+        expect(library.outcomes.some((outcome) => outcome.artifact.featureEvents?.some((event) => event.type === "freeGamesTriggered") ?? false)).toBe(true);
     });
 
     it("resume/cancel: a SIGINT-cancelled sweep's checkpoint resumes into the exact same complete library an uninterrupted sweep would produce", async () => {
