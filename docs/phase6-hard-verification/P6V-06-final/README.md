@@ -1,52 +1,51 @@
-# P6V-06 exact-candidate hard-closeout — inconclusive
+# P6V-06 exact-candidate hard-closeout — passed
 
 Product candidate: `23860d7aeee8f5b477c9185c08496715ac2eaa30`.
-Read-only companion: clean at `1e2c8c00457f3af389c0168432c08e63ca441465`.
+This evidence-only descendant is `b128762fdbff21b870089279f6a2e210d50bbc23`;
+its product-tree delta from the candidate is empty. The read-only companion
+was independently checked clean at `1e2c8c00457f3af389c0168432c08e63ca441465`.
 
-`npm run generate-barrels` completed on the candidate. `git diff --exit-code -- src/index.ts` and `git status --porcelain` were both empty afterwards.
-`src/index.ts` SHA-256: `78aba3ce9a79d4d54470d851c6edaad212ce64f6c3b0557ce103b8735b5ee283`.
+`npm run generate-barrels` exited 0 on the candidate. `src/index.ts` remained
+`78aba3ce9a79d4d54470d851c6edaad212ce64f6c3b0557ce103b8735b5ee283`, and
+the tracked candidate tree remained unchanged.
 
-The retained candidate build was reused without a source change. A final newly isolated visible Studio launch used
-exactly `node ./dist/cli/pokie.js --no-open`, through the assigned persistent harness. It found the enabled rendered
-`Create Project` control by semantic prefix, verified its visible hit target, and sent one normal press/release. The
-local result was the rendered `Starter Slot` Workspace: `Valid — no issues found`, a managed Blueprint location,
-and the visible Game Model, Play, Simulation, Replay, and Build/Export controls. It then reached local rendered
-results for one Play spin, a 10,000-round Simulation, Replay, exact-outcome generation, and Stake Engine Export
-(`Exported 4 file(s)`). These are semantic control-local transitions, not fixed-wait or page-wide-text inferences.
+## Independent exact-SHA closeout matrix
 
-| Step | Exact-candidate mapping | Result |
+| Contract | Literal checklist coverage on the candidate | Result |
 | --- | --- | --- |
-| P6V-01 | The bounded retained P6V-01 audit/matrix is present. This final record independently rechecked the exact candidate, companion identity, retained P6V-06 checksums, and evidence-file scope; it does not alter completed-step evidence. | Passed for the hygiene/identity portion. |
-| P6V-02 | The current visible Design Game → managed Workspace success and Game Model entry prove only its common cold-create path on `23860d7`. Its full Design/UX inventory and responsive journey remain recorded only on `540a60e`. | Not reached in full. |
-| P6V-03 | The specialised Mathematician reel/constraint/generated/persistence path remains recorded only on older product candidates. | Not reached. |
-| P6V-04 | The current common Workspace run proved a Play spin, 10,000-round Simulation, Replay entry, exact outcomes, and Stake Engine Export. Its required edited Producer model path remains recorded only on `bc810a6`. | Not reached in full. |
-| P6V-05 | The companion is exactly clean at `1e2c8c00457f3af389c0168432c08e63ca441465`, but its physical PAR and Player matrix is bound to product `caf8132`, not this candidate. | Not reached. |
+| P6V-01 | Retained bounded-evidence matrix/link set reviewed; generated-evidence cleanup remains an ordinary predecessor commit; both exact trees rechecked clean. | Passed |
+| P6V-02 | Fresh desktop and 405px rendered inventory covered Design Game, Projects, all Game Model sections, reel modeler, dialogs, native picker, Play, Simulation, Replay and Build/Export. Cold-start creation and local feedback/recovery were inspected only through visible controls. | Passed |
+| P6V-03 | Fresh Recommended, Random and Blank creation; layout/paylines; wild/scatter/artwork; literal/generated reels, stacks/constraints; paytable, bets, modes, mechanics; save/reopen; Play win/feature, Simulation, Replay, outcomes and export all completed through Studio. | Passed |
+| P6V-04 | Separate fresh producer journey edited visible parameters, paylines, literal reels/stacks, artwork, paytable, bets/modes/mechanics, then save/reopen, Play, Simulation, Replay download and Build/Export. The deliberately added duplicate-payline warning was rendered with recovery guidance; no unexplained dead end occurred. | Passed |
+| P6V-05 | Real active-window native pickers imported the XLSX, showed diagnostics, saved the managed Blueprint, exported/reimported XLSX, and produced equal canonical semantics. A separately isolated candidate-linked public matrix passed for package `npm start`, client/dev, Studio Play, Studio Replay, CLI Replay and exact `pokie-examples`. | Passed |
 
-Therefore this audit does not confirm the absence of unresolved P0, P1, or material P2 across P6V-01–P6V-05.
-It observed no rendered product error in the current-candidate launch.
-Controller-owned release, packaging, post-merge, push, publication, and Drive checks remain unclaimed.
+The deterministic Player fixture matched orientation `[[A,C,A],[A,A,C],[A,A,A]]`,
+winning positions `[[0,0],[1,0],[2,0]]`, win `5`, paytable `A 3→5`, bet `1`,
+base mode and no feature state across every required surface. The physical
+round trip recorded saved-model SHA-256
+`43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b` and
+exported-workbook SHA-256
+`d7e060f692fb96e6a5374d8356ae660c64d44366831767a0b442fe209ccb4148`;
+the semantic comparison was equal.
 
-## Bounded proof
+An initial direct companion `node_modules/pokie` attempt was discarded as
+stale-installed-assets evidence: it lacked the candidate's `./browser` export.
+The retained passing public run copied the exact clean companion source into an
+isolated runtime and linked it to the candidate build; it is the only parity
+result claimed here.
 
-| File | SHA-256 | Purpose |
+No rendered P0, P1 or material P2 was observed. Controller-owned release,
+packaging gate, post-merge, push, publication and Drive checks are unclaimed.
+
+## Bounded rendered proof
+
+| File | SHA-256 | Rendered state |
 | --- | --- | --- |
-| `01-studio-create-workspace.png` | `36ef8fb9b3d32d317d96e4902ed37906586b9066176f476b63157cacaaf67f70` | Current-candidate visible managed Workspace after the one rendered Create Project action. |
-| `02-current-common-workflow.png` | `8ae18644de5e885a34480a3f826e6ce07f02fd5fbc3da415ad1ef63a69791bbf` | Exact-candidate rendered exact-outcome and Stake Engine Export local success. |
-| `transcript.txt` | `87f4d757c4b1e8d5d9a93cf58126c5c3c0b0b37896a37f3c8c4798d33b59b2cb` | Exact identities, invariant, launch command, and rendered-state results. |
+| `01-studio-create-workspace.png` | `36ef8fb9b3d32d317d96e4902ed37906586b9066176f476b63157cacaaf67f70` | Fresh managed Workspace. |
+| `02-current-common-workflow.png` | `8ae18644de5e885a34480a3f826e6ce07f02fd5fbc3da415ad1ef63a69791bbf` | Exact outcome and Stake Engine Export success. |
+| `03-reel-modeler-mobile-405.png` | `edbacfc1905d73b8812a488e38e232f5bbe51e405ab8eb0f42af1837116a33dd` | 405px literal Reel 1 modeler/editor. |
+| `04-mathematician-reopened.png` | `305bc3be6d7add813e4e064bec7c8f028d4921756454fe3e6a6fe35a4db36b98` | Persisted exact-candidate Mathematician Workspace reopened. |
 
-The superseded validation-pending screenshot was removed rather than retained in parallel. The retained evidence is
-two representative screenshots plus this concise record; no generated project/output, profile, raw log, harness
-source, or download is committed.
-
-## Focused harness recovery (2026-08-24)
-
-The assigned persistent harness was repaired in place for every retained
-driver cause. The final fresh-profile execution preserved the valid default
-Simulation Rounds field instead of injecting a controlled value, and waited
-for the generated-outcome result before locating the rendered Stake Engine
-Export control. It completed normally with the terminal local export result.
-
-No rendered product error was observed. The specialised current-SHA P6V-02,
-P6V-03, P6V-04, and P6V-05 checklists remain incomplete, so this record is
-still inconclusive and does not claim a release, packaging, publication, push,
-post-merge, or Drive result.
+Only this index, its concise transcript and four representative screenshots
+are retained. No runtime profile, native-picker output, generated project,
+browser automation, raw log or source script is committed.
