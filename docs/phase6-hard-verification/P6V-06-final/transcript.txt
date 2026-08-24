@@ -12,5 +12,15 @@ Build/Export rendered: exact Outcome Library success; Stake Engine Export succes
 Persistence rendered: project closed, listed in Projects, reopened
 Diagnostics: no browser console diagnostic; no failed Studio request
 Replay rendered with no Inspect/Reproduce action; not claimed as passed
-unreached: P6V-02 complete inventory; P6V-04 Producer journey; P6V-05 physical PAR/XLSX and all Player surfaces
-verdict: incomplete; no release, packaging, publication, push, or Drive claim
+retained partial status: P6V-02 complete inventory and P6V-04 Producer journey unreached; P6V-05 then continued below
+retained partial verdict: incomplete; no release, packaging, publication, push, or Drive claim
+recovery build: npm run build-cli succeeded; generated src/index.ts barrel drift was restored before evidence
+static retained-evidence audit: 131 scoped Markdown/text records; 15 relative links; 0 broken; P6-10 corrected index names only retained files
+P6V-05 launch 1: fresh isolated Studio via node ./dist/cli/pokie.js --no-open; real native Browse PAR sheet picker selected starter.par.xlsx
+P6V-05 rendered: imported with warnings; canonical preview; applied and confirmed; edited/saved managed Blueprint; exported physical XLSX; fresh picker re-import rendered canonical raw model
+P6V-05 round-trip comparison: key-sorted saved Blueprint == re-imported rendered model; saved SHA-256 43a1242ed00164a3699d081f1780f81a52db94fc78ebceae3c250eb2a2b1d00b; XLSX SHA-256 f5d679b86e9b4fab501f9ce04f1b3ee9664f70bb32085a0559cff56f3282c698
+P6V-05 Player recovery: candidate=88894fdb1a300978ccdcee1e9ae831de5423c9e1 companion=1e2c8c00457f3af389c0168432c08e63ca441465 clean; seed=fixture-round round=1
+P6V-05 Player rendered: CLI replay, Studio Play, Studio Replay, and companion client [[A,C,A],[A,A,C],[A,A,A]], bet 1, win 5; candidate-built package npm-start client instead [[B,B,A],[B,A,A],[C,B,A]], same seed/round, bet 1, paytable A 3->5/B 3->3/C 3->1 and win 5
+P6V-05 finding: material P2—candidate-built package Player does not reproduce canonical seeded CLI/Studio/companion screen; package displayed Line 2 while the other surfaces rendered the canonical line 1 result
+P6V-05 harness note: its final legacy comparison additionally read absent CLI winningPositions after all surfaces rendered; driver-only, not the parity finding
+final verdict: finding—P2 Player parity mismatch; fresh P6V-02 full Design/UX, P6V-03 Replay inspect/reproduce, and P6V-04 Producer remain unreached; no release/packaging/publication/push/Drive claim
