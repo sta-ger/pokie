@@ -1,23 +1,30 @@
 # P6V-06 exact-candidate hard-closeout — inconclusive
 
-Candidate product: `29bdb8945a6c6dcfbb15a6ff560dae453c505375`.
-This evidence-only descendant is `9dfbc84fd4f5a01915ff7a2652ace6a6d54c5bf8` before this update; its product delta is empty. The read-only companion is clean at `1e2c8c00457f3af389c0168432c08e63ca441465`.
+Product candidate: `29bdb8945a6c6dcfbb15a6ff560dae453c505375`.
+The audit checkout is an evidence-only descendant; its product delta from the
+candidate is empty. The read-only companion is clean at
+`1e2c8c00457f3af389c0168432c08e63ca441465`.
 
-| Immutable step | Current evidence result |
+| Immutable step | Exact-candidate result |
 | --- | --- |
-| P6V-01 | Retained proof was rechecked: the only retained screenshot checksum matches and the P6V-06 delta contains only this bounded directory. The larger historical P6V-01 through P6V-05 corpus is not a one-to-one exact-candidate mapping. |
-| P6V-02 | Prior exact-candidate Design/UX proof remains present and checksum-valid. It is not repeated in this recovery invocation. |
-| P6V-03 | Fresh candidate-bound rendered path reached empty Home, Recommended/Random/Blank/Recommended recovery, Valera naming, literal-preview result, generated-reel controls, project creation, and Game Model. The rendered Scatter-symbol value did not commit after its visible selection; no local product error appeared. Downstream Replay/Export/persistence are not proved. |
-| P6V-04 | A fresh source-checkout Producer journey rendered literal reels/stacks, native artwork selection, free-games configuration, Play, Simulation, Replay download, package build, exact outcome generation, Stake export and close/reopen. Its reused historical harness wrote an obsolete static candidate field, so this observation is not accepted as exact-candidate proof. |
-| P6V-05 | Fresh physical PAR import, canonical preview, managed save, physical XLSX export, re-import and semantic equality completed through the visible Studio/native-picker path. The legacy public Player parity continuation failed before it parsed Studio's address and also reported an obsolete candidate field; no exact-candidate Player matrix is accepted. |
+| P6V-01 | **Not complete.** Candidate/companion identity and the evidence-only product-tree invariant were checked, but the historical P6V-01–P6V-05 corpus cannot be accepted as a fresh one-to-one mapping. |
+| P6V-02 | Retained Design/UX proof is still present: the 405px Build/Export capture below has its recorded checksum. It was not recaptured merely to duplicate passed viewport evidence. |
+| P6V-03 | **Not complete.** The retained full Valera Mathematician journey names earlier product SHA `920b2079`; it is not exact-candidate proof. No public-launch budget remained for an independent current rendered rerun. |
+| P6V-04 | **Not complete.** The retained Producer journey names earlier product SHA `bc810a69`; it is not exact-candidate proof. No public-launch budget remained for an independent current rendered rerun. |
+| P6V-05 | **Passed fresh.** The visible Studio/native-picker path imported `starter.par.xlsx`, previewed the canonical 3×3/four-symbol model, saved a managed Blueprint, exported a physical XLSX, re-imported it, and key-sorted equality with the saved Blueprint held. The exact candidate’s CLI Replay, built-package Player, Studio Play, Studio Replay, and exact companion public Player all rendered the canonical fixture: `[[A,C,A],[A,A,C],[A,A,A]]`, highlighted `[0,0],[1,0],[2,0]`, win `5`, paytable `A=5/B=3/C=1`, bet `1`, base mode, no feature state. |
 
-No P0, P1, or material P2 was rendered. This is nevertheless not approval evidence: the independent one-to-one mapping and exact-bound CLI/Studio/package/companion Player parity remain incomplete. Controller-owned release, packaging, push, publication and Drive checks remain unclaimed.
+No rendered P0, P1, or material P2 product defect appeared. This is not release
+approval: the fresh exact-SHA P6V-03/P6V-04 journeys and the consequent full
+one-to-one mapping remain unproved. Controller-owned release, packaging, push,
+publication, and Drive checks remain unclaimed.
 
-## Retained proof
+## Retained bounded proof
 
 | File | SHA-256 | Purpose |
 | --- | --- | --- |
-| `transcript.txt` | `b3a0e13af85ae06b971c4cfe40479b95cbd2e24d7ea00b233d5e9c9ac1cedc47` | Bounded current host observations and incompleteness. |
-| `01-design-build-mobile-405.png` | `7c6b050d578378bba179dea92dd425edf698db1d0d7c6130d30761efc5b6e53d` | Previously passed exact-candidate 405px Build/Export surface. |
+| `01-design-build-mobile-405.png` | `7c6b050d578378bba179dea92dd425edf698db1d0d7c6130d30761efc5b6e53d` | Retained exact-candidate 405px Design/UX surface. |
+| `transcript.txt` | `1f14f96c33abef596b480f8f058ee225c231869b4d621fd7ce89ca60748ad352` | Concise fresh PAR/XLSX and five-surface Player observations, plus the fail-closed scope. |
 
-No profiles, projects, outputs, browser scripts, raw logs, downloads, or generated screenshots are committed.
+Only this README, the concise transcript, and one 94,094-byte screenshot are
+retained. No profiles, generated projects/outputs, raw logs, harness scripts,
+downloads, or fresh generated screenshots are committed.

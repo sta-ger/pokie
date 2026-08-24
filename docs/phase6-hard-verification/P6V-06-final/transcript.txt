@@ -1,14 +1,14 @@
 P6V-06 focused exact-candidate recovery
-candidate=29bdb8945a6c6dcfbb15a6ff560dae453c505375; active HEAD was its evidence-only docs descendant
-companion=1e2c8c00457f3af389c0168432c08e63ca441465 clean read-only
-machine: npm run build-cli -> passed; generated src/index.ts barrel drift was reverted before audit finalization.
+candidate=29bdb8945a6c6dcfbb15a6ff560dae453c505375; audit HEAD is an evidence-only descendant with no product-tree delta
+companion=1e2c8c00457f3af389c0168432c08e63ca441465 clean and read-only
+retained 01-design-build-mobile-405.png SHA-256=7c6b050d578378bba179dea92dd425edf698db1d0d7c6130d30761efc5b6e53d
 
-retained: 01-design-build-mobile-405.png SHA-256=7c6b050d578378bba179dea92dd425edf698db1d0d7c6130d30761efc5b6e53d (matches retained record).
+Candidate build-cli completed; generated src/index.ts barrel drift was reverted before evidence finalization.
 
-Studio launch 1, source checkout command `node ./dist/cli/pokie.js --no-open`: real native picker selected starter.par.xlsx; Studio rendered imported-with-warnings diagnostics, 3x3/four-symbol canonical preview, managed Blueprint save, physical XLSX export and re-import. The rendered re-imported raw model equalled the saved model after key-sorted comparison. Legacy Player continuation then timed out parsing a Studio address and named obsolete candidate 88894fdb; no Player result is retained.
+Studio launch 1, source-checkout command `node ./dist/cli/pokie.js --no-open`: real native Browse picker selected starter.par.xlsx; Studio rendered import warnings/provenance, canonical 3x3/four-symbol preview, managed save, physical XLSX export, and a second native-picker import. The rendered re-imported raw Blueprint equalled the saved Blueprint after key-sorted comparison. No product error rendered.
 
-Studio launch 2: Producer route rendered literal reels/stacks, native PNG selection, scatter/free-games, Play, Simulation, Replay JSON download, package build, exact library, Stake export and close/reopen. Its retained runner wrote obsolete candidate 11ff577a, therefore it is diagnostic only.
+The old combined Player continuation held its first Studio listener and could not parse its second Studio address. Recovery separated that idempotent Player matrix into a fresh Studio/profile run. The first two matrix passes rendered all five surfaces but exposed only harness mappings: legacy CLI JSON lacks winningPositions, then the fixture coordinate mapping was reversed. Neither was a product state or error. The repaired final run passed.
 
-Studio launch 3: exact candidate guard passed. Empty Home; Recommended/Random/Blank/Recommended; Random generated P6V03 Random from seed 20260815 and rendered enabled Use this blueprint; literal preview showed its local Preview result after a completed 200 response; generated-reel A weight, constraint and stack rule rendered; project creation rendered. On the Game Model free-games route, the visible Scatter symbol option K was clicked but its local value did not commit during the bounded wait. No rendered product error appeared. This is selector-inconclusive; no replay, outcome-library, Stake export, persistence, or Player-parity claim follows.
+Final exact-bound Player matrix: candidate CLI Replay, candidate-built package `npm start` Player, Studio Play, Studio Replay, and an isolated byte-for-byte runtime copy of the exact committed companion public source all rendered [[A,C,A],[A,A,C],[A,A,A]], the A payline at [0,0],[1,0],[2,0], win 5, A/B/C paytable 5/3/1, bet 1, base mode, and no feature state. Studio Play and Studio Replay each rendered the same 5.00 (5.00x) round. No product error rendered.
 
-No product defect was rendered. P6V-01 one-to-one mapping and P6V-05 exact canonical Player matrix remain incomplete; controller release/publication/Drive gates were not run.
+P6V-02 retained exact-candidate Design/UX checksum is valid. P6V-03's retained full Valera journey is bound to 920b2079 and P6V-04's Producer journey to bc810a69, not this exact candidate. Their fresh public reruns and the resulting one-to-one P6V-01–P6V-05 map remain not reached after the four-launch budget. No controller release, packaging, push, publication, or Drive claim is made.
