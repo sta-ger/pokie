@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
-import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
@@ -21,7 +21,7 @@ process.stdout.write(help);
     await writeFile(path.join(directory, "docs.md"), documentation);
     await writeFile(coverage, JSON.stringify({
         documentationRoot: ".",
-        documentationFiles: ["docs.md"],
+        documentationScope: {include: ["**/*.md"]},
         initialInventory: {rootCommands: ["build"], nestedVerbs: []},
         owners: [
             {id: "command:build", owner: "test"},
@@ -78,5 +78,29 @@ test("rejects an ordinary unowned documentation claim without a marker", async (
         assert.equal(result.status, 1);
         assert.match(result.stderr, /command:deploy/);
         assert.match(result.stderr, /target:experimental/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("discovers narrative documentation and rejects command-scoped stale claims", async () => {
+    const {directory, cli, coverage} = await fixture("", "The normal command is pokie build --target supported.\n");
+    try {
+        await mkdir(path.join(directory, "public-guides"));
+        await writeFile(path.join(directory, "public-guides/narrative.md"), "A stale example is npx pokie build --source-type rogue-source --target supported --mode base -x.\n");
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /stale documented capability value:source-type:build:rogue-source/);
+        assert.match(result.stderr, /stale documented capability alias:build:-x/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects documentation options that belong to another executable command", async () => {
+    const {directory, cli, coverage} = await fixture("", "pokie build --dry-run\n");
+    try {
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.owners.push({id: "option:other:--dry-run", owner: "test"});
+        await writeFile(coverage, JSON.stringify(map));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /stale documented capability option:build:--dry-run/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });

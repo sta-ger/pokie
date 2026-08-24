@@ -10,7 +10,9 @@ The initial executable inventory is 20 root commands and seven nested verbs.
 POKIE Studio is intentionally absent: it is the implicit `pokie` entry, not a
 `pokie studio` public alias. `-h` is the one uniformly owned built-in alias.
 The recorded version/help finding is that `--help` is public whereas bare
-`pokie` starts Studio. The collector reads configured public documentation as
+`pokie` starts Studio. The collector reads every configured public document —
+the repository README and maintained top-level `docs/*.md` pages, with
+immutable phase/evidence archives explicitly excluded in the coverage map — as
 ordinary text, not author-added markers. Its initial owned vocabulary is:
 targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and
 `wasm`; source types: `blueprint`, `tsPackage`, `outcomeLibrary`,
@@ -52,14 +54,14 @@ node scripts/run-phase7-journey.mjs \
   --expect package.json
 ```
 
-The journey script receives only `P7_INPUT_DIR` (copied input provenance),
-`P7_JOURNEY_DIR` (where it may create artifacts), and
-`P7_COMMAND_RECORD_FILE`. It must append one JSON object per actual public
-`pokie` invocation to that file: `command`, integer `exitCode`, and an
-`artifacts` array of `{path, sha256}` records. Every `--expect` artifact must
-appear in a command record with the SHA-256 the wrapper independently computes.
-The wrapper invokes it twice in distinct new temporary directories and retains
-the public commands, exit codes, provenance, checks, stdout/stderr, and an
-independent rerun record in `journey-transcript.txt`. Evidence is accepted only
-when produced by this wrapper; no unprovenanced internal artifact is a workflow
-result.
+The journey script receives `P7_INPUT_DIR` (copied input provenance),
+`P7_JOURNEY_DIR` (where public CLI output is written), and `P7_PUBLIC_CLI`, an
+executable wrapper around the supplied built `pokie` CLI. It must invoke that
+wrapper for every public command; it cannot create command records itself. The
+wrapper records each command and exit code, and hashes only expected artifacts
+whose bytes changed during that CLI invocation. Every `--expect` artifact must
+therefore have a wrapper-observed SHA-256 record — a direct write before or
+after a command, or a forged JSONL record, is rejected. The wrapper invokes the
+driver twice in distinct new temporary directories and retains the public
+commands, exit codes, provenance, checks, stdout/stderr, and an independent
+rerun record in `journey-transcript.txt`.

@@ -310,7 +310,7 @@ mode reports everything it finds rather than stopping at the first kind of corru
   `reader.readLibrary`) then `computeWeightedOutcomeLibraryHash` to build an `InMemoryPreGeneratedOutcomeSource`;
   a caller that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` directly
   (see above) — either one plugs straight into `PreGeneratedSpinCommandHandler`'s constructor.
-- **Stake Engine exporter** — `pokie stakeengine export`'s `config.json` mode entries gain an alternative to
+- **Stake Engine exporter** — `pokie export --to adapter`'s `config.json` mode entries gain an alternative to
   `libraryPath`:
   ```json
   {"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Collect the executable CLI contract and the configured public documentation contract. */
-import {mkdtemp, mkdir, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, mkdir, readFile, readdir, rm, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {spawnSync} from "node:child_process";
 import {createHash} from "node:crypto";
@@ -129,42 +129,58 @@ export function inventoryCapabilities(inventory) {
     return capabilities;
 }
 
-function documentedCommandCapabilities(contents, nestedVerbs) {
-    const capabilities = new Set();
-    for (const block of contents.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
-        for (const match of block[1].matchAll(/^\s*(?:[$#]\s*)?pokie\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?/gm)) {
-            const command = match[2] && nestedVerbs.has(`${match[1]} ${match[2]}`) ? `${match[1]} ${match[2]}` : match[1];
-            capabilities.add(command.includes(" ") ? `subcommand:${command}` : `command:${command}`);
-        }
-    }
-    return capabilities;
+function globExpression(pattern) {
+    return new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "(?:.*/)?").replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")}$`);
 }
 
-function documentedValues(contents, includeLabelClaims) {
-    const capabilities = new Set();
-    for (const [kind, option] of VALUE_KINDS) {
-        const expression = new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi");
-        for (const match of contents.matchAll(expression)) for (const value of match[1].split("|").map((item) => item.trim())) capabilities.add(`${kind}:${value}`);
+async function allFiles(root, relative = "") {
+    const entries = await readdir(path.join(root, relative), {withFileTypes: true});
+    const files = [];
+    for (const entry of entries) {
+        const child = path.join(relative, entry.name);
+        if (entry.isDirectory()) files.push(...await allFiles(root, child));
+        else if (entry.isFile()) files.push(child.replaceAll(path.sep, "/"));
     }
-    if (!includeLabelClaims) return capabilities;
+    return files;
+}
+
+async function configuredDocumentationFiles(coverage, root) {
+    if (!coverage.documentationScope) return coverage.documentationFiles;
+    const included = coverage.documentationScope.include.map(globExpression);
+    const excluded = (coverage.documentationScope.exclude ?? []).map(globExpression);
+    return (await allFiles(root)).filter((file) => included.some((expression) => expression.test(file)) && !excluded.some((expression) => expression.test(file))).sort();
+}
+
+function documentedCapabilities(contents, inventory) {
+    const capabilities = new Set();
+    const nestedVerbs = new Set(inventory.commands.filter((command) => command.path.includes(" ")).map((command) => command.path));
+    for (const match of contents.matchAll(/(?:\bnpx\s+)?\bpokie(?:\.js)?\s+([a-z][a-z0-9-]*)([^\n]*)/gi)) {
+        const rootCommand = match[1];
+        const remainder = match[2] ?? "";
+        const verb = remainder.match(/^\s+([a-z][a-z0-9-]*)\b/i)?.[1];
+        const command = verb && nestedVerbs.has(`${rootCommand} ${verb}`) ? `${rootCommand} ${verb}` : rootCommand;
+        capabilities.add(command.includes(" ") ? `subcommand:${command}` : `command:${command}`);
+        for (const option of remainder.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
+        for (const alias of remainder.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
+        for (const [kind, option] of VALUE_KINDS) {
+            const expression = new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi");
+            for (const valueMatch of remainder.matchAll(expression)) for (const value of valueMatch[1].split("|").map((value) => value.trim())) capabilities.add(`value:${kind}:${command}:${value}`);
+        }
+    }
     for (const [kind, label] of [["target", "targets?"], ["source-type", "source types?"], ["output-format", "output formats?"], ["mode", "modes?"]]) {
         for (const match of contents.matchAll(new RegExp(`\\b${label}:([^\\n]+)`, "gi"))) {
-            for (const value of match[1].matchAll(/`([a-z][a-z0-9-]*)`/gi)) capabilities.add(`${kind}:${value[1]}`);
+            for (const value of match[1].matchAll(/`([a-z][a-z0-9-]*)`/gi)) capabilities.add(`value:${kind}:${value[1]}`);
         }
     }
     return capabilities;
 }
 
-export async function documentationCapabilities(coverage, coveragePath = DEFAULT_COVERAGE) {
+export async function documentationCapabilities(coverage, inventory, coveragePath = DEFAULT_COVERAGE) {
     const capabilities = new Set();
     const root = coverage.documentationRoot ? path.resolve(path.dirname(coveragePath), coverage.documentationRoot) : repositoryRoot;
-    const labelFiles = new Set(coverage.documentationClaimFiles ?? []);
-    for (const configuredFile of coverage.documentationFiles) {
+    for (const configuredFile of await configuredDocumentationFiles(coverage, root)) {
         const contents = await readFile(path.resolve(root, configuredFile), "utf8");
-        for (const capability of documentedCommandCapabilities(contents, new Set(coverage.initialInventory.nestedVerbs))) capabilities.add(capability);
-        for (const capability of documentedValues(contents, labelFiles.has(configuredFile))) capabilities.add(capability);
-        for (const option of contents.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) if (option !== "--help") capabilities.add(`documentation-option:${option}`);
-        if (/(?<![\w-])-h\b/.test(contents)) capabilities.add("alias:help");
+        for (const capability of documentedCapabilities(contents, inventory)) capabilities.add(capability);
     }
     return capabilities;
 }
@@ -172,12 +188,25 @@ export async function documentationCapabilities(coverage, coveragePath = DEFAULT
 export function checkCoverage(inventory, coverage, documented) {
     const ownerIds = new Set(coverage.owners.map((owner) => owner.id));
     const executable = inventoryCapabilities(inventory);
-    const documentedOptions = [...documented].filter((id) => id.startsWith("documentation-option:")).map((id) => id.slice("documentation-option:".length));
-    const executableOptions = new Set([...executable].filter((id) => id.startsWith("option:")).map((id) => id.slice(id.lastIndexOf(":") + 1)));
-    const missing = [...executable, ...[...documented].filter((id) => !id.startsWith("documentation-option:"))].filter((id) => !ownerIds.has(id));
-    for (const option of documentedOptions) if (!executableOptions.has(option) && !ownerIds.has(`option:root:${option}`)) missing.push(`documentation-option:${option}`);
+    const missing = [...executable].filter((id) => !ownerIds.has(id));
+    for (const capability of documented) {
+        if (capability.startsWith("value:")) {
+            const [, kind, command, value] = capability.split(":");
+            const actual = command ? inventory.commands.find((entry) => entry.path === command)?.values.includes(`${kind}:${value}`) : inventory.commands.some((entry) => entry.values.includes(`${kind}:${value}`));
+            if (!actual) missing.push(`stale documented capability ${capability}`);
+            if (!ownerIds.has(`${kind}:${value}`)) missing.push(`unowned public capability ${kind}:${value}`);
+        } else if (capability.startsWith("alias:")) {
+            const [, command, alias] = capability.split(":");
+            const actual = inventory.commands.find((entry) => entry.path === command)?.aliases.includes(alias);
+            if (!actual) missing.push(`stale documented capability ${capability}`);
+            if (!ownerIds.has(alias === HELP_ALIAS ? "alias:help" : capability)) missing.push(`unowned public capability ${capability}`);
+        } else {
+            if (!executable.has(capability)) missing.push(`stale documented capability ${capability}`);
+            if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
+        }
+    }
     const actualVerbs = inventory.commands.filter((command) => command.path.includes(" ")).map((command) => command.path).sort();
-    const differences = [...new Set(missing)].map((id) => `unowned public capability ${id}`);
+    const differences = [...new Set(missing)].map((id) => id.startsWith("stale documented capability") || id.startsWith("unowned public capability") ? id : `unowned public capability ${id}`);
     if (JSON.stringify(inventory.rootCommands) !== JSON.stringify(coverage.initialInventory.rootCommands)) differences.push(`root command inventory changed: ${inventory.rootCommands.join(", ")}`);
     if (JSON.stringify(actualVerbs) !== JSON.stringify(coverage.initialInventory.nestedVerbs)) differences.push(`nested verb inventory changed: ${actualVerbs.join(", ")}`);
     if (differences.length > 0) fail(differences.join("; "));
@@ -200,7 +229,7 @@ export async function main(argv = process.argv) {
     const coverage = JSON.parse(await readFile(arguments_.coverage, "utf8"));
     const first = await collect(arguments_.cli);
     const second = await collect(arguments_.cli);
-    checkCoverage(first.inventory, coverage, await documentationCapabilities(coverage, arguments_.coverage));
+    checkCoverage(first.inventory, coverage, await documentationCapabilities(coverage, first.inventory, arguments_.coverage));
     if (arguments_.evidenceDir) await writeEvidence(arguments_.evidenceDir, first, second, arguments_.coverage);
     console.log(`P7_CLI_INVENTORY_PASS roots=${first.inventory.rootCommands.length} nested=${first.inventory.commands.filter((command) => command.path.includes(" ")).length}`);
 }

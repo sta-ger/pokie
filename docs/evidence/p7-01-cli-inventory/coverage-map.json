@@ -1,7 +1,25 @@
 {
   "schemaVersion": 1,
-  "documentationFiles": ["README.md", "docs/cli.md", "docs/evidence/p7-01-cli-inventory/README.md"],
-  "documentationClaimFiles": ["docs/evidence/p7-01-cli-inventory/README.md"],
+  "documentationScope": {
+    "description": "The public surface is the repository README and maintained top-level docs. Immutable evidence, phase inventories, and closeout reports are historical audit records rather than current public CLI guidance.",
+    "include": ["README.md", "docs/*.md"],
+    "exclude": [
+      "docs/evidence/**",
+      "docs/phase2-browser-evidence/**",
+      "docs/phase4-evidence/**",
+      "docs/phase5-audit/**",
+      "docs/phase5-evidence/**",
+      "docs/phase5-post-audit/**",
+      "docs/phase6-*/**",
+      "docs/phase6-completion-remediation/**",
+      "docs/phase6-final-polishing/**",
+      "docs/phase6-hard-verification/**",
+      "docs/pokie-phase*-inventory.md",
+      "docs/pokie-phase*-final-verification-report.md",
+      "docs/studio-phase2-*.md",
+      "docs/v1.3-closeout-report.md"
+    ]
+  },
   "initialInventory": {
     "rootCommands": ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "reel", "replay", "report", "sample", "serve", "sim", "validate"],
     "nestedVerbs": ["certification build", "certification verify", "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "reel generate"]
