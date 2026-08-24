@@ -167,10 +167,10 @@ export async function collect(cli) {
             if (option === "--format") categories.add(`output-format:${value}`);
             if (option === "--mode") categories.add(`mode:${value}`);
         }
-        // Project types are public help vocabulary even where a command accepts a path rather
-        // than a finite --source-type switch.  Targets are resolved project types, and the
-        // remaining Blueprint spelling is present in the fresh help descriptions.
-        for (const target of [...categories].filter((entry) => entry.startsWith("target:")).map((entry) => entry.slice("target:".length))) categories.add(`source-type:${target}`);
+        // Blueprint remains public source vocabulary even where a command accepts a path rather
+        // than a finite --source-type switch.  A build target is not inherently a source type:
+        // fixture and future CLIs may advertise target-only values, which must not be recast as
+        // a distinct source contract.
         if (/\b(?:GameBlueprint|Blueprint Project|blueprint source)\b/i.test(allHelp)) categories.add("source-type:blueprint");
         // These output forms are named in the actual public help/documentation contract rather
         // than being a map-only vocabulary.  JSON/Markdown/HTML can also be value-bearing forms.
@@ -253,9 +253,6 @@ function documentedCapabilities(contents, inventory) {
     const addLineClaims = (line, command) => {
         for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
         for (const alias of line.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
-        for (const argument of line.match(/(?:<[^>]+>|\[[^\]]+\])/g) ?? []) {
-            if (!argument.includes("--")) capabilities.add(`argument:${command}:${argument}`);
-        }
         addValueClaims(line, command);
     };
     const addInvocation = (rootCommand, remainder = "") => {
@@ -265,9 +262,17 @@ function documentedCapabilities(contents, inventory) {
         addLineClaims(remainder, command);
         return command;
     };
-    const addInvocations = (text) => {
-        for (const match of text.matchAll(/(?:^|\s)(?:npx\s+)?pokie(?:\.js)?(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/g)) {
+    const addInvocations = (text, allowUnknownCommand = false) => {
+        const starts = [...text.matchAll(/(?<![\w-])(?:npx\s+)?pokie(?:\.js)?(?![a-z0-9-])/g)];
+        for (const [index, start] of starts.entries()) {
+            const invocation = text.slice(start.index, starts[index + 1]?.index);
+            const match = invocation.match(/^(?:npx\s+)?pokie(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);
+            if (!match) continue;
             const rootCommand = match[2];
+            // Prose regularly uses the package name (for example, "POKIE documentation")
+            // without advertising an executable.  Unknown commands remain checked in literal
+            // CLI examples, while prose is limited to the known command tree.
+            if (rootCommand && !rootCommands.has(rootCommand) && !allowUnknownCommand) continue;
             const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
             addInvocation(rootCommand, remainder);
         }
@@ -291,16 +296,21 @@ function documentedCapabilities(contents, inventory) {
     // A root invocation has no command token; it is still a public claim (notably --help,
     // -h and the implicit Studio flags).  Process inline code spans separately so one command
     // does not consume later, independently documented commands on the same prose line.
+    let fencedCliCode = false;
     for (const line of contents.split("\n")) {
+        if (/^\s*```/.test(line)) {
+            fencedCliCode = /^\s*```(?:sh|bash|shell|console)\s*$/i.test(line);
+            continue;
+        }
         let unquoted = "";
         let cursor = 0;
         for (const match of line.matchAll(/`([^`]*)`/g)) {
             unquoted += line.slice(cursor, match.index);
-            addInvocations(match[1]);
+            if (!/\b(?:no|not)\s*$/i.test(line.slice(0, match.index))) addInvocations(match[1], true);
             cursor = (match.index ?? 0) + match[0].length;
         }
         unquoted += line.slice(cursor);
-        addInvocations(unquoted);
+        addInvocations(unquoted, fencedCliCode);
         addCategoryClaims(line);
     }
     // Format/type glossaries commonly introduce the CLI command once and list its forms in a
@@ -313,9 +323,14 @@ function documentedCapabilities(contents, inventory) {
     let headingContext;
     for (const line of contents.split("\n")) {
         const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
-        if (heading) headingContext = addInvocation(heading[1], `${heading[1] ? " " : ""}${heading[1] ?? ""}${heading[2] ?? ""}`);
+        if (heading && (!heading[1] || rootCommands.has(heading[1])) && !/\bpokie(?:\.js)?\b/i.test(heading[2] ?? "")) {
+            headingContext = heading[1] ? commandFor(heading[1], ` ${heading[1]}${heading[2] ?? ""}`) : "root";
+            capabilities.add(headingContext.includes(" ") ? `subcommand:${headingContext}` : `command:${headingContext}`);
+            if (headingContext === "root") capabilities.delete("command:root");
+        }
+        else if (heading) headingContext = undefined;
         else if (/^#{1,6}\s+/.test(line)) headingContext = undefined;
-        if (headingContext) addLineClaims(line, headingContext);
+        if (headingContext && !/\bpokie(?:\.js)?\b/i.test(line) && /\b(?:supports?|accepts?|allows?|uses?)\b/i.test(line)) addLineClaims(line, headingContext);
         const proseCommand = line.match(/\b(?:the\s+)?`?([a-z][a-z0-9-]*)`?\s+command\b/i)?.[1];
         if (proseCommand && rootCommands.has(proseCommand)) {
             capabilities.add(`command:${proseCommand}`);
@@ -342,6 +357,13 @@ export function checkCoverage(inventory, coverage, documented) {
     const hasOwner = (id) => ownerIds.has(id);
     const executable = inventoryCapabilities(inventory);
     const categoryCapability = (id) => /^(?:target|source-type|output-format|output|mode|finding):/.test(id);
+    const categoryForValue = (option, value) => ({
+        "--target": `target:${value}`,
+        "--source-type": `source-type:${value}`,
+        "--format": `output-format:${value}`,
+        "--mode": `mode:${value}`,
+        "--to": `output:${value}`,
+    })[option];
     // Categories may be established by executable help or the configured public documentation
     // contract (for example an XLSX artifact form).  In either case they are fresh inputs,
     // never unreferenced map rows.
@@ -357,7 +379,11 @@ export function checkCoverage(inventory, coverage, documented) {
             const option = parts.pop();
             const command = parts.join(":");
             const actual = inventory.commands.find((entry) => entry.path === command)?.values.includes(`value:${command}:${option}:${value}`);
-            if (!actual) missing.push(`stale documented capability ${capability}`);
+            // Commander help frequently names a value placeholder without enumerating its
+            // accepted vocabulary.  The checked-in target/source/output/mode owner is the
+            // canonical executable contract for those finite vocabularies; a documented
+            // command still has to expose the option itself in the branch below.
+            if (!actual && !hasOwner(categoryForValue(option, value) ?? "")) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
         } else if (capability.startsWith("argument:")) {
             const [, command, ...parts] = capability.split(":");

@@ -75,13 +75,13 @@ test("checks root flags, positional contracts, and export --to values against ow
 const key = process.argv.slice(2).join(" ");
 const root = "Usage: pokie\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  build  build\\n  export  export\\n";
 const studio = "Usage: pokie [projectRoot]\\n\\nOptions:\\n  -h, --help  help\\n  --no-open  do not open\\n";
-const build = "Usage: pokie build <project>\\n\\nOptions:\\n  -h, --help  help\\n  --target <target> one of: supported\\n";
+const build = "Usage: pokie build <project>\\n\\nOptions:\\n  -h, --help  help\\n  --target <target> one of: supported\\n  --source-type <type> one of: blueprint\\n  --format <format> one of: json\\n  --mode <mode> one of: base\\n";
 const exportHelp = "Usage: pokie export <source> [excess...]\\n\\nOptions:\\n  -h, --help help\\n  --to <artifact> outcomes, adapter, or workbook\\n";
 process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : key === "export --help" ? exportHelp : build);
 `);
         const map = JSON.parse(await readFile(coverage, "utf8"));
         map.initialInventory.rootCommands = ["build", "export"];
-        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--help", owner: "test"}, {id: "alias:export:-h", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "value:export:--to:outcomes", owner: "test"}, {id: "value:export:--to:adapter", owner: "test"}, {id: "value:export:--to:workbook", owner: "test"});
+        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--help", owner: "test"}, {id: "alias:export:-h", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "value:export:--to:outcomes", owner: "test"}, {id: "value:export:--to:adapter", owner: "test"}, {id: "value:export:--to:workbook", owner: "test"}, {id: "output:outcomes", owner: "test"}, {id: "output:adapter", owner: "test"}, {id: "output:workbook", owner: "test"});
         await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 0, result.stderr);
