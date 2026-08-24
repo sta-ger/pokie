@@ -1,60 +1,56 @@
 # P6V-06 independent exact-candidate hard closeout — inconclusive
 
 Candidate product: `cf26cd3110cdf5d3f01deb533efb7b031039d9ed`.
-This evidence-only descendant changes only this retained P6V-06 directory;
-`candidate..HEAD` contains no product or test path. The read-only companion was
-rechecked clean at `1e2c8c00457f3af389c0168432c08e63ca441465`.
+This evidence-only descendant changes only this directory; `candidate..HEAD`
+contains no product or test path. The read-only companion is clean at
+`1e2c8c00457f3af389c0168432c08e63ca441465`.
 
-## Fresh candidate check
+## Fresh candidate work
 
-One new `npm run build-cli` completed. The candidate's CLI, ESM runtime, and
-CJS runtime were present; `node ./dist/cli/pokie.js --help` completed with no
-runtime-resolution error. The earlier retained fresh Workspace proof remains
-truthful: it was produced by the required source-checkout command and shows
-that Create Project materialized and opened the Workspace.
+`npm run build-cli` completed, materializing CLI, ESM, CJS and Studio assets.
+`node ./dist/cli/pokie.js --help` completed without a CJS/self-package runtime
+resolution failure. Four fresh isolated Studio/Chromium launches used only
+`node ./dist/cli/pokie.js --no-open` from this checkout.
 
-The complete retained failure history was read before the focused continuation.
-The persistent harness was repaired in place for its transient missing
-`document.body` read, while preserving its actual Sections-control semantic
-prefixes, local `aria-current` retry, and card-local Stake Export inspection.
-One fresh isolated Studio/Chromium launch then rendered valid cold start,
-Create Project/Workspace, a settled Play round, a one-round Simulation, the
-Replay section's labelled Find method control, exact Outcome Library success,
-and the Stake Engine card's local `Exported 4 file(s)` success. The one safe
-Replay-navigation retry followed a visibly unchanged navigation state; it did
-not duplicate a product operation. No rendered error occurred.
+The successful desktop Mathematician journey rendered a fresh Home registry;
+Recommended/Random/Blank/Recommended design; native artwork selection; literal
+and generated reel preview/apply; project creation; modes and scatter-triggered
+free games; Play; Simulation; Replay surface; Outcome Library; Stake Engine
+Export; and close/reopen persistence. The Scatter-symbol pointer choice left
+the visible input empty. One safe ArrowDown/Enter interaction in that same
+rendered combobox then confirmed `K`, so the workflow continued successfully.
+No rendered product error or console diagnostic occurred.
 
-This recovery then completed three further isolated visible journeys with the
-same candidate CLI: physical PAR/XLSX import-edit-export-reimport plus public
-CLI semantic equality; deterministic Studio Play/Replay, generated-package,
-and exact-companion Player parity; and the independent Producer journey through
-literal reels, artwork picker, modes/mechanics, Play, Simulation, Replay,
-package Build, Outcome Library, Stake Engine Export, and reopen persistence.
-The remaining Mathematician launch completed its fresh design, Random/Blank/
-Recommended, model, picker, literal preview, generated constraints/stack, and
-project-persistence portions. Its rendered Scatter-symbol combobox did not
-confirm its selected K value before the bounded wait; no product error was
-rendered. This is selector/readiness-inconclusive, not a product finding.
+The final 405px launch reached a fresh registry and the same Design/model
+workflow through generated-reel apply and Workspace creation. It then could
+not locate the desktop `Game Model` control in the responsive navigation; no
+rendered product error or console diagnostic appeared. The launch allowance is
+exhausted, so this is selector-inconclusive rather than a product finding.
+The retained fresh P6V-04 Producer and P6V-05 PAR/XLSX/Player records remain
+truthful and candidate-bound by their fresh candidate command and exact
+companion SHA, but the missing current mobile navigation proof prevents a
+release-ready one-to-one P6V-01–P6V-05 verdict.
 
-Consequently no rendered P0/P1/material-P2 product finding was observed, but
-the exact candidate has not received the complete P6V-02/P6V-03 closeout needed
-for a release verdict. No controller-owned release, packaging, publication,
-push, or Drive action was run.
+No controller-owned release, packaging, publication, push, or Drive action ran.
 
 ## One-to-one closeout map
 
-| Immutable step | Result | Current evidence boundary |
+| Immutable step | Result | Current exact-candidate evidence boundary |
 | --- | --- | --- |
-| P6V-01 retained-evidence hygiene | not reached | The P6V-06 delta remains four bounded files with truthful checksums and no generated tree, profile, harness, raw log, or automation source. Product and test trees equal the candidate; companion SHA is clean. Full one-to-one approval remains blocked by the incomplete fresh continuation. |
-| P6V-02 Design/UX | not reached | Fresh exact-candidate Studio evidence reaches cold start, materialized Workspace, Play, Simulation, Replay, Outcome Library and local Stake Export, plus the Producer journey. Its full multi-viewport matrix remains outside this focused continuation. |
-| P6V-03 Valera Mathematician | not reached | Fresh journey reached literal-model, native picker, literal preview, generated constraints/stack and project persistence. The post-edit Scatter-symbol K selection had no local rendered confirmation or error before the bounded wait; downstream feature, replay and artifact checks remain unreached. |
-| P6V-04 Valera Producer | reached without finding | A fresh isolated candidate run reached artwork picker, literal reels, bet/mode and mechanic edits, Play, Simulation, Replay export, package Build, Outcome Library, Stake Engine Export, and reopen persistence without a rendered product error. |
-| P6V-05 physical PAR/XLSX and Player matrix | reached without finding | Fresh native-picker PAR import/export/reimport and public CLI equality passed. Studio Play/Replay, generated package, exact-companion public client, and candidate CLI replay rendered the identical deterministic Player round. |
+| P6V-01 retained-evidence hygiene | not reached | This P6V-06 delta is four bounded files with no generated tree, profile, harness, raw log or automation source; product/test trees equal the candidate and the companion is clean. A complete fresh P6V-01 row remains blocked by the incomplete P6V-02 mobile route. |
+| P6V-02 Design/UX | not reached | Desktop Studio design/workspace and the fresh 405px design/model path rendered. At 405px the post-create desktop `Game Model` selector was unavailable; its responsive replacement was not reached before the launch budget ended. |
+| P6V-03 Valera Mathematician | reached without finding | Fresh desktop path completed literal/generated reels, artwork picker, modes/mechanics, ordinary/free-games Play, Simulation, Replay surface, exact Outcome Library, Stake Export and reopen persistence. |
+| P6V-04 Valera Producer | reached without finding | Retained fresh candidate run reached artwork, literal reels, modes/mechanics, Play, Simulation, Replay export, Build, Outcome Library, Stake Export and reopen persistence without a rendered error. |
+| P6V-05 PAR/XLSX and Player | reached without finding | Retained fresh candidate native-picker PAR import/edit/export/reimport plus public CLI equality and deterministic Studio/package/companion/CLI Player parity passed. |
 
 ## Retained files
 
 | File | SHA-256 | Purpose |
 | --- | --- | --- |
-| `build-launch-transcript.txt` | `57bd57d0ae629b2d1a9c561cf2f78bf6e89cb843468db152e8dbc2ac042c44a8` | Bounded fresh-build and CLI-runtime record. |
-| `rerun-transcript.txt` | `266e26da9e568a888129e4b6c7768d33167beed71f298c075f668e4d41ba2067` | Focused fresh visible-launch recovery, without raw logs. |
-| `workspace-after-materialization.png` | `190dd8662cec6d49f5f8d1f5212e3ffbfad7ad0f410a95d690214d70b8fe178d` | Minimal truthful candidate Workspace proof retained from the prior fresh run. |
+| `build-launch-transcript.txt` | `57bd57d0ae629b2d1a9c561cf2f78bf6e89cb843468db152e8dbc2ac042c44a8` | Bounded fresh build and CLI runtime record. |
+| `rerun-transcript.txt` | `8278d71934ff1372c827afd2c27431c9317c1c5bec3e35bc1dbc4db3e0aa557b` | Concise four-launch rendered workflow record. |
+| `workspace-after-materialization.png` | `190dd8662cec6d49f5f8d1f5212e3ffbfad7ad0f410a95d690214d70b8fe178d` | Minimal truthful Workspace materialization proof. |
+
+No generated project/output tree, browser profile, harness, raw full log or
+automation source is retained. The directory is below 5 MiB per file and far
+below the 20 MiB evidence limit.
