@@ -3,28 +3,20 @@ candidate=cf26cd3110cdf5d3f01deb533efb7b031039d9ed
 companion=1e2c8c00457f3af389c0168432c08e63ca441465 (clean, read-only)
 harness=/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P6V-06-867a74503125332d/current.mjs (not committed)
 
-The complete retained failure history was read before launch: each record was
-readiness-only and concerned Stake Export's absent observed terminal state.
-The one persistent harness was repaired in place to use rendered section-name
-prefixes, its own local `aria-current` state with one safe idempotent retry,
-and the Stake card's generic rendered destination text. Each launch had a new
-Studio HOME/registry and Chromium profile, and launched only
-`node ./dist/cli/pokie.js --no-open` from this checkout.
+The complete retained failure history was read before launch. The persistent
+harness was repaired in place for its transient `document.body` readiness
+read; existing semantic-prefix navigation, one safe local retry, and the
+card-local Stake Export result inspection were retained. This one fresh Studio
+registry and Chromium profile used only `node ./dist/cli/pokie.js --no-open`.
 
-Launch 1 rendered valid cold-start Blueprint, Create Project/Workspace, a
-settled Play round, and a one-round Simulation. Its unscoped Replay action had
-no later local result; no product error rendered.
+Rendered sequence: valid cold-start Blueprint; Create Project/Workspace;
+settled Play round; one-round Simulation; Replay Sections control followed by
+its labelled Find method input; Build/Export Outcome Library generation; and
+Stake Engine Export's local `Exported 4 file(s)` state. The Replay navigation's
+first accepted click left its local selected marker unchanged, so one safe
+idempotent retry was made; the next local Replay control rendered. No product
+error rendered and no non-idempotent operation was duplicated.
 
-Launch 2 proved the failure was a harness selector: its prefix helper was
-still hard-coded to Build/Export, so the requested Replay action was never
-targeted. The helper was repaired in place; no product request was emitted.
-
-Launch 3 again rendered cold start, Workspace, Play, and Simulation, then
-targeted the Replay Sections control. No local Replay picker or product error
-rendered within the bounded wait. The action was not duplicated.
-
-Launch 4 used the repaired selected-state retry, but the harness read an
-undefined transient page-text value before its first rendered-page assertion.
-Studio had launched successfully; this is a driver failure, not a rendered
-product failure. The four-launch allowance is exhausted. P6V-03, P6V-04, and
-P6V-05's distinct rendered/physical continuations remain not reached.
+This repairs the retained driver/readiness boundary for the default Studio
+journey. P6V-03, P6V-04, and P6V-05 remain distinct unreached rendered or
+physical workflows; this transcript does not substitute for them.
