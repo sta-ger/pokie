@@ -41,4 +41,15 @@ describe("bindSessionControls", () => {
         expect(restore).not.toHaveBeenCalled();
         expect(elements.status.textContent).toBe("Enter a session ID to restore it.");
     });
+
+    it("delegates a trimmed session id to Restore Session", () => {
+        const elements = createElements();
+        const restore = jest.fn();
+        bindSessionControls(elements, jest.fn(), restore);
+
+        elements.sessionId.value = " restored-session ";
+        elements.restoreSessionButton.click();
+
+        expect(restore).toHaveBeenCalledWith("restored-session");
+    });
 });
