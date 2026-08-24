@@ -1,7 +1,0 @@
-[2026-08-22T14:01:46.749Z] START exact-candidate rendered journey SHA=92bd710ee5fc03e376134f7224eeba465e053a0e with isolated Studio HOME/registry and isolated Chrome profile.
-[2026-08-22T14:01:46.760Z] NAVIGATE public Studio URL #/home/design.
-[2026-08-22T14:01:47.143Z] OBSERVE fresh Studio registry state=empty from rendered Home.
-[2026-08-22T14:01:47.184Z] CLICK rendered New Blueprint; [2026-08-22T14:01:47.316Z] CLICK rendered Recommended; rendered draft replacement succeeded.
-[2026-08-22T14:01:47.354Z] CLICK rendered New Blueprint; [2026-08-22T14:01:47.412Z] CLICK rendered Random.
-[2026-08-22T14:01:47.473Z] INPUT rendered Name (optional)=P6V03 Random; [2026-08-22T14:01:47.495Z] CLICK rendered Generate.
-[2026-08-22T14:02:47.509Z] INCONCLUSIVE: no rendered Random success, pending, or error state appeared during the bounded 60-second interaction wait. No retry/third public-workflow launch was permitted.
