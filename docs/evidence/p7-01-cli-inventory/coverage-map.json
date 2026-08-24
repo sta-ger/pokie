@@ -24,6 +24,18 @@
     "rootCommands": ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "reel", "replay", "report", "sample", "serve", "sim", "validate"],
     "nestedVerbs": ["certification build", "certification verify", "fairness commit", "fairness reveal", "fairness seed-commit", "fairness verify", "reel generate"]
   },
+  "findings": {
+    "versionHelp": {
+      "helpExitCode": 0,
+      "versionExitCode": 1,
+      "versionOutputIncludes": "Unknown option \"--version\""
+    },
+    "implicitRoot": {
+      "helpExitCode": 0,
+      "usage": "Usage: studio [options] [projectRoot] [excess...]",
+      "requiredOptions": ["--no-open"]
+    }
+  },
   "owners": [
     {"id":"alias:root:-h","owner":"P7-01 executable help contract"},
     {"id":"alias:build:-h","owner":"P7-01 executable help contract"},
@@ -253,6 +265,7 @@
     {"id":"argument:root:[excess...]","owner":"tests/cli/commands/StudioCommand.test.ts"},
     {"id":"argument:root:<command>","owner":"tests/cli/cliCommandInventory.contract.test.ts"},
     {"id":"argument:build:<project>","owner":"tests/cli/BuildCommand.test.ts"}, {"id":"argument:build:[excess...]","owner":"tests/cli/BuildCommand.test.ts"},
+    {"id":"argument:certification:[command]","owner":"tests/cli/commands/CertificationCommand.test.ts"},
     {"id":"argument:certification build:<bundleDir>","owner":"tests/cli/commands/CertificationCommand.test.ts"}, {"id":"argument:certification build:<config.json>","owner":"tests/cli/commands/CertificationCommand.test.ts"}, {"id":"argument:certification build:[excess...]","owner":"tests/cli/commands/CertificationCommand.test.ts"},
     {"id":"argument:certification verify:<certDir>","owner":"tests/cli/commands/CertificationCommand.test.ts"}, {"id":"argument:certification verify:[excess...]","owner":"tests/cli/commands/CertificationCommand.test.ts"},
     {"id":"argument:client:<packageRoot>","owner":"tests/cli/commands/ClientCommand.test.ts"}, {"id":"argument:client:[excess...]","owner":"tests/cli/commands/ClientCommand.test.ts"},
@@ -262,6 +275,7 @@
     {"id":"argument:edit:<blueprint>","owner":"tests/cli/commands/EditCommand.test.ts"}, {"id":"argument:edit:[excess...]","owner":"tests/cli/commands/EditCommand.test.ts"},
     {"id":"argument:export:<source>","owner":"tests/cli/commands/ExportCommand.test.ts"}, {"id":"argument:export:[excess...]","owner":"tests/cli/commands/ExportCommand.test.ts"},
     {"id":"argument:fairness seed-commit:<serverSeedPath>","owner":"tests/cli/commands/FairnessCommand.test.ts"}, {"id":"argument:fairness seed-commit:[excess...]","owner":"tests/cli/commands/FairnessCommand.test.ts"},
+    {"id":"argument:fairness:[command]","owner":"tests/cli/commands/FairnessCommand.test.ts"},
     {"id":"argument:fairness commit:<serverSeedCommitmentPath>","owner":"tests/cli/commands/FairnessCommand.test.ts"}, {"id":"argument:fairness commit:[excess...]","owner":"tests/cli/commands/FairnessCommand.test.ts"},
     {"id":"argument:fairness reveal:<commitmentPath>","owner":"tests/cli/commands/FairnessCommand.test.ts"}, {"id":"argument:fairness reveal:[excess...]","owner":"tests/cli/commands/FairnessCommand.test.ts"},
     {"id":"argument:fairness verify:<proofPath>","owner":"tests/cli/commands/FairnessCommand.test.ts"}, {"id":"argument:fairness verify:[excess...]","owner":"tests/cli/commands/FairnessCommand.test.ts"},
@@ -270,8 +284,10 @@
     {"id":"argument:init:[directory]","owner":"tests/cli/commands/InitCommand.test.ts"}, {"id":"argument:init:[excess...]","owner":"tests/cli/commands/InitCommand.test.ts"},
     {"id":"argument:inspect:<packageRoot>","owner":"tests/cli/commands/InspectCommand.test.ts"}, {"id":"argument:inspect:[excess...]","owner":"tests/cli/commands/InspectCommand.test.ts"},
     {"id":"argument:reel generate:<blueprint.json>","owner":"tests/cli/commands/ReelCommand.test.ts"}, {"id":"argument:reel generate:[excess...]","owner":"tests/cli/commands/ReelCommand.test.ts"},
+    {"id":"argument:reel:[command]","owner":"tests/cli/commands/ReelCommand.test.ts"},
     {"id":"argument:replay:<packageRoot>","owner":"tests/cli/commands/ReplayCommand.test.ts"}, {"id":"argument:replay:[excess...]","owner":"tests/cli/commands/ReplayCommand.test.ts"},
     {"id":"argument:report:<projectOrSimulationReportJson>","owner":"tests/cli/commands/ReportCommand.test.ts"}, {"id":"argument:report:[excess...]","owner":"tests/cli/commands/ReportCommand.test.ts"},
+    {"id":"argument:sample:<path>","owner":"tests/cli/commands/SampleCommand.test.ts"}, {"id":"argument:sample:[excess...]","owner":"tests/cli/commands/SampleCommand.test.ts"},
     {"id":"argument:serve:<packageRoot>","owner":"tests/cli/commands/ServeCommand.test.ts"}, {"id":"argument:serve:[excess...]","owner":"tests/cli/commands/ServeCommand.test.ts"},
     {"id":"argument:sim:<packageRoot>","owner":"tests/cli/commands/SimCommand.test.ts"}, {"id":"argument:sim:[excess...]","owner":"tests/cli/commands/SimCommand.test.ts"},
     {"id":"argument:validate:<project>","owner":"tests/cli/commands/ValidateCommand.test.ts"}, {"id":"argument:validate:[excess...]","owner":"tests/cli/commands/ValidateCommand.test.ts"}

@@ -23,6 +23,10 @@ process.stdout.write(help);
         documentationRoot: ".",
         documentationScope: {include: ["**/*.md"]},
         initialInventory: {rootCommands: ["build"], nestedVerbs: []},
+        findings: {
+            versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie build"},
+            implicitRoot: {helpExitCode: 0, usage: "Usage: pokie [projectRoot]", requiredOptions: ["--no-open"]},
+        },
         owners: [
             {id: "command:build", owner: "test"},
             {id: "alias:root:-h", owner: "test"},
@@ -139,6 +143,34 @@ test("keeps command context for ordinary claims below a CLI heading", async () =
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 1);
         assert.match(result.stderr, /stale documented capability value:build:--target:obsolete/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects arbitrary narrative category and heading-scoped positional claims", async () => {
+    const {directory, cli, coverage} = await fixture("", "## pokie build\n\nThe command supports target futureTarget. It supports source type rareSource. It supports output format orbital. It supports output form archive. It supports mode turbo. It accepts <obsolete> [optional-profile].\n");
+    try {
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /target:futureTarget/);
+        assert.match(result.stderr, /source-type:rareSource/);
+        assert.match(result.stderr, /output-format:orbital/);
+        assert.match(result.stderr, /output:archive/);
+        assert.match(result.stderr, /mode:turbo/);
+        assert.match(result.stderr, /argument:build:\[optional-profile\]/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects a version/help or implicit-root finding that no longer matches the fresh CLI", async () => {
+    const {directory, cli, coverage} = await fixture();
+    try {
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        map.findings.versionHelp.versionExitCode = 1;
+        map.findings.implicitRoot.usage = "Usage: studio [options]";
+        await writeFile(coverage, JSON.stringify(map));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /version\/help finding differs from the fresh CLI/);
+        assert.match(result.stderr, /implicit-root finding differs from the fresh CLI/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 

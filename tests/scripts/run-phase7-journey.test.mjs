@@ -82,7 +82,7 @@ process.exitCode = result.status;
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
-test("isolates expected artifacts from concurrent driver writes and rejects an unauthenticated control request", async () => {
+test("isolates expected artifacts and cannot turn a runtime-inspected client into a direct control request", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
     try {
         const concurrentWriter = await driver(directory, `
@@ -98,16 +98,19 @@ process.exitCode = result.status;
         const directControl = await driver(directory, `
 import net from "node:net";
 import {readFile} from "node:fs/promises";
+import {spawnSync} from "node:child_process";
 import path from "node:path";
-let readable = true;
-try { await readFile(process.env.P7_PUBLIC_CLI, "utf8"); } catch { readable = false; }
-if (readable) throw new Error("driver could read the control credential client");
+const inspectedClient = await readFile(process.env.P7_PUBLIC_CLI, "utf8");
+if (/secret|socket/i.test(inspectedClient)) throw new Error("runtime-inspected client exposed a reusable control credential");
 const socket = net.createConnection(path.join(path.dirname(process.env.P7_PUBLIC_CLI), ".p7-public-cli.sock"));
-await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({secret: "extracted-without-access", args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("close", resolve); });
+await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({secret: "extracted-at-runtime", args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("error", resolve); socket.on("close", resolve); });
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.exitCode = result.status;
 `);
         const directControlResult = run(await cli(directory), directControl, path.join(directory, "control"));
-        assert.equal(directControlResult.status, 1);
-        assert.match(directControlResult.stderr, /did not invoke the wrapper-controlled public CLI/);
+        assert.equal(directControlResult.status, 0, directControlResult.stderr);
+        const transcript = await readFile(path.join(directory, "control/journey-transcript.txt"), "utf8");
+        assert.equal((transcript.match(/PUBLIC_CLI_COMMAND/g) ?? []).length, 2);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 

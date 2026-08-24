@@ -141,7 +141,7 @@ each question is answered from the piped input in the same order it would be ask
 prompt, and the same reprompt-on-invalid-input and EOF-cancellation rules apply.
 
 Without a real terminal to run the wizard in (a script, CI, or any other non-interactive invocation), `pokie
-create`/`pokie create <name>` exits immediately with guidance toward its two non-interactive shortcuts below,
+create`/`pokie create [name]` exits immediately with guidance toward its two non-interactive shortcuts below,
 instead of hanging or silently cancelling:
 
 ```
@@ -351,6 +351,10 @@ validate`/`pokie build --dry-run`.
 POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
 it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
 `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
+
+The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
+It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
+The public CLI supports output formats: `json`, `markdown`, `html`, `xlsx`, and `jsonl`, and modes: `base` and `all`.
 
 ```
 pokie build <project> --target <artifact> [--out <path>] [--dry-run]
@@ -2791,7 +2795,7 @@ Several invocations all launch it, resolved by `resolveCliInvocation` (`cli/reso
   including a nested subdirectory such as `src/generated` — therefore opens that project's dashboard, exactly as
   if the project root had been named explicitly.
 - `pokie .` — Project mode for the current directory.
-- `pokie <path>` — Project mode for `<path>`, as long as `<path>` isn't itself one of the command
+- `pokie [projectRoot]` — Project mode for the supplied project root, as long as that path isn't itself one of the command
   names below and actually exists (a typo'd command name is never silently treated as a path — see below).
 
 Bare Studio flags discover a project the same way no arguments do, so `pokie --no-open` inside a project opens
@@ -2804,7 +2808,7 @@ question, so a project with a broken entry still opens its dashboard and reports
 remembered between runs either — the target is always rediscovered from the current working directory, never
 restored from a "last opened project".
 
-Every other `pokie <command> ...` invocation (`pokie sim ...`, `pokie serve ...`, etc.) is unaffected — a first
+Every other named POKIE invocation (`pokie sim ...`, `pokie serve ...`, etc.) is unaffected — a first
 argument that matches a known command name always dispatches to that command, never to Studio.
 
 Whichever mode the server starts in, the frontend opens directly on that mode's own screen: Project mode lands on
@@ -2888,7 +2892,7 @@ Options:
 
 ### Project Dashboard
 
-Opening or creating a project — or launching Studio directly with `pokie .`/`pokie <path>`
+Opening or creating a project — or launching Studio directly with `pokie .`/`pokie [projectRoot]`
 — switches Studio into the **Project** mode/route, identified by that project's `projectRoot`, and shows the
 **Project Dashboard**.
 
@@ -2934,7 +2938,7 @@ subprocess, and never duplicates their logic.
 The Dashboard itself has four states, all handled explicitly by the frontend:
 
 - **empty** — Studio is in Home mode; there's no project to show a dashboard for.
-- **loading** — only right after Studio starts directly into Project mode (`pokie .`/`pokie <path>`); the entry
+- **loading** — only right after Studio starts directly into Project mode (`pokie .`/`pokie [projectRoot]`); the entry
   module hasn't finished loading yet. Design Game's Build and Projects' Open both already have the manifest in
   hand by the time they switch Studio into Project mode, so they go straight to **loaded**.
 - **loaded** — the game's manifest (id/name/version) loaded successfully.

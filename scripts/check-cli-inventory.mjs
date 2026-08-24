@@ -78,7 +78,7 @@ function optionTokens(help) {
 }
 
 function usageArguments(help) {
-    const usage = help.split("\n").find((line) => /^Usage:\s+pokie\b/i.test(line));
+    const usage = help.split("\n").find((line) => /^Usage:\s+\S+/i.test(line));
     if (!usage) return [];
     // Commander keeps positional contracts on the Usage line.  Preserve the brackets so
     // required and optional positionals are different inventory entries.
@@ -98,12 +98,16 @@ function valuesFromText(text) {
 
 function optionDefinitions(help) {
     const options = [];
-    for (const line of help.split("\n")) {
+    const lines = help.split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
         if (!/^\s{2,}-/.test(line)) continue;
         const tokens = line.match(/(?:^|[\s,])(-{1,2}[a-z][a-z0-9-]*)\b/gi) ?? [];
         const long = tokens.map((token) => token.trim().replace(/,$/, "")).filter((token) => token.startsWith("--"));
         if (long.length === 0) continue;
-        options.push({tokens: long, takesValue: /--[a-z][a-z0-9-]*\s+(?:<[^>]+>|\[[^\]]+\])/i.test(line), text: line});
+        let text = line;
+        for (let continuation = index + 1; continuation < lines.length && /^\s{2,}\S/.test(lines[continuation]) && !/^\s{2,}-/.test(lines[continuation]); continuation += 1) text += ` ${lines[continuation].trim()}`;
+        options.push({tokens: long, takesValue: /--[a-z][a-z0-9-]*\s+(?:<[^>]+>|\[[^\]]+\])/i.test(line), text});
     }
     return options;
 }
@@ -175,9 +179,13 @@ export async function collect(cli) {
         // These output forms are named in the actual public help/documentation contract rather
         // than being a map-only vocabulary.  JSON/Markdown/HTML can also be value-bearing forms.
         for (const [pattern, capability] of [[/\bjsonl\b/i, "output-format:jsonl"], [/\bxlsx\b/i, "output-format:xlsx"]]) if (pattern.test(allHelp)) categories.add(capability);
-        categories.add("finding:version-help");
-        categories.add("finding:implicit-studio");
-        return {inventory: {schemaVersion: 3, rootCommands: commandNames(root.output).sort(), commands, categories: [...categories].sort(), version: {exitCode: version.exitCode, outputSha256: createHash("sha256").update(version.output).digest("hex")}}, transcript};
+        const findings = {
+            versionHelp: {helpExitCode: root.exitCode, versionExitCode: version.exitCode, versionOutput: version.output.trim()},
+            implicitRoot: {helpExitCode: implicitRoot.exitCode, usage: implicitRoot.output.split("\n").find((line) => /^Usage:/i.test(line))?.trim() ?? "", options: optionTokens(implicitRoot.output)},
+        };
+        if (findings.versionHelp.helpExitCode === 0 && findings.versionHelp.versionOutput.length > 0) categories.add("finding:version-help");
+        if (findings.implicitRoot.helpExitCode === 0 && findings.implicitRoot.options.includes("--no-open")) categories.add("finding:implicit-studio");
+        return {inventory: {schemaVersion: 4, rootCommands: commandNames(root.output).sort(), commands, categories: [...categories].sort(), findings, version: {exitCode: version.exitCode, outputSha256: createHash("sha256").update(version.output).digest("hex")}}, transcript};
     } finally { await rm(temporaryDirectory, {recursive: true, force: true}); }
 }
 
@@ -244,7 +252,7 @@ function documentedCapabilities(contents, inventory) {
             // Narrative docs often say "the build command supports target foo" rather than
             // repeating a shell invocation.  A command context plus an option name makes this a
             // public contract just as much as an invocation does.
-            for (const match of text.matchAll(new RegExp(`\\b(?:supports?|accepts?|allows?|uses?)\\s+(?:the\\s+)?(?:--)?${bareOption}(?:\\s+(?:value|form|type))?\\s*(?:is|are|:)?\\s*(?:\\x60)?([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi"))) {
+            for (const match of text.matchAll(new RegExp(`\\b(?:supports?|accepts?|allows?|uses?)\\s+(?:the\\s+)?(?:--)?${bareOption}\\b(?:\\s+(?:value|form|type))?\\s*(?:is|are|:)?\\s*(?:\\x60)?([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi"))) {
                 for (const value of match[1].split("|").map((item) => item.trim())) values.add(value);
             }
             for (const value of values) capabilities.add(`value:${command}:${option}:${value}`);
@@ -253,6 +261,19 @@ function documentedCapabilities(contents, inventory) {
     const addLineClaims = (line, command) => {
         for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
         for (const alias of line.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
+        const documentedPositionals = [...line.matchAll(/(?:<[^>\n]+>|\[[^\]\n]+\])/g)].filter((match) => {
+            const positional = match[0];
+            const immediatelyPrecededByOption = /--[a-z][a-z0-9-]*\s*$/i.test(line.slice(0, match.index));
+            return !/^\[options\]$/i.test(positional) && !/[\s`"']|--/.test(positional) && !immediatelyPrecededByOption;
+        }).map((match) => match[0]);
+        const executablePositionals = inventory.commands.find((entry) => entry.path === command)?.usage ?? [];
+        for (const [index, positional] of documentedPositionals.entries()) {
+            const executable = executablePositionals[index];
+            // Public examples may give a required path a more helpful name than Commander does.
+            // They still assert its required/optional position, which is what users can rely on.
+            if (executable && executable.startsWith(positional[0]) && executable.endsWith(positional.at(-1))) capabilities.add(`argument:${command}:${executable}`);
+            else capabilities.add(`argument:${command}:${positional}`);
+        }
         addValueClaims(line, command);
     };
     const addInvocation = (rootCommand, remainder = "") => {
@@ -277,20 +298,35 @@ function documentedCapabilities(contents, inventory) {
             addInvocation(rootCommand, remainder);
         }
     };
+    const categoryNames = [
+        {pattern: "targets?", id: "target"},
+        {pattern: "(?:project\\s+)?source\\s+types?", id: "source-type"},
+        {pattern: "output\\s+forms?", id: "output"},
+        {pattern: "output\\s+formats?", id: "output-format"},
+        {pattern: "formats?", id: "output-format"},
+        {pattern: "modes?", id: "mode"},
+    ];
+    const categoryValueWords = new Set(["a", "an", "and", "are", "as", "be", "can", "default", "for", "form", "forms", "format", "formats", "include", "includes", "is", "of", "or", "output", "project", "source", "support", "supported", "supports", "target", "targets", "the", "to", "type", "types", "use", "uses", "value", "values", "with"]);
+    const valuesInCategoryClaim = (list) => {
+        const quoted = [...list.matchAll(/[`"']([a-z][a-z0-9-]*)[`"']/gi)].map((match) => match[1]);
+        const bare = list.match(/[a-z][a-z0-9-]*/gi) ?? [];
+        return [...new Set([...quoted, ...bare].filter((value) => !categoryValueWords.has(value.toLowerCase())))];
+    };
+    const canonicalCategoryValue = (category, value) => inventory.categories?.find((entry) => entry.startsWith(`${category}:`) && entry.slice(category.length + 1).toLowerCase() === value.toLowerCase())?.slice(category.length + 1) ?? value;
     const addCategoryClaims = (text) => {
-        // A format/source/mode is a public contract only when it is used as CLI-facing
-        // vocabulary, not merely because an unrelated API example happens to contain a word.
-        const cliFacing = /\bpokie(?:\.js)?\b|--(?:target|to|format|mode|source-type)\b|\b(?:project|output)\s+(?:type|format|form)\b/i.test(text);
-        if (!cliFacing) return;
-        const words = new Set((text.match(/\b(?:blueprint|tsPackage|outcomeLibrary|stakeAdapter|parWorkbook|wasm|json|jsonl|markdown|html|xlsx|base|all|outcomes|adapter|workbook)\b/gi) ?? []).map((word) => word.toLowerCase()));
-        const canonical = (word) => ({tspackage: "tsPackage", outcomelibrary: "outcomeLibrary", stakeadapter: "stakeAdapter", parworkbook: "parWorkbook"}[word] ?? word);
-        for (const word of words) {
-            const value = canonical(word);
-            if (["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"].includes(value)) capabilities.add(`source-type:${value}`);
-            if (["json", "jsonl", "markdown", "html", "xlsx"].includes(value)) capabilities.add(`output-format:${value}`);
-            if (["base", "all"].includes(value) && /--mode|\bmode\b/i.test(text)) capabilities.add(`mode:${value}`);
-            if (["outcomes", "adapter", "workbook"].includes(value) && /--to|\bexport\b/i.test(text)) capabilities.add(`output:${value}`);
-            if (["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"].includes(value) && /--target|\btarget\b/i.test(text)) capabilities.add(`target:${value}`);
+        // This deliberately derives the category from the documentation grammar rather than a
+        // closed vocabulary.  A newly named target or source/output/mode value is therefore an
+        // owner-checked public claim even before the collector has learned its spelling.
+        for (const category of categoryNames) {
+            const subject = `(?:${category.pattern})\\b`;
+            const expressions = [
+                new RegExp(`(?<![-\\w])${subject}\\s*(?:(?:values?|forms?|types?)\\s*)?(?::|=|are|is|include|includes|support(?:ed|s)?\\b|accept(?:ed|s)?\\b|allow(?:ed|s)?\\b|can be)\\s*([^\\n.;]+)`, "gi"),
+                new RegExp(`\\b(?:supports?|accepts?|allows?|uses?)\\s+(?:the\\s+)?${subject}(?:\\s+(?:value|form|type))?\\s*(?::|=|are|is)?\\s*([^\\n.;]+)`, "gi"),
+            ];
+            for (const expression of expressions) for (const match of text.matchAll(expression)) {
+                const list = match[1].replace(/\s*(?:,|and)\s+(?:targets?|(?:project\s+)?source\s+types?|output\s+forms?|output\s+formats?|formats?|modes?)\b.*/i, "");
+                for (const value of valuesInCategoryClaim(list)) capabilities.add(`${category.id}:${canonicalCategoryValue(category.id, value)}`);
+            }
         }
     };
     // A root invocation has no command token; it is still a public claim (notably --help,
@@ -311,12 +347,8 @@ function documentedCapabilities(contents, inventory) {
         }
         unquoted += line.slice(cursor);
         addInvocations(unquoted, fencedCliCode);
-        addCategoryClaims(line);
+        if (/\bpokie(?:\.js)?\b/i.test(line) && /\b(?:supports?|accepts?|allows?|uses?)\b/i.test(line)) addCategoryClaims(line);
     }
-    // Format/type glossaries commonly introduce the CLI command once and list its forms in a
-    // following paragraph or table.  The configured document is one public contract, so retain
-    // that association instead of silently dropping the later ordinary vocabulary.
-    addCategoryClaims(contents);
     // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
     // the command in prose rather than repeat the complete invocation.  Associate both forms
     // with their exact command so a stale claim cannot borrow another command's owner.
@@ -330,10 +362,16 @@ function documentedCapabilities(contents, inventory) {
         }
         else if (heading) headingContext = undefined;
         else if (/^#{1,6}\s+/.test(line)) headingContext = undefined;
-        if (headingContext && !/\bpokie(?:\.js)?\b/i.test(line) && /\b(?:supports?|accepts?|allows?|uses?)\b/i.test(line)) addLineClaims(line, headingContext);
+        if (headingContext && !/\bpokie(?:\.js)?\b/i.test(line)) {
+            if (/\b(?:supports?|accepts?|allows?)\b/i.test(line)) {
+                addCategoryClaims(line);
+                addLineClaims(line, headingContext);
+            }
+        }
         const proseCommand = line.match(/\b(?:the\s+)?`?([a-z][a-z0-9-]*)`?\s+command\b/i)?.[1];
         if (proseCommand && rootCommands.has(proseCommand)) {
             capabilities.add(`command:${proseCommand}`);
+            if (/\b(?:supports?|accepts?|allows?|uses?)\b/i.test(line)) addCategoryClaims(line);
             addLineClaims(line, proseCommand);
         }
     }
@@ -371,6 +409,23 @@ export function checkCoverage(inventory, coverage, documented) {
     const missing = [...executable].filter((id) => !hasOwner(id));
     for (const owner of coverage.owners.filter((entry) => categoryCapability(entry.id))) {
         if (!fresh.has(owner.id)) missing.push(`inert coverage owner ${owner.id}`);
+    }
+    const expectedFindings = coverage.findings;
+    if (ownerIds.has("finding:version-help")) {
+        const expected = expectedFindings?.versionHelp;
+        if (!expected) missing.push("missing recorded finding contract version-help");
+        else {
+            if (expected.helpExitCode !== inventory.findings?.versionHelp.helpExitCode || expected.versionExitCode !== inventory.findings?.versionHelp.versionExitCode) missing.push("version/help finding differs from the fresh CLI");
+            if (expected.versionOutput !== undefined && expected.versionOutput !== inventory.findings?.versionHelp.versionOutput) missing.push("version/help finding differs from the fresh CLI");
+            if (expected.versionOutputIncludes !== undefined && !inventory.findings?.versionHelp.versionOutput.includes(expected.versionOutputIncludes)) missing.push("version/help finding differs from the fresh CLI");
+        }
+    }
+    if (ownerIds.has("finding:implicit-studio")) {
+        const expected = expectedFindings?.implicitRoot;
+        if (!expected) missing.push("missing recorded finding contract implicit-studio");
+        else {
+            if (expected.helpExitCode !== inventory.findings?.implicitRoot.helpExitCode || (expected.usage !== undefined && expected.usage !== inventory.findings?.implicitRoot.usage) || (expected.requiredOptions ?? []).some((option) => !inventory.findings?.implicitRoot.options.includes(option))) missing.push("implicit-root finding differs from the fresh CLI");
+        }
     }
     for (const capability of documented) {
         if (capability.startsWith("value:")) {

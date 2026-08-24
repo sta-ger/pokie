@@ -56,18 +56,18 @@ node scripts/run-phase7-journey.mjs \
 ```
 
 The journey script receives `P7_INPUT_DIR` (copied input provenance) and
-`P7_PUBLIC_CLI`, an execute-only native request client around the supplied built
-`pokie` CLI. The runner does **not** provide an artifact-directory path, a
-command-record file, a control credential, or a readable client binary to the
-driver. Its command records are retained only by the runner's in-memory control
-server. Replacing the request client therefore produces no record and is
-rejected. The control server
-records each command and exit code, and hashes only expected artifacts whose
-bytes changed during a successful CLI invocation. Every `--expect` artifact
-must therefore have a successful wrapper-observed SHA-256 record — a direct
-write before or after a command, a replaced wrapper, a forged legacy JSONL
-record, or a nonzero artifact-producing command is rejected. Directory inputs
-retain a bounded recursive file manifest and aggregate hash. The runner invokes
-the driver twice in distinct new temporary directories and retains the public
+`P7_PUBLIC_CLI`, a read-only request-plan client. It carries no credential and
+has no control socket: after each isolated driver exits, the runner validates
+its bounded request plan and performs every recorded public `pokie` invocation
+itself in the private artifact directory. Reading, instrumenting, or replacing
+the client therefore cannot yield reusable authority or forge a command record.
+The runner records each actual command and exit code, and hashes only expected
+artifacts whose bytes changed during a successful CLI invocation. Every
+`--expect` artifact must therefore have a successful wrapper-observed SHA-256
+record — a direct write before or after a command, a replaced wrapper, a forged
+legacy JSONL record, a raw control request, or a nonzero artifact-producing
+command is rejected. Directory inputs retain a bounded recursive file manifest
+and aggregate hash. The runner invokes the driver twice in distinct new
+temporary directories and retains the public
 commands, exit codes, provenance, checks, stdout/stderr, and an independent
 rerun record in `journey-transcript.txt`.
