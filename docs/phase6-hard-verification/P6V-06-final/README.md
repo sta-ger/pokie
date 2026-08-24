@@ -1,36 +1,36 @@
-# P6V-06 independent exact-candidate closeout — inconclusive
+# P6V-06 independent exact-candidate closeout — evidence inconclusive
 
 Product candidate: `0560176d6974986c322adf3af8c5413ef48247a6`.
 Companion candidate: `1e2c8c00457f3af389c0168432c08e63ca441465` (clean).
-The committed evidence descendant has no product-tree delta from the product
-candidate. `transcript.txt` is the complete bounded record.
+This evidence descendant changes no product files from the product candidate.
 
-The retained candidate-bound P6V-03/P6V-04 rendered journeys, physical P6V-05
-PAR/XLSX semantic round trip, and five-surface Player matrix remain truthful:
-the latter compares the candidate CLI Replay, built-package public client,
-Studio Play, Studio Replay, and the clean exact companion and reports the same
-3x3 orientation, symbols/artwork, paylines, winning positions, win, paytable,
-bet/mode and no feature state. They were not rerun because the controller marks
-them as already passed for this candidate.
+## Fresh P6V-02 recovery
 
-This invocation freshly ran only the previously incomplete P6V-02 portion.
-From a new Studio registry/profile, Studio was launched from this checkout
-only with `node ./dist/cli/pokie.js --no-open`. Rendered Home, the New Blueprint
-dialog and recovery, empty Projects with disabled Detect, Workspace overview,
-all current Game Model tabs (Game window, Full strips, Analysis), Play empty
-and settled states, Simulation success plus its unseeded warning, Replay,
-Build/Export, and 405px Build/Export and Full strips all worked. No rendered
-P0, P1, or material P2 was observed.
+After one candidate build, fresh Studio was launched from this checkout only by
+`node ./dist/cli/pokie.js --no-open`, with a new registry and browser profile.
+The rendered audit completed Home; New Blueprint and Escape recovery; empty
+Projects and disabled import detection; focused native **Browse PAR sheet**
+picker cancellation; Workspace; all Game Model tabs; Play empty/session/settled
+states; Simulation result and no-seed warning; Replay; Build/Export; 405px
+Build/Export and Full strips; and Reel Strip Modeler literal **edit → preview →
+stop-window → Apply**. The picker was visibly activated and confirmed as the
+active X11 window before Escape. No rendered P0, P1, or material P2 occurred.
 
-However, the same bounded stable harness did not reach a fresh configured
-Reel Strip Modeler edit/preview/apply or a separate current-candidate native
-picker interaction before its four recovery launches were spent. A prior
-candidate's captures cannot supply this changed surface. This is a driver
-inconclusive result, not a product finding, and blocks P6V-02 completeness and
-therefore final release approval.
+The final successful transient run is identified in `transcript.txt`; its sole
+representative reel-preview capture has SHA-256
+`15e5695311043c9034791bb0b477fe5b15125c08f01f33d885e8711fe27523e4`.
+The transient profile, captures, Studio registry, and harness remain outside
+Git.
 
-Before this two-file update, the inherited Phase-6 evidence comprised 157
-files / 11,344,605 bytes and included repeated historic P6V-03 captures. This
-bounded update does not rewrite or delete that historical campaign evidence,
-so P6V-01 retention approval remains outstanding. The transient representative
-captures are identified by checksum in the transcript and remain outside Git.
+## Prerequisite map and closeout result
+
+| Prerequisite | Current result |
+| --- | --- |
+| P6V-01 | Not approved: the inherited Phase-6 evidence remains 157 files / 11,345,361 bytes, including repeated historical P6V-02/P6V-03 attempts. Removing it within this invocation would exceed the 30-file evidence-delta limit; its earlier audit is also not an exact-candidate rerun. |
+| P6V-02 | Fresh rendered audit completed above. |
+| P6V-03 / P6V-04 / P6V-05 | The controller-retained candidate-bound results were rechecked as present: separate Valera journeys, physical native-picker PAR/XLSX semantic round trip, and the five-surface Player parity matrix. Their historical directories contain older SHA-labelled records, so they cannot independently repair the unresolved P6V-01 retention/exact-binding approval. |
+
+This is an **evidence** inconclusive result, not a product finding. It makes no
+release, packaging, push, publication, or Drive claim. The retained set must be
+consolidated under a controller-authorized bounded cleanup before this candidate
+can be release-ready.

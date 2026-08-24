@@ -1,40 +1,32 @@
 P6V-06 candidate 0560176d6974986c322adf3af8c5413ef48247a6.
-Companion 1e2c8c00457f3af389c0168432c08e63ca441465 was clean.
-Candidate..evidence-HEAD has no product-tree delta.
+Companion 1e2c8c00457f3af389c0168432c08e63ca441465: clean and exact.
+Candidate to evidence-HEAD product paths: none.
 
-Retained candidate-bound results checked before this continuation:
-- P6V-03 mathematician: Recommended/Random/Blank, artwork, literal/generated
-  reels, constraints/stacks, persistence, ordinary and feature Play,
-  Simulation, Replay, Outcome Library and Stake export passed.
-- P6V-04 separate Producer: artwork, literal reels/stacks, parameters,
-  persistence, Play, Simulation, Replay export and Build/Export passed.
-- P6V-05: real native-picker import -> diagnostics -> managed edit/save ->
-  XLSX export -> reimport semantic comparison passed; Player parity passed on
-  candidate CLI Replay, package public client, Studio Play, Studio Replay and
-  exact companion. No material mismatch was retained.
+Retained controller-owned candidate results checked:
+- P6V-03 Mathematician: full model, persistence, Play/feature, Simulation,
+  Replay, Outcome Library and Stake export passed.
+- P6V-04 separate Producer: model, persistence, Play, Simulation, Replay and
+  Build/Export passed; its four retained screenshot hashes match its README.
+- P6V-05: native-picker XLSX import/edit/export/reimport semantic comparison
+  and Studio Play/Replay, package public client, companion public client and
+  CLI Replay canonical Player matrix passed.
 
-Fresh P6V-02 recovered run, 2026-08-24T07:58:39Z:
-- source-checkout Studio launched by `node ./dist/cli/pokie.js --no-open` with
-  a new isolated registry/profile;
-- Design Game -> New Blueprint dialog -> Escape recovery -> Projects showed
-  empty state and disabled Detect -> Design Game -> Create Project succeeded;
-- Workspace Overview; Game Model Game window, Full strips and Analysis; Play
-  empty/New Play session/settled Spin; Simulation RTP/results plus unseeded
-  warning; Replay; Build/Export; 405px Build/Export; Toggle navigation ->
-  Game Model -> Full strips all rendered without a product error.
-- transient rendered SHA-256: Home
-  9485f9bbe03721537520b619818160e20ce8f3f805c66ff22172bf7b86569c81;
-  New Blueprint dialog
-  216a25fca46290258e38a28520412c19185ce3d29fe950c16e585f77f4696632;
-  empty Projects
-  8e843c3648bbd7c8054f5399ded57208b51309e006d2790e3f699fedb3029b8f;
-  Simulation success
-  d9378fec4cf271ae345f7967e3d80fe17874f14671a6943da87d18c4d5dbe6eb;
-  Full strips at 405px
-  1c1e650704300fd052e11cc4dba4f1906aa0205b213102a1b3c2c98aaff9d938.
+Fresh P6V-02 rendered recovery, 2026-08-24T08:18:57Z:
+- candidate rebuilt once; source-checkout Studio started only with
+  node ./dist/cli/pokie.js --no-open using a fresh isolated registry/profile;
+- Home, New Blueprint dialog/Escape recovery, empty Projects, disabled Detect,
+  Workspace, Game window/Full strips/Analysis, Play, Simulation, Replay,
+  Build/Export, 405px Build/Export and 405px Full strips rendered successfully;
+- Browse PAR sheet opened a visible native picker; xdotool activated it and
+  getactivewindow matched before Escape cancelled it;
+- Reel Strip Modeler: selected reel 1, used the rendered actual
+  Edit or generate Literal or generated control, added literal A, received the
+  local Literal strip preview, opened stop-window preview, and exact Apply
+  rendered Modified — not saved.
+- final representative transient reel-preview SHA-256:
+  15e5695311043c9034791bb0b477fe5b15125c08f01f33d885e8711fe27523e4.
 
-The repaired persistent harness used all four bounded recovery launches. The
-successful launch did not freshly reach configured Reel Strip Modeler
-edit/preview/apply or a separate P6V-02 native picker. No fixed wait or
-unconfirmed click is reported as a product defect. Status: driver-inconclusive;
-do not make release, packaging, push, publication or Drive claims.
+No rendered product error or P0/P1/material-P2 was observed. The inconclusive
+result is evidence-only: inherited retention remains 157 files / 11,345,361
+bytes and historical P6V-02/P6V-03 records are not independently exact-SHA
+proof. Do not make release, packaging, push, publication or Drive claims.
