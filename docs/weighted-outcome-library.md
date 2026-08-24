@@ -293,7 +293,7 @@ incompatible grid weights into a falsely "exact" result. `options.onProgress` is
 ### CLI usage: `generate` vs. `build`
 
 ```
-pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>]
+pokie generate <packageRoot> [--mode <betModeId>] [--stake <number>]
     [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>]
     [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
     [--resume <file>] [--progress] [--format json]
@@ -302,8 +302,8 @@ pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <numbe
 `generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
 `pokie build` (or any package `loadPokieGame()` can require) — and drives *its own* session/win-calculation
 runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
-different verb from `pokie outcomelibrary build <config.json>` (see [Outcome Library Bundle](outcome-library-bundle.md#cli-usage)):
-`build` never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
+different workflow from outcome-bundle export (see [Outcome Library Bundle](outcome-library-bundle.md#cli-usage)):
+that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
 outcome streams) that some earlier step, such as `generate`, already produced. `validate` likewise only ever
 inspects an already-built bundle. `generate` is the one outcomelibrary verb that runs a live game.
 

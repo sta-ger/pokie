@@ -325,8 +325,7 @@ mode reports everything it finds rather than stopping at the first kind of corru
 ## CLI usage
 
 ```
-pokie outcomelibrary build <config.json> [--out <dir>]
-pokie outcomelibrary validate <bundleDir> [--deep]
+pokie export <source> --to outcomes [--out <dir>]
 ```
 
 `build`'s config.json lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file —
@@ -335,8 +334,8 @@ streaming JSONL file of outcomes for a mode too large to hold in memory at once 
 "outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}` (one canonical `{"id", "weight", "artifact"}`
 record per line, not wrapped in a library object; `libraryId` is required since there's no wrapping library
 object to read it from, and `schemaVersion` is optional). Exactly one of `libraryPath`/`outcomesPath` is required
-per mode. `validate` prints every issue and returns a non-zero exit code if any is `error`-severity; `--deep`
-runs the expensive full-content check.
+per mode. The bundle validator prints every issue and returns a non-zero exit code if any is `error`-severity;
+its deep mode runs the expensive full-content check.
 
 See [CLI](cli.md#pokie-outcomelibrary-build-configjson) for full option details.
 

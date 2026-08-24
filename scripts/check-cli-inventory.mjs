@@ -12,7 +12,10 @@ import {fileURLToPath} from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_COVERAGE = path.join(repositoryRoot, "docs/evidence/p7-01-cli-inventory/coverage-map.json");
 const HELP_ALIAS = "-h";
-const VALUE_KINDS = [["target", "--target"], ["source-type", "--source-type"], ["output-format", "--format"], ["mode", "--mode"]];
+// Keep this list deliberately tied to public switches, rather than to a hand-maintained
+// vocabulary.  A new enum-like switch is a public contract and must be added here with an
+// owner before it can be documented.
+const VALUE_KINDS = [["target", "--target"], ["source-type", "--source-type"], ["output-format", "--format"], ["mode", "--mode"], ["output", "--to"]];
 
 function fail(message) { throw new Error(`P7 CLI inventory: ${message}`); }
 
@@ -64,6 +67,14 @@ function optionTokens(help) {
     return [...tokens].sort();
 }
 
+function usageArguments(help) {
+    const usage = help.split("\n").find((line) => /^Usage:\s+pokie\b/i.test(line));
+    if (!usage) return [];
+    // Commander keeps positional contracts on the Usage line.  Preserve the brackets so
+    // required and optional positionals are different inventory entries.
+    return [...usage.matchAll(/(?:<[^>]+>|\[[^\]]+\])/g)].map((match) => match[0]).filter((entry) => !entry.startsWith("[options"));
+}
+
 function valuesFromText(text) {
     const values = new Set();
     for (const match of text.matchAll(/(?:["'`])([a-z][a-z0-9-]*)(?:["'`])/gi)) values.add(match[1]);
@@ -79,6 +90,9 @@ function advertisedValues(help) {
     for (const [kind, option] of VALUE_KINDS) {
         for (const line of lines.filter((candidate) => candidate.includes(option))) {
             for (const value of valuesFromText(line)) capabilities.add(`${kind}:${value}`);
+            // Export's Commander synopsis intentionally keeps the value placeholder generic;
+            // its public description names the three accepted artifact forms in prose.
+            if (option === "--to") for (const value of line.match(/\b(?:outcomes|adapter|workbook)\b/gi) ?? []) capabilities.add(`${kind}:${value.toLowerCase()}`);
             const inline = line.match(new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "i"));
             for (const value of inline?.[1].split("|").map((item) => item.trim()) ?? []) capabilities.add(`${kind}:${value}`);
         }
@@ -97,9 +111,14 @@ export async function collect(cli) {
     try {
         const root = runCli(cli, ["--help"], temporaryDirectory);
         transcript.push(`COMMAND ${root.command}`, `EXIT ${root.exitCode}`);
+        // The bare invocation is the implicit Studio command.  Its help is reachable through
+        // a real root option, and is the executable contract behind documented `pokie --no-open`.
+        const implicitRoot = runCli(cli, ["--no-open", "--help"], temporaryDirectory);
+        transcript.push(`COMMAND ${implicitRoot.command}`, `EXIT ${implicitRoot.exitCode}`);
         const queue = commandNames(root.output).map((name) => [name]);
         const seen = new Set();
-        const commands = [{path: "root", options: optionTokens(root.output), aliases: optionTokens(root.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(root.output)}];
+        const rootTokens = [...new Set([...optionTokens(root.output), ...optionTokens(implicitRoot.output)])].sort();
+        const commands = [{path: "root", usage: usageArguments(implicitRoot.output).length > 0 ? usageArguments(implicitRoot.output) : usageArguments(root.output), options: rootTokens, aliases: rootTokens.filter((token) => token.startsWith("-") && !token.startsWith("--")), values: [...new Set([...advertisedValues(root.output), ...advertisedValues(implicitRoot.output)])].sort()}];
         while (queue.length > 0) {
             const pathParts = queue.shift();
             const key = pathParts.join(" ");
@@ -107,7 +126,7 @@ export async function collect(cli) {
             seen.add(key);
             const response = runCli(cli, [...pathParts, "--help"], temporaryDirectory);
             transcript.push(`COMMAND ${response.command}`, `EXIT ${response.exitCode}`);
-            commands.push({path: key, options: optionTokens(response.output), aliases: optionTokens(response.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(response.output)});
+            commands.push({path: key, usage: usageArguments(response.output), options: optionTokens(response.output), aliases: optionTokens(response.output).filter((token) => token.startsWith("-") && !token.startsWith("--")), values: advertisedValues(response.output)});
             for (const child of commandNames(response.output)) queue.push([...pathParts, child]);
         }
         commands.sort((left, right) => left.path.localeCompare(right.path));
@@ -123,6 +142,7 @@ export function inventoryCapabilities(inventory) {
             if (option.startsWith("--") && option !== "--help") capabilities.add(`option:${command.path}:${option}`);
             else if (option.startsWith("-") && !option.startsWith("--") && option !== HELP_ALIAS) capabilities.add(`alias:${command.path}:${option}`);
         }
+        for (const argument of command.usage ?? []) capabilities.add(`argument:${command.path}:${argument}`);
         if (command.aliases.includes(HELP_ALIAS)) capabilities.add("alias:help");
         for (const value of command.values) capabilities.add(value);
     }
@@ -154,17 +174,43 @@ async function configuredDocumentationFiles(coverage, root) {
 function documentedCapabilities(contents, inventory) {
     const capabilities = new Set();
     const nestedVerbs = new Set(inventory.commands.filter((command) => command.path.includes(" ")).map((command) => command.path));
-    for (const match of contents.matchAll(/(?:\bnpx\s+)?\bpokie(?:\.js)?\s+([a-z][a-z0-9-]*)([^\n]*)/gi)) {
-        const rootCommand = match[1];
-        const remainder = match[2] ?? "";
+    const commandFor = (rootCommand, remainder) => {
         const verb = remainder.match(/^\s+([a-z][a-z0-9-]*)\b/i)?.[1];
-        const command = verb && nestedVerbs.has(`${rootCommand} ${verb}`) ? `${rootCommand} ${verb}` : rootCommand;
+        return verb && nestedVerbs.has(`${rootCommand} ${verb}`) ? `${rootCommand} ${verb}` : rootCommand;
+    };
+    const addInvocation = (rootCommand, remainder = "") => {
+        const command = rootCommand ? commandFor(rootCommand, remainder) : "root";
         capabilities.add(command.includes(" ") ? `subcommand:${command}` : `command:${command}`);
+        if (command === "root") capabilities.delete("command:root");
         for (const option of remainder.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${command}:${option}`);
         for (const alias of remainder.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${command}:${alias}`);
+        for (const argument of remainder.match(/(?:<[^>]+>|\[[^\]]+\])/g) ?? []) capabilities.add(`argument:${command}:${argument}`);
         for (const [kind, option] of VALUE_KINDS) {
             const expression = new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi");
             for (const valueMatch of remainder.matchAll(expression)) for (const value of valueMatch[1].split("|").map((value) => value.trim())) capabilities.add(`value:${kind}:${command}:${value}`);
+        }
+        return command;
+    };
+    // A root invocation has no command token; it is still a public claim (notably --help,
+    // -h and the implicit Studio flags).
+    for (const match of contents.matchAll(/(?:\bnpx\s+)?\bpokie(?:\.js)?(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*?)(?=(?:\bnpx\s+)?\bpokie(?:\.js)?\b|\n|$)/gi)) {
+        const rootCommand = match[2];
+        const remainder = `${rootCommand ? " " : ""}${rootCommand ?? ""}${match[3] ?? ""}`;
+        addInvocation(rootCommand, remainder);
+    }
+    // Narrative option/value claims frequently sit below a `pokie …` heading rather than
+    // repeat the complete invocation. Associate those claims with that public heading.
+    let currentCommand;
+    for (const line of contents.split("\n")) {
+        const heading = line.match(/^#{1,6}\s+.*?\bpokie(?:\.js)?(?:\s+([a-z][a-z0-9-]*))?\b(.*)$/i);
+        if (heading) currentCommand = addInvocation(heading[1], `${heading[1] ? " " : ""}${heading[1] ?? ""}${heading[2] ?? ""}`);
+        if (!currentCommand) continue;
+        for (const option of line.match(/(?<![\w-])--[a-z][a-z0-9-]*/gi) ?? []) capabilities.add(`option:${currentCommand}:${option}`);
+        for (const alias of line.match(/(?<![\w-])-[a-z]\b/gi) ?? []) capabilities.add(`alias:${currentCommand}:${alias}`);
+        for (const argument of line.match(/(?:<[^>]+>|\[[^\]]+\])/g) ?? []) capabilities.add(`argument:${currentCommand}:${argument}`);
+        for (const [kind, option] of VALUE_KINDS) {
+            const expression = new RegExp(`${option}\\s+(?!<)([a-z][a-z0-9-]*(?:\\s*\\|\\s*[a-z][a-z0-9-]*)*)`, "gi");
+            for (const valueMatch of line.matchAll(expression)) for (const value of valueMatch[1].split("|").map((value) => value.trim())) capabilities.add(`value:${kind}:${currentCommand}:${value}`);
         }
     }
     for (const [kind, label] of [["target", "targets?"], ["source-type", "source types?"], ["output-format", "output formats?"], ["mode", "modes?"]]) {
@@ -187,19 +233,31 @@ export async function documentationCapabilities(coverage, inventory, coveragePat
 
 export function checkCoverage(inventory, coverage, documented) {
     const ownerIds = new Set(coverage.owners.map((owner) => owner.id));
+    const hasOwner = (id) => ownerIds.has(id) || (id.startsWith("argument:") && ownerIds.has(`${id.split(":").slice(0, 2).join(":")}:*`));
     const executable = inventoryCapabilities(inventory);
-    const missing = [...executable].filter((id) => !ownerIds.has(id));
+    const missing = [...executable].filter((id) => !hasOwner(id));
     for (const capability of documented) {
         if (capability.startsWith("value:")) {
             const [, kind, command, value] = capability.split(":");
             const actual = command ? inventory.commands.find((entry) => entry.path === command)?.values.includes(`${kind}:${value}`) : inventory.commands.some((entry) => entry.values.includes(`${kind}:${value}`));
             if (!actual) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(`${kind}:${value}`)) missing.push(`unowned public capability ${kind}:${value}`);
+        } else if (capability.startsWith("argument:")) {
+            const [, command, ...parts] = capability.split(":");
+            const argument = parts.join(":");
+            const actual = inventory.commands.find((entry) => entry.path === command)?.usage.includes(argument);
+            if (!actual) missing.push(`stale documented capability ${capability}`);
+            if (!hasOwner(capability)) missing.push(`unowned public capability ${capability}`);
         } else if (capability.startsWith("alias:")) {
             const [, command, alias] = capability.split(":");
             const actual = inventory.commands.find((entry) => entry.path === command)?.aliases.includes(alias);
             if (!actual) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(alias === HELP_ALIAS ? "alias:help" : capability)) missing.push(`unowned public capability ${capability}`);
+        } else if (capability.startsWith("option:")) {
+            const [, command, option] = capability.split(":");
+            const actual = inventory.commands.find((entry) => entry.path === command)?.options.includes(option);
+            if (!actual) missing.push(`stale documented capability ${capability}`);
+            if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);
         } else {
             if (!executable.has(capability)) missing.push(`stale documented capability ${capability}`);
             if (!ownerIds.has(capability)) missing.push(`unowned public capability ${capability}`);

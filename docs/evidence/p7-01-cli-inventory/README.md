@@ -3,8 +3,9 @@
 This directory freezes Phase 7's public CLI baseline. The source of truth is not
 this prose or a TypeScript command registry: `check-cli-inventory.mjs` invokes a
 freshly built or unpacked `dist/cli/pokie.js`, recursively asks every public help
-path, and fails if the resulting command, nested verb, option, or nonstandard
-alias lacks an explicit owner in `coverage-map.json`.
+path, and fails if the resulting command, nested verb, option, positional
+usage contract, value-bearing option form, or nonstandard alias lacks an
+explicit owner in `coverage-map.json`.
 
 The initial executable inventory is 20 root commands and seven nested verbs.
 POKIE Studio is intentionally absent: it is the implicit `pokie` entry, not a
@@ -56,12 +57,16 @@ node scripts/run-phase7-journey.mjs \
 
 The journey script receives `P7_INPUT_DIR` (copied input provenance),
 `P7_JOURNEY_DIR` (where public CLI output is written), and `P7_PUBLIC_CLI`, an
-executable wrapper around the supplied built `pokie` CLI. It must invoke that
-wrapper for every public command; it cannot create command records itself. The
-wrapper records each command and exit code, and hashes only expected artifacts
-whose bytes changed during that CLI invocation. Every `--expect` artifact must
-therefore have a wrapper-observed SHA-256 record — a direct write before or
-after a command, or a forged JSONL record, is rejected. The wrapper invokes the
-driver twice in distinct new temporary directories and retains the public
+executable request client around the supplied built `pokie` CLI. Its command
+records are retained only by the runner's in-memory control server; the driver
+does not receive a record-file path or writable control channel. Replacing the
+request client therefore produces no record and is rejected. The control server
+records each command and exit code, and hashes only expected artifacts whose
+bytes changed during a successful CLI invocation. Every `--expect` artifact
+must therefore have a successful wrapper-observed SHA-256 record — a direct
+write before or after a command, a replaced wrapper, a forged legacy JSONL
+record, or a nonzero artifact-producing command is rejected. Directory inputs
+retain a bounded recursive file manifest and aggregate hash. The runner invokes
+the driver twice in distinct new temporary directories and retains the public
 commands, exit codes, provenance, checks, stdout/stderr, and an independent
 rerun record in `journey-transcript.txt`.
