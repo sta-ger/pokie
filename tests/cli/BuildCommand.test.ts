@@ -542,6 +542,26 @@ describe("BuildCommand", () => {
             expect(printed).toContain("No files written");
         });
 
+        it("--dry-run validates a non-Blueprint artifact source before it reports success, without invoking its writer", async () => {
+            const builder = stubBuilder("outcomeLibrary", () => {
+                throw new Error("must not be called during --dry-run");
+            }) as ArtifactBuilder & {
+                calledWith?: {source: PokieProject; destinationPath: string};
+                validate?: (source: PokieProject) => Promise<void>;
+            };
+            const validate = jest.fn().mockRejectedValue(new Error("manifest.json is malformed"));
+            builder.validate = validate;
+            const project = outcomeLibraryProject();
+            const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+            await expect(command.run(["bundleDir", "--target", "outcomeLibrary", "--out", "new-bundle-dir", "--dry-run"])).rejects.toThrow(
+                "manifest.json is malformed",
+            );
+            expect(validate).toHaveBeenCalledWith(project);
+            expect(builder.calledWith).toBeUndefined();
+            expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).not.toContain("Dry run");
+        });
+
         it("resolves a <target>-named sibling directory of <project> as the default destination when --out is omitted", async () => {
             const builder = stubBuilder("outcomeLibrary", {outputPath: "/fake/republished-bundle"});
             const project = outcomeLibraryProject("bundles/bundleDir");

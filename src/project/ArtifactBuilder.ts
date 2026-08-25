@@ -26,5 +26,10 @@ export interface ArtifactBuilder {
     // without invoking build() at all, off the same single fact build() itself enforces -- never a second,
     // independently-maintained copy of it.
     readonly destinationKind: "file" | "directory";
+    // A read-only source/artifact precondition check for previews and CLI dry runs. Builders that have
+    // no source-specific validation beyond the registry's matrix check may omit it, but concrete
+    // filesystem builders implement it so a dry run cannot promise a publishable artifact from a broken
+    // source merely because its destination happens to be empty.
+    validate?(source: PokieProject): Promise<void>;
     build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult>;
 }

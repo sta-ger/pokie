@@ -20,16 +20,15 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         body: [{id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]}],
     }),
     // Only tsPackage is buildable from this fixture's blueprint. The unavailable cards remain visible with
-    // their server-provided reason, so users can see why the other outputs cannot be built here.
+    // their server-provided diagnostic, while hidden/unadvertised WASM is omitted entirely.
     "/api/project/artifacts/targets": () => ({
         ok: true,
         status: 200,
         body: [
-            {target: "tsPackage", supported: true, unsupportedNotes: []},
-            {target: "outcomeLibrary", supported: false, unsupportedNotes: ["This target only copies an existing outcome library."]},
-            {target: "stakeAdapter", supported: false, unsupportedNotes: []},
-            {target: "parWorkbook", supported: false, unsupportedNotes: []},
-            {target: "wasm", supported: false, unsupportedNotes: []},
+            {target: "tsPackage", supported: true, state: "supported", unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "This target only copies an existing outcome library.", unsupportedNotes: []},
+            {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.", unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, state: "diagnostic-required", diagnostic: "This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue.", unsupportedNotes: []},
         ],
     }),
     // The default, clean registry-backed preview for the one supported target above -- see the dedicated
@@ -78,11 +77,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 ok: true,
                 status: 200,
                 body: [
-                    {target: "tsPackage", supported: false, unsupportedNotes: []},
-                    {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
-                    {target: "stakeAdapter", supported: false, unsupportedNotes: []},
-                    {target: "parWorkbook", supported: true, unsupportedNotes: []},
-                    {target: "wasm", supported: false, unsupportedNotes: []},
+                    {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                    {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                    {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "A Stake export requires an Outcome library.", unsupportedNotes: []},
+                    {target: "parWorkbook", supported: true, state: "supported", unsupportedNotes: []},
                 ],
             }),
             "/api/project/artifacts/preview": () => ({
@@ -178,6 +176,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         ).toBeVisible();
         expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).not.toHaveLength(0);
         expect(within(buildArtifactSection).getAllByRole("button", {name: "Build"})).toHaveLength(1);
+        expect(screen.queryByText(/WASM/)).not.toBeInTheDocument();
 
         const staticExportSection = screen.getByText("Static export").closest("fieldset") as HTMLElement;
         const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
@@ -832,7 +831,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             expect(within(buildArtifactSection).getByText("TypeScript Game Package")).toBeInTheDocument();
             expect(within(buildArtifactSection).getByText("PAR sheet (.xlsx)")).toBeInTheDocument();
             expect(within(buildArtifactSection).getByText("Stake Engine export (republish)")).toBeInTheDocument();
-            expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).toHaveLength(4);
+            expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).toHaveLength(3);
 
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
@@ -870,11 +869,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     ok: true,
                     status: 200,
                     body: [
-                        {target: "tsPackage", supported: false, unsupportedNotes: []},
-                        {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
-                        {target: "stakeAdapter", supported: false, unsupportedNotes: []},
-                        {target: "parWorkbook", supported: true, unsupportedNotes: []},
-                        {target: "wasm", supported: false, unsupportedNotes: []},
+                        {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                        {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                        {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "A Stake export requires an Outcome library.", unsupportedNotes: []},
+                        {target: "parWorkbook", supported: true, state: "supported", unsupportedNotes: []},
                     ],
                 }),
                 "/api/project/artifacts/preview": () => ({
@@ -1046,11 +1044,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     ok: true,
                     status: 200,
                     body: [
-                        {target: "tsPackage", supported: false, unsupportedNotes: []},
-                        {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
-                        {target: "stakeAdapter", supported: true, unsupportedNotes: []},
-                        {target: "parWorkbook", supported: false, unsupportedNotes: []},
-                        {target: "wasm", supported: false, unsupportedNotes: []},
+                        {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                        {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                        {target: "stakeAdapter", supported: true, state: "supported", unsupportedNotes: []},
+                        {target: "parWorkbook", supported: false, state: "diagnostic-required", diagnostic: "A PAR workbook requires a workbook source.", unsupportedNotes: []},
                     ],
                 }),
                 "/api/project/artifacts/preview": () => ({

@@ -66,6 +66,13 @@ describe("ParWorkbookArtifactBuilder", () => {
         expect(fs.existsSync(destinationFile)).toBe(true);
     });
 
+    it("validates a readable workbook without creating a destination file", async () => {
+        const builder = new ParWorkbookArtifactBuilder("1.3.0");
+
+        await expect(builder.validate(parWorkbookProjectOf(sourceFile))).resolves.toBeUndefined();
+        expect(fs.existsSync(destinationFile)).toBe(false);
+    });
+
     it("throws ArtifactBuildConflictError rather than overwriting an existing file", async () => {
         fs.writeFileSync(destinationFile, "not ours");
         const builder = new ParWorkbookArtifactBuilder("1.3.0");

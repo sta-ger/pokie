@@ -25,6 +25,9 @@ import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibra
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
+import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
+import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
@@ -184,6 +187,38 @@ export class ArtifactBuilderRegistry {
             }
             throw error;
         }
+    }
+
+    // Validates the same source/artifact contract a real build consumes, without allocating a destination
+    // or invoking any writer. This is intentionally separate from checkDestination(): a usable output also
+    // requires readable source data, so callers must not report dry-run success after checking only a path.
+    public async validate(target: ArtifactTargetType, source: PokieProject): Promise<void> {
+        if (!this.supportsConversionFrom(target, source.type)) {
+            throw new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath));
+        }
+
+        if (source.type === "blueprint") {
+            const blueprint = loadGameBlueprint(source.rootPath);
+            const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
+            if (errors.length > 0) {
+                throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
+            }
+            const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
+            if (!resolution.success) throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
+            return;
+        }
+
+        if (source.type === "tsPackage") {
+            await loadPokieGame(source.rootPath);
+            return;
+        }
+
+        const builder = this.builders.get(target);
+        if (builder === undefined) {
+            const descriptor = this.describe(target);
+            throw new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`);
+        }
+        await builder.validate?.(source);
     }
 
     // Executes a real build: re-validates `source` against `target`'s own required capability (the exact

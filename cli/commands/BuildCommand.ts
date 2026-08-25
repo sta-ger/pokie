@@ -162,6 +162,13 @@ export class BuildCommand implements CliCommandHandling {
         if (options.dryRun) {
             const destinationCheck = this.registry.checkDestination(options.target, out, project.rootPath);
             if (!destinationCheck.available) throw new Error(destinationCheck.message);
+            // Blueprint -> tsPackage retains its richer command-owned preview below, which validates the
+            // injected Blueprint reader/validator and renders the complete generated-package summary.
+            // Every other supported cell must validate its own registry source/artifact contract before
+            // the generic dry-run branch can claim success.
+            if (!(options.target === "tsPackage" && project.type === "blueprint")) {
+                await this.registry.validate(options.target, project);
+            }
         }
 
         if (options.target === "tsPackage" && project.type === "blueprint") {
