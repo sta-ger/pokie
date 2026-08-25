@@ -12,14 +12,15 @@ describe("public command tree", () => {
         studioRoot: "/fake/pokie/root/dist/cli/studio-client",
     });
 
-    it("uses generic project verbs and keeps Studio implicit", () => {
+    it("uses generic project verbs, exposes PAR, and keeps Studio implicit", () => {
         const names = commands.map((command) => command.getName());
         const help = buildUsageText(commands);
 
-        expect(names).toEqual(expect.arrayContaining(["export", "generate", "import", "sample"]));
-        expect(names).not.toEqual(expect.arrayContaining(["name", "outcomelibrary", "outcomesource", "par", "stakeengine", "studio"]));
+        expect(names).toEqual(expect.arrayContaining(["export", "generate", "import", "par", "sample"]));
+        expect(names).not.toEqual(expect.arrayContaining(["name", "outcomelibrary", "outcomesource", "stakeengine", "studio"]));
         expect(help).toContain("export");
-        expect(help).not.toMatch(/(pokie (name|outcomelibrary|outcomesource|par|stakeengine|studio)\b)/);
+        expect(help).toContain("pokie par import");
+        expect(help).not.toMatch(/(pokie (name|outcomelibrary|outcomesource|stakeengine|studio)\b)/);
     });
 
     it("does not label the supported browser workflows as previews", () => {
