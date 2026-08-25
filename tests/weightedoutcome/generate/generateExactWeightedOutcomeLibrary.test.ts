@@ -174,6 +174,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         } catch (error) {
             expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-space-exceeded");
             expect((error as WeightedOutcomeLibraryGenerationError).message).toContain("--sample <n> --seed <string>");
+            expect((error as WeightedOutcomeLibraryGenerationError).message).toContain("pokie build <project> --target outcomeLibrary");
         }
     });
 

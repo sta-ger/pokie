@@ -148,7 +148,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "weighted-outcome-library-generation-space-exceeded",
             `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                 `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
-                'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` (or the `sampled` option).',
+                'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
         );
     }
 
