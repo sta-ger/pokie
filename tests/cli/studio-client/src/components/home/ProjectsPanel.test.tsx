@@ -9,11 +9,11 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // Covers the Import Project flow this step (P3-POLISH-13) added to the Projects tab -- Detect (a
-// read-only preview, never registering anything) -> Register for anything with an "open" story, or
-// straight to Design Game's own PAR Sheet Import/Export panel for a recognized PAR workbook, which has
-// none. HomePage.test.tsx/openProjectGuard.test.tsx/navigationGuardModal.test.tsx already cover opening
-// an already-registered row and the dirty-draft guard around it -- this file is scoped to what's unique
-// to Import Project itself.
+// read-only preview, never registering anything) -> Register for every supported project with an
+// "open" story. PAR workbooks additionally keep their dedicated Design Game import/export route.
+// HomePage.test.tsx/openProjectGuard.test.tsx/navigationGuardModal.test.tsx already cover opening an
+// already-registered row and the dirty-draft guard around it -- this file is scoped to what's unique to
+// Import Project itself.
 
 // Home keeps the Design Game surface mounted while Projects is open. Its automatic validation can
 // therefore run during any of these project-only flows, so each routed fetch fixture must cover it.
@@ -146,7 +146,7 @@ describe("ProjectsPanel: Import Project", () => {
         }
     });
 
-    it("routes a recognized PAR sheet to Design Game's own PAR Sheet Import/Export panel instead of registering it", async () => {
+    it("registers a recognized PAR sheet so its registered row can open the Build/Export dashboard", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
@@ -154,6 +154,27 @@ describe("ProjectsPanel: Import Project", () => {
                 ok: true,
                 status: 200,
                 body: {status: "recognized", location: "/games/sheet.xlsx", type: "parWorkbook", capabilities: [], suggestedName: "sheet"},
+            }),
+            "/api/home/projects/registry/register": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location: "/games/sheet.xlsx",
+                        name: "sheet",
+                        type: "parWorkbook",
+                        capabilities: ["parWorkbook.exchange"],
+                        origin: "external",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                },
+            }),
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: "/games/sheet.xlsx"}},
             }),
         });
         renderWithProviders(
@@ -167,21 +188,35 @@ describe("ProjectsPanel: Import Project", () => {
         await user.type(screen.getByLabelText("Location", {exact: false}), "/games/sheet.xlsx");
         await user.click(screen.getByRole("button", {name: "Detect"}));
 
-        expect(await screen.findByText(/This is a PAR sheet workbook/)).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Register"})).not.toBeInTheDocument();
+        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Register"})).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
+        await user.click(screen.getByRole("button", {name: "Register"}));
 
         await waitFor(() =>
-            expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
-                pathname: "/home/design",
-                state: {initialParSheetPath: "/games/sheet.xlsx"},
-            }),
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/registry/register",
+                    init: expect.objectContaining({body: JSON.stringify({location: "/games/sheet.xlsx", name: "sheet"})}),
+                }),
+            ),
         );
-        expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
+        const row = (await screen.findAllByText("sheet"))
+            .map((element) => element.closest("tr"))
+            .find((candidate): candidate is HTMLTableRowElement => candidate !== null) as HTMLElement;
+        await user.click(within(row).getByRole("button", {name: "Open"}));
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/open",
+                    init: expect.objectContaining({body: JSON.stringify({projectRoot: "/games/sheet.xlsx"})}),
+                }),
+            ),
+        );
     });
 
-    it("picks a PAR workbook through the native file picker, then detects and routes it into Design Game", async () => {
+    it("picks a PAR workbook through the native file picker, then detects and retains its Design Game route", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
@@ -213,7 +248,7 @@ describe("ProjectsPanel: Import Project", () => {
         });
 
         await user.click(screen.getByRole("button", {name: "Detect"}));
-        expect(await screen.findByText(/This is a PAR sheet workbook/)).toBeInTheDocument();
+        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
 
         await waitFor(() =>

@@ -318,9 +318,9 @@ export function ProjectsPanel({
             });
     };
 
-    // Import Project continues to route a newly detected PAR sheet into Design Game's guided
-    // Import -> Diagnose & map -> Preview -> Apply flow. A registered PAR workbook has the separate
-    // public Open action above, which reaches its artifact dashboard's self-republish Build/Export card.
+    // A detected PAR sheet can be registered like every other supported project, making its public
+    // Open action and self-republish Build/Export dashboard reachable. It also retains the separate
+    // Design Game route for the guided Import -> Diagnose & map -> Preview -> Apply flow.
     const renderEntryName = (entry: StudioProjectRegistryView): ReactNode => {
         if (entry.status === "missing") {
             return <Text c="dimmed">{entry.name} (missing)</Text>;
@@ -626,39 +626,36 @@ export function ProjectsPanel({
                     <Text size="sm">Registered &quot;{importView.name}&quot; -- it now shows up in Your projects above.</Text>
                 )}
 
-                {(importView.status === "recognized" || importView.status === "registering") &&
-                    (importView.result.type === "parWorkbook" ? (
-                        <div>
-                            <Text size="sm" mb="sm">
-                                This is a PAR sheet workbook. Import it via Design Game&apos;s own PAR Sheet Import/Export panel instead of
-                                registering it here.
+                {(importView.status === "recognized" || importView.status === "registering") && (
+                    <div>
+                        <Text size="sm" mb="sm">
+                            Detected a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
+                            <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
+                        </Text>
+                        {importView.result.type === "parWorkbook" && (
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Register it to open its Build/Export dashboard, or open it in Design Game to map and import its PAR data.
                             </Text>
-                            <QuickActions>
+                        )}
+                        <TextInput
+                            label="Name"
+                            mb="sm"
+                            value={registerName}
+                            onChange={(event) => setRegisterName(event.currentTarget.value)}
+                            description="Registered under this name -- rename it later if you need to."
+                        />
+                        <QuickActions>
+                            <Button onClick={handleRegister} loading={importView.status === "registering"}>
+                                Register
+                            </Button>
+                            {importView.result.type === "parWorkbook" && (
                                 <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
                                     Open in Design Game
                                 </Button>
-                            </QuickActions>
-                        </div>
-                    ) : (
-                        <div>
-                            <Text size="sm" mb="sm">
-                                Detected a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
-                                <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
-                            </Text>
-                            <TextInput
-                                label="Name"
-                                mb="sm"
-                                value={registerName}
-                                onChange={(event) => setRegisterName(event.currentTarget.value)}
-                                description="Registered under this name -- rename it later if you need to."
-                            />
-                            <QuickActions>
-                                <Button onClick={handleRegister} loading={importView.status === "registering"}>
-                                    Register
-                                </Button>
-                            </QuickActions>
-                        </div>
-                    ))}
+                            )}
+                        </QuickActions>
+                    </div>
+                )}
             </PageSection>
         </div>
     );
