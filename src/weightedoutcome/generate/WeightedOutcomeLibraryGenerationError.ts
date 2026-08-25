@@ -8,6 +8,10 @@
 //     every reel's SymbolsSequence size) is larger than the caller's own maxOutcomeSpaceSize, and the
 //     caller did not explicitly opt into a bounded/coverage strategy (see BoundedCoverageGenerationOptions)
 //     — thrown instead of silently truncating or silently switching strategy.
+//   - "weighted-outcome-library-generation-invalid-sample-size": a direct or legacy sampled strategy was
+//     given a non-positive raw-draw count. Sampling always needs an explicit positive integer count.
+//   - "weighted-outcome-library-generation-strategy-conflict": an explicit exact, direct sampled, and/or
+//     legacy bounded choice was combined in a way that would make the requested strategy ambiguous.
 //   - "weighted-outcome-library-generation-checkpoint-unsupported": a resumeFrom checkpoint was supplied but
 //     this run no longer resolves to the "exact" strategy (see GenerateExactWeightedOutcomeLibraryOptions.resumeFrom)
 //     — resuming only ever makes sense for a resumable raw sweep.

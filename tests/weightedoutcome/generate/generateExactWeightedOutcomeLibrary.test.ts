@@ -213,6 +213,20 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         expect(otherSeed.library.outcomes).not.toEqual(result.library.outcomes);
     });
 
+    it("rejects an invalid sampled limit with the public CLI recovery path", async () => {
+        await expect(
+            generateSampledWeightedOutcomeLibrary({
+                libraryId: "fixture-sample-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                sampled: {sampleSize: BigInt(0), seed: "invalid-limit"},
+            }),
+        ).rejects.toMatchObject({
+            code: "weighted-outcome-library-generation-invalid-sample-size",
+            message: expect.stringContaining("--sample <n> --seed <string>"),
+        });
+    });
+
     it("uses an explicitly-labelled, reproducible bounded-coverage sample once the caller opts in past the cap", async () => {
         const options = {
             libraryId: "fixture-lib",

@@ -281,7 +281,9 @@ truncating. Recover with the public sampled workflow: `pokie generate <packageRo
 independent seeded reel-stop draws (with replacement) through the same calculation path, without first enumerating
 the raw space, and labels the result `"bounded-coverage"`. `bounded: {sampleSize, seed}` remains a backwards-compatible
 API option that samples only when the exact cap is exceeded; a space within `maxOutcomeSpaceSize` is always swept
-exactly when using that legacy option.
+exactly when using that legacy option. `sampleSize` must be a positive `bigint`; an invalid value fails with
+`weighted-outcome-library-generation-invalid-sample-size` and points to the same public `--sample <n> --seed <string>`
+recovery command.
 
 `options.signal` (an `AbortSignal`) cancels a run in progress, throwing `WeightedOutcomeLibraryGenerationCancelledError`
 with `processedRawIndex`/`progressTotal` and its own `checkpoint` (an `ExactEnumerationCheckpoint`). For the
