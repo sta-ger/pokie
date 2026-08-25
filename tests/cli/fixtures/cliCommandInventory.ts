@@ -99,7 +99,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
+                usage: "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
                 positionals: ["project"],
                 options: [
                     {flag: "--target", required: true, kind: "validated", acceptedValue: "tsPackage"},
@@ -108,6 +108,9 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     // verb's own fixture project) that resolves to "tsPackage", observed at the injected
                     // ArtifactBuilder's own destinationPath argument.
                     {flag: "--out", required: false, kind: "unvalidated", defaultValue: "tsPackage", acceptedValue: "customOutDir"},
+                    {flag: "--exact", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    {flag: "--sample", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "12"},
+                    {flag: "--seed", required: false, kind: "grouped", defaultValue: "undefined", acceptedValue: "sample-seed"},
                     {flag: "--dry-run", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                 ],
             },
@@ -425,7 +428,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                 usage:
                     "Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
                     "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-                    "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+                    "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
                     "[--resume <file>] [--progress] [--format json]",
                 positionals: ["packageRoot"],
                 options: [
@@ -437,6 +440,8 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     // the injected generate() call's own options.libraryId.
                     {flag: "--library-id", required: false, kind: "unvalidated", defaultValue: "fixture-slot", acceptedValue: "custom-lib"},
                     {flag: "--max-outcome-space-size", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1000000"},
+                    {flag: "--exact", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
+                    {flag: "--sample", required: false, kind: "validated", defaultValue: "undefined", acceptedValue: "1000"},
                     {flag: "--bounded", required: false, kind: "boolean", defaultValue: "false", acceptedValue: "true"},
                     // --sample-size/--seed are only meaningfully required together with --bounded (a cross-field,
                     // all-or-nothing group, already frozen by this file's own dedicated group-level invalid cases) --
@@ -742,7 +747,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: [""],
         expectedExitCode: 1,
         expectedError:
-            "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]\n" +
+            "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]\n" +
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
             "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
             "outcomeLibrary, stakeAdapter, or parWorkbook; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
@@ -759,7 +764,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.\n\n" +
-            "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
+            "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
     },
     {
         command: "build",
@@ -809,6 +814,62 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["bundleDir", "--target", "outcomeLibrary", "--out", "customBundleOut"],
         expectedExitCode: 0,
         expectStdout: "text",
+    },
+    {
+        command: "build",
+        kind: "valid",
+        label: "<bundleDir> --target outcomeLibrary --exact (accepted explicit exact choice)",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--exact"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "build",
+        kind: "valid",
+        label: "<bundleDir> --target outcomeLibrary --sample --seed (accepted direct sampled choice)",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--sample", "12", "--seed", "sample-seed"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "--sample rejects a non-positive limit",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--sample", "0", "--seed", "sample-seed"],
+        expectedExitCode: 1,
+        expectedError: "--sample must be a positive integer. Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "--sample requires a seed",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--sample", "12"],
+        expectedExitCode: 1,
+        expectedError: "--sample requires --seed. Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "--exact rejects sampled options",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--exact", "--sample", "12", "--seed", "sample-seed"],
+        expectedExitCode: 1,
+        expectedError: "--exact cannot be combined with --sample or --seed. Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "--sample given with no value",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--sample"],
+        expectedExitCode: 1,
+        expectedError: "--sample must be a positive integer. Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
+    },
+    {
+        command: "build",
+        kind: "invalid",
+        label: "--seed given with no value",
+        args: ["bundleDir", "--target", "outcomeLibrary", "--seed"],
+        expectedExitCode: 1,
+        expectedError: "--seed requires a value. Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
     },
 
     // --- certification ---
@@ -1567,7 +1628,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
             "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]\n" +
             '<packageRoot> is a package built by "pokie build" (or any package loadPokieGame() can require) whose game ' +
             "opts into exact enumeration via PokieGame.createExactEnumerationSession -- see docs/weighted-outcome-library.md#generation. " +
@@ -1583,7 +1644,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--stake must be a positive number. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1595,7 +1656,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--max-outcome-space-size must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> " +
             "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
-            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] " +
             "[--out <file>] [--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1607,7 +1668,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             '--format only supports "json". Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] ' +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1619,7 +1680,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--bounded requires both --sample-size and --seed. Usage: pokie outcomelibrary generate <packageRoot> " +
             "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
-            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] " +
             "[--out <file>] [--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1629,9 +1690,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "pkg", "--sample-size", "1000", "--seed", "abc"],
         expectedExitCode: 1,
         expectedError:
-            "--sample-size and --seed require --bounded. Usage: pokie outcomelibrary generate <packageRoot> " +
+            "--sample-size and --seed require --bounded (legacy) or --sample <n>. Usage: pokie outcomelibrary generate <packageRoot> " +
             "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
-            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] " +
             "[--out <file>] [--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1643,7 +1704,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--mode requires a bet mode id. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1655,7 +1716,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--stake must be a positive number. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1667,7 +1728,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--config-hash requires a value. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1679,7 +1740,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--library-id requires a value. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1691,7 +1752,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--max-outcome-space-size must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> " +
             "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
-            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] " +
             "[--out <file>] [--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1703,7 +1764,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--sample-size must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> " +
             "[--mode <betModeId>] [--stake <number>] [--config-hash <hash>] [--library-id <id>] " +
-            "[--max-outcome-space-size <n>] [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] " +
+            "[--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] " +
             "[--out <file>] [--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1715,7 +1776,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--seed requires a value. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1727,7 +1788,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--out requires a file path. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1739,7 +1800,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--resume requires a file path. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1751,7 +1812,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             '--format only supports "json". Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] ' +
             "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-            "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
             "[--resume <file>] [--progress] [--format json]",
     },
     {
@@ -1797,6 +1858,67 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["generate", "pkg", "--bounded", "--sample-size", "1000", "--seed", "seed-1"],
         expectedExitCode: 0,
         expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> --exact (accepted explicit exact choice)",
+        args: ["generate", "pkg", "--exact"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "valid",
+        label: "generate <packageRoot> --sample --seed (accepted direct sampled choice)",
+        args: ["generate", "pkg", "--sample", "1000", "--seed", "seed-1"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --sample rejects a non-positive limit",
+        args: ["generate", "pkg", "--sample", "0", "--seed", "seed-1"],
+        expectedExitCode: 1,
+        expectedError:
+            "--sample must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+            "[--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --sample requires a seed",
+        args: ["generate", "pkg", "--sample", "1000"],
+        expectedExitCode: 1,
+        expectedError:
+            "--sample requires --seed. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
+            "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] " +
+            "[--estimate | --dry-run] [--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --sample given with no value",
+        args: ["generate", "pkg", "--sample"],
+        expectedExitCode: 1,
+        expectedError:
+            "--sample must be a positive integer. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
+            "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] [--exact | --sample <n> --seed <string>] " +
+            "[--estimate | --dry-run] [--out <file>] [--resume <file>] [--progress] [--format json]",
+    },
+    {
+        command: "outcomelibrary",
+        kind: "invalid",
+        label: "generate --exact rejects sampled options",
+        args: ["generate", "pkg", "--exact", "--sample", "1000", "--seed", "seed-1"],
+        expectedExitCode: 1,
+        expectedError:
+            "--exact cannot be combined with sampled-generation options. Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] " +
+            "[--stake <number>] [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
+            "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] [--resume <file>] [--progress] [--format json]",
     },
     {
         command: "outcomelibrary",
@@ -2416,7 +2538,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["config.json", "--target", "tsPackage", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a path. Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
+        expectedError: "--out requires a path. Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]",
     },
 
     // --- certification: missing-value cases ---

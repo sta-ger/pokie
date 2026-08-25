@@ -5,6 +5,7 @@ import {
     GameBlueprint,
     GamePackageGenerator,
     generateExactWeightedOutcomeLibrary,
+    generateSampledWeightedOutcomeLibrary,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     PokieGame,
@@ -172,6 +173,8 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             fail("expected generation to reject");
         } catch (error) {
             expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-space-exceeded");
+            expect((error as WeightedOutcomeLibraryGenerationError).message).toContain("--sample <n> --seed <string>");
+            expect((error as WeightedOutcomeLibraryGenerationError).message).toContain("pokie build <project> --target outcomeLibrary");
         }
     });
 
@@ -185,6 +188,43 @@ describe("generateExactWeightedOutcomeLibrary", () => {
 
         expect(result.diagnostics.strategy).toBe("exact");
         expect(result.diagnostics.sampledRawCount).toBe(6);
+    });
+
+    it("directly performs the requested deterministic sampled draws even when exact enumeration is affordable", async () => {
+        const options = {
+            libraryId: "fixture-sample-lib",
+            game: buildFixtureGame(),
+            pokieVersion: "1.3.0",
+            sampled: {sampleSize: BigInt(10), seed: "direct-sample-seed"},
+        };
+
+        const result = await generateSampledWeightedOutcomeLibrary(options);
+        expect(result.diagnostics.strategy).toBe("bounded-coverage");
+        expect(result.diagnostics.sampledRawCount).toBe(10);
+        expect(result.diagnostics.seed).toBe("direct-sample-seed");
+        expect(result.library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(10);
+
+        const repeat = await generateSampledWeightedOutcomeLibrary({...options, game: buildFixtureGame()});
+        expect(repeat.library.outcomes).toEqual(result.library.outcomes);
+
+        const otherSeed = await generateSampledWeightedOutcomeLibrary({...options, game: buildFixtureGame(), sampled: {...options.sampled, seed: "other-seed"}});
+        expect(otherSeed.diagnostics.seed).toBe("other-seed");
+        expect(otherSeed.library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(10);
+        expect(otherSeed.library.outcomes).not.toEqual(result.library.outcomes);
+    });
+
+    it("rejects an invalid sampled limit with the public CLI recovery path", async () => {
+        await expect(
+            generateSampledWeightedOutcomeLibrary({
+                libraryId: "fixture-sample-lib",
+                game: buildFixtureGame(),
+                pokieVersion: "1.3.0",
+                sampled: {sampleSize: BigInt(0), seed: "invalid-limit"},
+            }),
+        ).rejects.toMatchObject({
+            code: "weighted-outcome-library-generation-invalid-sample-size",
+            message: expect.stringContaining("--sample <n> --seed <string>"),
+        });
     });
 
     it("uses an explicitly-labelled, reproducible bounded-coverage sample once the caller opts in past the cap", async () => {

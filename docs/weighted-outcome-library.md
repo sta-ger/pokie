@@ -246,6 +246,10 @@ function generateExactWeightedOutcomeLibrary(options: GenerateExactWeightedOutco
 }>;
 
 function streamExactWeightedOutcomes(options: GenerateExactWeightedOutcomeLibraryOptions): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics>;
+
+function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {
+    sampled: {sampleSize: bigint; seed: string};
+}): Promise<{library: WeightedOutcomeLibrary; diagnostics: OutcomeLibraryGeneratorDiagnostics}>;
 ```
 
 `options` always includes `libraryId`, the loaded `game`/`pokieVersion` (and optionally `configHash`/`betMode`/
@@ -269,13 +273,17 @@ are the exact same underlying generation.
 
 ### Large spaces: bounds, bounded-coverage, cancel/resume/progress
 
-Above `maxOutcomeSpaceSize` (a `bigint`, defaulting to 20,000,000 raw combinations), generation refuses to sweep
-exhaustively unless the caller explicitly opts in via the `bounded: {sampleSize, seed}` option — otherwise it fails
-closed with `weighted-outcome-library-generation-space-exceeded`, never silently truncating. Opting into `bounded`
-switches to an honestly-labelled `"bounded-coverage"` strategy: `sampleSize` independent reel-stop draws (with
-replacement, seeded and therefore reproducible) through the exact same calculation path, deduplicated and summed
-the same way — `diagnostics.strategy` and the library it produces are never presented as `"exact"`. A space within
-`maxOutcomeSpaceSize` is always swept exactly regardless of whether `bounded` was also given.
+Above `maxOutcomeSpaceSize` (a `bigint`, defaulting to 20,000,000 raw combinations), exact generation refuses to
+sweep exhaustively and fails closed with `weighted-outcome-library-generation-space-exceeded`, never silently
+truncating. Recover with the public sampled workflow: `pokie generate <packageRoot> --sample <n> --seed <string>`,
+`pokie build <project> --target outcomeLibrary --sample <n> --seed <string>`, or the exported
+`generateSampledWeightedOutcomeLibrary({..., sampled: {sampleSize, seed}})` API. It directly performs `sampleSize`
+independent seeded reel-stop draws (with replacement) through the same calculation path, without first enumerating
+the raw space, and labels the result `"bounded-coverage"`. `bounded: {sampleSize, seed}` remains a backwards-compatible
+API option that samples only when the exact cap is exceeded; a space within `maxOutcomeSpaceSize` is always swept
+exactly when using that legacy option. `sampleSize` must be a positive `bigint`; an invalid value fails with
+`weighted-outcome-library-generation-invalid-sample-size` and points to the same public `--sample <n> --seed <string>`
+recovery command.
 
 `options.signal` (an `AbortSignal`) cancels a run in progress, throwing `WeightedOutcomeLibraryGenerationCancelledError`
 with `processedRawIndex`/`progressTotal` and its own `checkpoint` (an `ExactEnumerationCheckpoint`). For the
@@ -295,8 +303,13 @@ incompatible grid weights into a falsely "exact" result. `options.onProgress` is
 ```
 pokie generate <packageRoot> [--mode <betModeId>] [--stake <number>]
     [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>]
-    [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
+    [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
     [--resume <file>] [--progress] [--format json]
+```
+
+```
+pokie build <project> --target outcomeLibrary
+    [--exact | --sample <n> --seed <string>] [--out <dir>]
 ```
 
 `generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
@@ -306,6 +319,12 @@ different workflow from outcome-bundle export (see [Outcome Library Bundle](outc
 that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
 outcome streams) that some earlier step, such as `generate`, already produced. `validate` likewise only ever
 inspects an already-built bundle. `generate` is the one outcomelibrary verb that runs a live game.
+
+`build --target outcomeLibrary` is the equivalent project-to-bundle workflow. `--exact` is the default; its explicit
+form and `--sample <n> --seed <string>` make the choice visible in automation. The sampled form is passed through the
+registry-owned `BlueprintStakeOutcomeLibraryWorkflow`, which performs only the requested draws and writes a normal
+Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, `pokie report`, `pokie replay`, and
+`pokie serve` just like an exact bundle.
 
 - `<packageRoot>` — required. The game must opt into exact enumeration via
   `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that
@@ -321,6 +340,12 @@ inspects an already-built bundle. `generate` is the one outcomelibrary verb that
 - `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
   refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
   raw combination count routinely exceeds `Number.MAX_SAFE_INTEGER`).
+- `--exact` — makes the default exact-only choice explicit. It is mutually exclusive with every sampled-generation
+  option, so an invocation can never silently change from an exact sweep into a sample.
+- `--sample <n> --seed <string>` — directly performs exactly `n` deterministic reel-stop draws through the same
+  runtime calculation path, without first sweeping the full outcome space. The resulting library is honestly
+  labelled `"bounded-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
+  reproducible. This is useful even for a small game when a deliberately bounded Monte-Carlo library is wanted.
 - `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"bounded-coverage"` strategy
   once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
   without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A

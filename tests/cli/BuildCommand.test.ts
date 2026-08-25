@@ -120,7 +120,7 @@ describe("BuildCommand", () => {
     it("reports the usage error for a missing/empty <project> positional", async () => {
         const command = new BuildCommand("1.3.0");
 
-        await expect(command.run([""])).rejects.toThrow(/Usage: pokie build <project> --target <artifact> \[--out <path>\] \[--dry-run\]/);
+        await expect(command.run([""])).rejects.toThrow(/Usage: pokie build <project> --target <artifact> \[--exact \| --sample <n> --seed <string>\] \[--out <path>\] \[--dry-run\]/);
     });
 
     it("throws a descriptive error for an unknown option", async () => {

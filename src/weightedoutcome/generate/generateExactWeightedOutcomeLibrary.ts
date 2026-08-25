@@ -49,6 +49,15 @@ export type BoundedCoverageGenerationOptions = {
     readonly seed: string;
 };
 
+// The first-class sampled counterpart to exact generation.  Unlike `bounded`, this deliberately
+// requests sampling even when the exact space would also fit below its safety cap: callers choose
+// the cost and deterministic draw count up front, rather than asking generation to decide for them.
+// `bounded` remains as the backwards-compatible "only sample above the exact cap" option.
+export type SampledWeightedOutcomeLibraryOptions = {
+    readonly sampleSize: bigint;
+    readonly seed: string;
+};
+
 // PokieGame.createExactEnumerationSession is deliberately not generic (same convention as PokieGame.createSession
 // itself) -- a game package's own symbol alphabet is always string-keyed at this boundary, the same way every
 // other PokieGame-level API in this codebase is.
@@ -68,9 +77,16 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly selectBetMode?: boolean;
     readonly stake?: number;
     readonly maxOutcomeSpaceSize?: bigint;
+    // Records an explicit caller choice of the default exact strategy. It is mutually exclusive with
+    // sampled choices at public command boundaries; exact generation otherwise remains the default.
+    readonly exact?: boolean;
     // Explicit opt-in: only consulted once the space actually exceeds maxOutcomeSpaceSize. Its mere presence
     // never downgrades an otherwise-exact run -- a space within maxOutcomeSpaceSize is always swept exactly.
     readonly bounded?: BoundedCoverageGenerationOptions;
+    // Explicit sampled generation: performs exactly sampleSize deterministic raw draws through the
+    // canonical runtime path, without sweeping the complete reel-stop space first.  This is separate
+    // from `bounded`, whose historical contract only takes effect once the exact cap is exceeded.
+    readonly sampled?: SampledWeightedOutcomeLibraryOptions;
     // Resumes a previously-cancelled "exact" run from its own ExactEnumerationCheckpoint (see
     // WeightedOutcomeLibraryGenerationCancelledError.checkpoint) -- both the raw sweep position AND the
     // grid/weight accumulation already gathered up to that position are carried forward, so a chain of
@@ -115,6 +131,25 @@ type PreparedGeneration = {
 function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedGeneration {
     const {game} = options;
     const manifest = game.getManifest();
+    if (options.exact && (options.sampled !== undefined || options.bounded !== undefined)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-strategy-conflict",
+            'exact generation cannot be combined with sampled generation; use either exact generation or `pokie generate <packageRoot> --sample <n> --seed <string>` (or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>`).',
+        );
+    }
+    if (options.sampled !== undefined && options.bounded !== undefined) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-strategy-conflict",
+            "sampled and bounded generation cannot be combined; use the direct sampled workflow on its own.",
+        );
+    }
+    const sampled = options.sampled ?? options.bounded;
+    if (sampled !== undefined && sampled.sampleSize <= BigInt(0)) {
+        throw new WeightedOutcomeLibraryGenerationError(
+            "weighted-outcome-library-generation-invalid-sample-size",
+            'sampleSize must be a positive integer; use `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` with a positive n.',
+        );
+    }
     if (typeof game.createExactEnumerationSession !== "function") {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-unsupported",
@@ -124,14 +159,14 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
 
     const estimate = estimateExactOutcomeSpaceSize(game);
     const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
-    const strategy: OutcomeLibraryGenerationStrategy = estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
+    const strategy: OutcomeLibraryGenerationStrategy = options.sampled !== undefined || estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
 
-    if (strategy === "bounded-coverage" && options.bounded === undefined) {
+    if (strategy === "bounded-coverage" && sampled === undefined) {
         throw new WeightedOutcomeLibraryGenerationError(
             "weighted-outcome-library-generation-space-exceeded",
             `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                 `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
-                'bounded-coverage strategy via the "bounded" option.',
+                'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` or `pokie build <project> --target outcomeLibrary --sample <n> --seed <string>` (or the `sampled` option).',
         );
     }
 
@@ -190,7 +225,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         };
     }
 
-    const bounded = options.bounded as BoundedCoverageGenerationOptions;
+    const bounded = sampled as BoundedCoverageGenerationOptions;
     return {
         strategy,
         totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
@@ -304,7 +339,7 @@ export async function *streamExactWeightedOutcomes(
         strategy: prepared.strategy,
         totalOutcomeSpaceSize: toBigIntSafeDecimal(prepared.totalOutcomeSpaceSize),
         sampledRawCount: toBigIntSafeDecimal(processedRawCount),
-        ...(prepared.strategy === "bounded-coverage" ? {seed: (options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
+        ...(prepared.strategy === "bounded-coverage" ? {seed: (options.sampled ?? options.bounded as BoundedCoverageGenerationOptions).seed} : {}),
         pokieVersion: options.pokieVersion,
         game: manifest,
         ...(options.configHash !== undefined ? {configHash: options.configHash} : {}),
@@ -337,4 +372,14 @@ export async function generateExactWeightedOutcomeLibrary(
     });
 
     return {library, diagnostics: step.value};
+}
+
+// A named entry point for callers that intentionally want a bounded Monte-Carlo library rather
+// than an exact enumeration.  `streamExactWeightedOutcomes` still supplies the only game/runtime
+// calculation path: it samples exactly N reel-stop tuples (with replacement) and only then plays the
+// distinct sampled grids.  It never sweeps the full outcome space before sampling.
+export function generateSampledWeightedOutcomeLibrary(
+    options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {readonly sampled: SampledWeightedOutcomeLibraryOptions},
+): Promise<GenerateExactWeightedOutcomeLibraryResult> {
+    return generateExactWeightedOutcomeLibrary(options);
 }

@@ -474,6 +474,26 @@ describe("OutcomeLibraryCommand", () => {
             expect(generate).toHaveBeenCalledWith(expect.objectContaining({bounded: {sampleSize: BigInt(1000), seed: "seed-1"}}));
         });
 
+        it("makes direct sampled generation explicit and threads its deterministic count and seed", async () => {
+            const generate = jest.fn(() => Promise.resolve(defaultGenerateResult()));
+            const command = createGenerateCommand({generate});
+
+            await command.run(["generate", "/project/slot", "--sample", "1000", "--seed", "sample-seed"]);
+
+            expect(generate).toHaveBeenCalledWith(expect.objectContaining({sampled: {sampleSize: BigInt(1000), seed: "sample-seed"}}));
+        });
+
+        it("rejects incomplete or conflicting exact/sampled choices before loading a game", async () => {
+            const loadGame = jest.fn(() => Promise.resolve(FAKE_GAME));
+            const command = createGenerateCommand({loadGame});
+
+            await expect(command.run(["generate", "/project/slot", "--sample", "1000"])).rejects.toThrow(/--sample requires --seed/);
+            await expect(command.run(["generate", "/project/slot", "--exact", "--sample", "1000", "--seed", "sample-seed"])).rejects.toThrow(
+                /--exact cannot be combined/,
+            );
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
         it("returns 1 and prints the failure code when generation fails closed with a WeightedOutcomeLibraryGenerationError", async () => {
             const generate = jest.fn(() => {
                 throw new WeightedOutcomeLibraryGenerationError(

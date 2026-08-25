@@ -26,7 +26,7 @@ import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderErr
 // resolvable for inspection but has no builder, so it is intentionally rejected before project resolution.
 const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
-const USAGE = "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]";
+const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
@@ -38,7 +38,14 @@ const PROJECT_HINT =
 // file extension, every other target's default is just a bare directory name.
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
 
-type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean};
+type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string};
+
+function parsePositiveBigIntOption(value: string, flag: string): bigint {
+    if (!(/^[0-9]+$/).test(value) || BigInt(value) <= BigInt(0)) {
+        throw new Error(`${flag} must be a positive integer. ${USAGE}`);
+    }
+    return BigInt(value);
+}
 
 export class BuildCommand implements CliCommandHandling {
     private readonly pokieVersion: string;
@@ -100,6 +107,8 @@ export class BuildCommand implements CliCommandHandling {
                     optionMissingArgument: (flag) => {
                         if (flag === "--target") return `--target requires a value. ${TARGET_HINT}`;
                         if (flag === "--out") return `--out requires a path. ${USAGE}`;
+                        if (flag === "--sample") return `--sample must be a positive integer. ${USAGE}`;
+                        if (flag === "--seed") return `--seed requires a value. ${USAGE}`;
                         return `Unknown option "${flag}". ${USAGE}`;
                     },
                 });
@@ -126,6 +135,9 @@ export class BuildCommand implements CliCommandHandling {
                 },
             )
             .option("--out <path>", "where to write the built artifact (default: a <target>-named sibling of <project>)")
+            .option("--exact", "require exact Outcome Library enumeration (the default; only valid with --target outcomeLibrary)")
+            .option("--sample <n>", "directly perform n deterministic Outcome Library draws (requires --seed; only valid with --target outcomeLibrary)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample"))
+            .option("--seed <string>", "deterministic seed for --sample")
             .option("--dry-run", "validate and preview without writing anything")
             .action(async (projectPath: string, excess: string[], options: BuildOptions) => {
                 // An empty-string positional ("pokie build ''") is present as far as Commander's own
@@ -147,6 +159,7 @@ export class BuildCommand implements CliCommandHandling {
         if (options.target === undefined) {
             throw new Error(`--target is required. ${TARGET_HINT}\n\n${USAGE}`);
         }
+        const generation = this.outcomeLibraryGeneration(options);
 
         const project = await this.resolveProject.resolve(projectPath);
         if (project === undefined) {
@@ -175,7 +188,7 @@ export class BuildCommand implements CliCommandHandling {
             return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false);
         }
 
-        return this.buildArtifact(options.target, project, out, options.dryRun ?? false);
+        return this.buildArtifact(options.target, project, out, options.dryRun ?? false, generation);
     }
 
     // The default --out when it's omitted: a `target`-named sibling of the resolved project's own rootPath --
@@ -277,13 +290,19 @@ export class BuildCommand implements CliCommandHandling {
     // Every remaining target is dispatched to the shared registry. A Blueprint -> Outcome request is the one
     // managed lifecycle exception: the requested destination is generated, verified, registered and reopened as
     // the canonical Outcome Project before this method reports it; Blueprint -> Stake then reuses that record.
-    private async buildArtifact(target: ArtifactTargetType, project: PokieProject, out: string, dryRun: boolean): Promise<number> {
+    private async buildArtifact(
+        target: ArtifactTargetType,
+        project: PokieProject,
+        out: string,
+        dryRun: boolean,
+        generation: ArtifactBuildOptions["outcomeLibraryGeneration"],
+    ): Promise<number> {
         if (dryRun) {
             console.log(`Dry run -- would build "${target}" from "${project.rootPath}" (${project.provenance}) to "${out}". No files written.`);
             return 0;
         }
 
-        const result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, lifecycle));
+        const result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
 
         console.log("Build summary:");
         console.log(`  artifact root    ${result.outputPath}`);
@@ -302,6 +321,25 @@ export class BuildCommand implements CliCommandHandling {
         );
 
         return 0;
+    }
+
+    // This is intentionally checked before resolving/loading a project: malformed sampled invocations are
+    // argv errors, and a valid direct sample is threaded into the one registry-owned generation lifecycle.
+    private outcomeLibraryGeneration(options: BuildOptions): ArtifactBuildOptions["outcomeLibraryGeneration"] {
+        const hasGenerationOption = options.exact || options.sample !== undefined || options.seed !== undefined;
+        if (!hasGenerationOption) return undefined;
+        if (options.target !== "outcomeLibrary") {
+            throw new Error(`--exact, --sample, and --seed are only valid with --target outcomeLibrary. ${USAGE}`);
+        }
+        if (options.exact && (options.sample !== undefined || options.seed !== undefined)) {
+            throw new Error(`--exact cannot be combined with --sample or --seed. ${USAGE}`);
+        }
+        if (options.sample === undefined) {
+            if (options.seed !== undefined) throw new Error(`--seed requires --sample <n>. ${USAGE}`);
+            return undefined;
+        }
+        if (options.seed === undefined) throw new Error(`--sample requires --seed. ${USAGE}`);
+        return {sampled: {sampleSize: options.sample, seed: options.seed}};
     }
 
     // The CLI's interactive cancellation surface is Ctrl+C.  It feeds the same AbortSignal as Studio
