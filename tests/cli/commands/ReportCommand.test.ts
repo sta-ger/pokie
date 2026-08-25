@@ -220,7 +220,7 @@ describe("ReportCommand resolved-project boundary", () => {
         };
     }
 
-    it('reports a project-aware message when a mistakenly-given target resolves to a "blueprint" project', async () => {
+    it("reports a public project kind and simulation route when a non-report project is given", async () => {
         const project = {
             type: "blueprint",
             rootPath: "/blueprints/game.json",
@@ -230,9 +230,17 @@ describe("ReportCommand resolved-project boundary", () => {
         const resolveProject = stubProjectResolver(project);
         const command = new ReportCommand(createStubReadFile({}), undefined, undefined, resolveProject);
 
-        await expect(command.run(["/blueprints/game.json"])).rejects.toThrow(
-            /"\/blueprints\/game\.json" is a "blueprint" project, not a pokie sim report/,
+        const error = await command.run(["/blueprints/game.json"]).then(
+            () => new Error("Expected a non-report project diagnostic."),
+            (reason: unknown) => reason,
         );
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('"/blueprints/game.json" is a Game Blueprint, not a simulation report.');
+        expect((error as Error).message).toContain("first build a POKIE game package");
+        expect((error as Error).message).toContain('"pokie sim <packagePath> --out <file>"');
+        expect((error as Error).message).toContain('Run "pokie inspect <path>" to see compatible next actions.');
+        expect((error as Error).message).not.toMatch(/(?:^|[^A-Z])blueprint\b|\btsPackage\b|\bcapability\b|\bregistry\b/);
         expect(resolveProject.calls).toEqual(["/blueprints/game.json"]);
     });
 
