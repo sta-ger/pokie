@@ -1,0 +1,8 @@
+[2026-08-25] Fresh candidate Studio command: node ./dist/cli/pokie.js --no-open
+[2026-08-25] Recovered UI cells used rendered Projects Detect -> Register -> Open -> Build/Export.
+[2026-08-25] tsPackage:outcomeLibrary — card-local Ready to build, then Built to …; pokie inspect readback: Outcome Library (manifest sha256 1987f2878e56a307cfbc92ae4ae816fcd765e3488b5a2407f756ec9a7080cc66).
+[2026-08-25] tsPackage:stakeAdapter — card-local Ready to build, then Built to …; pokie inspect readback: Stake Engine export (manifest sha256 1d7584d03bd6579a552a9e3e29f0c2d92b26bab877a80b788b733674622dfe5a).
+[2026-08-25] outcomeLibrary:outcomeLibrary — card-local Ready to build, then Built to …; pokie inspect readback: Outcome Library (manifest sha256 1e7b37cbeffb8b25921ed7bb8a3aa8fd7bffb9876f6a3a8f17b875f2285aaccf).
+[2026-08-25] outcomeLibrary:stakeAdapter — card-local Ready to build, then Built to …; pokie inspect readback: Stake Engine export (manifest sha256 46766f8e0d14f189229e60d3badbed3714346acaeb9ab333963c5b964872b9ee).
+[2026-08-25] stakeAdapter:stakeAdapter — card-local Ready to build, then Built to …; pokie inspect readback: Stake Engine export (manifest sha256 7f0f638cd354fe4f56c19d99188bcd04805246800d0adda98028aed37103dc94).
+[2026-08-25] parWorkbook:parWorkbook — fresh workbook Detect was recognized, but the rendered result said to import it through Design Game and offered only Open in Design Game. No Register or registered-row Open control existed; no public Projects Open path reached its Build/Export card.
