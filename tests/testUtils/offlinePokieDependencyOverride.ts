@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
-import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
+import {execFile} from "child_process";
+import util from "util";
+import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
 
 export const REPO_ROOT = path.join(__dirname, "..", "..");
 
@@ -32,13 +34,27 @@ export function collectTransitiveDependencyNames(rootNames: string[]): string[] 
     return [...collected];
 }
 
+const execFileAsync = util.promisify(execFile);
+const CHILD_BUILD_MAX_OLD_SPACE_MB = 512;
+
 // These integration helpers deliberately execute real npm install/build commands.  Resolve npm next
 // to the Node executable that runs Jest instead of through PATH: the test harness may place a command
 // policy wrapper named "npm" there, which is useful for the outer test command but must not turn the
-// package lifecycle this helper is meant to exercise into a wrapper-policy failure.
-export const runBundledNpmCommand: PackageCommandRunning = (command, args, cwd) => {
+// package lifecycle this helper is meant to exercise into a wrapper-policy failure.  Keep the child
+// compiler's heap bounded too: this helper can run alongside another Jest worker in changed-test
+// verification, and an otherwise small scaffold build must not compete with that worker for the host
+// default V8 heap.
+export const runBundledNpmCommand: PackageCommandRunning = async (command, args, cwd) => {
     const npmPath = path.join(path.dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm");
-    return runPackageCommand(command === "npm" && fs.existsSync(npmPath) ? npmPath : command, args, cwd);
+    const childNodeOptions = [
+        process.env.NODE_OPTIONS?.replace(/--max-old-space-size(?:=|\s+)\d+/g, "").trim(),
+        `--max-old-space-size=${CHILD_BUILD_MAX_OLD_SPACE_MB}`,
+    ].filter(Boolean).join(" ");
+    const {stdout, stderr} = await execFileAsync(command === "npm" && fs.existsSync(npmPath) ? npmPath : command, args, {
+        cwd,
+        env: {...process.env, NODE_OPTIONS: childNodeOptions},
+    });
+    return {stdout: stdout.toString(), stderr: stderr.toString()};
 };
 
 export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runBundledNpmCommand): PackageCommandRunning {
