@@ -43,6 +43,7 @@ export class GamePackageMerger implements GamePackageMerging {
     }
 
     public merge(projectRoot: string, overrides?: GamePackageMergeOverrides): ScaffoldResult {
+        this.assertWritableProjectRoot(projectRoot);
         const packageJsonPath = path.join(projectRoot, "package.json");
         const packageJsonExisted = fs.existsSync(packageJsonPath);
         const existingPkg: PackageJsonLike = packageJsonExisted
@@ -93,6 +94,21 @@ export class GamePackageMerger implements GamePackageMerging {
         );
 
         return {projectRoot, manifest, createdFiles, updatedFiles, skippedFiles};
+    }
+
+    // Check every directory we must create into before package.json is patched. In particular, a
+    // pre-existing plain file named "src" used to fail only after package.json had been rewritten,
+    // leaving an init attempt half-applied. Existing source files remain safe and are still skipped;
+    // only a shape that cannot contain src/index.ts is refused up front with a useful diagnosis.
+    private assertWritableProjectRoot(projectRoot: string): void {
+        if (fs.existsSync(projectRoot) && !fs.statSync(projectRoot).isDirectory()) {
+            throw new Error(`Cannot initialize "${projectRoot}": it is not a directory.`);
+        }
+
+        const sourceDirectory = path.join(projectRoot, "src");
+        if (fs.existsSync(sourceDirectory) && !fs.statSync(sourceDirectory).isDirectory()) {
+            throw new Error(`Cannot initialize "${projectRoot}": "${sourceDirectory}" is not a directory.`);
+        }
     }
 
     // A field only conflicts when `existingPkg` already defines it (an absent field is simply filled

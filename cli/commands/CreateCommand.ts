@@ -14,6 +14,7 @@ import {buildRandomReelStripGeneration} from "../build/buildRandomReelStripGener
 import {createBlankGameBlueprint} from "../build/createBlankGameBlueprint.js";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
+import {deriveManifestDefaults} from "../scaffold/deriveManifestDefaults.js";
 import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";
 import {GameBlueprintWizarding} from "../wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../wizard/PromptAdapting.js";
@@ -156,7 +157,7 @@ export class CreateCommand implements CliCommandHandling {
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--blank", "write a bare-minimum blueprint straight from the starter template, no wizard")
             .option("--random", "write an always-valid, randomly generated blueprint directly, no wizard")
-            .option("--seed <integer>", "reproduce a specific random blueprint (only meaningful with --random)", (value: string) => {
+            .option("--seed <integer>", "reproduce a specific random blueprint (requires --random)", (value: string) => {
                 if (!Number.isInteger(Number(value))) {
                     throw new Error(`--seed requires an integer value. ${RANDOM_USAGE}`);
                 }
@@ -164,28 +165,39 @@ export class CreateCommand implements CliCommandHandling {
             })
             .option(
                 "--preset <preset>",
-                "which random generation strategy to use (only meaningful with --random)",
+                "which random generation strategy to use (requires --random)",
                 (value: string) => {
                     if (!RANDOM_PRESETS.includes(value as RandomPreset)) {
                         throw new Error(`--preset must be one of: ${RANDOM_PRESETS.join(", ")}. ${RANDOM_USAGE}`);
                     }
                     return value as RandomPreset;
                 },
-                "default" as RandomPreset,
             )
             .option("--out <file>", "output path (default: derived from the written blueprint's own manifest id)")
             .action(
                 async (
                     name: string | null,
                     excess: string[],
-                    options: {blank?: boolean; random?: boolean; seed?: number; preset: RandomPreset; out?: string},
+                    options: {blank?: boolean; random?: boolean; seed?: number; preset?: RandomPreset; out?: string},
                 ) => {
                     const normalizedName = name ?? undefined;
+                    if (normalizedName !== undefined) {
+                        this.assertValidName(normalizedName);
+                    }
+                    if (options.out !== undefined && options.out.trim().length === 0) {
+                        throw new Error(`--out requires a non-empty file path. ${USAGE}`);
+                    }
+                    if (!options.random && options.seed !== undefined) {
+                        throw new Error(`--seed can only be used with --random. ${RANDOM_USAGE}`);
+                    }
+                    if (!options.random && options.preset !== undefined) {
+                        throw new Error(`--preset can only be used with --random. ${RANDOM_USAGE}`);
+                    }
                     if (options.random) {
                         if (excess.length > 0) {
                             throw new Error(`Unexpected extra argument "${excess[0]}". ${RANDOM_USAGE}`);
                         }
-                        resultRef.value = this.executeRandom(normalizedName, options.seed, options.preset, options.out);
+                        resultRef.value = this.executeRandom(normalizedName, options.seed, options.preset ?? "default", options.out);
                     } else if (options.blank) {
                         if (excess.length > 0) {
                             throw new Error(`Unexpected extra argument "${excess[0]}". ${BLANK_USAGE}`);
@@ -194,9 +206,6 @@ export class CreateCommand implements CliCommandHandling {
                     } else {
                         if (excess.length > 0) {
                             throw new Error(`Unexpected extra argument "${excess[0]}". ${USAGE}`);
-                        }
-                        if (normalizedName !== undefined) {
-                            this.assertValidName(normalizedName);
                         }
                         resultRef.value = await this.executeDefault(normalizedName, options.out);
                     }
@@ -242,7 +251,10 @@ export class CreateCommand implements CliCommandHandling {
             }
 
             const {blueprint} = result;
-            const filePath = result.outDir as string; // always concrete -- see GameBlueprintWizardOptions.destination
+            // --out names a concrete CLI destination, not merely a suggested answer in the wizard.
+            // The wizard still shows it as its default, but an explicit flag must not be redirected by
+            // a later prompt answer (the same Save As contract EditCommand applies).
+            const filePath = out ?? (result.outDir as string); // always concrete -- see GameBlueprintWizardOptions.destination
 
             const issues = this.validator.validate(blueprint);
             const errors = issues.filter((issue) => issue.severity === "error");
@@ -349,7 +361,13 @@ export class CreateCommand implements CliCommandHandling {
     // one implicit engine-wide weighting.
     private executeRandom(name: string | undefined, seed: number | undefined, preset: RandomPreset, out: string | undefined): number {
         const generator = preset === "variant" ? this.variantRandomBlueprintGenerator : this.randomBlueprintGenerator;
-        const {blueprint, seed: usedSeed, provenance} = generator.generate({seed, overrides: name ? {name} : undefined});
+        const nameDefaults = name === undefined ? undefined : deriveManifestDefaults(name);
+        const {blueprint, seed: usedSeed, provenance} = generator.generate({
+            seed,
+            // A positional create name names the artifact, consistently with --blank. Passing both
+            // fields prevents the generator's random id from leaking into the default filename.
+            overrides: nameDefaults === undefined ? undefined : {id: nameDefaults.id, name: nameDefaults.name},
+        });
 
         console.log(`Generated random game "${blueprint.manifest.name}" (id: "${blueprint.manifest.id}") from seed ${usedSeed}.`);
         console.log(
