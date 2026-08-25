@@ -15,7 +15,6 @@ import {
     OUTCOME_LIBRARY_BUILD_OPERATION,
     PAR_EXPORT_OPERATION,
     STAKE_ENGINE_EXPORT_OPERATION,
-    WASM_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
 import type {ProjectType} from "./ProjectType.js";
@@ -38,7 +37,7 @@ import {
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
-// export, "par.export" writes a parWorkbook file, "wasm.export" would write a wasm build. Every other
+// export, and "par.export" writes a parWorkbook file. Every other
 // PokieOperation (sim, replay, validate, ...) reads an already-built project rather than producing a new
 // artifact type, so has no entry here -- this map is deliberately only the "build direction" subset of
 // PokieOperation.
@@ -47,7 +46,6 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
     outcomeLibrary: OUTCOME_LIBRARY_BUILD_OPERATION,
     stakeAdapter: STAKE_ENGINE_EXPORT_OPERATION,
     parWorkbook: PAR_EXPORT_OPERATION,
-    wasm: WASM_EXPORT_OPERATION,
 };
 
 // Explicit, per-target statement of what building that target does NOT promise -- see
@@ -69,10 +67,6 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
     parWorkbook: [
         "Exports a Game Blueprint as a deterministic PAR workbook snapshot, or republishes an existing " +
             "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
-    ],
-    wasm: [
-        'No ProjectType grants the capability this target requires and no builder is registered for it -- ' +
-            'POKIE has no arbitrary package-to-WASM compiler today (see ProjectType.ts\'s own "wasm" doc comment).',
     ],
 };
 
@@ -96,10 +90,8 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
     };
 }
 
-// Every target with a real, atomic builder today -- "wasm" is deliberately absent (see UNSUPPORTED_NOTES.wasm
-// above and ArtifactBuilderRegistry.test.ts's own "truthfully reports wasm as buildable from no source type
-// today"): no ProjectType grants WASM_EXPORT_CAPABILITY, so there is nothing a "wasm" builder could ever be
-// invoked against, and none is registered.
+// Every public target has a real, atomic builder. WASM is intentionally not an ArtifactTargetType: it is an
+// inspection-only resolved project kind until POKIE ships a complete WASM producer and consumer workflow.
 function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetType, ArtifactBuilder> {
     return new Map<ArtifactTargetType, ArtifactBuilder>([
         ["tsPackage", new TsPackageArtifactBuilder(pokieVersion)],
@@ -175,9 +167,7 @@ export class ArtifactBuilderRegistry {
     // the same builder-owned destinationKind, but without invoking the builder (and so without ever reading
     // `source` or touching the filesystem beyond the same existence/emptiness check build() itself performs).
     // Lets a caller (a Studio build-preview panel) report the identical conflict a real build would hit
-    // before ever attempting one, rather than re-deriving "file" vs "directory" per target itself. Throws
-    // (same as build()) when `target` has no registered builder today -- there is no destinationKind to check
-    // against.
+    // before ever attempting one, rather than re-deriving "file" vs "directory" per target itself.
     public checkDestination(target: ArtifactTargetType, destinationPath: string, sourcePath?: string): ArtifactDestinationCheck {
         const builder = this.builders.get(target);
         if (builder === undefined) {
@@ -232,9 +222,7 @@ export class ArtifactBuilderRegistry {
     // Executes a real build: re-validates `source` against `target`'s own required capability (the exact
     // capability diagnostic describe()/supportsConversionFrom() already report, checked again here so build()
     // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
-    // registered ArtifactBuilder. Throws (never silently no-ops) when `target` has no registered builder today
-    // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
-    // is never a second, differently-worded "not supported" statement.
+    // registered ArtifactBuilder. Every ArtifactTargetType has a registered production builder.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         if (!this.supportsConversionFrom(target, source.type)) {
             return Promise.reject(new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath)));

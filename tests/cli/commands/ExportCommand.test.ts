@@ -38,12 +38,14 @@ describe("ExportCommand", () => {
             fs.writeFileSync(blueprintPath, sourceContents);
             fs.writeFileSync(outputPath, outputBytes);
 
-            await expect(command.run([blueprintPath, "--to", "workbook", "--out", outputPath])).rejects.toThrow(/already exists/i);
+            await expect(command.run([blueprintPath, "--to", "workbook", "--out", outputPath])).rejects.toThrow(
+                /Cannot export target "workbook"[\s\S]*Next: choose a different --out path/i,
+            );
             expect(fs.readFileSync(outputPath)).toEqual(outputBytes);
 
             fs.symlinkSync(workDir, linkedDir, "dir");
             await expect(command.run([blueprintPath, "--to", "workbook", "--out", path.join(linkedDir, "source.blueprint.json")])).rejects.toThrow(
-                /source itself/i,
+                /Cannot export target "workbook"[\s\S]*Next: choose a different --out path/i,
             );
             expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(sourceContents);
         } finally {

@@ -216,14 +216,15 @@ describe("assessWasmPackagingPreflight", () => {
         }
     });
 
-    it("never claims arbitrary package-to-WASM compilation works -- notes always carry ArtifactBuilderRegistry's own wasm disclaimer", () => {
+    it("makes the inspection-only WASM product boundary explicit", () => {
         fs.writeFileSync(path.join(workDir, "package.json"), JSON.stringify({name: "game"}));
 
         const result = assessWasmPackagingPreflight(projectOf("tsPackage", workDir));
 
         expect(result.supported).toBe(true);
         if (result.supported) {
-            expect(result.report.notes.join(" ")).toMatch(/no arbitrary package-to-WASM compiler/);
+            expect(result.report.notes.join(" ")).toMatch(/does not currently expose a WASM build or export target/i);
+            expect(result.report.notes.join(" ")).toMatch(/pokie inspect/i);
         }
     });
 

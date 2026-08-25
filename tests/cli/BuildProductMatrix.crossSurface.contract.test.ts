@@ -191,13 +191,20 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         const explicitSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
             ? await createSource(source, path.join(fixtureRoot, "explicit-source"), resolver, registry)
             : sourcePath;
-        await expect(studio.build(explicitSourcePath, target, explicitOut)).resolves.toMatchObject({
+        expect(await command.run([explicitSourcePath, "--target", target, "--out", explicitOut])).toBe(0);
+        expect(fs.existsSync(explicitOut)).toBe(true);
+
+        const studioOut = path.join(fixtureRoot, `studio-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
+        const studioSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
+            ? await createSource(source, path.join(fixtureRoot, "studio-source"), resolver, registry)
+            : explicitSourcePath;
+        await expect(studio.build(studioSourcePath, target, studioOut)).resolves.toMatchObject({
             status: "ok",
             target,
-            outputPath: explicitOut,
+            outputPath: studioOut,
             sourceType: source,
         });
-        expect(fs.existsSync(explicitOut)).toBe(true);
+        expect(fs.existsSync(studioOut)).toBe(true);
 
         const dryRunOut = path.join(fixtureRoot, `dry-run-${target}${target === "parWorkbook" ? ".xlsx" : ""}`);
         expect(await command.run([sourcePath, "--target", target, "--out", dryRunOut, "--dry-run"])).toBe(0);
@@ -213,6 +220,9 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         const occupiedSourcePath = target === "outcomeLibrary" && (source === "blueprint" || source === "tsPackage")
             ? await createSource(source, path.join(fixtureRoot, "occupied-source"), resolver, registry)
             : sourcePath;
+        await expect(command.run([occupiedSourcePath, "--target", target, "--out", occupiedOut])).rejects.toThrow(
+            new RegExp(`Cannot build target "${target}".*Next: choose a different --out path`, "s"),
+        );
         await expect(studio.build(occupiedSourcePath, target, occupiedOut)).resolves.toMatchObject({status: "conflict", target});
         expect(target === "parWorkbook" ? fs.readFileSync(occupiedOut, "utf-8") : fs.readFileSync(path.join(occupiedOut, "preserve-me.txt"), "utf-8")).toBe("preserve me");
 

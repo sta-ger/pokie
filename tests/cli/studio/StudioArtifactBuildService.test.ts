@@ -49,7 +49,6 @@ describe("StudioArtifactBuildService", () => {
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
             expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
             expect(byTarget.get("parWorkbook")?.supported).toBe(true);
-            expect(byTarget.get("wasm")).toBeUndefined();
         });
 
         it("marks every target unsupported for a path that isn't a recognized POKIE project", async () => {

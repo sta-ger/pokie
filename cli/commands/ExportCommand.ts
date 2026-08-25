@@ -47,13 +47,23 @@ export class ExportCommand implements CliCommandHandling {
             throw error;
         }
         const forwarded = args.filter((value, index) => value !== "--to" && args[index - 1] !== "--to");
+        let forwardedRun: Promise<number>;
         if (parsed.target === "outcomes") {
-            return this.outcomeLibrary.run(["build", ...forwarded]);
+            forwardedRun = this.outcomeLibrary.run(["build", ...forwarded]);
+        } else if (parsed.target === "adapter") {
+            forwardedRun = this.stake.run(["export", ...forwarded]);
+        } else {
+            forwardedRun = this.par.run(["export", ...forwarded]);
         }
-        if (parsed.target === "adapter") {
-            return this.stake.run(["export", ...forwarded]);
-        }
-        return this.par.run(["export", ...forwarded]);
+        return forwardedRun.catch((error: unknown) => {
+            if (error instanceof Error && (/already exists|source itself|destination/i).test(error.message)) {
+                throw new Error(
+                    `Cannot export target "${parsed.target}" because its destination is unavailable. ${error.message} ` +
+                        "Next: choose a different --out path or remove the existing destination, then retry.",
+                );
+            }
+            throw error;
+        });
     }
 
     private command(): Command {

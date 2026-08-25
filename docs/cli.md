@@ -412,7 +412,8 @@ The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: it
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
 `parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
-resolvable for inspection, but is intentionally not a build target because POKIE has no WASM artifact builder.
+resolvable for inspection, but is intentionally not a build target: it is an inspection-only compatibility boundary,
+not a POKIE artifact workflow.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
 described in full below. Blueprint → PAR Workbook freezes generated, weighted, or default reels as a deterministic

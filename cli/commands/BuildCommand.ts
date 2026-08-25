@@ -1,5 +1,6 @@
 import {
     ArtifactBuilderRegistry,
+    ArtifactBuildConflictError,
     type ArtifactBuildOptions,
     ArtifactTargetType,
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
@@ -22,8 +23,8 @@ import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-// The matrix's advertised targets, rather than ArtifactTargetType's wider inspection vocabulary. WASM is
-// resolvable for inspection but has no builder, so it is intentionally rejected before project resolution.
+// The complete product matrix: every ArtifactTargetType is selectable because it has a builder and supported
+// source workflow. WASM is a resolved inspection type, not an artifact target.
 const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
@@ -174,7 +175,7 @@ export class BuildCommand implements CliCommandHandling {
 
         if (options.dryRun) {
             const destinationCheck = this.registry.checkDestination(options.target, out, project.rootPath);
-            if (!destinationCheck.available) throw new Error(destinationCheck.message);
+            if (!destinationCheck.available) throw new Error(describeDestinationConflict(options.target, destinationCheck.message));
             // Blueprint -> tsPackage retains its richer command-owned preview below, which validates the
             // injected Blueprint reader/validator and renders the complete generated-package summary.
             // Every other supported cell must validate its own registry source/artifact contract before
@@ -259,6 +260,9 @@ export class BuildCommand implements CliCommandHandling {
                 console.error(`\n${PROJECT_HINT}`);
                 return 1;
             }
+            if (error instanceof ArtifactBuildConflictError) {
+                throw new Error(describeDestinationConflict("tsPackage", error.message));
+            }
             throw error;
         }
 
@@ -302,7 +306,15 @@ export class BuildCommand implements CliCommandHandling {
             return 0;
         }
 
-        const result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
+        let result;
+        try {
+            result = await this.runWithArtifactLifecycle((lifecycle) => this.registry.build(target, project, out, {...lifecycle, ...(generation !== undefined ? {outcomeLibraryGeneration: generation} : {})}));
+        } catch (error) {
+            if (error instanceof ArtifactBuildConflictError) {
+                throw new Error(describeDestinationConflict(target, error.message));
+            }
+            throw error;
+        }
 
         console.log("Build summary:");
         console.log(`  artifact root    ${result.outputPath}`);
@@ -410,4 +422,8 @@ export class BuildCommand implements CliCommandHandling {
 
 function isReelStripGenerationFailure(error: unknown): error is Error {
     return error instanceof Error && error.message.includes("could not generate its reel strips:");
+}
+
+function describeDestinationConflict(target: ArtifactTargetType, detail: string): string {
+    return `Cannot build target "${target}" because its destination is unavailable. ${detail} Next: choose a different --out path or remove the existing destination, then retry.`;
 }
