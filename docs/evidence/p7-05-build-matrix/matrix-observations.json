@@ -1,0 +1,26 @@
+{
+  "candidateSha": "673a9bea3195a33adf8269575d3ae1bc8403a5a0",
+  "targetedTests": {"files": 16, "suitesPassed": 16, "testsPassed": 1488, "postSummaryOpenHandle": true},
+  "cli": {
+    "defaultDryRuns": {"cells": 9, "defaultDestinationsCreated": 0},
+    "unsafeDestination": {"cell": "outcomeLibrary:stakeAdapter", "result": "refused; sentinel preserved"},
+    "cells": [
+      ["blueprint:tsPackage", "POKIE game package", "42ed0eb1e966aaba04f852a28ed8f0a4b3533272c8723f79f14fdecedb823606"],
+      ["blueprint:outcomeLibrary", "Outcome Library (managed compatible-project reuse)", "4305bc5b308c440ceacf67c175ca5aec6ece9c268abf105542bd7576175fbf71"],
+      ["blueprint:stakeAdapter", "Stake Engine export", "3dc1144970c6992d66856ab61f5e1a2f9386dcbabd8db8ee80757094b8ace7bd"],
+      ["tsPackage:outcomeLibrary", "Outcome Library (managed compatible-project reuse)", "4305bc5b308c440ceacf67c175ca5aec6ece9c268abf105542bd7576175fbf71"],
+      ["tsPackage:stakeAdapter", "Stake Engine export", "14556e1f029d8783ab2276cb30240446518c5bfe7fab161104510b0f5d699fbb"],
+      ["outcomeLibrary:outcomeLibrary", "Outcome Library", "1ca474111750d4c45875250ce4a563338f39d156f497f380ea8782caa0c8e705"],
+      ["outcomeLibrary:stakeAdapter", "Stake Engine export", "6f5b478f59ef4306993b4c5a9832df5eb50052bef6e487dceaba2a8d28c88133"],
+      ["stakeAdapter:stakeAdapter", "Stake Engine export", "97dfa8932857e93cb59578d4b0971a57c449d3c23d3a7170e9611694c5811199"],
+      ["parWorkbook:parWorkbook", "PAR workbook", "b172033b4dd9a35a26331a27e17440a8824f5f817a5a8149f21f20b590f03b8f"]
+    ]
+  },
+  "publicStudio": {
+    "launches": 2,
+    "command": "node ./dist/cli/pokie.js --no-open",
+    "passedCells": ["blueprint:tsPackage", "blueprint:outcomeLibrary", "blueprint:stakeAdapter"],
+    "inconclusive": "The next idempotent Outcome-library build showed Ready to build after one safe retry, with no accepted request, pending state, or rendered product error; no further duplicate action was sent.",
+    "notReached": ["tsPackage:outcomeLibrary", "tsPackage:stakeAdapter", "outcomeLibrary:outcomeLibrary", "outcomeLibrary:stakeAdapter", "stakeAdapter:stakeAdapter", "parWorkbook:parWorkbook"]
+  }
+}

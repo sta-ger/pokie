@@ -1,87 +1,28 @@
-# P7-05 independent host rerun — incomplete browser portion
+# P7-05 current-candidate independent matrix rerun
 
-Candidate: `c1b3436654695d1bc12eb37e6fc9574f3f216f4e`.
+Candidate: `673a9bea3195a33adf8269575d3ae1bc8403a5a0`.
 
-The required single serial command named all fourteen persisted test files. All
-14 suites passed (1,453 tests). Jest printed its normal open-handle warning and
-then remained CPU-bound after the passing summary; the already-complete runner
-was terminated before the candidate build or Studio were started.
+The required single serial `npm run test:targeted -- <16 complete files>` command
+reported **16/16 passing suites** and **1,488/1,488 passing tests**. Jest then
+retained an open handle after printing that final summary; the already-complete
+runner was terminated before any next command.
 
-From one fresh temporary root, the public candidate CLI built and structurally
-read back every supported matrix cell with an explicit destination:
+The candidate was rebuilt successfully. Fresh temporary sources exercised all
+nine supported CLI cells, each with its default-output `--dry-run` (no default
+path was created), an explicit-output build, and `pokie inspect` structural
+readback. A non-empty explicit destination refused the build and preserved its
+only sentinel file. No staging paths remained. Two Outcome-library requests
+correctly reported reuse of the compatible managed Outcome Project; the rendered
+and CLI output identify that actual result rather than claiming the requested
+path was written.
 
-| Cell | Readback kind |
-| --- | --- |
-| blueprint → tsPackage | POKIE game package |
-| blueprint → outcomeLibrary | Outcome Library |
-| blueprint → stakeAdapter | Stake Engine export |
-| tsPackage → outcomeLibrary | Outcome Library |
-| tsPackage → stakeAdapter | Stake Engine export |
-| outcomeLibrary → outcomeLibrary | Outcome Library |
-| outcomeLibrary → stakeAdapter | Stake Engine export |
-| stakeAdapter → stakeAdapter | Stake Engine export |
-| parWorkbook → parWorkbook | PAR workbook |
-
-Each cell also completed a default-destination `--dry-run`; every printed
-default destination was absent afterwards. The temporary tsPackage first
-reported its documented missing dependency. Its normal registry preparation
-could not fetch `pokie@^1.3.0` because that version is not published; a
-temporary no-save install of this exact candidate checkout then prepared that
-package and both tsPackage-source cells completed.
-
-Studio was launched once from this checkout with exactly
-`node ./dist/cli/pokie.js --no-open`. A fresh browser rendered the public Design
-Game screen, loaded the temporary Blueprint by its visible `Load from path`
-input (including the rendered resolved path and `Valid — no issues found`), and
-created a managed Starter Slot Workspace showing the visible `Build/Export`
-tab. The browser driver could not subsequently reach the Build/Export cards:
-its restored route remained at a partial Workspace shell and a later fresh
-session did not render the home workflow, with no rendered Studio error. No
-Studio artifact build, conflict/unsafe-destination action, or cancellation was
-therefore claimed by this rerun.
-
-Harness-recovery update (2026-08-25): the candidate was rebuilt successfully.
-A fresh Studio was then launched from this source checkout with exactly
-`node ./dist/cli/pokie.js --no-open`; a fresh Chromium profile rendered Design
-Game, accepted the visible `Create Project` action, rendered the Workspace and
-its `Build/Export` tab, and showed artifact cards including `TypeScript Game
-Package` and `Stake Engine export`. The harness's card-scoping selector failed
-before it could issue a Build request. No product error was rendered and no
-build request was accepted, so this is selector-inconclusive rather than a
-product finding. The four-launch allocation for this invocation was exhausted
-by the preceding driver-recovery probes and this one full workflow run.
-
-Focused continuation update (2026-08-25): the retained test result and CLI
-matrix observations were checked in place and not rerun. The candidate was
-rebuilt once. Four fresh-profile Studio launches then used only
-`node ./dist/cli/pokie.js --no-open`. The repaired rendered path reached the
-actual **Show advanced options (JSON mode, load/save by path)** control,
-entered a newly-created temporary Blueprint through its visible **Load from
-path** field, clicked **Load**, and observed **Valid — no issues found.**
-Loading an existing Blueprint truthfully changes the next visible primary
-action from `Create Project` to `Save Project`; the last bounded launch
-identified that local control before reaching Workspace. No Studio artifact
-request or rendered product error appeared. This is a selector/readiness gap,
-not a product failure; no further launch is permitted in this invocation.
-
-Final independent public-UI recovery (2026-08-25): the candidate was rebuilt
-and four fresh-profile Studio sessions were launched only with
-`node ./dist/cli/pokie.js --no-open`. The repaired visible-control driver
-registered and opened the Blueprint and package sources, selected
-`Build/Export`, typed an explicit destination in each card, observed its local
-`Status: Ready to build`, and observed `Built to …` for these five cells:
-Blueprint → TypeScript package, Outcome library, and Stake Engine export; and
-TypeScript package → Outcome library and Stake Engine export. A fresh
-registered Outcome Library then rendered as `Available` with only `Remove` (no
-`Open`), so its two supported Build/Export conversions could not be reached.
-A fresh registered Stake Engine export rendered the same way, blocking its
-supported self-republish. This is a P2 product finding: Studio's public
-Projects workflow restricts `Open` to Blueprint and package sources, despite
-the matrix advertising those three source-to-target cells. No private API or
-direct route was used, and no Studio-only result is claimed for unreachable
-cells.
-
-Only this concise account, the structured summary, and the bounded recovery
-transcript are retained; temporary projects, browser profiles, logs, generated
-artifacts, and the uncommitted browser harness are outside the repository
-evidence payload.
+Studio was launched twice, each time only as `node ./dist/cli/pokie.js --no-open`.
+The second fresh visible Studio session used Projects → Detect → Register → Open
+→ Build/Export and rendered successful `Built to …` results for Blueprint →
+TypeScript package, Outcome Library, and Stake Engine export. The next visible,
+idempotent Outcome Library build remained `Status: Ready to build` after its
+single safe retry, without a pending, accepted request, or rendered product
+error. Consequently the remaining public-UI cells are selector/driver
+inconclusive, not a product finding. The complete bounded observations and
+checksums are in `matrix-observations.json`; generated sources, output trees,
+browser profiles, automation, and logs were removed.
