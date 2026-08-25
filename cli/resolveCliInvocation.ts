@@ -12,6 +12,7 @@ export type CliInvocation = {
 };
 
 const TOP_LEVEL_HELP_FLAGS = ["--help", "-h"];
+const TOP_LEVEL_VERSION_FLAGS = ["--version", "-V"];
 
 // "pokie --help" / "pokie -h" asks about the CLI itself, so it has to be answered before
 // resolveCliInvocation() below ever sees it: that function's step 3 routes any leading "-"-prefixed
@@ -24,36 +25,39 @@ export function isTopLevelHelpRequest(argv: string[]): boolean {
     return first !== undefined && TOP_LEVEL_HELP_FLAGS.includes(first);
 }
 
+// Like help, the version is metadata about the installed CLI rather than an option for
+// Studio (or any individual workflow). Keep this check at the dispatcher boundary so
+// `pokie --version` cannot accidentally become a Studio server option.
+export function isTopLevelVersionRequest(argv: string[]): boolean {
+    const [first] = argv.slice(2);
+    return first !== undefined && TOP_LEVEL_VERSION_FLAGS.includes(first);
+}
+
 // Decides which registered command `argv` should run, and with which args — the one piece of logic
-// standing between "pokie" (no args at all), "pokie ." / "pokie <path>" (an implicit POKIE Studio
-// Project launch for that directory), and every explicit
+// standing between "pokie ." / "pokie <path>" (an implicit POKIE Studio Project launch for that directory), and every explicit
 // "pokie <command> ..." invocation continuing to work unchanged. Returns undefined when none of
 // those match — an unrecognized token that also isn't an existing path — so cli/pokie.ts's existing
 // "print usage, exit 1" fallback is unaffected.
 //
 // Resolution order, first match wins:
-//   1. No args at all               -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [<discovered project root>?]}
-//                                                                                          (Project if cwd is
-//                                                                                           inside one, else Home)
-//   2. First token is a known command name
+//   1. First token is a known command name
 //                                    -> {commandName: <that name>, args: <the rest>}       (unchanged dispatch)
-//   3. First token looks like an option ("-"-prefixed, e.g. "--no-open")
+//   2. First token looks like an option ("-"-prefixed, e.g. "--no-open")
 //                                    -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [<discovered root>?, ...argv]}
 //                                                                                          (bare Studio + flags)
-//   4. First token is an existing path (`.`, a relative dir/file, or an absolute one)
+//   3. First token is an existing path (`.`, a relative dir/file, or an absolute one)
 //                                    -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: <all of argv>} (Project mode)
-//   5. Otherwise                    -> undefined                                          (unknown command)
+//   4. Otherwise                    -> undefined                                          (unknown command)
 //
-// Steps 1 and 3 are the *bare* Studio launches — the user named no target at all — so they discover
-// one: findProjectRoot walks up from the working directory, and a hit is handed to Studio as its
-// projectRoot, making `pokie` from anywhere inside a project (including a nested subdirectory)
-// equivalent to `pokie <that project root>`. No hit means Home, exactly as before. Discovery is
-// deliberately confined to those two steps: `studio` is not a public command, and an explicit path
-// (step 4) is already a target.
+// Step 2 is the bare Studio launch — the user named no target at all — so it discovers one:
+// findProjectRoot walks up from the working directory, and a hit is handed to Studio as its projectRoot.
+// Discovery is deliberately confined to that step: `studio` is not a public command, and an explicit
+// path (step 3) is already a target. The dispatcher reserves truly bare `pokie` for its first-contact
+// guidance before it calls this resolver.
 // Nothing is remembered between runs — the answer is always rediscovered from the current working
 // directory, never a "last opened project".
 //
-// Step 4 deliberately checks the filesystem rather than guessing from shape (leading "./", a bare
+// Step 3 deliberately checks the filesystem rather than guessing from shape (leading "./", a bare
 // name, whatever) — an unrecognized command name must never be silently treated as a project path
 // just because it looks like one; it only becomes Studio's `projectRoot` if something actually
 // exists there. `pathExists` and `findProjectRoot` are both injectable so tests never touch the real
@@ -68,8 +72,7 @@ export function resolveCliInvocation(
     const rawArgs = argv.slice(2);
 
     if (rawArgs.length === 0) {
-        const discovered = findProjectRoot(workingDirectory());
-        return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: discovered === undefined ? [] : [discovered]};
+        return undefined;
     }
 
     const [first, ...rest] = rawArgs;

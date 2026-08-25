@@ -27,8 +27,8 @@
   "findings": {
     "versionHelp": {
       "helpExitCode": 0,
-      "versionExitCode": 1,
-      "versionOutputIncludes": "Unknown option \"--version\""
+      "versionExitCode": 0,
+      "versionOutput": "1.3.0"
     },
     "implicitRoot": {
       "helpExitCode": 0,
@@ -38,6 +38,7 @@
   },
   "owners": [
     {"id":"alias:root:-h","owner":"P7-01 executable help contract"},
+    {"id":"alias:root:-V","owner":"P7-02 first-contact version contract"},
     {"id":"alias:build:-h","owner":"P7-01 executable help contract"},
     {"id":"alias:certification:-h","owner":"P7-01 executable help contract"},
     {"id":"alias:certification build:-h","owner":"P7-01 executable help contract"},
@@ -228,6 +229,7 @@
     {"id":"option:root:--host","owner":"tests/cli/commands/StudioCommand.test.ts"},
     {"id":"option:root:--no-open","owner":"tests/cli/commands/StudioCommand.test.ts"},
     {"id":"option:root:--help","owner":"tests/cli/cliCommandInventory.contract.test.ts"},
+    {"id":"option:root:--version","owner":"P7-02 first-contact version contract"},
     {"id":"option:build:--help","owner":"P7-01 executable help contract"},
     {"id":"option:certification:--help","owner":"P7-01 executable help contract"},
     {"id":"option:certification build:--help","owner":"P7-01 executable help contract"},

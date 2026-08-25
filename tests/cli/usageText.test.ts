@@ -52,10 +52,19 @@ describe("buildUsageText", () => {
         }
     });
 
+    it("shows the public global flags and a path into a first workflow", () => {
+        const usage = buildUsageText(commands);
+
+        expect(usage).toContain("-h, --help");
+        expect(usage).toContain("-V, --version");
+        expect(usage).toContain("pokie init <directory>");
+        expect(usage).toContain("pokie <command> --help");
+    });
+
     it("aligns descriptions past the longest command name", () => {
         const descriptionColumns = buildUsageText(commands)
             .split("\n")
-            .filter((line) => line.startsWith("  "))
+            .filter((line) => commands.some((command) => line.startsWith(`  ${command.getName()}`)))
             .map((line) => (/^ {2}\S+ +/).exec(line)![0].length);
 
         expect(new Set(descriptionColumns).size).toBe(1);
@@ -64,6 +73,6 @@ describe("buildUsageText", () => {
     it("does not lose a command when one name is far longer than the others", () => {
         const usage = buildUsageText(commands);
 
-        expect(usage.split("\n").filter((line) => line.startsWith("  "))).toHaveLength(commands.length);
+        expect(usage.split("\n").filter((line) => commands.some((command) => line.startsWith(`  ${command.getName()}`)))).toHaveLength(commands.length);
     });
 });

@@ -1,11 +1,57 @@
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {BlueprintMaterializationError} from "./materialize/BlueprintMaterializationError.js";
 import {GamePackagePreparationError} from "./prepare/GamePackagePreparationError.js";
-import {isTopLevelHelpRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
+import {isTopLevelHelpRequest, isTopLevelVersionRequest, resolveCliInvocation} from "./resolveCliInvocation.js";
 import {buildUsageText} from "./usageText.js";
 
 function printUsage(commands: CliCommandHandling[]): void {
     console.log(buildUsageText(commands));
+}
+
+function printFirstContact(commands: CliCommandHandling[]): void {
+    console.log(
+        "POKIE builds server-side video-slot games for Node.js and TypeScript.\n\n" +
+            "Start a new ready-to-run game:\n" +
+            "  pokie init <directory>\n\n" +
+            "Or design an editable Blueprint Project first:\n" +
+            "  pokie create <name>\n",
+    );
+    printUsage(commands);
+}
+
+function distance(left: string, right: string): number {
+    const previous = Array.from({length: right.length + 1}, (_, index) => index);
+    for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+        let diagonal = previous[0];
+        previous[0] = leftIndex;
+        for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+            const above = previous[rightIndex];
+            previous[rightIndex] = Math.min(
+                previous[rightIndex] + 1,
+                previous[rightIndex - 1] + 1,
+                diagonal + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+            );
+            diagonal = above;
+        }
+    }
+    return previous[right.length];
+}
+
+function suggestedCommand(input: string, commands: CliCommandHandling[]): string | undefined {
+    const publicCommands = commands.filter((command) => !command.getName().startsWith("__"));
+    const nearest = publicCommands
+        .map((command) => ({name: command.getName(), distance: distance(input.toLowerCase(), command.getName().toLowerCase())}))
+        .sort((left, right) => left.distance - right.distance || left.name.localeCompare(right.name))[0];
+    if (!nearest || nearest.distance > (input.length <= 4 ? 1 : 2)) {
+        return undefined;
+    }
+    return nearest.name;
+}
+
+function printUnknownCommand(input: string, commands: CliCommandHandling[]): void {
+    const suggestion = suggestedCommand(input, commands);
+    const nextStep = suggestion === undefined ? "Run `pokie --help` to list commands." : `Did you mean \`${suggestion}\`? Run \`pokie ${suggestion} --help\` for usage.`;
+    console.error(`Unknown command ${JSON.stringify(input)}. ${nextStep}`);
 }
 
 // The real top-level dispatch logic behind the `pokie` binary: resolve argv against the given
@@ -26,7 +72,7 @@ function printUsage(commands: CliCommandHandling[]): void {
 // each CliCommandHandling itself (see e.g. cli/commands/BuildCommand.ts's own run()), not here; a
 // second, dispatch-level Commander program would only ever re-forward tokens it can't itself
 // interpret without duplicating that per-command schema.
-export async function dispatch(commands: CliCommandHandling[], argv: string[]): Promise<number> {
+export async function dispatch(commands: CliCommandHandling[], argv: string[], version?: string): Promise<number> {
     // Asked for the CLI's own help: print the same command list the unknown-command fallback
     // prints, but as a successful outcome (exit 0) — the user got exactly what they asked for.
     // Checked before resolveCliInvocation so these flags never reach StudioCommand; see
@@ -36,8 +82,18 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[]): 
         return 0;
     }
 
-    // No arguments at all, "pokie ." / "pokie <existing path>", and every explicit command name
-    // (including "studio" itself) are all resolved here rather than inline — see
+    if (isTopLevelVersionRequest(argv)) {
+        console.log(version ?? "unknown");
+        return 0;
+    }
+
+    if (argv.length === 2) {
+        printFirstContact(commands);
+        return 0;
+    }
+
+    // "pokie ." / "pokie <existing path>", and every explicit command name are all resolved here
+    // rather than inline — see
     // resolveCliInvocation's own doc comment for the full precedence. An unrecognized token that
     // isn't an existing path either falls through to the usage printout below, same as before.
     const invocation = resolveCliInvocation(
@@ -45,7 +101,7 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[]): 
         commands.map((candidate) => candidate.getName()),
     );
     if (!invocation) {
-        printUsage(commands);
+        printUnknownCommand(argv[2], commands);
         return 1;
     }
 

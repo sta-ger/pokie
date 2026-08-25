@@ -3041,10 +3041,8 @@ export type CliTopLevelDispatchCase = {
     expectedStderr?: string;
 };
 
-// The dispatcher-level contract that isn't any one command's own: --help/-h (success, the same
-// command list an unknown command also gets, but exit 0) and an unrecognized command name that also
-// isn't an existing path (exit 1). "--version" freezes what happens today, not a deliberate feature —
-// see its own comment below.
+// The dispatcher-level contract that isn't any one command's own: --help/-h (success) and an
+// unrecognized command name that also isn't an existing path (exit 1).
 export const CLI_TOP_LEVEL_DISPATCH_CASES: CliTopLevelDispatchCase[] = [
     {label: "--help", argv: ["--help"], expectedExitCode: 0, expectedStdoutIsUsage: true},
     {label: "-h", argv: ["-h"], expectedExitCode: 0, expectedStdoutIsUsage: true},
@@ -3052,14 +3050,7 @@ export const CLI_TOP_LEVEL_DISPATCH_CASES: CliTopLevelDispatchCase[] = [
         label: "an unknown command name that is also not an existing path",
         argv: ["totally-bogus-pokie-command-xyz-12345"],
         expectedExitCode: 1,
-        expectedStdoutIsUsage: true,
-    },
-    {
-        // No top-level "--version" flag exists today. It is not a public command and therefore gets
-        // the same usage fallback as any other unknown invocation.
-        label: "--version (no top-level flag exists yet; prints top-level usage)",
-        argv: ["--version"],
-        expectedExitCode: 1,
-        expectedStdoutIsUsage: true,
+        expectedStdoutIsUsage: false,
+        expectedStderr: 'Unknown command "totally-bogus-pokie-command-xyz-12345". Run `pokie --help` to list commands.',
     },
 ];

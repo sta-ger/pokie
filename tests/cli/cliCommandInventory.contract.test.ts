@@ -1938,7 +1938,11 @@ describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)"
             expect(usage).toContain(descriptor.name);
         }
         // One "  <name-padded>  <description>" line per command, no more, no fewer.
-        expect(usage.split("\n").filter((line) => line.startsWith("  "))).toHaveLength(CLI_COMMAND_DESCRIPTORS.length);
+        expect(
+            usage
+                .split("\n")
+                .filter((line) => CLI_COMMAND_DESCRIPTORS.some((descriptor) => line.startsWith(`  ${descriptor.name}`))),
+        ).toHaveLength(CLI_COMMAND_DESCRIPTORS.length);
     });
 });
 
@@ -2274,10 +2278,8 @@ describe("CLI option value contract (defaults/accepted values observed at the co
 });
 
 // The dispatcher-level contract that isn't any one command's own: --help/-h and an unrecognized
-// command name (both resolved by resolveCliInvocation before any command is ever reached), plus
-// --version (which has no dedicated top-level handling today — see CLI_TOP_LEVEL_DISPATCH_CASES'
-// own comment on that case).
-describe("CLI top-level dispatch contract (--help/-h, unknown command, --version)", () => {
+// command name (both resolved by resolveCliInvocation before any command is ever reached).
+describe("CLI top-level dispatch contract (--help/-h, unknown command)", () => {
     const commands = registerCommands();
 
     it.each(CLI_TOP_LEVEL_DISPATCH_CASES.map((testCase) => [testCase.label, testCase] as const))("%s", async (_label, testCase) => {
@@ -2301,6 +2303,21 @@ describe("CLI top-level dispatch contract (--help/-h, unknown command, --version
             errorSpy.mockRestore();
         }
     });
+});
+
+it('prints the installed version at the top level instead of passing it to Studio', async () => {
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+        const exitCode = await dispatch(registerCommands(), ["node", "pokie", "--version"], TEST_VERSION);
+
+        expect(exitCode).toBe(0);
+        expect(logSpy).toHaveBeenCalledWith(TEST_VERSION);
+        expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+        logSpy.mockRestore();
+        errorSpy.mockRestore();
+    }
 });
 
 // Ties this file's frozen validation/dispatch contract to the deep, per-command functional coverage

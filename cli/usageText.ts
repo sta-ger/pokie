@@ -11,6 +11,9 @@ import type {CliCommandHandling} from "./CliCommandHandling.js";
 // is the program's own usage() string, which is a supported Commander configuration point.
 export function buildUsageText(commands: CliCommandHandling[]): string {
     const program = new Command("pokie").helpOption(false).addHelpCommand(false).usage("<command>");
+    program
+        .option("-h, --help", "Display the command list.")
+        .option("-V, --version", "Display the installed POKIE version.");
     for (const command of commands) {
         if (command.getName().startsWith("__")) {
             continue;
@@ -23,5 +26,11 @@ export function buildUsageText(commands: CliCommandHandling[]): string {
     // configuration point for this, not a replacement formatter.
     program.configureHelp({helpWidth: Number.MAX_SAFE_INTEGER});
 
-    return program.helpInformation();
+    return (
+        program.helpInformation() +
+        "\nNext steps:\n" +
+        "  Create a ready-to-run game:  pokie init <directory>\n" +
+        "  Design a Blueprint Project:   pokie create <name>\n" +
+        "  Learn a workflow:              pokie <command> --help\n"
+    );
 }

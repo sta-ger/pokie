@@ -48,7 +48,9 @@ POKIE goes well beyond classic paylines:
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
   `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
   knowing about it in advance.
-- **[CLI](docs/cli.md)** — `npx pokie build <project.json> --target tsPackage --out <dir>` generates a working game
+- **[CLI](docs/cli.md)** — `npx pokie` is the first-contact guide: it shows how to create a game with `npx pokie
+  init <directory>` or design a Blueprint with `npx pokie create <name>`, and `npx pokie --help` lists every public
+  workflow. `npx pokie build <project.json> --target tsPackage --out <dir>` generates a working game
   package straight from a JSON `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted,
   or build-time generated via `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
   [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing
@@ -68,7 +70,7 @@ POKIE goes well beyond classic paylines:
   HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx pokie client
   <packageRoot>` serves the POKIE browser client for a running `pokie serve`; `npx
   pokie dev <packageRoot>` runs both together, opening a browser — all optionally as a JSON
-  file/machine-readable output; `npx pokie` launches **POKIE Studio**, a
+  file/machine-readable output; `npx pokie .` launches **POKIE Studio**, a
   local web app GUI for create/build/inspect/validate/sim/report/replay, opening a browser — its own Play tab
   drives a real game session entirely in-process, never a server; use `pokie serve`/`pokie dev` directly for that.
 
@@ -168,29 +170,41 @@ generator.generateSymbolsCombination(); // same seed always reproduces the same 
 
 ### CLI
 
-Turn a directory into a ready-to-run [game package](docs/game-packages.md) in place — merging into an existing
-npm project if there is one, scaffolding a fresh one if not:
+Start with the installed CLI's guidance and public version:
 
 ```
-npm i -g pokie
-mkdir sample-slot && cd sample-slot
-pokie init
+npx pokie
+npx pokie --version
+npx pokie --help
 ```
+
+Turn a directory into a ready-to-run [game package](docs/game-packages.md) in place — merging into an existing npm
+project if there is one, scaffolding a fresh one if not:
+
+```
+npx pokie init sample-slot
+cd sample-slot
+npx pokie validate .
+```
+
+To design an editable Blueprint Project instead, use `npx pokie create <name>` in an interactive terminal, or use
+`npx pokie create <name> --blank` / `npx pokie create <name> --random` non-interactively. Each command has its own
+complete grammar through `npx pokie <command> --help`.
 
 Then check a package's contract without playing it:
 
 ```
-pokie validate .
+npx pokie validate .
 ```
 
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`
 report, and a
 [full create → validate → sim → report → diff → replay → dev walkthrough](docs/cli.md#workflow).
 
-Or skip the individual commands and drive the same workflow from a GUI:
+Open an existing package or Blueprint in the local GUI:
 
 ```
-npx pokie
+npx pokie .
 ```
 
 **POKIE Studio** is a local web app covering Home (a guided Design Game flow for a new/random/
