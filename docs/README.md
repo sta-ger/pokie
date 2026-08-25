@@ -38,7 +38,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
    composes this over any existing session (via `ForcedFeatureEntryHandling`/`PerModeForcedFeatureEntryHandler`),
    `GameBlueprintValidator` enforces "opt in completely, never half-specified," and a mode's own `targetRtp` flows
    through to `pokie sim --mode`/`SimulationReportBuilder` for per-mode RTP-deviation reporting (see
-   [Simulation](simulation.md) below) and round-trips through [PAR Sheet](cli.md#workbook-format) import/export.
+   [Simulation](simulation.md) below) and round-trips through [PAR Sheet](cli.md#pokie-par-import-inputxlsx--pokie-par-export-configjson) import/export.
 9. **Hold & Win / Lock & Spin** (`src/session/videoslot/holdandwin/`) — `VideoSlotWithHoldAndWinSession` composes a
    respin-until-board-full-or-exhausted collect-and-lock feature onto any existing session, the same
    decoration-not-inheritance shape [Free Games](free-games.md) already uses, rendering locked positions back
@@ -83,7 +83,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     for `stakeAdapter`/`parWorkbook`. A Blueprint -> PAR Workbook build/export freezes generated, weighted, or default
     reel sources as a deterministic literal workbook snapshot; the authored Blueprint remains unchanged. An
     unmaterializable generated reel reports an actionable `parsheet-reel-generation-failed` diagnostic naming its
-    `reelStripGeneration[index]`. A `tsPackage` from JSON `GameBlueprint` needs no compile step (reels, symbols,
+    `reelStripGeneration[index]`. A generated reel without an authored integer seed reports
+    `parsheet-reel-generation-seed-required`, naming `reelStripGeneration[index].seed`; it must be seeded before
+    a deterministic workbook snapshot can be exported. A `tsPackage` from JSON `GameBlueprint` needs no compile step (reels, symbols,
     paylines, paytable, reel strips — literal, weighted, or build-time generated via `reelStripGeneration` and
     `ReelStripGenerator`); `pokie
     create [name]`, which designs an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather

@@ -780,7 +780,9 @@ PAR workbooks carry literal reel strips, so literal, generated (`reelStripGenera
 (`symbolWeights`), and default reel sources become a deterministic literal workbook snapshot. The authored Blueprint
 remains unchanged. If a generated reel cannot satisfy its own constraints, export returns the field-level actionable
 `parsheet-reel-generation-failed` diagnostic, naming the failing `reelStripGeneration[index]` and directing you to
-adjust that entry. The workbook maps manifest, reels/rows, symbols (with wilds/scatters), literal snapshot
+adjust that entry. A generated reel without its own integer `seed` is rejected before any file is written with
+`parsheet-reel-generation-seed-required`, naming `reelStripGeneration[index].seed` and directing you to add the
+seed; PAR snapshots never fall back to nondeterministic generation. The workbook maps manifest, reels/rows, symbols (with wilds/scatters), literal snapshot
 `reelStrips`, `paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
 
 ```
@@ -902,9 +904,10 @@ shape as [`pokie build`'s validation](#validation)):
 
 `pokie par export <config.json>` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
 that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
-hash of the exported blueprint. That hash is computed over a canonical field order (not the source JSON's own key
-order — see `computeBlueprintHash`), so an untouched round trip always reproduces the same hash regardless of how
-the original file's keys were ordered.
+hash of the exported literal snapshot. `Source` identifies the authored Blueprint path, while `Blueprint Hash`
+identifies the materialized data actually stored in the workbook. That hash is computed over a canonical field order
+(not the source JSON's own key order — see `computeBlueprintHash`), so an untouched round trip always reproduces
+the same hash regardless of how the original file's keys were ordered.
 
 `pokie par import <input.xlsx>` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
 issue, and verifies it against the blueprint it just assembled:

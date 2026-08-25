@@ -107,6 +107,26 @@ describe("ParWorkbookArtifactBuilder", () => {
         expect(fs.existsSync(destinationFile)).toBe(false);
     });
 
+    it("rejects an unseeded generated Blueprint through the shared PAR preflight without replacing its destination", async () => {
+        const unseeded = {
+            ...blueprint,
+            reelStripGeneration: [
+                {type: "generated", length: 2, symbolCounts: {A: 1, W: 1}},
+                {type: "literal", strip: ["W", "A"]},
+            ],
+        };
+        fs.writeFileSync(blueprintFile, JSON.stringify(unseeded));
+        const sentinel = "existing workbook stays untouched";
+        fs.writeFileSync(destinationFile, sentinel);
+        const builder = new ParWorkbookArtifactBuilder("1.3.0");
+        const unseededDestination = path.join(dir, "unseeded.par.xlsx");
+
+        await expect(builder.validate(blueprintProjectOf(blueprintFile))).rejects.toThrow(/parsheet-reel-generation-seed-required.*reelStripGeneration\[0\]\.seed/);
+        await expect(builder.build(blueprintProjectOf(blueprintFile), unseededDestination)).rejects.toThrow(/reelStripGeneration\[0\]\.seed/);
+        expect(fs.readFileSync(destinationFile, "utf-8")).toBe(sentinel);
+        expect(fs.existsSync(unseededDestination)).toBe(false);
+    });
+
     it("throws ArtifactBuildConflictError rather than overwriting an existing file", async () => {
         fs.writeFileSync(destinationFile, "not ours");
         const builder = new ParWorkbookArtifactBuilder("1.3.0");

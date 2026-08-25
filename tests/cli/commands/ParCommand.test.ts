@@ -293,6 +293,23 @@ describe("ParCommand", () => {
                 expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("suggestion: Adjust the named reelStripGeneration entry");
                 expect(fs.readFileSync(failedSourcePath, "utf-8")).toBe(failedSourceContents);
                 expect(fs.readFileSync(failedWorkbookPath, "utf-8")).toBe(sentinel);
+
+                const unseeded = {
+                    ...generatedBlueprint,
+                    reelStripGeneration: [
+                        {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}},
+                        generatedBlueprint.reelStripGeneration![1],
+                    ],
+                };
+                const unseededSourcePath = path.join(workDir, "unseeded.blueprint.json");
+                const unseededWorkbookPath = path.join(workDir, "unseeded.par.xlsx");
+                fs.writeFileSync(unseededSourcePath, JSON.stringify(unseeded));
+                fs.writeFileSync(unseededWorkbookPath, sentinel);
+
+                expect(await command.run(["export", unseededSourcePath, "--out", unseededWorkbookPath])).toBe(1);
+                expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("parsheet-reel-generation-seed-required");
+                expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("reelStripGeneration[0].seed");
+                expect(fs.readFileSync(unseededWorkbookPath, "utf-8")).toBe(sentinel);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }

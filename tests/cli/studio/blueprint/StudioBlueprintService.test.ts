@@ -601,6 +601,26 @@ describe("StudioBlueprintService", () => {
             expect(fs.existsSync(filePath)).toBe(false);
         });
 
+        it("returns the actionable seed diagnostic and preserves an existing workbook for an unseeded generated reel", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+            const sentinel = "existing workbook stays untouched";
+            fs.writeFileSync(filePath, sentinel);
+
+            const result = await service.exportParSheet(buildBlueprint({
+                reelStripGeneration: [
+                    {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}},
+                    {type: "literal", strip: ["B", "A"]},
+                    {type: "literal", strip: ["A", "B"]},
+                ] as unknown as GameBlueprint["reelStripGeneration"],
+            }), filePath, true);
+
+            expect(result).toMatchObject({status: "invalid"});
+            expect(JSON.stringify(result)).toContain("parsheet-reel-generation-seed-required");
+            expect(JSON.stringify(result)).toContain("reelStripGeneration[0].seed");
+            expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinel);
+        });
+
         it("rejects a path that resolves inside Studio's own internal directory", async () => {
             const service = createService();
 

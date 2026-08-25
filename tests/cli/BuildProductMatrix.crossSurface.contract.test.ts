@@ -154,9 +154,12 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             expect(documentation).toMatch(/deterministic literal workbook snapshot/i);
             expect(documentation).toMatch(/authored Blueprint remains unchanged/i);
             expect(documentation).toMatch(/`parsheet-reel-generation-failed`/);
+            expect(documentation).toMatch(/`parsheet-reel-generation-seed-required`/);
             expect(documentation).toMatch(/`reelStripGeneration\[index\]`/);
+            expect(documentation).toMatch(/`reelStripGeneration\[index\]\.seed`/);
             expect(documentation).not.toMatch(/procedural reel generation[^.]*not supported/i);
         }
+        expect(cliDocumentation).toMatch(/exported literal snapshot/i);
     });
 
     it.each(SUPPORTED_CELLS)("runs $source -> $target through registry, CLI, Studio, and its next public readback", async ({source, target}) => {

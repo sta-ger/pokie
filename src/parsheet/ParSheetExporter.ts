@@ -43,7 +43,10 @@ export function prepareBlueprintForParSheetExport(
     validator: GameBlueprintValidating = new GameBlueprintValidator(),
 ): ParSheetBlueprintPreparation {
     const validationIssues = validator.validate(blueprint);
-    if (validationIssues.some((issue) => issue.severity === "error")) return {blueprint: undefined, issues: validationIssues};
+    const unseededGenerationIssues = findUnseededGenerationIssues(blueprint);
+    if (validationIssues.some((issue) => issue.severity === "error") || unseededGenerationIssues.length > 0) {
+        return {blueprint: undefined, issues: [...validationIssues, ...unseededGenerationIssues]};
+    }
 
     const authored = blueprint as GameBlueprint;
     if (authored.reelStripGeneration !== undefined) {
@@ -76,6 +79,32 @@ export function prepareBlueprintForParSheetExport(
         blueprint: removeSharedWeights({...authored, reelStrips: convertSharedWeightsToReelStrips(authored)}),
         issues: validationIssues,
     };
+}
+
+// The Blueprint validator also requires a generated reel's seed. Keep this PAR-specific check in
+// the shared preflight as well: a workbook is a literal snapshot, so every public PAR boundary can
+// explain the snapshot requirement in its own terms rather than relying on a later generator call.
+function findUnseededGenerationIssues(blueprint: unknown): ValidationIssue[] {
+    if (typeof blueprint !== "object" || blueprint === null || !Array.isArray((blueprint as {reelStripGeneration?: unknown}).reelStripGeneration)) {
+        return [];
+    }
+
+    return (blueprint as {reelStripGeneration: unknown[]}).reelStripGeneration.flatMap((entry, index) => {
+        if (
+            typeof entry !== "object" ||
+            entry === null ||
+            (entry as {type?: unknown}).type !== "generated" ||
+            (entry as {seed?: unknown}).seed !== undefined
+        ) {
+            return [];
+        }
+        return [{
+            code: "parsheet-reel-generation-seed-required",
+            severity: "error" as const,
+            message: `Cannot export "reelStripGeneration[${index}].seed": generated PAR workbook snapshots require an authored integer seed.`,
+            suggestion: `Add an integer "seed" to "reelStripGeneration[${index}]" and export again.`,
+        }];
+    });
 }
 
 function removeSharedWeights(blueprint: GameBlueprint): GameBlueprint {

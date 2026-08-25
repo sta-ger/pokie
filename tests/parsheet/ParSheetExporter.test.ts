@@ -154,6 +154,31 @@ describe("ParSheetExporter", () => {
             expect((await new ParSheetImporter().importFromFile(filePath)).blueprint.reelStrips).toEqual([["A", "W"], ["W", "A"]]);
         });
 
+        it("rejects an unseeded generated reel with a PAR snapshot diagnostic without touching an existing destination", async () => {
+            const exporter = new ParSheetExporter("1.3.0");
+            const unseeded = {
+                ...blueprint,
+                reelStripGeneration: [
+                    {type: "generated", length: 2, symbolCounts: {A: 1, W: 1}},
+                    {type: "literal", strip: ["W", "A"]},
+                ],
+            };
+            const sentinel = "existing workbook stays untouched";
+            fs.writeFileSync(filePath, sentinel);
+
+            const issues = await exporter.exportToFile(unseeded, filePath);
+
+            expect(issues).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    code: "parsheet-reel-generation-seed-required",
+                    severity: "error",
+                    message: expect.stringContaining('reelStripGeneration[0].seed'),
+                    suggestion: expect.stringContaining('Add an integer "seed"'),
+                }),
+            ]));
+            expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinel);
+        });
+
         // GameBlueprintValidator itself already rejects reelStrips + reelStripGeneration together as
         // mutually exclusive (blueprint-reelstrips-and-generation, an error) — so that combination
         // never even reaches ParSheetExporter's own reel-source check. Still: no file is written.
