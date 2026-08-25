@@ -83,6 +83,17 @@ type BuildDescriptorModeEntry = {
 };
 type BuildDescriptor = {modes: BuildDescriptorModeEntry[]};
 
+// The bundle writer derives this from each mode's first accepted outcome before it publishes a
+// bundle. `validateBuildSource` reads complete sources for its read-only preview, so it can enforce
+// the same cross-mode contract before ExportCommand promises a successful outcomes export.
+type BundleModeProvenance = {
+    readonly modeName: string;
+    readonly gameId: string;
+    readonly gameVersion: string;
+    readonly configHash: string | undefined;
+    readonly pokieVersion: string;
+};
+
 type GenerateFormat = "summary" | "json";
 
 // The shape Commander hands the "generate" action's own options -- one property per declared flag,
@@ -191,6 +202,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         const descriptor = this.loadDescriptor(configPath);
         const configDir = path.dirname(configPath);
         const modes: OutcomeLibraryBundleModeInput[] = [];
+        const provenances: BundleModeProvenance[] = [];
         const issues: ValidationIssue[] = [];
         const libraryValidator = new WeightedOutcomeLibraryValidator();
 
@@ -202,15 +214,21 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     libraryId: entry.libraryId as string,
                     outcomes: await this.readStreamedOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
                 };
-            issues.push(...libraryValidator.validate(library));
+            const libraryIssues = libraryValidator.validate(library);
+            const bundleIssues = this.validateBundleWriterSpecificSourceContract(entry.modeName, library);
+            issues.push(...libraryIssues, ...bundleIssues);
             modes.push({
                 modeName: entry.modeName,
                 libraryId: library.libraryId,
                 schemaVersion: library.schemaVersion,
                 outcomes: library.outcomes,
             });
+            if (!libraryIssues.some((issue) => issue.severity === "error") && !bundleIssues.some((issue) => issue.severity === "error")) {
+                provenances.push(this.provenanceOf(entry.modeName, library));
+            }
         }
         issues.push(...new OutcomeLibraryBundleWriteValidator().validate(modes));
+        issues.push(...this.validateCrossModeProvenance(provenances));
         if (issues.some((issue) => issue.severity === "error")) {
             throw new Error("The outcome-library source does not satisfy the export contract.");
         }
@@ -295,6 +313,71 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     noCommand: `${USAGE}\n${CONFIG_HINT}`,
                 });
             });
+    }
+
+    // WeightedOutcomeLibraryValidator is intentionally usable by non-bundle callers, where a
+    // positive fractional weight is valid. The persisted bundle's draw/index format is stricter:
+    // every accepted weight and its total must be safe integers. Keep this read-only mirror here so
+    // an outcomes dry-run cannot accept a source the writer later refuses after staging it.
+    private validateBundleWriterSpecificSourceContract(modeName: string, library: WeightedOutcomeLibrary): ValidationIssue[] {
+        const rawOutcomes = (library as {outcomes?: unknown}).outcomes;
+        if (!Array.isArray(rawOutcomes)) return [];
+
+        const issues: ValidationIssue[] = [];
+        let totalWeight = 0;
+        for (const outcome of rawOutcomes) {
+            const weight = typeof outcome === "object" && outcome !== null ? (outcome as {weight?: unknown}).weight : undefined;
+            if (typeof weight !== "number" || !Number.isSafeInteger(weight) || weight <= 0) {
+                issues.push({
+                    code: "outcome-library-bundle-write-weight-invalid",
+                    severity: "error",
+                    message: `mode "${modeName}": every outcome weight must be a positive safe integer.`,
+                    details: {modeName},
+                });
+                continue;
+            }
+            totalWeight += weight;
+        }
+        if (issues.length === 0 && !Number.isSafeInteger(totalWeight)) {
+            issues.push({
+                code: "outcome-library-bundle-write-total-weight-overflow",
+                severity: "error",
+                message: `mode "${modeName}": the total outcome weight must be a safe integer.`,
+                details: {modeName},
+            });
+        }
+        return issues;
+    }
+
+    private provenanceOf(modeName: string, library: WeightedOutcomeLibrary): BundleModeProvenance {
+        // Called only after WeightedOutcomeLibraryValidator and the bundle-specific checks found no
+        // errors, which guarantees a non-empty mode and a complete first outcome provenance.
+        const provenance = library.outcomes[0].artifact.provenance;
+        return {
+            modeName,
+            gameId: provenance.game.id,
+            gameVersion: provenance.game.version,
+            configHash: provenance.configHash,
+            pokieVersion: provenance.pokieVersion,
+        };
+    }
+
+    private validateCrossModeProvenance(provenances: readonly BundleModeProvenance[]): ValidationIssue[] {
+        const first = provenances[0];
+        if (first === undefined) return [];
+        return provenances.slice(1).flatMap((current) =>
+            current.gameId !== first.gameId ||
+            current.gameVersion !== first.gameVersion ||
+            current.configHash !== first.configHash ||
+            current.pokieVersion !== first.pokieVersion
+                ? [{
+                    code: "outcome-library-bundle-cross-mode-provenance-mismatch",
+                    severity: "error" as const,
+                    message: `mode "${current.modeName}" has different provenance (game id/version, configHash, or pokieVersion) than the bundle's other modes.`,
+                    details: {modeName: current.modeName},
+                }]
+                : [],
+        );
     }
 
     // Builds the exact Commander tree run() itself parses argv with -- the same object graph both

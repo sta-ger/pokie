@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import {WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "pokie";
 import {ExportCommand} from "../../../cli/commands/ExportCommand.js";
+import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
 
 const blueprint = {
     manifest: {id: "export-conflict", name: "Export Conflict", version: "1.0.0"},
@@ -13,7 +14,9 @@ const blueprint = {
     reelStrips: [["A", "B"], ["B", "A"]],
 };
 
-function validOutcomeLibrary() {
+type OutcomeProvenanceOverrides = Partial<{gameId: string; gameVersion: string; configHash: string; pokieVersion: string}>;
+
+function validOutcomeLibrary(provenance: OutcomeProvenanceOverrides = {}) {
     return buildWeightedOutcomeLibrary({
         libraryId: "export-library",
         outcomes: [
@@ -22,7 +25,11 @@ function validOutcomeLibrary() {
                 weight: 1,
                 artifact: buildRoundArtifact({
                     roundId: "export-round",
-                    provenance: {game: {id: "export-game", name: "Export Game", version: "1.0.0"}, pokieVersion: "1.3.0"},
+                    provenance: {
+                        game: {id: provenance.gameId ?? "export-game", name: "Export Game", version: provenance.gameVersion ?? "1.0.0"},
+                        ...(provenance.configHash !== undefined ? {configHash: provenance.configHash} : {}),
+                        pokieVersion: provenance.pokieVersion ?? "1.3.0",
+                    },
                     betMode: "base",
                     stake: 1,
                     steps: [{screen: [["A"]], winEvaluationResult: new WinEvaluationResult()}],
@@ -172,6 +179,51 @@ describe("ExportCommand", () => {
                 }
             }
         } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it.each<readonly [string, OutcomeProvenanceOverrides]>([
+        ["game id", {gameId: "other-export-game"}],
+        ["game version", {gameVersion: "2.0.0"}],
+        ["config hash", {configHash: "other-config"}],
+        ["POKIE version", {pokieVersion: "2.0.0"}],
+    ])("rejects an outcomes dry-run whose individually valid libraries disagree on %s", async (_provenanceField, incompatibleProvenance) => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-provenance-test-"));
+        const baseLibraryPath = path.join(workDir, "base.json");
+        const bonusLibraryPath = path.join(workDir, "bonus.json");
+        const sourcePath = path.join(workDir, "outcomes.json");
+        const dryRunDestination = path.join(workDir, "outcomes-dry-run");
+        const buildDestination = path.join(workDir, "outcomes-build");
+        const exportCommand = new ExportCommand("1.3.0");
+        const outcomeLibraryCommand = new OutcomeLibraryCommand("1.3.0");
+        const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+
+        try {
+            fs.writeFileSync(baseLibraryPath, JSON.stringify(validOutcomeLibrary({configHash: "base-config"})));
+            fs.writeFileSync(bonusLibraryPath, JSON.stringify(validOutcomeLibrary({...incompatibleProvenance, configHash: incompatibleProvenance.configHash ?? "base-config"})));
+            fs.writeFileSync(sourcePath, JSON.stringify({
+                modes: [
+                    {modeName: "base", libraryPath: "./base.json"},
+                    {modeName: "bonus", libraryPath: "./bonus.json"},
+                ],
+            }));
+
+            const dryRunError = await exportCommand.run([sourcePath, "--to", "outcomes", "--out", dryRunDestination, "--dry-run"])
+                .catch((failure: unknown) => failure);
+            expect(dryRunError).toBeInstanceOf(Error);
+            expect((dryRunError as Error).message).toMatch(
+                /Cannot export target "outcomes" because source[\s\S]*Next: provide an outcome-library config with valid mode sources, then retry\./,
+            );
+            expect((dryRunError as Error).message).not.toMatch(/OutcomeLibraryBundleWriter|registry|ENOENT|\n\s*at /i);
+            expect(fs.existsSync(dryRunDestination)).toBe(false);
+            expect(fs.readdirSync(workDir)).not.toEqual(expect.arrayContaining([expect.stringMatching(/outcomes-dry-run\.staging-/)]));
+
+            await expect(outcomeLibraryCommand.run(["build", sourcePath, "--out", buildDestination])).resolves.toBe(1);
+            expect(fs.existsSync(buildDestination)).toBe(false);
+            expect(fs.readdirSync(workDir)).not.toEqual(expect.arrayContaining([expect.stringMatching(/outcomes-build\.staging-/)]));
+        } finally {
+            errorSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
