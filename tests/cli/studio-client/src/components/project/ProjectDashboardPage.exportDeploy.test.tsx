@@ -105,6 +105,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
     });
 
     it("classifies Outcome libraries and Stake Engine Export as builder cards, never surfaces the local-json-example demo target, and falls back to the remote-deployment placeholder when nothing else is registered", async () => {

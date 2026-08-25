@@ -53,15 +53,16 @@ type ImportView =
 const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
 
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
-// load runnable packages and Blueprints, as well as canonical outcome-source projects. A Blueprint is
-// materialized into a runtime package; an outcome library or Stake Engine export loads its own
-// capability-gated dashboard, including Build/Export. WASM has no Studio workspace and PAR workbooks
-// continue through their dedicated Design Game action below.
+// load runnable packages and Blueprints, as well as canonical outcome-source projects and exchangeable
+// PAR workbooks. A Blueprint is materialized into a runtime package; an outcome library, Stake Engine
+// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM has no
+// Studio workspace. PAR workbooks additionally retain their dedicated Design Game action below.
 const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
     "tsPackage",
     "blueprint",
     "outcomeLibrary",
     "stakeAdapter",
+    "parWorkbook",
 ]);
 
 const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
@@ -317,11 +318,9 @@ export function ProjectsPanel({
             });
     };
 
-    // A recognized PAR sheet has no "open" story of its own (see loadProjectDashboardContext's own
-    // doc comment -- it only ever loads a runnable tsPackage) -- Import Project routes it into Design
-    // Game's own PAR Sheet Import/Export panel instead of registering it, reusing the exact same guided
-    // Import -> Diagnose & map -> Preview -> Apply flow a PAR sheet reached any other way already goes
-    // through (see ParSheetImportExportPanel's own doc comment).
+    // Import Project continues to route a newly detected PAR sheet into Design Game's guided
+    // Import -> Diagnose & map -> Preview -> Apply flow. A registered PAR workbook has the separate
+    // public Open action above, which reaches its artifact dashboard's self-republish Build/Export card.
     const renderEntryName = (entry: StudioProjectRegistryView): ReactNode => {
         if (entry.status === "missing") {
             return <Text c="dimmed">{entry.name} (missing)</Text>;

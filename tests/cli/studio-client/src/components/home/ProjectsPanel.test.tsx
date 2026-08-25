@@ -702,6 +702,7 @@ describe("ProjectsPanel: Import Project", () => {
     it.each([
         ["outcomeLibrary", "Outcome library", "/games/outcomes"],
         ["stakeAdapter", "Stake Engine export", "/games/stake-export"],
+        ["parWorkbook", "PAR sheet", "/games/sheet.xlsx"],
     ] as const)("opens an available %s registry entry through the public Project workspace action", async (type, name, location) => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
