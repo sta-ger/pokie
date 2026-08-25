@@ -229,6 +229,34 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
+test("normalizes first-contact placeholders and ignores an unknown-command recovery example", async () => {
+    const {directory, cli, coverage} = await fixture("", "Use pokie init <directory>, pokie create <name>, and pokie <command> --help. A close spelling, pokie creat, suggests pokie create --help.\n");
+    try {
+        await writeFile(cli, `
+const key = process.argv.slice(2).join(" ");
+const root = "Usage: pokie <command>\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  create  create\\n  init  init\\n";
+const studio = "Usage: pokie [projectRoot]\\n\\nOptions:\\n  -h, --help  help\\n  --no-open  do not open\\n";
+const create = "Usage: pokie create [name]\\n\\nOptions:\\n  -h, --help  help\\n";
+const init = "Usage: pokie init [directory]\\n\\nOptions:\\n  -h, --help  help\\n";
+process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : key === "create --help" ? create : init);
+`);
+        await writeFile(coverage, JSON.stringify({
+            documentationRoot: ".",
+            documentationScope: {include: ["**/*.md"]},
+            initialInventory: {rootCommands: ["create", "init"], nestedVerbs: []},
+            findings: {},
+            owners: [
+                "command:create", "command:init",
+                "alias:root:-h", "alias:create:-h", "alias:init:-h",
+                "option:root:--help", "option:root:--no-open", "option:create:--help", "option:init:--help",
+                "argument:root:[projectRoot]", "argument:create:[name]", "argument:init:[directory]",
+            ].map((id) => ({id, owner: "test"})),
+        }));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
 test("checks the freshly built production CLI against the complete public documentation scope", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-production-inventory-test-"));
     try {

@@ -281,9 +281,13 @@ function documentedCapabilities(contents, inventory) {
         const executablePositionals = inventory.commands.find((entry) => entry.path === command)?.usage ?? [];
         for (const [index, positional] of documentedPositionals.entries()) {
             const executable = executablePositionals[index];
-            // Public examples may give a required path a more helpful name than Commander does.
-            // They still assert its required/optional position, which is what users can rely on.
-            if (executable && executable.startsWith(positional[0]) && executable.endsWith(positional.at(-1))) capabilities.add(`argument:${command}:${executable}`);
+            // First-contact examples use angle brackets as explanatory placeholders, while
+            // Commander uses brackets for optional arguments.  When both name the same
+            // positional, normalize to the freshly collected contract instead of turning
+            // presentation syntax into a false stale capability.
+            const documentedName = positional.slice(1, -1);
+            const executableName = executable?.slice(1, -1);
+            if (executable && documentedName === executableName) capabilities.add(`argument:${command}:${executable}`);
             else capabilities.add(`argument:${command}:${positional}`);
         }
         addValueClaims(line, command);
@@ -292,16 +296,21 @@ function documentedCapabilities(contents, inventory) {
         const command = rootCommand ? commandFor(rootCommand, remainder) : "root";
         capabilities.add(command.includes(" ") ? `subcommand:${command}` : `command:${command}`);
         if (command === "root") capabilities.delete("command:root");
-        addLineClaims(remainder, command);
+        // `<command>` in `pokie <command> --help` describes the command tree rather than
+        // an argument accepted by the implicit Studio command.
+        addLineClaims(remainder, command, !(command === "root" && /<command>\s+--help\b/i.test(remainder)));
         return command;
     };
-    const addInvocations = (text) => {
+    const addInvocations = (text, context = text) => {
         const starts = [...text.matchAll(/(?<![\w-])(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])/g)];
         for (const [index, start] of starts.entries()) {
             const invocation = text.slice(start.index, starts[index + 1]?.index);
             const match = invocation.match(/^(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);
             if (!match) continue;
             const rootCommand = match[2];
+            // Documentation may intentionally show an invalid command as part of the
+            // unknown-command recovery path.  It is not an advertised public command.
+            if (rootCommand && !rootCommands.has(rootCommand) && /\b(?:unknown command|close spelling|did you mean|suggest(?:s|ed|ion)?)\b/i.test(context)) continue;
             // A command token after the executable name is an invocation claim in prose as
             // well as in code. Do not depend on a fixed lead-verb or shell-shaped-tail rule:
             // "Pokie deploy is available." claims the same public command as a fenced example.
@@ -352,14 +361,14 @@ function documentedCapabilities(contents, inventory) {
         let cursor = 0;
         for (const match of line.matchAll(/`([^`\n]*)`/g)) {
             unquoted += line.slice(cursor, match.index);
-            if (!/\b(?:no|not)\s*$/i.test(line.slice(0, match.index))) addInvocations(match[1]);
+            if (!/\b(?:no|not)\s*$/i.test(line.slice(0, match.index))) addInvocations(match[1], line);
             cursor = (match.index ?? 0) + match[0].length;
             // Removing an inline span must not glue the adjacent prose into a fabricated
             // command token (for example, `pokie serve`; `npx`).
             unquoted += " ";
         }
         unquoted += line.slice(cursor);
-        addInvocations(unquoted);
+        addInvocations(unquoted, line);
     }
     // Narrative option/value/argument claims frequently sit below a `pokie …` heading or name
     // the command in prose rather than repeat the complete invocation.  Associate both forms
