@@ -82,9 +82,11 @@ export class StudioArtifactBuildService {
         resolveProject?: ProjectResolving,
         private readonly registerManagedProject: (projectRoot: string) => Promise<void> = () => Promise.resolve(),
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
+        pokiePackageRoot?: string,
     ) {
         this.resolveProject = resolveProject ?? new ProjectTargetResolver();
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
+        if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own

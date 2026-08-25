@@ -53,6 +53,7 @@ export class StudioCommand implements CliCommandHandling {
     private readonly studioRoot: string;
     private readonly process: NodeJS.Process;
     private readonly pokieVersion: string;
+    private readonly pokiePackageRoot: string;
     private readonly loadGame: NonNullable<StudioServerOptions["loadGame"]>;
     private readonly gamePackageValidator: PokieGamePackageValidator;
     // The one materializing resolver this command builds -- shared, by identity, between homeService's
@@ -65,6 +66,7 @@ export class StudioCommand implements CliCommandHandling {
 
     constructor(pokieVersion: string, pokiePackageRoot: string, dependencies: StudioCommandDependencies = {}) {
         this.pokieVersion = pokieVersion;
+        this.pokiePackageRoot = pokiePackageRoot;
         this.createServer = dependencies.createServer ?? ((options) => new StudioServer(options));
         this.openBrowserImpl = dependencies.openBrowser ?? openBrowser;
         this.contextResolver = dependencies.contextResolver ?? new StudioContextResolver();
@@ -116,6 +118,7 @@ export class StudioCommand implements CliCommandHandling {
             host: options.host,
             port: options.port,
             pokieVersion: this.pokieVersion,
+            pokiePackageRoot: this.pokiePackageRoot,
             studioRoot: this.studioRoot,
             initialContext: context,
             homeService: this.homeService,

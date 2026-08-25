@@ -64,7 +64,7 @@ describe("GamePackageGenerator", () => {
 
         expect(pkg.name).toBe("sample-slot");
         expect(pkg.version).toBe("0.1.0");
-        expect(pkg.dependencies).toEqual({pokie: "^1.3.0"});
+        expect(pkg.dependencies).toEqual({pokie: "^1.2.1"});
         expect(pkg.pokie).toEqual({entry: "./dist/index.js"});
         expect(pkg.main).toBe("./dist/index.js");
         expect(pkg.exports).toBe("./dist/index.js");

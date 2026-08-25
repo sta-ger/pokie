@@ -46,7 +46,7 @@ export type RegisterCliCommandsOptions = {
 export function registerCliCommands(options: RegisterCliCommandsOptions): CliCommandHandling[] {
     const {version, pokiePackageRoot, clientRoot, studioRoot} = options;
     return [
-        new BuildCommand(version),
+        new BuildCommand(version, undefined, undefined, undefined, undefined, undefined, pokiePackageRoot),
         new CertificationCommand(version),
         new ClientCommand(undefined, clientRoot),
         new CreateCommand(version),

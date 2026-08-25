@@ -143,6 +143,14 @@ export class ArtifactBuilderRegistry {
         this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, loadPokieGame, managedOutcomeProjects);
     }
 
+    public withRuntimePackageRoot(pokiePackageRoot: string): this {
+        const tsPackageBuilder = this.builders.get("tsPackage");
+        if (tsPackageBuilder instanceof TsPackageArtifactBuilder) {
+            tsPackageBuilder.withRuntimePackageRoot(pokiePackageRoot);
+        }
+        return this;
+    }
+
     public listTargets(): readonly ArtifactTargetType[] {
         return ADVERTISED_ARTIFACT_BUILD_TARGETS;
     }

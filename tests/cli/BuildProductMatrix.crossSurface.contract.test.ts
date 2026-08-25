@@ -94,7 +94,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
     beforeEach(() => {
         workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-product-matrix-test-"));
         resolver = new ProjectTargetResolver();
-        registry = new ArtifactBuilderRegistry("1.3.0");
+        registry = new ArtifactBuilderRegistry("1.3.0").withRuntimePackageRoot(process.cwd());
         studio = new StudioArtifactBuildService("1.3.0", registry, resolver);
         logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     });
