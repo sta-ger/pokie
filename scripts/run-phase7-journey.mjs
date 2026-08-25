@@ -70,47 +70,127 @@ connection.on("error", () => { process.exitCode = 1; });
     await chmod(destination, 0o555);
 }
 
-async function requestComesFromInvocationClient(parsed, invocationClientPath) {
-    if (!Number.isSafeInteger(parsed.pid) || parsed.pid < 1) return false;
-    try {
-        const commandLine = (await readFile(`/proc/${parsed.pid}/cmdline`)).toString("utf8").split("\0").filter(Boolean);
-        // An abstract socket name is intentionally visible to the client. It is not, by
-        // itself, a capability: only the immutable client process invoked at P7_PUBLIC_CLI may
-        // submit a request, and its kernel-visible command line must agree with that request.
-        return commandLine[1] === invocationClientPath
-            && JSON.stringify(commandLine.slice(2)) === JSON.stringify(parsed.args);
-    } catch {
-        return false;
-    }
-}
-
 async function publicCommandCapability(invocationClientPath) {
-    const endpoint = `\0pokie-p7-public-command-${randomBytes(24).toString("hex")}`;
+    // Node does not expose SO_PEERCRED for Unix-domain sockets.  Keep the request queue in
+    // this process, but put the socket accept boundary in a tiny Python sidecar, where the
+    // kernel supplies the PID of the peer that actually opened each connection.  The request
+    // body PID is checked only against that credential, never used as an authority on its own.
+    const endpointName = `pokie-p7-public-command-${randomBytes(24).toString("hex")}`;
+    const endpoint = `\0${endpointName}`;
     const requests = [];
-    const server = net.createServer((connection) => {
-        let input = "";
-        connection.setEncoding("utf8");
-        connection.on("data", (chunk) => { input = `${input}${chunk}`; });
-        connection.on("end", async () => {
-            try {
-                if (input.length > MAX_COMMAND_ARGUMENT_CHARS + 256 || !input.endsWith("\n")) throw new Error("invalid request");
-                const parsed = JSON.parse(input);
-                if (!requestIsBounded(parsed) || !await requestComesFromInvocationClient(parsed, invocationClientPath)) throw new Error("invalid request");
-                requests.push(parsed);
-                connection.end("ok\n");
-            } catch {
-                connection.end("invalid\n");
+    const authenticator = spawn("python3", ["-c", String.raw`
+import json
+import os
+import signal
+import socket
+import struct
+import sys
+
+endpoint_name, invocation_client = sys.argv[1:]
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind("\0" + endpoint_name)
+server.listen()
+server.settimeout(0.2)
+running = True
+
+def stop(*_):
+    global running
+    running = False
+
+signal.signal(signal.SIGTERM, stop)
+signal.signal(signal.SIGINT, stop)
+print("ready", flush=True)
+
+while running:
+    try:
+        connection, _ = server.accept()
+    except TimeoutError:
+        continue
+    except OSError:
+        break
+    with connection:
+        try:
+            peer_pid, _, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            input_bytes = b""
+            while len(input_bytes) <= ${MAX_COMMAND_ARGUMENT_CHARS + 256}:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    break
+                input_bytes += chunk
+            request = json.loads(input_bytes.decode("utf-8"))
+            command_line = [entry.decode("utf-8") for entry in open(f"/proc/{peer_pid}/cmdline", "rb").read().split(b"\0") if entry]
+            valid = (
+                input_bytes.endswith(b"\n")
+                and len(input_bytes) <= ${MAX_COMMAND_ARGUMENT_CHARS + 256}
+                and isinstance(request.get("pid"), int)
+                and request["pid"] == peer_pid
+                and isinstance(request.get("args"), list)
+                and len(command_line) >= 2
+                and command_line[1] == invocation_client
+                and command_line[2:] == request["args"]
+            )
+            if not valid:
+                raise ValueError("invalid request")
+            print(json.dumps({"type": "accepted-request", "request": request}), flush=True)
+            connection.sendall(b"ok\n")
+        except Exception:
+            try:
+                connection.sendall(b"invalid\n")
+            except OSError:
+                pass
+server.close()
+`, endpointName, invocationClientPath], {stdio: ["ignore", "pipe", "pipe"]});
+    let output = "";
+    let errorOutput = "";
+    let ready = false;
+    let settled = false;
+    let resolveReady;
+    let rejectReady;
+    const readyPromise = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    const consumeOutput = () => {
+        const lines = output.split("\n");
+        output = lines.pop();
+        for (const line of lines) {
+            if (line === "ready") {
+                ready = true;
+                resolveReady();
+                continue;
             }
-        });
+            try {
+                const message = JSON.parse(line);
+                if (message.type === "accepted-request" && requestIsBounded(message.request)) requests.push(message.request);
+            } catch {
+                // The sidecar owns this stream; malformed output cannot create a command record.
+            }
+        }
+    };
+    authenticator.stdout.setEncoding("utf8");
+    authenticator.stderr.setEncoding("utf8");
+    authenticator.stdout.on("data", (chunk) => { output += chunk; consumeOutput(); });
+    authenticator.stderr.on("data", (chunk) => { errorOutput = `${errorOutput}${chunk}`.slice(0, 1024); });
+    authenticator.on("error", (error) => {
+        if (!settled) {
+            settled = true;
+            rejectReady(error);
+        }
     });
-    await new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(endpoint, resolve);
+    authenticator.on("close", (status) => {
+        if (!ready && !settled) {
+            settled = true;
+            rejectReady(new Error(`could not start the peer-authenticated command transport (exit ${status ?? 1}): ${errorOutput}`));
+        }
     });
+    await readyPromise;
     return {
         endpoint,
         requests,
-        async close() { await new Promise((resolve) => server.close(resolve)); },
+        async close() {
+            if (authenticator.exitCode !== null) return;
+            await new Promise((resolve) => {
+                authenticator.once("close", resolve);
+                authenticator.kill("SIGTERM");
+            });
+        },
     };
 }
 

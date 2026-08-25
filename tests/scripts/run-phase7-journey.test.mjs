@@ -96,7 +96,7 @@ await appendFile("/tmp/p7-public-command-capability/plan", JSON.stringify({args:
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
-test("isolates expected artifacts and rejects an abstract-endpoint request extracted from the readable client", async () => {
+test("isolates expected artifacts and rejects a raw endpoint request authenticated with a live argv-masquerading PID", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
     try {
         const concurrentWriter = await driver(directory, `
@@ -111,17 +111,36 @@ process.exitCode = result.status;
         assert.equal(concurrentResult.status, 0, concurrentResult.stderr);
         const directControl = await driver(directory, `
 import net from "node:net";
-import {readFile} from "node:fs/promises";
-import {spawnSync} from "node:child_process";
+import {readFile, writeFile} from "node:fs/promises";
+import {once} from "node:events";
+import {spawn, spawnSync} from "node:child_process";
 import path from "node:path";
 const inspectedClient = await readFile(process.env.P7_PUBLIC_CLI, "utf8");
 if (/secret|socket/i.test(inspectedClient)) throw new Error("runtime-inspected client exposed a reusable control credential");
 const endpoint = inspectedClient.match(/net\\.createConnection\\(([^)]+)\\)/)?.[1];
 if (!endpoint) throw new Error("could not extract the current abstract endpoint");
+const hook = path.join(process.cwd(), "argv-masquerade-hook.cjs");
+await writeFile(hook, \`
+const net = require("node:net");
+const {EventEmitter} = require("node:events");
+net.createConnection = () => {
+  const connection = new EventEmitter();
+  connection.end = () => {};
+  process.nextTick(() => connection.emit("connect"));
+  setTimeout(() => process.exit(0), 5000);
+  return connection;
+};
+\`);
+const masquerader = spawn(process.execPath, [process.env.P7_PUBLIC_CLI, "build", "--out", "result.txt"], {
+  env: {...process.env, NODE_OPTIONS: \`--require=\${hook}\`},
+});
+await new Promise((resolve) => setTimeout(resolve, 100));
 const socket = net.createConnection(JSON.parse(endpoint));
 let reply = "";
-await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({pid: process.pid, args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("data", (data) => { reply += data; }); socket.on("error", resolve); socket.on("close", resolve); });
-if (reply.startsWith("ok")) throw new Error("direct endpoint request was accepted without the invocation capability");
+await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({pid: masquerader.pid, args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("data", (data) => { reply += data; }); socket.on("error", resolve); socket.on("close", resolve); });
+masquerader.kill();
+await once(masquerader, "close");
+if (reply.startsWith("ok")) throw new Error("raw endpoint request accepted a separate process's forged argv identity");
 const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
 process.exitCode = result.status;
 `);
