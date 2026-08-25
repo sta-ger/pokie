@@ -14,6 +14,9 @@ export type OutcomeProjectCompatibility = {
     readonly gameVersion: string;
     readonly configHash: string;
     readonly pokieVersion: string;
+    // Exact and direct sampled libraries describe different distributions even when they come from the
+    // same game configuration.  They must therefore never be silently reused for one another.
+    readonly generation?: string;
 };
 
 // The authoritative lifecycle boundary for a Blueprint's managed Outcome Project.  ArtifactBuilderRegistry
@@ -94,7 +97,7 @@ export class ManagedOutcomeProjectService implements ManagedOutcomeProjectServic
             path.dirname(sourceRootPath),
             ".pokie",
             "outcome-libraries",
-            crypto.createHash("sha256").update(compatibility.configHash).digest("hex"),
+            crypto.createHash("sha256").update(`${compatibility.configHash}:${compatibility.generation ?? "exact"}`).digest("hex"),
         );
     }
 
@@ -180,6 +183,7 @@ function sameCompatibility(left: OutcomeProjectCompatibility, right: OutcomeProj
         left.gameId === right.gameId &&
         left.gameVersion === right.gameVersion &&
         left.configHash === right.configHash &&
-        left.pokieVersion === right.pokieVersion
+        left.pokieVersion === right.pokieVersion &&
+        (left.generation ?? "exact") === (right.generation ?? "exact")
     );
 }

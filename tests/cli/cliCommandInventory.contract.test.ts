@@ -1,6 +1,7 @@
 import {
     ArtifactBuilder,
     ArtifactBuilderRegistry,
+    ArtifactBuildOptions,
     computeFairnessCommitment,
     computeFairnessServerSeedCommitment,
     FairnessRoundProof,
@@ -13,6 +14,7 @@ import {
     OutcomeSpaceEstimate,
     ParallelSimulationRunner,
     PokieGame,
+    PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     RandomGameBlueprintGenerator,
@@ -115,6 +117,42 @@ function stubAddressServer(port: number): {start: () => Promise<{host: string; p
 // process (see DevCommand.ts/StudioCommand.ts's own registerShutdown()).
 function fakeProcess(): NodeJS.Process {
     return {once: () => undefined, off: () => undefined, exit: () => undefined} as unknown as NodeJS.Process;
+}
+
+function inventoryOutcomeLibraryBuildCommand(key: string): BuildCommand {
+    return new BuildCommand(
+        TEST_VERSION,
+        undefined,
+        undefined,
+        stub<ProjectResolving>({
+            resolve: () =>
+                Promise.resolve({
+                    type: "outcomeLibrary",
+                    rootPath: "bundleDir",
+                    capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+                    provenance: "test fixture",
+                }),
+        }),
+        new ArtifactBuilderRegistry(
+            TEST_VERSION,
+            new Map([
+                [
+                    "outcomeLibrary",
+                    stub<ArtifactBuilder>({
+                        target: "outcomeLibrary",
+                        build: (_source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions) => {
+                            observe(key, "--target", "outcomeLibrary");
+                            observe(key, "--out", destinationPath);
+                            observe(key, "--exact", options?.outcomeLibraryGeneration === undefined);
+                            observe(key, "--sample", options?.outcomeLibraryGeneration?.sampled?.sampleSize);
+                            observe(key, "--seed", options?.outcomeLibraryGeneration?.sampled?.seed);
+                            return Promise.resolve({outputPath: destinationPath});
+                        },
+                    }),
+                ],
+            ]),
+        ),
+    );
 }
 
 // A minimal-but-complete SimulationReport (every field SimulationReport itself requires — see
@@ -320,6 +358,9 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                                     observe(key, "--target", "tsPackage");
                                     observe(key, "--out", destinationPath);
                                     observe(key, "--dry-run", "false");
+                                    observe(key, "--exact", false);
+                                    observe(key, "--sample", undefined);
+                                    observe(key, "--seed", undefined);
                                     return Promise.resolve({outputPath: destinationPath});
                                 },
                             }),
@@ -424,6 +465,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     ]),
                 ),
             ),
+        "build::<bundleDir> --target outcomeLibrary --exact (accepted explicit exact choice)": (key) => inventoryOutcomeLibraryBuildCommand(key),
+        "build::<bundleDir> --target outcomeLibrary --sample --seed (accepted direct sampled choice)": (key) => inventoryOutcomeLibraryBuildCommand(key),
 
         "certification::build <bundleDir> <config.json> (default --out)": (key) =>
             new CertificationCommand(
@@ -1283,6 +1326,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                     observe(key, "--config-hash", options.configHash);
                     observe(key, "--library-id", options.libraryId);
                     observe(key, "--max-outcome-space-size", options.maxOutcomeSpaceSize);
+                    observe(key, "--exact", options.exact ?? false);
+                    observe(key, "--sample", options.sampled?.sampleSize);
                     observe(key, "--bounded", options.bounded !== undefined);
                     observe(key, "--sample-size", options.bounded?.sampleSize);
                     observe(key, "--seed", options.bounded?.seed);
@@ -1385,6 +1430,43 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                             },
                         }),
                     );
+                },
+                () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
+                undefined,
+                undefined,
+                undefined,
+                fakeProcess(),
+            ),
+        "outcomelibrary::generate <packageRoot> --exact (accepted explicit exact choice)": (key) =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
+                    observe(key, "--exact", options.exact ?? false);
+                    return Promise.resolve(stub<GenerateExactWeightedOutcomeLibraryResult>({library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: []}, diagnostics: {algorithm: "pokie-exact-reel-enumeration-v1", strategy: "exact", totalOutcomeSpaceSize: 6, sampledRawCount: 6, pokieVersion: TEST_VERSION, game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}, generatedAt: "2026-01-01T00:00:00.000Z"}}));
+                },
+                () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
+                undefined,
+                undefined,
+                undefined,
+                fakeProcess(),
+            ),
+        "outcomelibrary::generate <packageRoot> --sample --seed (accepted direct sampled choice)": (key) =>
+            new OutcomeLibraryCommand(
+                TEST_VERSION,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                () => Promise.resolve(stub<PokieGame>({getManifest: () => ({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"})})),
+                (options: GenerateExactWeightedOutcomeLibraryOptions) => {
+                    observe(key, "--sample", options.sampled?.sampleSize);
+                    observe(key, "--seed", options.sampled?.seed);
+                    return Promise.resolve(stub<GenerateExactWeightedOutcomeLibraryResult>({library: {schemaVersion: 1, libraryId: options.libraryId, outcomes: []}, diagnostics: {algorithm: "pokie-exact-reel-enumeration-v1", strategy: "bounded-coverage", totalOutcomeSpaceSize: 6, sampledRawCount: 1000, seed: "seed-1", pokieVersion: TEST_VERSION, game: {id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"}, generatedAt: "2026-01-01T00:00:00.000Z"}}));
                 },
                 () => stub<OutcomeSpaceEstimate>({reelsNumber: 2, reelsSymbolsNumber: 1, reelSizes: [3, 2], totalOutcomeSpaceSize: BigInt(6)}),
                 undefined,

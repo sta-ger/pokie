@@ -173,6 +173,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
             fail("expected generation to reject");
         } catch (error) {
             expect((error as WeightedOutcomeLibraryGenerationError).getCode()).toBe("weighted-outcome-library-generation-space-exceeded");
+            expect((error as WeightedOutcomeLibraryGenerationError).message).toContain("--sample <n> --seed <string>");
         }
     });
 
@@ -208,6 +209,7 @@ describe("generateExactWeightedOutcomeLibrary", () => {
         const otherSeed = await generateSampledWeightedOutcomeLibrary({...options, game: buildFixtureGame(), sampled: {...options.sampled, seed: "other-seed"}});
         expect(otherSeed.diagnostics.seed).toBe("other-seed");
         expect(otherSeed.library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(10);
+        expect(otherSeed.library.outcomes).not.toEqual(result.library.outcomes);
     });
 
     it("uses an explicitly-labelled, reproducible bounded-coverage sample once the caller opts in past the cap", async () => {

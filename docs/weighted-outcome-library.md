@@ -246,6 +246,10 @@ function generateExactWeightedOutcomeLibrary(options: GenerateExactWeightedOutco
 }>;
 
 function streamExactWeightedOutcomes(options: GenerateExactWeightedOutcomeLibraryOptions): AsyncGenerator<WeightedOutcomeInput, OutcomeLibraryGeneratorDiagnostics>;
+
+function generateSampledWeightedOutcomeLibrary(options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {
+    sampled: {sampleSize: bigint; seed: string};
+}): Promise<{library: WeightedOutcomeLibrary; diagnostics: OutcomeLibraryGeneratorDiagnostics}>;
 ```
 
 `options` always includes `libraryId`, the loaded `game`/`pokieVersion` (and optionally `configHash`/`betMode`/
@@ -269,13 +273,15 @@ are the exact same underlying generation.
 
 ### Large spaces: bounds, bounded-coverage, cancel/resume/progress
 
-Above `maxOutcomeSpaceSize` (a `bigint`, defaulting to 20,000,000 raw combinations), generation refuses to sweep
-exhaustively unless the caller explicitly opts in via the `bounded: {sampleSize, seed}` option — otherwise it fails
-closed with `weighted-outcome-library-generation-space-exceeded`, never silently truncating. Opting into `bounded`
-switches to an honestly-labelled `"bounded-coverage"` strategy: `sampleSize` independent reel-stop draws (with
-replacement, seeded and therefore reproducible) through the exact same calculation path, deduplicated and summed
-the same way — `diagnostics.strategy` and the library it produces are never presented as `"exact"`. A space within
-`maxOutcomeSpaceSize` is always swept exactly regardless of whether `bounded` was also given.
+Above `maxOutcomeSpaceSize` (a `bigint`, defaulting to 20,000,000 raw combinations), exact generation refuses to
+sweep exhaustively and fails closed with `weighted-outcome-library-generation-space-exceeded`, never silently
+truncating. Recover with the public sampled workflow: `pokie generate <packageRoot> --sample <n> --seed <string>`,
+`pokie build <project> --target outcomeLibrary --sample <n> --seed <string>`, or the exported
+`generateSampledWeightedOutcomeLibrary({..., sampled: {sampleSize, seed}})` API. It directly performs `sampleSize`
+independent seeded reel-stop draws (with replacement) through the same calculation path, without first enumerating
+the raw space, and labels the result `"bounded-coverage"`. `bounded: {sampleSize, seed}` remains a backwards-compatible
+API option that samples only when the exact cap is exceeded; a space within `maxOutcomeSpaceSize` is always swept
+exactly when using that legacy option.
 
 `options.signal` (an `AbortSignal`) cancels a run in progress, throwing `WeightedOutcomeLibraryGenerationCancelledError`
 with `processedRawIndex`/`progressTotal` and its own `checkpoint` (an `ExactEnumerationCheckpoint`). For the
@@ -299,6 +305,11 @@ pokie generate <packageRoot> [--mode <betModeId>] [--stake <number>]
     [--resume <file>] [--progress] [--format json]
 ```
 
+```
+pokie build <project> --target outcomeLibrary
+    [--exact | --sample <n> --seed <string>] [--out <dir>]
+```
+
 `generate` is the CLI entry point for everything above: it loads `<packageRoot>` — a package built by
 `pokie build` (or any package `loadPokieGame()` can require) — and drives *its own* session/win-calculation
 runtime through `generateExactWeightedOutcomeLibrary`, exactly as described in "Generating" above. This is a
@@ -306,6 +317,12 @@ different workflow from outcome-bundle export (see [Outcome Library Bundle](outc
 that export never loads or executes a `PokieGame` at all — it only bundles `WeightedOutcomeLibrary` JSON (or JSONL
 outcome streams) that some earlier step, such as `generate`, already produced. `validate` likewise only ever
 inspects an already-built bundle. `generate` is the one outcomelibrary verb that runs a live game.
+
+`build --target outcomeLibrary` is the equivalent project-to-bundle workflow. `--exact` is the default; its explicit
+form and `--sample <n> --seed <string>` make the choice visible in automation. The sampled form is passed through the
+registry-owned `BlueprintStakeOutcomeLibraryWorkflow`, which performs only the requested draws and writes a normal
+Outcome Library bundle; it can then be used with `pokie validate`, `pokie sim`, `pokie report`, `pokie replay`, and
+`pokie serve` just like an exact bundle.
 
 - `<packageRoot>` — required. The game must opt into exact enumeration via
   `PokieGame.createExactEnumerationSession` (see "Opting a game into exact enumeration" above); a game that

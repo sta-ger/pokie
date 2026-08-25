@@ -77,6 +77,9 @@ export type GenerateExactWeightedOutcomeLibraryOptions = {
     readonly selectBetMode?: boolean;
     readonly stake?: number;
     readonly maxOutcomeSpaceSize?: bigint;
+    // Records an explicit caller choice of the default exact strategy. It is mutually exclusive with
+    // sampled choices at public command boundaries; exact generation otherwise remains the default.
+    readonly exact?: boolean;
     // Explicit opt-in: only consulted once the space actually exceeds maxOutcomeSpaceSize. Its mere presence
     // never downgrades an otherwise-exact run -- a space within maxOutcomeSpaceSize is always swept exactly.
     readonly bounded?: BoundedCoverageGenerationOptions;
@@ -145,7 +148,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             "weighted-outcome-library-generation-space-exceeded",
             `"${manifest.id}"'s exact outcome space (${estimate.totalOutcomeSpaceSize} reel-stop combinations) exceeds ` +
                 `maxOutcomeSpaceSize (${maxOutcomeSpaceSize}). Pass a larger maxOutcomeSpaceSize, or opt into an explicitly-labelled ` +
-                'bounded-coverage strategy via the "bounded" option.',
+                'bounded-coverage strategy with `pokie generate <packageRoot> --sample <n> --seed <string>` (or the `sampled` option).',
         );
     }
 

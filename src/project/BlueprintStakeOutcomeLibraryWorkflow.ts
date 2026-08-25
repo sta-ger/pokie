@@ -111,6 +111,9 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
             gameVersion: game.getManifest().version,
             configHash,
             pokieVersion: this.pokieVersion,
+            generation: options?.outcomeLibraryGeneration?.sampled === undefined
+                ? "exact"
+                : `sample:${options.outcomeLibraryGeneration.sampled.sampleSize}:${options.outcomeLibraryGeneration.sampled.seed}`,
         };
         const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
         if (compatible !== undefined) {
@@ -121,7 +124,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
         assertArtifactDestinationAvailable(bundleDir, "directory");
         assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
-        const preflight = outcomeGenerationPreflight(game);
+        const preflight = outcomeGenerationPreflight(game, options);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
         try {
@@ -174,6 +177,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     configHash,
                     ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
                     selectBetMode: hasRuntimeBetModes,
+                    ...(options?.outcomeLibraryGeneration?.sampled !== undefined ? {sampled: options.outcomeLibraryGeneration.sampled} : {}),
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
@@ -245,16 +249,17 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
 
 }
 
-function outcomeGenerationPreflight(game: PokieGame): ArtifactBuildPreflight {
+function outcomeGenerationPreflight(game: PokieGame, options?: ArtifactBuildOptions): ArtifactBuildPreflight {
     const estimate = estimateExactOutcomeSpaceSize(game);
-    const estimatedItemCount = estimate.totalOutcomeSpaceSize;
+    const sampled = options?.outcomeLibraryGeneration?.sampled;
+    const estimatedItemCount = sampled?.sampleSize ?? estimate.totalOutcomeSpaceSize;
     return {
         estimatedItemCount,
         // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
         ...(estimatedItemCount > BigInt(10_000)
-            ? {complexityWarning: `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`}
+            ? {complexityWarning: sampled === undefined ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.` : `Sampled generation will perform ${estimatedItemCount} deterministic reel-stop draws.`}
             : {}),
     };
 }

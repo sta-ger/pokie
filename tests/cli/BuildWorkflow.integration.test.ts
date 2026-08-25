@@ -204,6 +204,65 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
     });
 
+    it("builds a sampled Outcome Library without exact pre-enumeration and completes its advertised lifecycle", async () => {
+        const blueprintPath = path.join(workDir, "large-sampled-outcome.blueprint.json");
+        const strip = Array.from({length: 300}, (_unused, index) => (index % 2 === 0 ? "A" : "B"));
+        fs.writeFileSync(
+            blueprintPath,
+            JSON.stringify({
+                manifest: {id: "large-sampled-outcome-slot", name: "Large Sampled Outcome Slot", version: "1.0.0"},
+                reels: 3,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {3: 5}},
+                reelStrips: [strip, strip, strip],
+                availableBets: [1],
+            }),
+        );
+        const outcomeDir = path.join(workDir, "sampled-outcomes");
+        const reportFile = path.join(workDir, "sampled-outcomes-report.json");
+        const replayFile = path.join(workDir, "sampled-outcomes-replay.json");
+        const sampleFile = path.join(workDir, "sampled-outcomes-sample.json");
+
+        expect(
+            await new BuildCommand("1.3.0").run([
+                blueprintPath,
+                "--target",
+                "outcomeLibrary",
+                "--sample",
+                "12",
+                "--seed",
+                "sampled-build-seed",
+                "--out",
+                outcomeDir,
+            ]),
+        ).toBe(0);
+        const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {modes: Array<{generator: {strategy: string; sampledRawCount: number; seed?: string}}>};
+        expect(manifest.modes[0].generator).toEqual(expect.objectContaining({strategy: "bounded-coverage", sampledRawCount: 12, seed: "sampled-build-seed"}));
+
+        expect(await new ValidateCommand().run([outcomeDir, "--deep"])).toBe(0);
+        await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "12", "--seed", "lifecycle", "--out", sampleFile]);
+        expect(JSON.parse(fs.readFileSync(sampleFile, "utf-8"))).toMatchObject({modeName: "base", statistics: {rounds: 12}});
+        await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
+        expect(JSON.parse(fs.readFileSync(reportFile, "utf-8"))).toMatchObject({rootPath: outcomeDir, modes: [{modeName: "base"}]});
+        await new ReplayCommand().run([outcomeDir, "--mode", "base", "--seed", "lifecycle", "--round", "2", "--out", replayFile]);
+        expect(JSON.parse(fs.readFileSync(replayFile, "utf-8"))).toMatchObject({round: 2, seed: "lifecycle"});
+
+        let server: PokieDevServerHandling | undefined;
+        const serve = new ServeCommand(loadPokieGame, (game, options) => {
+            server = new PokieDevServer(game, options);
+            return server;
+        });
+        await serve.run([outcomeDir, "--mode", "base", "--port", "0"]);
+        try {
+            const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+            const port = Number(printed.match(/http:\/\/127\.0\.0\.1:(\d+)/)![1]);
+            expect((await fetch(`http://127.0.0.1:${port}/game`)).status).toBe(200);
+        } finally {
+            await server?.stop();
+        }
+    });
+
     it("takes a real pokie init code-first package through the CLI registry's Outcome reuse and Stake flow, while preserving its runtime modes and PAR diagnostic", async () => {
         const packageRoot = path.join(workDir, "code-first-package");
         const outcomeDir = path.join(workDir, "outcomes");

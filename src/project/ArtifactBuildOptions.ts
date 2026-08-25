@@ -24,6 +24,12 @@ export type ArtifactBuildProgress = {
 export type ArtifactBuildOptions = {
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: ArtifactBuildProgress) => void;
+    // Only meaningful while converting a runnable Blueprint/tsPackage into an Outcome Library.  Keeping
+    // this on the registry-owned lifecycle options lets CLI and other callers select a direct sampled
+    // generation without growing a parallel, CLI-only conversion path.
+    readonly outcomeLibraryGeneration?: {
+        readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
+    };
 };
 
 export class ArtifactBuildCancelledError extends Error {

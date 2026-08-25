@@ -231,6 +231,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                             return `--max-outcome-space-size must be a positive integer. ${GENERATE_USAGE}`;
                         case "--sample-size":
                             return `--sample-size must be a positive integer. ${GENERATE_USAGE}`;
+                        case "--sample":
+                            return `--sample must be a positive integer. ${GENERATE_USAGE}`;
                         case "--seed":
                             return `--seed requires a value. ${GENERATE_USAGE}`;
                         case "--out":
@@ -383,6 +385,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 ...(options.mode !== undefined ? {betMode: options.mode} : {}),
                 ...(options.stake !== undefined ? {stake: options.stake} : {}),
                 ...(options.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize} : {}),
+                ...(options.exact ? {exact: true} : {}),
                 ...sampling,
                 ...(resumeFrom !== undefined ? {resumeFrom} : {}),
                 signal: controller.signal,
