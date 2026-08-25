@@ -203,25 +203,23 @@ describe("StudioArtifactBuildService", () => {
             expect(fs.existsSync(path.join(result.outputPath, "manifest.json"))).toBe(true);
         });
 
-        it("reports an explicit compatible-project reuse when a Blueprint Outcome request names another destination", async () => {
+        it("builds an explicit Blueprint Outcome destination even when a compatible managed project exists", async () => {
             const blueprintPath = writeBlueprintFile();
             const firstOutcomeDir = path.join(workDir, "first-outcome");
-            const requestedOutcomeDir = path.join(workDir, "requested-but-reused-outcome");
+            const secondOutcomeDir = path.join(workDir, "second-outcome");
 
             await expect(service.build(blueprintPath, "outcomeLibrary", firstOutcomeDir)).resolves.toMatchObject({
                 status: "ok",
                 outputPath: firstOutcomeDir,
             });
-            await expect(service.build(blueprintPath, "outcomeLibrary", requestedOutcomeDir)).resolves.toEqual({
+            await expect(service.build(blueprintPath, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
                 status: "ok",
                 target: "outcomeLibrary",
-                outputPath: firstOutcomeDir,
+                outputPath: secondOutcomeDir,
                 outputKind: "directory",
                 sourceType: "blueprint",
-                requestedDestinationPath: requestedOutcomeDir,
-                reusedCompatibleProject: true,
             });
-            expect(fs.existsSync(requestedOutcomeDir)).toBe(false);
+            expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {

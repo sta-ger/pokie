@@ -54,4 +54,40 @@ describe("ExportCommand", () => {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
+
+    it("previews every export alias without writing and rejects every occupied alias destination", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-lifecycle-test-"));
+        const sourcePath = path.join(workDir, "source.blueprint.json");
+        const command = new ExportCommand("1.3.0");
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            fs.writeFileSync(sourcePath, JSON.stringify(blueprint));
+            for (const target of ["outcomes", "adapter", "workbook"] as const) {
+                const extension = target === "workbook" ? ".xlsx" : "";
+                const dryRunDestination = path.join(workDir, `${target}-dry-run${extension}`);
+                await expect(command.run([sourcePath, "--to", target, "--out", dryRunDestination, "--dry-run"])).resolves.toBe(0);
+                expect(fs.existsSync(dryRunDestination)).toBe(false);
+
+                const occupiedDestination = path.join(workDir, `${target}-occupied${extension}`);
+                if (target === "workbook") {
+                    fs.writeFileSync(occupiedDestination, "sentinel");
+                } else {
+                    fs.mkdirSync(occupiedDestination);
+                    fs.writeFileSync(path.join(occupiedDestination, "sentinel.txt"), "sentinel");
+                }
+                await expect(command.run([sourcePath, "--to", target, "--out", occupiedDestination])).rejects.toThrow(
+                    new RegExp(`Cannot export target "${target}"[\\s\\S]*Next: choose a different --out path`),
+                );
+                if (target === "workbook") {
+                    expect(fs.readFileSync(occupiedDestination, "utf-8")).toBe("sentinel");
+                } else {
+                    expect(fs.readFileSync(path.join(occupiedDestination, "sentinel.txt"), "utf-8")).toBe("sentinel");
+                }
+            }
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 });

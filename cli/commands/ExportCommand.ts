@@ -1,3 +1,5 @@
+import path from "path";
+import {ArtifactBuilderRegistry, type ArtifactTargetType} from "pokie";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -6,9 +8,9 @@ import {StakeEngineCommand} from "./StakeEngineCommand.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ExportTarget = "outcomes" | "adapter" | "workbook";
-type ExportArgs = {source: string; target: ExportTarget};
+type ExportArgs = {source: string; target: ExportTarget; out?: string; dryRun: boolean};
 
-const USAGE = "Usage: pokie export <source> --to outcomes|adapter|workbook [--out <path>]";
+const USAGE = "Usage: pokie export <source> --to outcomes|adapter|workbook [--out <path>] [--dry-run]";
 
 // Export is deliberately target-oriented. The source descriptor remains the existing stable JSON
 // contract, while the public CLI now names the artifact a project will receive rather than the
@@ -17,11 +19,13 @@ export class ExportCommand implements CliCommandHandling {
     private readonly outcomeLibrary: OutcomeLibraryCommand;
     private readonly par: ParCommand;
     private readonly stake: StakeEngineCommand;
+    private readonly registry: ArtifactBuilderRegistry;
 
     constructor(pokieVersion: string) {
         this.outcomeLibrary = new OutcomeLibraryCommand(pokieVersion);
         this.par = new ParCommand(pokieVersion);
         this.stake = new StakeEngineCommand(pokieVersion);
+        this.registry = new ArtifactBuilderRegistry(pokieVersion);
     }
 
     public getName(): string {
@@ -46,7 +50,17 @@ export class ExportCommand implements CliCommandHandling {
             }
             throw error;
         }
-        const forwarded = args.filter((value, index) => value !== "--to" && args[index - 1] !== "--to");
+        const destination = this.resolveDestination(parsed);
+        const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
+        if (!destinationCheck.available) {
+            return Promise.reject(new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message)));
+        }
+        if (parsed.dryRun) {
+            console.log(`Dry run -- would export target "${parsed.target}" from "${parsed.source}" to "${destination}". No files written.`);
+            return Promise.resolve(0);
+        }
+
+        const forwarded = args.filter((value, index) => value !== "--to" && args[index - 1] !== "--to" && value !== "--dry-run");
         let forwardedRun: Promise<number>;
         if (parsed.target === "outcomes") {
             forwardedRun = this.outcomeLibrary.run(["build", ...forwarded]);
@@ -73,20 +87,21 @@ export class ExportCommand implements CliCommandHandling {
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .requiredOption("--to <artifact>", "outcomes, adapter, or workbook")
             .option("--out <path>", "where to write the exported artifact")
+            .option("--dry-run", "preview the resolved export destination without writing anything")
             .action(() => undefined);
     }
 
     private parse(args: string[]): ExportArgs {
         const command = this.command();
         let parsed: ExportArgs | undefined;
-        command.action((source: string, excess: string[], options: {to?: string}) => {
+        command.action((source: string, excess: string[], options: {to?: string; out?: string; dryRun?: boolean}) => {
             if (!source || excess.length > 0) {
                 throw new Error(excess.length > 0 ? `Unknown option "${excess[0]}". ${USAGE}` : USAGE);
             }
             if (options.to !== "outcomes" && options.to !== "adapter" && options.to !== "workbook") {
                 throw new Error(`--to must be outcomes, adapter, or workbook. ${USAGE}`);
             }
-            parsed = {source, target: options.to};
+            parsed = {source, target: options.to, out: options.out, dryRun: options.dryRun ?? false};
         });
         try {
             command.parse(args, {from: "user"});
@@ -101,5 +116,37 @@ export class ExportCommand implements CliCommandHandling {
             });
         }
         return parsed!;
+    }
+
+    private artifactTarget(target: ExportTarget): ArtifactTargetType {
+        switch (target) {
+            case "outcomes":
+                return "outcomeLibrary";
+            case "adapter":
+                return "stakeAdapter";
+            case "workbook":
+                return "parWorkbook";
+        }
+        throw new Error(`Unknown export target "${target}".`);
+    }
+
+    private resolveDestination(args: ExportArgs): string {
+        if (args.out !== undefined) return args.out;
+        switch (args.target) {
+            case "outcomes":
+                return path.join(path.dirname(args.source), "outcomelibrary");
+            case "adapter":
+                return path.join(path.dirname(args.source), "stakeengine");
+            case "workbook": {
+                const basename = path.basename(args.source).replace(/\.blueprint\.json$/i, "").replace(/\.json$/i, "");
+                return path.join(path.dirname(args.source), `${basename}.par.xlsx`);
+            }
+        }
+        throw new Error(`Unknown export target "${args.target}".`);
+    }
+
+    private describeDestinationConflict(target: ExportTarget, detail: string): string {
+        return `Cannot export target "${target}" because its destination is unavailable. ${detail} ` +
+            "Next: choose a different --out path or remove the existing destination, then retry.";
     }
 }

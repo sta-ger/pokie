@@ -260,10 +260,17 @@ export class ArtifactBuilderRegistry {
         destinationPath: string,
         options?: ArtifactBuildOptions,
     ): Promise<ArtifactBuildResult> {
+        // A requested --out is a real destination contract, even when a compatible managed Outcome
+        // Project already exists.  Check it before the managed-project lookup: otherwise the lookup
+        // turns an explicit destination into a silently ignored hint (and can bypass the normal
+        // no-overwrite policy every other artifact target enforces).
+        assertArtifactDestinationAvailable(destinationPath, "directory");
+        assertArtifactDestinationIsSafe(source.rootPath, destinationPath);
         const outcomeLibrary = await this.blueprintStakeWorkflow.resolveOrGenerate(
             source,
             destinationPath,
             options,
+            false,
         );
         return {
             outputPath: outcomeLibrary.project.rootPath,

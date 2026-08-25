@@ -37,7 +37,7 @@ describe("StudioArtifactBuildService (integration)", () => {
     it("uses the same registry Outcome reuse and Stake flow for a real pokie init code-first package", async () => {
         const packageRoot = path.join(workDir, "code-first-package");
         const outcomeDir = path.join(workDir, "outcomes");
-        const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+        const secondOutcomeDir = path.join(workDir, "second-outcomes");
         const stakeDir = path.join(workDir, "stake");
         await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
 
@@ -51,14 +51,12 @@ describe("StudioArtifactBuildService (integration)", () => {
             sourceType: "tsPackage",
             outputPath: outcomeDir,
         });
-        await expect(service.build(packageRoot, "outcomeLibrary", reusedOutcomeDir)).resolves.toEqual({
+        await expect(service.build(packageRoot, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
             status: "ok",
             target: "outcomeLibrary",
-            outputPath: outcomeDir,
+            outputPath: secondOutcomeDir,
             outputKind: "directory",
             sourceType: "tsPackage",
-            requestedDestinationPath: reusedOutcomeDir,
-            reusedCompatibleProject: true,
         });
         await expect(service.build(packageRoot, "stakeAdapter", stakeDir)).resolves.toMatchObject({
             status: "ok",

@@ -98,6 +98,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         source: PokieProject,
         destinationPath: string | ((compatibility: OutcomeProjectCompatibility) => string),
         options?: ArtifactBuildOptions,
+        reuseCompatible = true,
     ): Promise<{readonly project: PokieProject; readonly reused: boolean}> {
         assertArtifactBuildNotCancelled(options);
         const game = source.type === "blueprint" ? this.loadMaterializedGame(this.validateAndMaterialize(source.rootPath)) : await this.loadGame(source.rootPath);
@@ -115,10 +116,12 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                 ? "exact"
                 : `sample:${options.outcomeLibraryGeneration.sampled.sampleSize}:${options.outcomeLibraryGeneration.sampled.seed}`,
         };
-        const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
-        if (compatible !== undefined) {
-            reportArtifactBuildProgress(options, {status: "completed"});
-            return {project: compatible, reused: true};
+        if (reuseCompatible) {
+            const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
+            if (compatible !== undefined) {
+                reportArtifactBuildProgress(options, {status: "completed"});
+                return {project: compatible, reused: true};
+            }
         }
 
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
