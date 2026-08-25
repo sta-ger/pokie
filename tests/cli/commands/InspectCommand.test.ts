@@ -90,13 +90,15 @@ describe("InspectCommand", () => {
         expect(printed).not.toContain("runtime.execute");
     });
 
-    it("explains unsupported input in public project terminology", async () => {
+    it("explains unsupported input concisely in public project terminology", async () => {
         const command = new InspectCommand(createStubResolver(undefined));
 
         const exitCode = await command.run(["./missing"]);
 
         expect(exitCode).toBe(1);
-        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("not a POKIE project POKIE can inspect"));
+        expect(errorSpy).toHaveBeenCalledWith(
+            '"./missing" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.',
+        );
         expect(logSpy).not.toHaveBeenCalled();
     });
 

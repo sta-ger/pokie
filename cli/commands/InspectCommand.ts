@@ -82,7 +82,7 @@ export class InspectCommand implements CliCommandHandling {
 
         if (project === undefined) {
             console.error(
-                `"${projectPath}" is not a POKIE project POKIE can inspect. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.`,
+                `"${projectPath}" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.`,
             );
             return 1;
         }
