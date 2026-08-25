@@ -718,7 +718,9 @@ describe("ProjectsPanel: Import Project", () => {
         });
         renderWithProviders(<ProjectsPanel />, {fetchImpl});
 
-        const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
+        const row = (await screen.findAllByText(name))
+            .map((element) => element.closest("tr"))
+            .find((candidate): candidate is HTMLTableRowElement => candidate !== null) as HTMLElement;
         expect(within(row).getByRole("button", {name: "Open"})).toBeInTheDocument();
         await user.click(within(row).getByRole("button", {name: "Open"}));
 
