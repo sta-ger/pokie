@@ -282,12 +282,14 @@ function documentedCapabilities(contents, inventory) {
         for (const [index, positional] of documentedPositionals.entries()) {
             const executable = executablePositionals[index];
             // First-contact examples use angle brackets as explanatory placeholders, while
-            // Commander uses brackets for optional arguments.  When both name the same
-            // positional, normalize to the freshly collected contract instead of turning
-            // presentation syntax into a false stale capability.
+            // Commander uses brackets for optional arguments. Other public examples may use
+            // a friendlier positional name while preserving requiredness. Normalize either
+            // form to the freshly collected contract instead of turning presentation syntax
+            // into a false stale capability.
             const documentedName = positional.slice(1, -1);
             const executableName = executable?.slice(1, -1);
-            if (executable && documentedName === executableName) capabilities.add(`argument:${command}:${executable}`);
+            const matchingRequiredness = executable && positional[0] === executable[0] && positional.at(-1) === executable.at(-1);
+            if (executable && (documentedName === executableName || matchingRequiredness)) capabilities.add(`argument:${command}:${executable}`);
             else capabilities.add(`argument:${command}:${positional}`);
         }
         addValueClaims(line, command);

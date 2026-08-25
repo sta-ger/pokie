@@ -230,7 +230,7 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
 });
 
 test("normalizes first-contact placeholders and ignores an unknown-command recovery example", async () => {
-    const {directory, cli, coverage} = await fixture("", "Use pokie init <directory>, pokie create <name>, and pokie <command> --help. A close spelling, pokie creat, suggests pokie create --help.\n");
+    const {directory, cli, coverage} = await fixture("", "Use pokie [path], pokie init <directory>, pokie create <name>, and pokie <command> --help. A close spelling, pokie creat, suggests pokie create --help.\n");
     try {
         await writeFile(cli, `
 const key = process.argv.slice(2).join(" ");
