@@ -1,6 +1,6 @@
 const assert = process.getBuiltinModule("node:assert/strict");
 const {spawnSync} = process.getBuiltinModule("node:child_process");
-const {mkdir, mkdtemp, readFile, rm, writeFile} = process.getBuiltinModule("node:fs/promises");
+const {cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
 const os = process.getBuiltinModule("node:os");
 const path = process.getBuiltinModule("node:path");
 
@@ -56,6 +56,18 @@ process.stdout.write(help);
 
 function run(cli, coverage, evidenceDir) {
     return spawnSync(process.execPath, [checker, "--cli", cli, "--coverage", coverage, "--evidence-dir", evidenceDir], {encoding: "utf8"});
+}
+
+async function createIsolatedCliBuildRoot(directory) {
+    const buildRoot = path.join(directory, "package");
+    await mkdir(buildRoot);
+    await Promise.all([
+        cp(path.join(root, "src"), path.join(buildRoot, "src"), {recursive: true}),
+        cp(path.join(root, "cli"), path.join(buildRoot, "cli"), {recursive: true}),
+        ...["package.json", "tsconfig.prod.json", "tsconfig.cli.json", "generate-barrels.js", "write-cjs-package-json.js"].map((file) => cp(path.join(root, file), path.join(buildRoot, file))),
+    ]);
+    await symlink(path.join(root, "node_modules"), path.join(buildRoot, "node_modules"), "dir");
+    return buildRoot;
 }
 
 test("collects root aliases and executable values across independent help walks", async () => {
@@ -262,8 +274,12 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
 test("checks the freshly built production CLI against the complete public documentation scope", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-production-inventory-test-"));
     try {
+        // The packaging smoke test can run in another Jest project and rebuild the checkout's
+        // dist/ at the same time. Build this independent production CLI in a disposable package
+        // instead, so the CLI contract is verified against one coherent set of compiled files.
+        const buildRoot = await createIsolatedCliBuildRoot(directory);
         const runBuildStep = (arguments_) => {
-            const result = spawnSync(process.execPath, arguments_, {cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+            const result = spawnSync(process.execPath, arguments_, {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
             assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
         };
         const tsc = path.join(root, "node_modules/typescript/bin/tsc");
@@ -281,10 +297,10 @@ test("checks the freshly built production CLI against the complete public docume
         const evidenceDirectory = path.join(directory, "evidence");
         const result = spawnSync(process.execPath, [
             checker,
-            "--cli", path.join(root, "dist/cli/pokie.js"),
+            "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
             "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
             "--evidence-dir", evidenceDirectory,
-        ], {cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+        ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
         assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
         const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
         assert.equal(inventory.rootCommands.length, 20);
