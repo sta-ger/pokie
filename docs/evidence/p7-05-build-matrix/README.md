@@ -1,29 +1,25 @@
-# P7-05 current-candidate independent matrix rerun
+# P7-05 independent current-candidate verification — inconclusive
 
-Candidate: `673a9bea3195a33adf8269575d3ae1bc8403a5a0`.
+Candidate: `e1383bdacda13ef4f6ea0e4716a771e973e50b5a`.
 
-The retained one-command 16-file target run remains truthful: **16/16 suites**
-and **1,488/1,488 tests** passed. Its post-summary open handle did not change
-that completed result. The retained CLI exercise also still covers all nine
-supported cells, including default dry-run/no-write, explicit output, occupied
-destination preservation, cleanup, and resolver/`pokie inspect` readback.
+The required one-command target invocation named every one of the twelve paths
+present in the persisted `required_test_files` list.  It printed a passing
+`ProjectsPanel.test.tsx` suite, then remained active for more than 17 minutes
+without a final Jest summary; it was interrupted before any duplicate Jest
+process was started.  Therefore this record does **not** claim a complete
+targeted-suite result (and the persisted criterion's stated 16-file count
+cannot be reconciled with its 12 listed paths).
 
-The successful recovery session used a fresh candidate Studio run (the exact command was
-`node ./dist/cli/pokie.js --no-open`) after repairing native-label focus and
-post-scroll coordinate handling. Package, Outcome Library, and Stake Engine
-sources each went through the visible Projects **Detect → Register → Open →
-Build/Export** flow. The five formerly unobserved cells reached card-local
-preflight and `Built to …`; candidate `pokie inspect` then structurally read
-their outputs. `studio-recovery-transcript.txt` is the bounded action/result
-record and `studio-recovery-final.png` captures the final rendered PAR result.
+The candidate `build-cli` completed, then Studio was launched twice from this
+checkout only with `node ./dist/cli/pokie.js --no-open`.  Fresh, tiny Blueprint,
+package, Outcome Library, Stake Engine, and PAR workbook inputs were created
+through the public candidate CLI.  In the rendered Projects UI, the Blueprint
+was detected and registered successfully.  Repeated CDP mouse/keyboard input
+to the visible Location control later failed to reach its rendered accepted
+state, despite no rendered Studio product error.  This is driver/readiness
+inconclusive, not a product finding; no matrix lifecycle or PAR-card success is
+claimed.
 
-The final PAR source was recognized in Projects, but the rendered result
-offered only **Open in Design Game** and no Register/Open row. Therefore the
-public Projects Open workflow cannot reach the `parWorkbook:parWorkbook`
-Build/Export card, even though it is a supported matrix cell. This is the
-recorded P2 finding. The screenshot SHA-256 is
-`6d901f034d4755cb03c3d2ca48efa6f3e7be1fd89c7d04e0a3fd4a70d10bc4d8`.
-
-Generated sources, outputs, package installs, browser profile, Studio process,
-automation, and logs were removed. Only this README, the JSON/checksum record,
-the concise transcript, and one representative screenshot are retained.
+The prior candidate-`673a9…` evidence, its generated screenshot, and its stale
+transcript were removed.  No generated inputs, outputs, browser profile,
+automation, raw logs, or process files are retained.
