@@ -4,6 +4,7 @@ import path from "path";
 import {
     GameBlueprint,
     ParSheetExporting,
+    ParSheetExporter,
     ParSheetImporting,
     ParSheetImportResult,
     ParSheetImporter,
@@ -34,7 +35,6 @@ function createStubExporter(
     };
 }
 
-const rawBlueprint = {manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}};
 const fullBlueprint: GameBlueprint = {
     manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     reels: 3,
@@ -42,6 +42,7 @@ const fullBlueprint: GameBlueprint = {
     symbols: ["A", "K"],
     paytable: {A: {"3": 5}},
 };
+const rawBlueprint = fullBlueprint;
 
 describe("ParCommand", () => {
     let logSpy: jest.SpyInstance;
@@ -102,6 +103,33 @@ describe("ParCommand", () => {
             await command.run(["import", "game.xlsx", "--out", "custom.json"]);
 
             expect(writeFile).toHaveBeenCalledWith("custom.json", expect.any(String));
+        });
+
+        it("refuses occupied and input-alias outputs without changing either file", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-command-import-conflict-test-"));
+            const workbookPath = path.join(workDir, "source.par.xlsx");
+            const occupiedOutputPath = path.join(workDir, "occupied.blueprint.json");
+            const linkedDir = `${workDir}-link`;
+            const occupiedBytes = Buffer.from("existing blueprint output");
+
+            try {
+                await new ParSheetExporter("1.3.0").exportToFile(fullBlueprint, workbookPath);
+                fs.writeFileSync(occupiedOutputPath, occupiedBytes);
+                const command = new ParCommand("1.3.0");
+
+                await expect(command.run(["import", workbookPath, "--out", occupiedOutputPath])).rejects.toThrow(/already exists/i);
+                expect(fs.readFileSync(occupiedOutputPath)).toEqual(occupiedBytes);
+
+                fs.symlinkSync(workDir, linkedDir, "dir");
+                const workbookBytes = fs.readFileSync(workbookPath);
+                await expect(command.run(["import", workbookPath, "--out", path.join(linkedDir, "source.par.xlsx")])).rejects.toThrow(
+                    /source itself/i,
+                );
+                expect(fs.readFileSync(workbookPath)).toEqual(workbookBytes);
+            } finally {
+                if (fs.existsSync(linkedDir)) fs.unlinkSync(linkedDir);
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
         });
 
         it("does not write a file and returns 1 when there are error-level issues", async () => {
@@ -177,7 +205,7 @@ describe("ParCommand", () => {
     });
 
     describe("export", () => {
-        it("loads the blueprint and hands it straight to the exporter (no CLI-side validation) — returns 0 when there are no issues", async () => {
+        it("preflights the blueprint, then hands it to the exporter and returns 0 when there are no issues", async () => {
             const exporter = createStubExporter([]);
             const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
 
@@ -194,6 +222,33 @@ describe("ParCommand", () => {
             await command.run(["export", "game.json", "--out", "custom.xlsx"]);
 
             expect(exporter.calledWith?.filePath).toBe("custom.xlsx");
+        });
+
+        it("refuses occupied and resolved Blueprint-alias outputs without changing either file", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-command-export-conflict-test-"));
+            const blueprintPath = path.join(workDir, "source.blueprint.json");
+            const occupiedOutputPath = path.join(workDir, "occupied.par.xlsx");
+            const linkedDir = `${workDir}-link`;
+            const sourceContents = JSON.stringify(fullBlueprint, null, 4);
+            const occupiedBytes = Buffer.from("existing PAR workbook output");
+
+            try {
+                fs.writeFileSync(blueprintPath, sourceContents);
+                fs.writeFileSync(occupiedOutputPath, occupiedBytes);
+                const command = new ParCommand("1.3.0");
+
+                await expect(command.run(["export", blueprintPath, "--out", occupiedOutputPath])).rejects.toThrow(/already exists/i);
+                expect(fs.readFileSync(occupiedOutputPath)).toEqual(occupiedBytes);
+
+                fs.symlinkSync(workDir, linkedDir, "dir");
+                await expect(command.run(["export", blueprintPath, "--out", path.join(linkedDir, "source.blueprint.json")])).rejects.toThrow(
+                    /source itself/i,
+                );
+                expect(fs.readFileSync(blueprintPath, "utf-8")).toBe(sourceContents);
+            } finally {
+                if (fs.existsSync(linkedDir)) fs.unlinkSync(linkedDir);
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
         });
 
         it("prints an error summary (no success line) and returns 1 when the exporter reports error-level issues", async () => {
