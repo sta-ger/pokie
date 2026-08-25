@@ -181,6 +181,20 @@ describe("InitCommand", () => {
             const doesNotExist = "/tmp/pokie-init-command-test-does-not-exist-xyz";
             expect(defaultDirectoryNeedsConfirmation(doesNotExist)).toBe(false);
         });
+
+        it("rejects a file passed as the target directory without attempting a merge", async () => {
+            const filePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-target-file-")), "not-a-directory");
+            fs.writeFileSync(filePath, "existing file\n");
+            const {command, merger} = createCommand();
+
+            try {
+                expect(await command.run([filePath, "--yes"])).toBe(1);
+                expect(merger.calledWith).toBeUndefined();
+                expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("is not a directory"));
+            } finally {
+                fs.rmSync(path.dirname(filePath), {recursive: true, force: true});
+            }
+        });
     });
 
     describe("--no-install", () => {

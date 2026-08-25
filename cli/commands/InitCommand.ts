@@ -194,6 +194,11 @@ export class InitCommand implements CliCommandHandling {
     private async runInit(parsed: ParsedInitArgs): Promise<number> {
         const projectRoot = path.resolve(parsed.directory);
 
+        if (fs.existsSync(projectRoot) && !fs.statSync(projectRoot).isDirectory()) {
+            console.error(`"${projectRoot}" is not a directory. Choose a directory to initialize.`);
+            return 1;
+        }
+
         if (this.directoryNeedsConfirmation(projectRoot) && !parsed.yes) {
             console.error(
                 `"${projectRoot}" already has files in it and doesn't look like a POKIE package yet.\n` +

@@ -96,6 +96,15 @@ describe("GamePackageMerger", () => {
         expect(second.updatedFiles).toEqual(["package.json"]);
     });
 
+    it("refuses a file named src before patching package.json, leaving the directory untouched", () => {
+        fs.writeFileSync(path.join(projectRoot, "src"), "not a source directory\n");
+        const merger = new GamePackageMerger("1.2.1");
+
+        expect(() => merger.merge(projectRoot)).toThrow(/src.*not a directory/);
+        expect(fs.existsSync(path.join(projectRoot, "package.json"))).toBe(false);
+        expect(fs.readFileSync(path.join(projectRoot, "src"), "utf-8")).toBe("not a source directory\n");
+    });
+
     describe("conflicting POKIE-owned fields", () => {
         it("throws GamePackageMergeConflictError and leaves package.json untouched when \"main\" disagrees", () => {
             const original = JSON.stringify({name: "already-here", version: "9.9.9", main: "./lib/custom.js"});

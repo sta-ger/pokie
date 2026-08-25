@@ -10,7 +10,20 @@ function createStubRandomBlueprintGenerator(
     return {
         generate(request: RandomGameBlueprintRequest = {}) {
             this.calledWith = request;
-            return result;
+            if (request.overrides === undefined) {
+                return result;
+            }
+            return {
+                ...result,
+                blueprint: {
+                    ...result.blueprint,
+                    manifest: {
+                        ...result.blueprint.manifest,
+                        id: request.overrides.id ?? result.blueprint.manifest.id,
+                        name: request.overrides.name ?? result.blueprint.manifest.name,
+                    },
+                },
+            };
         },
     };
 }
@@ -203,6 +216,16 @@ describe("CreateCommand", () => {
             await command.run(["--out", "custom/dest.blueprint.json"]);
 
             expect(wizard.calledWith?.destination?.defaultPathFor("wiz-slot")).toBe("custom/dest.blueprint.json");
+        });
+
+        it("treats --out as the final destination even when the wizard enters a different path", async () => {
+            const wizard = createStubWizard({blueprint: wizardBlueprint, outDir: "wizard-entered.blueprint.json"});
+            const prompt = createControllablePrompt("y");
+            const {command, writeFile} = createCommand(undefined, undefined, undefined, undefined, undefined, wizard, () => prompt, () => true);
+
+            await command.run(["--out", "requested.blueprint.json"]);
+
+            expect(writeFile).toHaveBeenCalledWith("requested.blueprint.json", `${JSON.stringify(wizardBlueprint, null, 4)}\n`);
         });
 
         it("falls back to the default blueprint path when --out was not given", async () => {
@@ -526,8 +549,8 @@ describe("CreateCommand", () => {
 
             await command.run(["my-game", "--random"]);
 
-            expect(randomGenerator.calledWith).toEqual({seed: undefined, overrides: {name: "my-game"}});
-            expect(writeFile.mock.calls[0][0]).toBe("./blazing-riches-4821.blueprint.json");
+            expect(randomGenerator.calledWith).toEqual({seed: undefined, overrides: {id: "my-game", name: "My Game"}});
+            expect(writeFile.mock.calls[0][0]).toBe("./my-game.blueprint.json");
         });
 
         it("forwards --seed to the random blueprint generator", async () => {
@@ -542,6 +565,13 @@ describe("CreateCommand", () => {
             const {command} = createRandomCommand();
 
             await expect(command.run(["--random", "--seed", "abc"])).rejects.toThrow(/--seed requires an integer value/);
+        });
+
+        it("rejects a path-like positional name before generation", async () => {
+            const {command, randomGenerator} = createRandomCommand();
+
+            await expect(command.run(["../escape", "--random"])).rejects.toThrow(/is not a valid project name/);
+            expect(randomGenerator.calledWith).toBeUndefined();
         });
 
         it("writes to the given --out path instead of the default", async () => {
@@ -614,6 +644,13 @@ describe("CreateCommand", () => {
             const {command} = createRandomCommand();
 
             await expect(command.run(["--random", "--preset", "bogus"])).rejects.toThrow(/--preset must be one of: default, variant/);
+        });
+
+        it("rejects random-only options outside --random instead of silently ignoring them", async () => {
+            const {command} = createRandomCommand();
+
+            await expect(command.run(["--blank", "--seed", "42"])).rejects.toThrow(/--seed can only be used with --random/);
+            await expect(command.run(["--preset", "variant"])).rejects.toThrow(/--preset can only be used with --random/);
         });
     });
 });
