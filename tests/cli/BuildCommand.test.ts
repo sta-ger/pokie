@@ -175,7 +175,7 @@ describe("BuildCommand", () => {
         expect(resolveProject.calls).toEqual(["mystery.txt"]);
     });
 
-    it("uses public artifact names and an inspect route when the source cannot build the requested artifact", async () => {
+    it("uses the matrix's public prerequisite and next action when the source cannot build the requested artifact", async () => {
         const project = {
             type: "tsPackage",
             rootPath: "/some/existing/package",
@@ -192,9 +192,8 @@ describe("BuildCommand", () => {
 
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain('"/some/existing/package" is a POKIE game package. It cannot build a POKIE game package.');
-        expect((error as Error).message).toContain("To build a POKIE game package, start with a Game Blueprint.");
-        expect((error as Error).message).toContain('Run "pokie inspect <path>" to see compatible next actions.');
-        expect((error as Error).message).not.toMatch(/(?:^|[^A-Z])blueprint\b|\btsPackage\b|\bcapability\b|\bregistry\b/);
+        expect((error as Error).message).toContain("Missing prerequisite: a Game Blueprint source.");
+        expect((error as Error).message).toContain("Next: Open a Game Blueprint, then run `pokie build <path> --target tsPackage`.");
     });
 
     it("uses the same registry path for the Outcome Library → Stake prerequisite hand-off", async () => {

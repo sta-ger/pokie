@@ -43,13 +43,13 @@ describe("StudioArtifactBuildService", () => {
 
             const targets = await service.listTargets(blueprintPath);
 
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry]));
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
             expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
             expect(byTarget.get("parWorkbook")?.supported).toBe(false);
-            expect(byTarget.get("wasm")?.supported).toBe(false);
+            expect(byTarget.get("wasm")).toBeUndefined();
         });
 
         it("marks every target unsupported for a path that isn't a recognized POKIE project", async () => {
@@ -140,9 +140,8 @@ describe("StudioArtifactBuildService", () => {
                 target: "parWorkbook",
                 message:
                     `"${blueprintPath}" is a Game Blueprint. It cannot build a PAR workbook. ` +
-                    'To build a PAR workbook, start with a PAR workbook. Run "pokie inspect <path>" to see compatible next actions.',
+                    "Missing prerequisite: a PAR workbook. Next: Open a PAR workbook, then run `pokie build <path> --target parWorkbook`.",
             });
-            expect(result.message.replace(`"${blueprintPath}"`, "")).not.toMatch(/\b(?:blueprint|tsPackage|parWorkbook|capability|registry)\b/);
         });
     });
 
@@ -281,9 +280,8 @@ describe("StudioArtifactBuildService", () => {
                 target: "parWorkbook",
                 message:
                     `"${packageRoot}" is a POKIE game package. It cannot build a PAR workbook. ` +
-                    'To build a PAR workbook, start with a PAR workbook. Run "pokie inspect <path>" to see compatible next actions.',
+                    "Missing prerequisite: a PAR workbook. Next: Open a PAR workbook, then run `pokie build <path> --target parWorkbook`.",
             });
-            expect(unsupportedBuild.message).not.toMatch(/\b(?:blueprint|tsPackage|parWorkbook|capability|registry)\b/);
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {

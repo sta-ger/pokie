@@ -54,13 +54,11 @@ export type ExportDeployTargetCard = {
 };
 
 // Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
-// tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm vocabulary and semantics
+// tsPackage/outcomeLibrary/stakeAdapter/parWorkbook vocabulary and semantics
 // ArtifactBuilderRegistry.describe() itself already reports (see ArtifactBuilderRegistry.ts's own
 // UNSUPPORTED_NOTES), restated here only as a label/one-line purpose for this card -- never a second,
-// independently-decided description of what building a target does or doesn't do. "wasm" is never actually
-// reachable as a card (ArtifactBuilderRegistry reports it as supported by no ProjectType today -- see
-// ArtifactBuilderRegistry's own "wasm" doc comment), but is listed here for the same exhaustiveness reason
-// GROUP_LABELS below covers every ExportDeployTargetKind.
+// independently-decided description of what building a target does or doesn't do. WASM is intentionally
+// absent: it is an inspection-only project kind until a matrix-supported builder exists.
 const ARTIFACT_TARGET_CARD_INFO: Readonly<
     Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
 > = {
@@ -94,13 +92,6 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
         unavailableReason: "This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue.",
     },
-    wasm: {
-        label: "WASM",
-        purpose: "This output is not available for the current project.",
-        destination: "This output is not available for the current project.",
-        technicalDestination: "Not available.",
-        unavailableReason: "WASM export is not available yet because POKIE has no WASM builder. Choose another output format.",
-    },
 };
 
 // Builds one card per ArtifactBuilderRegistry target. `supported` is resolved server-side by
@@ -109,12 +100,17 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 // making an unavailable output look as though Studio forgot to offer it.
 function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fallbackReason: string): readonly string[] {
     if (entry.supported) return [];
+    if (entry.diagnostic !== undefined) return [entry.diagnostic];
     if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
     return [fallbackReason];
 }
 
 export function describeArtifactBuildTargetCards(targets: readonly StudioArtifactTargetView[]): ExportDeployTargetCard[] {
     return targets
+        // A stale server response must not re-advertise a hidden build target in the UI. The server is
+        // matrix-authoritative, but this defensive filter makes the hidden/unadvertised contract hold while
+        // a browser has an older response cached.
+        .filter((entry) => entry.target in ARTIFACT_TARGET_CARD_INFO)
         .map((entry) => {
             const info = ARTIFACT_TARGET_CARD_INFO[entry.target];
             return {

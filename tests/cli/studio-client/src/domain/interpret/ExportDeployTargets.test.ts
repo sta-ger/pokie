@@ -125,11 +125,10 @@ describe("describeArtifactBuildTargetCards", () => {
 
     it("supplies every unsupported artifact target with a target-specific next step when the server has no reason", () => {
         const cards = describeArtifactBuildTargetCards([
-            {target: "tsPackage", supported: false, unsupportedNotes: []},
-            {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
-            {target: "stakeAdapter", supported: false, unsupportedNotes: []},
-            {target: "parWorkbook", supported: false, unsupportedNotes: []},
-            {target: "wasm", supported: false, unsupportedNotes: []},
+            {target: "tsPackage", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "stakeAdapter", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, state: "diagnostic-required", unsupportedNotes: []},
         ]);
 
         expect(cards.map((card) => card.unavailableReasons)).toEqual([
@@ -137,7 +136,6 @@ describe("describeArtifactBuildTargetCards", () => {
             ["This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
             ["This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
             ["This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue."],
-            ["WASM export is not available yet because POKIE has no WASM builder. Choose another output format."],
         ]);
     });
 

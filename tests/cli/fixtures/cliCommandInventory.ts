@@ -755,7 +755,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["config.json"],
         expectedExitCode: 1,
         expectedError:
-            "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.\n\n" +
+            "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.\n\n" +
             "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
     },
     {
@@ -764,7 +764,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target rejects an unknown value",
         args: ["config.json", "--target", "bogus"],
         expectedExitCode: 1,
-        expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.',
+        expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.',
     },
     {
         // Placed before every other valid case so it wins the accepted-value lookup for --target ("tsPackage")
@@ -2405,7 +2405,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target given with no value",
         args: ["config.json", "--target"],
         expectedExitCode: 1,
-        expectedError: "--target requires a value. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.",
+        expectedError: "--target requires a value. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.",
     },
     {
         command: "build",

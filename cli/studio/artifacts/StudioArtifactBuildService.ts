@@ -5,7 +5,8 @@ import {
     type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
-    describeProjectType,
+    describeBuildProductMatrixDiagnostic,
+    getBuildProductMatrixCell,
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
@@ -57,7 +58,7 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 
 // The Project Dashboard's Build/Export tab's own "Build artifact" group (see ExportDeployTab.tsx) -- the
 // *only* Studio surface that runs the active project through ArtifactBuilderRegistry directly, the same
-// closed tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm vocabulary and the same
+// matrix-advertised tsPackage/outcomeLibrary/stakeAdapter/parWorkbook vocabulary and the same
 // resolve -> capability-check -> build pipeline "pokie build <project> --target <target>" itself runs (see
 // cli/commands/BuildCommand.ts) -- never a second, Studio-only build or serialization path.
 //
@@ -94,9 +95,14 @@ export class StudioArtifactBuildService {
         const project = await this.resolveProject.resolve(projectRoot);
         return this.registry.listTargets().map((target) => {
             const descriptor = this.registry.describe(target);
+            const cell = project === undefined ? undefined : getBuildProductMatrixCell(project.type, target);
             return {
                 target,
-                supported: project !== undefined && this.registry.supportsConversionFrom(target, project.type),
+                supported: cell?.state === "supported",
+                state: cell?.state ?? "diagnostic-required",
+                ...(cell !== undefined && cell.state !== "supported"
+                    ? {diagnostic: describeBuildProductMatrixDiagnostic(project!.type, target, project!.rootPath)}
+                    : {}),
                 unsupportedNotes: descriptor.unsupportedNotes,
             };
         });
@@ -120,7 +126,7 @@ export class StudioArtifactBuildService {
             return {status: "unsupported", target, message: this.describeUnsupportedMessage(target, project)};
         }
 
-        const destinationCheck = this.registry.checkDestination(target, destination);
+        const destinationCheck = this.registry.checkDestination(target, destination, project.rootPath);
         if (!destinationCheck.available) {
             return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: destinationCheck.message};
         }
@@ -311,15 +317,7 @@ export class StudioArtifactBuildService {
     // client ever call build() without previewing first) are never two differently-worded statements of the
     // same fact.
     private describeUnsupportedMessage(target: ArtifactTargetType, project: PokieProject): string {
-        const descriptor = this.registry.describe(target);
-        const sourceKind = describeProjectType(project.type);
-        const artifactKind = describeProjectType(target);
-        const compatiblePrerequisite =
-            descriptor.supportedSources.length > 0
-                ? `To build a ${artifactKind}, start with ${descriptor.supportedSources.map((type) => `a ${describeProjectType(type)}`).join(" or ")}.`
-                : `POKIE cannot build a ${artifactKind} from any project yet.`;
-
-        return `"${project.rootPath}" is a ${sourceKind}. It cannot build a ${artifactKind}. ${compatiblePrerequisite} Run "pokie inspect <path>" to see compatible next actions.`;
+        return describeBuildProductMatrixDiagnostic(project.type, target, project.rootPath);
     }
 }
 

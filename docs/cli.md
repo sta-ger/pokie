@@ -376,7 +376,7 @@ POKIE's universal build pipeline: resolves `<project>` to a POKIE project and bu
 it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
 `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
 
-The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
+The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
 It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
 The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
@@ -395,7 +395,7 @@ Options:
 - `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
   already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
   unrecognized throws, naming the project types the CLI understands.
-- `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, `wasm`.
+- `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building
   `outcomeLibrary`/`stakeAdapter`/`parWorkbook` from a `blueprint` source, for instance, throws naming which source
@@ -408,14 +408,17 @@ Options:
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-Exactly one conversion actually *builds* something new: a `blueprint` source into a `tsPackage` — the classic
-"generate a game package from a `GameBlueprint`" path, described in full below. Every other accepted `--target`
-**republishes** an already-built artifact of its own type (an `outcomeLibrary` bundle, a `stakeAdapter` export, a
-`parWorkbook` .xlsx) to a new destination, atomically and byte-faithfully — reading it back with the same importer
-that produced it and re-exporting it unchanged, never re-deriving or recovering a game model from it. `wasm` is
-listed as an accepted `--target` value but has no source project type that grants it today, and no builder is
-registered for it — POKIE has no arbitrary package-to-WASM compiler; building it always throws, naming what's
-missing, rather than silently no-opting or pretending to compile something.
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its nine supported cells are
+`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
+`outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
+`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
+resolvable for inspection, but is intentionally not a build target because POKIE has no WASM artifact builder.
+
+A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
+described in full below. Blueprint and package sources can also create or reuse their managed compatible Outcome
+Library before producing an Outcome Library or Stake Engine artifact; same-type Outcome, Stake, and PAR cells
+republish their recognized artifact to a new destination. Every writer is atomic and validates its input before
+publishing, never attempting to recover a game model from an outcome-based artifact.
 
 For random game generation, there is no `build random`/`--random` — generation and building are two separate,
 explicit steps: [`pokie create --random`](#pokie-create-name---random) writes a Blueprint Project, then `pokie
@@ -705,7 +708,7 @@ Failure modes:
 - `<project>` missing, or not recognized as a POKIE project at all (`pokie build` with no arguments, or an unknown
   option) throws a `Usage: pokie build <project> --target <artifact> [--out <path>]` error naming the project types
   the CLI understands.
-- `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`,
+- `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`,
   throws before `<project>` is even resolved, listing the full accepted vocabulary.
 - `--target` given a value `<project>`'s own resolved type can't build (e.g. `outcomeLibrary` from a `blueprint`
   source) throws naming which source types that target actually supports.

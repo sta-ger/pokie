@@ -249,6 +249,7 @@ export * from "./project/ArtifactDestinationCheck.js";
 export * from "./project/ArtifactTargetType.js";
 export * from "./project/BlueprintProjectTargetAdapter.js";
 export * from "./project/BlueprintStakeOutcomeLibraryWorkflow.js";
+export * from "./project/BuildProductMatrix.js";
 export * from "./project/GameModelProjection.js";
 export * from "./project/ManagedOutcomeProjectService.js";
 export * from "./project/OutcomeLibraryArtifactBuilder.js";

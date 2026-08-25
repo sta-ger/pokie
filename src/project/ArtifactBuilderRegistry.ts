@@ -4,8 +4,8 @@ import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
 import type {ArtifactDestinationCheck} from "./ArtifactDestinationCheck.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
-import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -18,7 +18,6 @@ import {
     WASM_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
-import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import type {ProjectType} from "./ProjectType.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
@@ -27,6 +26,12 @@ import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from 
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {
+    ADVERTISED_ARTIFACT_BUILD_TARGETS,
+    BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
+    describeBuildProductMatrixDiagnostic,
+    getBuildProductMatrixCell,
+} from "./BuildProductMatrix.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -69,8 +74,6 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
     ],
 };
 
-const ALL_PROJECT_TYPES = Object.keys(PROJECT_TYPE_CAPABILITIES) as ProjectType[];
-
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
     const operation = TARGET_OPERATION[target];
     const requiredSourceCapability = OPERATION_REQUIRED_CAPABILITY[operation];
@@ -78,13 +81,15 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
         throw new Error(`ArtifactBuilderRegistry has no OPERATION_REQUIRED_CAPABILITY entry for "${operation}".`);
     }
 
-    const supportedSources = ALL_PROJECT_TYPES.filter((type) => PROJECT_TYPE_CAPABILITIES[type].includes(requiredSourceCapability));
+    const sourceCells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.map((source) => getBuildProductMatrixCell(source, target));
+    const supportedSources = sourceCells.filter((cell) => cell.state === "supported").map((cell) => cell.source);
 
     return {
         target,
         operation,
         requiredSourceCapability,
         supportedSources,
+        sourceCells,
         unsupportedNotes: UNSUPPORTED_NOTES[target],
     };
 }
@@ -136,7 +141,7 @@ export class ArtifactBuilderRegistry {
     }
 
     public listTargets(): readonly ArtifactTargetType[] {
-        return Array.from(this.descriptors.keys());
+        return ADVERTISED_ARTIFACT_BUILD_TARGETS;
     }
 
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
@@ -151,7 +156,7 @@ export class ArtifactBuilderRegistry {
     // describeUnsupportedProjectOperation performs for a PokieOperation, exposed target-first so a caller
     // building toward a specific artifact doesn't need to know which PokieOperation id backs it.
     public supportsConversionFrom(target: ArtifactTargetType, source: ProjectType): boolean {
-        return this.describe(target).supportedSources.includes(source);
+        return getBuildProductMatrixCell(source, target).state === "supported";
     }
 
     // Reports whether `destinationPath` would be accepted by `target`'s own build() -- the exact same
@@ -162,7 +167,7 @@ export class ArtifactBuilderRegistry {
     // before ever attempting one, rather than re-deriving "file" vs "directory" per target itself. Throws
     // (same as build()) when `target` has no registered builder today -- there is no destinationKind to check
     // against.
-    public checkDestination(target: ArtifactTargetType, destinationPath: string): ArtifactDestinationCheck {
+    public checkDestination(target: ArtifactTargetType, destinationPath: string, sourcePath?: string): ArtifactDestinationCheck {
         const builder = this.builders.get(target);
         if (builder === undefined) {
             const descriptor = this.describe(target);
@@ -170,6 +175,7 @@ export class ArtifactBuilderRegistry {
         }
 
         try {
+            if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
             assertArtifactDestinationAvailable(destinationPath, builder.destinationKind);
             return {available: true};
         } catch (error) {
@@ -187,6 +193,9 @@ export class ArtifactBuilderRegistry {
     // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
     // is never a second, differently-worded "not supported" statement.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        if (!this.supportsConversionFrom(target, source.type)) {
+            return Promise.reject(new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath)));
+        }
         if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
             return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
         }
@@ -202,10 +211,6 @@ export class ArtifactBuilderRegistry {
                 );
         }
         const descriptor = this.describe(target);
-        const diagnostic = describeUnsupportedProjectOperation(source, descriptor.operation);
-        if (diagnostic !== undefined) {
-            return Promise.reject(new Error(diagnostic.message));
-        }
 
         const builder = this.builders.get(target);
         if (builder === undefined) {

@@ -1,4 +1,4 @@
-import type {ArtifactTargetType} from "pokie";
+import {ADVERTISED_ARTIFACT_BUILD_TARGETS, type ArtifactTargetType} from "pokie";
 
 export type ArtifactBuildRequestInput = {
     target?: unknown;
@@ -13,7 +13,7 @@ export type ValidatedArtifactBuildRequest = {
 // The same closed vocabulary ArtifactBuilderRegistry.listTargets() (and BuildCommand's own --target
 // option) already enforce -- spelled out here so an unknown "target" is rejected as a 400 before ever
 // resolving a project, instead of surfacing as a later, less specific registry error.
-const ARTIFACT_TARGET_TYPES: readonly ArtifactTargetType[] = ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"];
+const ARTIFACT_TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.trim().length > 0;

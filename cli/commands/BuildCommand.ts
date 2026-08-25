@@ -2,9 +2,10 @@ import {
     ArtifactBuilderRegistry,
     type ArtifactBuildOptions,
     ArtifactTargetType,
+    ADVERTISED_ARTIFACT_BUILD_TARGETS,
     computeGameBlueprintHash,
     buildGameBuildInfo,
-    describeProjectType,
+    describeBuildProductMatrixDiagnostic,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -21,10 +22,9 @@ import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-// Every ArtifactTargetType --target accepts -- the same closed vocabulary ArtifactBuilderRegistry.listTargets()
-// already returns, spelled out here so an invalid --target value is rejected by Commander's own option parser
-// (before a project is even resolved) rather than surfacing as a later, less specific registry error.
-const TARGET_TYPES: readonly ArtifactTargetType[] = ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"];
+// The matrix's advertised targets, rather than ArtifactTargetType's wider inspection vocabulary. WASM is
+// resolvable for inspection but has no builder, so it is intentionally rejected before project resolution.
+const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
@@ -154,20 +154,15 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         if (!this.registry.supportsConversionFrom(options.target, project.type)) {
-            const descriptor = this.registry.describe(options.target);
-            const sourceKind = describeProjectType(project.type);
-            const targetKind = describeProjectType(options.target);
-            const compatiblePrerequisite =
-                descriptor.supportedSources.length > 0
-                    ? `To build a ${targetKind}, start with ${descriptor.supportedSources.map((type) => `a ${describeProjectType(type)}`).join(" or ")}.`
-                    : `POKIE cannot build a ${targetKind} from any project yet.`;
-            throw new Error(
-                `"${projectPath}" is a ${sourceKind}. It cannot build a ${targetKind}. ${compatiblePrerequisite} ` +
-                    'Run "pokie inspect <path>" to see compatible next actions.',
-            );
+            throw new Error(describeBuildProductMatrixDiagnostic(project.type, options.target, projectPath));
         }
 
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
+
+        if (options.dryRun) {
+            const destinationCheck = this.registry.checkDestination(options.target, out, project.rootPath);
+            if (!destinationCheck.available) throw new Error(destinationCheck.message);
+        }
 
         if (options.target === "tsPackage" && project.type === "blueprint") {
             return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false);

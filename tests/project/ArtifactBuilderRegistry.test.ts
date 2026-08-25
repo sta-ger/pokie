@@ -16,8 +16,8 @@ import type {PokieProject} from "../../src/project/PokieProject.js";
 describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
-    it("lists exactly the five buildable target types", () => {
-        expect(new Set(registry.listTargets())).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
+    it("lists only matrix-advertised build targets", () => {
+        expect(new Set(registry.listTargets())).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
     });
 
     it("reports the true required source capability and supported sources for a package build", () => {
@@ -112,12 +112,12 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(1);
         });
 
-        it("rejects with the same capability diagnostic describe()/supportsConversionFrom() already report, without invoking any builder", async () => {
+        it("rejects with the matrix diagnostic before invoking any builder", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
 
             await expect(withBuilder.build("tsPackage", projectOf("tsPackage"), "/out/my-game")).rejects.toThrow(
-                /This POKIE game package cannot build a POKIE game package/,
+                /Missing prerequisite: a Game Blueprint source\. Next: Open a Game Blueprint/,
             );
             expect(builder.calls).toBe(0);
         });

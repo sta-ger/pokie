@@ -5872,7 +5872,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             const targets = body as {target: string; supported: boolean}[];
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry.supported]));
             expect(byTarget.get("tsPackage")).toBe(true);
             expect(byTarget.get("outcomeLibrary")).toBe(true);
