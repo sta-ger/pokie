@@ -8,6 +8,7 @@ import {
     StakeEngineExporter,
     StakeEngineExporting,
     StakeEngineExportModeInput,
+    StakeEngineExportValidator,
     StakeEngineImporter,
     StakeEngineImporting,
     StakeEngineImportWriter,
@@ -140,6 +141,27 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     public getCommanderCommand(): Command {
         return this.buildCommand();
+    }
+
+    // The target-oriented export alias must be able to prove an adapter source is usable without
+    // constructing a staging directory. Resolve every configured library (including bundle-backed
+    // modes) and apply the same request validator the concrete exporter applies before writing.
+    public async validateExportSource(configPath: string): Promise<void> {
+        const descriptor = this.loadDescriptor(configPath);
+        const configDir = path.dirname(configPath);
+        const modes = await Promise.all(
+            descriptor.modes.map(async (entry): Promise<StakeEngineExportModeInput> => ({
+                modeName: entry.modeName,
+                cost: entry.cost,
+                library:
+                    entry.libraryPath !== undefined
+                        ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
+                        : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+            })),
+        );
+        if (new StakeEngineExportValidator().validate(modes).some((issue) => issue.severity === "error")) {
+            throw new Error("The Stake Engine source does not satisfy the export contract.");
+        }
     }
 
     public run(args: string[]): Promise<number> {

@@ -50,14 +50,21 @@ export class ExportCommand implements CliCommandHandling {
             }
             throw error;
         }
+        if (parsed.dryRun) {
+            return this.validateDryRunSource(parsed).then(() => {
+                const destination = this.resolveDestination(parsed);
+                const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
+                if (!destinationCheck.available) {
+                    throw new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message));
+                }
+                console.log(`Dry run -- would export target "${parsed.target}" from "${parsed.source}" to "${destination}". No files written.`);
+                return 0;
+            });
+        }
         const destination = this.resolveDestination(parsed);
         const destinationCheck = this.registry.checkDestination(this.artifactTarget(parsed.target), destination, parsed.source);
         if (!destinationCheck.available) {
             return Promise.reject(new Error(this.describeDestinationConflict(parsed.target, destinationCheck.message)));
-        }
-        if (parsed.dryRun) {
-            console.log(`Dry run -- would export target "${parsed.target}" from "${parsed.source}" to "${destination}". No files written.`);
-            return Promise.resolve(0);
         }
 
         const forwarded = args.filter((value, index) => value !== "--to" && args[index - 1] !== "--to" && value !== "--dry-run");
@@ -148,5 +155,35 @@ export class ExportCommand implements CliCommandHandling {
     private describeDestinationConflict(target: ExportTarget, detail: string): string {
         return `Cannot export target "${target}" because its destination is unavailable. ${detail} ` +
             "Next: choose a different --out path or remove the existing destination, then retry.";
+    }
+
+    private async validateDryRunSource(args: ExportArgs): Promise<void> {
+        try {
+            if (args.target === "outcomes") {
+                await this.outcomeLibrary.validateBuildSource(args.source);
+            } else if (args.target === "adapter") {
+                await this.stake.validateExportSource(args.source);
+            } else {
+                this.par.validateExportSource(args.source);
+            }
+        } catch {
+            throw new Error(this.describeSourceFailure(args));
+        }
+    }
+
+    private describeSourceFailure(args: ExportArgs): string {
+        let recovery: string;
+        switch (args.target) {
+            case "outcomes":
+                recovery = "provide an outcome-library config with valid mode sources";
+                break;
+            case "adapter":
+                recovery = "provide a Stake Engine export config with valid mode libraries and costs";
+                break;
+            case "workbook":
+                recovery = "provide a valid GameBlueprint JSON source";
+                break;
+        }
+        return `Cannot export target "${args.target}" because source "${args.source}" is not compatible. Next: ${recovery}, then retry.`;
     }
 }

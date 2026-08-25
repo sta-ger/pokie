@@ -11,11 +11,13 @@ import {
     OutcomeLibraryBundleValidator,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
+    OutcomeLibraryBundleWriteValidator,
     OutcomeSpaceEstimate,
     PokieGame,
     ValidationIssue,
     WeightedOutcomeInput,
     WeightedOutcomeLibrary,
+    WeightedOutcomeLibraryValidator,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
     estimateExactOutcomeSpaceSize,
@@ -180,6 +182,38 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
     public getCommanderCommand(): Command {
         return this.buildCommand();
+    }
+
+    // ExportCommand uses this read-only counterpart to `build`: it resolves the exact same descriptor
+    // and source files, then applies the structural checks that can run without staging an artifact.
+    // Keeping it here prevents the target-oriented alias from inventing a second config format.
+    public async validateBuildSource(configPath: string): Promise<void> {
+        const descriptor = this.loadDescriptor(configPath);
+        const configDir = path.dirname(configPath);
+        const modes: OutcomeLibraryBundleModeInput[] = [];
+        const issues: ValidationIssue[] = [];
+        const libraryValidator = new WeightedOutcomeLibraryValidator();
+
+        for (const entry of descriptor.modes) {
+            const library = entry.libraryPath !== undefined
+                ? (this.loadJson(path.resolve(configDir, entry.libraryPath)) as WeightedOutcomeLibrary)
+                : {
+                    schemaVersion: entry.schemaVersion ?? 1,
+                    libraryId: entry.libraryId as string,
+                    outcomes: await this.readStreamedOutcomes(path.resolve(configDir, entry.outcomesPath as string)),
+                };
+            issues.push(...libraryValidator.validate(library));
+            modes.push({
+                modeName: entry.modeName,
+                libraryId: library.libraryId,
+                schemaVersion: library.schemaVersion,
+                outcomes: library.outcomes,
+            });
+        }
+        issues.push(...new OutcomeLibraryBundleWriteValidator().validate(modes));
+        if (issues.some((issue) => issue.severity === "error")) {
+            throw new Error("The outcome-library source does not satisfy the export contract.");
+        }
     }
 
     // Three ordinary-word verbs ("generate"/"build"/"validate") sharing one parent Commander instance —
@@ -595,6 +629,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
 
         return 0;
+    }
+
+    private async readStreamedOutcomes(filePath: string): Promise<WeightedOutcomeInput[]> {
+        const outcomes: WeightedOutcomeInput[] = [];
+        for await (const outcome of this.streamOutcomes(filePath)) {
+            outcomes.push(outcome);
+        }
+        return outcomes;
     }
 
     private async executeValidate(bundleDir: string, deep: boolean): Promise<number> {
