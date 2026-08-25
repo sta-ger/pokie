@@ -53,13 +53,16 @@ type ImportView =
 const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
 
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
-// actually load into the Project Dashboard. "tsPackage" passes straight through; "blueprint" is
-// materialized into a real runtime first (see createMaterializingRuntimePackageResolver's own doc
-// comment) -- both land on the exact same Overview/Game Model workspace, so both get the same Open
-// action here. Every other recognized type (outcomeLibrary/stakeAdapter/wasm/parWorkbook) is a real,
-// correctly-detected project, just not one there's a "run it in Studio" flow for yet, so the list shows
-// its type/capabilities but no Open action.
-const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>(["tsPackage", "blueprint"]);
+// load runnable packages and Blueprints, as well as canonical outcome-source projects. A Blueprint is
+// materialized into a runtime package; an outcome library or Stake Engine export loads its own
+// capability-gated dashboard, including Build/Export. WASM has no Studio workspace and PAR workbooks
+// continue through their dedicated Design Game action below.
+const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
+    "tsPackage",
+    "blueprint",
+    "outcomeLibrary",
+    "stakeAdapter",
+]);
 
 const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",

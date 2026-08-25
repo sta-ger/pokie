@@ -699,6 +699,39 @@ describe("ProjectsPanel: Import Project", () => {
         expect(within(missingRow as HTMLElement).getByRole("checkbox", {name: "Select missing project Missing game"}).closest("td")).toHaveAttribute("data-label", "Select");
     });
 
+    it.each([
+        ["outcomeLibrary", "Outcome library", "/games/outcomes"],
+        ["stakeAdapter", "Stake Engine export", "/games/stake-export"],
+    ] as const)("opens an available %s registry entry through the public Project workspace action", async (type, name, location) => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{location, name, type, capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"}],
+            }),
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: location}},
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
+        expect(within(row).getByRole("button", {name: "Open"})).toBeInTheDocument();
+        await user.click(within(row).getByRole("button", {name: "Open"}));
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/open",
+                    init: expect.objectContaining({body: JSON.stringify({projectRoot: location})}),
+                }),
+            ),
+        );
+    });
+
     it("uses the labelled card layout while desktop navigation leaves the Projects panel too narrow for every action", () => {
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
 
