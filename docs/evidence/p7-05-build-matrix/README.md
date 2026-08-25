@@ -64,6 +64,23 @@ identified that local control before reaching Workspace. No Studio artifact
 request or rendered product error appeared. This is a selector/readiness gap,
 not a product failure; no further launch is permitted in this invocation.
 
+Final independent public-UI recovery (2026-08-25): the candidate was rebuilt
+and four fresh-profile Studio sessions were launched only with
+`node ./dist/cli/pokie.js --no-open`. The repaired visible-control driver
+registered and opened the Blueprint and package sources, selected
+`Build/Export`, typed an explicit destination in each card, observed its local
+`Status: Ready to build`, and observed `Built to …` for these five cells:
+Blueprint → TypeScript package, Outcome library, and Stake Engine export; and
+TypeScript package → Outcome library and Stake Engine export. A fresh
+registered Outcome Library then rendered as `Available` with only `Remove` (no
+`Open`), so its two supported Build/Export conversions could not be reached.
+A fresh registered Stake Engine export rendered the same way, blocking its
+supported self-republish. This is a P2 product finding: Studio's public
+Projects workflow restricts `Open` to Blueprint and package sources, despite
+the matrix advertising those three source-to-target cells. No private API or
+direct route was used, and no Studio-only result is claimed for unreachable
+cells.
+
 Only this concise account, the structured summary, and the bounded recovery
 transcript are retained; temporary projects, browser profiles, logs, generated
 artifacts, and the uncommitted browser harness are outside the repository

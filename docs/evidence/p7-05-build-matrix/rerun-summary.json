@@ -19,7 +19,7 @@
     "workspaceObserved": true,
     "buildExportCardsObserved": true,
     "artifactBuildRequestAccepted": false,
-    "status": "selector-inconclusive",
+    "status": "finding",
     "recoveryObservation": "Fresh candidate Studio rendered Design Game, accepted Create Project, rendered Workspace and Build/Export, then the harness card-scoping selector failed before a Build request. No rendered product error occurred.",
     "focusedContinuation": {
       "launches": 4,
@@ -28,6 +28,24 @@
       "artifactBuildRequestAccepted": false,
       "status": "selector-inconclusive",
       "observation": "The final fresh-profile run used the real advanced-options and Load from path controls to load a fresh temporary Blueprint; the rendered next action was Save Project, so no Workspace or artifact request followed before the launch budget ended."
+    },
+    "finalIndependentPublicUiRecovery": {
+      "freshStudioLaunches": 4,
+      "candidateBuild": "passed",
+      "passedExplicitDestinationCells": [
+        "blueprint:tsPackage",
+        "blueprint:outcomeLibrary",
+        "blueprint:stakeAdapter",
+        "tsPackage:outcomeLibrary",
+        "tsPackage:stakeAdapter"
+      ],
+      "finding": {
+        "severity": "P2",
+        "surface": "Studio Projects public workflow",
+        "blockedCells": ["outcomeLibrary:outcomeLibrary", "outcomeLibrary:stakeAdapter", "stakeAdapter:stakeAdapter"],
+        "observation": "Available registered outcome-library and stake-adapter rows rendered Remove but no Open, so no public UI path reached their Build/Export cards.",
+        "rootCause": "ProjectsPanel.OPENABLE_TYPES contains only tsPackage and blueprint."
+      }
     }
   }
 }
