@@ -17,11 +17,11 @@ import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinat
 import type {PokieProject} from "./PokieProject.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 
-// (Re)publishes an already-exported "parWorkbook" .xlsx file to a new destination, atomically -- reads it back
-// with ParSheetImporter and re-exports the resulting GameBlueprint straight through ParSheetExporter, exactly
-// the export/import/export round trip tests/parsheet/ParSheetImporter.test.ts already exercises. Never
-// re-derives or recomputes anything: this is a validated copy/republish, not a rebuild from a game model (see
-// ArtifactBuilderRegistry's own "parWorkbook" unsupportedNotes).
+// Exports a canonical Blueprint as a deterministic PAR workbook snapshot, or republishes an already-exported
+// "parWorkbook" .xlsx file to a new destination. Workbook republish reads the source with ParSheetImporter
+// and re-exports its resulting GameBlueprint through ParSheetExporter, exactly as the PAR round-trip tests
+// exercise. Blueprint export materializes its valid canonical reel representation without changing the
+// authored source; both paths use ParSheetExporter and preserve atomic destination safety.
 export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
     public readonly target = "parWorkbook";
     public readonly destinationKind = "file";

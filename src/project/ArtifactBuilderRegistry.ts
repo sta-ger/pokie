@@ -67,8 +67,8 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "those outcomes; that recovery is not supported by any builder.",
     ],
     parWorkbook: [
-        "Exports an already-loaded PAR sheet model to its own .xlsx workbook format only -- does not derive a " +
-            "PAR sheet from a package/blueprint on its own.",
+        "Exports a Game Blueprint as a deterministic PAR workbook snapshot, or republishes an existing " +
+            "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
     ],
     wasm: [
         'No ProjectType grants the capability this target requires and no builder is registered for it -- ' +
@@ -118,9 +118,10 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
 // OutcomeLibraryBundleWriter, StakeEngineImporter/StakeEngineExporter, ParSheetImporter/ParSheetExporter) --
 // see each builder's own doc comment for exactly what it reads/writes. Blueprint/tsPackage -> Outcome/Stake
 // use the registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back
-// to the Stake builder; outcomeLibrary -> outcomeLibrary, stakeAdapter -> stakeAdapter, and parWorkbook ->
-// parWorkbook are the matrix's same-type republish cells. See UNSUPPORTED_NOTES for what each target's build
-// explicitly does NOT promise.
+// to the Stake builder; Blueprint -> parWorkbook writes a deterministic workbook snapshot, while
+// outcomeLibrary -> outcomeLibrary, stakeAdapter -> stakeAdapter, and parWorkbook -> parWorkbook are the
+// matrix's same-type republish cells. See UNSUPPORTED_NOTES for what each target's build explicitly does NOT
+// promise.
 export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
