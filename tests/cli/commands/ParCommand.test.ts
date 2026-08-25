@@ -294,7 +294,7 @@ describe("ParCommand import resolved-project boundary", () => {
         const command = new ParCommand("1.3.0", importer, createStubExporter([]), () => rawBlueprint, undefined, resolveProject);
 
         await expect(command.run(["import", "/some/existing/package"])).rejects.toThrow(
-            /"par\.import" is not supported for a "tsPackage" project \(missing the "parWorkbook\.exchange" capability\)/,
+            /This POKIE game package cannot import a PAR workbook/,
         );
 
         expect(resolveProject.calls).toEqual(["/some/existing/package"]);

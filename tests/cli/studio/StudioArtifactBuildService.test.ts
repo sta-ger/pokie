@@ -126,6 +126,24 @@ describe("StudioArtifactBuildService", () => {
             }
             expect(result.message).toContain("was not recognized as a POKIE project");
         });
+
+        it("uses public source and artifact names with a compatible next action for an unsupported build", async () => {
+            const blueprintPath = writeBlueprintFile();
+
+            const result = await service.preview(blueprintPath, "parWorkbook");
+
+            if (result.status !== "unsupported") {
+                throw new Error("expected unsupported");
+            }
+            expect(result).toEqual({
+                status: "unsupported",
+                target: "parWorkbook",
+                message:
+                    `"${blueprintPath}" is a Game Blueprint. It cannot build a PAR workbook. ` +
+                    'To build a PAR workbook, start with a PAR workbook. Run "pokie inspect <path>" to see compatible next actions.',
+            });
+            expect(result.message.replace(`"${blueprintPath}"`, "")).not.toMatch(/\b(?:blueprint|tsPackage|parWorkbook|capability|registry)\b/);
+        });
     });
 
     describe("build", () => {
@@ -254,13 +272,18 @@ describe("StudioArtifactBuildService", () => {
                 expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
                 expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),
             ]);
-            await expect(service.build(packageRoot, "parWorkbook", path.join(workDir, "unsupported.xlsx"))).resolves.toEqual(
-                expect.objectContaining({
-                    status: "unsupported",
-                    target: "parWorkbook",
-                    message: expect.stringContaining('"parWorkbook" cannot be built from a "tsPackage" project. Supported sources: parWorkbook.'),
-                }),
-            );
+            const unsupportedBuild = await service.build(packageRoot, "parWorkbook", path.join(workDir, "unsupported.xlsx"));
+            if (unsupportedBuild.status !== "unsupported") {
+                throw new Error("expected unsupported");
+            }
+            expect(unsupportedBuild).toEqual({
+                status: "unsupported",
+                target: "parWorkbook",
+                message:
+                    `"${packageRoot}" is a POKIE game package. It cannot build a PAR workbook. ` +
+                    'To build a PAR workbook, start with a PAR workbook. Run "pokie inspect <path>" to see compatible next actions.',
+            });
+            expect(unsupportedBuild.message).not.toMatch(/\b(?:blueprint|tsPackage|parWorkbook|capability|registry)\b/);
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {

@@ -4,6 +4,7 @@ import {
     ArtifactTargetType,
     computeGameBlueprintHash,
     buildGameBuildInfo,
+    describeProjectType,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -154,10 +155,15 @@ export class BuildCommand implements CliCommandHandling {
 
         if (!this.registry.supportsConversionFrom(options.target, project.type)) {
             const descriptor = this.registry.describe(options.target);
-            const supported = descriptor.supportedSources.length > 0 ? descriptor.supportedSources.join(", ") : "none today";
+            const sourceKind = describeProjectType(project.type);
+            const targetKind = describeProjectType(options.target);
+            const compatiblePrerequisite =
+                descriptor.supportedSources.length > 0
+                    ? `To build a ${targetKind}, start with ${descriptor.supportedSources.map((type) => `a ${describeProjectType(type)}`).join(" or ")}.`
+                    : `POKIE cannot build a ${targetKind} from any project yet.`;
             throw new Error(
-                `"${options.target}" cannot be built from a "${project.type}" project. Supported sources: ${supported}.\n` +
-                    descriptor.unsupportedNotes.join("\n"),
+                `"${projectPath}" is a ${sourceKind}. It cannot build a ${targetKind}. ${compatiblePrerequisite} ` +
+                    'Run "pokie inspect <path>" to see compatible next actions.',
             );
         }
 

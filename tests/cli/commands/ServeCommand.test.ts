@@ -231,7 +231,7 @@ describe("ServeCommand outcome-source routing", () => {
         const loadGame = jest.fn();
         const command = new ServeCommand(loadGame, undefined, undefined, resolveProject);
 
-        await expect(command.run(["/stake/base"])).rejects.toThrow(/"outcomeSource\.serve" is not supported for a "stakeAdapter" project/);
+        await expect(command.run(["/stake/base"])).rejects.toThrow(/This Stake Engine export cannot serve pre-generated outcomes/);
         expect(loadGame).not.toHaveBeenCalled();
     });
 
@@ -241,7 +241,7 @@ describe("ServeCommand outcome-source routing", () => {
         const command = new ServeCommand(loadGame, undefined, undefined, resolveProject);
 
         await expect(command.run(["/stake/base", "--mode", "base"])).rejects.toThrow(
-            /"outcomeSource\.serve" is not supported for a "stakeAdapter" project/,
+            /This Stake Engine export cannot serve pre-generated outcomes/,
         );
         expect(loadGame).not.toHaveBeenCalled();
     });

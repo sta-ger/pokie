@@ -1,0 +1,280 @@
+P7-04 independent public CLI inspection transcript
+Candidate SHA: c9320f028b78b7dc4344c35c5e28a3a3ad97ef7c
+Package: pokie-1.3.0.tgz (built by npm pack from the candidate)
+Input provenance: fresh synthetic fixtures created in each run directory from the public project metadata shapes; the PAR workbook contains its public Manifest, Symbols, and Paytable worksheets.
+
+[first / blueprint]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.blueprint.json
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting Game Blueprint at "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.blueprint.json"
+
+  kind             Game Blueprint
+  purpose          A game design source that POKIE can turn into runnable game software or pre-generated outcomes.
+
+Available next actions:
+  Build a POKIE game package:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.blueprint.json" --target tsPackage
+  Build an Outcome Library:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.blueprint.json" --target outcomeLibrary
+  Export for Stake Engine:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.blueprint.json" --target stakeAdapter
+  Export a PAR workbook:
+    pokie par export "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.blueprint.json"
+
+Before you continue:
+  - To validate, simulate, replay, or serve the game, first build a POKIE game package.
+
+[first / game-package]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting POKIE game package at "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package"
+
+  kind             POKIE game package
+  purpose          A runnable game package.
+
+Available next actions:
+  Validate the game:
+    pokie validate "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package"
+  Simulate game rounds:
+    pokie sim "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package" --rounds 10000 --seed demo
+  Replay one round:
+    pokie replay "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package" --round 1 --seed demo
+  Run a local game server:
+    pokie serve "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package"
+  Build an Outcome Library:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/game-package" --target outcomeLibrary
+
+[first / outcome-library]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting Outcome Library at "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library"
+
+  kind             Outcome Library
+  purpose          A pre-generated source of game outcomes that can be checked, analyzed, sampled, simulated, or served.
+
+Available next actions:
+  Validate the outcome data:
+    pokie validate "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library" --deep
+  Inspect exact outcome statistics:
+    pokie outcomesource inspect "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library"
+  Simulate outcome draws:
+    pokie sim "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library" --rounds 10000 --mode <modeName> --seed demo
+  Run a local outcome server:
+    pokie serve "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library" --mode <modeName>
+  Export for Stake Engine:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/outcome-library" --target stakeAdapter
+
+Before you continue:
+  - A POKIE game package is required to run the original game logic; an Outcome Library serves its pre-generated outcomes instead.
+
+[first / stake-engine-export]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/stake-engine-export
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting Stake Engine export at "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/stake-engine-export"
+
+  kind             Stake Engine export
+  purpose          A Stake Engine-format export of pre-generated outcomes.
+
+Available next actions:
+  Inspect exact outcome statistics:
+    pokie outcomesource inspect "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/stake-engine-export"
+  Compare it with another outcome source:
+    pokie outcomesource diff "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/stake-engine-export" <otherPath>
+
+Before you continue:
+  - To sample, simulate, replay, or serve outcomes, use the compatible Outcome Library that produced this export.
+  - To run or validate game logic, use a POKIE game package.
+
+[first / par-workbook]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.par.xlsx
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting PAR workbook at "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.par.xlsx"
+
+  kind             PAR workbook
+  purpose          A PAR spreadsheet workbook that can be imported into a Game Blueprint.
+
+Available next actions:
+  Import a Game Blueprint:
+    pokie par import "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.par.xlsx"
+
+Before you continue:
+  - To build, validate, simulate, or run a game, first import the workbook into a Game Blueprint and build a POKIE game package.
+
+[first / wasm-component]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.wasm
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting POKIE WASM component at "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.wasm"
+
+  kind             POKIE WASM component
+  purpose          A compatible WebAssembly component whose POKIE metadata can be inspected.
+
+Available next actions:
+  Inspect this component:
+    pokie inspect "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/fixture.wasm"
+
+Before you continue:
+  - POKIE can inspect this component's metadata, but cannot build, run, simulate, or validate WASM game logic.
+
+[first / malformed-package]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/malformed-package
+exit: 1
+input-artifacts: unchanged
+output:
+POKIE could not inspect "/tmp/p7-04-public-inspect-PH7uOo/first/inputs/malformed-package" because its project metadata is malformed. Fix the project metadata, then run "pokie inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/malformed-package" again.
+
+[first / unsupported]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/first/inputs/unsupported.txt
+exit: 1
+input-artifacts: unchanged
+output:
+"/tmp/p7-04-public-inspect-PH7uOo/first/inputs/unsupported.txt" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.
+
+[independent-rerun / blueprint]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.blueprint.json
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting Game Blueprint at "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.blueprint.json"
+
+  kind             Game Blueprint
+  purpose          A game design source that POKIE can turn into runnable game software or pre-generated outcomes.
+
+Available next actions:
+  Build a POKIE game package:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.blueprint.json" --target tsPackage
+  Build an Outcome Library:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.blueprint.json" --target outcomeLibrary
+  Export for Stake Engine:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.blueprint.json" --target stakeAdapter
+  Export a PAR workbook:
+    pokie par export "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.blueprint.json"
+
+Before you continue:
+  - To validate, simulate, replay, or serve the game, first build a POKIE game package.
+
+[independent-rerun / game-package]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting POKIE game package at "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package"
+
+  kind             POKIE game package
+  purpose          A runnable game package.
+
+Available next actions:
+  Validate the game:
+    pokie validate "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package"
+  Simulate game rounds:
+    pokie sim "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package" --rounds 10000 --seed demo
+  Replay one round:
+    pokie replay "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package" --round 1 --seed demo
+  Run a local game server:
+    pokie serve "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package"
+  Build an Outcome Library:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/game-package" --target outcomeLibrary
+
+[independent-rerun / outcome-library]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting Outcome Library at "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library"
+
+  kind             Outcome Library
+  purpose          A pre-generated source of game outcomes that can be checked, analyzed, sampled, simulated, or served.
+
+Available next actions:
+  Validate the outcome data:
+    pokie validate "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library" --deep
+  Inspect exact outcome statistics:
+    pokie outcomesource inspect "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library"
+  Simulate outcome draws:
+    pokie sim "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library" --rounds 10000 --mode <modeName> --seed demo
+  Run a local outcome server:
+    pokie serve "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library" --mode <modeName>
+  Export for Stake Engine:
+    pokie build "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/outcome-library" --target stakeAdapter
+
+Before you continue:
+  - A POKIE game package is required to run the original game logic; an Outcome Library serves its pre-generated outcomes instead.
+
+[independent-rerun / stake-engine-export]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/stake-engine-export
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting Stake Engine export at "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/stake-engine-export"
+
+  kind             Stake Engine export
+  purpose          A Stake Engine-format export of pre-generated outcomes.
+
+Available next actions:
+  Inspect exact outcome statistics:
+    pokie outcomesource inspect "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/stake-engine-export"
+  Compare it with another outcome source:
+    pokie outcomesource diff "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/stake-engine-export" <otherPath>
+
+Before you continue:
+  - To sample, simulate, replay, or serve outcomes, use the compatible Outcome Library that produced this export.
+  - To run or validate game logic, use a POKIE game package.
+
+[independent-rerun / par-workbook]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.par.xlsx
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting PAR workbook at "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.par.xlsx"
+
+  kind             PAR workbook
+  purpose          A PAR spreadsheet workbook that can be imported into a Game Blueprint.
+
+Available next actions:
+  Import a Game Blueprint:
+    pokie par import "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.par.xlsx"
+
+Before you continue:
+  - To build, validate, simulate, or run a game, first import the workbook into a Game Blueprint and build a POKIE game package.
+
+[independent-rerun / wasm-component]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.wasm
+exit: 0
+input-artifacts: unchanged
+output:
+Inspecting POKIE WASM component at "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.wasm"
+
+  kind             POKIE WASM component
+  purpose          A compatible WebAssembly component whose POKIE metadata can be inspected.
+
+Available next actions:
+  Inspect this component:
+    pokie inspect "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/fixture.wasm"
+
+Before you continue:
+  - POKIE can inspect this component's metadata, but cannot build, run, simulate, or validate WASM game logic.
+
+[independent-rerun / malformed-package]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/malformed-package
+exit: 1
+input-artifacts: unchanged
+output:
+POKIE could not inspect "/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/malformed-package" because its project metadata is malformed. Fix the project metadata, then run "pokie inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/malformed-package" again.
+
+[independent-rerun / unsupported]
+command: node <installed-pokie>/dist/cli/pokie.js inspect /tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/unsupported.txt
+exit: 1
+input-artifacts: unchanged
+output:
+"/tmp/p7-04-public-inspect-PH7uOo/independent-rerun/inputs/unsupported.txt" is not a supported POKIE project. Choose a Game Blueprint, POKIE game package, Outcome Library, Stake Engine export, PAR workbook, or compatible WASM component.

@@ -55,12 +55,13 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);
 
-        // A built package carries no build-info of its own to inspect -- pokie inspect reports it
-        // as an ordinary package.json summary, same as a hand-authored one.
+        // A built package carries no build-info of its own to inspect -- pokie inspect identifies it
+        // as a runnable POKIE game package and points to its next actions.
         const inspectExitCode = await new InspectCommand().run([outDir]);
         expect(inspectExitCode).toBe(0);
         const inspectPrinted = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
-        expect(inspectPrinted).toContain('package.json     name: "sample-slot"');
+        expect(inspectPrinted).toContain("POKIE game package");
+        expect(inspectPrinted).toContain("Simulate game rounds:");
 
         const simFile = path.join(workDir, "sim.json");
         await new SimCommand().run([outDir, "--rounds", "300", "--seed", "demo", "--out", simFile]);
@@ -224,7 +225,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         ]);
 
         await expect(new ParCommand("1.3.0").run(["import", packageRoot])).rejects.toThrow(
-            '"par.import" is not supported for a "tsPackage" project (missing the "parWorkbook.exchange" capability).',
+            "This POKIE game package cannot import a PAR workbook.",
         );
     });
 

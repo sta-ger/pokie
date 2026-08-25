@@ -175,7 +175,7 @@ describe("BuildCommand", () => {
         expect(resolveProject.calls).toEqual(["mystery.txt"]);
     });
 
-    it("throws a capability diagnostic when the resolved project doesn't support the requested target", async () => {
+    it("uses public artifact names and an inspect route when the source cannot build the requested artifact", async () => {
         const project = {
             type: "tsPackage",
             rootPath: "/some/existing/package",
@@ -185,9 +185,16 @@ describe("BuildCommand", () => {
         const resolveProject = stubProjectResolver(project);
         const command = new BuildCommand("1.3.0", undefined, undefined, resolveProject);
 
-        await expect(command.run(["/some/existing/package", "--target", "tsPackage", "--out", "out"])).rejects.toThrow(
-            /"tsPackage" cannot be built from a "tsPackage" project\. Supported sources: blueprint\./,
+        const error = await command.run(["/some/existing/package", "--target", "tsPackage", "--out", "out"]).then(
+            () => new Error("Expected an incompatible build diagnostic."),
+            (reason: unknown) => reason,
         );
+
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('"/some/existing/package" is a POKIE game package. It cannot build a POKIE game package.');
+        expect((error as Error).message).toContain("To build a POKIE game package, start with a Game Blueprint.");
+        expect((error as Error).message).toContain('Run "pokie inspect <path>" to see compatible next actions.');
+        expect((error as Error).message).not.toMatch(/(?:^|[^A-Z])blueprint\b|\btsPackage\b|\bcapability\b|\bregistry\b/);
     });
 
     it("uses the same registry path for the Outcome Library → Stake prerequisite hand-off", async () => {

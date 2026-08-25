@@ -117,7 +117,7 @@ describe("ArtifactBuilderRegistry", () => {
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
 
             await expect(withBuilder.build("tsPackage", projectOf("tsPackage"), "/out/my-game")).rejects.toThrow(
-                /"build" is not supported for a "tsPackage" project \(missing the "blueprint\.build" capability\)/,
+                /This POKIE game package cannot build a POKIE game package/,
             );
             expect(builder.calls).toBe(0);
         });

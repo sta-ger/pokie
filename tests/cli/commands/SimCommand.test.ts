@@ -1148,14 +1148,14 @@ describe("SimCommand outcome-source routing", () => {
                 operation: "outcomeSource.simulate",
                 missingCapability: "outcomeSource.sample",
                 alternatives: ["outcomeLibrary"],
-                message: '"outcomeSource.simulate" is not supported for a "stakeAdapter" project (missing the "outcomeSource.sample" capability). Supported by: outcomeLibrary.',
+                message: 'This Stake Engine export cannot simulate pre-generated outcomes. You can simulate pre-generated outcomes with Outcome Library. Run "pokie inspect <path>" to see available next actions.',
             },
         });
         const loadGame = jest.fn();
         const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, undefined, resolveProject, simulate);
 
         await expect(command.run(["/stake/base", "--rounds", "10", "--seed", "demo", "--mode", "base"])).rejects.toThrow(
-            /"outcomeSource\.simulate" is not supported for a "stakeAdapter" project/,
+            /This Stake Engine export cannot simulate pre-generated outcomes/,
         );
         expect(loadGame).not.toHaveBeenCalled();
     });
@@ -1194,4 +1194,3 @@ describe("SimCommand outcome-source routing (integration, real outcome-library b
         logSpy.mockRestore();
     });
 });
-

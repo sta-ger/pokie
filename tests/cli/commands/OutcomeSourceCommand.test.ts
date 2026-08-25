@@ -152,7 +152,7 @@ describe("OutcomeSourceCommand inspect", () => {
         const command = new OutcomeSourceCommand(resolveProject);
 
         await expect(command.run(["inspect", "/blueprints/game.json"])).rejects.toThrow(
-            /"outcomeSource\.analyze" is not supported for a "blueprint" project/,
+            /This Game Blueprint cannot analyze outcome data/,
         );
     });
 
@@ -278,13 +278,13 @@ describe("OutcomeSourceCommand sample", () => {
                 operation: "outcomeSource.sample",
                 missingCapability: "outcomeSource.sample",
                 alternatives: ["outcomeLibrary"],
-                message: '"outcomeSource.sample" is not supported for a "stakeAdapter" project (missing the "outcomeSource.sample" capability). Supported by: outcomeLibrary.',
+                message: 'This Stake Engine export cannot sample an outcome. You can sample an outcome with Outcome Library. Run "pokie inspect <path>" to see available next actions.',
             },
         });
         const command = new OutcomeSourceCommand(resolveProject, undefined, sample);
 
         await expect(command.run(["sample", "/stake/base", "--mode", "base"])).rejects.toThrow(
-            /"outcomeSource\.sample" is not supported for a "stakeAdapter" project/,
+            /This Stake Engine export cannot sample an outcome/,
         );
     });
 });
@@ -350,13 +350,13 @@ describe("OutcomeSourceCommand diff", () => {
                 operation: "outcomeSource.diff",
                 missingCapability: "outcomeSource.read",
                 alternatives: ["outcomeLibrary", "stakeAdapter"],
-                message: '"outcomeSource.diff" is not supported for a "blueprint" project (missing the "outcomeSource.read" capability). Supported by: outcomeLibrary, stakeAdapter.',
+                message: 'This Game Blueprint cannot compare outcome sources. You can compare outcome sources with Outcome Library or Stake Engine export. Run "pokie inspect <path>" to see available next actions.',
             },
         });
         const command = new OutcomeSourceCommand(resolveProject, undefined, undefined, undefined, diff);
 
         await expect(command.run(["diff", "/blueprints/game.json", "/libraries/base"])).rejects.toThrow(
-            /"outcomeSource\.diff" is not supported for a "blueprint" project/,
+            /This Game Blueprint cannot compare outcome sources/,
         );
     });
 

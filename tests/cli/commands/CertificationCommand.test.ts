@@ -260,7 +260,7 @@ describe("CertificationCommand", () => {
             const command = new CertificationCommand("1.3.0", builder, undefined, loadJson, new ProjectTargetResolver());
 
             await expect(command.run(["build", stakeDir, CONFIG_PATH])).rejects.toThrow(
-                /"certification\.build" is not supported for a "stakeAdapter" project/,
+                /This Stake Engine export cannot build certification evidence/,
             );
             expect(builder.calledWith).toBeUndefined();
         });
@@ -270,7 +270,7 @@ describe("CertificationCommand", () => {
             const command = new CertificationCommand("1.3.0", undefined, verifier, undefined, new ProjectTargetResolver());
 
             await expect(command.run(["verify", "/project/certification", "--source", stakeDir])).rejects.toThrow(
-                /"certification\.verify" is not supported for a "stakeAdapter" project/,
+                /This Stake Engine export cannot verify certification evidence/,
             );
             expect(verifier.calledWith).toBeUndefined();
         });

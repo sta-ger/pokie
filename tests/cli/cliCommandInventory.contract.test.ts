@@ -1173,7 +1173,7 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 
         "inspect::<packageRoot>": () =>
             new InspectCommand({
-                inspect: () => ({packageRoot: "pkg", valid: true, packageJson: {name: "pkg", version: "0.1.0"}}),
+                resolve: () => Promise.resolve({type: "tsPackage", rootPath: "pkg", capabilities: [], provenance: "test fixture"}),
             }),
 
         // --count/--theme/--words/--seed reach the generator's generateUnique(count, request); wrapping a real

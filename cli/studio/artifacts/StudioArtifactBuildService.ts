@@ -5,6 +5,7 @@ import {
     type ArtifactBuildProgress,
     ArtifactBuilderRegistry,
     ArtifactTargetType,
+    describeProjectType,
     ManagedOutcomeProjectService,
     ManagedOutcomeProjectServicing,
     PokieProject,
@@ -311,8 +312,14 @@ export class StudioArtifactBuildService {
     // same fact.
     private describeUnsupportedMessage(target: ArtifactTargetType, project: PokieProject): string {
         const descriptor = this.registry.describe(target);
-        const supported = descriptor.supportedSources.length > 0 ? descriptor.supportedSources.join(", ") : "none today";
-        return `"${target}" cannot be built from a "${project.type}" project. Supported sources: ${supported}. ${descriptor.unsupportedNotes.join(" ")}`;
+        const sourceKind = describeProjectType(project.type);
+        const artifactKind = describeProjectType(target);
+        const compatiblePrerequisite =
+            descriptor.supportedSources.length > 0
+                ? `To build a ${artifactKind}, start with ${descriptor.supportedSources.map((type) => `a ${describeProjectType(type)}`).join(" or ")}.`
+                : `POKIE cannot build a ${artifactKind} from any project yet.`;
+
+        return `"${project.rootPath}" is a ${sourceKind}. It cannot build a ${artifactKind}. ${compatiblePrerequisite} Run "pokie inspect <path>" to see compatible next actions.`;
     }
 }
 

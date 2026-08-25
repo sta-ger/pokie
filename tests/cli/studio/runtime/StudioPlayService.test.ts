@@ -580,7 +580,7 @@ describe("StudioPlayService", () => {
         });
     });
 
-    it("reports the real, resolver-derived 'outcomeSource.sample' capability diagnostic for a resolved Stake Engine export, never attempting to load it as a package", async () => {
+    it("explains that a resolved Stake Engine export cannot be sampled and recommends an Outcome Library, never attempting to load it as a package", async () => {
         const stakeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-play-stake-adapter-test-"));
         try {
             const stakeDir = path.join(stakeRoot, "stake-export");
@@ -597,8 +597,9 @@ describe("StudioPlayService", () => {
             if (result.status !== "failed") {
                 throw new Error("expected failed");
             }
-            expect(result.error).toContain("outcomeSource.sample");
-            expect(result.error).toContain("stakeAdapter");
+            expect(result.error).toContain("Stake Engine export");
+            expect(result.error).toContain("cannot sample an outcome");
+            expect(result.error).toContain("Outcome Library");
             expect(loadGame).not.toHaveBeenCalled();
         } finally {
             fs.rmSync(stakeRoot, {recursive: true, force: true});

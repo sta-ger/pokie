@@ -265,6 +265,7 @@ export * from "./project/ProjectCapabilities.js";
 export * from "./project/ProjectCapability.js";
 export * from "./project/ProjectMaterializationResult.js";
 export * from "./project/ProjectMaterializing.js";
+export * from "./project/ProjectPresentation.js";
 export * from "./project/ProjectResolving.js";
 export * from "./project/ProjectTargetAmbiguousError.js";
 export * from "./project/ProjectTargetMalformedError.js";

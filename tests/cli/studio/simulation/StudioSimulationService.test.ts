@@ -282,8 +282,8 @@ describe("StudioSimulationService", () => {
         const job = await waitForTerminal(service, result.job.id);
 
         expect(job.status).toBe("failed");
-        expect(job.error).toContain('"sim" is not supported for a "wasm" project');
-        expect(job.error).toContain('missing the "runtime.execute" capability');
+        expect(job.error).toContain("This POKIE WASM component cannot simulate game rounds");
+        expect(job.error).toContain("POKIE game package");
         expect(job.error).not.toContain("ENOTDIR");
         expect(materialize).not.toHaveBeenCalled();
         expect(loadGame).not.toHaveBeenCalled();

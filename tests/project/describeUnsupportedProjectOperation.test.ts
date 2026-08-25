@@ -46,8 +46,11 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: SIM_OPERATION,
             missingCapability: "runtime.execute",
             alternatives: ["tsPackage"],
-            message: expect.stringContaining("tsPackage"),
+            message: expect.stringContaining("POKIE game package"),
         });
+        expect(diagnostic?.message).toContain('Run "pokie inspect <path>"');
+        expect(diagnostic?.message).not.toContain("runtime.execute");
+        expect(diagnostic?.message).not.toContain("tsPackage");
     });
 
     it("lists every other project type that already supports the operation as an alternative", () => {
@@ -64,7 +67,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: WASM_EXPORT_OPERATION,
             missingCapability: "wasm.export",
             alternatives: [],
-            message: expect.stringContaining("No project type currently supports it."),
+            message: expect.stringContaining("POKIE cannot build a WASM component for any project yet."),
         });
     });
 
@@ -94,7 +97,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_SAMPLE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
-            message: expect.stringContaining("outcomeLibrary"),
+            message: expect.stringContaining("Outcome Library"),
         });
 
         const simulateDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SIMULATE_OPERATION);
@@ -103,7 +106,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_SIMULATE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
-            message: expect.stringContaining("outcomeLibrary"),
+            message: expect.stringContaining("Outcome Library"),
         });
 
         const serveDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), OUTCOME_SOURCE_SERVE_OPERATION);
@@ -112,7 +115,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_SERVE_OPERATION,
             missingCapability: "outcomeSource.sample",
             alternatives: ["outcomeLibrary"],
-            message: expect.stringContaining("outcomeLibrary"),
+            message: expect.stringContaining("Outcome Library"),
         });
     });
 
@@ -131,7 +134,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: OUTCOME_SOURCE_DIFF_OPERATION,
             missingCapability: "outcomeSource.read",
             alternatives: ["outcomeLibrary", "stakeAdapter"],
-            message: expect.stringContaining("outcomeLibrary"),
+            message: expect.stringContaining("Outcome Library or Stake Engine export"),
         });
     });
 
@@ -144,7 +147,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: WASM_INSPECT_OPERATION,
             missingCapability: "wasm.manifest.read",
             alternatives: ["wasm"],
-            message: expect.stringContaining("wasm"),
+            message: expect.stringContaining("POKIE WASM component"),
         });
     });
 
@@ -157,7 +160,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: WASM_PACKAGING_PREFLIGHT_OPERATION,
             missingCapability: "runtime.execute",
             alternatives: ["tsPackage"],
-            message: expect.stringContaining("tsPackage"),
+            message: expect.stringContaining("POKIE game package"),
         });
     });
 
@@ -171,7 +174,7 @@ describe("describeUnsupportedProjectOperation", () => {
             operation: CERTIFICATION_BUILD_OPERATION,
             missingCapability: "outcomeLibrary.read",
             alternatives: ["outcomeLibrary"],
-            message: expect.stringContaining("outcomeLibrary"),
+            message: expect.stringContaining("Outcome Library"),
         });
 
         const verifyDiagnostic = describeUnsupportedProjectOperation(projectOf("stakeAdapter"), CERTIFICATION_VERIFY_OPERATION);

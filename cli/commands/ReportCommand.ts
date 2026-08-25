@@ -5,6 +5,8 @@ import {
     MarkdownSimulationReportRenderer,
     OutcomeSourceProjectAnalyzer,
     OutcomeSourceProjectAnalyzing,
+    describeProjectType,
+    type ProjectType,
     ProjectResolving,
     ProjectTargetResolver,
     SimulationReport,
@@ -223,11 +225,29 @@ export class ReportCommand implements CliCommandHandling {
 
         return {
             error: new Error(
-                `"${reportPath}" is a "${project.type}" project, not a pokie sim report. ` +
-                    `"pokie report" only reads a JSON report produced by "pokie sim <packageRoot> --out <file>" -- ` +
-                    `run that against this project first, then point "pokie report" at its output.`,
+                `"${reportPath}" is a ${describeProjectType(project.type)}, not a simulation report. ` +
+                    `${this.describeSimulationReportRoute(project.type)} ` +
+                    'Run "pokie inspect <path>" to see compatible next actions.',
             ),
         };
+    }
+
+    private describeSimulationReportRoute(projectType: ProjectType): string {
+        switch (projectType) {
+            case "blueprint":
+                return 'To create a simulation report, first build a POKIE game package, then run "pokie sim <packagePath> --out <file>".';
+            case "tsPackage":
+                return 'To create a simulation report, run "pokie sim <packagePath> --out <file>".';
+            case "parWorkbook":
+                return 'To create a simulation report, first import the workbook into a Game Blueprint and build a POKIE game package, then run "pokie sim <packagePath> --out <file>".';
+            case "wasm":
+                return "POKIE cannot create a simulation report from a POKIE WASM component yet; use a POKIE game package instead.";
+            case "outcomeLibrary":
+            case "stakeAdapter":
+                return "This outcome source should be analyzed directly by the report command.";
+            default:
+                return 'To create a simulation report, use a POKIE game package with "pokie sim <packagePath> --out <file>".';
+        }
     }
 
     private isSimulationReport(value: unknown): value is SimulationReport {
