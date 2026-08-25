@@ -32,7 +32,16 @@ export function collectTransitiveDependencyNames(rootNames: string[]): string[] 
     return [...collected];
 }
 
-export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
+// These integration helpers deliberately execute real npm install/build commands.  Resolve npm next
+// to the Node executable that runs Jest instead of through PATH: the test harness may place a command
+// policy wrapper named "npm" there, which is useful for the outer test command but must not turn the
+// package lifecycle this helper is meant to exercise into a wrapper-policy failure.
+export const runBundledNpmCommand: PackageCommandRunning = (command, args, cwd) => {
+    const npmPath = path.join(path.dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm");
+    return runPackageCommand(command === "npm" && fs.existsSync(npmPath) ? npmPath : command, args, cwd);
+};
+
+export function localPokieDependencyRunner(realRunCommand: PackageCommandRunning = runBundledNpmCommand): PackageCommandRunning {
     // withLocalPokieInstall is production's own mechanism for pointing a staged/generated package's "pokie"
     // dependency at this exact running installation (see BlueprintProjectMaterializer's real materialize()
     // calls) -- composed here, rather than reimplemented, so this offline test override only ever adds what
