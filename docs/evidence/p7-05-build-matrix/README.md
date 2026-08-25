@@ -1,40 +1,35 @@
-# P7-05 independent current-candidate verification — finding
+# P7-05 current-candidate independent verification — inconclusive Studio driver
 
-Candidate: `e1383bdacda13ef4f6ea0e4716a771e973e50b5a`.
+Candidate: `f2a1f47c18698cfb1d7691ed5ae2027ce692585d` (2026-08-25).
 
-The required single command named all twelve supplied `required_test_files` and
-reached its final Jest summary: **12 passed, 12 total; 1450 passed, 1450
-total**. The persisted criterion says 16 files, but its authoritative path list
-contains 12. The runner then remained alive only because of its reported
-asynchronous open handle and was stopped after that complete summary; no second
-Jest process was started.
+The required one-command targeted run named all 17 requested files. Jest
+reported **17 passed, 17 total; 1506 passed, 1506 total**. It then printed its
+open-handle notice and stayed alive; after a bounded poll it was interrupted.
+No second Jest command was launched.
 
-`npm run build-cli` passed. Two fresh public CLI matrices used tiny literal
-Blueprints, then generated package, Outcome Library, Stake Engine, and PAR
-workbook sources. In each run, seven cells built, `inspect` read back the
-artifact, and `--dry-run` completed without creating its requested output:
-Blueprint → tsPackage/outcomeLibrary/stakeAdapter; Outcome Library →
-outcomeLibrary/stakeAdapter; Stake Engine → stakeAdapter; and PAR workbook →
-parWorkbook.
+`npm run build-cli` passed. A fresh, public `node ./dist/cli/pokie.js` CLI
+matrix completed all nine supported cells: Blueprint → tsPackage, Outcome
+Library, Stake Engine; tsPackage → Outcome Library, Stake Engine; Outcome
+Library → Outcome Library, Stake Engine; Stake Engine → Stake Engine; PAR
+workbook → PAR workbook. For every cell the default output and an explicit
+`--out` were structurally read back by public `pokie inspect`; `--dry-run`
+created no output; and an occupied destination retained its sentinel. The
+fresh tsPackage's `node_modules/pokie` was a symlink, `pokie validate` passed,
+and both runtime-derived outputs built and inspected successfully.
 
-Both remaining advertised cells failed identically: a fresh TS package built by
-`pokie build <blueprint> --target tsPackage` cannot be used as the source for
-either `--target outcomeLibrary` or `--target stakeAdapter`, because its
-`dist/index.js` cannot resolve `pokie`. The suggested normal recovery also
-failed in the generated package: `npm install --omit=dev --ignore-scripts`
-returned `ETARGET: No matching version found for pokie@^1.3.0`.
+Matrix summary only (all generated sources and artifacts were removed):
+`sha256:707ea10258076d8d3757e698bc0dcec545f178df9053ea315345ae30ad461f0b`.
 
-Studio was launched exactly twice from this checkout with
-`node ./dist/cli/pokie.js --no-open`, each time with a fresh Chromium profile.
-Visible Projects controls accepted Location via focus-verified browser input,
-then completed Detect → Register for each fresh Blueprint. Open did not render
-a Dashboard, success, or product error before the bounded wait expired, so that
-UI portion is not a product finding and the remaining Studio/PAR card checks
-were not reached.
+One fresh Studio was launched exactly as `node ./dist/cli/pokie.js --no-open`.
+Through its public Projects URL, Chrome CDP located the rendered Location
+control and sent mouse/keyboard input twice: the first try and the one allowed
+safe retry (with Tab blur). In both cases the rendered value stayed empty and
+the still-rendered Detect control said, “Enter a project location or use Browse
+to enable Detect.” No Detect request, registration, Open, or build was emitted,
+and Studio rendered no product error. Therefore the public PAR
+Detect → Register → Open → Build/Export observation, including the PAR card
+and non-selectability of WASM, was not reached. This is retained as driver
+inconclusive, not a product finding.
 
-Unretained raw-run transcript checksums: first CLI/UI run
-`f136eb9a5562a26d618fba5158d3184e748369bdf4d9dfe5cd799bbb67d2effa`;
-fresh-hash rerun
-`617e6f28dd7fe41fba98f1d475d75bdbba8cb692163632c29cea55a45de215a0`.
-No generated inputs, outputs, browser profile, automation, raw logs, or
-process files are retained.
+Bounded Studio transcript checksum (not retained as a raw log):
+`sha256:fad60c25b3a65517a280fc37686ae411a8a0647cc6936dbc49342ad1c70d4906`.
