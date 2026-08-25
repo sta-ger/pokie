@@ -74,7 +74,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     hit frequency, and volatility.
 17. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
-18. **[CLI](cli.md)** — `pokie build <project> --target <artifact> --out <path>`, POKIE's universal build pipeline:
+18. **[CLI](cli.md)** — `pokie` is the first-contact guide: it tells a new user to start a ready-to-run package with
+    `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
+    through `pokie <command> --help`; `pokie --version` prints the installed public version. `pokie build <project>
+    --target <artifact> --out <path>`, POKIE's universal build pipeline:
     `--target tsPackage` generates a working game package straight from a JSON `GameBlueprint` source (reels,
     symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated via `reelStripGeneration`
     and `ReelStripGenerator`), no compile step required; every other `--target` (`outcomeLibrary`/`stakeAdapter`/
@@ -119,7 +122,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     certification build <bundleDir> <config.json>`, which builds a certification/evidence bundle on top of an
     Outcome Library Bundle; `pokie certification verify <certDir>`, which verifies one against its live source
     bundle; `pokie fairness seed-commit <serverSeed.txt>`/`commit`/`reveal`/`verify`, the full Provably Fair
-    commit-reveal CLI workflow (see item 26 below); and `pokie`, a local GUI
+    commit-reveal CLI workflow (see item 26 below); and `pokie .` (or another existing path), a local GUI
     covering most of the commands above (a guided Design Game flow for a new/random/existing blueprint plus a
     Projects panel on Home; and, once a project is open, Build/Export — outcome libraries, Stake Engine export,
     and remote deployment via the External Adapter SDK, all as one surface — plus PAR Sheet, Certification,

@@ -53,7 +53,7 @@ function run(): Promise<number> {
         clientRoot: ownClientRoot(),
         studioRoot: ownStudioRoot(),
     });
-    return dispatch(commands, process.argv);
+    return dispatch(commands, process.argv, readOwnVersion());
 }
 
 run().then((exitCode) => {

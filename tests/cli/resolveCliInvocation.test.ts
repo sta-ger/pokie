@@ -1,7 +1,7 @@
 import path from "path";
 import {INTERNAL_STUDIO_COMMAND_NAME} from "../../cli/commands/InternalStudioCommand.js";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
-import {isTopLevelHelpRequest, resolveCliInvocation} from "../../cli/resolveCliInvocation.js";
+import {isTopLevelHelpRequest, isTopLevelVersionRequest, resolveCliInvocation} from "../../cli/resolveCliInvocation.js";
 import {buildUsageText} from "../../cli/usageText.js";
 
 const KNOWN_COMMANDS = ["build", "create", "serve", "sim", "validate"];
@@ -56,7 +56,17 @@ describe("isTopLevelHelpRequest", () => {
     });
 });
 
-// Studio startup: which of Home / a project dashboard each way of launching Studio resolves to. The
+describe("isTopLevelVersionRequest", () => {
+    it.each([["--version"], ["-V"]])('recognizes "pokie %s" as a request for the installed CLI version', (flag) => {
+        expect(isTopLevelVersionRequest(["node", "pokie", flag])).toBe(true);
+    });
+
+    it("does not take a command-local version option", () => {
+        expect(isTopLevelVersionRequest(["node", "pokie", "init", "--version", "1.0.0"])).toBe(false);
+    });
+});
+
+// Studio startup: which of Home / a project dashboard each explicit Studio launch resolves to. The
 // discovery function and working directory are injected, so nothing here touches the real filesystem
 // or depends on where the test runner happens to be started from.
 describe("resolveCliInvocation: Studio startup target", () => {
@@ -64,21 +74,13 @@ describe("resolveCliInvocation: Studio startup target", () => {
     const insideProject = (): string | undefined => PROJECT_ROOT;
     const outsideProject = (): undefined => undefined;
 
-    it('"pokie" inside a project opens that project, from the directory it was run in', () => {
+    it("reserves bare pokie for dispatcher-level first-contact guidance", () => {
         const findProjectRoot = jest.fn(insideProject);
 
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, findProjectRoot, () => "/games/my-slot/src/generated");
 
-        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [PROJECT_ROOT]});
-        // Discovery starts at the working directory — walking up from a nested subdirectory is
-        // findPokieProjectRoot's own job, and this is the call that hands it the place to start.
-        expect(findProjectRoot).toHaveBeenCalledWith("/games/my-slot/src/generated");
-    });
-
-    it('"pokie" outside any project opens Home', () => {
-        const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, outsideProject, () => "/tmp/elsewhere");
-
-        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
+        expect(invocation).toBeUndefined();
+        expect(findProjectRoot).not.toHaveBeenCalled();
     });
 
     it('does not retain "pokie studio" as a public alias', () => {
@@ -107,7 +109,7 @@ describe("resolveCliInvocation: Studio startup target", () => {
         expect(invocation).toBeUndefined();
     });
 
-    it("bare Studio flags discover a project too, so \"pokie --no-open\" matches \"pokie\"", () => {
+    it("bare Studio flags discover a project from the working directory", () => {
         const invocation = resolveCliInvocation(["node", "pokie", "--no-open", "--port", "0"], KNOWN_COMMANDS, () => false, insideProject, () => PROJECT_ROOT);
 
         expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [PROJECT_ROOT, "--no-open", "--port", "0"]});
@@ -121,10 +123,10 @@ describe("resolveCliInvocation: Studio startup target", () => {
 });
 
 describe("resolveCliInvocation", () => {
-    it('resolves to studio with no args when nothing is given ("pokie") outside a project', () => {
+    it('leaves bare "pokie" for the dispatcher-level first-contact guide', () => {
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, () => undefined);
 
-        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
+        expect(invocation).toBeUndefined();
     });
 
     it('resolves "." to a studio project invocation ("pokie .")', () => {

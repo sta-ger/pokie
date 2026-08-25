@@ -63,14 +63,46 @@ describe("dispatch (the real top-level CLI dispatcher cli/pokie.ts's run() deleg
         expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it('an unknown command that is not an existing path prints the same command list to stdout and exits 1', async () => {
+    it('an unknown command that is not an existing path explains the recovery path and exits 1', async () => {
         const commands = [new FakeCommand("build"), new FakeCommand("sim")];
 
         const exitCode = await dispatch(commands, ["node", "pokie", "totally-bogus-command-xyz"]);
 
         expect(exitCode).toBe(1);
-        expect(logSpy).toHaveBeenCalledTimes(1);
-        expect(logSpy.mock.calls[0][0]).toContain("Usage: pokie <command>");
+        expect(logSpy).not.toHaveBeenCalled();
+        expect(errorSpy).toHaveBeenCalledWith('Unknown command "totally-bogus-command-xyz". Run `pokie --help` to list commands.');
+    });
+
+    it("suggests a close command spelling and points to its help", async () => {
+        const commands = [new FakeCommand("build"), new FakeCommand("create"), new FakeCommand("sim")];
+
+        const exitCode = await dispatch(commands, ["node", "pokie", "creat"]);
+
+        expect(exitCode).toBe(1);
+        expect(logSpy).not.toHaveBeenCalled();
+        expect(errorSpy).toHaveBeenCalledWith('Unknown command "creat". Did you mean `create`? Run `pokie create --help` for usage.');
+    });
+
+    it("makes a bare invocation a successful, actionable first contact", async () => {
+        const commands = [new FakeCommand("create"), new FakeCommand("init")];
+
+        const exitCode = await dispatch(commands, ["node", "pokie"]);
+
+        expect(exitCode).toBe(0);
+        expect(logSpy).toHaveBeenCalledTimes(2);
+        expect(logSpy.mock.calls[0][0]).toContain("pokie init <directory>");
+        expect(logSpy.mock.calls[0][0]).toContain("pokie create <name>");
+        expect(logSpy.mock.calls[1][0]).toContain("pokie <command> --help");
+        expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it("prints the supplied installed version without invoking a command", async () => {
+        const commands = [new FakeCommand("sim")];
+
+        const exitCode = await dispatch(commands, ["node", "pokie", "--version"], "1.3.0");
+
+        expect(exitCode).toBe(0);
+        expect(logSpy).toHaveBeenCalledWith("1.3.0");
         expect(errorSpy).not.toHaveBeenCalled();
     });
 

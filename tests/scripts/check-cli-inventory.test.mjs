@@ -1,12 +1,10 @@
-import assert from "node:assert/strict";
-import {spawnSync} from "node:child_process";
-import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import {test} from "@jest/globals";
-import {fileURLToPath} from "node:url";
+const assert = process.getBuiltinModule("node:assert/strict");
+const {spawnSync} = process.getBuiltinModule("node:child_process");
+const {cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
+const os = process.getBuiltinModule("node:os");
+const path = process.getBuiltinModule("node:path");
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const root = process.cwd();
 const checker = path.join(root, "scripts/check-cli-inventory.mjs");
 
 async function fixture(extraHelp = "", documentation = "pokie build --target supported\n") {
@@ -58,6 +56,18 @@ process.stdout.write(help);
 
 function run(cli, coverage, evidenceDir) {
     return spawnSync(process.execPath, [checker, "--cli", cli, "--coverage", coverage, "--evidence-dir", evidenceDir], {encoding: "utf8"});
+}
+
+async function createIsolatedCliBuildRoot(directory) {
+    const buildRoot = path.join(directory, "package");
+    await mkdir(buildRoot);
+    await Promise.all([
+        cp(path.join(root, "src"), path.join(buildRoot, "src"), {recursive: true}),
+        cp(path.join(root, "cli"), path.join(buildRoot, "cli"), {recursive: true}),
+        ...["package.json", "tsconfig.prod.json", "tsconfig.cli.json", "generate-barrels.js", "write-cjs-package-json.js"].map((file) => cp(path.join(root, file), path.join(buildRoot, file))),
+    ]);
+    await symlink(path.join(root, "node_modules"), path.join(buildRoot, "node_modules"), "dir");
+    return buildRoot;
 }
 
 test("collects root aliases and executable values across independent help walks", async () => {
@@ -229,11 +239,47 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
+test("normalizes first-contact placeholders and ignores an unknown-command recovery example", async () => {
+    const {directory, cli, coverage} = await fixture("", "Use pokie [path], pokie init <directory>, pokie create <name>, and pokie <command> --help. A close spelling, pokie creat, suggests pokie create --help.\n");
+    try {
+        await writeFile(cli, `
+const key = process.argv.slice(2).join(" ");
+const root = "Usage: pokie <command>\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  create  create\\n  init  init\\n";
+const studio = "Usage: pokie [projectRoot]\\n\\nOptions:\\n  -h, --help  help\\n  --no-open  do not open\\n";
+const create = "Usage: pokie create [name]\\n\\nOptions:\\n  -h, --help  help\\n";
+const init = "Usage: pokie init [directory]\\n\\nOptions:\\n  -h, --help  help\\n";
+process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : key === "create --help" ? create : init);
+`);
+        await writeFile(coverage, JSON.stringify({
+            documentationRoot: ".",
+            documentationScope: {include: ["**/*.md"]},
+            initialInventory: {rootCommands: ["create", "init"], nestedVerbs: []},
+            findings: {
+                versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie init [directory]"},
+                implicitRoot: {helpExitCode: 0, usage: "Usage: pokie [projectRoot]", requiredOptions: ["--no-open"]},
+            },
+            owners: [
+                "command:create", "command:init",
+                "alias:root:-h", "alias:create:-h", "alias:init:-h",
+                "option:root:--help", "option:root:--no-open", "option:create:--help", "option:init:--help",
+                "argument:root:[projectRoot]", "argument:create:[name]", "argument:init:[directory]",
+                "finding:version-help", "finding:implicit-studio", "finding:documentation-claims",
+            ].map((id) => ({id, owner: "test"})),
+        }));
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
 test("checks the freshly built production CLI against the complete public documentation scope", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-production-inventory-test-"));
     try {
+        // The packaging smoke test can run in another Jest project and rebuild the checkout's
+        // dist/ at the same time. Build this independent production CLI in a disposable package
+        // instead, so the CLI contract is verified against one coherent set of compiled files.
+        const buildRoot = await createIsolatedCliBuildRoot(directory);
         const runBuildStep = (arguments_) => {
-            const result = spawnSync(process.execPath, arguments_, {cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+            const result = spawnSync(process.execPath, arguments_, {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
             assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
         };
         const tsc = path.join(root, "node_modules/typescript/bin/tsc");
@@ -248,14 +294,17 @@ test("checks the freshly built production CLI against the complete public docume
         runBuildStep([path.join(root, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
-        const {checkCoverage, collect, documentationCapabilities} = await import(checker);
-        const collected = await collect(path.join(root, "dist/cli/pokie.js"));
-        const inventory = collected.inventory;
+        const evidenceDirectory = path.join(directory, "evidence");
+        const result = spawnSync(process.execPath, [
+            checker,
+            "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
+            "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
+            "--evidence-dir", evidenceDirectory,
+        ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+        assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+        const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
         assert.equal(inventory.rootCommands.length, 20);
         assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 7);
-        const coverageMap = JSON.parse(await readFile(path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"), "utf8"));
-        const publicClaims = await documentationCapabilities(coverageMap, inventory, path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"));
-        assert.ok(publicClaims.has("command:build"));
-        assert.doesNotThrow(() => checkCoverage(inventory, coverageMap, publicClaims));
+        assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 }, 180000);

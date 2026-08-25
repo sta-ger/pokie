@@ -4,8 +4,7 @@
 // positional/subcommand, or a bad flag value — caught before any I/O) with the exact error message
 // it throws today, and every "valid" argv (a default or documented option value actually accepted)
 // with the exit code and stdout shape it actually produces. CLI_TOP_LEVEL_DISPATCH_CASES does the
-// same for the dispatcher itself, not any one command: --help/-h, an unrecognized command, and
-// --version (which has no dedicated top-level handling today — see that case's own comment).
+// same for the dispatcher itself, not any one command: --help/-h and unrecognized commands.
 //
 // This exists so a future rewrite of argument parsing (e.g. unifying the 19 hand-rolled
 // parseArgs()/switch-based parsers in cli/commands/*.ts behind one shared parser) has something
@@ -3035,16 +3034,14 @@ export type CliTopLevelDispatchCase = {
     // Full argv tail dispatch() sees, i.e. `process.argv.slice(2)`.
     argv: string[];
     expectedExitCode: number;
-    // true: stdout is exactly buildUsageText(commands) and stderr is untouched (the --help/-h/
-    // unknown-command shape). false: stderr carries expectedStderr and stdout is untouched instead.
+    // true: stdout is exactly buildUsageText(commands) and stderr is untouched (the --help/-h
+    // shape). false: stderr carries expectedStderr and stdout is untouched instead.
     expectedStdoutIsUsage: boolean;
     expectedStderr?: string;
 };
 
-// The dispatcher-level contract that isn't any one command's own: --help/-h (success, the same
-// command list an unknown command also gets, but exit 0) and an unrecognized command name that also
-// isn't an existing path (exit 1). "--version" freezes what happens today, not a deliberate feature —
-// see its own comment below.
+// The dispatcher-level contract that isn't any one command's own: --help/-h (success) and
+// unrecognized command names that also aren't existing paths (exit 1).
 export const CLI_TOP_LEVEL_DISPATCH_CASES: CliTopLevelDispatchCase[] = [
     {label: "--help", argv: ["--help"], expectedExitCode: 0, expectedStdoutIsUsage: true},
     {label: "-h", argv: ["-h"], expectedExitCode: 0, expectedStdoutIsUsage: true},
@@ -3052,14 +3049,7 @@ export const CLI_TOP_LEVEL_DISPATCH_CASES: CliTopLevelDispatchCase[] = [
         label: "an unknown command name that is also not an existing path",
         argv: ["totally-bogus-pokie-command-xyz-12345"],
         expectedExitCode: 1,
-        expectedStdoutIsUsage: true,
-    },
-    {
-        // No top-level "--version" flag exists today. It is not a public command and therefore gets
-        // the same usage fallback as any other unknown invocation.
-        label: "--version (no top-level flag exists yet; prints top-level usage)",
-        argv: ["--version"],
-        expectedExitCode: 1,
-        expectedStdoutIsUsage: true,
+        expectedStdoutIsUsage: false,
+        expectedStderr: 'Unknown command "totally-bogus-pokie-command-xyz-12345". Run `pokie --help` to list commands.',
     },
 ];

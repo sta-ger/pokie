@@ -274,8 +274,19 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     });
 
     // spawnSync (rather than execFileSync) so a non-zero exit is asserted on directly instead of
-    // surfacing as a thrown error, and so a "pokie --help" that wrongly reached the implicit Studio entry — which
-    // would sit there serving instead of exiting — fails on the timeout rather than hanging the suite.
+    // surfacing as a thrown error, and so a root invocation that wrongly reaches the implicit Studio
+    // entry — which would sit there serving instead of exiting — fails on the timeout rather than
+    // hanging the suite.
+    it("prints actionable first-contact guidance for bare `pokie`, exiting 0 without starting Studio", () => {
+        const result = spawnSync(pokieBinPath, [], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain("pokie init <directory>");
+        expect(result.stdout).toContain("pokie create <name>");
+        expect(result.stdout).toContain("pokie <command> --help");
+        expect(result.stderr).toBe("");
+    });
+
     it.each([["--help"], ["-h"]])("prints the general usage and the full command list for `pokie %s`, exiting 0", (flag) => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
 
@@ -290,23 +301,18 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stdout).not.toMatch(/^ {2}(name|outcomelibrary|outcomesource|par|stakeengine|studio)\b/m);
     });
 
-    // Mirrors tests/cli/cliCommandInventory.contract.test.ts's own frozen "CLI top-level dispatch
-    // contract" case for "--version" (see CLI_TOP_LEVEL_DISPATCH_CASES) against the real, installed
-    // binary rather than an in-process dispatch() call: there is no dedicated top-level --version flag
-    // today, so it falls through resolveCliInvocation's own "-"-prefixed-token step and reaches the
-    // implicit Studio entry as an unrecognized option, exiting 1 without ever starting a server. Proves the
-    // packaged dist behaves identically to the source under test, not just that the source does.
-    it("`pokie --version` has no dedicated top-level flag today: falls through to the implicit Studio entry's unknown-option error, exiting 1", () => {
-        const result = spawnSync(pokieBinPath, ["--version"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+    it.each([["--version"], ["-V"]])("prints the installed version for `pokie %s`, exiting 0", (flag) => {
+        const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        const {version} = JSON.parse(fs.readFileSync(path.join(installDir!, "node_modules", "pokie", "package.json"), "utf-8")) as {
+            version: string;
+        };
 
-        expect(result.status).toBe(1);
-        expect(result.stdout).toBe("");
-        expect(result.stderr.trim()).toBe(
-            'Unknown option "--version". Usage: pokie [projectRoot] [--port <number>] [--host <string>] [--no-open]',
-        );
+        expect(result.status).toBe(0);
+        expect(result.stdout.trim()).toBe(version);
+        expect(result.stderr).toBe("");
     });
 
-    it("`pokie <unrecognized command>` prints the same usage/command list as --help, but exits 1", () => {
+    it("`pokie <unrecognized command>` explains how to recover and exits 1", () => {
         const result = spawnSync(pokieBinPath, ["totally-bogus-pokie-command-xyz-12345"], {
             cwd: installDir,
             encoding: "utf-8",
@@ -314,9 +320,27 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         expect(result.status).toBe(1);
-        expect(result.stderr).toBe("");
-        expect(result.stdout).toContain("Usage: pokie <command>");
-        expect(result.stdout).toContain("Commands:");
+        expect(result.stdout).toBe("");
+        expect(result.stderr.trim()).toBe(
+            'Unknown command "totally-bogus-pokie-command-xyz-12345". Run `pokie --help` to list commands.',
+        );
+    });
+
+    it("suggests the intended command for a close top-level typo and exits 1", () => {
+        const result = spawnSync(pokieBinPath, ["creat"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr.trim()).toBe('Unknown command "creat". Did you mean `create`? Run `pokie create --help` for usage.');
+    });
+
+    it("reports usage and recovery text when a command is missing required input", () => {
+        const result = spawnSync(pokieBinPath, ["build"], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain("Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]");
+        expect(result.stderr).toContain("<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary");
     });
 
     it("scaffolds a package in place via a fully non-interactive `pokie init <directory>`, installing/building it entirely on its own -- its scaffolded \"pokie\" dependency resolves against this exact installed binary's own root during install (never the registry, never a manual rewrite), then is left with a portable version range, and it validates and simulates", () => {

@@ -338,6 +338,10 @@ describe("ProjectsPanel: Import Project", () => {
         await user.click(screen.getByRole("button", {name: "Select this folder"}));
         expect(screen.getByDisplayValue("/games")).toBeInTheDocument();
 
+        // Mantine keeps the first modal mounted through its exit transition. Wait for that picker to
+        // finish closing so the second selection cannot target its stale, now-closing entry.
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
         await user.click(screen.getByRole("button", {name: "Browse…"}));
         await user.click(await screen.findByText("generic-sheet.xlsx"));
         expect(screen.getByDisplayValue("/games/generic-sheet.xlsx")).toBeInTheDocument();
