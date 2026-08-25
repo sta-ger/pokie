@@ -278,6 +278,7 @@ export class StudioServer implements StudioServerHandling {
                         throw new Error(`Generated Outcome Library at "${project.rootPath}" could not be registered as a Studio Project.`);
                     }
                 }),
+                options.pokiePackageRoot,
             );
         this.describeProjectLocation = (location) => this.projectRegistrationService.describeLocation(location);
         this.toolHandlers = options.toolHandlers ?? [];

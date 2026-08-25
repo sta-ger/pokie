@@ -39,7 +39,16 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
     });
 
     it("builds, validates, simulates, reports, replays, serves, and dev-serves the generated package", async () => {
-        const buildExitCode = await new BuildCommand("1.3.0").run([blueprintPath, "--target", "tsPackage", "--out", outDir]);
+        // Match cli/pokie.ts's public command registration: a fresh package is linked to the exact
+        // runtime that built it, so the next package-consuming command need not first resolve an
+        // unpublished candidate from npm.
+        const buildExitCode = await new BuildCommand("1.3.0", undefined, undefined, undefined, undefined, undefined, process.cwd()).run([
+            blueprintPath,
+            "--target",
+            "tsPackage",
+            "--out",
+            outDir,
+        ]);
         expect(buildExitCode).toBe(0);
         // The complete canonical package file set -- same as pokie create/pokie init's own
         // create -> install -> build -> verify lifecycle produces (see BUILT_PACKAGE_FILES).
@@ -49,8 +58,10 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.existsSync(path.join(outDir, "README.md"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "src", "index.ts"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
+        expect(fs.lstatSync(path.join(outDir, "node_modules", "pokie")).isSymbolicLink()).toBe(true);
         // No blueprint/build-info/creation-seed metadata of any kind is left in a newly built package.
         expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
+        await expect(loadPokieGame(outDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
 
         const validateExitCode = await new ValidateCommand().run([outDir]);
         expect(validateExitCode).toBe(0);

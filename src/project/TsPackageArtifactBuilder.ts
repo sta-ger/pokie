@@ -18,6 +18,8 @@ import {
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
 import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import type {PokieProject} from "./PokieProject.js";
+import fs from "fs";
+import path from "path";
 
 // Builds a "tsPackage" artifact from a resolved "blueprint" source -- the same validate/resolve-reel-strips/
 // generate pipeline "pokie build" always ran (see cli/commands/BuildCommand.ts), now reachable through
@@ -32,6 +34,7 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
     private readonly loadBlueprint: (filePath: string) => unknown;
     private readonly validator: GameBlueprintValidating;
     private readonly generator: GamePackageGenerating;
+    private pokiePackageRoot: string | undefined;
 
     constructor(
         pokieVersion: string,
@@ -42,6 +45,11 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
         this.loadBlueprint = loadBlueprint;
         this.validator = validator;
         this.generator = generator;
+    }
+
+    public withRuntimePackageRoot(pokiePackageRoot: string): this {
+        this.pokiePackageRoot = pokiePackageRoot;
+        return this;
     }
 
     public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
@@ -87,6 +95,7 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
                         message: progress.message,
                     }),
             });
+            if (this.pokiePackageRoot !== undefined) this.linkRuntime(result.projectRoot, this.pokiePackageRoot);
             assertArtifactBuildNotCancelled(options);
             reportArtifactBuildProgress(options, {status: "completed"});
             return {outputPath: result.projectRoot};
@@ -99,5 +108,14 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
             } else reportArtifactBuildProgress(options, {status: "failed", message: "TypeScript package publishing failed"});
             throw error;
         }
+    }
+
+    private linkRuntime(packageRoot: string, pokiePackageRoot: string): void {
+        const nodeModules = path.join(packageRoot, "node_modules");
+        fs.mkdirSync(nodeModules, {recursive: true});
+        // The CLI/Studio entry point supplies the running POKIE root. This bounded link makes that
+        // just-built package executable immediately, before a user has to run npm. It is ignored by
+        // npm packing, and a later npm install resolves package.json's released runtime range instead.
+        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "pokie"), "junction");
     }
 }

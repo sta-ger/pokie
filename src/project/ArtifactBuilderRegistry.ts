@@ -4,8 +4,8 @@ import type {ArtifactBuildResult} from "./ArtifactBuildResult.js";
 import type {ArtifactBuildTargetDescriptor} from "./ArtifactBuildTargetDescriptor.js";
 import type {ArtifactDestinationCheck} from "./ArtifactDestinationCheck.js";
 import type {ArtifactTargetType} from "./ArtifactTargetType.js";
-import {describeUnsupportedProjectOperation} from "./describeUnsupportedProjectOperation.js";
 import {assertArtifactDestinationAvailable} from "./internal/assertArtifactDestinationAvailable.js";
+import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinationIsSafe.js";
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
 import type {PokieProject} from "./PokieProject.js";
@@ -18,7 +18,6 @@ import {
     WASM_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
-import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import type {ProjectType} from "./ProjectType.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
@@ -26,7 +25,16 @@ import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibra
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
 import {loadPokieGame} from "../gamepackage/loadPokieGame.js";
+import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
+import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
+import {
+    ADVERTISED_ARTIFACT_BUILD_TARGETS,
+    BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
+    describeBuildProductMatrixDiagnostic,
+    getBuildProductMatrixCell,
+} from "./BuildProductMatrix.js";
 
 // Which PokieOperation actually produces each ArtifactTargetType as a brand-new artifact -- "build" writes a
 // tsPackage, "outcomeLibrary.build" writes an outcomeLibrary bundle, "stakeEngine.export" writes a stakeAdapter
@@ -47,8 +55,7 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
 // than being left for a reader to infer from an empty/narrow "supportedSources" array alone.
 const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>> = {
     tsPackage: [
-        'Builds a runnable package from its own GameBlueprint source only -- never compiles or targets WASM, ' +
-            "and a built package cannot itself be converted into any other target type.",
+        "Builds a runnable package from a GameBlueprint source only -- never compiles or targets WASM.",
     ],
     outcomeLibrary: [
         "Republishes an existing weighted-outcome bundle, or materializes/generates one from a Blueprint or runnable package through the registry; " +
@@ -69,8 +76,6 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
     ],
 };
 
-const ALL_PROJECT_TYPES = Object.keys(PROJECT_TYPE_CAPABILITIES) as ProjectType[];
-
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
     const operation = TARGET_OPERATION[target];
     const requiredSourceCapability = OPERATION_REQUIRED_CAPABILITY[operation];
@@ -78,13 +83,15 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
         throw new Error(`ArtifactBuilderRegistry has no OPERATION_REQUIRED_CAPABILITY entry for "${operation}".`);
     }
 
-    const supportedSources = ALL_PROJECT_TYPES.filter((type) => PROJECT_TYPE_CAPABILITIES[type].includes(requiredSourceCapability));
+    const sourceCells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.map((source) => getBuildProductMatrixCell(source, target));
+    const supportedSources = sourceCells.filter((cell) => cell.state === "supported").map((cell) => cell.source);
 
     return {
         target,
         operation,
         requiredSourceCapability,
         supportedSources,
+        sourceCells,
         unsupportedNotes: UNSUPPORTED_NOTES[target],
     };
 }
@@ -109,11 +116,11 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
 // build: build() re-checks the same capability describe() reports, then hands off to the concrete
 // ArtifactBuilder already wired to POKIE's own already-atomic per-target writers (GamePackageGenerator,
 // OutcomeLibraryBundleWriter, StakeEngineImporter/StakeEngineExporter, ParSheetImporter/ParSheetExporter) --
-// see each builder's own doc comment for exactly what it reads/writes. Every builder here is deliberately a
-// same-type republish (blueprint->tsPackage is the direct conversion; Blueprint/tsPackage->Outcome/Stake use
-// the registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back to
-// the Stake builder; every other target only republishes an already-built artifact of its own type) -- see
-// UNSUPPORTED_NOTES for what each target's build explicitly does NOT promise.
+// see each builder's own doc comment for exactly what it reads/writes. Blueprint/tsPackage -> Outcome/Stake
+// use the registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back
+// to the Stake builder; outcomeLibrary -> outcomeLibrary, stakeAdapter -> stakeAdapter, and parWorkbook ->
+// parWorkbook are the matrix's same-type republish cells. See UNSUPPORTED_NOTES for what each target's build
+// explicitly does NOT promise.
 export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;
@@ -135,8 +142,16 @@ export class ArtifactBuilderRegistry {
         this.blueprintStakeWorkflow = new BlueprintStakeOutcomeLibraryWorkflow(pokieVersion, loadGameBlueprint, loadPokieGame, managedOutcomeProjects);
     }
 
+    public withRuntimePackageRoot(pokiePackageRoot: string): this {
+        const tsPackageBuilder = this.builders.get("tsPackage");
+        if (tsPackageBuilder instanceof TsPackageArtifactBuilder) {
+            tsPackageBuilder.withRuntimePackageRoot(pokiePackageRoot);
+        }
+        return this;
+    }
+
     public listTargets(): readonly ArtifactTargetType[] {
-        return Array.from(this.descriptors.keys());
+        return ADVERTISED_ARTIFACT_BUILD_TARGETS;
     }
 
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
@@ -151,7 +166,7 @@ export class ArtifactBuilderRegistry {
     // describeUnsupportedProjectOperation performs for a PokieOperation, exposed target-first so a caller
     // building toward a specific artifact doesn't need to know which PokieOperation id backs it.
     public supportsConversionFrom(target: ArtifactTargetType, source: ProjectType): boolean {
-        return this.describe(target).supportedSources.includes(source);
+        return getBuildProductMatrixCell(source, target).state === "supported";
     }
 
     // Reports whether `destinationPath` would be accepted by `target`'s own build() -- the exact same
@@ -162,7 +177,7 @@ export class ArtifactBuilderRegistry {
     // before ever attempting one, rather than re-deriving "file" vs "directory" per target itself. Throws
     // (same as build()) when `target` has no registered builder today -- there is no destinationKind to check
     // against.
-    public checkDestination(target: ArtifactTargetType, destinationPath: string): ArtifactDestinationCheck {
+    public checkDestination(target: ArtifactTargetType, destinationPath: string, sourcePath?: string): ArtifactDestinationCheck {
         const builder = this.builders.get(target);
         if (builder === undefined) {
             const descriptor = this.describe(target);
@@ -170,6 +185,7 @@ export class ArtifactBuilderRegistry {
         }
 
         try {
+            if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
             assertArtifactDestinationAvailable(destinationPath, builder.destinationKind);
             return {available: true};
         } catch (error) {
@@ -180,6 +196,38 @@ export class ArtifactBuilderRegistry {
         }
     }
 
+    // Validates the same source/artifact contract a real build consumes, without allocating a destination
+    // or invoking any writer. This is intentionally separate from checkDestination(): a usable output also
+    // requires readable source data, so callers must not report dry-run success after checking only a path.
+    public async validate(target: ArtifactTargetType, source: PokieProject): Promise<void> {
+        if (!this.supportsConversionFrom(target, source.type)) {
+            throw new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath));
+        }
+
+        if (source.type === "blueprint") {
+            const blueprint = loadGameBlueprint(source.rootPath);
+            const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
+            if (errors.length > 0) {
+                throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
+            }
+            const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
+            if (!resolution.success) throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
+            return;
+        }
+
+        if (source.type === "tsPackage") {
+            await loadPokieGame(source.rootPath);
+            return;
+        }
+
+        const builder = this.builders.get(target);
+        if (builder === undefined) {
+            const descriptor = this.describe(target);
+            throw new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`);
+        }
+        await builder.validate?.(source);
+    }
+
     // Executes a real build: re-validates `source` against `target`'s own required capability (the exact
     // capability diagnostic describe()/supportsConversionFrom() already report, checked again here so build()
     // is safe to call directly without a caller re-deriving the same check itself), then hands off to the
@@ -187,6 +235,9 @@ export class ArtifactBuilderRegistry {
     // ("wasm") -- with the same unsupportedNotes describe() already exposes, so the message a caller sees here
     // is never a second, differently-worded "not supported" statement.
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
+        if (!this.supportsConversionFrom(target, source.type)) {
+            return Promise.reject(new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath)));
+        }
         if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
             return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
         }
@@ -202,10 +253,6 @@ export class ArtifactBuilderRegistry {
                 );
         }
         const descriptor = this.describe(target);
-        const diagnostic = describeUnsupportedProjectOperation(source, descriptor.operation);
-        if (diagnostic !== undefined) {
-            return Promise.reject(new Error(diagnostic.message));
-        }
 
         const builder = this.builders.get(target);
         if (builder === undefined) {

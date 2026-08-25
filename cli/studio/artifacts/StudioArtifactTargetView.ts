@@ -1,4 +1,4 @@
-import type {ArtifactTargetType} from "pokie";
+import type {ArtifactTargetType, BuildProductMatrixCellState} from "pokie";
 
 // GET /api/project/artifacts/targets' own DTO -- one entry per ArtifactBuilderRegistry.listTargets(),
 // with `supported` already resolved against the active project's own ProjectType (see
@@ -9,5 +9,7 @@ import type {ArtifactTargetType} from "pokie";
 export type StudioArtifactTargetView = {
     readonly target: ArtifactTargetType;
     readonly supported: boolean;
+    readonly state: BuildProductMatrixCellState;
+    readonly diagnostic?: string;
     readonly unsupportedNotes: readonly string[];
 };

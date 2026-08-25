@@ -88,8 +88,9 @@ tabs never loses in-progress work):
 - **Projects** (`/home/projects`) — every already-known project: managed (created/opened this Studio session,
   in-memory only, reset on restart) and registered (persisted across restarts via
   `StudioProjectRegistrationService`), plus **Import Project**, which previews/validates a target path before
-  ever registering it and routes a detected PAR sheet into Design Game's own PAR Sheet Import/Export panel
-  instead (there's no "open" story for a PAR sheet the way there is for a runnable package). There is no
+  ever registering it. A detected PAR sheet can be registered and opened into its own Build/Export dashboard
+  to republish the workbook; it also retains a separate Design Game route for the guided PAR Sheet
+  Import/Export workflow. There is no
   scaffolding/init/build-from-an-existing-blueprint-file surface in Studio any more — those flows now live only
   in the CLI (`pokie init [directory]`, `pokie create [name]`); Home doesn't duplicate them, only imports what
   they produce. The old, separate, always-mounted "raw" (non-`guided`) Blueprint Editor instance that used to

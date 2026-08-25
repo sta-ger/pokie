@@ -5,6 +5,7 @@ import {
     ArtifactBuildConflictError,
     ArtifactBuildCancelledError,
     GameBlueprint,
+    loadPokieGame,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     TsPackageArtifactBuilder,
@@ -55,13 +56,15 @@ describe("TsPackageArtifactBuilder", () => {
     });
 
     it("builds a real, loadable tsPackage from a blueprint file", async () => {
-        const builder = new TsPackageArtifactBuilder("1.3.0");
+        const builder = new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd());
 
         const result = await builder.build(blueprintProjectOf(blueprintPath), destinationDir);
 
         expect(result.outputPath).toBe(destinationDir);
         expect(fs.existsSync(path.join(destinationDir, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(destinationDir, "dist", "index.js"))).toBe(true);
+        expect(fs.lstatSync(path.join(destinationDir, "node_modules", "pokie")).isSymbolicLink()).toBe(true);
+        await expect(loadPokieGame(destinationDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
     });
 
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {

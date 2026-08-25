@@ -91,9 +91,10 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "build",
         description:
-            'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- a ' +
-            "tsPackage from a GameBlueprint source, or atomically republish an already-built artifact to a new " +
-            'location (for a first random game instead, see "pokie ' +
+            'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- the ' +
+            "supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter, " +
+            "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
+            'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.',
         verbs: [
             {
@@ -742,8 +743,9 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]\n" +
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-            "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
-            "other target republishes an already-built artifact of its own type to a new location.",
+            "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
+            "outcomeLibrary, or stakeAdapter; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
+            "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> parWorkbook.",
     },
     {
         // --target is checked (and throws) before "config.json" is ever resolved -- see
@@ -755,7 +757,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         args: ["config.json"],
         expectedExitCode: 1,
         expectedError:
-            "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.\n\n" +
+            "--target is required. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.\n\n" +
             "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]",
     },
     {
@@ -764,7 +766,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target rejects an unknown value",
         args: ["config.json", "--target", "bogus"],
         expectedExitCode: 1,
-        expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.',
+        expectedError: 'Unknown --target "bogus". --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.',
     },
     {
         // Placed before every other valid case so it wins the accepted-value lookup for --target ("tsPackage")
@@ -2405,7 +2407,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--target given with no value",
         args: ["config.json", "--target"],
         expectedExitCode: 1,
-        expectedError: "--target requires a value. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, wasm.",
+        expectedError: "--target requires a value. --target must be one of: tsPackage, outcomeLibrary, stakeAdapter, parWorkbook.",
     },
     {
         command: "build",

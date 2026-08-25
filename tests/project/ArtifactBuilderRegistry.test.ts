@@ -16,8 +16,8 @@ import type {PokieProject} from "../../src/project/PokieProject.js";
 describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
-    it("lists exactly the five buildable target types", () => {
-        expect(new Set(registry.listTargets())).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
+    it("lists only matrix-advertised build targets", () => {
+        expect(new Set(registry.listTargets())).toEqual(new Set(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
     });
 
     it("reports the true required source capability and supported sources for a package build", () => {
@@ -39,6 +39,16 @@ describe("ArtifactBuilderRegistry", () => {
 
         expect(descriptor.requiredSourceCapability).toBe(STAKE_ADAPTER_EXPORT_CAPABILITY);
         expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"]);
+    });
+
+    it("describes Blueprint/package Outcome and Stake conversions without denying them in target notes", () => {
+        const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
+        const outcomeLibrary = registry.describe("outcomeLibrary");
+        const stakeAdapter = registry.describe("stakeAdapter");
+
+        expect(tsPackageNotes).not.toMatch(/cannot itself be converted|cannot.*other target/i);
+        expect(outcomeLibrary.supportedSources).toEqual(expect.arrayContaining(["blueprint", "tsPackage"]));
+        expect(stakeAdapter.supportedSources).toEqual(expect.arrayContaining(["blueprint", "tsPackage"]));
     });
 
     it("reports the true required source capability and supported sources for a PAR export", () => {
@@ -112,12 +122,12 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(1);
         });
 
-        it("rejects with the same capability diagnostic describe()/supportsConversionFrom() already report, without invoking any builder", async () => {
+        it("rejects with the matrix diagnostic before invoking any builder", async () => {
             const builder = fakeBuilder("tsPackage");
             const withBuilder = new ArtifactBuilderRegistry("1.3.0", new Map([["tsPackage", builder]]));
 
             await expect(withBuilder.build("tsPackage", projectOf("tsPackage"), "/out/my-game")).rejects.toThrow(
-                /This POKIE game package cannot build a POKIE game package/,
+                /Missing prerequisite: a Game Blueprint source\. Next: Open a Game Blueprint/,
             );
             expect(builder.calls).toBe(0);
         });

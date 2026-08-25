@@ -2,6 +2,7 @@ import type {ArtifactTargetType} from "./ArtifactTargetType.js";
 import type {PokieOperation} from "./PokieOperation.js";
 import type {ProjectCapability} from "./ProjectCapability.js";
 import type {ProjectType} from "./ProjectType.js";
+import type {BuildProductMatrixCell} from "./BuildProductMatrix.js";
 
 // What ArtifactBuilderRegistry.describe() reports for a single build target -- the one place a caller (a
 // future "replace build semantics" step, a Studio build-preview panel) asks "can I build this artifact, and
@@ -26,6 +27,9 @@ export type ArtifactBuildTargetDescriptor = {
     // yet), so an empty array here is this descriptor truthfully reporting "not buildable from anything today",
     // never an omission.
     readonly supportedSources: readonly ProjectType[];
+    // One matrix cell for every resolver source kind. Consumers that need to present an unavailable
+    // conversion must use this data instead of inferring support from a target-level capability alone.
+    readonly sourceCells: readonly BuildProductMatrixCell[];
     // Explicit, human-readable statement of what this target's build does NOT promise -- e.g. that an
     // "outcomeLibrary"/"stakeAdapter" build never reconstructs the game model that produced its outcomes (a
     // one-way conversion), or that "wasm" has no arbitrary package-to-WASM compiler. Exists so a caller

@@ -37,6 +37,18 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         this.exporter = exporter;
     }
 
+    public async validate(source: PokieProject): Promise<void> {
+        const imported = await this.importer.importFromFile(source.rootPath);
+        const errors = imported.issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            throw new Error(
+                `Could not read PAR sheet workbook "${source.rootPath}": ${errors
+                    .map((issue) => `${issue.code}: ${issue.message}`)
+                    .join("; ")}`,
+            );
+        }
+    }
+
     public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);

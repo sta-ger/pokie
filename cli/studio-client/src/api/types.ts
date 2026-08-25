@@ -1186,7 +1186,7 @@ export type StudioStakeEngineExportView =
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.
-export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook" | "wasm";
+export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "parWorkbook";
 
 // GET /api/project/artifacts/targets' own DTO — see cli/studio/artifacts/StudioArtifactTargetView.ts's
 // own doc comment. `supported` is already resolved against the active project's own ProjectType server-side
@@ -1195,6 +1195,8 @@ export type StudioArtifactTargetType = "tsPackage" | "outcomeLibrary" | "stakeAd
 export type StudioArtifactTargetView = {
     target: StudioArtifactTargetType;
     supported: boolean;
+    state: "supported" | "diagnostic-required" | "hidden/unadvertised";
+    diagnostic?: string;
     unsupportedNotes: string[];
 };
 

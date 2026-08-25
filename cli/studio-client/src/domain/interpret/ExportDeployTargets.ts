@@ -54,13 +54,11 @@ export type ExportDeployTargetCard = {
 };
 
 // Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
-// tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm vocabulary and semantics
+// tsPackage/outcomeLibrary/stakeAdapter/parWorkbook vocabulary and semantics
 // ArtifactBuilderRegistry.describe() itself already reports (see ArtifactBuilderRegistry.ts's own
 // UNSUPPORTED_NOTES), restated here only as a label/one-line purpose for this card -- never a second,
-// independently-decided description of what building a target does or doesn't do. "wasm" is never actually
-// reachable as a card (ArtifactBuilderRegistry reports it as supported by no ProjectType today -- see
-// ArtifactBuilderRegistry's own "wasm" doc comment), but is listed here for the same exhaustiveness reason
-// GROUP_LABELS below covers every ExportDeployTargetKind.
+// independently-decided description of what building a target does or doesn't do. WASM is intentionally
+// absent: it is an inspection-only project kind until a matrix-supported builder exists.
 const ARTIFACT_TARGET_CARD_INFO: Readonly<
     Record<StudioArtifactTargetType, {label: string; purpose: string; destination: string; technicalDestination: string; unavailableReason: string}>
 > = {
@@ -72,20 +70,20 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         unavailableReason: "This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one.",
     },
     outcomeLibrary: {
-        label: "Outcome library (republish)",
-        purpose: "Copy this outcome library to a new location.",
-        destination: "Choose a folder for the copied outcome library, or use the default destination.",
+        label: "Outcome library",
+        purpose: "Build an outcome library from this project.",
+        destination: "Choose a folder for the outcome library, or use the default destination.",
         technicalDestination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
         unavailableReason:
             "This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
     },
     stakeAdapter: {
-        label: "Stake Engine export (republish)",
-        purpose: "Copy this Stake Engine export to a new location.",
-        destination: "Choose a folder for the copied Stake Engine export, or use the default destination.",
+        label: "Stake Engine export",
+        purpose: "Build a Stake Engine export from this project.",
+        destination: "Choose a folder for the Stake Engine export, or use the default destination.",
         technicalDestination: "A new Stake Engine export directory beside this project by default.",
         unavailableReason:
-            "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
+            "This project cannot build a Stake Engine export. Open a Game Blueprint, runnable game package, outcome library, or Stake Engine export project to continue.",
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
@@ -93,13 +91,6 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         destination: "Choose where to save the copied workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
         unavailableReason: "This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue.",
-    },
-    wasm: {
-        label: "WASM",
-        purpose: "This output is not available for the current project.",
-        destination: "This output is not available for the current project.",
-        technicalDestination: "Not available.",
-        unavailableReason: "WASM export is not available yet because POKIE has no WASM builder. Choose another output format.",
     },
 };
 
@@ -109,12 +100,17 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
 // making an unavailable output look as though Studio forgot to offer it.
 function unavailableReasonsForArtifactTarget(entry: StudioArtifactTargetView, fallbackReason: string): readonly string[] {
     if (entry.supported) return [];
+    if (entry.diagnostic !== undefined) return [entry.diagnostic];
     if (entry.unsupportedNotes.length > 0) return entry.unsupportedNotes;
     return [fallbackReason];
 }
 
 export function describeArtifactBuildTargetCards(targets: readonly StudioArtifactTargetView[]): ExportDeployTargetCard[] {
     return targets
+        // A stale server response must not re-advertise a hidden build target in the UI. The server is
+        // matrix-authoritative, but this defensive filter makes the hidden/unadvertised contract hold while
+        // a browser has an older response cached.
+        .filter((entry) => entry.target in ARTIFACT_TARGET_CARD_INFO)
         .map((entry) => {
             const info = ARTIFACT_TARGET_CARD_INFO[entry.target];
             return {

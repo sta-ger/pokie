@@ -65,6 +65,13 @@ describe("OutcomeLibraryArtifactBuilder", () => {
         expect(destinationManifest.modes).toEqual(sourceManifest.modes);
     });
 
+    it("validates every source mode without creating a destination", async () => {
+        const builder = new OutcomeLibraryArtifactBuilder("1.3.0");
+
+        await expect(builder.validate(outcomeLibraryProjectOf(sourceDir))).resolves.toBeUndefined();
+        expect(fs.existsSync(destinationDir)).toBe(false);
+    });
+
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {
         fs.mkdirSync(destinationDir);
         fs.writeFileSync(path.join(destinationDir, "unrelated.txt"), "not ours");

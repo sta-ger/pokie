@@ -53,13 +53,17 @@ type ImportView =
 const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
 
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
-// actually load into the Project Dashboard. "tsPackage" passes straight through; "blueprint" is
-// materialized into a real runtime first (see createMaterializingRuntimePackageResolver's own doc
-// comment) -- both land on the exact same Overview/Game Model workspace, so both get the same Open
-// action here. Every other recognized type (outcomeLibrary/stakeAdapter/wasm/parWorkbook) is a real,
-// correctly-detected project, just not one there's a "run it in Studio" flow for yet, so the list shows
-// its type/capabilities but no Open action.
-const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>(["tsPackage", "blueprint"]);
+// load runnable packages and Blueprints, as well as canonical outcome-source projects and exchangeable
+// PAR workbooks. A Blueprint is materialized into a runtime package; an outcome library, Stake Engine
+// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM has no
+// Studio workspace. PAR workbooks additionally retain their dedicated Design Game action below.
+const OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
+    "tsPackage",
+    "blueprint",
+    "outcomeLibrary",
+    "stakeAdapter",
+    "parWorkbook",
+]);
 
 const PROJECT_TYPE_LABEL: Record<StudioProjectType, string> = {
     blueprint: "Blueprint",
@@ -314,11 +318,9 @@ export function ProjectsPanel({
             });
     };
 
-    // A recognized PAR sheet has no "open" story of its own (see loadProjectDashboardContext's own
-    // doc comment -- it only ever loads a runnable tsPackage) -- Import Project routes it into Design
-    // Game's own PAR Sheet Import/Export panel instead of registering it, reusing the exact same guided
-    // Import -> Diagnose & map -> Preview -> Apply flow a PAR sheet reached any other way already goes
-    // through (see ParSheetImportExportPanel's own doc comment).
+    // A detected PAR sheet can be registered like every other supported project, making its public
+    // Open action and self-republish Build/Export dashboard reachable. It also retains the separate
+    // Design Game route for the guided Import -> Diagnose & map -> Preview -> Apply flow.
     const renderEntryName = (entry: StudioProjectRegistryView): ReactNode => {
         if (entry.status === "missing") {
             return <Text c="dimmed">{entry.name} (missing)</Text>;
@@ -624,39 +626,36 @@ export function ProjectsPanel({
                     <Text size="sm">Registered &quot;{importView.name}&quot; -- it now shows up in Your projects above.</Text>
                 )}
 
-                {(importView.status === "recognized" || importView.status === "registering") &&
-                    (importView.result.type === "parWorkbook" ? (
-                        <div>
-                            <Text size="sm" mb="sm">
-                                This is a PAR sheet workbook. Import it via Design Game&apos;s own PAR Sheet Import/Export panel instead of
-                                registering it here.
+                {(importView.status === "recognized" || importView.status === "registering") && (
+                    <div>
+                        <Text size="sm" mb="sm">
+                            Detected a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
+                            <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
+                        </Text>
+                        {importView.result.type === "parWorkbook" && (
+                            <Text size="sm" c="dimmed" mb="sm">
+                                Register it to open its Build/Export dashboard, or open it in Design Game to map and import its PAR data.
                             </Text>
-                            <QuickActions>
+                        )}
+                        <TextInput
+                            label="Name"
+                            mb="sm"
+                            value={registerName}
+                            onChange={(event) => setRegisterName(event.currentTarget.value)}
+                            description="Registered under this name -- rename it later if you need to."
+                        />
+                        <QuickActions>
+                            <Button onClick={handleRegister} loading={importView.status === "registering"}>
+                                Register
+                            </Button>
+                            {importView.result.type === "parWorkbook" && (
                                 <Button variant="default" onClick={() => handleGoToDesignGame(importView.result.location)}>
                                     Open in Design Game
                                 </Button>
-                            </QuickActions>
-                        </div>
-                    ) : (
-                        <div>
-                            <Text size="sm" mb="sm">
-                                Detected a {PROJECT_TYPE_LABEL[importView.result.type]} at{" "}
-                                <strong style={{overflowWrap: "anywhere"}}>{importView.result.location}</strong>.
-                            </Text>
-                            <TextInput
-                                label="Name"
-                                mb="sm"
-                                value={registerName}
-                                onChange={(event) => setRegisterName(event.currentTarget.value)}
-                                description="Registered under this name -- rename it later if you need to."
-                            />
-                            <QuickActions>
-                                <Button onClick={handleRegister} loading={importView.status === "registering"}>
-                                    Register
-                                </Button>
-                            </QuickActions>
-                        </div>
-                    ))}
+                            )}
+                        </QuickActions>
+                    </div>
+                )}
             </PageSection>
         </div>
     );

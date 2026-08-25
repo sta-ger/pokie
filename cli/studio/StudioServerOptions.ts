@@ -27,6 +27,9 @@ export type StudioServerOptions = {
     // Required rather than defaulted for the same reason those are: StudioServer has no business
     // guessing a `pokie` version.
     pokieVersion: string;
+    // Running POKIE package root, supplied by StudioCommand from cli/pokie.ts. It lets a fresh
+    // Studio-built TypeScript package link the current runtime before any npm install is needed.
+    pokiePackageRoot?: string;
     // Where the compiled cli/studio-client assets live (dist/cli/studio-client at runtime) — same
     // "computed once by cli/pokie.ts, passed in" pattern as PokieClientServer's clientRoot.
     studioRoot: string;

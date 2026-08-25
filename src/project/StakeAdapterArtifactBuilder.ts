@@ -42,6 +42,14 @@ export class StakeAdapterArtifactBuilder implements ArtifactBuilder {
         this.exporter = exporter;
     }
 
+    public async validate(source: PokieProject): Promise<void> {
+        if (source.type === "outcomeLibrary") {
+            await this.readOutcomeLibraryModes(source.rootPath);
+            return;
+        }
+        await this.readStakeModes(source.rootPath);
+    }
+
     public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);

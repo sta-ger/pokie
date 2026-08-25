@@ -2,9 +2,10 @@ import {
     ArtifactBuilderRegistry,
     type ArtifactBuildOptions,
     ArtifactTargetType,
+    ADVERTISED_ARTIFACT_BUILD_TARGETS,
     computeGameBlueprintHash,
     buildGameBuildInfo,
-    describeProjectType,
+    describeBuildProductMatrixDiagnostic,
     GameBlueprint,
     GameBlueprintValidating,
     GameBlueprintValidator,
@@ -21,17 +22,17 @@ import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-// Every ArtifactTargetType --target accepts -- the same closed vocabulary ArtifactBuilderRegistry.listTargets()
-// already returns, spelled out here so an invalid --target value is rejected by Commander's own option parser
-// (before a project is even resolved) rather than surfacing as a later, less specific registry error.
-const TARGET_TYPES: readonly ArtifactTargetType[] = ["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"];
+// The matrix's advertised targets, rather than ArtifactTargetType's wider inspection vocabulary. WASM is
+// resolvable for inspection but has no builder, so it is intentionally rejected before project resolution.
+const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]";
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-    "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
-    "other target republishes an already-built artifact of its own type to a new location.";
+    "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
+    "outcomeLibrary, or stakeAdapter; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
+    "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> parWorkbook.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
@@ -53,17 +54,15 @@ export class BuildCommand implements CliCommandHandling {
         resolveProject?: ProjectResolving,
         registry?: ArtifactBuilderRegistry,
         managedOutcomeProjects?: ManagedOutcomeProjectServicing,
+        pokiePackageRoot?: string,
     ) {
         const projectResolver = resolveProject ?? new ProjectTargetResolver();
         this.pokieVersion = pokieVersion;
         this.loadBlueprint = loadBlueprint ?? loadGameBlueprint;
         this.validator = validator ?? new GameBlueprintValidator();
         this.resolveProject = projectResolver;
-        this.registry = registry ?? new ArtifactBuilderRegistry(
-            pokieVersion,
-            undefined,
-            managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver),
-        );
+        this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(projectResolver));
+        if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
     }
 
     public getName(): string {
@@ -73,8 +72,9 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
-            "a tsPackage from a GameBlueprint source, or atomically republish an already-built artifact to a new " +
-            'location (for a first random game instead, see "pokie ' +
+            "the supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter, " +
+            "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
+            'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.'
         );
     }
@@ -154,20 +154,22 @@ export class BuildCommand implements CliCommandHandling {
         }
 
         if (!this.registry.supportsConversionFrom(options.target, project.type)) {
-            const descriptor = this.registry.describe(options.target);
-            const sourceKind = describeProjectType(project.type);
-            const targetKind = describeProjectType(options.target);
-            const compatiblePrerequisite =
-                descriptor.supportedSources.length > 0
-                    ? `To build a ${targetKind}, start with ${descriptor.supportedSources.map((type) => `a ${describeProjectType(type)}`).join(" or ")}.`
-                    : `POKIE cannot build a ${targetKind} from any project yet.`;
-            throw new Error(
-                `"${projectPath}" is a ${sourceKind}. It cannot build a ${targetKind}. ${compatiblePrerequisite} ` +
-                    'Run "pokie inspect <path>" to see compatible next actions.',
-            );
+            throw new Error(describeBuildProductMatrixDiagnostic(project.type, options.target, projectPath));
         }
 
         const out = options.out ?? this.resolveDestination(project.rootPath, options.target);
+
+        if (options.dryRun) {
+            const destinationCheck = this.registry.checkDestination(options.target, out, project.rootPath);
+            if (!destinationCheck.available) throw new Error(destinationCheck.message);
+            // Blueprint -> tsPackage retains its richer command-owned preview below, which validates the
+            // injected Blueprint reader/validator and renders the complete generated-package summary.
+            // Every other supported cell must validate its own registry source/artifact contract before
+            // the generic dry-run branch can claim success.
+            if (!(options.target === "tsPackage" && project.type === "blueprint")) {
+                await this.registry.validate(options.target, project);
+            }
+        }
 
         if (options.target === "tsPackage" && project.type === "blueprint") {
             return this.buildTsPackageFromBlueprint(project, out, options.dryRun ?? false);

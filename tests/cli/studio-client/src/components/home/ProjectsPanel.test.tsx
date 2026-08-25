@@ -9,11 +9,11 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
 // Covers the Import Project flow this step (P3-POLISH-13) added to the Projects tab -- Detect (a
-// read-only preview, never registering anything) -> Register for anything with an "open" story, or
-// straight to Design Game's own PAR Sheet Import/Export panel for a recognized PAR workbook, which has
-// none. HomePage.test.tsx/openProjectGuard.test.tsx/navigationGuardModal.test.tsx already cover opening
-// an already-registered row and the dirty-draft guard around it -- this file is scoped to what's unique
-// to Import Project itself.
+// read-only preview, never registering anything) -> Register for every supported project with an
+// "open" story. PAR workbooks additionally keep their dedicated Design Game import/export route.
+// HomePage.test.tsx/openProjectGuard.test.tsx/navigationGuardModal.test.tsx already cover opening an
+// already-registered row and the dirty-draft guard around it -- this file is scoped to what's unique to
+// Import Project itself.
 
 // Home keeps the Design Game surface mounted while Projects is open. Its automatic validation can
 // therefore run during any of these project-only flows, so each routed fetch fixture must cover it.
@@ -146,42 +146,116 @@ describe("ProjectsPanel: Import Project", () => {
         }
     });
 
-    it("routes a recognized PAR sheet to Design Game's own PAR Sheet Import/Export panel instead of registering it", async () => {
+    it("registers a recognized PAR sheet so its registered row can open the Build/Export dashboard", async () => {
         const user = userEvent.setup();
+        const location = "/games/sheet.xlsx";
         const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/projects/registry/preview": () => ({
                 ok: true,
                 status: 200,
-                body: {status: "recognized", location: "/games/sheet.xlsx", type: "parWorkbook", capabilities: [], suggestedName: "sheet"},
+                body: {status: "recognized", location, type: "parWorkbook", capabilities: [], suggestedName: "sheet"},
+            }),
+            "/api/home/projects/registry/register": () => ({
+                ok: true,
+                status: 201,
+                body: {
+                    status: "ok",
+                    entry: {
+                        location,
+                        name: "sheet",
+                        type: "parWorkbook",
+                        capabilities: ["parWorkbook.exchange"],
+                        origin: "external",
+                        lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                        status: "ok",
+                    },
+                },
+            }),
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: location}},
+            }),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "artifact",
+                    projectRoot: location,
+                    project: {type: "parWorkbook", rootPath: location, capabilities: ["parWorkbook.exchange"], provenance: "registered workbook"},
+                },
+            }),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: location, valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/artifacts/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                    {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                    {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "A Stake export requires an Outcome library.", unsupportedNotes: []},
+                    {target: "parWorkbook", supported: true, state: "supported", unsupportedNotes: []},
+                ],
+            }),
+            "/api/project/artifacts/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    target: "parWorkbook",
+                    destination: "/games/republished-sheet.xlsx",
+                    destinationKind: "file",
+                    plannedOutputs: ["PAR workbook (.xlsx) file"],
+                    sourceType: "parWorkbook",
+                },
             }),
         });
-        renderWithProviders(
-            <>
-                <ProjectsPanel />
-                <LocationProbe />
-            </>,
-            {fetchImpl},
-        );
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
 
-        await user.type(screen.getByLabelText("Location", {exact: false}), "/games/sheet.xlsx");
+        await user.type(screen.getByLabelText("Location", {exact: false}), location);
         await user.click(screen.getByRole("button", {name: "Detect"}));
 
-        expect(await screen.findByText(/This is a PAR sheet workbook/)).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Register"})).not.toBeInTheDocument();
+        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Register"})).toBeInTheDocument();
 
-        await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
+        await user.click(screen.getByRole("button", {name: "Register"}));
 
         await waitFor(() =>
-            expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}")).toEqual({
-                pathname: "/home/design",
-                state: {initialParSheetPath: "/games/sheet.xlsx"},
-            }),
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/registry/register",
+                    init: expect.objectContaining({body: JSON.stringify({location, name: "sheet"})}),
+                }),
+            ),
         );
-        expect(calls.some((call) => call.url === "/api/home/projects/registry/register")).toBe(false);
+        const row = (await screen.findAllByText("sheet"))
+            .map((element) => element.closest("tr"))
+            .find((candidate): candidate is HTMLTableRowElement => candidate !== null) as HTMLElement;
+        await user.click(within(row).getByRole("button", {name: "Open"}));
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/open",
+                    init: expect.objectContaining({body: JSON.stringify({projectRoot: location})}),
+                }),
+            ),
+        );
+        expect(await screen.findByRole("heading", {name: "PAR sheet"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
     });
 
-    it("picks a PAR workbook through the native file picker, then detects and routes it into Design Game", async () => {
+    it("picks a PAR workbook through the native file picker, then detects and retains its Design Game route", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
@@ -213,7 +287,7 @@ describe("ProjectsPanel: Import Project", () => {
         });
 
         await user.click(screen.getByRole("button", {name: "Detect"}));
-        expect(await screen.findByText(/This is a PAR sheet workbook/)).toBeInTheDocument();
+        expect(await screen.findByText(/Detected a PAR sheet at/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Open in Design Game"}));
 
         await waitFor(() =>
@@ -697,6 +771,118 @@ describe("ProjectsPanel: Import Project", () => {
         expect(within(availableRow as HTMLElement).getByText("Available game").closest("td")).toHaveAttribute("data-label", "Project");
         expect(within(availableRow as HTMLElement).getByRole("button", {name: "Open"}).closest("td")).toHaveAttribute("data-label", "Actions");
         expect(within(missingRow as HTMLElement).getByRole("checkbox", {name: "Select missing project Missing game"}).closest("td")).toHaveAttribute("data-label", "Select");
+    });
+
+    it.each([
+        ["outcomeLibrary", "Outcome library", "/games/outcomes"],
+        ["stakeAdapter", "Stake Engine export", "/games/stake-export"],
+    ] as const)("opens an available %s registry entry through the public Project workspace action", async (type, name, location) => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{location, name, type, capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"}],
+            }),
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: location}},
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const row = (await screen.findAllByText(name))
+            .map((element) => element.closest("tr"))
+            .find((candidate): candidate is HTMLTableRowElement => candidate !== null) as HTMLElement;
+        expect(within(row).getByRole("button", {name: "Open"})).toBeInTheDocument();
+        await user.click(within(row).getByRole("button", {name: "Open"}));
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/open",
+                    init: expect.objectContaining({body: JSON.stringify({projectRoot: location})}),
+                }),
+            ),
+        );
+    });
+
+    it("opens an available PAR workbook into its dashboard Build/Export card", async () => {
+        const user = userEvent.setup();
+        const location = "/games/sheet.xlsx";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{location, name: "PAR sheet", type: "parWorkbook", capabilities: ["parWorkbook.exchange"], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"}],
+            }),
+            "/api/home/projects/open": () => ({
+                ok: true,
+                status: 200,
+                body: {context: {mode: "project", projectRoot: location}},
+            }),
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "artifact",
+                    projectRoot: location,
+                    project: {type: "parWorkbook", rootPath: location, capabilities: ["parWorkbook.exchange"], provenance: "registered workbook"},
+                },
+            }),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: location, valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/artifacts/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                    {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                    {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "A Stake export requires an Outcome library.", unsupportedNotes: []},
+                    {target: "parWorkbook", supported: true, state: "supported", unsupportedNotes: []},
+                ],
+            }),
+            "/api/project/artifacts/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    target: "parWorkbook",
+                    destination: "/games/republished-sheet.xlsx",
+                    destinationKind: "file",
+                    plannedOutputs: ["PAR workbook (.xlsx) file"],
+                    sourceType: "parWorkbook",
+                },
+            }),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await goToProjects(user);
+
+        const row = (await screen.findAllByText("PAR sheet"))
+            .map((element) => element.closest("tr"))
+            .find((candidate): candidate is HTMLTableRowElement => candidate !== null) as HTMLElement;
+        await user.click(within(row).getByRole("button", {name: "Open"}));
+
+        await waitFor(() =>
+            expect(calls).toContainEqual(
+                expect.objectContaining({
+                    url: "/api/home/projects/open",
+                    init: expect.objectContaining({body: JSON.stringify({projectRoot: location})}),
+                }),
+            ),
+        );
+        expect(await screen.findByRole("heading", {name: "PAR sheet"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
+        expect(screen.queryByText(/WASM/)).not.toBeInTheDocument();
     });
 
     it("uses the labelled card layout while desktop navigation leaves the Projects panel too narrow for every action", () => {

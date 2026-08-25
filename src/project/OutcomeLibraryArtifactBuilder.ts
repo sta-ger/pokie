@@ -42,6 +42,16 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
         this.writer = writer;
     }
 
+    public async validate(source: PokieProject): Promise<void> {
+        if (source.type !== "outcomeLibrary") {
+            throw new Error('OutcomeLibraryArtifactBuilder only validates an "outcomeLibrary" project.');
+        }
+        const manifest = await this.reader.readManifest(source.rootPath);
+        for (const entry of manifest.modes) {
+            await this.reader.readLibrary(source.rootPath, entry.modeName);
+        }
+    }
+
     public async build(source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         assertArtifactBuildNotCancelled(options);
         assertArtifactDestinationAvailable(destinationPath, this.destinationKind);

@@ -1,6 +1,12 @@
-import {buildPackageJsonPatch} from "pokie";
+import {buildPackageJsonPatch, PUBLISHED_POKIE_RUNTIME_VERSION} from "pokie";
 
 describe("buildPackageJsonPatch", () => {
+    it("uses the released POKIE runtime range when the running tool is an unpublished candidate", () => {
+        const patched = buildPackageJsonPatch({name: "sample-slot", version: "1.0.0"}, "1.3.0");
+
+        expect(patched.dependencies).toEqual({pokie: `^${PUBLISHED_POKIE_RUNTIME_VERSION}`});
+    });
+
     it("sets pokie.entry, and fills in the build script and dependencies on a bare package.json", () => {
         const patched = buildPackageJsonPatch({name: "sample-slot", version: "1.0.0"}, "1.2.1");
 

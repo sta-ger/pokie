@@ -52,6 +52,13 @@ describe("StakeAdapterArtifactBuilder", () => {
         expect(fs.readFileSync(path.join(destinationDir, "index.json"), "utf-8")).toBe(fs.readFileSync(path.join(sourceDir, "index.json"), "utf-8"));
     });
 
+    it("validates a readable Stake source without creating a destination", async () => {
+        const builder = new StakeAdapterArtifactBuilder("1.3.0");
+
+        await expect(builder.validate(stakeAdapterProjectOf(sourceDir))).resolves.toBeUndefined();
+        expect(fs.existsSync(destinationDir)).toBe(false);
+    });
+
     it("builds Stake output from the registered canonical Outcome Library prerequisite", async () => {
         const outcomeDir = `${sourceDir}-outcome-library`;
         const stakeDir = `${sourceDir}-stake-output`;

@@ -103,6 +103,26 @@ describe("describeExportDeployTargetCards", () => {
 });
 
 describe("describeArtifactBuildTargetCards", () => {
+    it("uses source-neutral Outcome Library and Stake Engine wording for every matrix-supported runtime source", () => {
+        const cards = describeArtifactBuildTargetCards([
+            {target: "outcomeLibrary", supported: true, state: "supported", unsupportedNotes: []},
+            {target: "stakeAdapter", supported: true, state: "supported", unsupportedNotes: []},
+        ]);
+
+        expect(cards).toMatchObject([
+            {
+                label: "Outcome library",
+                purpose: "Build an outcome library from this project.",
+                destination: "Choose a folder for the outcome library, or use the default destination.",
+            },
+            {
+                label: "Stake Engine export",
+                purpose: "Build a Stake Engine export from this project.",
+                destination: "Choose a folder for the Stake Engine export, or use the default destination.",
+            },
+        ]);
+    });
+
     it("keeps an unsupported output visible with its concrete unavailable reason, while reserving destination protocol for Advanced details", () => {
         const cards = describeArtifactBuildTargetCards([
             {
@@ -116,7 +136,7 @@ describe("describeArtifactBuildTargetCards", () => {
         expect(cards[0]).toMatchObject({
             id: "artifact-stakeAdapter",
             supported: false,
-            destination: "Choose a folder for the copied Stake Engine export, or use the default destination.",
+            destination: "Choose a folder for the Stake Engine export, or use the default destination.",
             technicalDestination: "A new Stake Engine export directory beside this project by default.",
             unavailableReasons: ["This target only republishes an existing Stake Engine export."],
         });
@@ -125,19 +145,17 @@ describe("describeArtifactBuildTargetCards", () => {
 
     it("supplies every unsupported artifact target with a target-specific next step when the server has no reason", () => {
         const cards = describeArtifactBuildTargetCards([
-            {target: "tsPackage", supported: false, unsupportedNotes: []},
-            {target: "outcomeLibrary", supported: false, unsupportedNotes: []},
-            {target: "stakeAdapter", supported: false, unsupportedNotes: []},
-            {target: "parWorkbook", supported: false, unsupportedNotes: []},
-            {target: "wasm", supported: false, unsupportedNotes: []},
+            {target: "tsPackage", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "stakeAdapter", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, state: "diagnostic-required", unsupportedNotes: []},
         ]);
 
         expect(cards.map((card) => card.unavailableReasons)).toEqual([
             ["This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one."],
             ["This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
-            ["This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
+            ["This project cannot build a Stake Engine export. Open a Game Blueprint, runnable game package, outcome library, or Stake Engine export project to continue."],
             ["This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue."],
-            ["WASM export is not available yet because POKIE has no WASM builder. Choose another output format."],
         ]);
     });
 
