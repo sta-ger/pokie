@@ -1,12 +1,10 @@
-import assert from "node:assert/strict";
-import {spawnSync} from "node:child_process";
-import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import {test} from "@jest/globals";
-import {fileURLToPath} from "node:url";
+const assert = process.getBuiltinModule("node:assert/strict");
+const {spawnSync} = process.getBuiltinModule("node:child_process");
+const {mkdir, mkdtemp, readFile, rm, writeFile} = process.getBuiltinModule("node:fs/promises");
+const os = process.getBuiltinModule("node:os");
+const path = process.getBuiltinModule("node:path");
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const root = process.cwd();
 const checker = path.join(root, "scripts/check-cli-inventory.mjs");
 
 async function fixture(extraHelp = "", documentation = "pokie build --target supported\n") {
@@ -244,12 +242,16 @@ process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? stud
             documentationRoot: ".",
             documentationScope: {include: ["**/*.md"]},
             initialInventory: {rootCommands: ["create", "init"], nestedVerbs: []},
-            findings: {},
+            findings: {
+                versionHelp: {helpExitCode: 0, versionExitCode: 0, versionOutputIncludes: "Usage: pokie init [directory]"},
+                implicitRoot: {helpExitCode: 0, usage: "Usage: pokie [projectRoot]", requiredOptions: ["--no-open"]},
+            },
             owners: [
                 "command:create", "command:init",
                 "alias:root:-h", "alias:create:-h", "alias:init:-h",
                 "option:root:--help", "option:root:--no-open", "option:create:--help", "option:init:--help",
                 "argument:root:[projectRoot]", "argument:create:[name]", "argument:init:[directory]",
+                "finding:version-help", "finding:implicit-studio", "finding:documentation-claims",
             ].map((id) => ({id, owner: "test"})),
         }));
         const result = run(cli, coverage, path.join(directory, "evidence"));
@@ -276,14 +278,17 @@ test("checks the freshly built production CLI against the complete public docume
         runBuildStep([path.join(root, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
-        const {checkCoverage, collect, documentationCapabilities} = await import(checker);
-        const collected = await collect(path.join(root, "dist/cli/pokie.js"));
-        const inventory = collected.inventory;
+        const evidenceDirectory = path.join(directory, "evidence");
+        const result = spawnSync(process.execPath, [
+            checker,
+            "--cli", path.join(root, "dist/cli/pokie.js"),
+            "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
+            "--evidence-dir", evidenceDirectory,
+        ], {cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
+        assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+        const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
         assert.equal(inventory.rootCommands.length, 20);
         assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 7);
-        const coverageMap = JSON.parse(await readFile(path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"), "utf8"));
-        const publicClaims = await documentationCapabilities(coverageMap, inventory, path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"));
-        assert.ok(publicClaims.has("command:build"));
-        assert.doesNotThrow(() => checkCoverage(inventory, coverageMap, publicClaims));
+        assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 }, 180000);
