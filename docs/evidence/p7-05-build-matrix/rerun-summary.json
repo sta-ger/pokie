@@ -20,6 +20,14 @@
     "buildExportCardsObserved": true,
     "artifactBuildRequestAccepted": false,
     "status": "selector-inconclusive",
-    "recoveryObservation": "Fresh candidate Studio rendered Design Game, accepted Create Project, rendered Workspace and Build/Export, then the harness card-scoping selector failed before a Build request. No rendered product error occurred."
+    "recoveryObservation": "Fresh candidate Studio rendered Design Game, accepted Create Project, rendered Workspace and Build/Export, then the harness card-scoping selector failed before a Build request. No rendered product error occurred.",
+    "focusedContinuation": {
+      "launches": 4,
+      "sourceLoadAccepted": true,
+      "localValidationObserved": "Valid — no issues found.",
+      "artifactBuildRequestAccepted": false,
+      "status": "selector-inconclusive",
+      "observation": "The final fresh-profile run used the real advanced-options and Load from path controls to load a fresh temporary Blueprint; the rendered next action was Save Project, so no Workspace or artifact request followed before the launch budget ended."
+    }
   }
 }

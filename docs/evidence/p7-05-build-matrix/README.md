@@ -51,6 +51,19 @@ build request was accepted, so this is selector-inconclusive rather than a
 product finding. The four-launch allocation for this invocation was exhausted
 by the preceding driver-recovery probes and this one full workflow run.
 
+Focused continuation update (2026-08-25): the retained test result and CLI
+matrix observations were checked in place and not rerun. The candidate was
+rebuilt once. Four fresh-profile Studio launches then used only
+`node ./dist/cli/pokie.js --no-open`. The repaired rendered path reached the
+actual **Show advanced options (JSON mode, load/save by path)** control,
+entered a newly-created temporary Blueprint through its visible **Load from
+path** field, clicked **Load**, and observed **Valid — no issues found.**
+Loading an existing Blueprint truthfully changes the next visible primary
+action from `Create Project` to `Save Project`; the last bounded launch
+identified that local control before reaching Workspace. No Studio artifact
+request or rendered product error appeared. This is a selector/readiness gap,
+not a product failure; no further launch is permitted in this invocation.
+
 Only this concise account, the structured summary, and the bounded recovery
 transcript are retained; temporary projects, browser profiles, logs, generated
 artifacts, and the uncommitted browser harness are outside the repository
