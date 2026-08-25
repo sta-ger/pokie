@@ -13,5 +13,13 @@
     ["parWorkbook", "parWorkbook", "PAR workbook"]
   ],
   "defaultDryRuns": {"cells": 9, "destinationsCreated": 0},
-  "studio": {"launches": 1, "workspaceObserved": true, "buildExportCardsObserved": false, "status": "driver-inconclusive"}
+  "studio": {
+    "previousLaunches": 1,
+    "recoveryLaunches": 4,
+    "workspaceObserved": true,
+    "buildExportCardsObserved": true,
+    "artifactBuildRequestAccepted": false,
+    "status": "selector-inconclusive",
+    "recoveryObservation": "Fresh candidate Studio rendered Design Game, accepted Create Project, rendered Workspace and Build/Export, then the harness card-scoping selector failed before a Build request. No rendered product error occurred."
+  }
 }

@@ -1,0 +1,11 @@
+Candidate: c1b3436654695d1bc12eb37e6fc9574f3f216f4e
+Runtime build: npm run build (passed)
+
+[2026-08-25T11:45:57.295Z] LAUNCH exact candidate command node ./dist/cli/pokie.js --no-open at http://127.0.0.1:3200
+[2026-08-25T11:45:57.856Z] NAVIGATE public Studio root
+[2026-08-25T11:45:58.179Z] OBSERVE rendered Design Game and valid starter model
+[2026-08-25T11:45:58.189Z] CLICK Create Project via rendered control "Create Project"
+[2026-08-25T11:45:58.494Z] OBSERVE workspace tabs including Build/Export
+[2026-08-25T11:45:58.503Z] CLICK Build/Export tab via rendered control "Build/Export"
+[2026-08-25T11:45:58.665Z] OBSERVE Build/Export cards: TypeScript Game Package, Stake Engine export
+[2026-08-25T11:45:58.669Z] HARNESS SELECTOR FAILED before any Build request was accepted; no rendered product error.

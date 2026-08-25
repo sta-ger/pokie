@@ -40,6 +40,18 @@ session did not render the home workflow, with no rendered Studio error. No
 Studio artifact build, conflict/unsafe-destination action, or cancellation was
 therefore claimed by this rerun.
 
-Only this concise account and the structured summary are retained; all
-temporary projects, package installs, browser profiles, logs, and generated
-artifacts are outside the repository evidence payload.
+Harness-recovery update (2026-08-25): the candidate was rebuilt successfully.
+A fresh Studio was then launched from this source checkout with exactly
+`node ./dist/cli/pokie.js --no-open`; a fresh Chromium profile rendered Design
+Game, accepted the visible `Create Project` action, rendered the Workspace and
+its `Build/Export` tab, and showed artifact cards including `TypeScript Game
+Package` and `Stake Engine export`. The harness's card-scoping selector failed
+before it could issue a Build request. No product error was rendered and no
+build request was accepted, so this is selector-inconclusive rather than a
+product finding. The four-launch allocation for this invocation was exhausted
+by the preceding driver-recovery probes and this one full workflow run.
+
+Only this concise account, the structured summary, and the bounded recovery
+transcript are retained; temporary projects, browser profiles, logs, generated
+artifacts, and the uncommitted browser harness are outside the repository
+evidence payload.
