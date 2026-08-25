@@ -398,7 +398,7 @@ Options:
 - `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
-  `parWorkbook` from a `blueprint` source, for instance, throws naming which source types that target actually
+  unsupported source/target pair, for instance, throws naming which source types that target actually
   supports (`ArtifactBuilderRegistry.describe(target)`, also available
   programmatically, reports the same thing without resolving a project first).
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
@@ -408,14 +408,15 @@ Options:
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 9 supported cells are
-`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 10 supported cells are
+`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
 `parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
 resolvable for inspection, but is intentionally not a build target because POKIE has no WASM artifact builder.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
-described in full below. Blueprint and package sources can also create or reuse their managed compatible Outcome
+described in full below. Blueprint → PAR Workbook freezes generated, weighted, or default reels as a deterministic
+literal snapshot in the workbook; the source Blueprint remains unchanged. Blueprint and package sources can also create or reuse their managed compatible Outcome
 Library before producing an Outcome Library or Stake Engine artifact; same-type Outcome, Stake, and PAR cells
 republish their recognized artifact to a new destination. Every writer is atomic and validates its input before
 publishing, never attempting to recover a game model from an outcome-based artifact.
@@ -482,7 +483,7 @@ it's valid (warnings included).
 `--target outcomeLibrary`/`stakeAdapter`/`parWorkbook`, given a `<project>` that already resolves to that same
 artifact type, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
 re-export unchanged" round trip each format's own import/export commands already exercise (see `pokie export
-<config.json> --to adapter`/`pokie import <stakeDir>` and `pokie export <config.json> --to workbook` below).
+<config.json> --to adapter`/`pokie import <stakeDir>` and `pokie par export <config.json>` below).
 `--dry-run` here only prints a one-line
 "would build \<target\> from \<project\> to \<out\>" preview — there is no blueprint to validate or summarize for
 these targets, since nothing is generated, only copied.
@@ -710,8 +711,8 @@ Failure modes:
   the CLI understands.
 - `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`,
   throws before `<project>` is even resolved, listing the full accepted vocabulary.
-- `--target` given a value `<project>`'s own resolved type can't build (e.g. `parWorkbook` from a `blueprint`
-  source) throws naming which source types that target actually supports and how to recover.
+- `--target` given a value `<project>`'s own resolved type can't build throws naming which source types that target
+  actually supports and how to recover.
 - A blueprint (`tsPackage` target) with any error-level issue prints every error and exits `1` without generating
   anything.
 - `--out` already existing as a *file* where a directory target expects one (or vice versa for `parWorkbook`)
@@ -770,18 +771,23 @@ Each step is the same command documented elsewhere in this file, with the same o
 [`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`init`
 workflow](#workflow) below.
 
-## `pokie import <input.xlsx>` / `pokie export <config.json> --to workbook`
+## `pokie par import <input.xlsx>` / `pokie par export <config.json>`
 
-Round-trips a `GameBlueprint` to/from a "PAR sheet" — a workbook laid out the way a game designer would author
-symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. Supports every `GameBlueprint`
-field except procedural reel generation — manifest, reels/rows, symbols (with wilds/scatters), literal `reelStrips`,
-`paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
-`reelStripGeneration`/`symbolWeights` (procedural reel generation, see
-[`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)) are not supported by this command.
+Builds/exports a `GameBlueprint` to, and imports one from, a "PAR sheet" — a workbook laid out the way a game
+designer would author symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. A Blueprint
+can create the workbook through either `pokie par export` or `pokie build <blueprint> --target parWorkbook`.
+PAR workbooks carry literal reel strips, so literal, generated (`reelStripGeneration`), weighted
+(`symbolWeights`), and default reel sources become a deterministic literal workbook snapshot. The authored Blueprint
+remains unchanged. If a generated reel cannot satisfy its own constraints, export returns the field-level actionable
+`parsheet-reel-generation-failed` diagnostic, naming the failing `reelStripGeneration[index]` and directing you to
+adjust that entry. A generated reel without its own integer `seed` is rejected before any file is written with
+`parsheet-reel-generation-seed-required`, naming `reelStripGeneration[index].seed` and directing you to add the
+seed; PAR snapshots never fall back to nondeterministic generation. The workbook maps manifest, reels/rows, symbols (with wilds/scatters), literal snapshot
+`reelStrips`, `paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
 
 ```
-pokie export examples/parsheets/starter.blueprint.json --to workbook --out starter.par.xlsx
-pokie import starter.par.xlsx --out starter.blueprint.json
+pokie par export examples/parsheets/starter.blueprint.json --out starter.par.xlsx
+pokie par import starter.par.xlsx --out starter.blueprint.json
 ```
 
 See `examples/parsheets/` for a worked example (`starter.blueprint.json` and the `starter.par.xlsx` exported from
@@ -823,15 +829,15 @@ non-numeric cell (e.g. `"very high"`) is `parsheet-betmodes-invalid-targetrtp-ce
 treatment as an invalid `Cost Multiplier`/`Forced Free Games` cell. See
 [`pokie sim`'s `targetRtp`/`rtpDeviation`](#pokie-sim-packageroot) for where an imported value ends up being used.
 
-`pokie export <config.json> --to workbook` preflights the *entire* export before writing anything: if the blueprint fails any check (see
-below), **no file is created and an existing file at the output path is left completely untouched** — there is no
-partial write. In particular, a blueprint built around `reelStripGeneration`/`symbolWeights` instead of a literal
-`reelStrips` fails export outright (`parsheet-unsupported-reel-source`) — even when a literal `reelStrips` is
-*also* present, since exporting only that would silently drop the generation/weighting data. Materialize the
-blueprint into a literal `reelStrips` first (e.g. via `resolveReelStripGeneration`/`materializeReelStrips`, or by
-hand) before exporting it.
+`pokie par export <config.json> --out <file>` and `pokie build <config.json> --target parWorkbook` preflight the
+entire export before writing anything: if the Blueprint fails any check, **no file is created and an existing file
+at the output path is left completely untouched**. PAR workbooks carry literal reel strips, so generated,
+weighted, and default-reel Blueprints are exported as a deterministic literal snapshot. The authored Blueprint is
+never changed; the workbook's `Meta` sheet records its source and the snapshot hash. A generated reel that cannot
+satisfy its own constraints reports `parsheet-reel-generation-failed` naming the failing
+`reelStripGeneration[index]` and tells you to adjust that entry.
 
-### `pokie import <input.xlsx>`
+### `pokie par import <input.xlsx>`
 
 Reads `<input.xlsx>`, maps every sheet above to a `GameBlueprint`, then runs the result through the same
 [`GameBlueprintValidator`](#validation) `pokie build` uses — so an imported PAR sheet gets the exact same
@@ -847,11 +853,10 @@ Options:
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
-### `pokie export <config.json> --to workbook`
+### `pokie par export <config.json>`
 
-Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, and —
-provided it has no error-level issues from either that validation or the exporter's own preflight (unsupported
-reel source, missing literal `reelStrips`) — writes a `.par.xlsx` workbook to `--out <file>` (default:
+Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, materializes
+its canonical reel source into the workbook's literal snapshot, and writes a `.par.xlsx` workbook to `--out <file>` (default:
 `<config.json>` with `.blueprint.json`/`.json` replaced by `.par.xlsx`). On any error, nothing is written — see
 the atomicity guarantee above.
 
@@ -880,9 +885,8 @@ shape as [`pokie build`'s validation](#validation)):
   `Manifest`/`Meta` (`parsheet-manifest-duplicate-key`, warning);
 - a gap in `ReelStrips` — a blank cell followed by a non-blank one further down the same column
   (`parsheet-reelstrips-gap`) — as opposed to a shorter (ragged) reel's trailing blank cells, which are fine;
-- on export, a blueprint with no literal `reelStrips` at all (`parsheet-missing-reel-strips`) or one that uses
-  `reelStripGeneration`/`symbolWeights` (`parsheet-unsupported-reel-source`, even if `reelStrips` is also
-  present) — both abort the export with nothing written, see above;
+- on export, a generated reel that cannot satisfy its own constraints
+  (`parsheet-reel-generation-failed`, naming `reelStripGeneration[index]`) — export aborts with nothing written;
 - on import, a `WinModel` sheet with no recognizable `Type` value at all (`parsheet-winmodel-missing-type` if
   blank, `parsheet-winmodel-invalid-type` if present but not `lines`/`ways`/`clusters`) — `winModel` is dropped
   rather than silently defaulting to `lines`; a `Minimum Cluster Size` given for a non-`clusters` type is ignored
@@ -898,23 +902,24 @@ shape as [`pokie build`'s validation](#validation)):
 
 ### Provenance (`Meta` sheet)
 
-`pokie export <config.json> --to workbook` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
+`pokie par export <config.json>` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
 that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
-hash of the exported blueprint. That hash is computed over a canonical field order (not the source JSON's own key
-order — see `computeBlueprintHash`), so an untouched round trip always reproduces the same hash regardless of how
-the original file's keys were ordered.
+hash of the exported literal snapshot. `Source` identifies the authored Blueprint path, while `Blueprint Hash`
+identifies the materialized data actually stored in the workbook. That hash is computed over a canonical field order
+(not the source JSON's own key order — see `computeBlueprintHash`), so an untouched round trip always reproduces
+the same hash regardless of how the original file's keys were ordered.
 
-`pokie import <input.xlsx>` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
+`pokie par import <input.xlsx>` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
 issue, and verifies it against the blueprint it just assembled:
 
 - no `Meta` sheet at all → `provenance` is `undefined`, and `parsheet-provenance-missing` (warning) — e.g. a
-  hand-authored PAR sheet that was never exported by `pokie export <config.json> --to workbook` in the first place;
+  hand-authored PAR sheet that was never exported by `pokie par export <config.json>` in the first place;
 - `Meta` present but missing/invalid `Schema Version`/`Blueprint Hash` → `parsheet-provenance-malformed` (warning);
   no further hash/schema check is attempted;
 - a well-formed but unrecognized `Schema Version` → `parsheet-provenance-schema-mismatch` (warning);
 - a well-formed `Blueprint Hash` that doesn't match a fresh hash of the imported data →
   `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
-  `pokie export <config.json> --to workbook` produced it;
+  `pokie par export <config.json>` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
 
 ## `pokie reel generate <blueprint.json>`
@@ -947,11 +952,8 @@ has a `reelStrips` entry at that index, how many positions differ from it) and w
   declared `seed` — incompatible with `--reel`/`--seed`/`--apply`) and collapse the result into a plain top-level
   `reelStrips` array with `reelStripGeneration` removed entirely. This is the same materialization `pokie build`
   performs internally when compiling a runtime module, exposed here as its own persisted output — it's the
-  documented fix for `pokie export <config.json> --to workbook`'s
-  `parsheet-unsupported-reel-source` error,
-  since a PAR sheet workbook can only ever represent literal reels: a blueprint fresh out of
-  [`pokie create --random`](#pokie-create-name---random) or `--blank` (see [`pokie create [name]`](#pokie-create-name))
-  (or already `--apply`'d) still can't be exported until it's been through `--materialize`.
+  optional way to persist the literal snapshot beside the authored Blueprint; PAR export and
+  `pokie build --target parWorkbook` materialize their workbook snapshot automatically without changing the source.
 - `--out <file>` — write the resulting blueprint to a different path instead of overwriting `<blueprint.json>` in
   place (only meaningful together with `--apply`/`--materialize`).
 - `--format json` — print the full per-reel result (`success`, `attemptsUsed`, `diagnostics`, `strip`) as JSON

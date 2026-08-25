@@ -117,6 +117,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "blueprint:tsPackage",
             "blueprint:outcomeLibrary",
             "blueprint:stakeAdapter",
+            "blueprint:parWorkbook",
             "tsPackage:outcomeLibrary",
             "tsPackage:stakeAdapter",
             "outcomeLibrary:outcomeLibrary",
@@ -126,8 +127,9 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
         ]);
     });
 
-    it("keeps the public build documentation's supported conversions and failure examples aligned with BUILD_PRODUCT_MATRIX", () => {
+    it("keeps both public documentation entrypoints aligned with BUILD_PRODUCT_MATRIX and the Blueprint-to-PAR snapshot contract", () => {
         const cliDocumentation = fs.readFileSync(path.resolve(process.cwd(), "docs/cli.md"), "utf-8").replace(/\s+/g, " ");
+        const readmeDocumentation = fs.readFileSync(path.resolve(process.cwd(), "docs/README.md"), "utf-8").replace(/\s+/g, " ");
         const supportedConversionMatch = cliDocumentation.match(new RegExp(
             "The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its " +
             `${SUPPORTED_CELLS.length} supported cells are (.+?)\\. Every other advertised cell`,
@@ -137,14 +139,27 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
 
         const targetOptionMatch = cliDocumentation.match(/- `--target <artifact>` —(.+?)(?= - `--out <path>`)/);
         const failureModesMatch = cliDocumentation.match(/Failure modes: (.+?)(?= ### Conflict handling)/);
-        expect(BUILD_PRODUCT_MATRIX.blueprint.parWorkbook.state).toBe("diagnostic-required");
-        expect(targetOptionMatch?.[1]).toContain("`parWorkbook` from a `blueprint` source");
-        expect(failureModesMatch?.[1]).toContain("`parWorkbook` from a `blueprint` source");
+        expect(BUILD_PRODUCT_MATRIX.blueprint.parWorkbook.state).toBe("supported");
+        expect(targetOptionMatch?.[1]).not.toContain("`parWorkbook` from a `blueprint` source");
+        expect(failureModesMatch?.[1]).not.toContain("`parWorkbook` from a `blueprint` source");
 
         for (const supportedTarget of ["outcomeLibrary", "stakeAdapter"] as const) {
             const obsoleteBlueprintFailure = new RegExp("`" + supportedTarget + "` from a `blueprint` source[^.]*\\bthrows\\b", "i");
             expect(cliDocumentation).not.toMatch(obsoleteBlueprintFailure);
         }
+
+        for (const documentation of [readmeDocumentation, cliDocumentation]) {
+            expect(documentation).toMatch(/(?:`GameBlueprint`|`blueprint`) (?:->|→) `tsPackage`\/`outcomeLibrary`\/`stakeAdapter`\/`parWorkbook`/);
+            expect(documentation).toContain("pokie par export");
+            expect(documentation).toMatch(/deterministic literal workbook snapshot/i);
+            expect(documentation).toMatch(/authored Blueprint remains unchanged/i);
+            expect(documentation).toMatch(/`parsheet-reel-generation-failed`/);
+            expect(documentation).toMatch(/`parsheet-reel-generation-seed-required`/);
+            expect(documentation).toMatch(/`reelStripGeneration\[index\]`/);
+            expect(documentation).toMatch(/`reelStripGeneration\[index\]\.seed`/);
+            expect(documentation).not.toMatch(/procedural reel generation[^.]*not supported/i);
+        }
+        expect(cliDocumentation).toMatch(/exported literal snapshot/i);
     });
 
     it.each(SUPPORTED_CELLS)("runs $source -> $target through registry, CLI, Studio, and its next public readback", async ({source, target}) => {

@@ -6,6 +6,7 @@ import {
     ArtifactBuildCancelledError,
     GameBlueprint,
     ParSheetExporter,
+    ParSheetImporter,
     ParWorkbookArtifactBuilder,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
@@ -17,6 +18,15 @@ function parWorkbookProjectOf(rootPath: string): PokieProject {
         type: "parWorkbook",
         rootPath,
         capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+        provenance: "test fixture",
+    } as PokieProject;
+}
+
+function blueprintProjectOf(rootPath: string): PokieProject {
+    return {
+        type: "blueprint",
+        rootPath,
+        capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
         provenance: "test fixture",
     } as PokieProject;
 }
@@ -42,15 +52,18 @@ const blueprint: GameBlueprint = {
 describe("ParWorkbookArtifactBuilder", () => {
     let dir: string;
     let sourceFile: string;
+    let blueprintFile: string;
     let destinationFile: string;
 
     beforeEach(async () => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-parworkbook-builder-test-"));
         sourceFile = path.join(dir, "source.par.xlsx");
+        blueprintFile = path.join(dir, "source.blueprint.json");
         destinationFile = path.join(dir, "republished.par.xlsx");
 
         const exporter = new ParSheetExporter("1.3.0");
         await exporter.exportToFile(blueprint, sourceFile);
+        fs.writeFileSync(blueprintFile, JSON.stringify(blueprint));
     });
 
     afterEach(() => {
@@ -71,6 +84,47 @@ describe("ParWorkbookArtifactBuilder", () => {
 
         await expect(builder.validate(parWorkbookProjectOf(sourceFile))).resolves.toBeUndefined();
         expect(fs.existsSync(destinationFile)).toBe(false);
+    });
+
+    it("validates and builds a canonical Blueprint as a readable PAR workbook snapshot", async () => {
+        const builder = new ParWorkbookArtifactBuilder("1.3.0");
+
+        await expect(builder.validate(blueprintProjectOf(blueprintFile))).resolves.toBeUndefined();
+        await expect(builder.build(blueprintProjectOf(blueprintFile), destinationFile)).resolves.toEqual({outputPath: destinationFile});
+
+        const imported = await new ParSheetImporter().importFromFile(destinationFile);
+        expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(imported.blueprint).toMatchObject({manifest: blueprint.manifest, reelStrips: blueprint.reelStrips, paytable: blueprint.paytable});
+    });
+
+    it("reports Blueprint validation diagnostics without creating a PAR workbook", async () => {
+        fs.writeFileSync(blueprintFile, JSON.stringify({manifest: blueprint.manifest}));
+        const builder = new ParWorkbookArtifactBuilder("1.3.0");
+
+        await expect(builder.validate(blueprintProjectOf(blueprintFile))).rejects.toThrow(
+            `Blueprint "${blueprintFile}" cannot build a PAR workbook:`,
+        );
+        expect(fs.existsSync(destinationFile)).toBe(false);
+    });
+
+    it("rejects an unseeded generated Blueprint through the shared PAR preflight without replacing its destination", async () => {
+        const unseeded = {
+            ...blueprint,
+            reelStripGeneration: [
+                {type: "generated", length: 2, symbolCounts: {A: 1, W: 1}},
+                {type: "literal", strip: ["W", "A"]},
+            ],
+        };
+        fs.writeFileSync(blueprintFile, JSON.stringify(unseeded));
+        const sentinel = "existing workbook stays untouched";
+        fs.writeFileSync(destinationFile, sentinel);
+        const builder = new ParWorkbookArtifactBuilder("1.3.0");
+        const unseededDestination = path.join(dir, "unseeded.par.xlsx");
+
+        await expect(builder.validate(blueprintProjectOf(blueprintFile))).rejects.toThrow(/parsheet-reel-generation-seed-required.*reelStripGeneration\[0\]\.seed/);
+        await expect(builder.build(blueprintProjectOf(blueprintFile), unseededDestination)).rejects.toThrow(/reelStripGeneration\[0\]\.seed/);
+        expect(fs.readFileSync(destinationFile, "utf-8")).toBe(sentinel);
+        expect(fs.existsSync(unseededDestination)).toBe(false);
     });
 
     it("throws ArtifactBuildConflictError rather than overwriting an existing file", async () => {
@@ -116,6 +170,20 @@ describe("ParWorkbookArtifactBuilder", () => {
             "injected PAR write failure",
         );
         expect(fs.existsSync(unicodeDestination)).toBe(false);
+    });
+
+    it("removes a partial Blueprint workbook when its exporter fails", async () => {
+        const failingExporter: ParSheetExporting = {
+            exportToFile: (_blueprint, outputPath) => {
+                fs.writeFileSync(outputPath, "partial workbook");
+                return Promise.reject(new Error("injected Blueprint PAR write failure"));
+            },
+        };
+
+        await expect(new ParWorkbookArtifactBuilder("1.3.0", undefined, failingExporter).build(blueprintProjectOf(blueprintFile), destinationFile)).rejects.toThrow(
+            "injected Blueprint PAR write failure",
+        );
+        expect(fs.existsSync(destinationFile)).toBe(false);
     });
 
     it("cancels at the PAR publish commit callback without leaving a temporary workbook", async () => {

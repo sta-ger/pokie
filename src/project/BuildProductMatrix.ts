@@ -64,8 +64,8 @@ const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequi
         nextAction: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`.",
     },
     parWorkbook: {
-        missingPrerequisite: "a PAR workbook",
-        nextAction: "Open a PAR workbook, then run `pokie build <path> --target parWorkbook`.",
+        missingPrerequisite: "a Game Blueprint or PAR workbook",
+        nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
     },
     wasm: {
         missingPrerequisite: "a WASM artifact builder",
@@ -77,6 +77,7 @@ const SUPPORTED_CELLS = new Set<string>([
     "blueprint:tsPackage",
     "blueprint:outcomeLibrary",
     "blueprint:stakeAdapter",
+    "blueprint:parWorkbook",
     "tsPackage:outcomeLibrary",
     "tsPackage:stakeAdapter",
     "outcomeLibrary:outcomeLibrary",

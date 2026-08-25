@@ -123,6 +123,17 @@ describe("describeArtifactBuildTargetCards", () => {
         ]);
     });
 
+    it("offers a supported PAR workbook card for a Blueprint while preserving workbook republish wording", () => {
+        const [card] = describeArtifactBuildTargetCards([{target: "parWorkbook", supported: true, state: "supported", unsupportedNotes: []}]);
+
+        expect(card).toMatchObject({
+            label: "PAR sheet (.xlsx)",
+            supported: true,
+            purpose: "Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.",
+            destination: "Choose where to save the PAR workbook, or use the default destination.",
+        });
+    });
+
     it("keeps an unsupported output visible with its concrete unavailable reason, while reserving destination protocol for Advanced details", () => {
         const cards = describeArtifactBuildTargetCards([
             {
@@ -155,7 +166,7 @@ describe("describeArtifactBuildTargetCards", () => {
             ["This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one."],
             ["This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
             ["This project cannot build a Stake Engine export. Open a Game Blueprint, runnable game package, outcome library, or Stake Engine export project to continue."],
-            ["This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue."],
+            ["This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue."],
         ]);
     });
 

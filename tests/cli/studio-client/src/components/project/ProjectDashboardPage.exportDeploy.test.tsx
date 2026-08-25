@@ -19,8 +19,8 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         status: 200,
         body: [{id: "local-json-example", version: "1.0.0", requirements: {}, capabilities: ["multiMode"]}],
     }),
-    // Only tsPackage is buildable from this fixture's blueprint. The unavailable cards remain visible with
-    // their server-provided diagnostic, while hidden/unadvertised WASM is omitted entirely.
+    // This fixture exercises unavailable-card rendering. Dedicated cases below cover each matrix-supported
+    // Blueprint conversion, while hidden/unadvertised WASM remains omitted entirely.
     "/api/project/artifacts/targets": () => ({
         ok: true,
         status: 200,
@@ -28,7 +28,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
             {target: "tsPackage", supported: true, state: "supported", unsupportedNotes: []},
             {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "This target only copies an existing outcome library.", unsupportedNotes: []},
             {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.", unsupportedNotes: []},
-            {target: "parWorkbook", supported: false, state: "diagnostic-required", diagnostic: "This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue.", unsupportedNotes: []},
+            {target: "parWorkbook", supported: false, state: "diagnostic-required", diagnostic: "PAR workbook export is unavailable for this project.", unsupportedNotes: []},
         ],
     }),
     // The default, clean registry-backed preview for the one supported target above -- see the dedicated
@@ -105,6 +105,46 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
+    });
+
+    it("gives a resolved Blueprint an actionable PAR workbook build card and file preflight", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/artifacts/targets": () => ({
+                ok: true,
+                status: 200,
+                body: [
+                    {target: "tsPackage", supported: false, state: "diagnostic-required", diagnostic: "A TypeScript package requires a Blueprint.", unsupportedNotes: []},
+                    {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "An Outcome library requires a runtime source.", unsupportedNotes: []},
+                    {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "A Stake export requires an Outcome library.", unsupportedNotes: []},
+                    {target: "parWorkbook", supported: true, state: "supported", unsupportedNotes: []},
+                ],
+            }),
+            "/api/project/artifacts/preview": () => ({
+                ok: true,
+                status: 200,
+                body: {
+                    status: "ok",
+                    target: "parWorkbook",
+                    destination: "/games/parWorkbook.xlsx",
+                    destinationKind: "file",
+                    plannedOutputs: ["PAR workbook (.xlsx) file"],
+                    sourceType: "blueprint",
+                },
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByText("Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.")).toBeInTheDocument();
+        expect(within(buildArtifactSection).getByLabelText("Output file (optional)")).toBeInTheDocument();
+        expect(await within(buildArtifactSection).findByText("Resolved absolute path: /games/parWorkbook.xlsx")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
     });
 

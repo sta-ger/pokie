@@ -87,10 +87,10 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
-        purpose: "Save a copy of this PAR sheet as an Excel workbook.",
-        destination: "Choose where to save the copied workbook, or use the default destination.",
+        purpose: "Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.",
+        destination: "Choose where to save the PAR workbook, or use the default destination.",
         technicalDestination: "A new .xlsx file (default: \"parWorkbook.xlsx\" next to this project).",
-        unavailableReason: "This project cannot republish a PAR sheet workbook. Open a PAR sheet workbook project to continue.",
+        unavailableReason: "This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue.",
     },
 };
 

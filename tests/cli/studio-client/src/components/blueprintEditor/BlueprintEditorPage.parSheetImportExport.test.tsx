@@ -171,13 +171,13 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(screen.getByRole("button", {name: "Apply"})).toBeDisabled();
     });
 
-    it("shows an unsupported-data state when the current blueprint's reel source can't be exported to a PAR sheet", async () => {
+    it("shows an actionable unsupported-data state when a generated reel cannot be materialized", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {
             if (url === EXPORT_URL) {
                 return jsonResponse({
                     status: "invalid",
-                    errors: [{code: "parsheet-unsupported-reel-source", severity: "error", message: "Uses reelStripGeneration, which PAR export can't represent."}],
+                    errors: [{code: "parsheet-reel-generation-failed", severity: "error", message: "reelStripGeneration[1] could not satisfy its constraints."}],
                     warnings: [],
                 });
             }
@@ -192,7 +192,7 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         await user.click(screen.getByRole("button", {name: "Export"}));
 
         expect(await screen.findByText("This blueprint has unsupported data")).toBeInTheDocument();
-        expect(screen.getByText(/Uses reelStripGeneration, which PAR export can't represent\./)).toBeInTheDocument();
+        expect(screen.getByText(/reelStripGeneration\[1\] could not satisfy its constraints\./)).toBeInTheDocument();
     });
 
     it("applies an imported blueprint, replacing the one currently open in the editor", async () => {

@@ -18,6 +18,7 @@ describe("implicit Studio command registration", () => {
 
         expect(names).toContain(INTERNAL_STUDIO_COMMAND_NAME);
         expect(names).not.toContain("studio");
+        expect(names).toContain("par");
         expect(buildUsageText(commands)).not.toMatch(/\bstudio\b/i);
     });
 });

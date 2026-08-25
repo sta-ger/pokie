@@ -2043,7 +2043,7 @@ describe("StudioServer", () => {
                 expect(fs.readFileSync(filePath, "utf-8")).toBe("existing content");
             });
 
-            it("returns invalid and writes nothing for a blueprint whose reel source PAR export can't represent", async () => {
+            it("materializes a generated reel source into a PAR workbook", async () => {
                 const filePath = path.join(workDir, "out.par.xlsx");
 
                 const {status, body} = await post(`${homeBaseUrl}/api/home/blueprints/par-export`, {
@@ -2057,10 +2057,9 @@ describe("StudioServer", () => {
                     }),
                 });
 
-                expect(status).toBe(200);
-                expect(body).toMatchObject({status: "invalid"});
-                expect((body as {errors: Array<{code: string}>}).errors.some((issue) => issue.code === "parsheet-unsupported-reel-source")).toBe(true);
-                expect(fs.existsSync(filePath)).toBe(false);
+                expect(status).toBe(201);
+                expect(body).toMatchObject({status: "ok"});
+                expect(fs.existsSync(filePath)).toBe(true);
             });
 
             it("returns a safe error for a path inside Studio's own internal directory", async () => {

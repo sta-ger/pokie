@@ -574,10 +574,10 @@ describe("StudioBlueprintService", () => {
             expect(fs.readFileSync(filePath, "utf-8")).not.toBe("existing content");
         });
 
-        it("returns invalid and writes nothing for a blueprint whose reel source PAR export can't represent", async () => {
+        it("materializes a generated reel source into a PAR workbook", async () => {
             const service = createService();
             const filePath = path.join(tmpDir, "out.par.xlsx");
-            const unsupportedBlueprint = buildBlueprint({
+            const generatedBlueprint = buildBlueprint({
                 reelStripGeneration: [
                     {type: "literal", strip: ["A", "B"]},
                     {type: "literal", strip: ["B", "A"]},
@@ -585,13 +585,10 @@ describe("StudioBlueprintService", () => {
                 ],
             });
 
-            const result = await service.exportParSheet(unsupportedBlueprint, filePath, false);
+            const result = await service.exportParSheet(generatedBlueprint, filePath, false);
 
-            expect(result.status).toBe("invalid");
-            if (result.status === "invalid") {
-                expect(result.errors.some((issue) => issue.code === "parsheet-unsupported-reel-source")).toBe(true);
-            }
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(result.status).toBe("ok");
+            expect(fs.existsSync(filePath)).toBe(true);
         });
 
         it("returns invalid and writes nothing for a structurally broken blueprint", async () => {
@@ -602,6 +599,26 @@ describe("StudioBlueprintService", () => {
 
             expect(result.status).toBe("invalid");
             expect(fs.existsSync(filePath)).toBe(false);
+        });
+
+        it("returns the actionable seed diagnostic and preserves an existing workbook for an unseeded generated reel", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "out.par.xlsx");
+            const sentinel = "existing workbook stays untouched";
+            fs.writeFileSync(filePath, sentinel);
+
+            const result = await service.exportParSheet(buildBlueprint({
+                reelStripGeneration: [
+                    {type: "generated", length: 2, symbolCounts: {A: 1, B: 1}},
+                    {type: "literal", strip: ["B", "A"]},
+                    {type: "literal", strip: ["A", "B"]},
+                ] as unknown as GameBlueprint["reelStripGeneration"],
+            }), filePath, true);
+
+            expect(result).toMatchObject({status: "invalid"});
+            expect(JSON.stringify(result)).toContain("parsheet-reel-generation-seed-required");
+            expect(JSON.stringify(result)).toContain("reelStripGeneration[0].seed");
+            expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinel);
         });
 
         it("rejects a path that resolves inside Studio's own internal directory", async () => {

@@ -55,7 +55,10 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("parWorkbook");
 
         expect(descriptor.requiredSourceCapability).toBe(PAR_WORKBOOK_EXCHANGE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["parWorkbook"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/Game Blueprint.*PAR workbook snapshot/i);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/republishes an existing PAR workbook/i);
+        expect(descriptor.unsupportedNotes.join(" ")).not.toMatch(/does not derive.*blueprint/i);
     });
 
     it("truthfully reports wasm as buildable from no source type today", () => {

@@ -92,7 +92,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         name: "build",
         description:
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- the ' +
-            "supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter, " +
+            "supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook, " +
             "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
             'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.',
@@ -496,8 +496,9 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
             'Generate one or every "generated" reel a Blueprint Project\'s reelStripGeneration declares, via the ' +
             "same ReelStripGenerator/constraints/presets \"pokie build\" already runs -- a deterministic preview/diff " +
             "by default, only pinning the result back in as a literal strip with --apply, or fully collapsing the " +
-            'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left -- required by ' +
-            '"pokie export --to workbook" and any other tool that only understands literal reels) with --materialize ' +
+            'whole blueprint into a plain top-level "reelStrips" (no "reelStripGeneration" left) with optional --materialize ' +
+            'persistence for tools that only understand literal reels. PAR workbook export snapshots supported generated, weighted, ' +
+            'default, and literal reel sources without materializing the authored Blueprint ' +
             '("pokie reel generate <blueprint.json> [--reel <index>] [--seed <integer>] [--apply | --materialize] ' +
             '[--out <file>] [--format json]").',
         verbs: [
@@ -744,7 +745,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
             "Usage: pokie build <project> --target <artifact> [--out <path>] [--dry-run]\n" +
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
             "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
-            "outcomeLibrary, or stakeAdapter; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
+            "outcomeLibrary, stakeAdapter, or parWorkbook; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
             "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> parWorkbook.",
     },
     {

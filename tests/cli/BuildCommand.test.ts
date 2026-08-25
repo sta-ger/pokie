@@ -494,6 +494,35 @@ describe("BuildCommand", () => {
         });
     });
 
+    describe("PAR workbook from a blueprint source", () => {
+        it("routes a resolved Blueprint and file destination to the PAR workbook builder", async () => {
+            const builder = stubBuilder("parWorkbook", {outputPath: "/fake/sample-slot.par.xlsx"});
+            const project = blueprintProject("blueprints/config.json");
+            const command = new BuildCommand(
+                "1.3.0",
+                () => rawBlueprint,
+                createStubValidator([]),
+                stubProjectResolver(project),
+                registryWithBuilders(builder),
+            );
+
+            const exitCode = await command.run(["blueprints/config.json", "--target", "parWorkbook", "--out", "exports/sample-slot.par.xlsx"]);
+
+            expect(exitCode).toBe(0);
+            expect(builder.calledWith).toEqual({source: project, destinationPath: "exports/sample-slot.par.xlsx"});
+            expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain('built in "/fake/sample-slot.par.xlsx"');
+        });
+
+        it("uses the Blueprint PAR workbook sibling default destination", async () => {
+            const builder = stubBuilder("parWorkbook", {outputPath: "/fake/sample-slot.par.xlsx"});
+            const project = blueprintProject("blueprints/config.json");
+            const command = new BuildCommand("1.3.0", () => rawBlueprint, createStubValidator([]), stubProjectResolver(project), registryWithBuilders(builder));
+
+            await expect(command.run(["blueprints/config.json", "--target", "parWorkbook"])).resolves.toBe(0);
+            expect(builder.calledWith).toEqual({source: project, destinationPath: "blueprints/parWorkbook.xlsx"});
+        });
+    });
+
     describe("republishing an already-built artifact (outcomeLibrary/stakeAdapter/parWorkbook)", () => {
         function outcomeLibraryProject(rootPath = "bundleDir"): PokieProject {
             return {
