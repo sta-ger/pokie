@@ -1,25 +1,40 @@
-# P7-05 independent current-candidate verification — inconclusive
+# P7-05 independent current-candidate verification — finding
 
 Candidate: `e1383bdacda13ef4f6ea0e4716a771e973e50b5a`.
 
-The required one-command target invocation named every one of the twelve paths
-present in the persisted `required_test_files` list.  It printed a passing
-`ProjectsPanel.test.tsx` suite, then remained active for more than 17 minutes
-without a final Jest summary; it was interrupted before any duplicate Jest
-process was started.  Therefore this record does **not** claim a complete
-targeted-suite result (and the persisted criterion's stated 16-file count
-cannot be reconciled with its 12 listed paths).
+The required single command named all twelve supplied `required_test_files` and
+reached its final Jest summary: **12 passed, 12 total; 1450 passed, 1450
+total**. The persisted criterion says 16 files, but its authoritative path list
+contains 12. The runner then remained alive only because of its reported
+asynchronous open handle and was stopped after that complete summary; no second
+Jest process was started.
 
-The candidate `build-cli` completed, then Studio was launched twice from this
-checkout only with `node ./dist/cli/pokie.js --no-open`.  Fresh, tiny Blueprint,
-package, Outcome Library, Stake Engine, and PAR workbook inputs were created
-through the public candidate CLI.  In the rendered Projects UI, the Blueprint
-was detected and registered successfully.  Repeated CDP mouse/keyboard input
-to the visible Location control later failed to reach its rendered accepted
-state, despite no rendered Studio product error.  This is driver/readiness
-inconclusive, not a product finding; no matrix lifecycle or PAR-card success is
-claimed.
+`npm run build-cli` passed. Two fresh public CLI matrices used tiny literal
+Blueprints, then generated package, Outcome Library, Stake Engine, and PAR
+workbook sources. In each run, seven cells built, `inspect` read back the
+artifact, and `--dry-run` completed without creating its requested output:
+Blueprint → tsPackage/outcomeLibrary/stakeAdapter; Outcome Library →
+outcomeLibrary/stakeAdapter; Stake Engine → stakeAdapter; and PAR workbook →
+parWorkbook.
 
-The prior candidate-`673a9…` evidence, its generated screenshot, and its stale
-transcript were removed.  No generated inputs, outputs, browser profile,
-automation, raw logs, or process files are retained.
+Both remaining advertised cells failed identically: a fresh TS package built by
+`pokie build <blueprint> --target tsPackage` cannot be used as the source for
+either `--target outcomeLibrary` or `--target stakeAdapter`, because its
+`dist/index.js` cannot resolve `pokie`. The suggested normal recovery also
+failed in the generated package: `npm install --omit=dev --ignore-scripts`
+returned `ETARGET: No matching version found for pokie@^1.3.0`.
+
+Studio was launched exactly twice from this checkout with
+`node ./dist/cli/pokie.js --no-open`, each time with a fresh Chromium profile.
+Visible Projects controls accepted Location via focus-verified browser input,
+then completed Detect → Register for each fresh Blueprint. Open did not render
+a Dashboard, success, or product error before the bounded wait expired, so that
+UI portion is not a product finding and the remaining Studio/PAR card checks
+were not reached.
+
+Unretained raw-run transcript checksums: first CLI/UI run
+`f136eb9a5562a26d618fba5158d3184e748369bdf4d9dfe5cd799bbb67d2effa`;
+fresh-hash rerun
+`617e6f28dd7fe41fba98f1d475d75bdbba8cb692163632c29cea55a45de215a0`.
+No generated inputs, outputs, browser profile, automation, raw logs, or
+process files are retained.
