@@ -275,7 +275,7 @@ describe("StudioArtifactBuildService", () => {
                 target: "parWorkbook",
                 message:
                     `"${packageRoot}" is a POKIE game package. It cannot build a PAR workbook. ` +
-                    "Missing prerequisite: a PAR workbook. Next: Open a PAR workbook, then run `pokie build <path> --target parWorkbook`.",
+                    "Missing prerequisite: a Game Blueprint or PAR workbook. Next: Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
             });
         });
 

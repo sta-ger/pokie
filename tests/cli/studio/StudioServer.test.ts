@@ -509,7 +509,7 @@ describe("StudioServer", () => {
             try {
                 const {status, body} = await post(`${materializingBaseUrl}/api/home/projects/open`, {projectRoot: rawProjectRoot});
 
-                expect(status).toBe(201);
+                expect(status).toBe(200);
                 expect(resolveProject.calls).toEqual([rawProjectRoot]);
                 expect(materializer.calls).toEqual([project]);
                 expect(materializingLoadGame).toHaveBeenCalledWith(materializedRuntimePath);
@@ -2057,7 +2057,7 @@ describe("StudioServer", () => {
                     }),
                 });
 
-                expect(status).toBe(200);
+                expect(status).toBe(201);
                 expect(body).toMatchObject({status: "ok"});
                 expect(fs.existsSync(filePath)).toBe(true);
             });
