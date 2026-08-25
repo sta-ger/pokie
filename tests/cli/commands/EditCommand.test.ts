@@ -118,7 +118,7 @@ describe("EditCommand", () => {
         const {command} = createCommand(loadBlueprint, undefined, resolveProject);
 
         await expect(command.run(["/some/existing/package"])).rejects.toThrow(
-            /"edit" is not supported for a "tsPackage" project \(missing the "blueprint\.build" capability\)/,
+            /This POKIE game package cannot edit the Game Blueprint/,
         );
 
         expect(resolveProject.calls).toEqual(["/some/existing/package"]);

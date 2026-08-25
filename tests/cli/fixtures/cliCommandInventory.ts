@@ -369,7 +369,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "inspect",
-        description: "Print a package's package.json (name, version, description) without running it.",
+        description: "Identify a POKIE project and show its available next actions without running it.",
         verbs: [{verb: undefined, usage: "Usage: pokie inspect <packageRoot>", positionals: ["packageRoot"], options: []}],
     },
     {

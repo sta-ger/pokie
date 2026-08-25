@@ -557,7 +557,7 @@ describe("StudioServer", () => {
                 expect(diagnosticLoadGame).not.toHaveBeenCalled();
                 expect(body).toEqual({
                     error:
-                        '"studio" is not supported for a "outcomeLibrary" project (missing the "runtime.execute" capability). Supported by: tsPackage.',
+                        'This Outcome Library cannot open POKIE Studio. You can open POKIE Studio with POKIE game package. Run "pokie inspect <path>" to see available next actions.',
                 });
 
                 const context = await get(`${diagnosticBaseUrl}/api/context`);
@@ -4939,8 +4939,8 @@ describe("StudioServer", () => {
             expect(created.status).toBe(200);
             const createdBody = created.body as {status: string; error: string};
             expect(createdBody.status).toBe("failed");
-            expect(createdBody.error).toContain("outcomeSource.sample");
-            expect(createdBody.error).toContain("stakeAdapter");
+            expect(createdBody.error).toContain("This Stake Engine export cannot sample an outcome");
+            expect(createdBody.error).toContain("Outcome Library");
 
             expect(loadGame).not.toHaveBeenCalled();
         });

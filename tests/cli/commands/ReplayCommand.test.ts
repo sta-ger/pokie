@@ -368,14 +368,14 @@ describe("ReplayCommand outcome-source routing", () => {
                 operation: "outcomeSource.replay",
                 missingCapability: "outcomeSource.sample",
                 alternatives: ["outcomeLibrary"],
-                message: '"outcomeSource.replay" is not supported for a "stakeAdapter" project (missing the "outcomeSource.sample" capability). Supported by: outcomeLibrary.',
+                message: 'This Stake Engine export cannot replay a pre-generated outcome. You can replay a pre-generated outcome with Outcome Library. Run "pokie inspect <path>" to see available next actions.',
             },
         });
         const loadGame = jest.fn();
         const command = new ReplayCommand(loadGame, undefined, undefined, undefined, resolveProject, replay);
 
         await expect(command.run(["/stake/base", "--round", "1", "--seed", "demo", "--mode", "base"])).rejects.toThrow(
-            /"outcomeSource\.replay" is not supported for a "stakeAdapter" project/,
+            /This Stake Engine export cannot replay a pre-generated outcome/,
         );
         expect(loadGame).not.toHaveBeenCalled();
     });
