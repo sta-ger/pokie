@@ -397,9 +397,9 @@ Options:
   unrecognized throws, naming the project types the CLI understands.
 - `--target <artifact>` — **required**; one of `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
-  the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building
-  `outcomeLibrary`/`stakeAdapter`/`parWorkbook` from a `blueprint` source, for instance, throws naming which source
-  types that target actually supports (`ArtifactBuilderRegistry.describe(target)`, also available
+  the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
+  `parWorkbook` from a `blueprint` source, for instance, throws naming which source types that target actually
+  supports (`ArtifactBuilderRegistry.describe(target)`, also available
   programmatically, reports the same thing without resolving a project first).
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
   `<project>` (a `.xlsx` file for `parWorkbook`, a bare directory for every other target). An explicit `--out`
@@ -408,7 +408,7 @@ Options:
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its nine supported cells are
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 9 supported cells are
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
 `parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
@@ -710,8 +710,8 @@ Failure modes:
   the CLI understands.
 - `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`,
   throws before `<project>` is even resolved, listing the full accepted vocabulary.
-- `--target` given a value `<project>`'s own resolved type can't build (e.g. `outcomeLibrary` from a `blueprint`
-  source) throws naming which source types that target actually supports.
+- `--target` given a value `<project>`'s own resolved type can't build (e.g. `parWorkbook` from a `blueprint`
+  source) throws naming which source types that target actually supports and how to recover.
 - A blueprint (`tsPackage` target) with any error-level issue prints every error and exits `1` without generating
   anything.
 - `--out` already existing as a *file* where a directory target expects one (or vice versa for `parWorkbook`)

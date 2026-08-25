@@ -24,6 +24,14 @@ const SUPPORTED_CELLS: readonly SupportedCell[] = BUILD_PRODUCT_MATRIX_SOURCE_TY
     BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]).filter((cell) => cell.state === "supported"),
 );
 
+function documentedSupportedConversionList(): string {
+    const sourceConversions = BUILD_PRODUCT_MATRIX_SOURCE_TYPES
+        .map((source) => ({source, targets: BUILD_PRODUCT_MATRIX_TARGETS.filter((target) => BUILD_PRODUCT_MATRIX[source][target].state === "supported")}))
+        .filter(({targets}) => targets.length > 0)
+        .map(({source, targets}) => `\`${source}\` → ${targets.map((target) => `\`${target}\``).join("/")}`);
+    return `${sourceConversions.slice(0, -1).join(", ")}, and ${sourceConversions[sourceConversions.length - 1]}`;
+}
+
 const BLUEPRINT: GameBlueprint = {
     manifest: {id: "matrix-slot", name: "Matrix Slot", version: "1.0.0"},
     reels: 2,
@@ -116,6 +124,27 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "stakeAdapter:stakeAdapter",
             "parWorkbook:parWorkbook",
         ]);
+    });
+
+    it("keeps the public build documentation's supported conversions and failure examples aligned with BUILD_PRODUCT_MATRIX", () => {
+        const cliDocumentation = fs.readFileSync(path.resolve(process.cwd(), "docs/cli.md"), "utf-8").replace(/\s+/g, " ");
+        const supportedConversionMatch = cliDocumentation.match(new RegExp(
+            "The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its " +
+            `${SUPPORTED_CELLS.length} supported cells are (.+?)\\. Every other advertised cell`,
+        ));
+
+        expect(supportedConversionMatch?.[1]).toBe(documentedSupportedConversionList());
+
+        const targetOptionMatch = cliDocumentation.match(/- `--target <artifact>` —(.+?)(?= - `--out <path>`)/);
+        const failureModesMatch = cliDocumentation.match(/Failure modes: (.+?)(?= ### Conflict handling)/);
+        expect(BUILD_PRODUCT_MATRIX.blueprint.parWorkbook.state).toBe("diagnostic-required");
+        expect(targetOptionMatch?.[1]).toContain("`parWorkbook` from a `blueprint` source");
+        expect(failureModesMatch?.[1]).toContain("`parWorkbook` from a `blueprint` source");
+
+        for (const supportedTarget of ["outcomeLibrary", "stakeAdapter"] as const) {
+            const obsoleteBlueprintFailure = new RegExp("`" + supportedTarget + "` from a `blueprint` source[^.]*\\bthrows\\b", "i");
+            expect(cliDocumentation).not.toMatch(obsoleteBlueprintFailure);
+        }
     });
 
     it.each(SUPPORTED_CELLS)("runs $source -> $target through registry, CLI, Studio, and its next public readback", async ({source, target}) => {
