@@ -295,7 +295,7 @@ incompatible grid weights into a falsely "exact" result. `options.onProgress` is
 ```
 pokie generate <packageRoot> [--mode <betModeId>] [--stake <number>]
     [--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>]
-    [--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
+    [--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>]
     [--resume <file>] [--progress] [--format json]
 ```
 
@@ -321,6 +321,12 @@ inspects an already-built bundle. `generate` is the one outcomelibrary verb that
 - `--max-outcome-space-size <n>` — overrides the default 20,000,000-raw-combination bound above which `generate`
   refuses to sweep exhaustively (accepts an arbitrarily large decimal string, parsed straight to `bigint`, since a
   raw combination count routinely exceeds `Number.MAX_SAFE_INTEGER`).
+- `--exact` — makes the default exact-only choice explicit. It is mutually exclusive with every sampled-generation
+  option, so an invocation can never silently change from an exact sweep into a sample.
+- `--sample <n> --seed <string>` — directly performs exactly `n` deterministic reel-stop draws through the same
+  runtime calculation path, without first sweeping the full outcome space. The resulting library is honestly
+  labelled `"bounded-coverage"` and records both its sampled raw count and seed, so the same game/count/seed is
+  reproducible. This is useful even for a small game when a deliberately bounded Monte-Carlo library is wanted.
 - `--bounded --sample-size <n> --seed <string>` — opts into the honestly-labelled `"bounded-coverage"` strategy
   once the raw space exceeds `--max-outcome-space-size`; all three must be given together — `--sample-size`/`--seed`
   without `--bounded`, or `--bounded` without both of the other two, are rejected rather than silently ignored. A

@@ -5,6 +5,7 @@ import os from "os";
 import path from "path";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
+import {OutcomeSourceCommand} from "../../cli/commands/OutcomeSourceCommand.js";
 
 // End-to-end happy path for "pokie outcomelibrary generate": package (a real "pokie build" output) ->
 // generate (drives the built package's own runtime) -> validate (WeightedOutcomeLibraryValidator, the
@@ -185,6 +186,30 @@ describe("CLI workflow (integration): pokie outcomelibrary generate -> validate 
         const library = readLibrary(libraryFile);
         expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(27);
         expect(library.outcomes.some((outcome) => outcome.artifact.featureEvents?.some((event) => event.type === "freeGamesTriggered") ?? false)).toBe(true);
+    });
+
+    it("sample -> validate -> bundle: a large reel game performs only the requested deterministic draws", async () => {
+        const packageRoot = await buildPackage(largeButBoundedBlueprint("sampled-cli-slot"), "sampled-pkg");
+        const firstFile = path.join(workDir, "sampled-first.json");
+        const repeatFile = path.join(workDir, "sampled-repeat.json");
+
+        for (const filePath of [firstFile, repeatFile]) {
+            expect(
+                await new OutcomeLibraryCommand("1.3.0").run(["generate", packageRoot, "--sample", "37", "--seed", "sampled-cli-seed", "--out", filePath]),
+            ).toBe(0);
+        }
+
+        const first = readLibrary(firstFile);
+        expect(first.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(37);
+        expect(readLibrary(repeatFile)).toEqual(first);
+        expect(new WeightedOutcomeLibraryValidator().validate(first).filter((issue) => issue.severity === "error")).toEqual([]);
+
+        const configPath = path.join(workDir, "sampled-bundle-config.json");
+        fs.writeFileSync(configPath, JSON.stringify({modes: [{modeName: "base", libraryPath: "sampled-first.json"}]}));
+        const bundleDir = path.join(workDir, "sampled-bundle");
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["build", configPath, "--out", bundleDir])).toBe(0);
+        expect(await new OutcomeLibraryCommand("1.3.0").run(["validate", bundleDir, "--deep"])).toBe(0);
+        expect(await new OutcomeSourceCommand().run(["sample", bundleDir, "--mode", "base", "--seed", "downstream-seed"])).toBe(0);
     });
 
     it("resume/cancel: a SIGINT-cancelled sweep's checkpoint resumes into the exact same complete library an uninterrupted sweep would produce", async () => {

@@ -35,7 +35,7 @@ const VALIDATE_USAGE = "Usage: pokie outcomelibrary validate <bundleDir> [--deep
 const GENERATE_USAGE =
     "Usage: pokie outcomelibrary generate <packageRoot> [--mode <betModeId>] [--stake <number>] " +
     "[--config-hash <hash>] [--library-id <id>] [--max-outcome-space-size <n>] " +
-    "[--bounded --sample-size <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
+    "[--exact | --sample <n> --seed <string>] [--estimate | --dry-run] [--out <file>] " +
     "[--resume <file>] [--progress] [--format json]";
 const GENERATE_HINT =
     "<packageRoot> is a package built by \"pokie build\" (or any package loadPokieGame() can require) whose game " +
@@ -91,6 +91,8 @@ type GenerateCliOptions = {
     configHash?: string;
     libraryId?: string;
     maxOutcomeSpaceSize?: bigint;
+    exact?: boolean;
+    sample?: bigint;
     bounded?: boolean;
     sampleSize?: bigint;
     seed?: string;
@@ -296,7 +298,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
         parent
             .command("generate")
-            .description("Generate a WeightedOutcomeLibrary from a built package's own runtime via exact reel-stop enumeration.")
+            .description("Generate an exact or explicitly sampled WeightedOutcomeLibrary from a built package's own runtime.")
             .argument("<packageRoot>", GENERATE_HINT)
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--mode <betModeId>", "bet mode to generate for (default: the game's own default bet mode)")
@@ -311,12 +313,14 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             .option("--library-id <id>", "id for the generated library (default: derived from the game manifest/mode)")
             .option(
                 "--max-outcome-space-size <n>",
-                "above this raw outcome count, generation requires --bounded instead of an exact sweep",
+                "above this raw outcome count, exact generation fails safely; use --sample <n> --seed <string> for sampled draws",
                 (value: string): bigint => parsePositiveBigIntOption(value, "--max-outcome-space-size"),
             )
-            .option("--bounded", "sample a bounded coverage of the outcome space instead of an exact sweep (requires --sample-size/--seed)")
-            .option("--sample-size <n>", "number of raw draws to sample (requires --bounded)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample-size"))
-            .option("--seed <string>", "seed for the bounded sample (requires --bounded)")
+            .option("--exact", "require exact enumeration (the default; mutually exclusive with --sample)")
+            .option("--sample <n>", "directly perform n deterministic sampled draws (requires --seed; never sweeps the full space first)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample"))
+            .option("--bounded", "legacy: sample only when the exact-space cap is exceeded (requires --sample-size/--seed)")
+            .option("--sample-size <n>", "legacy bounded sample size (requires --bounded)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample-size"))
+            .option("--seed <string>", "deterministic seed for --sample (or legacy --bounded)")
             .option("--estimate", "print the outcome space size/strategy without enumerating or sampling anything")
             .option("--dry-run", "alias for --estimate")
             .option("--out <file>", "write the generated library JSON to this path")
@@ -350,7 +354,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
     private async executeGenerate(packageRoot: string, options: GenerateCliOptions): Promise<number> {
         // Validated before any I/O (loadGame included) -- same "invalid argv never touches the
         // filesystem" discipline every other command's own parseArgs() already follows.
-        const bounded = this.buildBoundedOptions(options.bounded, options.sampleSize, options.seed);
+        const sampling = this.buildSampledOptions(options);
 
         const game = await this.loadGame(packageRoot);
 
@@ -379,7 +383,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 ...(options.mode !== undefined ? {betMode: options.mode} : {}),
                 ...(options.stake !== undefined ? {stake: options.stake} : {}),
                 ...(options.maxOutcomeSpaceSize !== undefined ? {maxOutcomeSpaceSize: options.maxOutcomeSpaceSize} : {}),
-                ...(bounded !== undefined ? {bounded} : {}),
+                ...sampling,
                 ...(resumeFrom !== undefined ? {resumeFrom} : {}),
                 signal: controller.signal,
                 ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
@@ -439,7 +443,9 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         }
 
         const maxOutcomeSpaceSize = options.maxOutcomeSpaceSize ?? DEFAULT_MAX_EXACT_OUTCOME_SPACE_SIZE;
-        const strategy: "exact" | "bounded-coverage" = estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
+        const sampling = this.buildSampledOptions(options);
+        const sample = sampling.sampled ?? sampling.bounded;
+        const strategy: "exact" | "bounded-coverage" = sampling.sampled !== undefined || estimate.totalOutcomeSpaceSize > maxOutcomeSpaceSize ? "bounded-coverage" : "exact";
         const report = {
             game: game.getManifest(),
             reelsNumber: estimate.reelsNumber,
@@ -448,7 +454,8 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             totalOutcomeSpaceSize: formatBigIntSafely(estimate.totalOutcomeSpaceSize),
             maxOutcomeSpaceSize: formatBigIntSafely(maxOutcomeSpaceSize),
             strategy,
-            requiresBounded: strategy === "bounded-coverage" && options.bounded !== true,
+            requiresBounded: strategy === "bounded-coverage" && sample === undefined,
+            ...(sample !== undefined ? {sampleSize: formatBigIntSafely(sample.sampleSize), seed: sample.seed} : {}),
         };
 
         if (options.format === "json") {
@@ -458,27 +465,39 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             console.log(`  reels             ${report.reelsNumber} (visible symbols/reel: ${report.reelsSymbolsNumber})`);
             console.log(`  reel sizes        ${report.reelSizes.join(", ")}`);
             console.log(`  total raw space   ${report.totalOutcomeSpaceSize}`);
-            console.log(`  strategy          ${report.strategy}${report.requiresBounded ? " (requires --bounded --sample-size <n> --seed <string>)" : ""}`);
+            console.log(`  strategy          ${report.strategy}${report.requiresBounded ? " (requires --sample <n> --seed <string>)" : ""}`);
         }
 
         return 0;
     }
 
-    // --bounded requires --sample-size and --seed together (same "opt in as a group, not individually"
-    // discipline as SimCommand's own convergence flags) -- and, symmetrically, --sample-size/--seed
-    // without --bounded is rejected rather than silently ignored, so a caller who forgot --bounded finds
-    // out immediately rather than unknowingly running an exact sweep with two dead flags.
-    private buildBoundedOptions(bounded: boolean | undefined, sampleSize: bigint | undefined, seed: string | undefined): {sampleSize: bigint; seed: string} | undefined {
+    // --sample is the preferred explicit sampled workflow; its count and seed are an all-or-nothing
+    // choice.  --bounded/--sample-size stays compatible with callers that only want sampling after the
+    // exact-space cap is exceeded.  Every incomplete or mixed form fails before package I/O.
+    private buildSampledOptions(options: GenerateCliOptions): {sampled?: {sampleSize: bigint; seed: string}; bounded?: {sampleSize: bigint; seed: string}} {
+        const {bounded, exact, sample, sampleSize, seed} = options;
+        if (exact && (sample !== undefined || bounded || sampleSize !== undefined || seed !== undefined)) {
+            throw new Error(`--exact cannot be combined with sampled-generation options. ${GENERATE_USAGE}`);
+        }
+        if (sample !== undefined) {
+            if (bounded || sampleSize !== undefined) {
+                throw new Error(`--sample cannot be combined with --bounded or --sample-size. ${GENERATE_USAGE}`);
+            }
+            if (seed === undefined) {
+                throw new Error(`--sample requires --seed. ${GENERATE_USAGE}`);
+            }
+            return {sampled: {sampleSize: sample, seed}};
+        }
         if (!bounded) {
             if (sampleSize !== undefined || seed !== undefined) {
-                throw new Error(`--sample-size and --seed require --bounded. ${GENERATE_USAGE}`);
+                throw new Error(`--sample-size and --seed require --bounded (legacy) or --sample <n>. ${GENERATE_USAGE}`);
             }
-            return undefined;
+            return {};
         }
         if (sampleSize === undefined || seed === undefined) {
             throw new Error(`--bounded requires both --sample-size and --seed. ${GENERATE_USAGE}`);
         }
-        return {sampleSize, seed};
+        return {bounded: {sampleSize, seed}};
     }
 
     private printGenerateResult(result: GenerateExactWeightedOutcomeLibraryResult, options: GenerateCliOptions): void {
