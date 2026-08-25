@@ -450,6 +450,20 @@ describe("ReportCommand (integration, real outcome-library bundle)", () => {
 
         logSpy.mockRestore();
     });
+
+    it("writes public outcome-library limitations without implementation error class names", async () => {
+        const reportFile = path.join(bundleDir, "outcome-report.json");
+        const command = new ReportCommand(undefined, undefined, undefined, new ProjectTargetResolver());
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run([bundleDir, "--format", "json", "--out", reportFile]);
+
+        const report = JSON.parse(fs.readFileSync(reportFile, "utf-8")) as OutcomeSourceProjectReport;
+        expect(report.descriptor.limitations.join("\n")).toContain("reports that the source content changed");
+        expect(report.descriptor.limitations.join("\n")).not.toMatch(/PreGeneratedOutcomeSourceConflictError/);
+
+        logSpy.mockRestore();
+    });
 });
 
 describe("ReportCommand (SimulationReportSet -- pokie sim --mode all output)", () => {
