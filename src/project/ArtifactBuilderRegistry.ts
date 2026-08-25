@@ -55,8 +55,7 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
 // than being left for a reader to infer from an empty/narrow "supportedSources" array alone.
 const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>> = {
     tsPackage: [
-        'Builds a runnable package from its own GameBlueprint source only -- never compiles or targets WASM, ' +
-            "and a built package cannot itself be converted into any other target type.",
+        "Builds a runnable package from a GameBlueprint source only -- never compiles or targets WASM.",
     ],
     outcomeLibrary: [
         "Republishes an existing weighted-outcome bundle, or materializes/generates one from a Blueprint or runnable package through the registry; " +
@@ -117,11 +116,11 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
 // build: build() re-checks the same capability describe() reports, then hands off to the concrete
 // ArtifactBuilder already wired to POKIE's own already-atomic per-target writers (GamePackageGenerator,
 // OutcomeLibraryBundleWriter, StakeEngineImporter/StakeEngineExporter, ParSheetImporter/ParSheetExporter) --
-// see each builder's own doc comment for exactly what it reads/writes. Every builder here is deliberately a
-// same-type republish (blueprint->tsPackage is the direct conversion; Blueprint/tsPackage->Outcome/Stake use
-// the registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back to
-// the Stake builder; every other target only republishes an already-built artifact of its own type) -- see
-// UNSUPPORTED_NOTES for what each target's build explicitly does NOT promise.
+// see each builder's own doc comment for exactly what it reads/writes. Blueprint/tsPackage -> Outcome/Stake
+// use the registry-owned prerequisite workflow, resolving a canonical Outcome Library before delegating back
+// to the Stake builder; outcomeLibrary -> outcomeLibrary, stakeAdapter -> stakeAdapter, and parWorkbook ->
+// parWorkbook are the matrix's same-type republish cells. See UNSUPPORTED_NOTES for what each target's build
+// explicitly does NOT promise.
 export class ArtifactBuilderRegistry {
     private readonly descriptors: ReadonlyMap<ArtifactTargetType, ArtifactBuildTargetDescriptor>;
     private readonly builders: ReadonlyMap<ArtifactTargetType, ArtifactBuilder>;

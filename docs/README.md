@@ -78,10 +78,11 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
     through `pokie <command> --help`; `pokie --version` prints the installed public version. `pokie build <project>
     --target <artifact> --out <path>`, POKIE's universal build pipeline:
-    `--target tsPackage` generates a working game package straight from a JSON `GameBlueprint` source (reels,
-    symbols, paylines, paytable, reel strips — literal, weighted, or build-time generated via `reelStripGeneration`
-    and `ReelStripGenerator`), no compile step required; every other `--target` (`outcomeLibrary`/`stakeAdapter`/
-    `parWorkbook`) atomically republishes an already-built artifact of its own type to a new destination; `pokie
+    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`, `tsPackage` ->
+    `outcomeLibrary`/`stakeAdapter`, `outcomeLibrary` -> `outcomeLibrary`/`stakeAdapter`, and same-type republish
+    for `stakeAdapter`/`parWorkbook`; a `tsPackage` from JSON `GameBlueprint` needs no compile step (reels, symbols,
+    paylines, paytable, reel strips — literal, weighted, or build-time generated via `reelStripGeneration` and
+    `ReelStripGenerator`); `pokie
     create [name]`, which designs an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
     than a package, interactively via a wizard when run in a terminal (`<name>` pre-fills it, `--blank`/`--random`
     write one non-interactively instead), and `pokie init [directory]`, which produces a prepared, immediately

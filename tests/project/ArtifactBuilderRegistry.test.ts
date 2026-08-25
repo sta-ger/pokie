@@ -41,6 +41,16 @@ describe("ArtifactBuilderRegistry", () => {
         expect(descriptor.supportedSources).toEqual(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"]);
     });
 
+    it("describes Blueprint/package Outcome and Stake conversions without denying them in target notes", () => {
+        const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
+        const outcomeLibrary = registry.describe("outcomeLibrary");
+        const stakeAdapter = registry.describe("stakeAdapter");
+
+        expect(tsPackageNotes).not.toMatch(/cannot itself be converted|cannot.*other target/i);
+        expect(outcomeLibrary.supportedSources).toEqual(expect.arrayContaining(["blueprint", "tsPackage"]));
+        expect(stakeAdapter.supportedSources).toEqual(expect.arrayContaining(["blueprint", "tsPackage"]));
+    });
+
     it("reports the true required source capability and supported sources for a PAR export", () => {
         const descriptor = registry.describe("parWorkbook");
 

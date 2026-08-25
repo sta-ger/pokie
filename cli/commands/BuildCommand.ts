@@ -30,8 +30,9 @@ const USAGE = "Usage: pokie build <project> --target <artifact> [--out <path>] [
 const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-    "project (see docs/cli.md#pokie-build-project) -- a GameBlueprint JSON source builds a tsPackage; every " +
-    "other target republishes an already-built artifact of its own type to a new location.";
+    "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, " +
+    "outcomeLibrary, or stakeAdapter; tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> " +
+    "outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; parWorkbook -> parWorkbook.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
@@ -71,8 +72,9 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
-            "a tsPackage from a GameBlueprint source, or atomically republish an already-built artifact to a new " +
-            'location (for a first random game instead, see "pokie ' +
+            "the supported source-to-target matrix includes GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter, " +
+            "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
+            'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.'
         );
     }

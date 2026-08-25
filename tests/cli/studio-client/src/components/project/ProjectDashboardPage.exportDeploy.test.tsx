@@ -830,8 +830,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
             const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
             expect(within(buildArtifactSection).getByText("TypeScript Game Package")).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText("Outcome library")).toBeInTheDocument();
             expect(within(buildArtifactSection).getByText("PAR sheet (.xlsx)")).toBeInTheDocument();
-            expect(within(buildArtifactSection).getByText("Stake Engine export (republish)")).toBeInTheDocument();
+            expect(within(buildArtifactSection).getByText("Stake Engine export")).toBeInTheDocument();
             expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).toHaveLength(3);
 
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
@@ -1070,7 +1071,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
             const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
-            expect(await within(buildArtifactSection).findByText("Target: Stake Engine export (republish)")).toBeInTheDocument();
+            expect(await within(buildArtifactSection).findByText("Target: Stake Engine export")).toBeInTheDocument();
             expect(buildArtifactSection).not.toHaveTextContent("stakeAdapter");
         });
 

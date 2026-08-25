@@ -70,20 +70,20 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
         unavailableReason: "This project cannot build a TypeScript Game Package. Open a Game Blueprint project to create one.",
     },
     outcomeLibrary: {
-        label: "Outcome library (republish)",
-        purpose: "Copy this outcome library to a new location.",
-        destination: "Choose a folder for the copied outcome library, or use the default destination.",
+        label: "Outcome library",
+        purpose: "Build an outcome library from this project.",
+        destination: "Choose a folder for the outcome library, or use the default destination.",
         technicalDestination: "A new bundle directory (default: an \"outcomeLibrary\" sibling of this project).",
         unavailableReason:
             "This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
     },
     stakeAdapter: {
-        label: "Stake Engine export (republish)",
-        purpose: "Copy this Stake Engine export to a new location.",
-        destination: "Choose a folder for the copied Stake Engine export, or use the default destination.",
+        label: "Stake Engine export",
+        purpose: "Build a Stake Engine export from this project.",
+        destination: "Choose a folder for the Stake Engine export, or use the default destination.",
         technicalDestination: "A new Stake Engine export directory beside this project by default.",
         unavailableReason:
-            "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
+            "This project cannot build a Stake Engine export. Open a Game Blueprint, runnable game package, outcome library, or Stake Engine export project to continue.",
     },
     parWorkbook: {
         label: "PAR sheet (.xlsx)",
