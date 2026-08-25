@@ -1,4 +1,4 @@
-# P7-05 current-candidate independent verification — inconclusive Studio driver
+# P7-05 current-candidate independent verification — passed
 
 Candidate: `f2a1f47c18698cfb1d7691ed5ae2027ce692585d` (2026-08-25).
 
@@ -20,16 +20,21 @@ and both runtime-derived outputs built and inspected successfully.
 Matrix summary only (all generated sources and artifacts were removed):
 `sha256:707ea10258076d8d3757e698bc0dcec545f178df9053ea315345ae30ad461f0b`.
 
-One fresh Studio was launched exactly as `node ./dist/cli/pokie.js --no-open`.
-Through its public Projects URL, Chrome CDP located the rendered Location
-control and sent mouse/keyboard input twice: the first try and the one allowed
-safe retry (with Tab blur). In both cases the rendered value stayed empty and
-the still-rendered Detect control said, “Enter a project location or use Browse
-to enable Detect.” No Detect request, registration, Open, or build was emitted,
-and Studio rendered no product error. Therefore the public PAR
-Detect → Register → Open → Build/Export observation, including the PAR card
-and non-selectability of WASM, was not reached. This is retained as driver
-inconclusive, not a product finding.
+On the focused recovery run, a fresh Studio was launched exactly as
+`node ./dist/cli/pokie.js --no-open`, with a fresh visible Chromium profile.
+The driver repaired the earlier Location failure by scrolling each rendered
+control into the viewport and confirming browser focus on the labelled Location
+input before entering the path. Its first Detect pointer event did not emit a
+request; the visible enabled control proved it was not accepted, so one safe
+idempotent retry was made. Studio then rendered its local pending state and
+subsequently the successful `Detected a PAR sheet` result.
 
-Bounded Studio transcript checksum (not retained as a raw log):
-`sha256:fad60c25b3a65517a280fc37686ae411a8a0647cc6936dbc49342ad1c70d4906`.
+The public Projects flow then rendered local success at every step:
+Detect → Register (registration confirmation) → Open (PAR dashboard's actual
+`Build/Export` action) → Build/Export. The resulting Build artifact fieldset
+showed `PAR sheet (.xlsx)` with an enabled Build button. Its selectable rendered
+controls contained no WASM item. No generated projects, profiles, automation,
+or raw logs are retained.
+
+Bounded transient Studio transcript checksum (not retained as a raw log):
+`sha256:1817eed2b09b86e93bf3a3b67719611f12c2363fe83774be1d069f9ad413c6f9`.
