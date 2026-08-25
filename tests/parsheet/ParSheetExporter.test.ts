@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {GameBlueprint} from "../../src/generated/GameBlueprint.js";
 import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
+import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 
 describe("ParSheetExporter", () => {
     let dir: string;
@@ -111,21 +112,23 @@ describe("ParSheetExporter", () => {
     });
 
     describe("preflight (no partial writes)", () => {
-        it("creates no file at all and reports an error when the blueprint has no literal reelStrips", async () => {
+        it("materializes the engine-default reel source into a readable literal workbook", async () => {
             const exporter = new ParSheetExporter("1.3.0");
             const withoutReelStrips: GameBlueprint = {...blueprint};
             Reflect.deleteProperty(withoutReelStrips, "reelStrips");
 
             const issues = await exporter.exportToFile(withoutReelStrips, filePath);
 
-            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-missing-reel-strips", severity: "error"})]));
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(issues.some((issue) => issue.severity === "error")).toBe(false);
+            const imported = await new ParSheetImporter().importFromFile(filePath);
+            expect(imported.blueprint.reelStrips).toHaveLength(withoutReelStrips.reels);
+            expect(withoutReelStrips.reelStrips).toBeUndefined();
         });
 
-        it("leaves an existing file at filePath completely untouched when export fails", async () => {
+        it("leaves an existing file at filePath completely untouched when validation fails", async () => {
             const exporter = new ParSheetExporter("1.3.0");
             const withoutReelStrips: GameBlueprint = {...blueprint};
-            Reflect.deleteProperty(withoutReelStrips, "reelStrips");
+            withoutReelStrips.reels = 0;
             const sentinelContent = "not a real xlsx file — a stand-in for whatever was already there";
             fs.writeFileSync(filePath, sentinelContent);
 
@@ -135,7 +138,7 @@ describe("ParSheetExporter", () => {
             expect(fs.readFileSync(filePath, "utf-8")).toBe(sentinelContent);
         });
 
-        it("creates no file and reports an error when the blueprint uses reelStripGeneration instead of a literal reelStrips", async () => {
+        it("materializes reelStripGeneration into a readable literal workbook without changing the source", async () => {
             const exporter = new ParSheetExporter("1.3.0");
             const withGeneration: GameBlueprint = {...blueprint};
             Reflect.deleteProperty(withGeneration, "reelStrips");
@@ -146,8 +149,9 @@ describe("ParSheetExporter", () => {
 
             const issues = await exporter.exportToFile(withGeneration, filePath);
 
-            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]));
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(issues.some((issue) => issue.severity === "error")).toBe(false);
+            expect(withGeneration.reelStripGeneration).toHaveLength(2);
+            expect((await new ParSheetImporter().importFromFile(filePath)).blueprint.reelStrips).toEqual([["A", "W"], ["W", "A"]]);
         });
 
         // GameBlueprintValidator itself already rejects reelStrips + reelStripGeneration together as
@@ -169,37 +173,26 @@ describe("ParSheetExporter", () => {
             expect(fs.existsSync(filePath)).toBe(false);
         });
 
-        it("creates no file and reports an error when the blueprint uses symbolWeights instead of a literal reelStrips", async () => {
+        it("materializes symbolWeights into a readable literal workbook without changing the source", async () => {
             const exporter = new ParSheetExporter("1.3.0");
             const withWeights: GameBlueprint = {...blueprint, symbolWeights: {A: 5, W: 1}};
             Reflect.deleteProperty(withWeights, "reelStrips");
 
             const issues = await exporter.exportToFile(withWeights, filePath);
 
-            expect(issues).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-unsupported-reel-source", severity: "error"})]));
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(issues.some((issue) => issue.severity === "error")).toBe(false);
+            expect(withWeights.symbolWeights).toEqual({A: 5, W: 1});
+            expect((await new ParSheetImporter().importFromFile(filePath)).blueprint.reelStrips).toHaveLength(withWeights.reels);
         });
 
-        // Unlike reelStripGeneration, GameBlueprintValidator only *warns* about reelStrips +
-        // symbolWeights together (blueprint-reelstrips-and-weights) — so this combination does reach
-        // ParSheetExporter's own check, which still forbids it (exporting only reelStrips would
-        // silently drop the weighting data).
-        it("creates no file and reports an error when the blueprint has both reelStrips and symbolWeights", async () => {
+        it("exports literal reelStrips when the ignored symbolWeights field is also present", async () => {
             const exporter = new ParSheetExporter("1.3.0");
             const withBoth: GameBlueprint = {...blueprint, symbolWeights: {A: 5, W: 1}};
 
             const issues = await exporter.exportToFile(withBoth, filePath);
 
-            expect(issues).toEqual(
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        code: "parsheet-unsupported-reel-source",
-                        severity: "error",
-                        details: expect.objectContaining({symbolWeights: true, reelStrips: true}),
-                    }),
-                ]),
-            );
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(issues.some((issue) => issue.severity === "error")).toBe(false);
+            expect((await new ParSheetImporter().importFromFile(filePath)).blueprint.reelStrips).toEqual(blueprint.reelStrips);
         });
     });
 

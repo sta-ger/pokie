@@ -574,10 +574,10 @@ describe("StudioBlueprintService", () => {
             expect(fs.readFileSync(filePath, "utf-8")).not.toBe("existing content");
         });
 
-        it("returns invalid and writes nothing for a blueprint whose reel source PAR export can't represent", async () => {
+        it("materializes a generated reel source into a PAR workbook", async () => {
             const service = createService();
             const filePath = path.join(tmpDir, "out.par.xlsx");
-            const unsupportedBlueprint = buildBlueprint({
+            const generatedBlueprint = buildBlueprint({
                 reelStripGeneration: [
                     {type: "literal", strip: ["A", "B"]},
                     {type: "literal", strip: ["B", "A"]},
@@ -585,13 +585,10 @@ describe("StudioBlueprintService", () => {
                 ],
             });
 
-            const result = await service.exportParSheet(unsupportedBlueprint, filePath, false);
+            const result = await service.exportParSheet(generatedBlueprint, filePath, false);
 
-            expect(result.status).toBe("invalid");
-            if (result.status === "invalid") {
-                expect(result.errors.some((issue) => issue.code === "parsheet-unsupported-reel-source")).toBe(true);
-            }
-            expect(fs.existsSync(filePath)).toBe(false);
+            expect(result.status).toBe("ok");
+            expect(fs.existsSync(filePath)).toBe(true);
         });
 
         it("returns invalid and writes nothing for a structurally broken blueprint", async () => {

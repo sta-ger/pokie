@@ -38,7 +38,7 @@ describe("StudioArtifactBuildService", () => {
     }
 
     describe("listTargets", () => {
-        it("reports the registry-owned Blueprint -> Outcome -> Stake targets as supported", async () => {
+        it("reports the registry-owned Blueprint artifact targets as supported", async () => {
             const blueprintPath = writeBlueprintFile();
 
             const targets = await service.listTargets(blueprintPath);
@@ -48,7 +48,7 @@ describe("StudioArtifactBuildService", () => {
             expect(byTarget.get("tsPackage")?.supported).toBe(true);
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
             expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
-            expect(byTarget.get("parWorkbook")?.supported).toBe(false);
+            expect(byTarget.get("parWorkbook")?.supported).toBe(true);
             expect(byTarget.get("wasm")).toBeUndefined();
         });
 
@@ -127,21 +127,16 @@ describe("StudioArtifactBuildService", () => {
             expect(result.message).toContain("was not recognized as a POKIE project");
         });
 
-        it("uses public source and artifact names with a compatible next action for an unsupported build", async () => {
+        it("previews Blueprint -> PAR Workbook with its real file destination", async () => {
             const blueprintPath = writeBlueprintFile();
 
             const result = await service.preview(blueprintPath, "parWorkbook");
 
-            if (result.status !== "unsupported") {
-                throw new Error("expected unsupported");
+            if (result.status !== "ok") {
+                throw new Error("expected ok");
             }
-            expect(result).toEqual({
-                status: "unsupported",
-                target: "parWorkbook",
-                message:
-                    `"${blueprintPath}" is a Game Blueprint. It cannot build a PAR workbook. ` +
-                    "Missing prerequisite: a PAR workbook. Next: Open a PAR workbook, then run `pokie build <path> --target parWorkbook`.",
-            });
+            expect(result).toMatchObject({status: "ok", target: "parWorkbook", sourceType: "blueprint", destination: path.join(workDir, "parWorkbook.xlsx")});
+            expect(fs.existsSync(path.join(workDir, "parWorkbook.xlsx"))).toBe(false);
         });
     });
 

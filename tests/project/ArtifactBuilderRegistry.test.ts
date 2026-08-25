@@ -55,7 +55,7 @@ describe("ArtifactBuilderRegistry", () => {
         const descriptor = registry.describe("parWorkbook");
 
         expect(descriptor.requiredSourceCapability).toBe(PAR_WORKBOOK_EXCHANGE_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual(["parWorkbook"]);
+        expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
     });
 
     it("truthfully reports wasm as buildable from no source type today", () => {

@@ -9,7 +9,7 @@ import {
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 
 describe("BuildProductMatrix", () => {
-    it("covers all six resolved sources and five artifact targets with the nine supported cells", () => {
+    it("covers all six resolved sources and five artifact targets with the ten supported cells", () => {
         const cells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.flatMap((source) =>
             BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]),
         );
@@ -19,6 +19,7 @@ describe("BuildProductMatrix", () => {
             "blueprint:tsPackage",
             "blueprint:outcomeLibrary",
             "blueprint:stakeAdapter",
+            "blueprint:parWorkbook",
             "tsPackage:outcomeLibrary",
             "tsPackage:stakeAdapter",
             "outcomeLibrary:outcomeLibrary",
@@ -27,7 +28,7 @@ describe("BuildProductMatrix", () => {
             "parWorkbook:parWorkbook",
         ]);
         expect(cells.filter((cell) => cell.state === "hidden/unadvertised")).toHaveLength(6);
-        expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(15);
+        expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(14);
     });
 
     it("makes WASM inspection-only and derives public registry selection from the same matrix", () => {

@@ -74,13 +74,8 @@ describe("interpretParSheetImportExport", () => {
     });
 
     describe("isUnsupportedParSheetExport", () => {
-        it("is true for parsheet-unsupported-reel-source", () => {
-            const issues: ValidationIssue[] = [{code: "parsheet-unsupported-reel-source", severity: "error", message: "x"}];
-            expect(isUnsupportedParSheetExport(issues)).toBe(true);
-        });
-
-        it("is true for parsheet-missing-reel-strips", () => {
-            const issues: ValidationIssue[] = [{code: "parsheet-missing-reel-strips", severity: "error", message: "x"}];
+        it("is true for a generated reel that cannot be materialized", () => {
+            const issues: ValidationIssue[] = [{code: "parsheet-reel-generation-failed", severity: "error", message: "x"}];
             expect(isUnsupportedParSheetExport(issues)).toBe(true);
         });
 
@@ -104,8 +99,8 @@ describe("interpretParSheetImportExport", () => {
             expect(describeParSheetExportOutcome({status: "ok", path: "/a/out.par.xlsx", warnings: [warning]})).toBe("partial");
         });
 
-        it("is unsupported for invalid with a recognized unsupported-reel-source error", () => {
-            const error: ValidationIssue = {code: "parsheet-unsupported-reel-source", severity: "error", message: "x"};
+        it("is unsupported for invalid with a generated-reel materialization error", () => {
+            const error: ValidationIssue = {code: "parsheet-reel-generation-failed", severity: "error", message: "x"};
             expect(describeParSheetExportOutcome({status: "invalid", errors: [error], warnings: []})).toBe("unsupported");
         });
 

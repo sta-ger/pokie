@@ -204,7 +204,7 @@ export class ArtifactBuilderRegistry {
             throw new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath));
         }
 
-        if (source.type === "blueprint") {
+        if (source.type === "blueprint" && target !== "parWorkbook") {
             const blueprint = loadGameBlueprint(source.rootPath);
             const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
             if (errors.length > 0) {

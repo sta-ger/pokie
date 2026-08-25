@@ -65,13 +65,10 @@ export function describeParSheetImportOutcome(view: {errors: readonly Validation
     return "success";
 }
 
-// The two ParSheetExporter-reported error codes that specifically mean "this blueprint's own reel source
-// isn't something a PAR sheet can represent at all" (reelStripGeneration/symbolWeights, or no literal
-// reelStrips) -- see ParSheetExporting.exportToFile()'s own doc comment. Distinguished from any other
-// validation failure purely for friendlier wording ("this data isn't supported by PAR export" vs. a
-// generic "this blueprint is invalid") -- never a re-derivation of what makes the export fail, only a
-// recognized-code lookup over issues the server already computed.
-const UNSUPPORTED_EXPORT_ISSUE_CODES = new Set(["parsheet-unsupported-reel-source", "parsheet-missing-reel-strips"]);
+// A generated reel can be unexportable only when its own declared constraints cannot produce a strip.
+// This is kept distinct from a structurally invalid Blueprint so the panel can show the corrective action
+// the exporter supplies for that user-authored field.
+const UNSUPPORTED_EXPORT_ISSUE_CODES = new Set(["parsheet-reel-generation-failed"]);
 
 export function isUnsupportedParSheetExport(errors: readonly ValidationIssue[]): boolean {
     return errors.some((issue) => UNSUPPORTED_EXPORT_ISSUE_CODES.has(issue.code));

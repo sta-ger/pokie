@@ -117,6 +117,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "blueprint:tsPackage",
             "blueprint:outcomeLibrary",
             "blueprint:stakeAdapter",
+            "blueprint:parWorkbook",
             "tsPackage:outcomeLibrary",
             "tsPackage:stakeAdapter",
             "outcomeLibrary:outcomeLibrary",
@@ -137,9 +138,9 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
 
         const targetOptionMatch = cliDocumentation.match(/- `--target <artifact>` —(.+?)(?= - `--out <path>`)/);
         const failureModesMatch = cliDocumentation.match(/Failure modes: (.+?)(?= ### Conflict handling)/);
-        expect(BUILD_PRODUCT_MATRIX.blueprint.parWorkbook.state).toBe("diagnostic-required");
-        expect(targetOptionMatch?.[1]).toContain("`parWorkbook` from a `blueprint` source");
-        expect(failureModesMatch?.[1]).toContain("`parWorkbook` from a `blueprint` source");
+        expect(BUILD_PRODUCT_MATRIX.blueprint.parWorkbook.state).toBe("supported");
+        expect(targetOptionMatch?.[1]).not.toContain("`parWorkbook` from a `blueprint` source");
+        expect(failureModesMatch?.[1]).not.toContain("`parWorkbook` from a `blueprint` source");
 
         for (const supportedTarget of ["outcomeLibrary", "stakeAdapter"] as const) {
             const obsoleteBlueprintFailure = new RegExp("`" + supportedTarget + "` from a `blueprint` source[^.]*\\bthrows\\b", "i");

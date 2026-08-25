@@ -2,6 +2,9 @@ import ExcelJS from "exceljs";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
 import {GameBlueprintValidator} from "../generated/GameBlueprintValidator.js";
+import {materializeReelStrips} from "../generated/materializeReelStrips.js";
+import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
+import {convertSharedWeightsToReelStrips} from "../project/buildGameModelReels.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import {AvailableBetsSheetMapper} from "./mapping/AvailableBetsSheetMapper.js";
 import type {AvailableBetsSheetMapping} from "./mapping/AvailableBetsSheetMapping.js";
@@ -26,6 +29,61 @@ import type {WinModelSheetMapping} from "./mapping/WinModelSheetMapping.js";
 import type {ParSheetExportOptions, ParSheetExporting} from "./ParSheetExporting.js";
 import type {SheetGrid} from "./SheetGrid.js";
 import {writeFileAtomically} from "./writeFileAtomically.js";
+
+export type ParSheetBlueprintPreparation =
+    | {readonly blueprint: GameBlueprint; readonly issues: ValidationIssue[]}
+    | {readonly blueprint: undefined; readonly issues: ValidationIssue[]};
+
+// PAR workbooks store literal reel strips. A canonical Blueprint may instead author its reels as
+// generated specs, shared weights, or the engine defaults; export freezes that valid source into a
+// deterministic literal snapshot without changing the authored Blueprint. This is deliberately a
+// shared preflight so direct exporter, registry and CLI callers cannot disagree about what is exportable.
+export function prepareBlueprintForParSheetExport(
+    blueprint: unknown,
+    validator: GameBlueprintValidating = new GameBlueprintValidator(),
+): ParSheetBlueprintPreparation {
+    const validationIssues = validator.validate(blueprint);
+    if (validationIssues.some((issue) => issue.severity === "error")) return {blueprint: undefined, issues: validationIssues};
+
+    const authored = blueprint as GameBlueprint;
+    if (authored.reelStripGeneration !== undefined) {
+        const resolution = resolveReelStripGeneration(authored);
+        if (!resolution.success) {
+            const failures = resolution.reels.filter((reel) => !reel.success);
+            return {
+                blueprint: undefined,
+                issues: [
+                    ...validationIssues,
+                    {
+                        code: "parsheet-reel-generation-failed",
+                        severity: "error",
+                        message: `Cannot export "reelStripGeneration": ${failures
+                            .map((reel) => `reelStripGeneration[${reel.reelIndex}] could not satisfy its constraints`)
+                            .join("; ")}.`,
+                        suggestion: "Adjust the named reelStripGeneration entry so it can generate a strip, then export again.",
+                    },
+                ],
+            };
+        }
+        return {blueprint: removeSharedWeights(materializeReelStrips(authored, resolution.reelStripGeneration)), issues: validationIssues};
+    }
+
+    if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: validationIssues};
+
+    // `symbolWeights` and the omitted engine-default weighting both describe playable canonical
+    // Blueprints but have no physical strip. Freeze the same deterministic sample Studio presents.
+    return {
+        blueprint: removeSharedWeights({...authored, reelStrips: convertSharedWeightsToReelStrips(authored)}),
+        issues: validationIssues,
+    };
+}
+
+function removeSharedWeights(blueprint: GameBlueprint): GameBlueprint {
+    if (blueprint.symbolWeights === undefined) return blueprint;
+    const snapshot = {...blueprint};
+    Reflect.deleteProperty(snapshot, "symbolWeights");
+    return snapshot;
+}
 
 export class ParSheetExporter implements ParSheetExporting {
     private readonly pokieVersion: string;
@@ -90,17 +148,10 @@ export class ParSheetExporter implements ParSheetExporting {
         // Mirrors BuildCommand: a blueprint GameBlueprintValidator rejects is never treated as a
         // well-shaped GameBlueprint at all, since fields the mappers below assume exist (symbols,
         // paytable, ...) might not.
-        const validationIssues = this.validator.validate(blueprint);
-        if (validationIssues.some((issue) => issue.severity === "error")) {
-            return validationIssues;
-        }
-
-        const typedBlueprint = blueprint as GameBlueprint;
-        const reelSourceIssues = this.checkReelSource(typedBlueprint);
-        const issues = [...validationIssues, ...reelSourceIssues];
-        if (issues.some((issue) => issue.severity === "error")) {
-            return issues;
-        }
+        const prepared = prepareBlueprintForParSheetExport(blueprint, this.validator);
+        const issues = prepared.issues;
+        if (prepared.blueprint === undefined) return issues;
+        const typedBlueprint = prepared.blueprint;
 
         const workbook = new ExcelJS.Workbook();
         addSheet(
@@ -152,58 +203,6 @@ export class ParSheetExporter implements ParSheetExporting {
         return issues;
     }
 
-    private checkReelSource(blueprint: GameBlueprint): ValidationIssue[] {
-        // "pokie par export" only ever represents literal reelStrips (see docs/cli.md) — never
-        // reelStripGeneration/symbolWeights. This is checked *before* looking at reelStrips at all:
-        // a blueprint that has both a literal reelStrips (e.g. left over from a previous materialize
-        // step) and reelStripGeneration/symbolWeights would otherwise export "successfully" while
-        // silently dropping the generation/weighting data — exactly the lossy export this guards
-        // against, regardless of what reelStrips happens to contain.
-        const unsupportedFields: string[] = [];
-        if (blueprint.reelStripGeneration !== undefined) {
-            unsupportedFields.push('"reelStripGeneration"');
-        }
-        if (blueprint.symbolWeights !== undefined) {
-            unsupportedFields.push('"symbolWeights"');
-        }
-        if (unsupportedFields.length > 0) {
-            const alsoHasReelStrips = blueprint.reelStrips !== undefined;
-            return [
-                {
-                    code: "parsheet-unsupported-reel-source",
-                    severity: "error",
-                    message:
-                        `The blueprint uses ${unsupportedFields.join(" and ")}, which "pokie par export" cannot represent` +
-                        (alsoHasReelStrips
-                            ? ' — even though "reelStrips" is also present, exporting only that would silently drop the generation/weighting data'
-                            : "") +
-                        ".",
-                    details: {
-                        reelStripGeneration: blueprint.reelStripGeneration !== undefined,
-                        symbolWeights: blueprint.symbolWeights !== undefined,
-                        reelStrips: alsoHasReelStrips,
-                    },
-                    suggestion:
-                        'Materialize the blueprint into a literal "reelStrips" array first -- run "pokie reel generate ' +
-                        '<blueprint.json> --materialize" (or, programmatically, resolveReelStripGeneration + ' +
-                        "materializeReelStrips, or by hand) -- then export that.",
-                },
-            ];
-        }
-
-        if (!blueprint.reelStrips) {
-            return [
-                {
-                    code: "parsheet-missing-reel-strips",
-                    severity: "error",
-                    message: 'The blueprint has no literal "reelStrips" to export.',
-                    suggestion: 'Add a literal "reelStrips" array to the blueprint first.',
-                },
-            ];
-        }
-
-        return [];
-    }
 }
 
 const defaultWriteWorkbook = (workbook: ExcelJS.Workbook, filePath: string): Promise<void> =>

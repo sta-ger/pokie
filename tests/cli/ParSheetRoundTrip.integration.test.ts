@@ -2,6 +2,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
+import {BuildCommand} from "../../cli/commands/BuildCommand.js";
+import {ArtifactBuilderRegistry, GameBlueprint, ParSheetImporter, ProjectTargetResolver} from "pokie";
 
 // End-to-end round trip for "pokie par export"/"pokie par import": the actual example blueprint
 // shipped in examples/parsheets/ (see also examples/parsheets/README.md), exported to a real .xlsx
@@ -65,5 +67,47 @@ describe("CLI workflow (integration): pokie par export -> pokie par import round
         const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
         expect(printed).toContain("parsheet-provenance-present");
         expect(printed).toContain("exported by pokie v1.3.0");
+    });
+
+    it("builds a generated canonical Blueprint to a physical workbook, reads it back, and preserves the authored source", async () => {
+        const generatedBlueprint: GameBlueprint = {
+            manifest: {id: "generated-par", name: "Generated PAR", version: "1.0.0"},
+            reels: 2,
+            rows: 1,
+            symbols: ["A", "B"],
+            paytable: {A: {2: 1}},
+            reelStripGeneration: [
+                {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 11},
+                {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 12},
+            ],
+        };
+        const generatedPath = path.join(workDir, "generated.blueprint.json");
+        const defaultWorkbook = path.join(workDir, "parWorkbook.xlsx");
+        const explicitWorkbook = path.join(workDir, "generated.par.xlsx");
+        fs.writeFileSync(generatedPath, JSON.stringify(generatedBlueprint));
+        const resolver = new ProjectTargetResolver();
+        const command = new BuildCommand("1.3.0", undefined, undefined, resolver, new ArtifactBuilderRegistry("1.3.0"));
+
+        expect(await command.run([generatedPath, "--target", "parWorkbook", "--dry-run"])).toBe(0);
+        expect(fs.existsSync(defaultWorkbook)).toBe(false);
+        expect(await command.run([generatedPath, "--target", "parWorkbook"])).toBe(0);
+        expect(fs.existsSync(defaultWorkbook)).toBe(true);
+        expect(await command.run([generatedPath, "--target", "parWorkbook", "--out", explicitWorkbook])).toBe(0);
+
+        const imported = await new ParSheetImporter().importFromFile(explicitWorkbook);
+        expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(imported.blueprint).toMatchObject({
+            manifest: generatedBlueprint.manifest,
+            symbols: generatedBlueprint.symbols,
+            paytable: generatedBlueprint.paytable,
+        });
+        expect(imported.blueprint.reelStrips).toHaveLength(2);
+        expect(JSON.parse(fs.readFileSync(generatedPath, "utf-8"))).toEqual(generatedBlueprint);
+
+        const conflictWorkbook = path.join(workDir, "conflict.xlsx");
+        const sentinel = Buffer.from("PAR destination sentinel");
+        fs.writeFileSync(conflictWorkbook, sentinel);
+        await expect(command.run([generatedPath, "--target", "parWorkbook", "--out", conflictWorkbook])).rejects.toThrow(/already exists/i);
+        expect(fs.readFileSync(conflictWorkbook)).toEqual(sentinel);
     });
 });
