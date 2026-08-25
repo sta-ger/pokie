@@ -72,11 +72,11 @@ describe("ArtifactBuilderRegistry", () => {
         const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
 
         expect(tsPackageNotes).toMatch(/never compiles or targets WASM/);
-        expect(() => registry.describe("wasm" as never)).toThrow(/no descriptor for target "wasm"/);
+        expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);
     });
 
     it("throws for a target it has no descriptor for", () => {
-        expect(() => registry.describe("bogus" as never)).toThrow(/no descriptor for target "bogus"/);
+        expect(() => registry.describe("bogus" as never)).toThrow(/Build target "bogus" is unavailable.*Next: choose a target shown by `pokie build --help`/);
     });
 
     describe("supportsConversionFrom", () => {
@@ -124,14 +124,16 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(0);
         });
 
-        it("rejects with a clear message for a retained target that has no registered builder", async () => {
+        it("does not advertise a target whose injected configuration cannot build it", async () => {
             const withoutBuilders = new ArtifactBuilderRegistry("1.3.0", new Map());
 
-            // A custom registry can still be incomplete; its public retained target fails clearly rather than
-            // crashing. Production construction always supplies every ArtifactTargetType builder.
+            // A custom registry can still be incomplete, but it must not retain a dead public target.
+            // Production construction supplies every ArtifactTargetType builder.
+            expect(withoutBuilders.listTargets()).toEqual([]);
             await expect(withoutBuilders.build("tsPackage", projectOf("blueprint"), "/out/my-game")).rejects.toThrow(
-                /"tsPackage" has no builder implemented yet/,
+                /Build target "tsPackage" is unavailable.*Next: choose a target shown by `pokie build --help`/,
             );
+            expect(() => withoutBuilders.describe("tsPackage")).toThrow(/Build target "tsPackage" is unavailable/);
         });
 
         it("resolves a Blueprint's registered Outcome Library prerequisite before exporting Stake, and reuses it deterministically", async () => {

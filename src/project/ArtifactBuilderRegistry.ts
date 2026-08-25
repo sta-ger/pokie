@@ -144,13 +144,20 @@ export class ArtifactBuilderRegistry {
     }
 
     public listTargets(): readonly ArtifactTargetType[] {
-        return ADVERTISED_ARTIFACT_BUILD_TARGETS;
+        // A caller may inject a deliberately small builder set for an embedded use or a focused test.
+        // Do not let that make the registry advertise a target it cannot actually produce: the default
+        // production set contains every matrix target, while a partial set exposes only its complete
+        // target promises.
+        return ADVERTISED_ARTIFACT_BUILD_TARGETS.filter((target) => this.descriptors.has(target) && this.builders.has(target));
     }
 
     public describe(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
         const descriptor = this.descriptors.get(target);
-        if (descriptor === undefined) {
-            throw new Error(`ArtifactBuilderRegistry has no descriptor for target "${target}".`);
+        if (descriptor === undefined || !this.builders.has(target)) {
+            throw new Error(
+                `Build target "${target}" is unavailable in this POKIE installation. ` +
+                    "Next: choose a target shown by `pokie build --help` or use an installation that provides this target.",
+            );
         }
         return descriptor;
     }
@@ -169,11 +176,9 @@ export class ArtifactBuilderRegistry {
     // Lets a caller (a Studio build-preview panel) report the identical conflict a real build would hit
     // before ever attempting one, rather than re-deriving "file" vs "directory" per target itself.
     public checkDestination(target: ArtifactTargetType, destinationPath: string, sourcePath?: string): ArtifactDestinationCheck {
+        this.assertTargetAvailable(target);
         const builder = this.builders.get(target);
-        if (builder === undefined) {
-            const descriptor = this.describe(target);
-            throw new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`);
-        }
+        if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
 
         try {
             if (sourcePath !== undefined) assertArtifactDestinationIsSafe(sourcePath, destinationPath);
@@ -194,6 +199,7 @@ export class ArtifactBuilderRegistry {
         if (!this.supportsConversionFrom(target, source.type)) {
             throw new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath));
         }
+        this.assertTargetAvailable(target);
 
         if (source.type === "blueprint" && target !== "parWorkbook") {
             const blueprint = loadGameBlueprint(source.rootPath);
@@ -212,10 +218,7 @@ export class ArtifactBuilderRegistry {
         }
 
         const builder = this.builders.get(target);
-        if (builder === undefined) {
-            const descriptor = this.describe(target);
-            throw new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`);
-        }
+        if (builder === undefined) throw new Error(this.unavailableTargetMessage(target));
         await builder.validate?.(source);
     }
 
@@ -226,6 +229,11 @@ export class ArtifactBuilderRegistry {
     public build(target: ArtifactTargetType, source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions): Promise<ArtifactBuildResult> {
         if (!this.supportsConversionFrom(target, source.type)) {
             return Promise.reject(new Error(describeBuildProductMatrixDiagnostic(source.type, target, source.rootPath)));
+        }
+        try {
+            this.assertTargetAvailable(target);
+        } catch (error) {
+            return Promise.reject(error);
         }
         if (target === "outcomeLibrary" && (source.type === "blueprint" || source.type === "tsPackage")) {
             return this.buildManagedOutcomeFromRuntime(source, destinationPath, options);
@@ -241,14 +249,8 @@ export class ArtifactBuilderRegistry {
                     })),
                 );
         }
-        const descriptor = this.describe(target);
-
         const builder = this.builders.get(target);
-        if (builder === undefined) {
-            return Promise.reject(
-                new Error(`"${target}" has no builder implemented yet. ${descriptor.unsupportedNotes.join(" ")}`),
-            );
-        }
+        if (builder === undefined) return Promise.reject(new Error(this.unavailableTargetMessage(target)));
 
         return builder.build(source, destinationPath, options);
     }
@@ -270,6 +272,19 @@ export class ArtifactBuilderRegistry {
                 : {}),
             managedProjectRoots: [outcomeLibrary.project.rootPath],
         };
+    }
+
+    private unavailableTargetMessage(target: ArtifactTargetType): string {
+        return (
+            `Build target "${target}" is unavailable in this POKIE installation. ` +
+            "Next: choose a target shown by `pokie build --help` or use an installation that provides this target."
+        );
+    }
+
+    private assertTargetAvailable(target: ArtifactTargetType): void {
+        if (!this.descriptors.has(target) || !this.builders.has(target)) {
+            throw new Error(this.unavailableTargetMessage(target));
+        }
     }
 
 }

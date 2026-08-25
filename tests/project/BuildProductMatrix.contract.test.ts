@@ -37,7 +37,7 @@ describe("BuildProductMatrix", () => {
         expect(ADVERTISED_ARTIFACT_BUILD_TARGETS).toEqual(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]);
         expect(registry.listTargets()).toEqual(ADVERTISED_ARTIFACT_BUILD_TARGETS);
         expect(BUILD_PRODUCT_MATRIX_TARGETS).not.toContain("wasm");
-        expect(() => registry.describe("wasm" as never)).toThrow(/no descriptor for target "wasm"/);
+        expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);
     });
 
     it("gives every advertised diagnostic cell the same exact prerequisite and next action", () => {
