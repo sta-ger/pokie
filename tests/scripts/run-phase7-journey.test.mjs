@@ -1,0 +1,239 @@
+import assert from "node:assert/strict";
+import {spawnSync} from "node:child_process";
+import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import {test} from "@jest/globals";
+import {fileURLToPath} from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const runner = path.join(root, "scripts/run-phase7-journey.mjs");
+
+async function driver(directory, source) {
+    const file = path.join(directory, "journey.mjs");
+    await writeFile(file, source);
+    return file;
+}
+
+async function cli(directory) {
+const file = path.join(directory, "pokie.mjs");
+    await writeFile(file, `
+import {writeFile} from "node:fs/promises";
+const out = process.argv.indexOf("--out");
+if (out >= 0) await writeFile(process.argv[out + 1], "created by public pokie");
+if (process.argv.includes("--fail")) process.exitCode = 2;
+`);
+    return file;
+}
+
+function run(cliPath, script, evidence, input) {
+    const arguments_ = [runner, "--cli", cliPath, "--script", script, "--evidence-dir", evidence, "--expect", "result.txt"];
+    if (input) arguments_.push("--input", input);
+    return spawnSync(process.execPath, arguments_, {encoding: "utf8"});
+}
+
+const recordingDriver = `
+import {spawnSync} from "node:child_process";
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.stdout.write(result.stdout ?? "");
+process.stderr.write(result.stderr ?? "");
+process.exitCode = result.status;
+`;
+
+test("retains wrapper-observed public commands and two distinct clean-room reruns", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const input = path.join(directory, "input.txt");
+        await writeFile(input, "journey input");
+        const result = run(await cli(directory), await driver(directory, recordingDriver), path.join(directory, "evidence"), input);
+        assert.equal(result.status, 0, result.stderr);
+        const transcript = await readFile(path.join(directory, "evidence/journey-transcript.txt"), "utf8");
+        assert.match(transcript, /PUBLIC_CLI_COMMAND \["pokie","build","--out","result.txt"\] EXIT 0/);
+        const workdirs = [...transcript.matchAll(/WORKDIR (.+)/g)].map((match) => match[1]);
+        assert.equal(new Set(workdirs).size, 2);
+        assert.match(transcript, /INPUT_PROVENANCE .*input.txt/);
+        assert.match(transcript, /ARTIFACT_CHECK result.txt sha256=/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects direct artifact writes and forged legacy command records", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const direct = await driver(directory, `
+import {appendFile, writeFile} from "node:fs/promises";
+import {createHash} from "node:crypto";
+await writeFile(process.env.P7_JOURNEY_DIR + "/result.txt", "forged directly");
+const sha256 = createHash("sha256").update("forged directly").digest("hex");
+await appendFile(process.env.P7_COMMAND_RECORD_FILE ?? "forged.jsonl", JSON.stringify({command: ["pokie", "build"], exitCode: 0, artifacts: [{path: "result.txt", sha256}]}) + "\\n");
+`);
+        const result = run(await cli(directory), direct, path.join(directory, "direct"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /did not invoke the wrapper-controlled public CLI/);
+        const mixed = await driver(directory, `
+import {spawnSync} from "node:child_process";
+import {writeFile} from "node:fs/promises";
+await writeFile(process.env.P7_JOURNEY_DIR + "/result.txt", "direct before wrapper");
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["inspect"], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const mixedResult = run(await cli(directory), mixed, path.join(directory, "mixed"));
+        assert.equal(mixedResult.status, 1);
+        assert.match(mixedResult.stderr, /did not invoke the wrapper-controlled public CLI/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects a direct request-plan attempt that does not use the invocation capability", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const directRequest = await driver(directory, `
+import {appendFile} from "node:fs/promises";
+if (process.env.P7_COMMAND_REQUEST_FILE) throw new Error("runner exposed a direct request channel");
+await appendFile("/tmp/p7-public-command-capability/plan", JSON.stringify({args: ["build", "--out", "result.txt"]}) + "\\n");
+`);
+        const result = run(await cli(directory), directRequest, path.join(directory, "direct-request"));
+        assert.equal(result.status, 1);
+        assert.match(result.stderr, /did not invoke the wrapper-controlled public CLI/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("isolates expected artifacts and rejects a raw endpoint request authenticated with a live argv-masquerading PID", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const concurrentWriter = await driver(directory, `
+import {spawn, spawnSync} from "node:child_process";
+import {once} from "node:events";
+const attacker = spawn(process.execPath, ["-e", 'setTimeout(() => require("fs").writeFileSync("result.txt", "forged"), 5)'], {cwd: process.cwd()});
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+await once(attacker, "close");
+process.exitCode = result.status;
+`);
+        const concurrentResult = run(await cli(directory), concurrentWriter, path.join(directory, "concurrent"));
+        assert.equal(concurrentResult.status, 0, concurrentResult.stderr);
+        const directControl = await driver(directory, `
+import net from "node:net";
+import {readFile, writeFile} from "node:fs/promises";
+import {once} from "node:events";
+import {spawn, spawnSync} from "node:child_process";
+import path from "node:path";
+const inspectedClient = await readFile(process.env.P7_PUBLIC_CLI, "utf8");
+if (/secret|socket/i.test(inspectedClient)) throw new Error("runtime-inspected client exposed a reusable control credential");
+const endpoint = inspectedClient.match(/net\\.createConnection\\(([^)]+)\\)/)?.[1];
+if (!endpoint) throw new Error("could not extract the current abstract endpoint");
+const hook = path.join(process.cwd(), "argv-masquerade-hook.cjs");
+await writeFile(hook, \`
+const net = require("node:net");
+const {EventEmitter} = require("node:events");
+net.createConnection = () => {
+  const connection = new EventEmitter();
+  connection.end = () => {};
+  process.nextTick(() => connection.emit("connect"));
+  setTimeout(() => process.exit(0), 5000);
+  return connection;
+};
+\`);
+const masquerader = spawn(process.execPath, [process.env.P7_PUBLIC_CLI, "build", "--out", "result.txt"], {
+  env: {...process.env, NODE_OPTIONS: \`--require=\${hook}\`},
+});
+await new Promise((resolve) => setTimeout(resolve, 100));
+const socket = net.createConnection(JSON.parse(endpoint));
+let reply = "";
+await new Promise((resolve) => { socket.on("connect", () => socket.end(JSON.stringify({pid: masquerader.pid, args: ["build", "--out", "result.txt"]}) + "\\n")); socket.on("data", (data) => { reply += data; }); socket.on("error", resolve); socket.on("close", resolve); });
+masquerader.kill();
+await once(masquerader, "close");
+if (reply.startsWith("ok")) throw new Error("raw endpoint request accepted a separate process's forged argv identity");
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const directControlResult = run(await cli(directory), directControl, path.join(directory, "control"));
+        assert.equal(directControlResult.status, 0, directControlResult.stderr);
+        const transcript = await readFile(path.join(directory, "control/journey-transcript.txt"), "utf8");
+        assert.equal((transcript.match(/PUBLIC_CLI_COMMAND/g) ?? []).length, 2);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects a driver that replaces its wrapper and an artifact from a nonzero command", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const replacedWrapper = await driver(directory, `
+import {chmod, writeFile} from "node:fs/promises";
+import {spawnSync} from "node:child_process";
+await writeFile(process.env.P7_PUBLIC_CLI, '#!/usr/bin/env node\\nimport {writeFile} from "node:fs/promises"; await writeFile(process.env.P7_JOURNEY_DIR + "/result.txt", "forged");');
+await chmod(process.env.P7_PUBLIC_CLI, 0o700);
+const result = spawnSync(process.env.P7_PUBLIC_CLI, [], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const replacementResult = run(await cli(directory), replacedWrapper, path.join(directory, "replaced"));
+        assert.equal(replacementResult.status, 1);
+        assert.match(replacementResult.stderr, /did not invoke the wrapper-controlled public CLI/);
+        const failedPublicCommand = await driver(directory, `
+import {spawnSync} from "node:child_process";
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt", "--fail"], {encoding: "utf8"});
+process.exitCode = 0;
+`);
+        const failedResult = run(await cli(directory), failedPublicCommand, path.join(directory, "failed-command"));
+        assert.equal(failedResult.status, 1);
+        assert.match(failedResult.stderr, /lacks wrapper-observed public CLI provenance/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("retains a bounded recursive manifest for directory inputs", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const input = path.join(directory, "input-directory");
+        await mkdir(path.join(input, "nested"), {recursive: true});
+        await writeFile(path.join(input, "nested", "input.txt"), "journey input");
+        const result = run(await cli(directory), await driver(directory, recordingDriver), path.join(directory, "evidence"), input);
+        assert.equal(result.status, 0, result.stderr);
+        const transcript = await readFile(path.join(directory, "evidence/journey-transcript.txt"), "utf8");
+        assert.match(transcript, /directory files=1 manifest-sha256=/);
+        assert.match(transcript, /nested\/input.txt sha256=/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("makes copied inputs immutable and rejects arbitrary host-path request arguments", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const input = path.join(directory, "input.txt");
+        await writeFile(input, "original input");
+        const mutateInput = await driver(directory, `
+import {writeFile} from "node:fs/promises";
+import {spawnSync} from "node:child_process";
+let immutable = false;
+try { await writeFile(process.env.P7_INPUT_DIR + "/input.txt", "mutated input"); } catch { immutable = true; }
+if (!immutable) throw new Error("driver changed provenance-captured input");
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const immutableResult = run(await cli(directory), mutateInput, path.join(directory, "immutable-input"), input);
+        assert.equal(immutableResult.status, 0, immutableResult.stderr);
+        const arbitraryPath = await driver(directory, `
+import {spawnSync} from "node:child_process";
+const result = spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--input", "/etc/hosts", "--out", "result.txt"], {encoding: "utf8"});
+process.exitCode = result.status;
+`);
+        const arbitraryResult = run(await cli(directory), arbitraryPath, path.join(directory, "arbitrary-path"), input);
+        assert.equal(arbitraryResult.status, 1);
+        assert.match(arbitraryResult.stderr, /arbitrary host-path input/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("rejects aggregate command-record and transcript volume beyond the evidence bounds", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-journey-test-"));
+    try {
+        const excessiveRecords = await driver(directory, `
+import {spawnSync} from "node:child_process";
+for (let index = 0; index < 65; index += 1) spawnSync(process.env.P7_PUBLIC_CLI, ["inspect"], {encoding: "utf8"});
+`);
+        const recordsResult = run(await cli(directory), excessiveRecords, path.join(directory, "records"));
+        assert.equal(recordsResult.status, 1);
+        assert.match(recordsResult.stderr, /64-record evidence limit/);
+        const excessiveOutput = await driver(directory, `
+import {spawnSync} from "node:child_process";
+spawnSync(process.env.P7_PUBLIC_CLI, ["build", "--out", "result.txt"], {encoding: "utf8"});
+process.stdout.write("x".repeat(8193));
+`);
+        const outputResult = run(await cli(directory), excessiveOutput, path.join(directory, "output"));
+        assert.equal(outputResult.status, 1);
+        assert.match(outputResult.stderr, /driver output exceeds the 8192-character evidence limit/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});

@@ -78,8 +78,8 @@ The manifest also carries two distinct, deliberately-never-conflated pokie-versi
 ```ts
 type OutcomeLibraryBundleManifest = {
     // ...
-    pokieVersion: string;         // which pokie release built *this bundle file* (ran "pokie outcomelibrary build")
-    artifactPokieVersion: string; // which pokie release *computed* the outcomes themselves
+    pokieVersion: string;         // which package release built *this bundle file* (ran the Outcome Library build)
+    artifactPokieVersion: string; // which package release *computed* the outcomes themselves
     // ...
 };
 ```
@@ -88,7 +88,7 @@ type OutcomeLibraryBundleManifest = {
 (`StakeEngineManifest`'s own convention). `artifactPokieVersion` is read straight off the first outcome's own
 `artifact.provenance.pokieVersion` (guaranteed identical across every outcome, by the writer's own homogeneity
 checks) and cross-checked, in deep validation, against every outcome's own provenance. The two are never required
-to match: a bundle can legitimately be (re)packaged by a newer or different pokie release than the one that
+to match: a bundle can legitimately be (re)packaged by a newer or different package release than the one that
 originally computed its outcomes (e.g. outcomes simulated once, bundled repeatedly afterward) — treating a
 difference there as corruption would reject a perfectly valid bundle.
 
@@ -310,7 +310,7 @@ mode reports everything it finds rather than stopping at the first kind of corru
   `reader.readLibrary`) then `computeWeightedOutcomeLibraryHash` to build an `InMemoryPreGeneratedOutcomeSource`;
   a caller that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` directly
   (see above) — either one plugs straight into `PreGeneratedSpinCommandHandler`'s constructor.
-- **Stake Engine exporter** — `pokie stakeengine export`'s `config.json` mode entries gain an alternative to
+- **Stake Engine exporter** — `pokie export --to adapter`'s `config.json` mode entries gain an alternative to
   `libraryPath`:
   ```json
   {"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
@@ -325,8 +325,7 @@ mode reports everything it finds rather than stopping at the first kind of corru
 ## CLI usage
 
 ```
-pokie outcomelibrary build <config.json> [--out <dir>]
-pokie outcomelibrary validate <bundleDir> [--deep]
+pokie export <source> --to outcomes [--out <dir>]
 ```
 
 `build`'s config.json lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file —
@@ -335,8 +334,8 @@ streaming JSONL file of outcomes for a mode too large to hold in memory at once 
 "outcomesPath": "./outcomes-bonus.jsonl", "libraryId": "bonus-lib"}` (one canonical `{"id", "weight", "artifact"}`
 record per line, not wrapped in a library object; `libraryId` is required since there's no wrapping library
 object to read it from, and `schemaVersion` is optional). Exactly one of `libraryPath`/`outcomesPath` is required
-per mode. `validate` prints every issue and returns a non-zero exit code if any is `error`-severity; `--deep`
-runs the expensive full-content check.
+per mode. The bundle validator prints every issue and returns a non-zero exit code if any is `error`-severity;
+its deep mode runs the expensive full-content check.
 
 See [CLI](cli.md#pokie-outcomelibrary-build-configjson) for full option details.
 

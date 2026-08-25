@@ -180,7 +180,7 @@ file has been written successfully. That has two consequences:
   per-mode files are ever left behind.
 
 Because the whole directory is discarded and rebuilt this way, exporting into an existing `--out` is only
-allowed when that directory is either empty or recognized as a prior `"pokie stakeengine export"` run's own
+allowed when that directory is either empty or recognized as a prior POKIE adapter-export run's own
 output (via that run's own `pokie-manifest.json`) — otherwise a caller pointing `--out` at an unrelated directory
 by mistake would have it wiped wholesale. An unrecognized non-empty directory is refused outright, with nothing
 touched. Conceptually the same rebuild-safety guarantee as `GamePackageGenerator`'s own (see
@@ -210,7 +210,7 @@ created it (removed best-effort, without ever masking whichever error is actuall
 ## CLI usage
 
 ```
-pokie stakeengine export <config.json> [--out <dir>]
+pokie export <config.json> --to adapter [--out <dir>]
 ```
 
 `<config.json>` lists one `WeightedOutcomeLibrary` JSON file per mode:

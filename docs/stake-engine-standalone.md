@@ -5,7 +5,7 @@
 `stakeengine/standalone/` reads and analyzes **any** Stake Engine outcome directory — `index.json`, per-mode
 lookup CSV, per-mode zstd-compressed JSONL books — with **no `pokie-manifest.json` involved at any point**. This
 is deliberately different from [Stake Engine Import](stake-engine-import.md), which only ever round-trips a
-directory `"pokie stakeengine export"` itself produced (it requires that run's own manifest to recover
+directory produced by POKIE's Stake Engine export workflow (it requires that run's own manifest to recover
 `betMode`/`stake`/provenance/`libraryId`, and fails outright without one). Standalone is for the other case: an
 existing directory with no POKIE manifest and no history of a POKIE export at all — a third party's own Stake
 Engine math-sdk output, or POKIE's own export with the manifest stripped.
@@ -63,7 +63,7 @@ collisions), path-safety of every mode's own filenames (`resolveSafeStakeEngineF
 `..`/nested paths, and anything resolving outside the directory are refused), and per-mode CSV/books cross-checks
 matched by id. One deliberate difference from `StakeEngineImportValidator`: a mode's own `events`/`weights`
 filename is **never** required to match a `books_<name>.jsonl.zst`/`lookup_<name>.csv` naming convention — that's
-`"pokie stakeengine export"`'s own convention, not part of Stake's actual schema, and a genuinely foreign
+POKIE's export workflow convention, not part of Stake's actual schema, and a genuinely foreign
 directory has no reason to follow it. Whatever `index.json` itself names (subject to path-safety) is trusted.
 Issue codes are prefixed `stakeengine-standalone-*`, distinct from both `stakeengine-import-*` (manifest-bearing)
 and `stakeengine-*`/`stakeengine-export-*` (export-side).
@@ -158,21 +158,6 @@ that category; `averageOccurrencesPerOutcome` is the weighted mean count of that
 (so a category that always fires exactly once per outcome has `occurrenceFrequency === averageOccurrencesPerOutcome`,
 while one that can fire multiple times per outcome has the latter `>=` the former).
 
-## CLI usage
-
-```
-pokie stakeengine analyze <stakeDir> [--format json] [--out <file>]
-```
-
-`<stakeDir>` is any Stake Engine outcome directory, with or without a `pokie-manifest.json`. Prints a
-per-mode summary by default; `--format json` prints (and `--out <file>` writes) the machine-readable
-`{stakeDir, issues, analysis}` shape — `analysis` is `undefined` whenever any issue is error-severity, the same
-"nothing built on error" contract as `pokie stakeengine import`. Exit code is non-zero on any error-level issue.
-
-The CLI always uses the default `StakeEngineStandardEventClassifier`; supply a custom `StakeEngineEventClassifying`
-programmatically for a foreign event vocabulary (see above) — CLI-level custom classifier wiring is left for a
-later increment.
-
 ## Programmatic usage
 
 ```ts
@@ -222,52 +207,8 @@ const diff = new StakeEngineStandaloneAnalysisDiffer().diff(beforeAnalysis, afte
 console.log(diff.perMode.base.warnings);
 ```
 
-### `pokie stakeengine diff` CLI
-
-```
-pokie stakeengine diff <leftStakeDir> <rightStakeDir> [--format json] [--out <file>]
-```
-
-Reads and analyzes both directories with the same pipeline `pokie stakeengine analyze` uses (default
-`StakeEngineStandardEventClassifier`, no `pokie-manifest.json` required on either side), then diffs the two
-resulting `StakeEngineStandaloneAnalysis` results with `StakeEngineStandaloneAnalysisDiffer`. It never attempts an
-event-level (per-outcome) diff — an outcome's own `id` is just its row position in that directory's own lookup
-CSV, not a canonical identity stable across two independently generated directories, so aligning outcomes 1:1
-across left/right would silently compare unrelated outcomes that merely share a row number. Diffing stays at the
-mode/aggregate-metric/classification-category level, where "same `modeName`"/"same category" *is* a stable,
-meaningful identity.
-
-Prints a per-mode human summary by default (added/removed modes, every scalar metric, event classification
-categories, a payout-distribution-buckets-changed count, and the differ's own warnings); `--format json` prints
-(and `--out <file>` writes) the machine-readable `{stakeDir: {left, right}, issues: {left, right}, diff}` shape —
-`diff` is `undefined` whenever either side reports an error-level issue, the same "nothing built on error"
-contract every other stakeengine subcommand uses.
-
-Exit code follows the Unix `diff(1)` convention, distinct from every other stakeengine subcommand's plain 0/1, so
-scripts can tell "the directories genuinely differ" apart from "one of them couldn't even be read":
-
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Both sides read cleanly and no *material* difference was found. |
-| `1` | Both sides read cleanly but a material difference was found — an added/removed mode, or any per-mode metric drift past the differ's own warning threshold (see `DEFAULT_RTP_DELTA_WARNING_THRESHOLD` and friends above). |
-| `2` | Invalid input — either directory reported an error-level issue while reading, so no diff was computed at all. |
-
-"Material" deliberately reuses the differ's own threshold-gated warnings rather than "any nonzero delta": two
-independently regenerated directories almost always carry float noise in every metric, which would make the exit
-code fire on effectively every diff and give it no signal value. An added/removed mode is always material — there
-is no threshold that makes a whole missing mode a rounding error.
-
-Both the read (`StakeEngineOutcomeSourceReader`) and analyze (`StakeEngineStandaloneAnalyzer`) steps are pure,
-exact-arithmetic computations over the two directories' own bytes — no sampling, no wall-clock/random input
-anywhere in the pipeline — so re-running `pokie stakeengine diff` against the same unchanged pair of directories
-always reproduces byte-identical `--format json`/`--out` output. That makes it safe to diff a report file into
-version control or a CI artifact and expect a no-op re-run to produce an empty diff of its own.
-
-The CLI always uses the default `StakeEngineStandardEventClassifier`; CLI-level custom classifier wiring is left
-for a later increment, the same boundary `pokie stakeengine analyze` already draws (see above).
-
 ## What this vertical slice deliberately leaves for later
 
 This is the first standalone increment: read, normalize, validate, analyze, and diff one directory (or a pair of
-already-analyzed directories) in isolation. CLI-level custom event classifier wiring is left for a following,
-small, separate step — nothing here is built assuming it in advance.
+already-analyzed directories) in isolation. A command-line adapter and custom event-classifier wiring are left for
+a following, small, separate step — nothing here is built assuming either in advance.

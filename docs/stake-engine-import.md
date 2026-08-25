@@ -46,13 +46,13 @@ rounding — see below); the reconstructed events, when re-projected by `StakeEn
 the exact same event sequence that was read from the books; and `betMode`/`stake`/`cost`/provenance/`libraryId`
 come back exactly from the manifest. `StakeEngineImportResult.modes` is typed as `StakeEngineExportModeInput<T>[]`
 — the exporter's own input type — specifically so this round trip is a one-line operation, both in code and from
-the CLI (`pokie stakeengine import <stakeDir>` writes exactly what `pokie stakeengine export` reads back in).
+the CLI (`pokie import <stakeDir>` writes exactly what `pokie export --to adapter` reads back in).
 
 ## `pokie-manifest.json` is required
 
-Import only ever round-trips a directory `"pokie stakeengine export"` itself produced — there is no path for
+Import only ever round-trips a directory produced by `pokie export --to adapter` — there is no path for
 importing a hand-crafted or foreign Stake package with caller-supplied fallback fields. Without a recognized
-manifest (`generatedBy === "pokie stakeengine export"`), `betMode`/`stake`/`provenance`/`libraryId` are genuinely
+manifest (`generatedBy` identifies POKIE's adapter export), `betMode`/`stake`/`provenance`/`libraryId` are genuinely
 unrecoverable, and reporting `stakeengine-import-manifest-missing`/`stakeengine-import-manifest-unrecognized`
 is the honest outcome — not inventing stand-in values for them.
 
@@ -65,7 +65,7 @@ self-checks by re-running the *exact* forward computation on the candidate resul
 on the original integer exactly; if it doesn't, the value is reported as
 `stakeengine-import-payout-multiplier-not-invertible`/`stakeengine-import-win-amount-not-invertible` rather than
 silently accepted with a slightly-off ratio. A `payoutMultiplier`/amount that round-tripped through
-`pokie stakeengine export` at a given `cost` always reverses cleanly; only a hand-tampered or genuinely corrupted
+the adapter export at a given `cost` always reverses cleanly; only a hand-tampered or genuinely corrupted
 file would fail this check.
 
 ## Reconstructing events: a single forward scan
@@ -153,7 +153,7 @@ type StakeEngineImportSourceProvenance = {
 };
 ```
 
-`pokie stakeengine import`'s CLI writer persists this as `<outDir>/source-provenance.json` whenever it's present,
+`pokie import`'s CLI writer persists this as `<outDir>/source-provenance.json` whenever it's present,
 so the exact Stake source bytes an import was built from stay traceable after the fact.
 
 These hashes come from the exact same buffers the importer already read once to parse/decompress and build
@@ -179,7 +179,7 @@ Two layers, mirroring the exporter's own "validate everything before building" d
 | `stakeengine-import-mode-filename-mismatch` | a mode's `weights`/`events` filename doesn't exactly match `lookup_<name>.csv`/`books_<name>.jsonl.zst` |
 | `stakeengine-import-filename-reused` / `stakeengine-import-filename-case-collision` | two modes' `weights`/`events` filenames are exactly the same, or differ only in case |
 | `stakeengine-import-manifest-missing` / `stakeengine-import-manifest-unreadable` / `stakeengine-import-manifest-invalid-json` | `pokie-manifest.json` doesn't exist / couldn't be read / doesn't parse as JSON |
-| `stakeengine-import-manifest-unrecognized` | it parses but wasn't written by `"pokie stakeengine export"`, or its `modes` isn't an array |
+| `stakeengine-import-manifest-unrecognized` | it parses but was not written by POKIE's adapter export, or its `modes` isn't an array |
 | `stakeengine-import-manifest-schema-version-unsupported` | its `schemaVersion` isn't the currently supported one |
 | `stakeengine-import-manifest-field-invalid` | a required top-level manifest field (`game`, `pokieVersion`, `generatedAt`, `files`, ...) is missing or the wrong type |
 | `stakeengine-import-manifest-mode-field-invalid` / `stakeengine-import-manifest-library-id-invalid` / `stakeengine-import-manifest-library-hash-invalid` / `stakeengine-import-manifest-outcome-count-invalid` | a manifest mode entry, or one of its `libraryId`/`libraryHash`/`outcomeCount` fields specifically, is missing or malformed (`libraryHash` must match `^sha256:[0-9a-f]{64}$`; `outcomeCount` must be a *positive* safe integer — zero outcomes is rejected, not silently accepted) |
@@ -224,10 +224,10 @@ per-outcome error still means the whole import reports nothing built — the sam
 ## CLI usage
 
 ```
-pokie stakeengine import <stakeDir> [--out <dir>]
+pokie import <stakeDir> [--out <dir>]
 ```
 
-Writes exactly the shape `pokie stakeengine export` reads back in — `<outDir>/libraries/<modeName>.json` per
+Writes exactly the shape `pokie export --to adapter` reads back in — `<outDir>/libraries/<modeName>.json` per
 mode, `<outDir>/config.json` naming them, and (whenever `sourceProvenance` is present) `<outDir>/source-provenance.json`:
 
 ```json
@@ -241,7 +241,7 @@ mode, `<outDir>/config.json` naming them, and (whenever `sourceProvenance` is pr
 
 Default `--out` is `<stakeDir>` plus `-imported`. On any error-level issue from the import itself, nothing is
 written and the exit code is non-zero. Feed the result straight back into
-`pokie stakeengine export <outDir>/config.json` to exercise the round-trip property above.
+`pokie export <outDir>/config.json --to adapter` to exercise the round-trip property above.
 
 `StakeEngineImportWriter` publishes the whole `--out` directory atomically — the same temp-dir-then-swap
 discipline `StakeEngineExporter` uses for `export` (build into a sibling temp directory, then rename-swap it
