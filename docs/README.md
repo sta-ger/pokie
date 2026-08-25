@@ -78,9 +78,12 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
     through `pokie <command> --help`; `pokie --version` prints the installed public version. `pokie build <project>
     --target <artifact> --out <path>`, POKIE's universal build pipeline:
-    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`, `tsPackage` ->
+    the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` ->
     `outcomeLibrary`/`stakeAdapter`, `outcomeLibrary` -> `outcomeLibrary`/`stakeAdapter`, and same-type republish
-    for `stakeAdapter`/`parWorkbook`; a `tsPackage` from JSON `GameBlueprint` needs no compile step (reels, symbols,
+    for `stakeAdapter`/`parWorkbook`. A Blueprint -> PAR Workbook build/export freezes generated, weighted, or default
+    reel sources as a deterministic literal workbook snapshot; the authored Blueprint remains unchanged. An
+    unmaterializable generated reel reports an actionable `parsheet-reel-generation-failed` diagnostic naming its
+    `reelStripGeneration[index]`. A `tsPackage` from JSON `GameBlueprint` needs no compile step (reels, symbols,
     paylines, paytable, reel strips — literal, weighted, or build-time generated via `reelStripGeneration` and
     `ReelStripGenerator`); `pokie
     create [name]`, which designs an editable Blueprint Project (a hand-editable `GameBlueprint` JSON file) rather
@@ -105,10 +108,10 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     `pokie serve <packageRoot>`, which starts a local/dev JSON HTTP server over a package — not a
     casino backend or RGS; `pokie client <packageRoot>`, a universal browser UI talking to
     a running `pokie serve`; `pokie dev <packageRoot>`, which runs both together and opens the browser UI;
-    `pokie import <input.xlsx>`,
+    `pokie par import <input.xlsx>`,
     which imports a PAR sheet XLSX workbook (symbols, literal reel strips, paytable, paylines, available bets,
-    win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie export <config.json> --to
-    workbook`, which exports a `GameBlueprint` back to a PAR sheet XLSX workbook; `pokie reel generate
+    win model, mechanics, and bet modes) into a `GameBlueprint` JSON file; `pokie par export <config.json>`, which
+    exports a `GameBlueprint` as a PAR sheet XLSX workbook; `pokie reel generate
     <blueprint.json>`, which runs one or every `"generated"` entry of a Blueprint Project's `reelStripGeneration`
     through `ReelStripGenerator` (the same machinery `pokie build` runs silently), previewing a deterministic
     diff by default and only pinning the result back in as a literal strip with `--apply`; `pokie export
@@ -224,7 +227,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Writing a structurally-valid random Blueprint Project file, seeded/reproducible | `pokie create [name] --random`, `RandomGameBlueprintGenerator` |
 | Republishing an already-built outcomeLibrary/stakeAdapter/parWorkbook artifact to a new destination | `pokie build <project> --target <artifact> --out <path>` CLI |
 | Game-name suggestions during design | `pokie create`, `SlotGameNameGenerator` |
-| Importing/exporting a GameBlueprint as a PAR sheet XLSX workbook | `pokie import <input.xlsx>` / `pokie export <config.json> --to workbook` |
+| Importing/exporting a GameBlueprint as a PAR sheet XLSX workbook | `pokie par import <input.xlsx>` / `pokie par export <config.json>` |
 | Writing an editable Blueprint Project (GameBlueprint JSON file) | `pokie create [name]` CLI |
 | Scaffolding/merging a prepared game package in place, non-interactively | `pokie init [directory]` CLI |
 | Running a quick RTP/hit-frequency report from the CLI | `pokie sim <packageRoot>` |

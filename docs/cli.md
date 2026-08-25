@@ -483,7 +483,7 @@ it's valid (warnings included).
 `--target outcomeLibrary`/`stakeAdapter`/`parWorkbook`, given a `<project>` that already resolves to that same
 artifact type, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
 re-export unchanged" round trip each format's own import/export commands already exercise (see `pokie export
-<config.json> --to adapter`/`pokie import <stakeDir>` and `pokie export <config.json> --to workbook` below).
+<config.json> --to adapter`/`pokie import <stakeDir>` and `pokie par export <config.json>` below).
 `--dry-run` here only prints a one-line
 "would build \<target\> from \<project\> to \<out\>" preview — there is no blueprint to validate or summarize for
 these targets, since nothing is generated, only copied.
@@ -771,18 +771,21 @@ Each step is the same command documented elsewhere in this file, with the same o
 [`pokie diff`](#pokie-diff-leftreportjson-rightreportjson) the two reports, same as the [`init`
 workflow](#workflow) below.
 
-## `pokie import <input.xlsx>` / `pokie export <config.json> --to workbook`
+## `pokie par import <input.xlsx>` / `pokie par export <config.json>`
 
-Round-trips a `GameBlueprint` to/from a "PAR sheet" — a workbook laid out the way a game designer would author
-symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. Supports every `GameBlueprint`
-field except procedural reel generation — manifest, reels/rows, symbols (with wilds/scatters), literal `reelStrips`,
-`paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
-`reelStripGeneration`/`symbolWeights` (procedural reel generation, see
-[`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)) are not supported by this command.
+Builds/exports a `GameBlueprint` to, and imports one from, a "PAR sheet" — a workbook laid out the way a game
+designer would author symbols/reel strips/paytable/paylines/bets in Excel, instead of hand-writing JSON. A Blueprint
+can create the workbook through either `pokie par export` or `pokie build <blueprint> --target parWorkbook`.
+PAR workbooks carry literal reel strips, so literal, generated (`reelStripGeneration`), weighted
+(`symbolWeights`), and default reel sources become a deterministic literal workbook snapshot. The authored Blueprint
+remains unchanged. If a generated reel cannot satisfy its own constraints, export returns the field-level actionable
+`parsheet-reel-generation-failed` diagnostic, naming the failing `reelStripGeneration[index]` and directing you to
+adjust that entry. The workbook maps manifest, reels/rows, symbols (with wilds/scatters), literal snapshot
+`reelStrips`, `paytable`, `paylines`, `availableBets`, `winModel`, `mechanics.freeGames`, and `betModes`.
 
 ```
-pokie export examples/parsheets/starter.blueprint.json --to workbook --out starter.par.xlsx
-pokie import starter.par.xlsx --out starter.blueprint.json
+pokie par export examples/parsheets/starter.blueprint.json --out starter.par.xlsx
+pokie par import starter.par.xlsx --out starter.blueprint.json
 ```
 
 See `examples/parsheets/` for a worked example (`starter.blueprint.json` and the `starter.par.xlsx` exported from
@@ -832,7 +835,7 @@ never changed; the workbook's `Meta` sheet records its source and the snapshot h
 satisfy its own constraints reports `parsheet-reel-generation-failed` naming the failing
 `reelStripGeneration[index]` and tells you to adjust that entry.
 
-### `pokie import <input.xlsx>`
+### `pokie par import <input.xlsx>`
 
 Reads `<input.xlsx>`, maps every sheet above to a `GameBlueprint`, then runs the result through the same
 [`GameBlueprintValidator`](#validation) `pokie build` uses — so an imported PAR sheet gets the exact same
@@ -848,7 +851,7 @@ Options:
 
 Exit code is non-zero (and nothing is written) if there are any error-level diagnostics.
 
-### `pokie export <config.json> --to workbook`
+### `pokie par export <config.json>`
 
 Loads `<config.json>` (a `GameBlueprint`, same as [`pokie build`](#pokie-build-project)), validates it, materializes
 its canonical reel source into the workbook's literal snapshot, and writes a `.par.xlsx` workbook to `--out <file>` (default:
@@ -897,23 +900,23 @@ shape as [`pokie build`'s validation](#validation)):
 
 ### Provenance (`Meta` sheet)
 
-`pokie export <config.json> --to workbook` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
+`pokie par export <config.json>` always writes a `Meta` sheet recording the `GameBlueprint` schema version, the `pokie` version
 that exported it, an ISO 8601 export timestamp, the source blueprint's file path (when known), and a `sha256`
 hash of the exported blueprint. That hash is computed over a canonical field order (not the source JSON's own key
 order — see `computeBlueprintHash`), so an untouched round trip always reproduces the same hash regardless of how
 the original file's keys were ordered.
 
-`pokie import <input.xlsx>` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
+`pokie par import <input.xlsx>` returns this as structured `provenance` on the result (`ParSheetImportResult`), not just as an
 issue, and verifies it against the blueprint it just assembled:
 
 - no `Meta` sheet at all → `provenance` is `undefined`, and `parsheet-provenance-missing` (warning) — e.g. a
-  hand-authored PAR sheet that was never exported by `pokie export <config.json> --to workbook` in the first place;
+  hand-authored PAR sheet that was never exported by `pokie par export <config.json>` in the first place;
 - `Meta` present but missing/invalid `Schema Version`/`Blueprint Hash` → `parsheet-provenance-malformed` (warning);
   no further hash/schema check is attempted;
 - a well-formed but unrecognized `Schema Version` → `parsheet-provenance-schema-mismatch` (warning);
 - a well-formed `Blueprint Hash` that doesn't match a fresh hash of the imported data →
   `parsheet-provenance-hash-mismatch` (warning) — the workbook was likely hand-edited (or otherwise changed) since
-  `pokie export <config.json> --to workbook` produced it;
+  `pokie par export <config.json>` produced it;
 - otherwise, `parsheet-provenance-present` (info) — the recorded hash matches the imported data.
 
 ## `pokie reel generate <blueprint.json>`

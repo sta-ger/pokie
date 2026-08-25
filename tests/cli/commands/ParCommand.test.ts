@@ -1,8 +1,12 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
 import {
     GameBlueprint,
     ParSheetExporting,
     ParSheetImporting,
     ParSheetImportResult,
+    ParSheetImporter,
     PokieProject,
     ProjectResolving,
     PROJECT_TYPE_CAPABILITIES,
@@ -215,20 +219,83 @@ describe("ParCommand", () => {
             expect(printed).toContain("heads up");
         });
 
-        // Real finding (P5-POLISH-20 audit): ParSheetExporter attaches an actionable `suggestion` to
-        // both of its own reel-source errors (e.g. "run pokie reel generate --materialize" for
-        // "parsheet-unsupported-reel-source") but ParCommand used to print only `code`/`message`,
-        // silently dropping it -- unlike ValidateCommand's own errors/warnings/suggestions convention.
-        // A real user hitting exactly this error never saw the fix it names.
-        it("prints an issue's suggestion beneath it when the exporter reports an error with one", async () => {
-            const exporter = createStubExporter([
-                {code: "parsheet-unsupported-reel-source", severity: "error", message: "bad source", suggestion: "run pokie reel generate --materialize"},
-            ]);
-            const command = new ParCommand("1.3.0", createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: []}), exporter, () => rawBlueprint);
+        it("exports canonical generated and weighted Blueprints as literal snapshots, preserves their sources, and leaves no file on a generated-reel failure", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-command-export-test-"));
+            const generatedBlueprint: GameBlueprint = {
+                manifest: {id: "generated-par", name: "Generated PAR", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 1}},
+                reelStripGeneration: [
+                    {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 11},
+                    {type: "generated", length: 4, symbolCounts: {A: 2, B: 2}, seed: 12},
+                ],
+            };
+            const weightedBlueprint: GameBlueprint = {
+                manifest: {id: "weighted-par", name: "Weighted PAR", version: "1.0.0"},
+                reels: 2,
+                rows: 1,
+                symbols: ["A", "B"],
+                paytable: {A: {2: 1}},
+                symbolWeights: {A: 3, B: 1},
+            };
 
-            await command.run(["export", "game.json"]);
+            try {
+                const command = new ParCommand("1.3.0");
+                for (const [name, blueprint] of [["generated", generatedBlueprint], ["weighted", weightedBlueprint]] as const) {
+                    const sourcePath = path.join(workDir, `${name}.blueprint.json`);
+                    const workbookPath = path.join(workDir, `${name}.par.xlsx`);
+                    const sourceContents = JSON.stringify(blueprint, null, 4);
+                    fs.writeFileSync(sourcePath, sourceContents);
 
-            expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("suggestion: run pokie reel generate --materialize");
+                    expect(await command.run(["export", sourcePath, "--out", workbookPath])).toBe(0);
+                    expect(fs.existsSync(workbookPath)).toBe(true);
+                    expect(fs.readFileSync(sourcePath, "utf-8")).toBe(sourceContents);
+
+                    const imported = await new ParSheetImporter().importFromFile(workbookPath);
+                    expect(imported.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+                    expect(imported.blueprint).toMatchObject({
+                        manifest: blueprint.manifest,
+                        symbols: blueprint.symbols,
+                        paytable: blueprint.paytable,
+                    });
+                    expect(imported.blueprint.reelStrips).toHaveLength(blueprint.reels);
+                    expect(imported.blueprint.reelStripGeneration).toBeUndefined();
+                    expect(imported.blueprint.symbolWeights).toBeUndefined();
+                }
+
+                const unmaterializable: GameBlueprint = {
+                    ...generatedBlueprint,
+                    manifest: {id: "unmaterializable-par", name: "Unmaterializable PAR", version: "1.0.0"},
+                    reelStripGeneration: [
+                        {type: "literal", strip: ["A", "B"]},
+                        {
+                            type: "generated",
+                            length: 4,
+                            symbolCounts: {A: 2, B: 2},
+                            seed: 13,
+                            maxAttempts: 2,
+                            constraints: [{type: "maximumCircularDistance", maximumDistance: 1, symbolIds: ["A"]}],
+                        },
+                    ],
+                };
+                const failedSourcePath = path.join(workDir, "unmaterializable.blueprint.json");
+                const failedWorkbookPath = path.join(workDir, "unmaterializable.par.xlsx");
+                const failedSourceContents = JSON.stringify(unmaterializable, null, 4);
+                const sentinel = "existing PAR workbook must be preserved";
+                fs.writeFileSync(failedSourcePath, failedSourceContents);
+                fs.writeFileSync(failedWorkbookPath, sentinel);
+
+                expect(await command.run(["export", failedSourcePath, "--out", failedWorkbookPath])).toBe(1);
+                expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("parsheet-reel-generation-failed");
+                expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("reelStripGeneration[1]");
+                expect(errorSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("suggestion: Adjust the named reelStripGeneration entry");
+                expect(fs.readFileSync(failedSourcePath, "utf-8")).toBe(failedSourceContents);
+                expect(fs.readFileSync(failedWorkbookPath, "utf-8")).toBe(sentinel);
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
         });
 
         it("prints a warning's suggestion beneath it when the exporter reports one", async () => {
