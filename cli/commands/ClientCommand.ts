@@ -3,6 +3,7 @@ import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions} 
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {openBrowser} from "../openBrowser.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeLocalServerStartError} from "./internal/describeLocalRuntimeError.js";
 
 const DEFAULT_API_HOST = "127.0.0.1";
 const DEFAULT_API_PORT = 3000;
@@ -48,7 +49,7 @@ export class ClientCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Serve the universal browser UI for a running \"pokie serve\" API.";
+        return "Serve the universal browser UI for a running local/dev \"pokie serve\" reference API (not an RGS).";
     }
 
     public getCommanderCommand(): Command {
@@ -83,13 +84,19 @@ export class ClientCommand implements CliCommandHandling {
             port: resultRef.port,
             apiAddress: {host: resolvedApiHost, port: resolvedApiPort},
         });
-        const address = await server.start();
+        let address;
+        try {
+            address = await server.start();
+        } catch (error) {
+            throw describeLocalServerStartError(error, "POKIE client UI", "--port");
+        }
 
         console.log(`POKIE client UI listening on http://${address.host}:${address.port}`);
         console.log(
             `Talking to a pokie serve API expected at http://${resolvedApiHost}:${resolvedApiPort} — start it separately ` +
                 '(e.g. "pokie serve") or use "pokie dev" to run both together.',
         );
+        console.log("This browser UI is a local/dev reference workflow, not a casino backend or RGS.");
 
         // Best-effort, same as pokie dev/pokie studio's own "--no-open" -- opens the exact same
         // canonical player (cli/client, served statically by this same PokieClientServer) a two-step
@@ -120,7 +127,7 @@ export class ClientCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "an existing POKIE game package (unused -- see this class's own doc comment)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--port <number>", "port to listen on (default: an available port)", parsePort("--port"))
+            .option("--port <number>", "port to listen on (default: 3100; pass 0 for an available port)", parsePort("--port"))
             .option("--host <string>", "host to listen on (default: loopback only)")
             .option("--api-port <number>", `port of the pokie serve API to talk to (default: ${DEFAULT_API_PORT})`, parsePort("--api-port"))
             .option("--api-host <string>", `host of the pokie serve API to talk to (default: ${DEFAULT_API_HOST})`)

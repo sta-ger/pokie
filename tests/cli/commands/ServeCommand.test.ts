@@ -103,6 +103,30 @@ describe("ServeCommand", () => {
         await expect(command.run(["./game", "--port", "nope"])).rejects.toThrow(/--port must be a non-negative integer/);
     });
 
+    it("turns a busy API port into a concise recovery step", async () => {
+        const portInUse = Object.assign(new Error("listen EADDRINUSE"), {
+            code: "EADDRINUSE",
+            address: "127.0.0.1",
+            port: 3000,
+        });
+        const command = new ServeCommand(
+            () => Promise.resolve(createFakeGame(manifest)),
+            () => ({start: () => Promise.reject(portInUse), stop: () => Promise.resolve()}),
+        );
+
+        await expect(command.run(["./game"])).rejects.toThrow(
+            /Stop the process using it, or retry with --port <number> \(or --port 0 for an available port\)/,
+        );
+    });
+
+    it("turns an invalid package load into a validate-and-retry recovery step", async () => {
+        const command = new ServeCommand(() => Promise.reject(new Error("missing pokie.entry")));
+
+        await expect(command.run(["./broken-game"])).rejects.toThrow(
+            /Could not load a POKIE game package from "\.\/broken-game"\. Run `pokie validate "\.\/broken-game"` to diagnose the package, then retry\. Details: missing pokie\.entry/,
+        );
+    });
+
     it("throws a descriptive error when --host has no value", async () => {
         const command = new ServeCommand(() => Promise.resolve(createFakeGame(manifest)));
 

@@ -16,6 +16,7 @@ import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeLocalServerStartError, describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 
 const USAGE = "Usage: pokie serve <packageRoot> [--port <number>] [--host <string>]\n   or: pokie serve <outcomeLibraryPath> --mode <modeName> [--port <number>] [--host <string>]";
 
@@ -97,11 +98,18 @@ export class ServeCommand implements CliCommandHandling {
         let game: PokieGame;
         try {
             game = await this.loadGame(resolution.runtimePath);
+        } catch (error) {
+            throw describeRuntimePackageLoadError(options.packageRoot, error);
         } finally {
             await resolution.release();
         }
         const server = this.createServer(game, {host: options.host, port: options.port});
-        const address = await server.start();
+        let address;
+        try {
+            address = await server.start();
+        } catch (error) {
+            throw describeLocalServerStartError(error, "POKIE dev server", "--port");
+        }
 
         console.log(`POKIE dev server listening on http://${address.host}:${address.port}`);
         console.log("This is a local/dev reference server for a single game package — not a casino backend or RGS.");
@@ -117,7 +125,7 @@ export class ServeCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "an existing POKIE game package, or a native outcome-library bundle (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--port <number>", "port to listen on (default: an available port)", (value: string) => {
+            .option("--port <number>", "port to listen on (default: 3000; pass 0 for an available port)", (value: string) => {
                 const parsed = Number(value);
                 if (!Number.isInteger(parsed) || parsed < 0) {
                     throw new Error(`--port must be a non-negative integer. ${USAGE}`);
@@ -162,7 +170,12 @@ export class ServeCommand implements CliCommandHandling {
             port: options.port,
             sessionCapturePolicyMode: "full",
         });
-        const address = await server.start();
+        let address;
+        try {
+            address = await server.start();
+        } catch (error) {
+            throw describeLocalServerStartError(error, "POKIE outcome-source dev server", "--port");
+        }
 
         console.log(`POKIE outcome-source dev server listening on http://${address.host}:${address.port}`);
         console.log("Serving draws from a native outcome library — not a casino backend or RGS.");

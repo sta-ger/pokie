@@ -14,6 +14,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../mat
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
+import {describeLocalServerStartError, describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
 
 type DevOptions = {
     packageRoot: string;
@@ -94,7 +95,7 @@ export class DevCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return 'Run "pokie serve" and "pokie client" together, opening a browser UI.';
+        return 'Run "pokie serve" and "pokie client" together as a local/dev reference setup (not a casino backend/RGS).';
     }
 
     public getCommanderCommand(): Command {
@@ -115,6 +116,8 @@ export class DevCommand implements CliCommandHandling {
         let game: PokieGame;
         try {
             game = await this.loadGame(resolution.runtimePath);
+        } catch (error) {
+            throw describeRuntimePackageLoadError(options.packageRoot, error);
         } finally {
             await resolution.release();
         }
@@ -136,7 +139,12 @@ export class DevCommand implements CliCommandHandling {
                 sessionCapturePolicyMode: "full",
                 pokieVersion: this.pokieVersion,
             });
-            const apiAddress = await apiServer.start();
+            let apiAddress;
+            try {
+                apiAddress = await apiServer.start();
+            } catch (error) {
+                throw describeLocalServerStartError(error, "POKIE dev API server", "--port");
+            }
             startedServers.push(apiServer);
 
             const clientServer = this.createClientServer(this.clientRoot, {
@@ -144,7 +152,12 @@ export class DevCommand implements CliCommandHandling {
                 port: options.clientPort,
                 apiAddress,
             });
-            const clientAddress = await clientServer.start();
+            let clientAddress;
+            try {
+                clientAddress = await clientServer.start();
+            } catch (error) {
+                throw describeLocalServerStartError(error, "POKIE client UI", "--client-port");
+            }
             startedServers.push(clientServer);
 
             await this.waitForHealthImpl(`http://${apiAddress.host}:${apiAddress.port}/health`);
@@ -183,9 +196,9 @@ export class DevCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "an existing POKIE game package")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--port <number>", "port for the API server (default: an available port)", (value: string) => this.parsePortValue(value, "--port"))
+            .option("--port <number>", "port for the API server (default: 3000; pass 0 for an available port)", (value: string) => this.parsePortValue(value, "--port"))
             .option("--host <string>", "host for the API server (default: loopback only)")
-            .option("--client-port <number>", "port for the client UI server (default: an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
+            .option("--client-port <number>", "port for the client UI server (default: 3100; pass 0 for an available port)", (value: string) => this.parsePortValue(value, "--client-port"))
             .option("--client-host <string>", "host for the client UI server (default: loopback only)")
             .option("--no-open", "do not open a browser pointed at the client UI")
             .action(
