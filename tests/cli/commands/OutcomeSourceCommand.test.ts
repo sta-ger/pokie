@@ -15,6 +15,7 @@ import {
     WeightedOutcomeRandomSource,
 } from "pokie";
 import {OutcomeSourceCommand} from "../../../cli/commands/OutcomeSourceCommand.js";
+import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
@@ -415,16 +416,33 @@ describe("OutcomeSourceCommand (integration, real outcome-library bundle)", () =
         logSpy.mockRestore();
     });
 
-    it('draws a real outcome, through the real selector, via "pokie outcomesource sample"', async () => {
+    it('emits round-1 portable provenance for a real seeded sample that "pokie replay" reconstructs exactly', async () => {
         const command = new OutcomeSourceCommand(new ProjectTargetResolver());
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
 
         const exitCode = await command.run(["sample", bundleDir, "--mode", "base", "--seed", "sample-seed"]);
 
         expect(exitCode).toBe(0);
-        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
-        expect(printed).toContain(`Drew outcome "`);
-        expect(printed).toContain('from "' + bundleDir + '" (library "base-lib"');
+        const sampled = JSON.parse(logSpy.mock.calls[0][0]) as {outcomeSource?: Record<string, unknown>};
+        expect(sampled.outcomeSource).toMatchObject({
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            libraryId: "base-lib",
+            modeName: "base",
+            selectionAlgorithm: "derived-round-seed-v1",
+            seed: "sample-seed",
+            round: 1,
+        });
+
+        logSpy.mockClear();
+        await new ReplayCommand().run([bundleDir, "--mode", "base", "--seed", "sample-seed", "--round", "1"]);
+        const replayed = JSON.parse(logSpy.mock.calls[0][0]) as {outcomeSource?: Record<string, unknown>};
+        const withoutTiming = (outcomeSource: Record<string, unknown>) => {
+            const canonical = {...outcomeSource};
+            Reflect.deleteProperty(canonical, "timestamp");
+            Reflect.deleteProperty(canonical, "durationMs");
+            return canonical;
+        };
+        expect(withoutTiming(replayed.outcomeSource!)).toEqual(withoutTiming(sampled.outcomeSource!));
 
         logSpy.mockRestore();
     });

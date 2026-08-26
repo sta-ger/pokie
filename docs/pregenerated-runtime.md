@@ -206,8 +206,9 @@ The resulting durable descriptor records `modeName` and `selectionAlgorithm: "de
 library id/hash, seed, round, selected outcome, stake, screen, payout and the canonical artifact. A blank seed,
 mode or library hash is rejected before selection. Server `/sessions/:id/spin` responses expose the portable replay
 identity (including seed and mode) in `replay`; use those values with `pokie replay <bundle> --seed ... --round ...
---mode ...`. A descriptor missing its artifact/state can still be inspected, but is degraded evidence, not a claim
-of exact verification.
+--mode ...`. A descriptor missing any canonical provenance can still be inspected, but it cannot substantiate an
+exact recorded-result comparison: `replayOutcomeSourceProject(..., recordedDescriptor)` rejects it with recovery
+instructions. Omitting `recordedDescriptor` remains a current-bundle reconstruction rather than a comparison.
 
 Studio follows this exact selection contract too: a seeded Outcome Library Play spin and a seeded Outcome Source
 sample return (and retain in Recent Rounds) the same full `replay` descriptor, including library id/hash, mode,

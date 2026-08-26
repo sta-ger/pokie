@@ -54,6 +54,13 @@ export async function replayOutcomeSourceProject(
         }
     };
     if (recorded !== undefined) {
+        const missingFields = getMissingRecordedExactProvenance(recorded);
+        if (missingFields.length > 0) {
+            throw new Error(
+                `Cannot verify an exact recorded outcome-library replay: the supplied descriptor is missing ${missingFields.join(", ")}. ` +
+                    "Use the complete descriptor emitted by a seeded outcome-source round, or omit the recorded descriptor to reconstruct against the currently opened bundle without claiming recorded-result verification.",
+            );
+        }
         compare("library id", recorded.libraryId, library.libraryId);
         compare("library hash", recorded.libraryHash, libraryHash);
         compare("mode", recorded.modeName, modeName);
@@ -95,4 +102,55 @@ export async function replayOutcomeSourceProject(
         screen: outcome.artifact.screen.map((row) => [...row]),
     });
     return {supported: true, replay: replayWithGame, descriptor};
+}
+
+function getMissingRecordedExactProvenance(recorded: PreGeneratedRoundReplayDescriptor): string[] {
+    const missing: string[] = [];
+    const hasNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+    const hasFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+    const game = recorded.game;
+
+    if (game === undefined || !hasNonEmptyString(game.id) || !hasNonEmptyString(game.name) || !hasNonEmptyString(game.version)) {
+        missing.push("game identity");
+    }
+    if (!hasNonEmptyString(recorded.libraryId)) {
+        missing.push("library id");
+    }
+    if (!hasNonEmptyString(recorded.libraryHash)) {
+        missing.push("library hash");
+    }
+    if (!hasNonEmptyString(recorded.modeName)) {
+        missing.push("mode");
+    }
+    if (recorded.selectionAlgorithm === undefined) {
+        missing.push("selection algorithm");
+    }
+    if (!hasNonEmptyString(recorded.seed)) {
+        missing.push("seed");
+    }
+    if (!Number.isInteger(recorded.round) || recorded.round < 1) {
+        missing.push("round");
+    }
+    if (!hasNonEmptyString(recorded.outcomeId)) {
+        missing.push("outcome id");
+    }
+    if (!hasFiniteNumber(recorded.weight)) {
+        missing.push("weight");
+    }
+    if (!hasFiniteNumber(recorded.totalWin)) {
+        missing.push("total win");
+    }
+    if (!hasFiniteNumber(recorded.payoutMultiplier)) {
+        missing.push("payout multiplier");
+    }
+    if (!hasFiniteNumber(recorded.stake)) {
+        missing.push("stake");
+    }
+    if (!Array.isArray(recorded.screen)) {
+        missing.push("screen");
+    }
+    if (recorded.artifact === undefined || recorded.artifact === null) {
+        missing.push("artifact");
+    }
+    return missing;
 }

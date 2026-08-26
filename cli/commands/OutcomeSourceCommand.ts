@@ -11,12 +11,14 @@ import {
     PreGeneratedOutcomeSelection,
     ProjectResolving,
     ProjectTargetResolver,
+    ReplayRecorder,
     sampleOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     WeightedOutcomeRandomSource,
 } from "pokie";
 import fs from "fs";
+import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -30,6 +32,7 @@ const USAGE =
 const INSPECT_USAGE = "Usage: pokie outcomesource inspect <path>";
 const SAMPLE_USAGE = "Usage: pokie outcomesource sample <path> --mode <modeName> [--seed <string>]";
 const DIFF_USAGE = "Usage: pokie outcomesource diff <leftPath> <rightPath> [--format json] [--out <file>]";
+const SAMPLE_REPLAY_ROUND = 1;
 
 type SampleCliOptions = {mode?: string; seed?: string};
 type DiffFormat = "summary" | "json";
@@ -70,7 +73,9 @@ export class OutcomeSourceCommand implements CliCommandHandling {
         analyzer: OutcomeSourceProjectAnalyzing = new OutcomeSourceProjectAnalyzer(),
         sample: SampleFn = sampleOutcomeSourceProject,
         buildRandomSource: (seed?: string) => WeightedOutcomeRandomSource = (seed) =>
-            seed !== undefined ? new SeededWeightedOutcomeRandomSource(seed) : new SecureWeightedOutcomeRandomSource(),
+            seed !== undefined
+                ? new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(seed, SAMPLE_REPLAY_ROUND))
+                : new SecureWeightedOutcomeRandomSource(),
         diff: DiffFn = diffOutcomeSourceProjects,
         writeFile: (file: string, contents: string) => void = (file, contents) => fs.writeFileSync(file, contents, "utf-8"),
     ) {
@@ -160,11 +165,13 @@ export class OutcomeSourceCommand implements CliCommandHandling {
 
         parent
             .command("sample")
-            .description("Draw one outcome from a native outcome library through the same selector path live/pre-generated play uses.")
+            .description(
+                "Draw one outcome from a native outcome library. With --seed, emits a portable round-1 replay descriptor using derived-round-seed-v1.",
+            )
             .argument("<path>", "an outcome-library bundle directory")
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--mode <modeName>", "bet mode to draw from (required)")
-            .option("--seed <value>", "seed for a reproducible draw (default: a securely random draw)")
+            .option("--seed <value>", "seed for an exactly reconstructable round-1 draw (default: a securely random draw)")
             .action(async (targetPath: string, excess: string[], options: SampleCliOptions) => {
                 if (excess.length > 0) {
                     throw new Error(`Unknown option "${excess[0]}". ${SAMPLE_USAGE}`);
@@ -220,9 +227,42 @@ export class OutcomeSourceCommand implements CliCommandHandling {
             throw new Error(`"${targetPath}" does not resolve to a recognized POKIE project.`);
         }
 
+        const startedAt = Date.now();
         const result = await this.sample(project, mode, this.buildRandomSource(seed));
         if (!result.supported) {
             throw new UnsupportedProjectOperationError(result.diagnostic);
+        }
+
+        if (seed !== undefined) {
+            const {selection} = result;
+            const artifact = selection.outcome.artifact;
+            const replay = {
+                game: artifact.provenance.game,
+                libraryId: selection.libraryId,
+                libraryHash: selection.libraryHash,
+                modeName: mode,
+                selectionAlgorithm: "derived-round-seed-v1" as const,
+                seed,
+                round: SAMPLE_REPLAY_ROUND,
+                outcomeId: selection.outcome.id,
+                weight: selection.outcome.weight,
+                totalWin: artifact.totalWin,
+                payoutMultiplier: artifact.payoutMultiplier,
+                stake: artifact.stake,
+                screen: artifact.screen.map((row) => [...row]),
+                artifact,
+                timestamp: startedAt,
+                durationMs: Date.now() - startedAt,
+            };
+            const descriptor = new ReplayRecorder().recordPreGenerated({
+                sessionId: `outcome-source:${selection.libraryId}:${seed}:${SAMPLE_REPLAY_ROUND}`,
+                game: artifact.provenance.game,
+                replay,
+                totalBet: artifact.stake,
+                screen: artifact.screen.map((row) => [...row]),
+            });
+            console.log(JSON.stringify(descriptor, null, 4));
+            return 0;
         }
 
         this.printSelection(targetPath, result.selection);
