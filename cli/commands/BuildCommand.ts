@@ -346,6 +346,7 @@ export class BuildCommand implements CliCommandHandling {
         if (options.exact && (options.sample !== undefined || options.seed !== undefined)) {
             throw new Error(`--exact cannot be combined with --sample or --seed. ${USAGE}`);
         }
+        if (options.exact) return {exact: true};
         if (options.sample === undefined) {
             if (options.seed !== undefined) throw new Error(`--seed requires --sample <n>. ${USAGE}`);
             return undefined;
