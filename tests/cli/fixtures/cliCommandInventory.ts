@@ -534,7 +534,7 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "replay",
-        description: "Best-effort replay of a single round (by seed + round index) from a POKIE game package.",
+        description: "Replay one round: exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package replay.",
         verbs: [
             {
                 verb: undefined,
