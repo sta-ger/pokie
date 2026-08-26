@@ -181,6 +181,7 @@ describe("ReelCommand", () => {
         const [path, contents] = writeFile.mock.calls[0];
         expect(path).toBe("game.json");
         const written = JSON.parse(contents as string) as GameBlueprint;
+        expect(written.reelStrips).toBeUndefined();
         expect(written.reelStripGeneration?.[0]).toEqual({type: "literal", strip: ["A", "B", "A"]});
         expect(written.reelStripGeneration?.[1].type).toBe("literal");
         expect(written.reelStripGeneration?.[2].type).toBe("literal");
@@ -209,6 +210,13 @@ describe("ReelCommand", () => {
         expect(parsed.applied).toBe(false);
         expect(parsed.reels[0].success).toBe(false);
         expect(parsed.reels[0].diagnostics.length).toBeGreaterThan(0);
+        const violations = parsed.reels[0].diagnostics.flatMap((diagnostic: {violations: Array<{constraintId: string; message: string}>}) => diagnostic.violations);
+        expect(violations).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({constraintId: "forbidden-sequence", message: expect.stringContaining("Forbidden sequence [A, A]")}),
+            ]),
+        );
+        expect(JSON.stringify(violations)).not.toContain("ShuffleReelStripGenerationStrategy");
     });
 
     it("prints a diff count against the existing reelStrips entry when one is present", async () => {

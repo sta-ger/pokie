@@ -210,7 +210,15 @@ export class ReelCommand implements CliCommandHandling {
                 }
             }
             outPath = options.out ?? blueprintPath;
-            await this.writeFile(outPath, `${JSON.stringify({...blueprint, reelStripGeneration: updatedSpecs}, null, 4)}\n`);
+            // `reelStrips` and `reelStripGeneration` are deliberately mutually exclusive Blueprint
+            // sources. A hand-edited input can carry both (and previews are useful for repairing
+            // exactly that case), but persisting both after --apply would leave an invalid Blueprint
+            // whose stale top-level strips obscure the newly pinned entries for downstream tools.
+            // Keep the per-reel source that --apply just updated and discard that incompatible
+            // top-level source, just as --materialize does in the opposite direction.
+            const appliedBlueprint: GameBlueprint = {...blueprint, reelStripGeneration: updatedSpecs};
+            Reflect.deleteProperty(appliedBlueprint, "reelStrips");
+            await this.writeFile(outPath, `${JSON.stringify(appliedBlueprint, null, 4)}\n`);
             applied = true;
         }
 

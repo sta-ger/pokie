@@ -948,7 +948,9 @@ has a `reelStrips` entry at that index, how many positions differ from it) and w
   `{type: "literal", strip}`, replacing that entry outright. Every other reel (untargeted, or already `"literal"`)
   is left completely unchanged. Nothing is written at all unless **every** targeted reel generates successfully —
   see below. `reelStripGeneration` stays present (now all-`"literal"`), so a blueprint that started this way still
-  can't be read by a tool that only understands plain `reelStrips` — see `--materialize` for that.
+  can't be read by a tool that only understands plain `reelStrips` — see `--materialize` for that. If a hand-edited
+  input also has an incompatible top-level `reelStrips` field, the applied output removes that stale source so the
+  saved Blueprint validates and downstream tools use the newly pinned per-reel entries.
 - `--materialize` — resolve **every** `"generated"` entry (always the whole blueprint, using each reel's own
   declared `seed` — incompatible with `--reel`/`--seed`/`--apply`) and collapse the result into a plain top-level
   `reelStrips` array with `reelStripGeneration` removed entirely. This is the same materialization `pokie build`
