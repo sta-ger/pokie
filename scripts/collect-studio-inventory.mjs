@@ -486,13 +486,18 @@ async function main() {
             if (tab === "Simulation") {
                 operation = await fill("Rounds", "2", () => evaluate("[...document.querySelectorAll('input')].some((input) => input.value === '2')"));
                 await observeAction("Simulation round count is entered", operation, () => evaluate("[...document.querySelectorAll('input')].some((input) => input.value === '2')"));
-                operation = {...await activate("Run Simulation", () => evaluate("[...document.querySelectorAll('[aria-current=step]')].some((element) => (element.textContent ?? '').includes('Run')) || [...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "simulation-run"};
-                await observeAction("Simulation run begins or reports an error", operation, () => evaluate("[...document.querySelectorAll('[aria-current=step]')].some((element) => (element.textContent ?? '').includes('Run')) || [...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"), 120_000);
-                if (await renderedActionExists("Cancel")) {
-                    operation = await click("Cancel", () => renderedActionExists("Confirm"));
-                    await observeAction("Simulation cancellation requests confirmation", operation, () => renderedActionExists("Confirm"));
-                    operation = await click("Confirm", () => !renderedActionExists("Cancel"));
-                    await observeAction("Simulation cancellation leaves no successful partial report", operation, () => !renderedActionExists("Cancel"));
+                try {
+                    const simulationQueued = () => renderedText("queued —");
+                    operation = {...await activate("Run Simulation", simulationQueued), coverageId: "simulation-run"};
+                    await observeAction("Simulation run begins with queued rounds", operation, simulationQueued, 120_000);
+                    if (await renderedActionExists("Cancel")) {
+                        operation = await click("Cancel", () => renderedActionExists("Confirm"));
+                        await observeAction("Simulation cancellation requests confirmation", operation, () => renderedActionExists("Confirm"));
+                        operation = await click("Confirm", () => !renderedActionExists("Cancel"));
+                        await observeAction("Simulation cancellation leaves no successful partial report", operation, () => !renderedActionExists("Cancel"));
+                    }
+                } catch (error) {
+                    recordFinding("P8-01-F-SIMULATION-RUN-NO-VISIBLE-RESULT", "Simulation Run Simulation", "P8-05", `The enabled Run Simulation control did not produce its false-to-true queued-round result after browser input: ${error.message}`, undefined, "simulation-run");
                 }
             }
             if (tab === "Replay") {
