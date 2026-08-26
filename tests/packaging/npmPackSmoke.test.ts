@@ -295,13 +295,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(result.stdout).toContain("Commands:");
         // A representative spread of registered commands, including the longest name, so a truncated
         // or partially-rendered list is caught rather than just "some text was printed".
-        for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "stakeengine", "validate"]) {
+        for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "certification", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
-        // Outcome Library and Outcome Source are public lifecycle roots. Name and Studio remain
+        // Storage-format namespaces stay private implementation details: their public lifecycle
+        // verbs are build/generate/sample/validate/inspect/diff. Name and Studio are likewise
         // unavailable as public command names.
-        for (const commandName of ["outcomelibrary", "outcomesource"]) {
-            expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
+        for (const commandName of ["outcomelibrary", "outcomesource", "stakeengine"]) {
+            expect(result.stdout).not.toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
         expect(result.stdout).not.toMatch(/^ {2}(name|studio)\b/m);
     });
@@ -489,7 +490,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(validate.status).toBe(0);
     });
 
-    it("runs the public outcome-library and outcome-source lifecycle against a package built by the installed binary itself", () => {
+    it("runs the public outcome-library lifecycle against a package built by the installed binary itself", () => {
         // Same small, hand-computable, exactly-enumerable blueprint as
         // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
         // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
@@ -517,42 +518,40 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(build.status).toBe(0);
 
         const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
-        const generate = spawnSync(
-            pokieBinPath,
-            ["outcomelibrary", "generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"],
-            {cwd: installDir, encoding: "utf-8", timeout: 60000},
-        );
+        const generate = spawnSync(pokieBinPath, ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
         expect(generate.status).toBe(0);
 
         const library = JSON.parse(fs.readFileSync(libraryFile, "utf-8")) as {outcomes: Array<{weight: number}>};
         expect(library.outcomes).toHaveLength(4);
         expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(6);
 
-        const bundleConfigPath = path.join(installDir!, "outcomelibrary-bundle-config.json");
-        fs.writeFileSync(bundleConfigPath, JSON.stringify({modes: [{modeName: "base", libraryPath: "outcomelibrary-base.json"}]}));
         const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
-        const bundleBuild = spawnSync(pokieBinPath, ["outcomelibrary", "build", bundleConfigPath, "--out", bundleDir], {
+        const bundleBuild = spawnSync(pokieBinPath, ["build", packageRoot, "--target", "outcomeLibrary", "--out", bundleDir], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
         expect(bundleBuild.status).toBe(0);
 
-        const bundleValidate = spawnSync(pokieBinPath, ["outcomelibrary", "validate", bundleDir, "--deep"], {
+        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep"], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
         expect(bundleValidate.status).toBe(0);
 
-        const inspect = spawnSync(pokieBinPath, ["outcomesource", "inspect", bundleDir], {
+        const inspect = spawnSync(pokieBinPath, ["inspect", bundleDir], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
         expect(inspect.status).toBe(0);
 
-        const sample = spawnSync(pokieBinPath, ["outcomesource", "sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
+        const sample = spawnSync(pokieBinPath, ["sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
