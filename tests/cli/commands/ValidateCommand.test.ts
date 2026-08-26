@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
+import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 
 function createStubValidator(report: PokieGamePackageValidationReport): PokieGamePackageValidating & {calledWith?: string} {
     return {
@@ -108,8 +109,8 @@ describe("ValidateCommand", () => {
 
         expect(exitCode).toBe(0);
         expect(logSpy).toHaveBeenCalledTimes(1);
-        const report = JSON.parse(logSpy.mock.calls[0][0]) as PokieGamePackageValidationReport;
-        expect(report).toEqual(validReport);
+        const report = JSON.parse(logSpy.mock.calls[0][0]) as PokieGamePackageValidationReport & {schemaVersion: number; project: unknown};
+        expect(report).toMatchObject({...validReport, schemaVersion: 1, project: {path: "./sample-slot", kind: "package"}});
 
         logSpy.mockRestore();
     });
@@ -125,9 +126,109 @@ describe("ValidateCommand", () => {
         expect(writeFile).toHaveBeenCalledTimes(1);
         const [file, contents] = writeFile.mock.calls[0];
         expect(file).toBe("report.json");
-        expect(JSON.parse(contents)).toEqual(invalidReport);
+        expect(JSON.parse(contents)).toMatchObject({
+            ...invalidReport,
+            schemaVersion: 1,
+            project: {path: "./broken-game", kind: "package"},
+            suggestions: expect.arrayContaining(invalidReport.suggestions),
+        });
 
         (console.log as jest.Mock).mockRestore();
+    });
+});
+
+describe("ValidateCommand project artifacts and CI report schema", () => {
+    let outDir: string;
+
+    beforeEach(() => {
+        outDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-validate-artifact-test-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+        fs.rmSync(outDir, {recursive: true, force: true});
+        (console.log as jest.Mock).mockRestore();
+    });
+
+    it("validates Blueprint JSON directly, preserves math warnings, and emits a stable machine-readable report", async () => {
+        const blueprintPath = path.join(outDir, "warning.blueprint.json");
+        const blueprint = createStarterGameBlueprint();
+        blueprint.paytable.A = {3: 10, 4: 5, 5: 20};
+        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+        const exitCode = await new ValidateCommand().run([blueprintPath, "--format", "json"]);
+
+        expect(exitCode).toBe(0);
+        const json = (console.log as jest.Mock).mock.calls.map((call) => call[0]).find((line) => line.startsWith("{"));
+        expect(json).toBeDefined();
+        const report = JSON.parse(json!) as {
+            schemaVersion: number;
+            project: {kind: string; path: string};
+            errors: unknown[];
+            warnings: Array<{code: string; path: string; suggestion: string}>;
+        };
+        expect(report).toMatchObject({schemaVersion: 1, project: {kind: "blueprint", path: blueprintPath}, errors: []});
+        expect(report.warnings).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({code: "blueprint-paytable-non-monotonic", path: blueprintPath, suggestion: expect.any(String)}),
+            ]),
+        );
+    });
+
+    it("turns malformed Blueprint JSON into a location-specific diagnostic with remediation, never a parser error", async () => {
+        const blueprintPath = path.join(outDir, "malformed.blueprint.json");
+        fs.writeFileSync(blueprintPath, "{ not JSON");
+
+        const exitCode = await new ValidateCommand().run([blueprintPath]);
+
+        expect(exitCode).toBe(1);
+        const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("blueprint-file-malformed");
+        expect(printed).toContain(`[${blueprintPath}]`);
+        expect(printed).toContain("Next:");
+        expect(printed).not.toContain("Unexpected token");
+    });
+
+    it("validates malformed outcome-library bundles deeply and reports the requested deep check in JSON", async () => {
+        const bundleDir = path.join(outDir, "outcomes");
+        fs.mkdirSync(bundleDir);
+        fs.writeFileSync(path.join(bundleDir, "manifest.json"), "{ bad JSON");
+
+        const exitCode = await new ValidateCommand().run([bundleDir, "--deep", "--format", "json"]);
+
+        expect(exitCode).toBe(1);
+        const json = (console.log as jest.Mock).mock.calls.map((call) => call[0]).find((line) => line.startsWith("{"));
+        expect(json).toBeDefined();
+        const report = JSON.parse(json!) as {
+            schemaVersion: number;
+            project: {kind: string};
+            errors: Array<{code: string; path: string; suggestion: string; message: string}>;
+            issues: unknown[];
+        };
+        expect(report).toMatchObject({schemaVersion: 1, deep: true, project: {kind: "outcome-library"}});
+        expect(report.issues).toHaveLength(1);
+        expect(report.errors[0]).toMatchObject({
+            code: "outcome-library-bundle-manifest-invalid-json",
+            path: "manifest.json",
+            message: "manifest.json is not valid JSON.",
+            suggestion: expect.any(String),
+        });
+    });
+
+    it("returns a remedial report instead of a raw materialization failure", async () => {
+        const command = new ValidateCommand(
+            createStubValidator(validReport),
+            undefined,
+            () => Promise.reject(new Error("ENOENT: internal resolver detail")),
+        );
+
+        const exitCode = await command.run(["./missing-package", "--format", "json"]);
+
+        expect(exitCode).toBe(1);
+        const printed = (console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("pokie-package-unavailable");
+        expect(printed).toContain("Check package.json");
+        expect(printed).not.toContain("ENOENT");
     });
 });
 
@@ -155,12 +256,12 @@ describe("ValidateCommand runtime package materialization boundary", () => {
         expect(validator.calledWith).toBe(resolvedRuntimePath);
     });
 
-    it("propagates a materialization/capability failure without ever calling the validator", async () => {
+    it("returns a remedial validation failure when materialization cannot start, without calling the validator", async () => {
         const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
         const validator = createStubValidator(validReport);
         const command = new ValidateCommand(validator, undefined, resolveRuntimePackageRoot);
 
-        await expect(command.run(["/blueprints/raw-game.json"])).rejects.toThrow(/dependencies phase failed/);
+        expect(await command.run(["/blueprints/raw-game.json"])).toBe(1);
         expect(validator.calledWith).toBeUndefined();
     });
 });

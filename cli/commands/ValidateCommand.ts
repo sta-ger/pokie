@@ -2,18 +2,37 @@ import {Command} from "commander";
 import {
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
+    GameBlueprintValidator,
     PokieGamePackageValidating,
     PokieGamePackageValidationReport,
     PokieGamePackageValidator,
     ProjectResolving,
     ProjectTargetResolver,
+    ValidationIssue,
 } from "pokie";
 import fs from "fs";
+import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ValidateFormat = "summary" | "json";
+type ValidateProjectKind = "blueprint" | "outcome-library" | "package" | "unknown";
+type ValidateDiagnostic = Required<Pick<ValidationIssue, "code" | "severity" | "message" | "path" | "suggestion">> &
+    Pick<ValidationIssue, "details">;
+
+type ValidateReport = {
+    schemaVersion: 1;
+    project: {path: string; kind: ValidateProjectKind};
+    deep: boolean;
+    valid: boolean;
+    errors: ValidateDiagnostic[];
+    warnings: ValidateDiagnostic[];
+    suggestions: string[];
+    packageRoot?: string;
+    game?: PokieGamePackageValidationReport["game"];
+    issues?: ValidateDiagnostic[];
+};
 
 const USAGE = "Usage: pokie validate <project> [--deep] [--format json] [--out <file>]";
 
@@ -75,32 +94,201 @@ export class ValidateCommand implements CliCommandHandling {
         const packageRoot = resultRef.packageRoot!;
         const format = resultRef.format!;
         const out = resultRef.out;
+        let report: ValidateReport;
+        try {
+            report = await this.validateProject(packageRoot, resultRef.deep ?? false);
+        } catch {
+            report = this.failedReport(
+                packageRoot,
+                "unknown",
+                "validate-project-unavailable",
+                `POKIE could not inspect "${packageRoot}" as a supported project.`,
+                "Check that the path exists and points to a POKIE package, Blueprint JSON file, or outcome-library bundle, then run validate again.",
+            );
+        }
+        this.writeAndPrint(report, format, out);
+        return report.valid ? 0 : 1;
+    }
+
+    private async validateProject(packageRoot: string, deep: boolean): Promise<ValidateReport> {
+        if (this.isBlueprintFile(packageRoot)) {
+            return this.validateBlueprint(packageRoot);
+        }
+        if (this.isOutcomeLibraryDirectory(packageRoot)) {
+            return this.validateOutcomeLibrary(packageRoot, deep);
+        }
+        if (this.isPackageDirectory(packageRoot)) {
+            return this.validatePackage(packageRoot);
+        }
+
         const project = await this.resolveProject.resolve(packageRoot);
         if (project?.type === "outcomeLibrary") {
-            return this.validateOutcomeLibrary(packageRoot, format, out, resultRef.deep ?? false);
+            return this.validateOutcomeLibrary(packageRoot, deep);
         }
-        const resolution = await this.resolveRuntimePackageRoot(packageRoot);
-        let report: PokieGamePackageValidationReport;
+        if (project?.type === "blueprint") {
+            return this.validateBlueprint(packageRoot);
+        }
+        return this.validatePackage(packageRoot);
+    }
+
+    private isBlueprintFile(projectPath: string): boolean {
+        return fs.existsSync(projectPath) && fs.statSync(projectPath).isFile() && path.extname(projectPath).toLowerCase() === ".json";
+    }
+
+    private isOutcomeLibraryDirectory(projectPath: string): boolean {
+        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "manifest.json"));
+    }
+
+    private isPackageDirectory(projectPath: string): boolean {
+        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "package.json"));
+    }
+
+    private validateBlueprint(blueprintPath: string): ValidateReport {
+        let source: unknown;
         try {
-            report = await this.validator.validate(resolution.runtimePath);
+            source = JSON.parse(fs.readFileSync(blueprintPath, "utf-8"));
+        } catch {
+            return this.failedReport(
+                blueprintPath,
+                "blueprint",
+                "blueprint-file-malformed",
+                `The Blueprint JSON at "${blueprintPath}" could not be read as JSON.`,
+                "Fix the JSON syntax and save a JSON object describing the Blueprint, then run validate again.",
+                blueprintPath,
+            );
+        }
+
+        return this.reportFromIssues(blueprintPath, "blueprint", new GameBlueprintValidator().validate(source));
+    }
+
+    private async validatePackage(packageRoot: string): Promise<ValidateReport> {
+        let resolution: {runtimePath: string; release(): Promise<void>} | undefined;
+        try {
+            resolution = await this.resolveRuntimePackageRoot(packageRoot);
+            const report = await this.validator.validate(resolution.runtimePath);
+            return this.packageReport(packageRoot, report);
+        } catch {
+            return this.failedReport(
+                packageRoot,
+                "package",
+                "pokie-package-unavailable",
+                `The POKIE package at "${packageRoot}" could not be loaded for validation.`,
+                'Check package.json and its "pokie.entry" setting, install its dependencies, then run validate again.',
+                "package.json",
+            );
         } finally {
-            await resolution.release();
+            await resolution?.release();
         }
+    }
 
+    private packageReport(packageRoot: string, report: PokieGamePackageValidationReport): ValidateReport {
+        const issues = [...report.errors, ...report.warnings].map((issue) =>
+            issue.code === "pokie-package-load-failed"
+                ? {
+                    ...issue,
+                    message: 'The package entry declared by "package.json" ("pokie.entry") could not be loaded.',
+                    path: "package.json",
+                    suggestion: 'Check "pokie.entry", its target file, and installed dependencies, then run validate again.',
+                }
+                : issue,
+        );
+        return this.reportFromIssues(packageRoot, "package", issues, report.game, report.suggestions);
+    }
+
+    private async validateOutcomeLibrary(bundleDir: string, deep: boolean): Promise<ValidateReport> {
+        const issues = await this.outcomeLibraryValidator.validate(bundleDir, {deep});
+        return {...this.reportFromIssues(bundleDir, "outcome-library", issues), deep};
+    }
+
+    private failedReport(
+        projectPath: string,
+        kind: ValidateProjectKind,
+        code: string,
+        message: string,
+        suggestion: string,
+        diagnosticPath = projectPath,
+    ): ValidateReport {
+        return this.reportFromIssues(projectPath, kind, [{code, severity: "error", message, path: diagnosticPath, suggestion}]);
+    }
+
+    private reportFromIssues(
+        projectPath: string,
+        kind: ValidateProjectKind,
+        issues: readonly ValidationIssue[],
+        game?: PokieGamePackageValidationReport["game"],
+        inheritedSuggestions: readonly string[] = [],
+    ): ValidateReport {
+        const diagnostics = issues.map((issue) => this.describeIssue(issue, projectPath));
+        const errors = diagnostics.filter((issue) => issue.severity === "error");
+        const warnings = diagnostics.filter((issue) => issue.severity !== "error");
+        const suggestions = [...new Set([...inheritedSuggestions, ...diagnostics.map((issue) => issue.suggestion)])];
+        return {
+            schemaVersion: 1,
+            project: {path: projectPath, kind},
+            deep: false,
+            valid: errors.length === 0,
+            errors,
+            warnings,
+            suggestions,
+            ...(kind === "package" ? {packageRoot: projectPath} : {}),
+            ...(game !== undefined ? {game} : {}),
+            ...(kind === "outcome-library" ? {issues: diagnostics} : {}),
+        };
+    }
+
+    private describeIssue(issue: ValidationIssue, projectPath: string): ValidateDiagnostic {
+        const safeIssue = this.safeIssue(issue);
+        return {
+            ...safeIssue,
+            path: safeIssue.path ?? projectPath,
+            suggestion: safeIssue.suggestion ?? "Fix this issue at the indicated location, then run `pokie validate <path>` again.",
+        };
+    }
+
+    private safeIssue(issue: ValidationIssue): ValidationIssue {
+        switch (issue.code) {
+            case "outcome-library-bundle-manifest-invalid-json":
+                return {
+                    ...issue,
+                    message: "manifest.json is not valid JSON.",
+                    path: "manifest.json",
+                    suggestion: "Fix manifest.json so it is valid JSON, then run validate again.",
+                };
+            case "outcome-library-bundle-manifest-unreadable":
+                return {
+                    ...issue,
+                    message: "manifest.json could not be read.",
+                    path: "manifest.json",
+                    suggestion: "Check that manifest.json is readable, then run validate again.",
+                };
+            case "outcome-library-bundle-malformed":
+                return {
+                    ...issue,
+                    message: "The outcome-library bundle is malformed or could not be read.",
+                    suggestion: "Check manifest.json and the bundle files, then run validate again.",
+                };
+            default:
+                return issue;
+        }
+    }
+
+    private writeAndPrint(report: ValidateReport, format: ValidateFormat, out: string | undefined): void {
+        const json = JSON.stringify(report, null, 4);
         if (out) {
-            this.writeFile(out, JSON.stringify(report, null, 4));
-        }
-
-        if (format === "json") {
-            console.log(JSON.stringify(report, null, 4));
-        } else {
-            this.printSummary(report);
-            if (out) {
-                console.log(`\nReport written to "${out}".`);
+            try {
+                this.writeFile(out, json);
+            } catch {
+                throw new Error(`Could not write the validation report to "${out}". Check the path and write permissions, then run validate again.`);
             }
         }
-
-        return report.valid ? 0 : 1;
+        if (format === "json") {
+            console.log(json);
+            return;
+        }
+        this.printSummary(report);
+        if (out) {
+            console.log(`\nReport written to "${out}".`);
+        }
     }
 
     // Builds the exact Commander tree run() itself parses argv with -- the same object graph both
@@ -135,51 +323,25 @@ export class ValidateCommand implements CliCommandHandling {
             });
     }
 
-    private async validateOutcomeLibrary(bundleDir: string, format: ValidateFormat, out: string | undefined, deep: boolean): Promise<number> {
-        const issues = await this.outcomeLibraryValidator.validate(bundleDir, {deep});
-        const errors = issues.filter((issue) => issue.severity === "error");
-        const json = JSON.stringify({project: bundleDir, valid: errors.length === 0, issues}, null, 4);
-        if (out) {
-            this.writeFile(out, json);
-        }
-        if (format === "json") {
-            console.log(json);
-        } else if (errors.length > 0) {
-            console.error(`"${bundleDir}" has ${errors.length} validation error(s):`);
-            for (const issue of issues) {
-                console.error(`  - ${issue.code}: ${issue.message}`);
-            }
-        } else {
-            console.log(`"${bundleDir}" is valid${deep ? " (deep check)" : ""}.`);
-            for (const issue of issues) {
-                console.log(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
-            }
-            if (out) {
-                console.log(`\nReport written to "${out}".`);
-            }
-        }
-        return errors.length === 0 ? 0 : 1;
-    }
-
-    private printSummary(report: PokieGamePackageValidationReport): void {
+    private printSummary(report: ValidateReport): void {
         if (report.game) {
-            console.log(`Validating "${report.game.name}" (id: "${report.game.id}", v${report.game.version}) at "${report.packageRoot}"`);
+            console.log(`Validating "${report.game.name}" (id: "${report.game.id}", v${report.game.version}) at "${report.project.path}"`);
         } else {
-            console.log(`Validating package at "${report.packageRoot}"`);
+            console.log(`Validating ${report.project.kind}${report.deep ? " (deep check)" : ""} at "${report.project.path}"`);
         }
         console.log(`  valid           ${report.valid ? "yes" : "no"}`);
 
         if (report.errors.length > 0) {
             console.log(`\nErrors (${report.errors.length}):`);
             for (const issue of report.errors) {
-                console.log(`  - ${issue.code}: ${issue.message}`);
+                this.printIssue(issue);
             }
         }
 
         if (report.warnings.length > 0) {
             console.log(`\nWarnings (${report.warnings.length}):`);
             for (const issue of report.warnings) {
-                console.log(`  - ${issue.code}: ${issue.message}`);
+                this.printIssue(issue);
             }
         }
 
@@ -193,5 +355,10 @@ export class ValidateCommand implements CliCommandHandling {
         if (report.valid && report.warnings.length === 0) {
             console.log("\nNo issues found.");
         }
+    }
+
+    private printIssue(issue: ValidateDiagnostic): void {
+        console.log(`  - [${issue.path}] ${issue.code}: ${issue.message}`);
+        console.log(`    Next: ${issue.suggestion}`);
     }
 }
