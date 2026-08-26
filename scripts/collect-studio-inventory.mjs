@@ -531,14 +531,14 @@ async function main() {
             recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", `The clean rendered registry did not expose an Open-to-workspace transition that browser input could complete: ${error.message}`, undefined, "managed-project-open");
         }
         try {
-            operation = {...await activate("Remove", () => renderedActionExists("Cancel")), coverageId: "managed-project-remove-confirm"};
+            operation = {...await click("Remove", () => renderedActionExists("Cancel")), coverageId: "managed-project-remove-confirm"};
             await observeAction("Managed project Remove opens a non-destructive confirmation", operation, () => renderedActionExists("Cancel"));
         } catch (error) {
             recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", `The managed-project Remove confirmation was not reachable from the rendered registry without a managed project: ${error.message}`, undefined, "managed-project-remove-confirm");
         }
         if (await renderedActionExists("Cancel")) {
             try {
-                operation = {...await activate("Cancel", () => !renderedActionExists("Cancel")), coverageId: "managed-project-remove-cancel"};
+                operation = {...await click("Cancel", () => !renderedActionExists("Cancel")), coverageId: "managed-project-remove-cancel"};
                 await observeAction("Managed project Remove is cancelled", operation, () => !renderedActionExists("Cancel"));
             } catch (error) {
                 recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", `The rendered Remove confirmation could not be cancelled through browser input: ${error.message}`, undefined, "managed-project-remove-cancel");
