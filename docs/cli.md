@@ -2033,6 +2033,20 @@ Options:
 - `--format json` — accepted for symmetry with `pokie sim`/`pokie validate`; JSON is currently the only supported
   format, and is always printed to stdout regardless of this flag.
 
+When `<packageRoot>` is a native Outcome Library bundle, replay is exact rather than best-effort and requires all
+three portable values emitted by an outcome-source session spin: `seed`, one-based `round`, and `mode`:
+
+```sh
+pokie replay ./outcome-library --seed recorded-seed --round 7 --mode base --out replay.json
+```
+
+The returned descriptor includes `outcomeSource` with the game, library id/hash, mode, selection algorithm,
+outcome id, canonical artifact, screen, stake and payout. Do not substitute a default mode: a missing seed or mode
+is rejected. If a saved descriptor's game/library hash, mode, seed, round, or selected result differs from the
+currently opened bundle, the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API fails closed and
+tells the caller to restore the original artifact/bundle. Package replay remains best-effort; it may inspect a
+round with unavailable state, but must not claim an exact comparison.
+
 The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before replaying, so reaching `--round` is never
 cut short by the session running out of credits.
 

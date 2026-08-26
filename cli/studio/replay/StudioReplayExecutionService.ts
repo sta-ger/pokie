@@ -25,6 +25,7 @@ import {
     VideoSlotSessionHandling,
     WeightedOutcomeRandomSource,
 } from "pokie";
+import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import {InMemoryStudioReplayRepository} from "./InMemoryStudioReplayRepository.js";
 import type {StudioReplayJobRecord} from "./StudioReplayJobRecord.js";
@@ -409,11 +410,9 @@ export class StudioReplayExecutionService {
 
         const sessionId = this.createId();
         const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
-        const randomSource: WeightedOutcomeRandomSource =
-            record.seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(record.seed);
-
         let roundsRemaining = record.round;
         let lastArtifact: RoundArtifact | undefined;
+        let lastSelection: {libraryId: string; libraryHash: string; outcomeId: string; weight: number} | undefined;
         try {
             while (roundsRemaining > 0) {
                 if (record.abortController.signal.aborted) {
@@ -423,8 +422,19 @@ export class StudioReplayExecutionService {
 
                 const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
                 for (let played = 0; played < chunkRounds; played++) {
+                    const replayRound = record.completedRounds + played + 1;
+                    const randomSource: WeightedOutcomeRandomSource =
+                        record.seed === undefined
+                            ? new SecureWeightedOutcomeRandomSource()
+                            : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(record.seed, replayRound));
                     const selection = await outcomeSource.drawOutcome(randomSource);
                     lastArtifact = selection.outcome.artifact;
+                    lastSelection = {
+                        libraryId: selection.libraryId,
+                        libraryHash: selection.libraryHash,
+                        outcomeId: selection.outcome.id,
+                        weight: selection.outcome.weight,
+                    };
                 }
 
                 record.completedRounds += chunkRounds;
@@ -439,7 +449,7 @@ export class StudioReplayExecutionService {
             return;
         }
 
-        if (lastArtifact === undefined) {
+        if (lastArtifact === undefined || lastSelection === undefined) {
             this.fail(record, new Error("Replay produced no outcome."));
             return;
         }
@@ -455,6 +465,24 @@ export class StudioReplayExecutionService {
             timestamp: record.startedAt,
             durationMs: record.durationMs,
             artifact: new PokieJsonRoundArtifactProjector().project(lastArtifact),
+            ...(record.seed === undefined
+                ? {}
+                : {
+                    outcomeSource: {
+                        ...lastSelection,
+                        modeName,
+                        selectionAlgorithm: "derived-round-seed-v1" as const,
+                        seed: record.seed,
+                        round: record.round,
+                        totalWin: lastArtifact.totalWin,
+                        payoutMultiplier: lastArtifact.payoutMultiplier,
+                        stake: lastArtifact.stake,
+                        screen: lastArtifact.screen.map((row) => [...row]),
+                        artifact: lastArtifact,
+                        timestamp: record.startedAt,
+                        durationMs: record.durationMs,
+                    },
+                }),
         };
 
         record.status = "completed";

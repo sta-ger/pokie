@@ -193,7 +193,7 @@ where the concepts overlap.
 
 ```ts
 class PreGeneratedRoundReplayer implements PreGeneratedRoundReplaying {
-    replay<T = string>(options: {library: WeightedOutcomeLibrary<T>; libraryHash: string; seed: string; round: number}): PreGeneratedRoundReplayDescriptor;
+    replay<T = string>(options: {library: WeightedOutcomeLibrary<T>; libraryHash: string; modeName: string; seed: string; round: number}): PreGeneratedRoundReplayDescriptor;
 }
 ```
 
@@ -201,6 +201,13 @@ Unlike `replay/ReplayRecorder` (which best-effort replays a *live* session round
 seek-to-round primitive there), `PreGeneratedRoundReplayer` is exact: a round's outcome is fully determined by
 `(seed, round)` via a shared derivation (`deriveDeterministicSeed`), so replaying the same pair against the same
 library always reproduces the identical draw — no wallet, session, or idempotency state involved.
+
+The resulting durable descriptor records `modeName` and `selectionAlgorithm: "derived-round-seed-v1"` as well as
+library id/hash, seed, round, selected outcome, stake, screen, payout and the canonical artifact. A blank seed,
+mode or library hash is rejected before selection. Server `/sessions/:id/spin` responses expose the portable replay
+identity (including seed and mode) in `replay`; use those values with `pokie replay <bundle> --seed ... --round ...
+--mode ...`. A descriptor missing its artifact/state can still be inspected, but is degraded evidence, not a claim
+of exact verification.
 
 ## Server integration (`pokie serve`)
 

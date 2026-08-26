@@ -36,6 +36,7 @@ import {
     type VideoSlotSessionHandling,
     type VideoSlotWithFreeGamesSessionHandling,
 } from "pokie";
+import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {StudioRoundRecorder, type StudioRoundOperation} from "./StudioRoundRecorder.js";
@@ -72,7 +73,8 @@ type ActiveOutcomeSourceSession = {
     readonly kind: "outcomeSource";
     readonly manifest: {id: string; name: string; version: string};
     readonly outcomeSource: PreGeneratedOutcomeSourcing;
-    readonly randomSource: WeightedOutcomeRandomSource;
+    // Matches the portable server/CLI selector: a seed-derived source per one-based round.
+    roundsPlayed: number;
     credits: number;
     // Same reasoning as ActiveRuntimeSession's own projectRoot/seed above.
     readonly projectRoot: string;
@@ -484,14 +486,11 @@ export class StudioPlayService {
         // exact session -- the same "a given seed always plays out the same way" contract PlayTab's own doc
         // comment promises for a live game's own createSession({seed}) context, just built out of a source
         // that has no session-scoped RNG of its own to seed instead.
-        const randomSource: WeightedOutcomeRandomSource =
-            seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(String(seed));
-
         this.active = {
             kind: "outcomeSource",
             manifest: bundleGame,
             outcomeSource: new OutcomeLibraryBundleOutcomeSource(project.rootPath, resolvedModeName),
-            randomSource,
+            roundsPlayed: 0,
             credits: 0,
             projectRoot: project.rootPath,
             seed,
@@ -511,8 +510,16 @@ export class StudioPlayService {
     private async spinOutcomeSource(sessionId: string, active: ActiveOutcomeSourceSession): Promise<StudioPlaySpinResult> {
         let artifact: RoundArtifact;
         try {
-            const selection = await active.outcomeSource.drawOutcome(active.randomSource);
+            const nextRound = active.roundsPlayed + 1;
+            const randomSource: WeightedOutcomeRandomSource =
+                active.seed === undefined
+                    ? new SecureWeightedOutcomeRandomSource()
+                    : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(String(active.seed), nextRound));
+            const selection = await active.outcomeSource.drawOutcome(randomSource);
             artifact = selection.outcome.artifact;
+            // Studio serializes one Play request at a time; Object.assign keeps this post-await
+            // session update explicit without presenting a stale read/write expression to lint.
+            Object.assign(active, {roundsPlayed: nextRound});
         } catch (error) {
             return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }

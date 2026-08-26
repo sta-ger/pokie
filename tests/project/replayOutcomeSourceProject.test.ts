@@ -57,6 +57,29 @@ describe("replayOutcomeSourceProject", () => {
         }
     });
 
+    it("fails closed when a recorded library artifact does not match the bundle being replayed", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+        const original = await replayOutcomeSourceProject(project, "base", "reproducible-seed", 4);
+        if (!original.supported) {
+            throw new Error("expected a supported outcome-library project");
+        }
+
+        await expect(
+            replayOutcomeSourceProject(project, "base", "reproducible-seed", 4, {...original.replay, libraryHash: "sha256:stale"}),
+        ).rejects.toThrow(/recorded.*current.*Restore\/open the original game and outcome-library artifact/i);
+    });
+
+    it("rejects a missing seed or mode rather than silently choosing a default", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+
+        await expect(replayOutcomeSourceProject(project, "base", "", 1)).rejects.toThrow(/without a non-empty seed/i);
+        await expect(replayOutcomeSourceProject(project, "", "seed", 1)).rejects.toThrow(/without a mode/i);
+    });
+
     it("returns the capability diagnostic, rather than throwing or reading a bundle, for a resolved Stake Engine project", async () => {
         const stakeDir = path.join(workDir, "stake");
         fs.mkdirSync(stakeDir, {recursive: true});

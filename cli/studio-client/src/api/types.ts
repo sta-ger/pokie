@@ -742,6 +742,25 @@ export type ReplayDescriptor = {
     // StudioReplayExecutionService.captureBoundaryState()'s own doc comment).
     stateBefore?: Record<string, unknown>;
     stateAfter?: Record<string, unknown>;
+    // Native outcome-library provenance. Its absence means this is package replay or an older,
+    // inspection-only descriptor; a caller must not invent a mode/seed for exact comparison.
+    outcomeSource?: {
+        libraryId: string;
+        libraryHash: string;
+        modeName: string;
+        selectionAlgorithm: "derived-round-seed-v1";
+        seed: string;
+        round: number;
+        outcomeId: string;
+        weight: number;
+        totalWin: number;
+        payoutMultiplier: number;
+        stake?: number;
+        screen?: unknown[][];
+        artifact?: RoundArtifact;
+        timestamp: number;
+        durationMs: number;
+    };
 };
 
 export type StudioReplayStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
