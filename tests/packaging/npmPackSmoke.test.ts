@@ -298,9 +298,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         for (const commandName of ["build", "create", "diff", "export", "generate", "inspect", "sample", "stakeengine", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
-        // PAR and Stake Engine are supported public workflows.  The package-level help must not
-        // leak only the legacy/internal implementation command names.
-        expect(result.stdout).not.toMatch(/^ {2}(name|outcomelibrary|outcomesource|studio)\b/m);
+        // Outcome Library and Outcome Source are public lifecycle roots. Name and Studio remain
+        // unavailable as public command names.
+        for (const commandName of ["outcomelibrary", "outcomesource"]) {
+            expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
+        }
+        expect(result.stdout).not.toMatch(/^ {2}(name|studio)\b/m);
     });
 
     it.each([["--version"], ["-V"]])("prints the installed version for `pokie %s`, exiting 0", (flag) => {
@@ -486,7 +489,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(validate.status).toBe(0);
     });
 
-    it("runs `pokie generate` against a package built by the installed binary itself, then exports and validates the result", () => {
+    it("runs the public outcome-library and outcome-source lifecycle against a package built by the installed binary itself", () => {
         // Same small, hand-computable, exactly-enumerable blueprint as
         // tests/cli/OutcomeLibraryGenerateWorkflow.integration.test.ts's own finiteBlueprint(): 2 reels of
         // 3/2 stops, no stateful mechanics, so "generate" resolves the exact strategy without --bounded.
@@ -516,7 +519,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const libraryFile = path.join(installDir!, "outcomelibrary-base.json");
         const generate = spawnSync(
             pokieBinPath,
-            ["generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"],
+            ["outcomelibrary", "generate", packageRoot, "--stake", "1", "--out", libraryFile, "--format", "json"],
             {cwd: installDir, encoding: "utf-8", timeout: 60000},
         );
         expect(generate.status).toBe(0);
@@ -528,19 +531,33 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const bundleConfigPath = path.join(installDir!, "outcomelibrary-bundle-config.json");
         fs.writeFileSync(bundleConfigPath, JSON.stringify({modes: [{modeName: "base", libraryPath: "outcomelibrary-base.json"}]}));
         const bundleDir = path.join(installDir!, "outcomelibrary-bundle");
-        const bundleBuild = spawnSync(pokieBinPath, ["export", bundleConfigPath, "--to", "outcomes", "--out", bundleDir], {
+        const bundleBuild = spawnSync(pokieBinPath, ["outcomelibrary", "build", bundleConfigPath, "--out", bundleDir], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
         expect(bundleBuild.status).toBe(0);
 
-        const bundleValidate = spawnSync(pokieBinPath, ["validate", bundleDir, "--deep"], {
+        const bundleValidate = spawnSync(pokieBinPath, ["outcomelibrary", "validate", bundleDir, "--deep"], {
             cwd: installDir,
             encoding: "utf-8",
             timeout: 60000,
         });
         expect(bundleValidate.status).toBe(0);
+
+        const inspect = spawnSync(pokieBinPath, ["outcomesource", "inspect", bundleDir], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(inspect.status).toBe(0);
+
+        const sample = spawnSync(pokieBinPath, ["outcomesource", "sample", bundleDir, "--mode", "base", "--seed", "packed-source-seed"], {
+            cwd: installDir,
+            encoding: "utf-8",
+            timeout: 60000,
+        });
+        expect(sample.status).toBe(0);
     });
 
     // A "pokie build" package (GamePackageGenerator's canonical output) carries none of the

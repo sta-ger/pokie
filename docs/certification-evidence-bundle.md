@@ -2,11 +2,15 @@
 
 # Certification/Evidence Bundle
 
-`certification/` builds a canonical, portable evidence artifact *on top of* an already-built
-[Outcome Library Bundle](outcome-library-bundle.md) — the kind of package a certification lab or an internal
-audit trail can hold onto independently of the (potentially much larger) source bundle: a deterministic manifest
-carrying game/library provenance and exact weighted metrics, the source bundle's own deep-validation diagnostics,
-and one JSONL file per mode of deterministically sampled, individually verifiable `RoundArtifact` records.
+`certification/` builds a canonical, portable **engineering evidence/certification bundle** *on top of* an
+already-built [Outcome Library Bundle](outcome-library-bundle.md): a deterministic manifest carrying
+game/library provenance and exact weighted metrics, the source bundle's own deep-validation diagnostics, and one
+JSONL file per mode of deterministically sampled, individually verifiable `RoundArtifact` records.
+
+This is engineering provenance for reproducibility and review, **not** a regulatory approval, an independent RNG
+certification, or compliance sign-off. A certification lab or an internal audit trail can retain the bundle
+independently of the (potentially much larger) source bundle, but those parties must apply their own procedures
+and make any certification decision themselves.
 
 Like every other exporter/bundle format in this codebase (`StakeEngineExporter`, `OutcomeLibraryBundleWriter`),
 it never introduces a second calculation path: every hash and metric it writes is read verbatim off the source
