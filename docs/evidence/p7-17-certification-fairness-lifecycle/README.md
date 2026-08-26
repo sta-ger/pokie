@@ -1,28 +1,31 @@
 # P7-17 independent public lifecycle verification
 
-Candidate: `4548dfb74383803436615c3821265d23c5d245ad`  
-Status: **finding** — the packed, freshly installed public CLI cannot start the
-requested Outcome Library/native-bundle portion of the lifecycle.
+Candidate: `c02a7aa636bbae6b9e89f7d8883391bfa83aa061`
+Status: **passed**
 
-The tarball was made by this checkout's one completed `npm pack` build and
-installed into a fresh `/tmp` directory; its SHA-256 was
-`b9bdbe826afa7e663273b4abe116360a0d41a7d394b221749bdbad4292ea8164`.
-The verifier invoked only the installed package entrypoint
-`node <fresh>/node_modules/pokie/dist/cli/pokie.js`, never this checkout's
-`node_modules/.bin/pokie`.
+From one fresh temporary directory, the verifier packed this checkout, installed
+that tarball with scripts disabled, and used only its installed entrypoint:
+`node <fresh>/install/node_modules/pokie/dist/cli/pokie.js`. It did not use
+this checkout's `node_modules/.bin/pokie`, private APIs, or edit generated
+lifecycle artifacts.
 
-The first public command, Blueprint → TypeScript game package, completed with
-exit 0 and emitted the package read back in the transcript.  The next required
-public command, `outcomelibrary generate`, exited 1 with `Unknown command
-"outcomelibrary"`.  Public `--help` also omits `outcomelibrary` and
-`outcomesource`; both verb roots themselves return the same actionable unknown
-command diagnostic.  Consequently no public path remains to produce the
-required sampled library/native bundle or to perform the downstream
-`outcomesource`, certification, and fairness lifecycle without substituting
-private implementation calls or editing artifacts.
+The packed CLI reported version `1.3.0` and its public help listed both
+`outcomelibrary` and `outcomesource`. A public `create --random` produced the
+starting Blueprint; all subsequent package, library, bundle, certification,
+commitment, and proof inputs were outputs of the preceding public commands
+(apart from the two documented authored configuration files and server-seed
+text input).
 
-The one required serial complete-file machine run did pass: 16 suites, 235
-tests, across the two integration suites, both command suites, every test file
-under `tests/certification`, and every test file under `tests/fairness`.
+The complete public chain passed:
 
-See [TRANSCRIPT.md](TRANSCRIPT.md) for the bounded command/result record.
+`Blueprint -> tsPackage -> outcomelibrary generate/build/validate -> outcomesource inspect/sample -> certification build/verify -> fairness seed-commit/commit/reveal/verify`.
+
+Repeat generation produced identical library bytes; repeat seeded sampling had
+the same outcome and artifact; repeat certification had the same evidence
+content hash and identical samples bytes. Copied tampered evidence, a copied
+stale source bundle, and a copied tampered fairness proof each failed their
+respective public verifier with exit 1 and actionable, typed diagnostics.
+
+See [TRANSCRIPT.md](TRANSCRIPT.md) for the bounded command, readback, checksum,
+and negative-case record. No tarball, install tree, generated artifact,
+automation source, or full raw log is retained.
