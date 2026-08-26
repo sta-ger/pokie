@@ -582,5 +582,14 @@ export class SimCommand implements CliCommandHandling {
                 );
             });
         }
+
+        // The JSON artifact has always preserved warnings, but the default CLI summary is also a
+        // decision surface: hiding a low-sample or non-reproducible-run warning there makes a
+        // completed command look more conclusive than its report actually is. Keep the exact
+        // persisted messages visible, rather than attempting to maintain a second warning policy.
+        if (report.warnings && report.warnings.length > 0) {
+            console.log("\nWarnings:");
+            report.warnings.forEach((warning) => console.log(`  - ${warning}`));
+        }
     }
 }
