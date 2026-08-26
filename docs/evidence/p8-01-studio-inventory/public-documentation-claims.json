@@ -29,7 +29,7 @@
       "document": "docs/cli.md#project-dashboard",
       "claim": "An opened project exposes Overview, Game Model, Play, Simulation, Replay, and Build/Export.",
       "renderedGoals": ["Created project overview", "Project tab: Overview", "Project tab: Game Model", "Project tab: Play", "Project tab: Simulation", "Project tab: Replay", "Project tab: Build/Export"],
-      "owner": "P8-03"
+      "owner": "P8-05"
     },
     {
       "id": "DOC-05",

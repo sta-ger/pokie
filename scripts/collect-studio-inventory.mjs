@@ -15,6 +15,7 @@ import {mkdtemp, mkdir, readFile, rm, writeFile} from "node:fs/promises";
 import {execFile, spawn} from "node:child_process";
 import {tmpdir} from "node:os";
 import {join, resolve} from "node:path";
+import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
 
 const MAX_TEXT = 12_000;
@@ -60,14 +61,38 @@ async function waitFor(check, description, timeout = 20_000) {
     throw new Error(`Timed out waiting for ${description}.`);
 }
 
-function ownerForGoal(goal) {
-    if (/^Creator|^Blank Blueprint|Game Model/.test(goal)) return "P8-04";
-    if (/narrow viewport/.test(goal)) return "P8-03";
-    if (/^Project tab: (Overview|Play|Simulation|Replay|Build\/Export)|^Created project overview|Build\/Export|Play session|Simulation report|Replay load/.test(goal)) return "P8-05";
+export function ownerForGoal(goal) {
+    if (/^Creator|^Blank Blueprint|^Game Model|^Load existing Blueprint/.test(goal)) return "P8-04";
+    if (/narrow viewport|returns to Design Game/.test(goal)) return "P8-03";
+    if (/^Project tab:|^Created project overview|^Build\/Export|^Play session|^Simulation |^Replay |^Project overview/.test(goal)) return "P8-05";
     return "P8-02";
 }
 
-function validateInventory(record, complete = false) {
+export const REQUIRED_ACTION_COVERAGE = [
+    {id: "managed-project-open", owner: "P8-02"},
+    {id: "managed-project-remove-confirm", owner: "P8-02"},
+    {id: "managed-project-remove-cancel", owner: "P8-02"},
+    {id: "simulation-run", owner: "P8-05"},
+    {id: "replay-load", owner: "P8-05"},
+    {id: "build-generate-outcome-library", owner: "P8-05"},
+    {id: "build-stake-engine-export", owner: "P8-05"},
+];
+
+export function claimCoverageFor(claims, screens, findings) {
+    return claims.map((claim) => {
+        const observedGoals = claim.renderedGoals.filter((goal) => screens.some((screen) => screen.goal === goal));
+        const finding = findings.find((entry) => entry.documentationClaimId === claim.id);
+        return {
+            id: claim.id,
+            owner: claim.owner,
+            observedGoals,
+            status: observedGoals.length === claim.renderedGoals.length ? "observed" : "finding",
+            ...(observedGoals.length === claim.renderedGoals.length ? {} : {findingId: finding?.id}),
+        };
+    });
+}
+
+export function validateInventory(record, complete = false) {
     const owners = new Set(["P8-02", "P8-03", "P8-04", "P8-05", "P8-06", "P8-07"]);
     if (record.schemaVersion !== 3 || !/^[0-9a-f]{40}$/.test(record.provenance.candidateSha ?? "")) {
         throw new Error("Inventory provenance does not satisfy schema version 3.");
@@ -76,14 +101,24 @@ function validateInventory(record, complete = false) {
         throw new Error("Every recorded surface needs an owner, state coverage, and keyboard-focus record.");
     }
     if (!complete) return;
-    if (record.actions.some((action) => !owners.has(action.owner) || typeof action.latencyMs !== "number" || action.visibleResultAt === undefined || action.resultWasFalseBeforeInput !== true || action.visibleResult === undefined)) {
+    if (record.actions.some((action) => !owners.has(action.owner) || action.owner !== ownerForGoal(action.goal) || typeof action.latencyMs !== "number" || action.visibleResultAt === undefined || action.resultWasFalseBeforeInput !== true || action.visibleResult === undefined)) {
         throw new Error("Every recorded action needs an owner, a false-to-true visible result transition, and result timestamp.");
     }
     if (record.findings.some((finding) => !owners.has(finding.owner) || finding.status !== "unreached" || finding.observedBy === undefined)) {
         throw new Error("Every unobserved public capability needs an owned finding.");
     }
-    if (record.claimCoverage.some((claim) => !owners.has(claim.owner) || (claim.status === "finding" && !record.findings.some((finding) => finding.id === claim.findingId)))) {
+    if (record.claimCoverage.some((claim) => {
+        const declared = record.publicDocumentationClaims.claims.find((entry) => entry.id === claim.id);
+        return !declared
+            || !owners.has(claim.owner)
+            || claim.owner !== declared.owner
+            || (claim.status === "observed" && claim.observedGoals.length !== declared.renderedGoals.length)
+            || (claim.status === "finding" && !record.findings.some((finding) => finding.id === claim.findingId && finding.owner === claim.owner && finding.documentationClaimId === claim.id));
+    })) {
         throw new Error("Every public documentation claim needs either an observation or an owned finding.");
+    }
+    if (REQUIRED_ACTION_COVERAGE.some((required) => !record.actions.some((action) => action.coverageId === required.id && action.owner === required.owner) && !record.findings.some((finding) => finding.coverageId === required.id && finding.owner === required.owner))) {
+        throw new Error("Every safely reachable primary action needs its own browser-input record.");
     }
 }
 
@@ -166,12 +201,7 @@ async function main() {
         observedAt: new Date().toISOString(),
         browserErrors: {console: consoleErrors, network: networkErrors},
         publicDocumentationClaims,
-        claimCoverage: publicDocumentationClaims.claims.map((claim) => {
-            const findingByClaim = {"DOC-03": "P8-01-F-IMPORT-DETECT", "DOC-05": "P8-01-F-CONDITIONAL-CAPABILITIES", "DOC-07": "P8-01-F-SIMULATION-TERMINALS"};
-            const observedGoals = claim.renderedGoals.filter((goal) => screens.some((screen) => screen.goal === goal));
-            const findingId = findingByClaim[claim.id];
-            return {id: claim.id, owner: claim.owner, observedGoals, status: findingId === undefined ? "observed" : "finding", findingId};
-        }),
+        claimCoverage: claimCoverageFor(publicDocumentationClaims.claims, screens, findings),
         actions,
         findings,
         screens,
@@ -323,7 +353,7 @@ async function main() {
             await waitFor(result, `${operation.action} visible result`, timeout);
             operation.latencyMs = Date.now() - operation.started;
             const visibleResult = await evaluate("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 400)");
-            actions.push({...operation, owner: ownerForGoal(goal), visibleResult, visibleResultAt: new Date().toISOString(), consoleErrors: [...consoleErrors], networkErrors: [...networkErrors]});
+            actions.push({...operation, goal, owner: ownerForGoal(goal), visibleResult, visibleResultAt: new Date().toISOString(), consoleErrors: [...consoleErrors], networkErrors: [...networkErrors]});
             await snapshot(goal, operation);
         };
         const fill = async (label, value, result) => {
@@ -345,8 +375,24 @@ async function main() {
             note(`ACT rendered-input=${JSON.stringify(label)}`);
             return {action: `enter ${label}`, inputMethod: "CDP mouse + keyboard text", started, resultWasFalseBeforeInput: true};
         };
-        const recordFinding = (id, surface, owner, reason) => {
-            findings.push({id, surface, owner, status: "unreached", observedBy: runId, reason, consoleErrors: [...consoleErrors], networkErrors: [...networkErrors]});
+        const toggleCheckbox = async (label, result) => {
+            await requireFalse(result, `toggle ${label}`);
+            const point = await evaluate(`(() => {
+                const wanted = ${JSON.stringify(label)};
+                const input = [...document.querySelectorAll('input[type=checkbox]')].find((candidate) => candidate.getClientRects().length > 0 && (candidate.labels?.[0]?.innerText ?? '').includes(wanted));
+                if (!input || input.disabled) return null;
+                input.scrollIntoView({block: 'center', inline: 'center'});
+                const rect = input.getBoundingClientRect(); return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+            })()`);
+            if (!point) throw new Error(`Rendered checkbox not found: ${label}`);
+            const started = Date.now();
+            await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, clickCount: 1});
+            await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1});
+            note(`ACT rendered-checkbox=${JSON.stringify(label)}`);
+            return {action: `toggle ${label}`, inputMethod: "CDP mouse", started, resultWasFalseBeforeInput: true};
+        };
+        const recordFinding = (id, surface, owner, reason, documentationClaimId, coverageId) => {
+            findings.push({id, surface, owner, status: "unreached", observedBy: runId, reason, ...(documentationClaimId === undefined ? {} : {documentationClaimId}), ...(coverageId === undefined ? {} : {coverageId}), consoleErrors: [...consoleErrors], networkErrors: [...networkErrors]});
             note(`FINDING id=${id} owner=${owner} reason=${JSON.stringify(reason)}`);
         };
         const renderedText = (value) => evaluate(`(() => {
@@ -398,18 +444,23 @@ async function main() {
         operation = await activate("Use this blueprint", randomBlueprintApplied);
         await observeAction("Creator uses the generated Random Blueprint", operation, randomBlueprintApplied);
         const newBlueprintDialogClosed = () => evaluate("![...document.querySelectorAll('[role=dialog]')].some((element) => element.getClientRects().length > 0)");
-        operation = await pressKey("Escape closes Random Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
-        await observeAction("Creator closes Random Blueprint dialog after use", operation, newBlueprintDialogClosed);
+        if (!await newBlueprintDialogClosed()) {
+            operation = await pressKey("Escape closes Random Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
+            await observeAction("Creator closes Random Blueprint dialog after use", operation, newBlueprintDialogClosed);
+        }
         operation = await activate("New Blueprint", () => renderedActionExists("Discard"));
         await observeAction("Creator is warned before replacing the Random Blueprint", operation, () => renderedActionExists("Discard"));
         operation = await activate("Discard", () => renderedActionExists("Recommended"));
         await observeAction("Creator chooses a replacement Blueprint", operation, () => renderedActionExists("Recommended"));
         operation = await activate("Recommended", () => evaluate("[...document.querySelectorAll('input')].some((input) => (input.labels?.[0]?.innerText ?? '').includes('Game id') && input.value === 'starter-slot')"));
         await observeAction("Creator selects recommended Blueprint after Random use", operation, () => evaluate("[...document.querySelectorAll('input')].some((input) => (input.labels?.[0]?.innerText ?? '').includes('Game id') && input.value === 'starter-slot')"));
-        operation = await pressKey("Escape closes Recommended Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
-        await observeAction("Creator closes Recommended Blueprint dialog", operation, newBlueprintDialogClosed);
+        if (!await newBlueprintDialogClosed()) {
+            operation = await pressKey("Escape closes Recommended Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
+            await observeAction("Creator closes Recommended Blueprint dialog", operation, newBlueprintDialogClosed);
+        }
         operation = await click("Create Project", () => renderedActionExists("Close project"));
         await observeAction("Created project overview", operation, () => renderedActionExists("Close project"), 120_000);
+        await snapshot("Project tab: Overview", operation);
         const tabs = await evaluate("[...document.querySelectorAll('nav[aria-label=Sections] button')].filter((item) => item.getClientRects().length > 0).map((item) => item.innerText.trim())");
         for (const tab of tabs) {
             if (await activeSection(tab)) continue;
@@ -425,18 +476,29 @@ async function main() {
             if (tab === "Simulation") {
                 operation = await fill("Rounds", "2", () => evaluate("[...document.querySelectorAll('input')].some((input) => input.value === '2')"));
                 await observeAction("Simulation round count is entered", operation, () => evaluate("[...document.querySelectorAll('input')].some((input) => input.value === '2')"));
-                recordFinding("P8-01-F-SIMULATION-RUN", "Simulation Run Simulation", "P8-05", "The rendered Run Simulation control is reachable, but this clean headless candidate has no executable simulation capability that produces a visible progress, report, or error transition; the control is retained as an individually owned unavailable-capability finding.");
+                operation = {...await activate("Run Simulation", () => evaluate("[...document.querySelectorAll('[aria-current=step]')].some((element) => (element.textContent ?? '').includes('Run')) || [...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "simulation-run"};
+                await observeAction("Simulation run begins or reports an error", operation, () => evaluate("[...document.querySelectorAll('[aria-current=step]')].some((element) => (element.textContent ?? '').includes('Run')) || [...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"), 120_000);
             }
             if (tab === "Replay") {
-                recordFinding("P8-01-F-REPLAY-LOAD", "Replay Load", "P8-05", "The rendered Replay Load control requires a selected replay source or external replay artifact; the clean run has neither a selectable settled replay nor a supplied artifact, so no result is fabricated.");
+                operation = {...await click("Load", () => renderedText("Round 1, seed")), coverageId: "replay-load"};
+                await observeAction("Replay Load configures a new replay session", operation, () => renderedText("Round 1, seed"));
             }
             if (tab === "Build/Export") {
+                operation = await toggleCheckbox("Bounded coverage", () => evaluate("[...document.querySelectorAll('input[type=checkbox]')].some((input) => input.checked && (input.labels?.[0]?.innerText ?? '').includes('Bounded coverage'))"));
+                await observeAction("Build/Export enables bounded outcome-library coverage", operation, () => evaluate("[...document.querySelectorAll('input[type=checkbox]')].some((input) => input.checked && (input.labels?.[0]?.innerText ?? '').includes('Bounded coverage'))"));
                 const generateLabel = await evaluate("[...document.querySelectorAll('button')].find((button) => button.getClientRects().length > 0 && button.innerText.includes('Generate ') && button.innerText.includes('outcome library'))?.innerText.trim()");
                 if (!generateLabel) throw new Error("Rendered Build/Export outcome-library generation action not found.");
                 const exportLabel = await evaluate("[...document.querySelectorAll('button')].find((button) => button.getClientRects().length > 0 && button.innerText.includes('Run Stake Engine Export'))?.innerText.trim()");
                 if (!exportLabel) throw new Error("Rendered Build/Export Stake Engine export action not found.");
-                recordFinding("P8-01-F-BUILD-GENERATE-OUTCOME-LIBRARY", `Build/Export ${generateLabel}`, "P8-05", "The clean Blueprint project exposes outcome-library generation but lacks the executable runtime capability needed to produce a generated-library result; no synthetic build result is recorded.");
-                recordFinding("P8-01-F-BUILD-STAKE-EXPORT", `Build/Export ${exportLabel}`, "P8-05", "The clean Blueprint project exposes Stake Engine export but no generated outcome-library artifact is available to export; no synthetic artifact is recorded.");
+                operation = {...await activate(generateLabel, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-generate-outcome-library"};
+                await observeAction("Build/Export begins outcome-library generation or reports an error", operation, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
+                await waitFor(() => renderedActionExists(exportLabel), "enabled Stake Engine export after outcome-library generation", 120_000);
+                operation = {...await activate(exportLabel, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-stake-engine-export"};
+                try {
+                    await observeAction("Build/Export begins Stake Engine export or reports an error", operation, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
+                } catch (error) {
+                    recordFinding("P8-01-F-BUILD-STAKE-EXPORT-NO-VISIBLE-RESULT", `Build/Export ${exportLabel}`, "P8-05", `CDP keyboard activation was delivered, but the enabled control produced no rendered loading, success, or error result within the bounded observation window: ${error.message}`, undefined, "build-stake-engine-export");
+                }
             }
         }
         await setViewport(405, 800, "narrow");
@@ -450,16 +512,30 @@ async function main() {
         await observeAction("Home after closing a project", operation, () => renderedText("Design Your Game"));
         operation = await click("Projects", () => activeSection("Projects"));
         await observeAction("Projects registry after creating a project", operation, () => activeSection("Projects"));
-        recordFinding("P8-01-F-MANAGED-PROJECT-OPEN", "Managed project Open", "P8-02", "The clean browser run reaches an Available managed-project Open control, but the isolated headless Studio instance cannot reopen that filesystem-backed managed project into a visible workspace result; no synthetic project-open result is recorded.");
-        recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove", "P8-02", "The visible Remove action is intentionally not activated in the clean run because its destructive confirmation would delete the newly-created managed project; it is separately inventoried for its owner.");
+        operation = {...await click("Open", () => renderedActionExists("Close project")), coverageId: "managed-project-open"};
+        try {
+            await observeAction("Managed project Open opens the project workspace", operation, () => renderedActionExists("Close project"));
+            operation = await click("Close project", () => renderedActionExists("Confirm"));
+            await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
+            operation = await click("Confirm", () => renderedText("Design Your Game"));
+            await observeAction("Home after closing managed project", operation, () => renderedText("Design Your Game"));
+            operation = await click("Projects", () => activeSection("Projects"));
+            await observeAction("Projects registry after opening managed project", operation, () => activeSection("Projects"));
+        } catch (error) {
+            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", `CDP mouse input was delivered, but the enabled managed-project Open control produced no workspace, loading, or error result within the bounded observation window: ${error.message}`, undefined, "managed-project-open");
+        }
+        operation = {...await activate("Remove", () => renderedActionExists("Cancel")), coverageId: "managed-project-remove-confirm"};
+        await observeAction("Managed project Remove opens a non-destructive confirmation", operation, () => renderedActionExists("Cancel"));
+        operation = {...await activate("Cancel", () => !renderedActionExists("Cancel")), coverageId: "managed-project-remove-cancel"};
+        await observeAction("Managed project Remove is cancelled", operation, () => !renderedActionExists("Cancel"));
         recordFinding("P8-01-F-IMPORT-NATIVE-PICKER", "Import Project host native picker", "P8-02", "The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result.");
-        recordFinding("P8-01-F-IMPORT-DETECT", "Import Project Detect", "P8-02", "Detect requires a user-provided package, outcome library, export, blueprint, or PAR-sheet path; the clean run does not fabricate an external artifact.");
+        recordFinding("P8-01-F-IMPORT-DETECT", "Import Project Detect", "P8-02", "Detect requires a user-provided package, outcome library, export, blueprint, or PAR-sheet path; the clean run does not fabricate an external artifact.", "DOC-03");
         recordFinding("P8-01-F-IMPORT-REGISTER", "Import Project Register", "P8-02", "Register is offered only after a successful detection of a user-provided external artifact, which is unavailable in this clean run.");
         recordFinding("P8-01-F-IMPORT-OPEN", "Import Project Open imported project", "P8-02", "Open is offered only after registration of a detected external artifact, which is unavailable in this clean run.");
         recordFinding("P8-01-F-REOPEN-PERSISTENCE", "Reopen Studio and persisted project/artifact state", "P8-02", "This bounded run proves the in-session registry after creation, but does not restart Studio because that would turn the independent clean-profile run into a seeded profile.");
         recordFinding("P8-01-F-TRANSIENT-LOADING", "Transient loading state capture", "P8-06", "Fast local responses did not leave a rendered loading state long enough for a browser observation; no loading state is claimed as covered.");
-        recordFinding("P8-01-F-CONDITIONAL-CAPABILITIES", "Certification and Provably Fair capability-gated tabs", "P8-05", "The created Blueprint did not expose runtime/outcome-library capabilities, so the public conditional tabs were not observed.");
-        recordFinding("P8-01-F-SIMULATION-TERMINALS", "Cancelled and failed simulation outcomes", "P8-05", "No public failure or cancellation trigger was available from the clean Blueprint run; no terminal state is claimed as covered.");
+        recordFinding("P8-01-F-CONDITIONAL-CAPABILITIES", "Certification and Provably Fair capability-gated tabs", "P8-05", "The created Blueprint did not expose runtime/outcome-library capabilities, so the public conditional tabs were not observed.", "DOC-05");
+        recordFinding("P8-01-F-SIMULATION-TERMINALS", "Cancelled and failed simulation outcomes", "P8-05", "No public failure or cancellation trigger was available from the clean Blueprint run; no terminal state is claimed as covered.", "DOC-07");
         recordFinding("P8-01-F-REPLAY-ARTIFACT-INPUT", "Replay Artifact validation/load", "P8-05", "Replay Artifact requires a user-provided exported replay JSON; the clean run exercises seed replay instead of inventing an artifact.");
         recordFinding("P8-01-F-REPLAY-ARTIFACT-TERMINALS", "Replay artifact failure and recovery outcomes", "P8-05", "No public malformed or incompatible artifact was supplied to induce a failure; no artifact terminal state is claimed as covered.");
         recordFinding("P8-01-F-BUILD-OPEN-OUTPUT-FOLDER", "Build/Export Open output folder", "P8-05", "The post-build control delegates to the host-native file manager, which is unavailable in headless Chromium.");
@@ -476,7 +552,9 @@ async function main() {
     }
 }
 
-main().catch((error) => {
-    process.stderr.write(`${error.stack ?? error}\n`);
-    process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    main().catch((error) => {
+        process.stderr.write(`${error.stack ?? error}\n`);
+        process.exitCode = 1;
+    });
+}
