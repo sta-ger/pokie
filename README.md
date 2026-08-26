@@ -61,8 +61,8 @@ POKIE goes well beyond classic paylines:
   interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead); `npx pokie
   init [directory]` prepares an immediately valid game package in place, entirely non-interactively; `npx pokie
   sim <packageRoot>` runs a simulation against a package and reports RTP/hit-frequency/max-win; `npx pokie
-  validate <packageRoot>`
-  checks a package's contract without playing it; `npx pokie report <simulationReportJson>` renders a `pokie sim`
+  validate <project>` checks a game package, Blueprint JSON file, or outcome-library bundle without playing it
+  (`--deep` adds outcome checks only for outcome-library bundles); `npx pokie report <simulationReportJson>` renders a `pokie sim`
   report (including reproducibility info, warnings, and recommendations) as Markdown/HTML; `npx pokie diff
   <leftReportJson> <rightReportJson>` compares two `pokie sim` reports
   (e.g. before/after a config change); `npx pokie replay <packageRoot>` best-effort replays a single round (by
@@ -191,10 +191,14 @@ To design an editable Blueprint Project instead, use `npx pokie create <name>` i
 `npx pokie create <name> --blank` / `npx pokie create <name> --random` non-interactively. Each command has its own
 complete grammar through `npx pokie <command> --help`.
 
-Then check a package's contract without playing it:
+Validate a package, Blueprint JSON file, or outcome-library bundle without playing it. It returns exit code 0 when
+valid and 1 otherwise; use `--format json` for CI-friendly JSON output. `--deep` applies only to outcome-library
+bundles:
 
 ```
 npx pokie validate .
+npx pokie validate game.blueprint.json
+npx pokie validate outcomes --deep
 ```
 
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`

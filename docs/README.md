@@ -99,8 +99,9 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     result into `pokie build <file> --target tsPackage --out <dir>` for a real, playable package;
     deterministic, offline-generated slot game name(s) (via `SlotGameNameGenerator`) without building anything;
     `pokie sim <packageRoot>`, which runs a simulation against one and reports
-    RTP/hit-frequency/max-win; `pokie validate <packageRoot>`, which checks the `PokieGame` contract without
-    playing it; `pokie inspect <packageRoot>`, which prints a generated package's provenance (game, blueprint
+    RTP/hit-frequency/max-win; `pokie validate <project>`, which checks a game package, Blueprint JSON file, or
+    outcome-library bundle without playing it, emits JSON with `--format json`, exits 0 when valid and 1 otherwise,
+    and applies `--deep` only to outcome-library bundles; `pokie inspect <packageRoot>`, which prints a generated package's provenance (game, blueprint
     hash, source, timestamp, `pokie` version) from `package.json`/`build-info.json` without running it; `pokie
     report <projectOrSimulationReportJson>`, which renders a `pokie sim --out` report as Markdown or HTML, or
     inspects an Outcome Library Bundle or Stake adapter project through its canonical reader; `pokie diff
@@ -124,7 +125,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     which diffs two such directories' analyses (added/removed modes, aggregate metrics, event classification
     categories); `pokie
     export <config.json> --to outcomes`, which builds a canonical Outcome Library Bundle from one or more
-    `WeightedOutcomeLibrary` JSON files; `pokie validate <bundleDir>`, which validates one; `pokie
+    `WeightedOutcomeLibrary` JSON files; `pokie validate <project>`, which validates a game package, Blueprint JSON
+    file, or outcome-library bundle (`--deep` applies only to outcome-library bundles); `pokie
     certification build <bundleDir> <config.json>`, which builds a certification/evidence bundle on top of an
     Outcome Library Bundle; `pokie certification verify <certDir>`, which verifies one against its live source
     bundle; `pokie fairness seed-commit <serverSeed.txt>`/`commit`/`reveal`/`verify`, the full Provably Fair
