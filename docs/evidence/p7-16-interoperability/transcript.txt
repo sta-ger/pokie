@@ -1,0 +1,441 @@
+P7-16 installed public-CLI interoperability rerun (machine-generated transcript; no artifact outputs were manually edited)
+candidate_sha=6d42c3bee6ee71dccfea0bcb868b701c468818d3
+packed_tarball_sha256=5a394004d27bc702de8bdb6fc38e2b45e90701eeef252c86b4c070fc70702555
+installed_cli=/tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie
+node=v24.18.0; npm=11.16.0
+Documentation consulted before the run: docs/cli.md sections “pokie par import / pokie par export” and “pokie import / report / stakeengine diff”.
+canonical_blueprint_sha256=3873dde030ece1b7f96151bbac68263d2ef28e5c1db2e61c624f298eb7cd9d1b
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie --version 
+exit=0
+1.3.0
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie par export /tmp/p7-16-installed-cli-yL7agD/work/canonical.blueprint.json --out /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX 
+exit=0
+Exported "/tmp/p7-16-installed-cli-yL7agD/work/canonical.blueprint.json" to "/tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX".
+  warning  blueprint-weighting-pay-mismatch: "A" pays more than "K" (10x vs 6x at a full line) but isn't rarer in "reelStrips" (weight 8 vs 8) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+    suggestion: Lower "A"'s weight relative to "K" in "reelStrips", or rebalance the paytable so payout roughly tracks rarity.
+  warning  blueprint-weighting-pay-mismatch: "K" pays more than "Q" (6x vs 3x at a full line) but isn't rarer in "reelStrips" (weight 8 vs 8) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+    suggestion: Lower "K"'s weight relative to "Q" in "reelStrips", or rebalance the paytable so payout roughly tracks rarity.
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie par import /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX --out /tmp/p7-16-installed-cli-yL7agD/work/direct.readback.json --format json 
+exit=0
+{
+    "blueprint": {
+        "manifest": {
+            "id": "par-sheet-starter",
+            "name": "PAR Sheet Starter",
+            "version": "0.1.0",
+            "description": "A pokie par export/import example: 3x3, a wild, literal reel strips, and 3 horizontal paylines."
+        },
+        "reels": 3,
+        "rows": 3,
+        "symbols": [
+            "A",
+            "K",
+            "Q",
+            "W"
+        ],
+        "paytable": {
+            "A": {
+                "3": 10
+            },
+            "K": {
+                "3": 6
+            },
+            "Q": {
+                "3": 3
+            }
+        },
+        "wilds": [
+            "W"
+        ],
+        "reelStrips": [
+            [
+                "A",
+                "K",
+                "Q",
+                "K",
+                "A",
+                "Q",
+                "K",
+                "Q",
+                "W"
+            ],
+            [
+                "K",
+                "Q",
+                "A",
+                "Q",
+                "K",
+                "A",
+                "Q",
+                "A",
+                "W"
+            ],
+            [
+                "Q",
+                "A",
+                "K",
+                "A",
+                "Q",
+                "K",
+                "A",
+                "K",
+                "W"
+            ]
+        ],
+        "paylines": [
+            [
+                0,
+                0,
+                0
+            ],
+            [
+                1,
+                1,
+                1
+            ],
+            [
+                2,
+                2,
+                2
+[output clipped after 80 lines]
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie export /tmp/p7-16-installed-cli-yL7agD/work/canonical.blueprint.json --to workbook --out /tmp/p7-16-installed-cli-yL7agD/work/generic.PAR.XLSX 
+exit=0
+Exported "/tmp/p7-16-installed-cli-yL7agD/work/canonical.blueprint.json" to "/tmp/p7-16-installed-cli-yL7agD/work/generic.PAR.XLSX".
+  warning  blueprint-weighting-pay-mismatch: "A" pays more than "K" (10x vs 6x at a full line) but isn't rarer in "reelStrips" (weight 8 vs 8) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+    suggestion: Lower "A"'s weight relative to "K" in "reelStrips", or rebalance the paytable so payout roughly tracks rarity.
+  warning  blueprint-weighting-pay-mismatch: "K" pays more than "Q" (6x vs 3x at a full line) but isn't rarer in "reelStrips" (weight 8 vs 8) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+    suggestion: Lower "K"'s weight relative to "Q" in "reelStrips", or rebalance the paytable so payout roughly tracks rarity.
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie import /tmp/p7-16-installed-cli-yL7agD/work/generic.PAR.XLSX --out /tmp/p7-16-installed-cli-yL7agD/work/generic.readback.json 
+exit=0
+Imported "/tmp/p7-16-installed-cli-yL7agD/work/generic.PAR.XLSX"
+  game             PAR Sheet Starter (id: "par-sheet-starter", v0.1.0)
+  reels x rows     3 x 3
+  symbols          4
+
+Warnings (3):
+  - parsheet-provenance-present: This file was exported by pokie v1.3.0 on 2026-08-26T10:29:43.839Z, and its recorded hash matches the imported data.
+  - blueprint-weighting-pay-mismatch: "A" pays more than "K" (10x vs 6x at a full line) but isn't rarer in "reelStrips" (weight 8 vs 8) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+    suggestion: Lower "A"'s weight relative to "K" in "reelStrips", or rebalance the paytable so payout roughly tracks rarity.
+  - blueprint-weighting-pay-mismatch: "K" pays more than "Q" (6x vs 3x at a full line) but isn't rarer in "reelStrips" (weight 8 vs 8) — a higher-paying symbol landing this often will inflate RTP well beyond what the paytable alone suggests.
+    suggestion: Lower "K"'s weight relative to "Q" in "reelStrips", or rebalance the paytable so payout roughly tracks rarity.
+
+Wrote blueprint to "/tmp/p7-16-installed-cli-yL7agD/work/generic.readback.json".
+
+$ node --input-type=module -e import\ fs\ from\ \"node:fs\"\;\ import\ \{isDeepStrictEqual\}\ from\ \"node:util\"\;\ const\ d=process.argv.slice\(1\).map\(p=\>JSON.parse\(fs.readFileSync\(p\,\"utf8\"\)\)\)\;\ const\ ok=d.slice\(1\).every\(x=\>isDeepStrictEqual\(d\[0\]\,x\)\)\;\ console.log\(\`semantic_blueprint_readback=\$\{ok\}\`\)\;\ console.log\(\`id=\$\{d\[0\].manifest.id\}\;\ reels=\$\{d\[0\].reels\}\;\ rows=\$\{d\[0\].rows\}\;\ symbols=\$\{d\[0\].symbols.join\(\"\,\"\)\}\;\ reelStripLengths=\$\{d\[0\].reelStrips.map\(r=\>r.length\).join\(\"\,\"\)\}\;\ availableBets=\$\{d\[0\].availableBets.join\(\"\,\"\)\}\`\)\;\ process.exitCode=ok\?0:1\; /tmp/p7-16-installed-cli-yL7agD/work/canonical.blueprint.json /tmp/p7-16-installed-cli-yL7agD/work/direct.readback.json /tmp/p7-16-installed-cli-yL7agD/work/generic.readback.json 
+exit=0
+semantic_blueprint_readback=true
+id=par-sheet-starter; reels=3; rows=3; symbols=A,K,Q,W; reelStripLengths=9,9,9; availableBets=1,2,5
+
+$ sha256sum /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX /tmp/p7-16-installed-cli-yL7agD/work/generic.PAR.XLSX /tmp/p7-16-installed-cli-yL7agD/work/direct.readback.json /tmp/p7-16-installed-cli-yL7agD/work/generic.readback.json 
+exit=0
+d925337df3f34d4183bca0cfc20b61f64b7087fec00ac6f8ac6a51575cb36842  /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX
+4dda1fecc05edbfd35eb08b256ae57dbaad7f2cf6a3b14dde51468d0c4c78c50  /tmp/p7-16-installed-cli-yL7agD/work/generic.PAR.XLSX
+b9cd4d21138deb08a42ef907eaf5b0ca89c0598277200774a988391b59b1e6f2  /tmp/p7-16-installed-cli-yL7agD/work/direct.readback.json
+b9cd4d21138deb08a42ef907eaf5b0ca89c0598277200774a988391b59b1e6f2  /tmp/p7-16-installed-cli-yL7agD/work/generic.readback.json
+
+$ unzip -t /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX 
+exit=0
+Archive:  /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX
+    testing: [Content_Types].xml      OK
+    testing: _rels/                   OK
+    testing: _rels/.rels              OK
+    testing: xl/                      OK
+    testing: xl/_rels/                OK
+    testing: xl/_rels/workbook.xml.rels   OK
+    testing: xl/worksheets/           OK
+    testing: xl/worksheets/sheet1.xml   OK
+    testing: xl/worksheets/sheet2.xml   OK
+    testing: xl/worksheets/sheet3.xml   OK
+    testing: xl/worksheets/sheet4.xml   OK
+    testing: xl/worksheets/sheet5.xml   OK
+    testing: xl/worksheets/sheet6.xml   OK
+    testing: xl/worksheets/sheet7.xml   OK
+    testing: xl/sharedStrings.xml     OK
+    testing: xl/theme/                OK
+    testing: xl/theme/theme1.xml      OK
+    testing: xl/styles.xml            OK
+    testing: docProps/                OK
+    testing: docProps/app.xml         OK
+    testing: docProps/core.xml        OK
+    testing: xl/workbook.xml          OK
+No errors detected in compressed data of /tmp/p7-16-installed-cli-yL7agD/work/direct.PAR.XLSX.
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie par import /tmp/p7-16-installed-cli-yL7agD/work/malformed-workbook.xlsx --out /tmp/p7-16-installed-cli-yL7agD/work/malformed-output.json 
+exit=1
+Could not read "/tmp/p7-16-installed-cli-yL7agD/work/malformed-workbook.xlsx" as a PAR sheet XLSX workbook: Corrupted zip: can't find end of central directory
+
+$ test \! -e /tmp/p7-16-installed-cli-yL7agD/work/malformed-output.json 
+exit=0
+stake_input_library_sha256=07e3f5622df77371d73096929c7d53c949a205d89ae55bc66b706467f5ffd56f
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie stakeengine export /tmp/p7-16-installed-cli-yL7agD/work/stake-config.json --out /tmp/p7-16-installed-cli-yL7agD/work/stake-direct 
+exit=0
+Exported "/tmp/p7-16-installed-cli-yL7agD/work/stake-config.json" to "/tmp/p7-16-installed-cli-yL7agD/work/stake-direct":
+  wrote  lookup_base.csv
+  wrote  books_base.jsonl.zst
+  wrote  index.json
+  wrote  pokie-manifest.json
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie stakeengine import /tmp/p7-16-installed-cli-yL7agD/work/stake-direct --out /tmp/p7-16-installed-cli-yL7agD/work/reconstructed-direct 
+exit=0
+Imported "/tmp/p7-16-installed-cli-yL7agD/work/stake-direct" to "/tmp/p7-16-installed-cli-yL7agD/work/reconstructed-direct":
+  wrote  config.json
+  wrote  libraries/base.json
+  wrote  source-provenance.json
+  info  stakeengine-import-library-hash-differs-from-manifest: mode "base": the reconstructed library's hash is expected to differ from pokie-manifest.json's recorded libraryHash (sha256:35ced5cd8eed98ff2291160fe1b2b6c553598fd917349365b36fcb9231805e45) — roundId, the real win breakdown, and provenance.pokieVersion are not recoverable from the Stake export and are substituted (see docs/stake-engine-import.md).
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie export /tmp/p7-16-installed-cli-yL7agD/work/stake-config.json --to adapter --out /tmp/p7-16-installed-cli-yL7agD/work/stake-generic 
+exit=0
+Exported "/tmp/p7-16-installed-cli-yL7agD/work/stake-config.json" to "/tmp/p7-16-installed-cli-yL7agD/work/stake-generic":
+  wrote  lookup_base.csv
+  wrote  books_base.jsonl.zst
+  wrote  index.json
+  wrote  pokie-manifest.json
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie import /tmp/p7-16-installed-cli-yL7agD/work/stake-generic --out /tmp/p7-16-installed-cli-yL7agD/work/reconstructed-generic 
+exit=0
+Imported "/tmp/p7-16-installed-cli-yL7agD/work/stake-generic" to "/tmp/p7-16-installed-cli-yL7agD/work/reconstructed-generic":
+  wrote  config.json
+  wrote  libraries/base.json
+  wrote  source-provenance.json
+  info  stakeengine-import-library-hash-differs-from-manifest: mode "base": the reconstructed library's hash is expected to differ from pokie-manifest.json's recorded libraryHash (sha256:35ced5cd8eed98ff2291160fe1b2b6c553598fd917349365b36fcb9231805e45) — roundId, the real win breakdown, and provenance.pokieVersion are not recoverable from the Stake export and are substituted (see docs/stake-engine-import.md).
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie stakeengine export /tmp/p7-16-installed-cli-yL7agD/work/reconstructed-direct/config.json --out /tmp/p7-16-installed-cli-yL7agD/work/stake-republished 
+exit=0
+Exported "/tmp/p7-16-installed-cli-yL7agD/work/reconstructed-direct/config.json" to "/tmp/p7-16-installed-cli-yL7agD/work/stake-republished":
+  wrote  lookup_base.csv
+  wrote  books_base.jsonl.zst
+  wrote  index.json
+  wrote  pokie-manifest.json
+
+$ node --input-type=module -e import\ fs\ from\ \"node:fs\"\;\ import\ \{isDeepStrictEqual\}\ from\ \"node:util\"\;\ const\ a=JSON.parse\(fs.readFileSync\(process.argv\[1\]\,\"utf8\"\)\)\,\ b=JSON.parse\(fs.readFileSync\(process.argv\[2\]\,\"utf8\"\)\)\;\ const\ c=JSON.parse\(fs.readFileSync\(process.argv\[3\]\,\"utf8\"\)\)\;\ const\ ok=a.modes.length===1\&\&b.modes.length===1\&\&c.modes.length===1\&\&b.modes\[0\].modeName===\"base\"\&\&c.modes\[0\].modeName===\"base\"\;\ console.log\(\`stake_reconstruction_descriptors_valid=\$\{ok\}\`\)\;\ console.log\(\`direct_mode=\$\{b.modes\[0\].modeName\}\;\ generic_mode=\$\{c.modes\[0\].modeName\}\;\ cost=1\`\)\;\ process.exitCode=ok\?0:1\; /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/pokie-manifest.json /tmp/p7-16-installed-cli-yL7agD/work/reconstructed-direct/config.json /tmp/p7-16-installed-cli-yL7agD/work/reconstructed-generic/config.json 
+exit=0
+stake_reconstruction_descriptors_valid=true
+direct_mode=base; generic_mode=base; cost=1
+
+$ sha256sum /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/index.json /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/lookup_base.csv /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/books_base.jsonl.zst /tmp/p7-16-installed-cli-yL7agD/work/stake-republished/index.json /tmp/p7-16-installed-cli-yL7agD/work/stake-republished/lookup_base.csv /tmp/p7-16-installed-cli-yL7agD/work/stake-republished/books_base.jsonl.zst 
+exit=0
+57e19f4de9b88cc3e45e7a5a2f11e0940b465ff9e09a5e1553d58b384807a5d5  /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/index.json
+fba560352a58f4d1cf525fda438ae639f5c65703fd54347ec22766f186ca0270  /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/lookup_base.csv
+c805eb0cae541241d008b385ec427322cc2ca9803137662950f49be79ae92e50  /tmp/p7-16-installed-cli-yL7agD/work/stake-direct/books_base.jsonl.zst
+57e19f4de9b88cc3e45e7a5a2f11e0940b465ff9e09a5e1553d58b384807a5d5  /tmp/p7-16-installed-cli-yL7agD/work/stake-republished/index.json
+fba560352a58f4d1cf525fda438ae639f5c65703fd54347ec22766f186ca0270  /tmp/p7-16-installed-cli-yL7agD/work/stake-republished/lookup_base.csv
+c805eb0cae541241d008b385ec427322cc2ca9803137662950f49be79ae92e50  /tmp/p7-16-installed-cli-yL7agD/work/stake-republished/books_base.jsonl.zst
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie report /tmp/p7-16-installed-cli-yL7agD/work/stake-direct --format json 
+exit=0
+{
+    "rootPath": "/tmp/p7-16-installed-cli-yL7agD/work/stake-direct",
+    "descriptor": {
+        "kind": "stakeEngine",
+        "streaming": false,
+        "limitations": [
+            "Reads an entire mode's own lookup CSV and books into memory at once, never a single-outcome random-access read.",
+            "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundArtifact-shaped step model or a pokie-manifest.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
+            "Never re-derives or recovers the game model/blueprint that produced these outcomes."
+        ]
+    },
+    "issues": [],
+    "modes": [
+        {
+            "modeName": "base",
+            "analysis": {
+                "modeName": "base",
+                "cost": 1,
+                "outcomeCount": 1,
+                "totalWeight": 1,
+                "rtp": 0,
+                "hitFrequency": 0,
+                "zeroWinFrequency": 1,
+                "variance": 0,
+                "standardDeviation": 0,
+                "maxPayoutMultiplier": 0,
+                "maxRatio": 0,
+                "maxWinProbability": 1,
+                "nonInvertibleRatioCount": 0,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "weight": 1,
+                        "ratio": 0,
+                        "probability": 1
+                    }
+                ],
+                "eventClassificationBreakdown": [
+                    {
+                        "category": "finalWin",
+                        "occurrenceFrequency": 1,
+                        "averageOccurrencesPerOutcome": 1
+                    },
+                    {
+                        "category": "reveal",
+                        "occurrenceFrequency": 1,
+                        "averageOccurrencesPerOutcome": 1
+                    }
+                ]
+            }
+        }
+    ]
+}
+
+$ test \! -e /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/pokie-manifest.json 
+exit=0
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie stakeengine analyze /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake --format json 
+exit=0
+{
+    "stakeDir": "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake",
+    "issues": [],
+    "analysis": {
+        "stakeDir": "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake",
+        "modes": [
+            {
+                "modeName": "base",
+                "cost": 1,
+                "outcomeCount": 2,
+                "totalWeight": 1000,
+                "rtp": 0.15000000000000002,
+                "hitFrequency": 0.1,
+                "zeroWinFrequency": 0.9,
+                "variance": 0.20250000000000004,
+                "standardDeviation": 0.45000000000000007,
+                "maxPayoutMultiplier": 150,
+                "maxRatio": 1.5,
+                "maxWinProbability": 0.1,
+                "nonInvertibleRatioCount": 0,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "weight": 900,
+                        "ratio": 0,
+                        "probability": 0.9
+                    },
+                    {
+                        "payoutMultiplier": 150,
+                        "weight": 100,
+                        "ratio": 1.5,
+                        "probability": 0.1
+                    }
+                ],
+                "eventClassificationBreakdown": [
+                    {
+                        "category": "feature",
+                        "occurrenceFrequency": 1,
+                        "averageOccurrencesPerOutcome": 1
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie report /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake --format json 
+exit=1
+Could not read simulation report at "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake": EISDIR: illegal operation on a directory, read
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie stakeengine diff /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake --format json 
+exit=0
+{
+    "stakeDir": {
+        "left": "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake",
+        "right": "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake"
+    },
+    "issues": {
+        "left": [],
+        "right": []
+    },
+    "diff": {
+        "stakeDir": {
+            "left": "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake",
+            "right": "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake"
+        },
+        "perMode": {
+            "base": {
+                "rtp": {
+                    "left": 0.15000000000000002,
+                    "right": 0.15000000000000002,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "hitFrequency": {
+                    "left": 0.1,
+                    "right": 0.1,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "zeroWinFrequency": {
+                    "left": 0.9,
+                    "right": 0.9,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "variance": {
+                    "left": 0.20250000000000004,
+                    "right": 0.20250000000000004,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "standardDeviation": {
+                    "left": 0.45000000000000007,
+                    "right": 0.45000000000000007,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "maxPayoutMultiplier": {
+                    "left": 150,
+                    "right": 150,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "maxRatio": {
+                    "left": 1.5,
+                    "right": 1.5,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "maxWinProbability": {
+                    "left": 0.1,
+                    "right": 0.1,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "nonInvertibleRatioCount": {
+                    "left": 0,
+                    "right": 0,
+                    "delta": 0,
+                    "percentDelta": null
+                },
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "left": 0.9,
+                        "right": 0.9
+                    },
+                    {
+                        "payoutMultiplier": 150,
+                        "left": 0.1,
+                        "right": 0.1
+[output clipped after 80 lines]
+
+$ /tmp/p7-16-installed-cli-yL7agD/consumer/node_modules/.bin/pokie import /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake --out /tmp/p7-16-installed-cli-yL7agD/work/foreign-reconstruction 
+exit=1
+Could not import "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake" (3 error(s)):
+  - stakeengine-import-mode-filename-mismatch: mode "base"'s "events" filename ("vendor-books.zst") must be exactly "books_base.jsonl.zst" — Stake's own naming convention, derived from the mode's name.
+  - stakeengine-import-mode-filename-mismatch: mode "base"'s "weights" filename ("vendor-lookup.csv") must be exactly "lookup_base.csv" — Stake's own naming convention, derived from the mode's name.
+  - stakeengine-import-manifest-missing: "/tmp/p7-16-installed-cli-yL7agD/work/foreign-stake" has no pokie-manifest.json — import only ever round-trips a directory "pokie stakeengine export" itself produced.
+
+$ test \! -e /tmp/p7-16-installed-cli-yL7agD/work/foreign-reconstruction 
+exit=0
+
+$ sha256sum /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/index.json /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/vendor-lookup.csv /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/vendor-books.zst 
+exit=0
+1c6ff1f518f54995cafda3d71ee3446bdf78c605e7a70a29a5f0398946b5ff7b  /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/index.json
+79f2a8e02793e86e0f414a83304999a18ac982b2604962f4bc484892b031357b  /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/vendor-lookup.csv
+c1fec165650a1180776488409194c273c38b4fb1e890f69de5117856651f1990  /tmp/p7-16-installed-cli-yL7agD/work/foreign-stake/vendor-books.zst
+
+End of generated transcript.
