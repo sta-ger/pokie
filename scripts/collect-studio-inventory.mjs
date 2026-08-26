@@ -447,8 +447,12 @@ async function main() {
         await observeAction("Creator uses the generated Random Blueprint", operation, randomBlueprintApplied);
         const newBlueprintDialogClosed = () => evaluate("![...document.querySelectorAll('[role=dialog]')].some((element) => element.getClientRects().length > 0)");
         if (!await newBlueprintDialogClosed()) {
-            operation = await pressKey("Escape closes Random Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
-            await observeAction("Creator closes Random Blueprint dialog after use", operation, newBlueprintDialogClosed);
+            try {
+                operation = await pressKey("Escape closes Random Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
+                await observeAction("Creator closes Random Blueprint dialog after use", operation, newBlueprintDialogClosed);
+            } catch (error) {
+                if (!String(error.message).includes("result was already visible")) throw error;
+            }
         }
         operation = await activate("New Blueprint", () => renderedActionExists("Discard"));
         await observeAction("Creator is warned before replacing the Random Blueprint", operation, () => renderedActionExists("Discard"));
@@ -457,8 +461,12 @@ async function main() {
         operation = await activate("Recommended", () => evaluate("[...document.querySelectorAll('input')].some((input) => (input.labels?.[0]?.innerText ?? '').includes('Game id') && input.value === 'starter-slot')"));
         await observeAction("Creator selects recommended Blueprint after Random use", operation, () => evaluate("[...document.querySelectorAll('input')].some((input) => (input.labels?.[0]?.innerText ?? '').includes('Game id') && input.value === 'starter-slot')"));
         if (!await newBlueprintDialogClosed()) {
-            operation = await pressKey("Escape closes Recommended Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
-            await observeAction("Creator closes Recommended Blueprint dialog", operation, newBlueprintDialogClosed);
+            try {
+                operation = await pressKey("Escape closes Recommended Blueprint dialog", "Escape", "Escape", 27, newBlueprintDialogClosed);
+                await observeAction("Creator closes Recommended Blueprint dialog", operation, newBlueprintDialogClosed);
+            } catch (error) {
+                if (!String(error.message).includes("result was already visible")) throw error;
+            }
         }
         operation = await click("Create Project", () => renderedActionExists("Close project"));
         await observeAction("Created project overview", operation, () => renderedActionExists("Close project"), 120_000);
