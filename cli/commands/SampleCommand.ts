@@ -16,10 +16,22 @@ export class SampleCommand implements CliCommandHandling {
     }
 
     public getCommanderCommand(): Command {
-        return this.outcomeSource.getCommanderCommand().commands.find((command) => command.name() === "sample")!;
+        const command = this.outcomeSource.getCommanderCommand().commands.find((candidate) => candidate.name() === "sample")!;
+        command.parent = null;
+        command.name("sample");
+        return command;
     }
 
-    public run(args: string[]): Promise<number> {
-        return this.outcomeSource.run(["sample", ...args]);
+    public async run(args: string[]): Promise<number> {
+        if (args.includes("--help") || args.includes("-h")) {
+            console.log(this.getCommanderCommand().helpInformation());
+            return 0;
+        }
+        try {
+            return await this.outcomeSource.run(["sample", ...args]);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(message.replace(/pokie outcomesource sample/g, "pokie sample"));
+        }
     }
 }

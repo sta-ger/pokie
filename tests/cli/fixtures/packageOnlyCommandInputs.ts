@@ -27,9 +27,8 @@ export type PackageOnlyCommandInput = {
     primaryInput: string;
 };
 
-// One entry per (command, verb) pair in CLI_COMMAND_DESCRIPTORS (tests/cli/fixtures/cliCommandInventory.ts) --
-// coverage of that full set is asserted by tests/cli/packageOnlyCommandInputs.contract.test.ts, so this
-// list can't silently drift out of sync with a future command/verb addition, rename, or removal.
+// One entry per public command invocation variant. Private handler parser coverage belongs to
+// cliCommandInventory.contract.test.ts and is intentionally not represented here as public CLI surface.
 export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     // --- build: builds/republishes an artifact from a resolved POKIE project; never reads an existing package
     // as its own input (a "tsPackage" target only ever writes one, never reads one back). ---
@@ -39,9 +38,10 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "certification", verb: "build", requiresLoadablePackage: false, primaryInput: "bundleDir (an Outcome Library Bundle) + config.json"},
     {command: "certification", verb: "verify", requiresLoadablePackage: false, primaryInput: "certDir (a certification evidence bundle) + --source bundleDir"},
 
-    // --- client/dev/inspect/replay/serve/sim/validate + outcomelibrary generate: package-only. ---
+    // --- client/dev/generate/inspect/replay/serve/sim: package-only. ---
     {command: "client", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
     {command: "dev", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
+    {command: "generate", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 
     // --- create: writes an editable Blueprint Project (a GameBlueprint JSON file); never reads a package. ---
     {command: "create", verb: undefined, requiresLoadablePackage: false, primaryInput: "name (optional; pre-fills the interactive wizard, which names the written blueprint file)"},
@@ -74,13 +74,6 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
 
     {command: "inspect", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 
-    {command: "name", verb: undefined, requiresLoadablePackage: false, primaryInput: "none"},
-
-    // --- outcomelibrary: "generate" is the one package-only verb; build/validate read config/bundleDir. ---
-    {command: "outcomelibrary", verb: "build", requiresLoadablePackage: false, primaryInput: "config.json"},
-    {command: "outcomelibrary", verb: "validate", requiresLoadablePackage: false, primaryInput: "bundleDir"},
-    {command: "outcomelibrary", verb: "generate", requiresLoadablePackage: true, primaryInput: "packageRoot"},
-
     // --- par: a source workbook / a blueprint config -- never a package. ---
     {command: "par", verb: "import", requiresLoadablePackage: false, primaryInput: "input.xlsx (a PAR sheet workbook)"},
     {command: "par", verb: "export", requiresLoadablePackage: false, primaryInput: "config.json (a GameBlueprint)"},
@@ -93,20 +86,8 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     {command: "report", verb: undefined, requiresLoadablePackage: false, primaryInput: "simulationReportJson (a pokie sim --out report)"},
 
     {command: "serve", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
+    {command: "sample", verb: undefined, requiresLoadablePackage: false, primaryInput: "path (an Outcome Library Bundle or Stake adapter directory)"},
     {command: "sim", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
 
-    // --- stakeengine: a config / a previously-exported Stake Engine directory -- never a package. ---
-    {command: "stakeengine", verb: "export", requiresLoadablePackage: false, primaryInput: "config.json"},
-    {command: "stakeengine", verb: "import", requiresLoadablePackage: false, primaryInput: "stakeDir"},
-    {command: "stakeengine", verb: "analyze", requiresLoadablePackage: false, primaryInput: "stakeDir"},
-    {command: "stakeengine", verb: "diff", requiresLoadablePackage: false, primaryInput: "leftStakeDir + rightStakeDir"},
-
-    // studio: its own positional is OPTIONAL (bare `pokie`/`pokie studio` opens Home with no project at
-    // all) and, when given, is resolved via the same findPokieProjectRoot/isPokiePackage check the
-    // package-only commands above use -- but since a package is never *required* to invoke this command
-    // successfully, it's excluded from the strict package-only set (see docs/pokie-phase3-inventory.md's
-    // own note on this).
-    {command: "studio", verb: undefined, requiresLoadablePackage: false, primaryInput: "projectRoot (optional; resolves the same loadable-package contract as the commands above when given)"},
-
-    {command: "validate", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
+    {command: "validate", verb: undefined, requiresLoadablePackage: false, primaryInput: "project (a POKIE package, Blueprint JSON file, or outcome-library bundle)"},
 ];

@@ -1,6 +1,8 @@
-// A machine-readable inventory of every public v1.3 `pokie` CLI command (see cli/pokie.ts's own
-// `commands` array, which this list's order and names mirror exactly), plus a frozen, EXECUTABLE
-// contract for each one: CLI_CONTRACT_CASES below pairs every "invalid" argv (a missing
+// A machine-readable inventory of legacy command-handler parser contracts, including private
+// implementation handlers behind the capability-oriented public CLI. This is deliberately not an
+// inventory of current public `pokie` commands; registerCliCommands() is the production public tree
+// and residualPublicSurface.contract.test.ts verifies that tree. CLI_CONTRACT_CASES below pairs every
+// handler's "invalid" argv (a missing
 // positional/subcommand, or a bad flag value — caught before any I/O) with the exact error message
 // it throws today, and every "valid" argv (a default or documented option value actually accepted)
 // with the exit code and stdout shape it actually produces. CLI_TOP_LEVEL_DISPATCH_CASES does the
@@ -86,7 +88,7 @@ export type CliCommandDescriptor = {
     verbs: CliVerbDescriptor[];
 };
 
-// Order matches cli/pokie.ts's `commands` array exactly.
+// Order matches the internal parser-test command registry in cliCommandInventory.contract.test.ts.
 export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "build",

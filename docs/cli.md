@@ -378,6 +378,23 @@ it, writing the result to `--out <path>` (default: a `<target>`-named sibling of
 
 The build command supports targets: `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
 It supports source types: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, and `wasm`.
+
+## `pokie generate <packageRoot>`
+
+Generates a weighted outcome library from a runnable package's exact-enumeration runtime. The normal exact path
+fails safely when the outcome space is too large or the game does not support exact enumeration; use the explicit
+sampled form only when its deterministic approximation is the workflow you intend:
+
+```
+pokie generate ./sample-slot --out outcomes.json
+pokie generate ./sample-slot --sample 10000 --seed audit-seed --format json --out outcomes.json
+```
+
+`--exact` is the default and is mutually exclusive with `--sample <n> --seed <string>`. `--estimate` (or
+`--dry-run`) reports the selected strategy without writing or enumerating outcomes. `--mode`, `--stake`,
+`--config-hash`, `--library-id`, `--max-outcome-space-size`, `--resume`, and `--progress` retain their exact
+meanings from `pokie generate --help`; the help output is the complete grammar for this intentionally
+specialized workflow.
 The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
 ```
@@ -796,7 +813,7 @@ The target-oriented aliases use these same physical PAR paths: `pokie export <co
 workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR importer); the
 generic import command only routes a directory to Stake Engine reconstruction when it is a
 POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake directory,
-use `pokie report` or `pokie stakeengine analyze`/`diff`, which intentionally do not require that
+use `pokie report` or `pokie diff`, which intentionally do not require that
 manifest and do not claim to reconstruct missing POKIE provenance.
 
 See `examples/parsheets/` for a worked example (`starter.blueprint.json` and the `starter.par.xlsx` exported from
@@ -1110,7 +1127,7 @@ per-mode summary (RTP, hit frequency, and standard deviation). `--format json` i
 structured outcome-source analysis (`rootPath`, `descriptor`, `issues`, and per-mode `analysis`), and `--out
 <file>` writes the same payload. Without `--format json`, `--out <file>` writes the human-readable analysis.
 
-## `pokie stakeengine diff <leftStakeDir> <rightStakeDir>`
+## Diffing Stake Engine outcome directories: `pokie diff <leftPath> <rightPath>`
 
 Reads and analyzes two Stake Engine outcome directories with the same canonical-reader pipeline `pokie report` uses,
 then diffs the two resulting analyses mode-by-mode: added/removed modes, every scalar metric (`rtp`,
@@ -1119,7 +1136,7 @@ then diffs the two resulting analyses mode-by-mode: added/removed modes, every s
 attempts an event-level (per-outcome) diff.
 
 ```
-pokie stakeengine diff stakeengine-before stakeengine-after --format json
+pokie diff stakeengine-before stakeengine-after --format json
 ```
 
 Options:
@@ -1129,9 +1146,8 @@ Options:
 - `--out <file>` — also write that same JSON shape to a new file. It refuses an existing destination and any path
   inside either input directory; choose a new unused path before retrying.
 
-`diff` is `undefined` whenever either side reports an error-level issue — the same "nothing built on error"
-contract every other stakeengine subcommand uses. Exit code follows the Unix `diff(1)` convention rather than this
-command family's usual plain 0/1:
+`diff` is `undefined` whenever either side reports an error-level issue. Exit code follows the Unix `diff(1)`
+convention rather than the usual plain 0/1:
 
 | Exit code | Meaning |
 | --- | --- |
@@ -1175,7 +1191,7 @@ Options:
 - `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomelibrary`).
 - `--dry-run` — validate the outcome-library source and destination without writing anything.
 
-Published atomically as a whole directory (temp-dir-then-swap, same discipline as `stakeengine export`): a write
+Published atomically as a whole directory (temp-dir-then-swap, the same discipline as `pokie export <config.json> --to adapter`): a write
 failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from
 the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` behind. On any error-level
 `ValidationIssue` (an invalid outcome, a duplicate/case-colliding mode name), nothing is written and the exit
@@ -1246,7 +1262,7 @@ Options:
 
 Refuses to write anything (the source bundle's own deep validation is run first) if the source bundle doesn't
 validate cleanly, or if a requested mode isn't present in it — the same "no partial bundle" guarantee
-`outcomelibrary build` gives, published atomically the same way. On any error, the exit code is non-zero and
+`pokie export <config.json> --to outcomes` gives, published atomically the same way. On any error, the exit code is non-zero and
 nothing is written.
 
 ## `pokie certification verify <certDir> --source <bundleDir>`
@@ -2061,7 +2077,7 @@ the exported `replayOutcomeSourceProject(..., recordedDescriptor)` API requires 
 and fails closed for omissions or mismatches, telling the caller to restore the original artifact/bundle. Package
 replay remains best-effort; it may inspect a round with unavailable state, but must not claim an exact comparison.
 
-Seeded `pokie outcomesource sample` prints a standard `ReplayDescriptor` whose `outcomeSource` is the portable
+Seeded `pokie sample` prints a standard `ReplayDescriptor` whose `outcomeSource` is the portable
 provenance. Seeded Studio Outcome Library Play spins retain that provenance in Recent Rounds, and a seeded `pokie
 sim <bundle> --mode <mode> --seed <seed>` report exposes its last sampled round as `lastReplay`. These all use
 `derived-round-seed-v1`: use the recorded `seed`, `round`, and `modeName` verbatim; a default mode or a raw
@@ -3524,7 +3540,7 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 20 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+All 21 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
 `edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`reel`/`replay`/`report`/`sample`/`serve`/`sim`/
 `validate`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
 `isPokieGame`, `PokieGameContractValidationRule`). [POKIE Studio](#pokie) already

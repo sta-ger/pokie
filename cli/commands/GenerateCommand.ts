@@ -21,10 +21,28 @@ export class GenerateCommand implements CliCommandHandling {
     }
 
     public getCommanderCommand(): Command {
-        return this.outcomeLibrary.getCommanderCommand().commands.find((command) => command.name() === "generate")!;
+        const command = this.outcomeLibrary.getCommanderCommand().commands.find((candidate) => candidate.name() === "generate")!;
+        // The delegated child is freshly constructed for this call. Detach it from its private
+        // namespace parent before exposing it as the public command's help tree, otherwise
+        // Commander renders "outcomelibrary generate" in the Usage line.
+        command.parent = null;
+        command.name("generate");
+        return command;
     }
 
-    public run(args: string[]): Promise<number> {
-        return this.outcomeLibrary.run(["generate", ...args]);
+    public async run(args: string[]): Promise<number> {
+        if (args.includes("--help") || args.includes("-h")) {
+            console.log(this.getCommanderCommand().helpInformation());
+            return 0;
+        }
+        try {
+            return await this.outcomeLibrary.run(["generate", ...args]);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            // OutcomeLibraryCommand is the private implementation delegate. Its grammar is this
+            // command's grammar, but its historical namespace is never part of the public error
+            // contract: a user who ran `pokie generate` must get a retryable `pokie generate` hint.
+            throw new Error(message.replace(/pokie outcomelibrary generate/g, "pokie generate"));
+        }
     }
 }

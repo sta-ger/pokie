@@ -210,6 +210,6 @@ console.log(diff.perMode.base.warnings);
 ## What this vertical slice deliberately leaves for later
 
 This vertical slice reads, normalizes, validates, analyzes, and diffs one directory (or a pair of directories) in
-isolation. `pokie stakeengine analyze` and `pokie stakeengine diff` expose that same pipeline on the command line;
+isolation. `pokie report` and `pokie diff` expose that same pipeline on the command line;
 custom event-classifier wiring remains programmatic so the CLI never pretends to understand a foreign game's
 mechanic-specific event vocabulary.
