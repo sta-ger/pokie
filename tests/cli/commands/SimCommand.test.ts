@@ -348,6 +348,24 @@ describe("SimCommand", () => {
         (console.log as jest.Mock).mockRestore();
     });
 
+    it("surfaces persisted report warnings in the human-readable summary", async () => {
+        const writeFile = jest.fn();
+        const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)), writeFile);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        await command.run(["./sample-slot", "--rounds", "1", "--seed", "demo", "--out", "report.json"]);
+
+        const [, contents] = writeFile.mock.calls[0];
+        const report = JSON.parse(contents) as SimulationReport;
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+
+        expect(report.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Requested rounds (1) is low")]));
+        expect(printed).toContain("Warnings:");
+        expect(printed).toContain("Requested rounds (1) is low");
+
+        logSpy.mockRestore();
+    });
+
     it("prints the JSON report to stdout instead of the summary when --format json is given", async () => {
         const command = new SimCommand(() => Promise.resolve(createFakeGame(manifest)));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
