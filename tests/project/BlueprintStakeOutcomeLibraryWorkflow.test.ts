@@ -65,6 +65,47 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
         }
     });
 
+    it("uses deterministic bounded coverage by default when the registry builds a large Blueprint Outcome Library", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-managed-large-outcome-registry-test-"));
+        const blueprintPath = path.join(workDir, "large.blueprint.json");
+        const outcomeDir = path.join(workDir, "outcome");
+        fs.writeFileSync(
+            blueprintPath,
+            JSON.stringify({
+                manifest: {id: "large-registry-slot", name: "Large Registry Slot", version: "1.0.0"},
+                reels: 5,
+                rows: 1,
+                symbols: ["A"],
+                paytable: {A: {3: 1, 4: 2, 5: 3}},
+                reelStrips: Array.from({length: 5}, () => Array.from({length: 10}, () => "A")),
+                availableBets: [1],
+            }),
+        );
+        const project: PokieProject = {
+            type: "blueprint",
+            rootPath: blueprintPath,
+            capabilities: PROJECT_TYPE_CAPABILITIES.blueprint,
+            provenance: "test fixture",
+        };
+
+        try {
+            const result = await new ArtifactBuilderRegistry("1.3.0").build("outcomeLibrary", project, outcomeDir);
+            const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {
+                modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>;
+            };
+
+            expect(result).toMatchObject({outputPath: outcomeDir, managedProjectRoots: [outcomeDir]});
+            expect(manifest.modes[0].generator).toEqual(expect.objectContaining({
+                strategy: "bounded-coverage",
+                totalOutcomeSpaceSize: 100_000,
+                sampledRawCount: 5_000,
+                seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
+            }));
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("preflights a large Outcome job, cancels during bundle publishing, and leaves neither bundle nor managed registration", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cancelled-blueprint-outcome-"));
         const blueprintPath = path.join(workDir, "game.blueprint.json");
