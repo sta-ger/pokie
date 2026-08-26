@@ -1,44 +1,54 @@
 # P8-01 browser transcript
 
-- [2026-08-26T21:11:19.722Z] Fresh temporary browser profile and Studio config; public entrypoint=http://127.0.0.1:46281/
-- [2026-08-26T21:11:21.557Z] VIEWPORT name=desktop width=1280 height=900
-- [2026-08-26T21:11:21.945Z] OBSERVE goal="First-time creator arrives at Studio" url=http://127.0.0.1:46281/#/home/design latencyMs=111 controls=16 alerts=0
-- [2026-08-26T21:11:21.960Z] ACT rendered-control-click="Projects"
-- [2026-08-26T21:11:22.467Z] OBSERVE goal="First-time Projects registry empty state" url=http://127.0.0.1:46281/#/home/projects latencyMs=256 controls=9 alerts=1
-- [2026-08-26T21:11:22.508Z] ACT rendered-control-click="Design Game"
-- [2026-08-26T21:11:22.813Z] VIEWPORT name=narrow width=405 height=800
-- [2026-08-26T21:11:23.048Z] OBSERVE goal="First-time creator arrives at Studio on a narrow viewport" url=http://127.0.0.1:46281/#/home/design latencyMs=234 controls=17 alerts=0
-- [2026-08-26T21:11:23.065Z] VIEWPORT name=desktop width=1280 height=900
-- [2026-08-26T21:11:23.072Z] ACT rendered-control-activation="New Blueprint"
-- [2026-08-26T21:11:23.492Z] OBSERVE goal="Creator is warned before discarding the initial draft" url=http://127.0.0.1:46281/#/home/design latencyMs=157 controls=21 alerts=0
-- [2026-08-26T21:11:23.503Z] ACT rendered-control-activation="Discard"
-- [2026-08-26T21:11:23.906Z] OBSERVE goal="Creator chooses a new Blueprint" url=http://127.0.0.1:46281/#/home/design latencyMs=147 controls=21 alerts=0
-- [2026-08-26T21:11:24.000Z] ACT rendered-control-click="Blank"
-- [2026-08-26T21:11:24.511Z] OBSERVE goal="Blank Blueprint validation state" url=http://127.0.0.1:46281/#/home/design latencyMs=262 controls=17 alerts=1
-- [2026-08-26T21:11:24.542Z] ACT rendered-control-click="Create Project"
-- [2026-08-26T21:11:25.537Z] OBSERVE goal="Blank Blueprint rejected before project creation" url=http://127.0.0.1:46281/#/home/design latencyMs=244 controls=16 alerts=0
-- [2026-08-26T21:11:25.549Z] ACT rendered-control-activation="New Blueprint"
-- [2026-08-26T21:11:25.822Z] ACT rendered-control-activation="Discard"
-- [2026-08-26T21:11:26.174Z] ACT rendered-control-click="Recommended"
-- [2026-08-26T21:11:26.670Z] OBSERVE goal="Creator configures the recommended Blueprint" url=http://127.0.0.1:46281/#/home/design latencyMs=242 controls=17 alerts=1
-- [2026-08-26T21:11:26.697Z] ACT rendered-control-click="Create Project"
-- [2026-08-26T21:11:27.165Z] OBSERVE goal="Created project overview" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/overview latencyMs=109 controls=12 alerts=1
-- [2026-08-26T21:11:27.221Z] ACT rendered-control-click="Overview"
-- [2026-08-26T21:11:27.639Z] OBSERVE goal="Project tab: Overview" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/overview latencyMs=167 controls=12 alerts=1
-- [2026-08-26T21:11:27.676Z] ACT rendered-control-click="Game Model"
-- [2026-08-26T21:11:28.024Z] OBSERVE goal="Project tab: Game Model" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/gameModel latencyMs=98 controls=24 alerts=0
-- [2026-08-26T21:11:28.072Z] ACT rendered-control-click="Play"
-- [2026-08-26T21:11:28.473Z] OBSERVE goal="Project tab: Play" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/play latencyMs=150 controls=12 alerts=0
-- [2026-08-26T21:11:28.510Z] ACT rendered-control-click="Simulation"
-- [2026-08-26T21:11:28.924Z] OBSERVE goal="Project tab: Simulation" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/simulation latencyMs=164 controls=17 alerts=1
-- [2026-08-26T21:11:28.963Z] ACT rendered-control-click="Replay"
-- [2026-08-26T21:11:29.378Z] OBSERVE goal="Project tab: Replay" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/replay latencyMs=165 controls=13 alerts=2
-- [2026-08-26T21:11:29.424Z] ACT rendered-control-click="Build/Export"
-- [2026-08-26T21:11:29.915Z] OBSERVE goal="Project tab: Build/Export" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/exportDeploy latencyMs=240 controls=28 alerts=1
-- [2026-08-26T21:11:29.948Z] VIEWPORT name=narrow width=405 height=800
-- [2026-08-26T21:11:30.114Z] OBSERVE goal="Build/Export on a narrow viewport" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/exportDeploy latencyMs=166 controls=29 alerts=1
-- [2026-08-26T21:11:30.139Z] VIEWPORT name=desktop width=1280 height=900
-- [2026-08-26T21:11:30.174Z] ACT rendered-control-click="Close project"
-- [2026-08-26T21:11:30.443Z] ACT rendered-control-click="Projects"
-- [2026-08-26T21:11:30.926Z] OBSERVE goal="Projects registry after creating a project" url=http://127.0.0.1:46281/#/home/projects latencyMs=232 controls=12 alerts=0
-- [2026-08-26T21:11:30.931Z] COMPLETE screens=17 consoleErrors=0 networkErrors=0
+- [2026-08-26T21:26:31.763Z] RUN id=clean-profile-run-1 candidateSha=d5086da6dd4b15aa3bc7fcb914efc510e786967c browser=Chromium 151.0.7922.108 snap environment=linux/x64 node=v24.18.0
+- [2026-08-26T21:26:31.763Z] Fresh temporary browser profile and Studio config; public entrypoint=http://127.0.0.1:46281/
+- [2026-08-26T21:26:33.580Z] VIEWPORT name=desktop width=1280 height=900
+- [2026-08-26T21:26:33.975Z] OBSERVE goal="First-time creator arrives at Studio" action="initial render" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=0 controls=16 alerts=0
+- [2026-08-26T21:26:33.989Z] ACT rendered-control-click="Projects"
+- [2026-08-26T21:26:34.521Z] OBSERVE goal="First-time Projects registry empty state" action="click Projects" visibleResult="No projects yet -- import or design one below." operationLatencyMs=265 controls=9 alerts=1
+- [2026-08-26T21:26:34.553Z] ACT rendered-control-click="Design Game"
+- [2026-08-26T21:26:35.105Z] OBSERVE goal="First-time creator returns to Design Game" action="click Design Game" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=285 controls=16 alerts=0
+- [2026-08-26T21:26:35.138Z] VIEWPORT name=narrow width=405 height=800
+- [2026-08-26T21:26:35.313Z] OBSERVE goal="First-time creator arrives at Studio on a narrow viewport" action="initial render" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=0 controls=17 alerts=0
+- [2026-08-26T21:26:35.324Z] VIEWPORT name=desktop width=1280 height=900
+- [2026-08-26T21:26:35.331Z] ACT rendered-control-activation="New Blueprint"
+- [2026-08-26T21:26:35.854Z] OBSERVE goal="Creator is warned before discarding the initial draft" action="keyboard activation New Blueprint" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=273 controls=21 alerts=0
+- [2026-08-26T21:26:35.866Z] ACT rendered-control-activation="Discard"
+- [2026-08-26T21:26:36.310Z] OBSERVE goal="Creator chooses a new Blueprint" action="keyboard activation Discard" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=281 controls=21 alerts=0
+- [2026-08-26T21:26:36.400Z] ACT rendered-control-click="Blank"
+- [2026-08-26T21:26:36.935Z] OBSERVE goal="Blank Blueprint validation state" action="click Blank" visibleResult="Replaced the current blueprint. Undo" operationLatencyMs=341 controls=17 alerts=1
+- [2026-08-26T21:26:36.959Z] ACT rendered-control-click="Create Project"
+- [2026-08-26T21:26:37.491Z] OBSERVE goal="Blank Blueprint rejected before project creation" action="click Create Project" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=274 controls=16 alerts=0
+- [2026-08-26T21:26:37.523Z] ACT rendered-control-activation="New Blueprint"
+- [2026-08-26T21:26:37.798Z] ACT rendered-control-activation="Discard"
+- [2026-08-26T21:26:38.131Z] ACT rendered-control-click="Recommended"
+- [2026-08-26T21:26:38.656Z] OBSERVE goal="Creator configures the recommended Blueprint" action="click Recommended" visibleResult="Replaced the current blueprint. Undo" operationLatencyMs=326 controls=17 alerts=1
+- [2026-08-26T21:26:38.693Z] ACT rendered-control-click="Create Project"
+- [2026-08-26T21:26:39.184Z] OBSERVE goal="Created project overview" action="click Create Project" visibleResult="Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play" operationLatencyMs=393 controls=12 alerts=1
+- [2026-08-26T21:26:39.216Z] ACT rendered-control-click="Overview"
+- [2026-08-26T21:26:39.619Z] OBSERVE goal="Project tab: Overview" action="click Overview" visibleResult="Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine. Open Play" operationLatencyMs=280 controls=12 alerts=1
+- [2026-08-26T21:26:39.654Z] ACT rendered-control-click="Game Model"
+- [2026-08-26T21:26:40.051Z] OBSERVE goal="Project tab: Game Model" action="click Game Model" visibleResult="POKIE Studio / Starter Slot / Game Model Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location C" operationLatencyMs=284 controls=24 alerts=0
+- [2026-08-26T21:26:40.086Z] ACT rendered-control-click="Play"
+- [2026-08-26T21:26:40.494Z] OBSERVE goal="Project tab: Play" action="click Play" visibleResult="POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close p" operationLatencyMs=285 controls=12 alerts=0
+- [2026-08-26T21:26:40.530Z] ACT rendered-control-click="Simulation"
+- [2026-08-26T21:26:40.950Z] OBSERVE goal="Project tab: Simulation" action="click Simulation" visibleResult="No completed simulations yet." operationLatencyMs=286 controls=17 alerts=1
+- [2026-08-26T21:26:40.988Z] ACT rendered-control-click="Replay"
+- [2026-08-26T21:26:41.409Z] OBSERVE goal="Project tab: Replay" action="click Replay" visibleResult="Load a round above to run it -- a fresh forward replay, not a reproduction of any specific prior result." operationLatencyMs=287 controls=13 alerts=2
+- [2026-08-26T21:26:41.450Z] ACT rendered-control-click="Build/Export"
+- [2026-08-26T21:26:41.957Z] OBSERVE goal="Project tab: Build/Export" action="click Build/Export" visibleResult="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." operationLatencyMs=290 controls=28 alerts=1
+- [2026-08-26T21:26:41.997Z] VIEWPORT name=narrow width=405 height=800
+- [2026-08-26T21:26:42.184Z] OBSERVE goal="Build/Export on a narrow viewport" action="initial render" visibleResult="Generate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports." operationLatencyMs=0 controls=29 alerts=1
+- [2026-08-26T21:26:42.202Z] VIEWPORT name=desktop width=1280 height=900
+- [2026-08-26T21:26:42.237Z] ACT rendered-control-click="Close project"
+- [2026-08-26T21:26:43.249Z] OBSERVE goal="Home after closing a project" action="click Close project" visibleResult="POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable," operationLatencyMs=792 controls=16 alerts=0
+- [2026-08-26T21:26:43.281Z] ACT rendered-control-click="Projects"
+- [2026-08-26T21:26:43.742Z] OBSERVE goal="Projects registry after creating a project" action="click Projects" visibleResult="POKIE Studio Design Game Projects Projects Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about y" operationLatencyMs=283 controls=12 alerts=0
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-IMPORT-NATIVE-PICKER owner=P8-02 reason="The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result."
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-IMPORT-OPEN-ALTERNATIVE owner=P8-02 reason="The clean run created a managed project; importing a separate public artifact requires a user-provided filesystem location and is not fabricated by this collector."
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-REOPEN-PERSISTENCE owner=P8-02 reason="This bounded run proves the in-session registry after creation, but does not restart Studio because that would turn the independent clean-profile run into a seeded profile."
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-TRANSIENT-LOADING owner=P8-06 reason="Fast local responses did not leave a rendered loading state long enough for a browser observation; no loading state is claimed as covered."
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-CONDITIONAL-CAPABILITIES owner=P8-05 reason="The created Blueprint did not expose runtime/outcome-library capabilities, so the public conditional tabs were not observed."
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-SIMULATION-TERMINALS owner=P8-05 reason="No public failure or cancellation trigger was available from the clean Blueprint run; no terminal state is claimed as covered."
+- [2026-08-26T21:26:43.748Z] FINDING id=P8-01-F-REPLAY-ARTIFACT-TERMINALS owner=P8-05 reason="The clean Blueprint run exposed empty action surfaces only; no result or failure is claimed as covered."
+- [2026-08-26T21:26:43.748Z] COMPLETE screens=19 consoleErrors=0 networkErrors=0

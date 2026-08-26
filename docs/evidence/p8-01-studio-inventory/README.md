@@ -24,9 +24,11 @@ responsive overflow, or the relative position of an error and its action).
 Keep the written transcript and `inventory.json`; do not retain the temporary
 browser profile, Studio config, build products, or generated project.
 
-`current-run/` is the checked-in clean-profile baseline for this step. Its
-`inventory.json` records desktop and narrow observations, while its transcript
-records the command's rendered actions and completion/error counts.
+`current-run/` and `independent-run/` are separately-created clean-profile
+runs of the same candidate. Each records its candidate SHA, exact command,
+timestamp, Chromium version, Linux/Node context, both viewports, rendered
+action-to-result latencies, and console/network observations. They are compared
+by user goal and visible result, not by route implementation.
 
 ## Ownership closure
 

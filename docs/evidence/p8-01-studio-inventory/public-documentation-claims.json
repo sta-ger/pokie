@@ -15,35 +15,35 @@
       "document": "docs/cli.md#pokie--pokie-studio-experimental",
       "claim": "A blank Blueprint is validated before it can become an opened project; invalid input preserves the editor for correction.",
       "renderedGoals": ["Blank Blueprint validation state", "Blank Blueprint rejected before project creation"],
-      "owner": "P8-03"
+      "owner": "P8-04"
     },
     {
       "id": "DOC-03",
       "document": "docs/cli.md#pokie--pokie-studio-experimental",
       "claim": "Projects lists managed and registered projects and offers Import Project with preview before registration.",
       "renderedGoals": ["First-time Projects registry empty state", "Projects registry after creating a project"],
-      "owner": "P8-04"
+      "owner": "P8-02"
     },
     {
       "id": "DOC-04",
       "document": "docs/cli.md#project-dashboard",
       "claim": "An opened project exposes Overview, Game Model, Play, Simulation, Replay, and Build/Export.",
       "renderedGoals": ["Created project overview", "Project tab: Overview", "Project tab: Game Model", "Project tab: Play", "Project tab: Simulation", "Project tab: Replay", "Project tab: Build/Export"],
-      "owner": "P8-05"
+      "owner": "P8-03"
     },
     {
       "id": "DOC-05",
       "document": "docs/cli.md#project-dashboard",
       "claim": "Certification and Fairness are offered only when the opened project's resolved capabilities support them.",
       "renderedGoals": ["Created project overview", "Project tab: Build/Export"],
-      "owner": "P8-06"
+      "owner": "P8-05"
     },
     {
       "id": "DOC-06",
       "document": "docs/studio-frontend.md#accessibility--responsiveness",
       "claim": "Tabs are keyboard-focusable and narrow layouts collapse navigation while wide content stays contained.",
       "renderedGoals": ["First-time creator arrives at Studio on a narrow viewport", "Build/Export on a narrow viewport"],
-      "owner": "P8-06"
+      "owner": "P8-03"
     },
     {
       "id": "DOC-07",

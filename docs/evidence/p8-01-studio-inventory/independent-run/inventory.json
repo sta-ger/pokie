@@ -2,10 +2,10 @@
   "schemaVersion": 2,
   "collector": "scripts/collect-studio-inventory.mjs",
   "provenance": {
-    "runId": "clean-profile-run-1",
+    "runId": "clean-profile-run-2",
     "candidateSha": "d5086da6dd4b15aa3bc7fcb914efc510e786967c",
-    "command": "node scripts/collect-studio-inventory.mjs --output /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/docs/evidence/p8-01-studio-inventory/current-run --run-id clean-profile-run-1",
-    "startedAt": "2026-08-26T21:26:31.762Z",
+    "command": "node scripts/collect-studio-inventory.mjs --output /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/docs/evidence/p8-01-studio-inventory/independent-run --run-id clean-profile-run-2",
+    "startedAt": "2026-08-26T21:26:44.035Z",
     "profile": "fresh temporary Chromium profile",
     "studioConfig": "fresh temporary Studio config",
     "entrypoint": "http://127.0.0.1:46281/",
@@ -31,7 +31,7 @@
     ],
     "rerun": "This run used a separately-created temporary browser profile and Studio config. Compare independent runs by rendered goal and visible outcome, not implementation route."
   },
-  "observedAt": "2026-08-26T21:26:43.748Z",
+  "observedAt": "2026-08-26T21:26:55.639Z",
   "browserErrors": {
     "console": [],
     "network": []
@@ -194,145 +194,145 @@
   "actions": [
     {
       "action": "click Projects",
-      "started": 1787779593977,
-      "latencyMs": 265,
+      "started": 1787779606272,
+      "latencyMs": 276,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:34.243Z",
+      "visibleResultAt": "2026-08-26T21:26:46.548Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Design Game",
-      "started": 1787779594523,
-      "latencyMs": 285,
+      "started": 1787779606822,
+      "latencyMs": 293,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:34.808Z",
+      "visibleResultAt": "2026-08-26T21:26:47.115Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "keyboard activation New Blueprint",
-      "started": 1787779595324,
-      "latencyMs": 273,
+      "started": 1787779607595,
+      "latencyMs": 278,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:35.597Z",
+      "visibleResultAt": "2026-08-26T21:26:47.873Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "keyboard activation Discard",
-      "started": 1787779595855,
-      "latencyMs": 281,
+      "started": 1787779608117,
+      "latencyMs": 270,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:36.136Z",
+      "visibleResultAt": "2026-08-26T21:26:48.387Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Blank",
-      "started": 1787779596313,
-      "latencyMs": 341,
+      "started": 1787779608556,
+      "latencyMs": 334,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:36.654Z",
+      "visibleResultAt": "2026-08-26T21:26:48.890Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Create Project",
-      "started": 1787779596939,
-      "latencyMs": 274,
+      "started": 1787779609170,
+      "latencyMs": 276,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:37.213Z",
+      "visibleResultAt": "2026-08-26T21:26:49.446Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Recommended",
-      "started": 1787779598059,
-      "latencyMs": 326,
+      "started": 1787779610264,
+      "latencyMs": 329,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:38.385Z",
+      "visibleResultAt": "2026-08-26T21:26:50.593Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Create Project",
-      "started": 1787779598658,
-      "latencyMs": 393,
+      "started": 1787779610847,
+      "latencyMs": 282,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:39.051Z",
+      "visibleResultAt": "2026-08-26T21:26:51.129Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Overview",
-      "started": 1787779599190,
-      "latencyMs": 280,
+      "started": 1787779611210,
+      "latencyMs": 266,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:39.470Z",
+      "visibleResultAt": "2026-08-26T21:26:51.476Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Game Model",
-      "started": 1787779599622,
-      "latencyMs": 284,
+      "started": 1787779611636,
+      "latencyMs": 292,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:39.906Z",
+      "visibleResultAt": "2026-08-26T21:26:51.928Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Play",
-      "started": 1787779600055,
-      "latencyMs": 285,
+      "started": 1787779612039,
+      "latencyMs": 268,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:40.340Z",
+      "visibleResultAt": "2026-08-26T21:26:52.307Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Simulation",
-      "started": 1787779600498,
-      "latencyMs": 286,
+      "started": 1787779612461,
+      "latencyMs": 285,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:40.784Z",
+      "visibleResultAt": "2026-08-26T21:26:52.746Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Replay",
-      "started": 1787779600955,
-      "latencyMs": 287,
+      "started": 1787779612916,
+      "latencyMs": 292,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:41.242Z",
+      "visibleResultAt": "2026-08-26T21:26:53.208Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Build/Export",
-      "started": 1787779601413,
-      "latencyMs": 290,
+      "started": 1787779613379,
+      "latencyMs": 297,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:41.703Z",
+      "visibleResultAt": "2026-08-26T21:26:53.676Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Close project",
-      "started": 1787779602202,
-      "latencyMs": 792,
+      "started": 1787779614152,
+      "latencyMs": 793,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:42.994Z",
+      "visibleResultAt": "2026-08-26T21:26:54.945Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Projects",
-      "started": 1787779603253,
-      "latencyMs": 283,
+      "started": 1787779615196,
+      "latencyMs": 294,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:43.536Z",
+      "visibleResultAt": "2026-08-26T21:26:55.490Z",
       "consoleErrors": [],
       "networkErrors": []
     }
@@ -343,7 +343,7 @@
       "surface": "Import Project host native picker",
       "owner": "P8-02",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result.",
       "consoleErrors": [],
       "networkErrors": []
@@ -353,7 +353,7 @@
       "surface": "Import Project Detect/Register/Open alternatives",
       "owner": "P8-02",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "The clean run created a managed project; importing a separate public artifact requires a user-provided filesystem location and is not fabricated by this collector.",
       "consoleErrors": [],
       "networkErrors": []
@@ -363,7 +363,7 @@
       "surface": "Reopen Studio and persisted project/artifact state",
       "owner": "P8-02",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "This bounded run proves the in-session registry after creation, but does not restart Studio because that would turn the independent clean-profile run into a seeded profile.",
       "consoleErrors": [],
       "networkErrors": []
@@ -373,7 +373,7 @@
       "surface": "Transient loading state capture",
       "owner": "P8-06",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "Fast local responses did not leave a rendered loading state long enough for a browser observation; no loading state is claimed as covered.",
       "consoleErrors": [],
       "networkErrors": []
@@ -383,7 +383,7 @@
       "surface": "Certification and Provably Fair capability-gated tabs",
       "owner": "P8-05",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "The created Blueprint did not expose runtime/outcome-library capabilities, so the public conditional tabs were not observed.",
       "consoleErrors": [],
       "networkErrors": []
@@ -393,7 +393,7 @@
       "surface": "Cancelled and failed simulation outcomes",
       "owner": "P8-05",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "No public failure or cancellation trigger was available from the clean Blueprint run; no terminal state is claimed as covered.",
       "consoleErrors": [],
       "networkErrors": []
@@ -403,7 +403,7 @@
       "surface": "Replay and artifact success/error/recovery outcomes",
       "owner": "P8-05",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "clean-profile-run-2",
       "reason": "The clean Blueprint run exposed empty action surfaces only; no result or failure is claimed as covered.",
       "consoleErrors": [],
       "networkErrors": []
@@ -589,8 +589,8 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Projects",
-        "started": 1787779593977,
-        "latencyMs": 265
+        "started": 1787779606272,
+        "latencyMs": 276
       },
       "url": "http://127.0.0.1:46281/#/home/projects",
       "title": "Projects · POKIE Studio",
@@ -731,8 +731,8 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Design Game",
-        "started": 1787779594523,
-        "latencyMs": 285
+        "started": 1787779606822,
+        "latencyMs": 293
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1085,8 +1085,8 @@
       "owner": "P8-04",
       "operation": {
         "action": "keyboard activation New Blueprint",
-        "started": 1787779595324,
-        "latencyMs": 273
+        "started": 1787779607595,
+        "latencyMs": 278
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1287,8 +1287,8 @@
       "owner": "P8-04",
       "operation": {
         "action": "keyboard activation Discard",
-        "started": 1787779595855,
-        "latencyMs": 281
+        "started": 1787779608117,
+        "latencyMs": 270
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1489,8 +1489,8 @@
       "owner": "P8-04",
       "operation": {
         "action": "click Blank",
-        "started": 1787779596313,
-        "latencyMs": 341
+        "started": 1787779608556,
+        "latencyMs": 334
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1671,8 +1671,8 @@
       "owner": "P8-04",
       "operation": {
         "action": "click Create Project",
-        "started": 1787779596939,
-        "latencyMs": 274
+        "started": 1787779609170,
+        "latencyMs": 276
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1846,8 +1846,8 @@
       "owner": "P8-04",
       "operation": {
         "action": "click Recommended",
-        "started": 1787779598059,
-        "latencyMs": 326
+        "started": 1787779610264,
+        "latencyMs": 329
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -2028,17 +2028,17 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Create Project",
-        "started": 1787779598658,
-        "latencyMs": 393
+        "started": 1787779610847,
+        "latencyMs": 282
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/overview",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/overview",
       "title": "Starter Slot · Overview · POKIE Studio",
       "viewport": {
         "width": 1280,
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-19/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nValid — no issues found.\n\nRe-check project",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-20/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nChecking project…\n\nRe-check project",
       "controls": [
         {
           "role": "button",
@@ -2098,11 +2098,12 @@
         {
           "role": "button",
           "label": "Re-check project",
-          "disabled": false
+          "disabled": true
         }
       ],
       "alerts": [
-        "Start by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play"
+        "Start by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play",
+        "Checking project…"
       ],
       "dialogs": [],
       "statesObserved": {
@@ -2110,17 +2111,13 @@
         "empty": false,
         "warning": true,
         "error": false,
-        "disabled": false,
+        "disabled": true,
         "dialog": false
       },
       "focusOrder": [
         {
           "tag": "button",
           "label": "Open Play"
-        },
-        {
-          "tag": "button",
-          "label": "Re-check project"
         },
         {
           "tag": "body",
@@ -2177,6 +2174,10 @@
         {
           "tag": "body",
           "label": "POKIE Studio / Starter Slot / Overview Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close pr"
+        },
+        {
+          "tag": "button",
+          "label": "POKIE Studio"
         }
       ]
     },
@@ -2185,17 +2186,17 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Overview",
-        "started": 1787779599190,
-        "latencyMs": 280
+        "started": 1787779611210,
+        "latencyMs": 266
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/overview",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/overview",
       "title": "Starter Slot · Overview · POKIE Studio",
       "viewport": {
         "width": 1280,
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-19/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nValid — no issues found.\n\nRe-check project",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-20/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nValid — no issues found.\n\nRe-check project",
       "controls": [
         {
           "role": "button",
@@ -2342,10 +2343,10 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Game Model",
-        "started": 1787779599622,
-        "latencyMs": 284
+        "started": 1787779611636,
+        "latencyMs": 292
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/gameModel",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/gameModel",
       "title": "Starter Slot · Game Model · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -2557,10 +2558,10 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Play",
-        "started": 1787779600055,
-        "latencyMs": 285
+        "started": 1787779612039,
+        "latencyMs": 268
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/play",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/play",
       "title": "Starter Slot · Play · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -2712,10 +2713,10 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Simulation",
-        "started": 1787779600498,
-        "latencyMs": 286
+        "started": 1787779612461,
+        "latencyMs": 285
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/simulation",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/simulation",
       "title": "Starter Slot · Simulation · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -2894,10 +2895,10 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Replay",
-        "started": 1787779600955,
-        "latencyMs": 287
+        "started": 1787779612916,
+        "latencyMs": 292
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/replay",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/replay",
       "title": "Starter Slot · Replay · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -3057,17 +3058,17 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Build/Export",
-        "started": 1787779601413,
-        "latencyMs": 290
+        "started": 1787779613379,
+        "latencyMs": 297
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/exportDeploy",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/exportDeploy",
       "title": "Starter Slot · Build/Export · POKIE Studio",
       "viewport": {
         "width": 1280,
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
       "controls": [
         {
           "role": "button",
@@ -3296,14 +3297,14 @@
         "action": "initial render",
         "latencyMs": 0
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/exportDeploy",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-20%2Fblueprint.json/exportDeploy",
       "title": "Starter Slot · Build/Export · POKIE Studio",
       "viewport": {
         "width": 405,
         "height": 800,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-20/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
       "controls": [
         {
           "role": "button",
@@ -3535,8 +3536,8 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Close project",
-        "started": 1787779602202,
-        "latencyMs": 792
+        "started": 1787779614152,
+        "latencyMs": 793
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -3710,8 +3711,8 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Projects",
-        "started": 1787779603253,
-        "latencyMs": 283
+        "started": 1787779615196,
+        "latencyMs": 294
       },
       "url": "http://127.0.0.1:46281/#/home/projects",
       "title": "Projects · POKIE Studio",
@@ -3720,7 +3721,7 @@
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\nDesign Game\nProjects\nProjects\n\nOpen an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.\n\nNeed a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.\n\nYour projects\nSearch projects\nProject type\nAvailability\n\tName\tType\tOrigin\tLast opened\tActions\n\n\nAvailable projects\n\n\n\tStarter Slot\n\n/home/stager/POKIE Projects/starter-slot-19/blueprint.json\n\n\tBlueprint\t\nManaged\n\t8/26/2026, 9:26:38 PM\t\nOpen\nRemove\n\nShowing 1–1 of 1 projects\n\nImport Project\n\nPoint at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.\n\nLocation\nBrowse…\nBrowse PAR sheet…\nDetect\n\nEnter a project location or use Browse to enable Detect.\n\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "text": "POKIE Studio\nDesign Game\nProjects\nProjects\n\nOpen an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.\n\nNeed a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.\n\nYour projects\nSearch projects\nProject type\nAvailability\n\tName\tType\tOrigin\tLast opened\tActions\n\n\nAvailable projects\n\n\n\tStarter Slot\n\n/home/stager/POKIE Projects/starter-slot-20/blueprint.json\n\n\tBlueprint\t\nManaged\n\t8/26/2026, 9:26:51 PM\t\nOpen\nRemove\n\nShowing 1–1 of 1 projects\n\nImport Project\n\nPoint at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.\n\nLocation\nBrowse…\nBrowse PAR sheet…\nDetect\n\nEnter a project location or use Browse to enable Detect.\n\nDocumentation\nDocs index\nGetting started\nCLI reference",
       "controls": [
         {
           "role": "a",
