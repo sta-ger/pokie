@@ -4,6 +4,7 @@ import path from "path";
 import {WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "pokie";
 import {ExportCommand} from "../../../cli/commands/ExportCommand.js";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
+import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 
 const blueprint = {
     manifest: {id: "export-conflict", name: "Export Conflict", version: "1.0.0"},
@@ -94,6 +95,75 @@ describe("ExportCommand", () => {
         }
     });
 
+    it("exports a Blueprint Project to a Stake Engine adapter through the advertised target alias", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-blueprint-adapter-test-"));
+        const blueprintPath = path.join(workDir, "source.blueprint.json");
+        const adapterPath = path.join(workDir, "adapter");
+        const command = new ExportCommand("1.3.0");
+
+        try {
+            fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+            await expect(command.run([blueprintPath, "--to", "adapter", "--out", adapterPath])).resolves.toBe(0);
+
+            expect(fs.existsSync(path.join(adapterPath, "pokie-manifest.json"))).toBe(true);
+            expect(fs.existsSync(path.join(adapterPath, "index.json"))).toBe(true);
+            await expect(new ValidateCommand().run([adapterPath, "--format", "json"])).resolves.toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("keeps a large Blueprint export usable by recording deterministic bounded coverage before the Stake hand-off", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-large-blueprint-test-"));
+        const blueprintPath = path.join(workDir, "large.blueprint.json");
+        const outcomePath = path.join(workDir, "outcomes");
+        const adapterPath = path.join(workDir, "adapter");
+        const command = new ExportCommand("1.3.0");
+        const strip = ["A", "B", "C", "D", "E", "A", "C", "E", "B", "D", "A", "D", "B", "E", "C"];
+
+        try {
+            fs.writeFileSync(
+                blueprintPath,
+                JSON.stringify({
+                    manifest: {id: "large-export", name: "Large Export", version: "1.0.0"},
+                    reels: 5,
+                    rows: 4,
+                    symbols: ["A", "B", "C", "D", "E"],
+                    paytable: {A: {3: 1, 4: 2, 5: 3}, B: {3: 1, 4: 2, 5: 3}, C: {3: 1, 4: 2, 5: 3}, D: {3: 1, 4: 2, 5: 3}, E: {3: 1, 4: 2, 5: 3}},
+                    // 15^5 raw stop tuples crosses the managed exact planning limit. The distinct
+                    // four-row windows exercise the large artifact path a random five-reel Blueprint uses.
+                    reelStrips: Array.from({length: 5}, (_unused, reel) =>
+                        strip.map((_symbol, index) => strip[(index + reel) % strip.length]),
+                    ),
+                    availableBets: [1],
+                }),
+            );
+
+            await expect(command.run([blueprintPath, "--to", "outcomes", "--out", outcomePath])).resolves.toBe(0);
+            const outcomeManifest = JSON.parse(fs.readFileSync(path.join(outcomePath, "manifest.json"), "utf-8")) as {
+                modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>;
+            };
+            expect(outcomeManifest.modes).toEqual([
+                expect.objectContaining({
+                    generator: expect.objectContaining({
+                        strategy: "bounded-coverage",
+                        totalOutcomeSpaceSize: 759_375,
+                        sampledRawCount: 5_000,
+                        seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
+                    }),
+                }),
+            ]);
+            await expect(new ValidateCommand().run([outcomePath, "--format", "json"])).resolves.toBe(0);
+
+            await expect(command.run([blueprintPath, "--to", "adapter", "--out", adapterPath])).resolves.toBe(0);
+            expect(fs.existsSync(path.join(adapterPath, "pokie-manifest.json"))).toBe(true);
+            await expect(new ValidateCommand().run([adapterPath, "--format", "json"])).resolves.toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("previews every export alias from its valid source without writing and rejects every occupied alias destination", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-lifecycle-test-"));
         const sourcePath = path.join(workDir, "source.blueprint.json");
@@ -158,14 +228,18 @@ describe("ExportCommand", () => {
         try {
             fs.writeFileSync(malformedSource, "{not valid json");
             const validSources = writeValidSources(workDir);
-            const incompatibleSource = target === "outcomes" ? validSources.workbook : validSources.outcomes;
+            const incompatibleSource = validSources.outcomes;
             if (target === "workbook") {
                 fs.writeFileSync(destination, "sentinel");
             } else {
                 fs.mkdirSync(destination);
                 fs.writeFileSync(path.join(destination, "sentinel.txt"), "sentinel");
             }
-            for (const source of [malformedSource, incompatibleSource]) {
+            // An adapter descriptor is also a valid Outcome Library descriptor (its extra `cost`
+            // field is intentionally ignored), and every Blueprint is now a supported source for all
+            // advertised targets. Keep the incompatible-source assertion only where the contracts differ.
+            const invalidSources = target === "outcomes" ? [malformedSource] : [malformedSource, incompatibleSource];
+            for (const source of invalidSources) {
                 const error = await command.run([source, "--to", target, "--out", destination, "--dry-run"]).catch((failure: unknown) => failure);
                 expect(error).toBeInstanceOf(Error);
                 expect((error as Error).message).toMatch(

@@ -8,6 +8,8 @@ import {
     PokieGamePackageValidator,
     ProjectResolving,
     ProjectTargetResolver,
+    StakeEngineImporter,
+    StakeEngineImporting,
     ValidationIssue,
 } from "pokie";
 import fs from "fs";
@@ -17,7 +19,7 @@ import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../mat
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
 type ValidateFormat = "summary" | "json";
-type ValidateProjectKind = "blueprint" | "outcome-library" | "package" | "unknown";
+type ValidateProjectKind = "blueprint" | "outcome-library" | "stake-engine" | "package" | "unknown";
 type ValidateDiagnostic = Required<Pick<ValidationIssue, "code" | "severity" | "message" | "path" | "suggestion">> &
     Pick<ValidationIssue, "details">;
 
@@ -46,6 +48,7 @@ export class ValidateCommand implements CliCommandHandling {
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly resolveProject: ProjectResolving;
     private readonly outcomeLibraryValidator: OutcomeLibraryBundleValidating;
+    private readonly stakeEngineImporter: StakeEngineImporting;
 
     constructor(
         validator: PokieGamePackageValidating = new PokieGamePackageValidator(),
@@ -53,12 +56,14 @@ export class ValidateCommand implements CliCommandHandling {
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         outcomeLibraryValidator: OutcomeLibraryBundleValidating = new OutcomeLibraryBundleValidator(),
+        stakeEngineImporter: StakeEngineImporting = new StakeEngineImporter(),
     ) {
         this.validator = validator;
         this.writeFile = writeFile;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.resolveProject = resolveProject;
         this.outcomeLibraryValidator = outcomeLibraryValidator;
+        this.stakeEngineImporter = stakeEngineImporter;
     }
 
     public getName(): string {
@@ -118,6 +123,20 @@ export class ValidateCommand implements CliCommandHandling {
             return this.validatePackage(packageRoot);
         }
         if (this.isDirectory(packageRoot)) {
+            let project;
+            try {
+                project = await this.resolveProject.resolve(packageRoot);
+            } catch {
+                // An incomplete or malformed Outcome Library still receives its validator's actionable
+                // artifact diagnostics instead of a resolver implementation error.
+                return this.validateOutcomeLibrary(packageRoot, deep);
+            }
+            if (project?.type === "stakeAdapter") {
+                return this.validateStakeEngineExport(packageRoot);
+            }
+            if (project?.type === "outcomeLibrary") {
+                return this.validateOutcomeLibrary(packageRoot, deep);
+            }
             // A directory without package.json is an outcome-library candidate, including an incomplete
             // bundle. Let its validator report the canonical missing-manifest diagnostic rather than
             // misclassifying it as an unloadable package.
@@ -203,6 +222,21 @@ export class ValidateCommand implements CliCommandHandling {
     private async validateOutcomeLibrary(bundleDir: string, deep: boolean): Promise<ValidateReport> {
         const issues = await this.outcomeLibraryValidator.validate(bundleDir, {deep});
         return {...this.reportFromIssues(bundleDir, "outcome-library", issues), deep};
+    }
+
+    private async validateStakeEngineExport(stakeDir: string): Promise<ValidateReport> {
+        try {
+            const result = await this.stakeEngineImporter.importFromDirectory(stakeDir);
+            return this.reportFromIssues(stakeDir, "stake-engine", result.issues);
+        } catch {
+            return this.failedReport(
+                stakeDir,
+                "stake-engine",
+                "stakeengine-export-unavailable",
+                `The Stake Engine export at "${stakeDir}" could not be read for validation.`,
+                "Check its index.json, pokie-manifest.json, and mode files, then run validate again.",
+            );
+        }
     }
 
     private failedReport(

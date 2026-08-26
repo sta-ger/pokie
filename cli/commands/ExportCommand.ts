@@ -1,5 +1,5 @@
 import path from "path";
-import {ArtifactBuilderRegistry, type ArtifactTargetType} from "pokie";
+import {ArtifactBuilderRegistry, ProjectTargetResolver, type ArtifactTargetType, type ProjectResolving} from "pokie";
 import {Command} from "commander";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";
@@ -20,12 +20,14 @@ export class ExportCommand implements CliCommandHandling {
     private readonly par: ParCommand;
     private readonly stake: StakeEngineCommand;
     private readonly registry: ArtifactBuilderRegistry;
+    private readonly resolveProject: ProjectResolving;
 
-    constructor(pokieVersion: string) {
+    constructor(pokieVersion: string, resolveProject: ProjectResolving = new ProjectTargetResolver()) {
         this.outcomeLibrary = new OutcomeLibraryCommand(pokieVersion);
         this.par = new ParCommand(pokieVersion);
         this.stake = new StakeEngineCommand(pokieVersion);
         this.registry = new ArtifactBuilderRegistry(pokieVersion);
+        this.resolveProject = resolveProject;
     }
 
     public getName(): string {
@@ -40,7 +42,7 @@ export class ExportCommand implements CliCommandHandling {
         return this.command();
     }
 
-    public run(args: string[]): Promise<number> {
+    public async run(args: string[]): Promise<number> {
         let parsed: ExportArgs;
         try {
             parsed = this.parse(args);
@@ -50,6 +52,11 @@ export class ExportCommand implements CliCommandHandling {
             }
             throw error;
         }
+        const project = await this.resolveProject.resolve(parsed.source);
+        if (project !== undefined) {
+            return this.runProjectExport(parsed, project);
+        }
+
         if (parsed.dryRun) {
             return this.validateDryRunSource(parsed).then(() => {
                 const destination = this.resolveDestination(parsed);
@@ -85,6 +92,41 @@ export class ExportCommand implements CliCommandHandling {
             }
             throw error;
         });
+    }
+
+    // The original config-descriptor exports remain available for users who already have standalone
+    // Outcome Library/Stake Engine inputs. Resolved POKIE projects, including a Blueprint Project,
+    // use the same project-to-artifact registry as `pokie build`, which is the contract this command
+    // advertises in its help text.
+    private async runProjectExport(args: ExportArgs, project: Awaited<ReturnType<ProjectResolving["resolve"]>> & {}): Promise<number> {
+        const target = this.artifactTarget(args.target);
+        if (!this.registry.supportsConversionFrom(target, project.type)) {
+            throw new Error(this.describeSourceFailure(args));
+        }
+        const destination = this.resolveDestination(args);
+        const destinationCheck = this.registry.checkDestination(target, destination, project.rootPath);
+        if (!destinationCheck.available) {
+            throw new Error(this.describeDestinationConflict(args.target, destinationCheck.message));
+        }
+        if (args.dryRun) {
+            try {
+                await this.registry.validate(target, project);
+            } catch {
+                throw new Error(this.describeSourceFailure(args));
+            }
+            console.log(`Dry run -- would export target "${args.target}" from "${project.rootPath}" to "${destination}". No files written.`);
+            return 0;
+        }
+        try {
+            const result = await this.registry.build(target, project, destination);
+            console.log(`Artifact "${args.target}" exported to "${result.outputPath}".`);
+            return 0;
+        } catch (error) {
+            if (error instanceof Error && (/already exists|source itself|destination/i).test(error.message)) {
+                throw new Error(this.describeDestinationConflict(args.target, error.message));
+            }
+            throw error;
+        }
     }
 
     private command(): Command {

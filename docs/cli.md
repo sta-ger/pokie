@@ -398,7 +398,7 @@ specialized workflow.
 The public CLI supports the executable output formats `json`, `markdown`, and `html`. Project-defined mode names are accepted where a command exposes `--mode`; `pokie sim` additionally accepts `all` to process every declared mode.
 
 ```
-pokie build <project> --target <artifact> [--out <path>] [--dry-run]
+pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]
 ```
 
 ```
@@ -418,6 +418,10 @@ Options:
   unsupported source/target pair, for instance, throws naming which source types that target actually
   supports (`ArtifactBuilderRegistry.describe(target)`, also available
   programmatically, reports the same thing without resolving a project first).
+- `--exact` — only for `--target outcomeLibrary`; forces full exact enumeration instead of the managed
+  bounded-coverage default for a large Blueprint/package source.
+- `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
+  bounded-coverage draws and records that choice in the library manifest.
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
   `<project>` (a `.xlsx` file for `parWorkbook`, a bare directory for every other target). An explicit `--out`
   always overrides the default and never changes what `--target` means. Must not already exist, or must be an
@@ -435,7 +439,12 @@ not a POKIE artifact workflow.
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
 described in full below. Blueprint → PAR Workbook freezes generated, weighted, or default reels as a deterministic
 literal snapshot in the workbook; the source Blueprint remains unchanged. Blueprint and package sources can also create or reuse their managed compatible Outcome
-Library before producing an Outcome Library or Stake Engine artifact; same-type Outcome, Stake, and PAR cells
+Library before producing an Outcome Library or Stake Engine artifact. Small finite reel-stop spaces are enumerated
+exactly. To keep a newcomer-created large Blueprint usable on Node's normal memory limit, a larger managed
+Blueprint/package export automatically writes a deterministic, labelled bounded-coverage library (5,000 draws;
+the manifest records its strategy and seed). Use `pokie build <project> --target outcomeLibrary --exact` only when
+you specifically need every outcome and have sized memory and storage for the full artifact library; `--sample <n>
+--seed <seed>` selects a different deterministic coverage size explicitly. Same-type Outcome, Stake, and PAR cells
 republish their recognized artifact to a new destination. Every writer is atomic and validates its input before
 publishing, never attempting to recover a game model from an outcome-based artifact.
 
@@ -1016,6 +1025,11 @@ pokie export game.blueprint.json --to workbook --out game.par.xlsx --dry-run
 For `outcomes`, `adapter`, and `workbook`, `--dry-run` validates both the selected target's source and resolved
 destination without writing anything. It fails if either is incompatible or unavailable; remove the problem or use
 a different `--out` path, then run the command again without `--dry-run` to publish the artifact.
+
+When `<source>` is a Blueprint or runnable game package, `outcomes` and `adapter` share the managed Outcome
+Library lifecycle described in [`pokie build`](#pokie-build-project). Large reel-stop spaces automatically use its
+deterministic bounded-coverage library, so `pokie create --random` followed by either export command completes on
+the standard Node heap; inspect `manifest.json` to see the recorded strategy and seed.
 
 ## `pokie export <config.json> --to adapter [--out <dir>] [--dry-run]`
 

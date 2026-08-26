@@ -83,4 +83,38 @@ describe("StudioArtifactBuildService (integration)", () => {
                 "Missing prerequisite: a Game Blueprint or PAR workbook. Next: Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
         });
     });
+
+    it("keeps the registry's bounded managed-coverage default for large Blueprint Outcome builds", async () => {
+        const blueprintPath = path.join(workDir, "large.blueprint.json");
+        const outcomeDir = path.join(workDir, "outcomes");
+        fs.writeFileSync(
+            blueprintPath,
+            JSON.stringify({
+                manifest: {id: "large-studio-slot", name: "Large Studio Slot", version: "1.0.0"},
+                reels: 5,
+                rows: 1,
+                symbols: ["A"],
+                paytable: {A: {3: 1, 4: 2, 5: 3}},
+                reelStrips: Array.from({length: 5}, () => Array.from({length: 10}, () => "A")),
+                availableBets: [1],
+            }),
+        );
+
+        await expect(service.build(blueprintPath, "outcomeLibrary", outcomeDir)).resolves.toMatchObject({
+            status: "ok",
+            target: "outcomeLibrary",
+            outputPath: outcomeDir,
+            outputKind: "directory",
+            sourceType: "blueprint",
+        });
+        const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {
+            modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>;
+        };
+        expect(manifest.modes[0].generator).toEqual(expect.objectContaining({
+            strategy: "bounded-coverage",
+            totalOutcomeSpaceSize: 100_000,
+            sampledRawCount: 5_000,
+            seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
+        }));
+    });
 });

@@ -136,7 +136,10 @@ export class BuildCommand implements CliCommandHandling {
                 },
             )
             .option("--out <path>", "where to write the built artifact (default: a <target>-named sibling of <project>)")
-            .option("--exact", "require exact Outcome Library enumeration (the default; only valid with --target outcomeLibrary)")
+            .option(
+                "--exact",
+                "explicitly request full Outcome Library enumeration; large managed Blueprint/package Outcome builds otherwise use deterministic bounded coverage (only valid with --target outcomeLibrary)",
+            )
             .option("--sample <n>", "directly perform n deterministic Outcome Library draws (requires --seed; only valid with --target outcomeLibrary)", (value: string): bigint => parsePositiveBigIntOption(value, "--sample"))
             .option("--seed <string>", "deterministic seed for --sample")
             .option("--dry-run", "validate and preview without writing anything")
@@ -346,6 +349,7 @@ export class BuildCommand implements CliCommandHandling {
         if (options.exact && (options.sample !== undefined || options.seed !== undefined)) {
             throw new Error(`--exact cannot be combined with --sample or --seed. ${USAGE}`);
         }
+        if (options.exact) return {exact: true};
         if (options.sample === undefined) {
             if (options.seed !== undefined) throw new Error(`--seed requires --sample <n>. ${USAGE}`);
             return undefined;

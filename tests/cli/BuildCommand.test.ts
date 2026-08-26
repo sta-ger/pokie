@@ -117,6 +117,30 @@ describe("BuildCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("describes --exact as an explicit request, with bounded coverage as the large managed-build default", () => {
+        const help = new BuildCommand("1.3.0").getCommanderCommand().helpInformation();
+
+        expect(help).toContain("explicitly request full Outcome Library enumeration");
+        expect(help.replace(/\s+/g, " ")).toContain("large managed Blueprint/package Outcome builds otherwise use deterministic bounded coverage");
+        expect(help).not.toContain("enumeration (the default");
+    });
+
+    it("routes --exact as an explicit Outcome Library generation request", async () => {
+        const project: PokieProject = {
+            type: "outcomeLibrary",
+            rootPath: "outcomes",
+            capabilities: PROJECT_TYPE_CAPABILITIES.outcomeLibrary,
+            provenance: "test fixture",
+        } as PokieProject;
+        const builder = stubBuilder("outcomeLibrary", {outputPath: "/fake/outcomes"});
+        const command = new BuildCommand("1.3.0", undefined, undefined, stubProjectResolver(project), registryWithBuilders(builder));
+
+        await expect(command.run(["outcomes", "--target", "outcomeLibrary", "--exact", "--out", "new-outcomes"])).resolves.toBe(0);
+
+        expect(builder.calledWith).toEqual({source: project, destinationPath: "new-outcomes"});
+        expect(builder.lifecycle?.outcomeLibraryGeneration).toEqual({exact: true});
+    });
+
     it("reports the usage error for a missing/empty <project> positional", async () => {
         const command = new BuildCommand("1.3.0");
 

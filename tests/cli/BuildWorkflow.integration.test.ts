@@ -179,9 +179,14 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         const sampleFile = path.join(workDir, "outcomes-sample.json");
         const replayFile = path.join(workDir, "outcomes-replay.json");
 
-        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", outcomeDir])).toBe(0);
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--exact", "--out", outcomeDir])).toBe(0);
         expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
         expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(true);
+        expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes[0].generator).toEqual(expect.objectContaining({
+            strategy: "exact",
+            totalOutcomeSpaceSize: 6,
+            sampledRawCount: 6,
+        }));
 
         const secondOutcomeDir = path.join(workDir, "second-outcomes");
         expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", secondOutcomeDir])).toBe(0);
@@ -209,13 +214,13 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
     });
 
-    it("builds a sampled Outcome Library without exact pre-enumeration and completes its advertised lifecycle", async () => {
-        const blueprintPath = path.join(workDir, "large-sampled-outcome.blueprint.json");
+    it("automatically bounds a large managed Outcome Library build and completes its advertised lifecycle", async () => {
+        const blueprintPath = path.join(workDir, "large-managed-outcome.blueprint.json");
         const strip = Array.from({length: 300}, (_unused, index) => (index % 2 === 0 ? "A" : "B"));
         fs.writeFileSync(
             blueprintPath,
             JSON.stringify({
-                manifest: {id: "large-sampled-outcome-slot", name: "Large Sampled Outcome Slot", version: "1.0.0"},
+                manifest: {id: "large-managed-outcome-slot", name: "Large Managed Outcome Slot", version: "1.0.0"},
                 reels: 3,
                 rows: 1,
                 symbols: ["A", "B"],
@@ -224,26 +229,27 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
                 availableBets: [1],
             }),
         );
-        const outcomeDir = path.join(workDir, "sampled-outcomes");
-        const reportFile = path.join(workDir, "sampled-outcomes-report.json");
-        const replayFile = path.join(workDir, "sampled-outcomes-replay.json");
-        const sampleFile = path.join(workDir, "sampled-outcomes-sample.json");
+        const outcomeDir = path.join(workDir, "managed-outcomes");
+        const reportFile = path.join(workDir, "managed-outcomes-report.json");
+        const replayFile = path.join(workDir, "managed-outcomes-replay.json");
+        const sampleFile = path.join(workDir, "managed-outcomes-sample.json");
 
         expect(
             await new BuildCommand("1.3.0").run([
                 blueprintPath,
                 "--target",
                 "outcomeLibrary",
-                "--sample",
-                "12",
-                "--seed",
-                "sampled-build-seed",
                 "--out",
                 outcomeDir,
             ]),
         ).toBe(0);
-        const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {modes: Array<{generator: {strategy: string; sampledRawCount: number; seed?: string}}>};
-        expect(manifest.modes[0].generator).toEqual(expect.objectContaining({strategy: "bounded-coverage", sampledRawCount: 12, seed: "sampled-build-seed"}));
+        const manifest = JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")) as {modes: Array<{generator: {strategy: string; totalOutcomeSpaceSize: number; sampledRawCount: number; seed?: string}}>};
+        expect(manifest.modes[0].generator).toEqual(expect.objectContaining({
+            strategy: "bounded-coverage",
+            totalOutcomeSpaceSize: 27_000_000,
+            sampledRawCount: 5_000,
+            seed: expect.stringMatching(/^pokie-managed-coverage:sha256:/),
+        }));
 
         expect(await new ValidateCommand().run([outcomeDir, "--deep"])).toBe(0);
         await new SimCommand().run([outcomeDir, "--mode", "base", "--rounds", "12", "--seed", "lifecycle", "--out", sampleFile]);

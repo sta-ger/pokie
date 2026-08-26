@@ -147,7 +147,7 @@ function inventoryOutcomeLibraryBuildCommand(key: string): BuildCommand {
                         build: (_source: PokieProject, destinationPath: string, options?: ArtifactBuildOptions) => {
                             observe(key, "--target", "outcomeLibrary");
                             observe(key, "--out", destinationPath);
-                            observe(key, "--exact", options?.outcomeLibraryGeneration === undefined);
+                            observe(key, "--exact", options?.outcomeLibraryGeneration?.exact ?? false);
                             observe(key, "--sample", options?.outcomeLibraryGeneration?.sampled?.sampleSize);
                             observe(key, "--seed", options?.outcomeLibraryGeneration?.sampled?.seed);
                             return Promise.resolve({outputPath: destinationPath});

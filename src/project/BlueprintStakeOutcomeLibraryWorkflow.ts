@@ -43,6 +43,18 @@ import {
     type ArtifactBuildPreflight,
 } from "./ArtifactBuildOptions.js";
 
+// A generated round artifact is materially larger than the raw reel-stop tuple which produced it. The
+// generic exact-generator cap protects a sweep with tens of millions of tuples, but it cannot make a
+// hundreds-of-thousands-entry artifact library fit in a normal CLI heap. Managed Blueprint/package exports
+// therefore use a deterministic, explicitly recorded coverage sample above this planning limit unless the
+// caller asks for exact generation.
+export const DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE = BigInt(50_000);
+export const DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT = BigInt(5_000);
+
+type ManagedOutcomeGeneration = {
+    readonly sampled?: {readonly sampleSize: bigint; readonly seed: string};
+};
+
 const GENERATED_RUNTIME = {
     BetModeDefinition,
     BetModesConfig,
@@ -106,15 +118,16 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         if (configHash === undefined) {
             throw new Error(`Project "${source.rootPath}" did not materialize a configuration hash; cannot safely register its outcome library.`);
         }
+        const generation = resolveManagedOutcomeGeneration(game, configHash, options?.outcomeLibraryGeneration);
 
         const compatibility = {
             gameId: game.getManifest().id,
             gameVersion: game.getManifest().version,
             configHash,
             pokieVersion: this.pokieVersion,
-            generation: options?.outcomeLibraryGeneration?.sampled === undefined
+            generation: generation.sampled === undefined
                 ? "exact"
-                : `sample:${options.outcomeLibraryGeneration.sampled.sampleSize}:${options.outcomeLibraryGeneration.sampled.seed}`,
+                : `sample:${generation.sampled.sampleSize}:${generation.sampled.seed}`,
         };
         if (reuseCompatible) {
             const compatible = await this.managedOutcomeProjects.findCompatible(source.rootPath, compatibility);
@@ -127,11 +140,11 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         const bundleDir = typeof destinationPath === "string" ? destinationPath : destinationPath(compatibility);
         assertArtifactDestinationAvailable(bundleDir, "directory");
         assertArtifactDestinationIsSafe(source.rootPath, bundleDir);
-        const preflight = outcomeGenerationPreflight(game, options);
+        const preflight = outcomeGenerationPreflight(game, generation);
         reportArtifactBuildProgress(options, {status: "preflight", preflight});
         assertArtifactBuildNotCancelled(options);
         try {
-            await this.generateBundle(source.rootPath, game, configHash, bundleDir, options, preflight);
+            await this.generateBundle(source.rootPath, game, configHash, bundleDir, options, preflight, generation);
             assertArtifactBuildNotCancelled(options);
             const project = await this.managedOutcomeProjects.registerAndOpen(source.rootPath, bundleDir, compatibility);
             reportArtifactBuildProgress(options, {
@@ -160,6 +173,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
         destinationPath: string,
         options: ArtifactBuildOptions | undefined,
         preflight: ArtifactBuildPreflight,
+        generation: ManagedOutcomeGeneration,
     ): Promise<void> {
         const declaredModes = game.getBetModes?.();
         // getBetModes() deliberately exposes both the legacy declarative shape and the explicit runtime
@@ -180,7 +194,7 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     configHash,
                     ...(declaredModes && declaredModes.length > 0 ? {betMode: mode.id} : {}),
                     selectBetMode: hasRuntimeBetModes,
-                    ...(options?.outcomeLibraryGeneration?.sampled !== undefined ? {sampled: options.outcomeLibraryGeneration.sampled} : {}),
+                    ...(generation.sampled !== undefined ? {sampled: generation.sampled} : {}),
                     signal: options?.signal,
                     onProgress: (completed, total) => {
                         reportArtifactBuildProgress(options, {status: "running", completed, total, preflight});
@@ -252,17 +266,39 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
 
 }
 
-function outcomeGenerationPreflight(game: PokieGame, options?: ArtifactBuildOptions): ArtifactBuildPreflight {
+function resolveManagedOutcomeGeneration(
+    game: PokieGame,
+    configHash: string,
+    requested: ArtifactBuildOptions["outcomeLibraryGeneration"],
+): ManagedOutcomeGeneration {
+    if (requested?.sampled !== undefined) return {sampled: requested.sampled};
+    if (requested?.exact) return {};
+
     const estimate = estimateExactOutcomeSpaceSize(game);
-    const sampled = options?.outcomeLibraryGeneration?.sampled;
+    if (estimate.totalOutcomeSpaceSize <= DEFAULT_MANAGED_EXACT_OUTCOME_SPACE_SIZE) return {};
+    return {
+        sampled: {
+            sampleSize: DEFAULT_MANAGED_SAMPLED_OUTCOME_COUNT,
+            // The configuration hash is stable for the same Blueprint/package, so this automatic
+            // coverage library is reproducible without machine-local state.
+            seed: `pokie-managed-coverage:${configHash}`,
+        },
+    };
+}
+
+function outcomeGenerationPreflight(game: PokieGame, generation: ManagedOutcomeGeneration): ArtifactBuildPreflight {
+    const estimate = estimateExactOutcomeSpaceSize(game);
+    const sampled = generation.sampled;
     const estimatedItemCount = sampled?.sampleSize ?? estimate.totalOutcomeSpaceSize;
     return {
         estimatedItemCount,
         // A generated outcome record contains a round artifact, so this intentionally conservative estimate is
         // a planning signal only; the precise output size is unknown until grids have been deduplicated.
         estimatedBytes: estimatedItemCount * BigInt(1024),
-        ...(estimatedItemCount > BigInt(10_000)
-            ? {complexityWarning: sampled === undefined ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.` : `Sampled generation will perform ${estimatedItemCount} deterministic reel-stop draws.`}
+        ...(estimatedItemCount > BigInt(10_000) || sampled !== undefined
+            ? {complexityWarning: sampled === undefined
+                ? `Exact generation will enumerate ${estimatedItemCount} reel-stop combinations.`
+                : `Large source (${estimate.totalOutcomeSpaceSize} reel-stop combinations): using ${estimatedItemCount} deterministic bounded-coverage draws. Use an explicit exact build only when the full artifact library fits your memory and storage budget.`}
             : {}),
     };
 }

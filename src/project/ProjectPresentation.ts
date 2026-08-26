@@ -44,7 +44,7 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
         purpose: "A pre-generated source of game outcomes that can be checked, analyzed, sampled, simulated, or served.",
         nextActions: [
             {label: "Validate the outcome data", command: "pokie validate <path> --deep"},
-            {label: "Inspect exact outcome statistics", command: "pokie outcomesource inspect <path>"},
+            {label: "Render exact outcome statistics", command: "pokie report <path>"},
             {label: "Simulate outcome draws", command: "pokie sim <path> --rounds 10000 --mode <modeName> --seed demo"},
             {label: "Run a local outcome server", command: "pokie serve <path> --mode <modeName>"},
             {label: "Export for Stake Engine", command: "pokie build <path> --target stakeAdapter"},
@@ -57,8 +57,8 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
         kind: "Stake Engine export",
         purpose: "A Stake Engine-format export of pre-generated outcomes.",
         nextActions: [
-            {label: "Inspect exact outcome statistics", command: "pokie outcomesource inspect <path>"},
-            {label: "Compare it with another outcome source", command: "pokie outcomesource diff <path> <otherPath>"},
+            {label: "Render exact outcome statistics", command: "pokie report <path>"},
+            {label: "Compare it with another outcome source", command: "pokie diff <path> <otherPath>"},
         ],
         prerequisites: [
             "To sample, simulate, replay, or serve outcomes, use the compatible Outcome Library that produced this export.",
