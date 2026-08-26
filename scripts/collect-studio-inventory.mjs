@@ -529,7 +529,8 @@ async function main() {
         await setViewport(405, 800, "narrow");
         await snapshot("Build/Export on a narrow viewport");
         await setViewport(1280, 900, "desktop");
-        operation = await click("Close project", () => renderedActionExists("Confirm"));
+        try {
+            operation = await click("Close project", () => renderedActionExists("Confirm"));
         if (await renderedActionExists("Confirm")) {
             await observeAction("Creator is warned before closing an active project", operation, () => renderedActionExists("Confirm"));
             operation = await click("Confirm", () => renderedText("Design Your Game"));
@@ -566,8 +567,14 @@ async function main() {
             } catch (error) {
                 recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", `The rendered Remove confirmation could not be cancelled through browser input: ${error.message}`, undefined, "managed-project-remove-cancel");
             }
-        } else {
-            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", "Remove confirmation was not rendered, so its Cancel control could not be reached from the clean managed-project registry.", undefined, "managed-project-remove-cancel");
+            } else {
+                recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", "Remove confirmation was not rendered, so its Cancel control could not be reached from the clean managed-project registry.", undefined, "managed-project-remove-cancel");
+            }
+        } catch (error) {
+            const closeBoundary = `Studio could not return from the active project to the managed-project registry: ${error.message}`;
+            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", closeBoundary, undefined, "managed-project-open");
+            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", closeBoundary, undefined, "managed-project-remove-confirm");
+            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", closeBoundary, undefined, "managed-project-remove-cancel");
         }
         recordFinding("P8-01-F-IMPORT-NATIVE-PICKER", "Import Project host native picker", "P8-02", "The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result.");
         recordFinding("P8-01-F-IMPORT-DETECT", "Import Project Detect", "P8-02", "Detect requires a user-provided package, outcome library, export, blueprint, or PAR-sheet path; the clean run does not fabricate an external artifact.", "DOC-03");
