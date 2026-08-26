@@ -725,4 +725,44 @@ describe("DiffCommand (integration, real outcome-source artifacts)", () => {
         expect(diff.right.kind).toBe("stakeEngine");
         expect(diff.onlyInRight).toEqual(["bonus"]);
     });
+
+    it("refuses new nested output paths in real outcome sources, including a Stake Engine symlink alias", async () => {
+        const leftLibraryDir = path.join(outDir, "left-library");
+        const rightLibraryDir = path.join(outDir, "right-library");
+        const leftStakeDir = path.join(outDir, "left-stake");
+        const rightStakeDir = path.join(outDir, "right-stake");
+        const stakeAlias = path.join(outDir, "right-stake-alias");
+        const nestedLibraryOutput = path.join(leftLibraryDir, "diffs", "nested-diff.json");
+        const nestedStakeAliasOutput = path.join(stakeAlias, "diffs", "nested-diff.json");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "left")], leftLibraryDir);
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "right")], rightLibraryDir);
+        await new StakeEngineExporter("1.3.0").exportToDirectory([{
+            modeName: "base",
+            cost: 1,
+            library: buildStakeEngineTestLibrary({libraryId: "left", betMode: "base", stake: 1}),
+        }], leftStakeDir);
+        await new StakeEngineExporter("1.3.0").exportToDirectory([{
+            modeName: "base",
+            cost: 1,
+            library: buildStakeEngineTestLibrary({libraryId: "right", betMode: "base", stake: 1}),
+        }], rightStakeDir);
+        fs.symlinkSync(rightStakeDir, stakeAlias, "dir");
+        const libraryManifestBefore = fs.readFileSync(path.join(leftLibraryDir, "manifest.json"), "utf-8");
+        const stakeIndexBefore = fs.readFileSync(path.join(rightStakeDir, "index.json"), "utf-8");
+
+        const command = new DiffCommand();
+        await expect(command.run([leftLibraryDir, rightLibraryDir, "--out", nestedLibraryOutput])).rejects.toThrow(
+            /Choose a new unused --out path, or inspect and remove the destination yourself before retrying/,
+        );
+        await expect(command.run([leftStakeDir, rightStakeDir, "--out", nestedStakeAliasOutput])).rejects.toThrow(
+            /Choose a new unused --out path, or inspect and remove the destination yourself before retrying/,
+        );
+
+        expect(fs.existsSync(nestedLibraryOutput)).toBe(false);
+        expect(fs.existsSync(nestedStakeAliasOutput)).toBe(false);
+        expect(fs.existsSync(path.dirname(nestedLibraryOutput))).toBe(false);
+        expect(fs.existsSync(path.dirname(nestedStakeAliasOutput))).toBe(false);
+        expect(fs.readFileSync(path.join(leftLibraryDir, "manifest.json"), "utf-8")).toBe(libraryManifestBefore);
+        expect(fs.readFileSync(path.join(rightStakeDir, "index.json"), "utf-8")).toBe(stakeIndexBefore);
+    });
 });

@@ -1828,7 +1828,9 @@ Options:
 - `--format json` — print the JSON diff to stdout instead of the default human-readable summary.
 - `--out <file>` — also write the JSON diff to a new `<file>`. Independent of `--format`: the summary/JSON is always
   printed to the console; `--out` additionally saves the JSON diff to disk. It refuses an existing destination or
-  either input path, so choose a new unused path (or inspect and remove an old diff artifact yourself) before retrying.
+  either input path. When an input is an Outcome Library bundle or Stake Engine export, it also refuses destinations
+  inside that source directory (including symlink aliases), so choose a new unused path (or inspect and remove an old
+  diff artifact yourself) before retrying.
 
 The human-readable summary looks like:
 

@@ -262,14 +262,25 @@ export class DiffCommand implements CliCommandHandling {
             return;
         }
 
-        const outputPath = this.canonicalPath(options.out);
+        const outputPath = this.canonicalPlannedPath(options.out);
         const inputPath = [options.leftPath, options.rightPath]
-            .map((input) => this.canonicalPath(input))
+            .map((input) => this.canonicalPlannedPath(input))
             .find((input) => input === outputPath);
         if (inputPath !== undefined) {
             throw new Error(
                 `Cannot write diff to "${options.out}" because it is also an input. ` +
                 "Choose a new unused --out path to keep both inputs unchanged.",
+            );
+        }
+
+        const inputDirectory = [options.leftPath, options.rightPath].find((input) => this.isDirectory(input) && this.isPathInside(
+            outputPath,
+            this.canonicalPlannedPath(input),
+        ));
+        if (inputDirectory !== undefined) {
+            throw new Error(
+                `Cannot write diff to "${options.out}" because it is inside input directory "${inputDirectory}". ` +
+                "Choose a new unused --out path, or inspect and remove the destination yourself before retrying.",
             );
         }
 
@@ -289,12 +300,44 @@ export class DiffCommand implements CliCommandHandling {
         );
     }
 
-    private canonicalPath(file: string): string {
-        try {
-            return fs.realpathSync(file);
-        } catch {
-            return path.resolve(file);
+    // Resolve as much of a planned path as already exists. This follows a directory symlink even when
+    // its requested descendant has not been created yet, so an output cannot be smuggled into an input
+    // source through a symlink alias.
+    private canonicalPlannedPath(file: string): string {
+        const resolved = path.resolve(file);
+        let existingAncestor = resolved;
+        const missingParts: string[] = [];
+        let reachedRoot = false;
+        while (!reachedRoot) {
+            try {
+                return path.join(fs.realpathSync(existingAncestor), ...missingParts.reverse());
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                    return resolved;
+                }
+                const parent = path.dirname(existingAncestor);
+                if (parent === existingAncestor) {
+                    reachedRoot = true;
+                    continue;
+                }
+                missingParts.push(path.basename(existingAncestor));
+                existingAncestor = parent;
+            }
         }
+        return resolved;
+    }
+
+    private isDirectory(file: string): boolean {
+        try {
+            return fs.statSync(file).isDirectory();
+        } catch {
+            return false;
+        }
+    }
+
+    private isPathInside(candidate: string, directory: string): boolean {
+        const relative = path.relative(directory, candidate);
+        return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
     }
 
     private readReportJson(reportPath: string): SimulationReport | SimulationReportSet {
