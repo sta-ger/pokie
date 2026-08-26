@@ -2,6 +2,23 @@
 
 Run date: 2026-08-26. Candidate: `fe9f9d290825b1c1203a17d27ec26e2e0f91273b`.
 
+## Current-candidate replay inventory contract correction
+
+Candidate verified: `c898e7fbd84b4d0afdc381145d720c5e7a5091e0` (before this evidence-only commit).
+
+```text
+$ npm run test:targeted -- tests/cli/cliCommandInventory.contract.test.ts
+PASS pokie tests/cli/cliCommandInventory.contract.test.ts
+Test Suites: 1 passed, 1 total
+Tests:       1073 passed, 1073 total
+Snapshots:   0 total
+exit: 0
+```
+
+This was one complete, serial targeted invocation of the required file. Its CLI command registry assertions include
+`"replay"'s getDescription() text is frozen`, which passed against the current public `ReplayCommand` description:
+`Replay one round: exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package replay.`
+
 ## Installed candidate and fresh workspace
 
 The candidate checkout produced the package below with one completed `npm pack --pack-destination /tmp/p7-13-packed-cli` (its `prepack` completed `npm run build`). The workflow then used a new directory, `/tmp/p7-13-fresh-workflow`, initialized only to install that tarball:
