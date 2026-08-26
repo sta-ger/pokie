@@ -27,12 +27,24 @@
   },
   "findingAssignments": [
     {"id": "P8-01-F-IMPORT-NATIVE-PICKER", "surface": "Import Project host native picker", "owner": "P8-02", "status": "unreached"},
-    {"id": "P8-01-F-IMPORT-OPEN-ALTERNATIVE", "surface": "Import Project Detect/Register/Open alternatives", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-IMPORT-DETECT", "surface": "Import Project Detect", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-IMPORT-REGISTER", "surface": "Import Project Register", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-IMPORT-OPEN", "surface": "Import Project Open imported project", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-NEW-BLUEPRINT-LOAD-EXISTING", "surface": "New Blueprint Load existing blueprint", "owner": "P8-04", "status": "unreached"},
+    {"id": "P8-01-F-SIMULATION-RUN", "surface": "Simulation Run Simulation", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-REPLAY-LOAD", "surface": "Replay Load", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-BUILD-GENERATE-OUTCOME-LIBRARY", "surface": "Build/Export Generate outcome library", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-BUILD-STAKE-EXPORT", "surface": "Build/Export Run Stake Engine Export", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-MANAGED-PROJECT-OPEN", "surface": "Managed project Open", "owner": "P8-02", "status": "unreached"},
+    {"id": "P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "surface": "Managed project Remove", "owner": "P8-02", "status": "unreached"},
     {"id": "P8-01-F-REOPEN-PERSISTENCE", "surface": "Reopen Studio and persisted project/artifact state", "owner": "P8-02", "status": "unreached"},
     {"id": "P8-01-F-TRANSIENT-LOADING", "surface": "Transient loading state capture", "owner": "P8-06", "status": "unreached"},
     {"id": "P8-01-F-CONDITIONAL-CAPABILITIES", "surface": "Certification and Provably Fair capability-gated tabs", "owner": "P8-05", "status": "unreached"},
     {"id": "P8-01-F-SIMULATION-TERMINALS", "surface": "Cancelled and failed simulation outcomes", "owner": "P8-05", "status": "unreached"},
-    {"id": "P8-01-F-REPLAY-ARTIFACT-TERMINALS", "surface": "Replay and artifact success/error/recovery outcomes", "owner": "P8-05", "status": "unreached"}
+    {"id": "P8-01-F-REPLAY-ARTIFACT-INPUT", "surface": "Replay Artifact validation/load", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-REPLAY-ARTIFACT-TERMINALS", "surface": "Replay artifact failure and recovery outcomes", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-BUILD-OPEN-OUTPUT-FOLDER", "surface": "Build/Export Open output folder", "owner": "P8-05", "status": "unreached"},
+    {"id": "P8-01-F-PROJECT-SHOW-LOCATION", "surface": "Project Show project location", "owner": "P8-02", "status": "unreached"}
   ],
   "residualFindings": [],
   "unownedFindings": []

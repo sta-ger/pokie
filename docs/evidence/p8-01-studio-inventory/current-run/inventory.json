@@ -1,15 +1,15 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "collector": "scripts/collect-studio-inventory.mjs",
   "provenance": {
-    "runId": "clean-profile-run-1",
-    "candidateSha": "d5086da6dd4b15aa3bc7fcb914efc510e786967c",
-    "command": "node scripts/collect-studio-inventory.mjs --output /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/docs/evidence/p8-01-studio-inventory/current-run --run-id clean-profile-run-1",
-    "startedAt": "2026-08-26T21:26:31.762Z",
+    "runId": "current-clean-165fa681",
+    "candidateSha": "165fa6816d4cc27cf5b373600a431f8e96d36882",
+    "command": "node scripts/collect-studio-inventory.mjs --output /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/docs/evidence/p8-01-studio-inventory/current-run --run-id current-clean-165fa681",
+    "startedAt": "2026-08-26T22:18:54.001Z",
     "profile": "fresh temporary Chromium profile",
     "studioConfig": "fresh temporary Studio config",
     "entrypoint": "http://127.0.0.1:46281/",
-    "method": "visible controls, browser input, rendered text and browser focus only",
+    "method": "visible controls, CDP browser mouse/keyboard input, rendered state transitions and browser focus only",
     "browser": "Chromium 151.0.7922.108 snap",
     "environment": {
       "platform": "linux",
@@ -31,7 +31,7 @@
     ],
     "rerun": "This run used a separately-created temporary browser profile and Studio config. Compare independent runs by rendered goal and visible outcome, not implementation route."
   },
-  "observedAt": "2026-08-26T21:26:43.748Z",
+  "observedAt": "2026-08-26T22:19:06.204Z",
   "browserErrors": {
     "console": [],
     "network": []
@@ -146,14 +146,13 @@
         "Projects registry after creating a project"
       ],
       "status": "finding",
-      "findingId": "P8-01-F-IMPORT-OPEN-ALTERNATIVE"
+      "findingId": "P8-01-F-IMPORT-DETECT"
     },
     {
       "id": "DOC-04",
       "owner": "P8-03",
       "observedGoals": [
         "Created project overview",
-        "Project tab: Overview",
         "Project tab: Game Model",
         "Project tab: Play",
         "Project tab: Simulation",
@@ -194,167 +193,569 @@
   "actions": [
     {
       "action": "click Projects",
-      "started": 1787779593977,
-      "latencyMs": 265,
+      "inputMethod": "CDP mouse",
+      "started": 1787782736324,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 132,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:34.243Z",
+      "visibleResult": "POKIE Studio Design Game Projects Projects Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet. Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above. Your projects No projects yet -- import or design one below. Import Project Po",
+      "visibleResultAt": "2026-08-26T22:18:56.458Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Design Game",
-      "started": 1787779594523,
-      "latencyMs": 285,
+      "inputMethod": "CDP mouse",
+      "started": 1787782736686,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 138,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:34.808Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:56.827Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "keyboard activation New Blueprint",
-      "started": 1787779595324,
-      "latencyMs": 273,
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "New Blueprint"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "New Blueprint"
+      },
+      "started": 1787782737278,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 49,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:35.597Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:57.328Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "keyboard activation Discard",
-      "started": 1787779595855,
-      "latencyMs": 281,
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Discard"
+      },
+      "focusAfter": {
+        "tag": "body",
+        "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+      },
+      "started": 1787782737459,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 25,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:36.136Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:57.486Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
-      "action": "click Blank",
-      "started": 1787779596313,
-      "latencyMs": 341,
+      "action": "click Load existing",
+      "inputMethod": "CDP mouse",
+      "started": 1787782737640,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 44,
+      "owner": "P8-02",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:57.686Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation Back",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Back"
+      },
+      "focusAfter": {
+        "tag": "body",
+        "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+      },
+      "started": 1787782737911,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 32,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:36.654Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Show advanced options (JSO",
+      "visibleResultAt": "2026-08-26T22:18:57.961Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation Blank",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Blank"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "Blank"
+      },
+      "started": 1787782738102,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 76,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:58.184Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Create Project",
-      "started": 1787779596939,
-      "latencyMs": 274,
+      "inputMethod": "CDP mouse",
+      "started": 1787782738366,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 664,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:37.213Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:59.033Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
-      "action": "click Recommended",
-      "started": 1787779598059,
-      "latencyMs": 326,
+      "action": "keyboard activation New Blueprint",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "New Blueprint"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "New Blueprint"
+      },
+      "started": 1787782739536,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 59,
       "owner": "P8-04",
-      "visibleResultAt": "2026-08-26T21:26:38.385Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:59.596Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation Discard",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Discard"
+      },
+      "focusAfter": {
+        "tag": "body",
+        "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+      },
+      "started": 1787782739764,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 22,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:18:59.788Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "click Random",
+      "inputMethod": "CDP mouse",
+      "started": 1787782739962,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 59,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:00.023Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "enter Name (optional)",
+      "inputMethod": "CDP mouse + keyboard text",
+      "started": 1787782740278,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 41,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:00.326Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "click Generate",
+      "inputMethod": "CDP mouse",
+      "started": 1787782740429,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 143,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:00.575Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation Use this blueprint",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Use this blueprint"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "Use this blueprint"
+      },
+      "started": 1787782740841,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 67,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:00.914Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard Escape closes Random Blueprint dialog",
+      "inputMethod": "CDP keyboard Escape",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Generate"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "Generate"
+      },
+      "started": 1787782741097,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 107,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:01.206Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation New Blueprint",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "New Blueprint"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "New Blueprint"
+      },
+      "started": 1787782741558,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 52,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:01.616Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation Discard",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Discard"
+      },
+      "focusAfter": {
+        "tag": "body",
+        "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+      },
+      "started": 1787782741838,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 27,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:01.868Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard activation Recommended",
+      "inputMethod": "CDP keyboard Tab + Space",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Recommended"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "Recommended"
+      },
+      "started": 1787782742124,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 52,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:02.181Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "keyboard Escape closes Recommended Blueprint dialog",
+      "inputMethod": "CDP keyboard Escape",
+      "focusBefore": {
+        "tag": "button",
+        "label": "Load existing"
+      },
+      "focusAfter": {
+        "tag": "button",
+        "label": "Load existing"
+      },
+      "started": 1787782742320,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 112,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:02.435Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Create Project",
-      "started": 1787779598658,
-      "latencyMs": 393,
+      "inputMethod": "CDP mouse",
+      "started": 1787782742715,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 354,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:39.051Z",
-      "consoleErrors": [],
-      "networkErrors": []
-    },
-    {
-      "action": "click Overview",
-      "started": 1787779599190,
-      "latencyMs": 280,
-      "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:39.470Z",
+      "visibleResult": "POKIE Studio / Starter Slot / Overview Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Start by playing a round Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a sel",
+      "visibleResultAt": "2026-08-26T22:19:03.070Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Game Model",
-      "started": 1787779599622,
-      "latencyMs": 284,
-      "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:39.906Z",
+      "inputMethod": "CDP mouse",
+      "started": 1787782743169,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 174,
+      "owner": "P8-04",
+      "visibleResult": "POKIE Studio / Starter Slot / Game Model Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Game basics Edit Id: starter-slot Name: Starter Slot Version: 0.1.0 Description: (none) Author: (none) Layout Edit Reels: 5 Rows: 3 Win model: lines Paylines: 3 Symbols Edit A K Q J Reels Edit Generation mode: Literal reel strips Us",
+      "visibleResultAt": "2026-08-26T22:19:03.355Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Play",
-      "started": 1787779600055,
-      "latencyMs": 285,
+      "inputMethod": "CDP mouse",
+      "started": 1787782743431,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 123,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:40.340Z",
+      "visibleResult": "POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Play prepares this project (materializing a Blueprint into a runnable package first if needed) and creates a real session directly in Studio's own backend -- no server, host, port, or separate API to set up. Start Play Show advanced detai",
+      "visibleResultAt": "2026-08-26T22:19:03.556Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "click New Play session",
+      "inputMethod": "CDP mouse",
+      "started": 1787782743726,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 144,
+      "owner": "P8-05",
+      "visibleResult": "POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Play Bet Available bets come from this session's game model. Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol The symbol Find sym",
+      "visibleResultAt": "2026-08-26T22:19:03.872Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "click Spin",
+      "inputMethod": "CDP mouse",
+      "started": 1787782744056,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 74,
+      "owner": "P8-05",
+      "visibleResult": "POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Play Spin Scenarios Scenario searches use real settled spins and leave their final round in this Play session. Find any win Find symbol win Find free games Symbol Find symbol win is unavailable because this game does not expose selectable",
+      "visibleResultAt": "2026-08-26T22:19:04.132Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Simulation",
-      "started": 1787779600498,
-      "latencyMs": 286,
+      "inputMethod": "CDP mouse",
+      "started": 1787782744267,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 132,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:40.784Z",
+      "visibleResult": "POKIE Studio / Starter Slot / Simulation Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project 1 Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or ex",
+      "visibleResultAt": "2026-08-26T22:19:04.401Z",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "action": "enter Rounds",
+      "inputMethod": "CDP mouse + keyboard text",
+      "started": 1787782744580,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 55,
+      "owner": "P8-02",
+      "visibleResult": "POKIE Studio / Starter Slot / Simulation Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project 1 Configure Set rounds 2 Run Watch progress 3 Review See results 4 Export Download report Simulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or ex",
+      "visibleResultAt": "2026-08-26T22:19:04.638Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Replay",
-      "started": 1787779600955,
-      "latencyMs": 287,
+      "inputMethod": "CDP mouse",
+      "started": 1787782744822,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 163,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:41.242Z",
+      "visibleResult": "POKIE Studio / Starter Slot / Replay Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Best-effort reproducibility: replay plays a fresh session forward from round 1 using the same seed, and matches exactly for deterministic games. A game whose logic doesn't depend solely on the seed (e.g. it reads external state) may not",
+      "visibleResultAt": "2026-08-26T22:19:04.988Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Build/Export",
-      "started": 1787779601413,
-      "latencyMs": 290,
+      "inputMethod": "CDP mouse",
+      "started": 1787782745172,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 141,
       "owner": "P8-05",
-      "visibleResultAt": "2026-08-26T21:26:41.703Z",
+      "visibleResult": "POKIE Studio / Starter Slot / Build/Export Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close project Build game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them. Refresh registered t",
+      "visibleResultAt": "2026-08-26T22:19:05.316Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Close project",
-      "started": 1787779602202,
-      "latencyMs": 792,
+      "inputMethod": "CDP mouse",
+      "started": 1787782745603,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 114,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:42.994Z",
+      "visibleResult": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay. Create Project Studio is checking this mo",
+      "visibleResultAt": "2026-08-26T22:19:05.719Z",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
       "action": "click Projects",
-      "started": 1787779603253,
-      "latencyMs": 283,
+      "inputMethod": "CDP mouse",
+      "started": 1787782745929,
+      "resultWasFalseBeforeInput": true,
+      "latencyMs": 135,
       "owner": "P8-02",
-      "visibleResultAt": "2026-08-26T21:26:43.536Z",
+      "visibleResult": "POKIE Studio Design Game Projects Projects Open an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet. Need a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above. Your projects Search projects Project type Availability Name Type Origin Last ",
+      "visibleResultAt": "2026-08-26T22:19:06.065Z",
       "consoleErrors": [],
       "networkErrors": []
     }
   ],
   "findings": [
     {
+      "id": "P8-01-F-NEW-BLUEPRINT-LOAD-EXISTING",
+      "surface": "New Blueprint Load existing blueprint",
+      "owner": "P8-04",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The rendered Load existing flow requires a user-supplied blueprint file path; a clean browser run does not invent an external artifact or select a native picker result.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-SIMULATION-RUN",
+      "surface": "Simulation Run Simulation",
+      "owner": "P8-05",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The rendered Run Simulation control is reachable, but this clean headless candidate has no executable simulation capability that produces a visible progress, report, or error transition; the control is retained as an individually owned unavailable-capability finding.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-REPLAY-LOAD",
+      "surface": "Replay Load",
+      "owner": "P8-05",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The rendered Replay Load control requires a selected replay source or external replay artifact; the clean run has neither a selectable settled replay nor a supplied artifact, so no result is fabricated.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-BUILD-GENERATE-OUTCOME-LIBRARY",
+      "surface": "Build/Export Generate exact outcome library (base)",
+      "owner": "P8-05",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The clean Blueprint project exposes outcome-library generation but lacks the executable runtime capability needed to produce a generated-library result; no synthetic build result is recorded.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-BUILD-STAKE-EXPORT",
+      "surface": "Build/Export Run Stake Engine Export (base)",
+      "owner": "P8-05",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The clean Blueprint project exposes Stake Engine export but no generated outcome-library artifact is available to export; no synthetic artifact is recorded.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-MANAGED-PROJECT-OPEN",
+      "surface": "Managed project Open",
+      "owner": "P8-02",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The clean browser run reaches an Available managed-project Open control, but the isolated headless Studio instance cannot reopen that filesystem-backed managed project into a visible workspace result; no synthetic project-open result is recorded.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION",
+      "surface": "Managed project Remove",
+      "owner": "P8-02",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The visible Remove action is intentionally not activated in the clean run because its destructive confirmation would delete the newly-created managed project; it is separately inventoried for its owner.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
       "id": "P8-01-F-IMPORT-NATIVE-PICKER",
       "surface": "Import Project host native picker",
       "owner": "P8-02",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "current-clean-165fa681",
       "reason": "The browser collector can observe Browse controls but a headless clean-profile run cannot select a host-native file-picker result.",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
-      "id": "P8-01-F-IMPORT-OPEN-ALTERNATIVE",
-      "surface": "Import Project Detect/Register/Open alternatives",
+      "id": "P8-01-F-IMPORT-DETECT",
+      "surface": "Import Project Detect",
       "owner": "P8-02",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
-      "reason": "The clean run created a managed project; importing a separate public artifact requires a user-provided filesystem location and is not fabricated by this collector.",
+      "observedBy": "current-clean-165fa681",
+      "reason": "Detect requires a user-provided package, outcome library, export, blueprint, or PAR-sheet path; the clean run does not fabricate an external artifact.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-IMPORT-REGISTER",
+      "surface": "Import Project Register",
+      "owner": "P8-02",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "Register is offered only after a successful detection of a user-provided external artifact, which is unavailable in this clean run.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-IMPORT-OPEN",
+      "surface": "Import Project Open imported project",
+      "owner": "P8-02",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "Open is offered only after registration of a detected external artifact, which is unavailable in this clean run.",
       "consoleErrors": [],
       "networkErrors": []
     },
@@ -363,7 +764,7 @@
       "surface": "Reopen Studio and persisted project/artifact state",
       "owner": "P8-02",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "current-clean-165fa681",
       "reason": "This bounded run proves the in-session registry after creation, but does not restart Studio because that would turn the independent clean-profile run into a seeded profile.",
       "consoleErrors": [],
       "networkErrors": []
@@ -373,7 +774,7 @@
       "surface": "Transient loading state capture",
       "owner": "P8-06",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "current-clean-165fa681",
       "reason": "Fast local responses did not leave a rendered loading state long enough for a browser observation; no loading state is claimed as covered.",
       "consoleErrors": [],
       "networkErrors": []
@@ -383,7 +784,7 @@
       "surface": "Certification and Provably Fair capability-gated tabs",
       "owner": "P8-05",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "current-clean-165fa681",
       "reason": "The created Blueprint did not expose runtime/outcome-library capabilities, so the public conditional tabs were not observed.",
       "consoleErrors": [],
       "networkErrors": []
@@ -393,18 +794,48 @@
       "surface": "Cancelled and failed simulation outcomes",
       "owner": "P8-05",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
+      "observedBy": "current-clean-165fa681",
       "reason": "No public failure or cancellation trigger was available from the clean Blueprint run; no terminal state is claimed as covered.",
       "consoleErrors": [],
       "networkErrors": []
     },
     {
-      "id": "P8-01-F-REPLAY-ARTIFACT-TERMINALS",
-      "surface": "Replay and artifact success/error/recovery outcomes",
+      "id": "P8-01-F-REPLAY-ARTIFACT-INPUT",
+      "surface": "Replay Artifact validation/load",
       "owner": "P8-05",
       "status": "unreached",
-      "observedBy": "clean-profile-run-1",
-      "reason": "The clean Blueprint run exposed empty action surfaces only; no result or failure is claimed as covered.",
+      "observedBy": "current-clean-165fa681",
+      "reason": "Replay Artifact requires a user-provided exported replay JSON; the clean run exercises seed replay instead of inventing an artifact.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-REPLAY-ARTIFACT-TERMINALS",
+      "surface": "Replay artifact failure and recovery outcomes",
+      "owner": "P8-05",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "No public malformed or incompatible artifact was supplied to induce a failure; no artifact terminal state is claimed as covered.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-BUILD-OPEN-OUTPUT-FOLDER",
+      "surface": "Build/Export Open output folder",
+      "owner": "P8-05",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The post-build control delegates to the host-native file manager, which is unavailable in headless Chromium.",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "id": "P8-01-F-PROJECT-SHOW-LOCATION",
+      "surface": "Project Show project location",
+      "owner": "P8-02",
+      "status": "unreached",
+      "observedBy": "current-clean-165fa681",
+      "reason": "The visible project-location control delegates to the host-native file manager, which is unavailable in headless Chromium.",
       "consoleErrors": [],
       "networkErrors": []
     }
@@ -589,8 +1020,10 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Projects",
-        "started": 1787779593977,
-        "latencyMs": 265
+        "inputMethod": "CDP mouse",
+        "started": 1787782736324,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 132
       },
       "url": "http://127.0.0.1:46281/#/home/projects",
       "title": "Projects · POKIE Studio",
@@ -731,8 +1164,10 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Design Game",
-        "started": 1787779594523,
-        "latencyMs": 285
+        "inputMethod": "CDP mouse",
+        "started": 1787782736686,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 138
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1085,8 +1520,18 @@
       "owner": "P8-04",
       "operation": {
         "action": "keyboard activation New Blueprint",
-        "started": 1787779595324,
-        "latencyMs": 273
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        "started": 1787782737278,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 49
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1287,8 +1732,429 @@
       "owner": "P8-04",
       "operation": {
         "action": "keyboard activation Discard",
-        "started": 1787779595855,
-        "latencyMs": 281
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Discard"
+        },
+        "focusAfter": {
+          "tag": "body",
+          "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+        },
+        "started": 1787782737459,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 25
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Choose a playable project to start with, or explicitly begin from a blank blueprint. Recommended Blank Random Load existing",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Recommended",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Blank",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate random",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Load existing",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        }
+      ]
+    },
+    {
+      "goal": "Load existing Blueprint requires an external artifact",
+      "owner": "P8-02",
+      "operation": {
+        "action": "click Load existing",
+        "inputMethod": "CDP mouse",
+        "started": 1787782737640,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 44
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\nExisting blueprint path\nBrowse…\nBack\nLoad existing blueprint",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Existing blueprint path Browse… Back Load existing blueprint",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Browse…",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Back",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Load existing blueprint",
+          "disabled": true
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\nExisting blueprint path\nBrowse…\nBack\nLoad existing blueprint"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        }
+      ]
+    },
+    {
+      "goal": "Creator returns from Load existing Blueprint",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard activation Back",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Back"
+        },
+        "focusAfter": {
+          "tag": "body",
+          "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+        },
+        "started": 1787782737911,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 32
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1488,9 +2354,19 @@
       "goal": "Blank Blueprint validation state",
       "owner": "P8-04",
       "operation": {
-        "action": "click Blank",
-        "started": 1787779596313,
-        "latencyMs": 341
+        "action": "keyboard activation Blank",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Blank"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "Blank"
+        },
+        "started": 1787782738102,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 76
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1499,7 +2375,7 @@
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nReplaced the current blueprint.\nUndo\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nReplaced the current blueprint.\nUndo\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing",
       "controls": [
         {
           "role": "a",
@@ -1585,45 +2461,48 @@
           "role": "a",
           "label": "CLI reference",
           "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Choose a playable project to start with, or explicitly begin from a blank blueprint. Recommended Blank Random Load existing",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Recommended",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Blank",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate random",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Load existing",
+          "disabled": false
         }
       ],
       "alerts": [
         "Replaced the current blueprint.\nUndo"
       ],
-      "dialogs": [],
+      "dialogs": [
+        "Create Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing"
+      ],
       "statesObserved": {
         "loading": false,
         "empty": false,
         "warning": false,
         "error": false,
         "disabled": true,
-        "dialog": false
+        "dialog": true
       },
       "focusOrder": [
-        {
-          "tag": "a",
-          "label": "POKIE Studio"
-        },
-        {
-          "tag": "button",
-          "label": "Design Game"
-        },
-        {
-          "tag": "button",
-          "label": "Projects"
-        },
-        {
-          "tag": "button",
-          "label": "Create Project"
-        },
-        {
-          "tag": "button",
-          "label": "Show advanced options (JSON mode, load/save by path)"
-        },
-        {
-          "tag": "button",
-          "label": "New Blueprint"
-        },
         {
           "tag": "button",
           "label": "Undo"
@@ -1663,6 +2542,30 @@
         {
           "tag": "a",
           "label": "Getting started"
+        },
+        {
+          "tag": "a",
+          "label": "CLI reference"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
         }
       ]
     },
@@ -1671,8 +2574,10 @@
       "owner": "P8-04",
       "operation": {
         "action": "click Create Project",
-        "started": 1787779596939,
-        "latencyMs": 274
+        "inputMethod": "CDP mouse",
+        "started": 1787782738366,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 664
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1842,12 +2747,22 @@
       ]
     },
     {
-      "goal": "Creator configures the recommended Blueprint",
+      "goal": "Creator is warned before replacing an invalid draft",
       "owner": "P8-04",
       "operation": {
-        "action": "click Recommended",
-        "started": 1787779598059,
-        "latencyMs": 326
+        "action": "keyboard activation New Blueprint",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        "started": 1787782739536,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 59
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -1856,7 +2771,1033 @@
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nReplaced the current blueprint.\nUndo\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nSource changed — checking again…\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nYou have unsaved changes to the current blueprint. Save them, discard them, or cancel.\n\nSave current blueprint to path\nBrowse…\nCancel\nDiscard\nSave and continue",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project You have unsaved changes to the current blueprint. Save them, discard them, or cancel. Save current blueprint to path Browse… Cancel Discard Save and continue",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Browse…",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Cancel",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Discard",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Save and continue",
+          "disabled": true
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\n\nYou have unsaved changes to the current blueprint. Save them, discard them, or cancel.\n\nSave current blueprint to path\nBrowse…\nCancel\nDiscard\nSave and continue"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Cancel"
+        },
+        {
+          "tag": "button",
+          "label": "Discard"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Cancel"
+        },
+        {
+          "tag": "button",
+          "label": "Discard"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Cancel"
+        },
+        {
+          "tag": "button",
+          "label": "Discard"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        }
+      ]
+    },
+    {
+      "goal": "Creator opens new Blueprint choices after validation",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard activation Discard",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Discard"
+        },
+        "focusAfter": {
+          "tag": "body",
+          "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+        },
+        "started": 1787782739764,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 22
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nSource changed — checking again…\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Choose a playable project to start with, or explicitly begin from a blank blueprint. Recommended Blank Random Load existing",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Recommended",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Blank",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate random",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Load existing",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        }
+      ]
+    },
+    {
+      "goal": "Creator opens Random Blueprint controls",
+      "owner": "P8-04",
+      "operation": {
+        "action": "click Random",
+        "inputMethod": "CDP mouse",
+        "started": 1787782739962,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 59
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nSource changed — checking again…\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\nBack\nUse this blueprint",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Seed (optional) Default Variant Name (optional) Generate Back Use this blueprint",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Back",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Use this blueprint",
+          "disabled": true
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\nBack\nUse this blueprint"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        }
+      ]
+    },
+    {
+      "goal": "Creator enters Random Blueprint name",
+      "owner": "P8-04",
+      "operation": {
+        "action": "enter Name (optional)",
+        "inputMethod": "CDP mouse + keyboard text",
+        "started": 1787782740278,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 41
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nSource changed — checking again…\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\nBack\nUse this blueprint",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Seed (optional) Default Variant Name (optional) Generate Back Use this blueprint",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Back",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Use this blueprint",
+          "disabled": true
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\nBack\nUse this blueprint"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Generate"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        }
+      ]
+    },
+    {
+      "goal": "Creator generates Random Blueprint",
+      "owner": "P8-04",
+      "operation": {
+        "action": "click Generate",
+        "inputMethod": "CDP mouse",
+        "started": 1787782740429,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 143
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nSource changed — checking again…\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\n\nGenerated \"P8 inventory random\" (id: \"p8-inventory-random\") from seed 20260815.\n\nGenerator 1.1.0, strategy \"default-line-pay\".\n\nBack\nRandomize again\nUse this blueprint",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Seed (optional) Default Variant Name (optional) Generate Generated \"P8 inventory random\" (id: \"p8-inventory-random\") from seed 20260815. Generator 1.1.0, strategy \"default-line-pay\". Back Randomize again Use this bl",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Back",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Randomize again",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Use this blueprint",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\n\nGenerated \"P8 inventory random\" (id: \"p8-inventory-random\") from seed 20260815.\n\nGenerator 1.1.0, strategy \"default-line-pay\".\n\nBack\nRandomize again\nUse this blueprint"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": "Randomize again"
+        },
+        {
+          "tag": "button",
+          "label": "Use this blueprint"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        },
+        {
+          "tag": "button",
+          "label": "Back"
+        },
+        {
+          "tag": "button",
+          "label": "Randomize again"
+        },
+        {
+          "tag": "button",
+          "label": "Use this blueprint"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        }
+      ]
+    },
+    {
+      "goal": "Creator uses the generated Random Blueprint",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard activation Use this blueprint",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Use this blueprint"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "Use this blueprint"
+        },
+        "started": 1787782740841,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 67
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nReplaced the current blueprint.\nUndo\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\n\nGenerated \"P8 inventory random\" (id: \"p8-inventory-random\") from seed 20260815.\n\nGenerator 1.1.0, strategy \"default-line-pay\".\n\nBack\nRandomize again\nUse this blueprint",
       "controls": [
         {
           "role": "a",
@@ -1942,19 +3883,46 @@
           "role": "a",
           "label": "CLI reference",
           "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Seed (optional) Default Variant Name (optional) Generate Generated \"P8 inventory random\" (id: \"p8-inventory-random\") from seed 20260815. Generator 1.1.0, strategy \"default-line-pay\". Back Randomize again Use this bl",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Back",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Randomize again",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Use this blueprint",
+          "disabled": false
         }
       ],
       "alerts": [
         "Replaced the current blueprint.\nUndo"
       ],
-      "dialogs": [],
+      "dialogs": [
+        "Create Blueprint Project\nSeed (optional)\nDefault\nVariant\nName (optional)\nGenerate\n\nGenerated \"P8 inventory random\" (id: \"p8-inventory-random\") from seed 20260815.\n\nGenerator 1.1.0, strategy \"default-line-pay\".\n\nBack\nRandomize again\nUse this blueprint"
+      ],
       "statesObserved": {
         "loading": false,
         "empty": false,
         "warning": false,
         "error": false,
         "disabled": true,
-        "dialog": false
+        "dialog": true
       },
       "focusOrder": [
         {
@@ -2002,9 +3970,146 @@
           "label": "CLI reference"
         },
         {
-          "tag": "body",
-          "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+          "tag": "button",
+          "label": ""
         },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Generate"
+        }
+      ]
+    },
+    {
+      "goal": "Creator closes Random Blueprint dialog after use",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard Escape closes Random Blueprint dialog",
+        "inputMethod": "CDP keyboard Escape",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Generate"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "Generate"
+        },
+        "started": 1787782741097,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 107
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": false
+      },
+      "focusOrder": [
         {
           "tag": "a",
           "label": "POKIE Studio"
@@ -2020,6 +4125,882 @@
         {
           "tag": "button",
           "label": "Create Project"
+        },
+        {
+          "tag": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)"
+        },
+        {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        {
+          "tag": "button",
+          "label": "Game basics"
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Preview Game Model"
+        },
+        {
+          "tag": "a",
+          "label": "Docs index"
+        },
+        {
+          "tag": "a",
+          "label": "Getting started"
+        },
+        {
+          "tag": "a",
+          "label": "CLI reference"
+        }
+      ]
+    },
+    {
+      "goal": "Creator is warned before replacing the Random Blueprint",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard activation New Blueprint",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        "started": 1787782741558,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 52
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nYou have unsaved changes to the current blueprint. Save them, discard them, or cancel.\n\nSave current blueprint to path\nBrowse…\nCancel\nDiscard\nSave and continue",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project You have unsaved changes to the current blueprint. Save them, discard them, or cancel. Save current blueprint to path Browse… Cancel Discard Save and continue",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Browse…",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Cancel",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Discard",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Save and continue",
+          "disabled": true
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\n\nYou have unsaved changes to the current blueprint. Save them, discard them, or cancel.\n\nSave current blueprint to path\nBrowse…\nCancel\nDiscard\nSave and continue"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Cancel"
+        },
+        {
+          "tag": "button",
+          "label": "Discard"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Cancel"
+        },
+        {
+          "tag": "button",
+          "label": "Discard"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Browse…"
+        },
+        {
+          "tag": "button",
+          "label": "Cancel"
+        },
+        {
+          "tag": "button",
+          "label": "Discard"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        }
+      ]
+    },
+    {
+      "goal": "Creator chooses a replacement Blueprint",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard activation Discard",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Discard"
+        },
+        "focusAfter": {
+          "tag": "body",
+          "label": "POKIE Studio Design Game Projects Design Your Game Start with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, "
+        },
+        "started": 1787782741838,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 27
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Choose a playable project to start with, or explicitly begin from a blank blueprint. Recommended Blank Random Load existing",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Recommended",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Blank",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate random",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Load existing",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [
+        "Create Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        }
+      ]
+    },
+    {
+      "goal": "Creator selects recommended Blueprint after Random use",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard activation Recommended",
+        "inputMethod": "CDP keyboard Tab + Space",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        "started": 1787782742124,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 52
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nReplaced the current blueprint.\nUndo\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference\nCreate Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Undo",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        },
+        {
+          "role": "dialog",
+          "label": "Create Blueprint Project Choose a playable project to start with, or explicitly begin from a blank blueprint. Recommended Blank Random Load existing",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Recommended",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Blank",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Generate random",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Load existing",
+          "disabled": false
+        }
+      ],
+      "alerts": [
+        "Replaced the current blueprint.\nUndo"
+      ],
+      "dialogs": [
+        "Create Blueprint Project\n\nChoose a playable project to start with, or explicitly begin from a blank blueprint.\n\nRecommended\nBlank\nRandom\nLoad existing"
+      ],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": true
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Undo"
+        },
+        {
+          "tag": "button",
+          "label": "Game basics"
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Preview Game Model"
+        },
+        {
+          "tag": "a",
+          "label": "Docs index"
+        },
+        {
+          "tag": "a",
+          "label": "Getting started"
+        },
+        {
+          "tag": "a",
+          "label": "CLI reference"
+        },
+        {
+          "tag": "button",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Recommended"
+        },
+        {
+          "tag": "button",
+          "label": "Blank"
+        },
+        {
+          "tag": "button",
+          "label": "Generate random"
+        },
+        {
+          "tag": "button",
+          "label": "Load existing"
+        }
+      ]
+    },
+    {
+      "goal": "Creator closes Recommended Blueprint dialog",
+      "owner": "P8-04",
+      "operation": {
+        "action": "keyboard Escape closes Recommended Blueprint dialog",
+        "inputMethod": "CDP keyboard Escape",
+        "focusBefore": {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        "focusAfter": {
+          "tag": "button",
+          "label": "Load existing"
+        },
+        "started": 1787782742320,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 112
+      },
+      "url": "http://127.0.0.1:46281/#/home/design",
+      "title": "Design Game · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "controls": [
+        {
+          "role": "a",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Design Game",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Projects",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Create Project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "New Blueprint",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Game basics",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Layout",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Symbols",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Reels",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Paytable",
+          "disabled": false
+        },
+        {
+          "role": "tab",
+          "label": "Bets",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Preview Game Model",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Docs index",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "Getting started",
+          "disabled": false
+        },
+        {
+          "role": "a",
+          "label": "CLI reference",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": false
+      },
+      "focusOrder": [
+        {
+          "tag": "a",
+          "label": "POKIE Studio"
+        },
+        {
+          "tag": "button",
+          "label": "Design Game"
+        },
+        {
+          "tag": "button",
+          "label": "Projects"
+        },
+        {
+          "tag": "button",
+          "label": "Create Project"
+        },
+        {
+          "tag": "button",
+          "label": "Show advanced options (JSON mode, load/save by path)"
+        },
+        {
+          "tag": "button",
+          "label": "New Blueprint"
+        },
+        {
+          "tag": "button",
+          "label": "Game basics"
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "input",
+          "label": ""
+        },
+        {
+          "tag": "button",
+          "label": "Preview Game Model"
+        },
+        {
+          "tag": "a",
+          "label": "Docs index"
+        },
+        {
+          "tag": "a",
+          "label": "Getting started"
+        },
+        {
+          "tag": "a",
+          "label": "CLI reference"
         }
       ]
     },
@@ -2028,17 +5009,19 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Create Project",
-        "started": 1787779598658,
-        "latencyMs": 393
+        "inputMethod": "CDP mouse",
+        "started": 1787782742715,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 354
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/overview",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/overview",
       "title": "Starter Slot · Overview · POKIE Studio",
       "viewport": {
         "width": 1280,
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-19/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nValid — no issues found.\n\nRe-check project",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-27/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nValid — no issues found.\n\nRe-check project",
       "controls": [
         {
           "role": "button",
@@ -2177,175 +5160,20 @@
         {
           "tag": "body",
           "label": "POKIE Studio / Starter Slot / Overview Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close pr"
-        }
-      ]
-    },
-    {
-      "goal": "Project tab: Overview",
-      "owner": "P8-05",
-      "operation": {
-        "action": "click Overview",
-        "started": 1787779599190,
-        "latencyMs": 280
-      },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/overview",
-      "title": "Starter Slot · Overview · POKIE Studio",
-      "viewport": {
-        "width": 1280,
-        "height": 900,
-        "horizontalOverflow": false
-      },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nOverview\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nStart by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play\nID\tstarter-slot\nVersion\t0.1.0\nType\tBlueprint\nOrigin\tManaged\nLocation\t/home/stager/POKIE Projects/starter-slot-19/blueprint.json\nEditable\tEditable — this project's Blueprint source file can be edited directly.\nCapabilities\t\nBUILD FROM BLUEPRINT SOURCE\nOUTCOMELIBRARY.GENERATE\nSTAKEADAPTER.EXPORT\nValidation\n\nValid — no issues found.\n\nRe-check project",
-      "controls": [
-        {
-          "role": "button",
-          "label": "POKIE Studio",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Starter Slot",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Overview",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Game Model",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Play",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Simulation",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Replay",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Build/Export",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Show project location",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Close project",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Open Play",
-          "disabled": false
-        },
-        {
-          "role": "button",
-          "label": "Re-check project",
-          "disabled": false
-        }
-      ],
-      "alerts": [
-        "Start by playing a round\n\nOpen Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine.\n\nOpen Play"
-      ],
-      "dialogs": [],
-      "statesObserved": {
-        "loading": false,
-        "empty": false,
-        "warning": true,
-        "error": false,
-        "disabled": false,
-        "dialog": false
-      },
-      "focusOrder": [
-        {
-          "tag": "button",
-          "label": "Game Model"
-        },
-        {
-          "tag": "button",
-          "label": "Play"
-        },
-        {
-          "tag": "button",
-          "label": "Simulation"
-        },
-        {
-          "tag": "button",
-          "label": "Replay"
-        },
-        {
-          "tag": "button",
-          "label": "Build/Export"
-        },
-        {
-          "tag": "button",
-          "label": "Show project location"
-        },
-        {
-          "tag": "button",
-          "label": "Close project"
-        },
-        {
-          "tag": "button",
-          "label": "Open Play"
-        },
-        {
-          "tag": "button",
-          "label": "Re-check project"
-        },
-        {
-          "tag": "body",
-          "label": "POKIE Studio / Starter Slot / Overview Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close pr"
-        },
-        {
-          "tag": "button",
-          "label": "POKIE Studio"
-        },
-        {
-          "tag": "button",
-          "label": "Starter Slot"
-        },
-        {
-          "tag": "button",
-          "label": "Overview"
-        },
-        {
-          "tag": "button",
-          "label": "Game Model"
-        },
-        {
-          "tag": "button",
-          "label": "Play"
-        },
-        {
-          "tag": "button",
-          "label": "Simulation"
         }
       ]
     },
     {
       "goal": "Project tab: Game Model",
-      "owner": "P8-05",
+      "owner": "P8-04",
       "operation": {
         "action": "click Game Model",
-        "started": 1787779599622,
-        "latencyMs": 284
+        "inputMethod": "CDP mouse",
+        "started": 1787782743169,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 174
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/gameModel",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/gameModel",
       "title": "Starter Slot · Game Model · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -2557,10 +5385,12 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Play",
-        "started": 1787779600055,
-        "latencyMs": 285
+        "inputMethod": "CDP mouse",
+        "started": 1787782743431,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 123
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/play",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/play",
       "title": "Starter Slot · Play · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -2708,14 +5538,417 @@
       ]
     },
     {
+      "goal": "Play session starts",
+      "owner": "P8-05",
+      "operation": {
+        "action": "click New Play session",
+        "inputMethod": "CDP mouse",
+        "started": 1787782743726,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 144
+      },
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/play",
+      "title": "Starter Slot · Play · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nPlay\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nPlay\nBet\n\nAvailable bets come from this session's game model.\n\nSpin\nScenarios\n\nScenario searches use real settled spins and leave their final round in this Play session.\n\nFind any win\nFind symbol win\nFind free games\nSymbol\n\nThe symbol Find symbol win searches for in a real, already-evaluated win.\n\nSession\n\nShow advanced details (seed)\n\nReset Play session\n\nNo round played yet -- Spin to play.",
+      "controls": [
+        {
+          "role": "button",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Starter Slot",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Overview",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Game Model",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Play",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Simulation",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Replay",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Build/Export",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show project location",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Close project",
+          "disabled": false
+        },
+        {
+          "role": "combobox",
+          "label": "Bet",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Spin",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Find any win",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Find symbol win",
+          "disabled": true
+        },
+        {
+          "role": "button",
+          "label": "Find free games",
+          "disabled": false
+        },
+        {
+          "role": "combobox",
+          "label": "Symbol",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced details (seed)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Reset Play session",
+          "disabled": false
+        }
+      ],
+      "alerts": [
+        "No round played yet -- Spin to play."
+      ],
+      "dialogs": [],
+      "statesObserved": {
+        "loading": false,
+        "empty": true,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": false
+      },
+      "focusOrder": [
+        {
+          "tag": "input",
+          "label": "Bet"
+        },
+        {
+          "tag": "button",
+          "label": "Spin"
+        },
+        {
+          "tag": "button",
+          "label": "Find any win"
+        },
+        {
+          "tag": "button",
+          "label": "Find free games"
+        },
+        {
+          "tag": "input",
+          "label": "Symbol"
+        },
+        {
+          "tag": "button",
+          "label": "Show advanced details (seed)"
+        },
+        {
+          "tag": "button",
+          "label": "Reset Play session"
+        },
+        {
+          "tag": "body",
+          "label": "POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close projec"
+        },
+        {
+          "tag": "button",
+          "label": "POKIE Studio"
+        },
+        {
+          "tag": "button",
+          "label": "Starter Slot"
+        },
+        {
+          "tag": "button",
+          "label": "Overview"
+        },
+        {
+          "tag": "button",
+          "label": "Game Model"
+        },
+        {
+          "tag": "button",
+          "label": "Play"
+        },
+        {
+          "tag": "button",
+          "label": "Simulation"
+        },
+        {
+          "tag": "button",
+          "label": "Replay"
+        },
+        {
+          "tag": "button",
+          "label": "Build/Export"
+        }
+      ]
+    },
+    {
+      "goal": "Play session settles a visible round or error",
+      "owner": "P8-05",
+      "operation": {
+        "action": "click Spin",
+        "inputMethod": "CDP mouse",
+        "started": 1787782744056,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 74
+      },
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/play",
+      "title": "Starter Slot · Play · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nPlay\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\nPlay\nSpin\nScenarios\n\nScenario searches use real settled spins and leave their final round in this Play session.\n\nFind any win\nFind symbol win\nFind free games\nSymbol\n\nThe symbol Find symbol win searches for in a real, already-evaluated win.\n\nSession\n\nShow advanced details (seed)\n\nReset Play session\n\nRound complete — no win this round.\n\nA\nK\nQ\n\t\nA\nK\nQ\n\t\nQ\nJ\nJ\n\t\nQ\nJ\nJ\n\t\nQ\nQ\nJ\nCredits\n999\nTotal win\n0.00 (0.00x)\nLine: 0\nLine: 1\nLine: 2\nBet: 1125\nSymbol\t3\t4\t5\nA\t10\t20\t40\nK\t6\t12\t24\nQ\t4\t8\t16\nJ\t2\t4\t8\n\nNo wins on this step.\n\nInspect round artifact",
+      "controls": [
+        {
+          "role": "button",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Starter Slot",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Overview",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Game Model",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Play",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Simulation",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Replay",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Build/Export",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show project location",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Close project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Spin",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Find any win",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Find symbol win",
+          "disabled": true
+        },
+        {
+          "role": "button",
+          "label": "Find free games",
+          "disabled": false
+        },
+        {
+          "role": "combobox",
+          "label": "Symbol",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced details (seed)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Reset Play session",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Line: 0",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Line: 1",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Line: 2",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "1",
+          "disabled": true
+        },
+        {
+          "role": "button",
+          "label": "2",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "5",
+          "disabled": false
+        }
+      ],
+      "alerts": [],
+      "dialogs": [],
+      "statesObserved": {
+        "loading": false,
+        "empty": false,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": false
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Find any win"
+        },
+        {
+          "tag": "button",
+          "label": "Find free games"
+        },
+        {
+          "tag": "input",
+          "label": "Symbol"
+        },
+        {
+          "tag": "button",
+          "label": "Show advanced details (seed)"
+        },
+        {
+          "tag": "button",
+          "label": "Reset Play session"
+        },
+        {
+          "tag": "body",
+          "label": "POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close projec"
+        },
+        {
+          "tag": "button",
+          "label": "Line: 0"
+        },
+        {
+          "tag": "button",
+          "label": "Line: 1"
+        },
+        {
+          "tag": "button",
+          "label": "Line: 2"
+        },
+        {
+          "tag": "button",
+          "label": "2"
+        },
+        {
+          "tag": "button",
+          "label": "5"
+        },
+        {
+          "tag": "summary",
+          "label": "Inspect round artifact"
+        },
+        {
+          "tag": "body",
+          "label": "POKIE Studio / Starter Slot / Play Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close projec"
+        },
+        {
+          "tag": "button",
+          "label": "POKIE Studio"
+        },
+        {
+          "tag": "button",
+          "label": "Starter Slot"
+        },
+        {
+          "tag": "button",
+          "label": "Overview"
+        }
+      ]
+    },
+    {
       "goal": "Project tab: Simulation",
       "owner": "P8-05",
       "operation": {
         "action": "click Simulation",
-        "started": 1787779600498,
-        "latencyMs": 286
+        "inputMethod": "CDP mouse",
+        "started": 1787782744267,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 132
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/simulation",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/simulation",
       "title": "Starter Slot · Simulation · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -2890,14 +6123,200 @@
       ]
     },
     {
+      "goal": "Simulation round count is entered",
+      "owner": "P8-02",
+      "operation": {
+        "action": "enter Rounds",
+        "inputMethod": "CDP mouse + keyboard text",
+        "started": 1787782744580,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 55
+      },
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/simulation",
+      "title": "Starter Slot · Simulation · POKIE Studio",
+      "viewport": {
+        "width": 1280,
+        "height": 900,
+        "horizontalOverflow": false
+      },
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nSimulation\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n1\nConfigure\nSet rounds\n2\nRun\nWatch progress\n3\nReview\nSee results\n4\nExport\nDownload report\n\nSimulation plays many rounds of this game to estimate RTP, win frequency, and the largest win. When it finishes, review the summary here or export the full report.\n\nRounds *\nRun Simulation\n\nShow advanced details (seed, workers)\n\nRecent runs\nRefresh\n\nNo completed simulations yet.",
+      "controls": [
+        {
+          "role": "button",
+          "label": "POKIE Studio",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Starter Slot",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Overview",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Game Model",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Play",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Simulation",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Replay",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Build/Export",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show project location",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Close project",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "1 Configure Set rounds",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "2 Run Watch progress",
+          "disabled": true
+        },
+        {
+          "role": "button",
+          "label": "3 Review See results",
+          "disabled": true
+        },
+        {
+          "role": "button",
+          "label": "4 Export Download report",
+          "disabled": true
+        },
+        {
+          "role": "button",
+          "label": "Run Simulation",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Show advanced details (seed, workers)",
+          "disabled": false
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "disabled": false
+        }
+      ],
+      "alerts": [
+        "No completed simulations yet."
+      ],
+      "dialogs": [],
+      "statesObserved": {
+        "loading": false,
+        "empty": true,
+        "warning": false,
+        "error": false,
+        "disabled": true,
+        "dialog": false
+      },
+      "focusOrder": [
+        {
+          "tag": "button",
+          "label": "Run Simulation"
+        },
+        {
+          "tag": "button",
+          "label": "Show advanced details (seed, workers)"
+        },
+        {
+          "tag": "button",
+          "label": "Refresh"
+        },
+        {
+          "tag": "body",
+          "label": "POKIE Studio / Starter Slot / Simulation Overview Game Model Play Simulation Replay Build/Export Starter Slot starter-slot · v0.1.0 Show project location Close "
+        },
+        {
+          "tag": "button",
+          "label": "POKIE Studio"
+        },
+        {
+          "tag": "button",
+          "label": "Starter Slot"
+        },
+        {
+          "tag": "button",
+          "label": "Overview"
+        },
+        {
+          "tag": "button",
+          "label": "Game Model"
+        },
+        {
+          "tag": "button",
+          "label": "Play"
+        },
+        {
+          "tag": "button",
+          "label": "Simulation"
+        },
+        {
+          "tag": "button",
+          "label": "Replay"
+        },
+        {
+          "tag": "button",
+          "label": "Build/Export"
+        },
+        {
+          "tag": "button",
+          "label": "Show project location"
+        },
+        {
+          "tag": "button",
+          "label": "Close project"
+        },
+        {
+          "tag": "button",
+          "label": "1 Configure Set rounds"
+        },
+        {
+          "tag": "input",
+          "label": ""
+        }
+      ]
+    },
+    {
       "goal": "Project tab: Replay",
       "owner": "P8-05",
       "operation": {
         "action": "click Replay",
-        "started": 1787779600955,
-        "latencyMs": 287
+        "inputMethod": "CDP mouse",
+        "started": 1787782744822,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 163
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/replay",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/replay",
       "title": "Starter Slot · Replay · POKIE Studio",
       "viewport": {
         "width": 1280,
@@ -3057,17 +6476,19 @@
       "owner": "P8-05",
       "operation": {
         "action": "click Build/Export",
-        "started": 1787779601413,
-        "latencyMs": 290
+        "inputMethod": "CDP mouse",
+        "started": 1787782745172,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 141
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/exportDeploy",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/exportDeploy",
       "title": "Starter Slot · Build/Export · POKIE Studio",
       "viewport": {
         "width": 1280,
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
       "controls": [
         {
           "role": "button",
@@ -3296,14 +6717,14 @@
         "action": "initial render",
         "latencyMs": 0
       },
-      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-19%2Fblueprint.json/exportDeploy",
+      "url": "http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-27%2Fblueprint.json/exportDeploy",
       "title": "Starter Slot · Build/Export · POKIE Studio",
       "viewport": {
         "width": 405,
         "height": 800,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-19/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
+      "text": "POKIE Studio\n/\nStarter Slot\n/\n\nBuild/Export\n\nOverview\nGame Model\nPlay\nSimulation\nReplay\nBuild/Export\nStarter Slot\n\nstarter-slot · v0.1.0\n\nShow project location\n\nClose project\n\nBuild game outputs, export a bundle, or deliver it to a configured destination. Each option shows what it needs and what happens next; details about the underlying integration are available when you need them.\n\nRefresh registered targets\nOutcome libraries\n\nCreate the game outcomes used by the export and delivery options below.\n\nOutcome library generator\n\nTHIS COMPUTER\n\nPurpose: Create the outcome library used by the other export and delivery options.\n\nDestination: Choose a local folder for the outcome library. Nothing is sent outside Studio.\n\nPrerequisites\n\nA built, runnable package for this project\nMax outcome space size\n\nExact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store.\n\nBounded coverage (sampled; not exact)\n\nExplicitly sample the outcome space when it exceeds the exact-generation limit. The resulting library records its bounded-coverage strategy and seed.\n\nGenerate exact outcome library (base)\n\nShow advanced details (technical information)\n\nStatic export\n\nCreate a standalone bundle for another system to use.\n\nStake Engine Export\n\nTHIS COMPUTER\n\nPurpose: Create a standalone Stake Engine bundle from this project's outcomes.\n\nDestination: Choose a local folder for the finished export. Studio checks it before creating the export.\n\nPrerequisites\n\nA canonical outcome library file per mode\nA positive cost for every mode\nAn output directory to write to\nRun Stake Engine Export (base)\n\nGenerate an outcome library above first -- Stake Engine Export always reads the canonical one this project's own registry currently reports.\n\nShow advanced details (technical information)\n\nBuild artifact\n\nCreate a project file or package that can be opened or shared.\n\nTypeScript Game Package\n\nTHIS COMPUTER\n\nPurpose: Create a runnable game package from this project.\n\nDestination: Choose a folder for the finished game package, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nAuto resolved destination: /home/stager/Work/sta-ger/agents/worktrees/pokie-valera-studio-ux-e2e/task_P8-01-20260826204729/dist/cli/studio-client\n\nBuild preflight\n\nTarget: TypeScript Game Package\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/tsPackage\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nOutcome library\n\nTHIS COMPUTER\n\nPurpose: Build an outcome library from this project.\n\nDestination: Choose a folder for the outcome library, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nResolving…\n\nBuild preflight\n\nTarget: Outcome library\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/outcomeLibrary\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nStake Engine export\n\nTHIS COMPUTER\n\nPurpose: Build a Stake Engine export from this project.\n\nDestination: Choose a folder for the Stake Engine export, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput directory (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nResolving…\n\nBuild preflight\n\nTarget: Stake Engine export\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/stakeAdapter\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nPAR sheet (.xlsx)\n\nTHIS COMPUTER\n\nPurpose: Export this Game Blueprint as a PAR workbook snapshot, or republish this PAR workbook.\n\nDestination: Choose where to save the PAR workbook, or use the default destination.\n\nPrerequisites\n\nThis project is ready to build. Choose a destination or use the default.\nOutput file (optional)\n\nChoose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default.\n\nBrowse…\n\nBuild preflight\n\nTarget: PAR sheet (.xlsx)\n\nSelected destination: Default destination\n\nResolved absolute path: /home/stager/POKIE Projects/starter-slot-27/parWorkbook.xlsx\n\nStatus: Ready to build\n\nBuild\n\nShow advanced details (technical information)\n\nRemote deployment\n\nCheck a configured delivery destination before publishing to it.\n\nRemote delivery is not set up\n\nREMOTE\n\nPurpose: Set up a remote destination before this project can be delivered outside Studio.\n\nDestination: Set up a remote destination before delivery can begin.\n\nUnavailable for this project\n\nRemote delivery is unavailable until a destination is set up. Add a remote delivery destination in Studio.\n\nPrerequisites\n\nAdd a remote delivery destination in Studio.\n\nShow advanced details (technical information)",
       "controls": [
         {
           "role": "button",
@@ -3456,7 +6877,7 @@
       ],
       "dialogs": [],
       "statesObserved": {
-        "loading": false,
+        "loading": true,
         "empty": false,
         "warning": true,
         "error": false,
@@ -3535,8 +6956,10 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Close project",
-        "started": 1787779602202,
-        "latencyMs": 792
+        "inputMethod": "CDP mouse",
+        "started": 1787782745603,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 114
       },
       "url": "http://127.0.0.1:46281/#/home/design",
       "title": "Design Game · POKIE Studio",
@@ -3545,7 +6968,7 @@
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nvalid\nLayout\nvalid\nSymbols\nvalid\nReels\nvalid\nPaytable\nvalid\nBets\nvalid\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nValid — no issues found.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "text": "POKIE Studio\nDesign Game\nProjects\nDesign Your Game\n\nStart with the recommended playable model, then make it your own. Edit its layout, symbols, reels, paytable, and bets; select PNG artwork for a symbol in the Symbols section. Studio checks the model automatically; Create Project saves it and opens the Workspace for Game Model, Play, Simulation, and Replay.\n\nCreate Project\n\nStudio is checking this model automatically. Create Project will show any fixes that are needed.\n\nShow advanced options (JSON mode, load/save by path)\n\nNew Blueprint\nGame basics\nLayout\nSymbols\nReels\nPaytable\nBets\nGame basics\nGame id\nGame name\nVersion\nDescription (optional)\nAuthor (optional)\nValidation\n\nChecked automatically when the game model changes.\n\nGame Model preview\nPreview Game Model\nDocumentation\nDocs index\nGetting started\nCLI reference",
       "controls": [
         {
           "role": "a",
@@ -3579,32 +7002,32 @@
         },
         {
           "role": "tab",
-          "label": "Game basics valid",
+          "label": "Game basics",
           "disabled": false
         },
         {
           "role": "tab",
-          "label": "Layout valid",
+          "label": "Layout",
           "disabled": false
         },
         {
           "role": "tab",
-          "label": "Symbols valid",
+          "label": "Symbols",
           "disabled": false
         },
         {
           "role": "tab",
-          "label": "Reels valid",
+          "label": "Reels",
           "disabled": false
         },
         {
           "role": "tab",
-          "label": "Paytable valid",
+          "label": "Paytable",
           "disabled": false
         },
         {
           "role": "tab",
-          "label": "Bets valid",
+          "label": "Bets",
           "disabled": false
         },
         {
@@ -3653,7 +7076,7 @@
         },
         {
           "tag": "button",
-          "label": "Game basics valid"
+          "label": "Game basics"
         },
         {
           "tag": "input",
@@ -3710,8 +7133,10 @@
       "owner": "P8-02",
       "operation": {
         "action": "click Projects",
-        "started": 1787779603253,
-        "latencyMs": 283
+        "inputMethod": "CDP mouse",
+        "started": 1787782745929,
+        "resultWasFalseBeforeInput": true,
+        "latencyMs": 135
       },
       "url": "http://127.0.0.1:46281/#/home/projects",
       "title": "Projects · POKIE Studio",
@@ -3720,7 +7145,7 @@
         "height": 900,
         "horizontalOverflow": false
       },
-      "text": "POKIE Studio\nDesign Game\nProjects\nProjects\n\nOpen an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.\n\nNeed a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.\n\nYour projects\nSearch projects\nProject type\nAvailability\n\tName\tType\tOrigin\tLast opened\tActions\n\n\nAvailable projects\n\n\n\tStarter Slot\n\n/home/stager/POKIE Projects/starter-slot-19/blueprint.json\n\n\tBlueprint\t\nManaged\n\t8/26/2026, 9:26:38 PM\t\nOpen\nRemove\n\nShowing 1–1 of 1 projects\n\nImport Project\n\nPoint at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.\n\nLocation\nBrowse…\nBrowse PAR sheet…\nDetect\n\nEnter a project location or use Browse to enable Detect.\n\nDocumentation\nDocs index\nGetting started\nCLI reference",
+      "text": "POKIE Studio\nDesign Game\nProjects\nProjects\n\nOpen an already-known project to inspect, validate, simulate, or deploy it, or import one POKIE doesn't know about yet.\n\nNeed a new project from your terminal? Run pokie init for a ready-to-build package, or pokie create for an editable Blueprint Project -- then import it above.\n\nYour projects\nSearch projects\nProject type\nAvailability\n\tName\tType\tOrigin\tLast opened\tActions\n\n\nAvailable projects\n\n\n\tStarter Slot\n\n/home/stager/POKIE Projects/starter-slot-27/blueprint.json\n\n\tBlueprint\t\nManaged\n\t8/26/2026, 10:19:02 PM\t\nOpen\nRemove\n\nShowing 1–1 of 1 projects\n\nImport Project\n\nPoint at an existing package, outcome library, Stake Engine export, blueprint, or PAR sheet (.xlsx) -- POKIE detects what it is before anything is registered.\n\nLocation\nBrowse…\nBrowse PAR sheet…\nDetect\n\nEnter a project location or use Browse to enable Detect.\n\nDocumentation\nDocs index\nGetting started\nCLI reference",
       "controls": [
         {
           "role": "a",
