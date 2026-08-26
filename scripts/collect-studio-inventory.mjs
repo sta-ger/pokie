@@ -69,13 +69,19 @@ export function ownerForGoal(goal) {
 }
 
 export const REQUIRED_ACTION_COVERAGE = [
+    {id: "managed-project-open-conflict", owner: "P8-02"},
+    {id: "managed-project-open-stay", owner: "P8-02"},
     {id: "managed-project-open", owner: "P8-02"},
     {id: "managed-project-remove-confirm", owner: "P8-02"},
     {id: "managed-project-remove-cancel", owner: "P8-02"},
     {id: "simulation-run", owner: "P8-05"},
     {id: "replay-load", owner: "P8-05"},
     {id: "build-generate-outcome-library", owner: "P8-05"},
+    {id: "stake-engine-export", owner: "P8-05"},
+    {id: "build-typescript-game-package", owner: "P8-05"},
+    {id: "build-outcome-library", owner: "P8-05"},
     {id: "build-stake-engine-export", owner: "P8-05"},
+    {id: "build-par-sheet", owner: "P8-05"},
 ];
 
 export function claimCoverageFor(claims, screens, findings) {
@@ -296,12 +302,20 @@ async function main() {
         const requireFalse = async (result, action) => {
             if (await result()) throw new Error(`${action} result was already visible before browser input.`);
         };
-        const click = async (label, result) => {
+        const click = async (label, result, cardLabel) => {
             await requireFalse(result, `click ${label}`);
             const point = await evaluate(`(() => {
                 const wanted = ${JSON.stringify(label)};
+                const cardLabel = ${JSON.stringify(cardLabel)};
                 const visible = (element) => element.getClientRects().length > 0 && !element.disabled && element.getAttribute("aria-disabled") !== "true";
-                const element = [...document.querySelectorAll("button,a,[role=tab]")].find((candidate) => visible(candidate) && (candidate.innerText ?? candidate.textContent ?? "").trim() === wanted);
+                const controls = [...document.querySelectorAll("button,a,[role=tab]")].filter((candidate) => visible(candidate) && (candidate.innerText ?? candidate.textContent ?? "").trim() === wanted);
+                const element = cardLabel === undefined ? controls[0] : controls.find((candidate) => {
+                    for (let container = candidate.parentElement; container && container !== document.body; container = container.parentElement) {
+                        const matchingControls = [...container.querySelectorAll("button,a,[role=tab]")].filter((item) => visible(item) && (item.innerText ?? item.textContent ?? "").trim() === wanted);
+                        if (matchingControls.length === 1 && container.innerText.includes(cardLabel)) return true;
+                    }
+                    return false;
+                });
                 if (!element) return null;
                 element.scrollIntoView({block: "center", inline: "center"});
                 const rect = element.getBoundingClientRect(); return {x:rect.left + rect.width / 2, y:rect.top + rect.height / 2};
@@ -312,8 +326,8 @@ async function main() {
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: point.x, y: point.y, button: "none"});
             await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, clickCount: 1});
             await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1});
-            note(`ACT rendered-control-click=${JSON.stringify(label)}`);
-            return {action: `click ${label}`, inputMethod: "CDP mouse", started, resultWasFalseBeforeInput: true};
+            note(`ACT rendered-control-click=${JSON.stringify(cardLabel === undefined ? label : `${label} in ${cardLabel}`)}`);
+            return {action: `click ${cardLabel === undefined ? label : `${label} in ${cardLabel}`}`, inputMethod: "CDP mouse", started, resultWasFalseBeforeInput: true};
         };
         const renderedActionExists = (label) => evaluate(`(() => {
             const wanted = ${JSON.stringify(label)};
@@ -400,6 +414,16 @@ async function main() {
         const renderedText = (value) => evaluate(`(() => {
             const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
             return [...document.querySelectorAll("body *")].some((element) => visible(element) && element.children.length === 0 && (element.textContent ?? "").includes(${JSON.stringify(value)}));
+        })()`);
+        const cardText = (label) => evaluate(`(() => {
+            const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+            const heading = [...document.querySelectorAll("body *")].find((element) => visible(element) && element.children.length === 0 && (element.textContent ?? "").trim() === ${JSON.stringify(label)});
+            return heading?.closest("div[style*='margin-bottom']")?.innerText ?? "";
+        })()`);
+        const cardTextForControl = (label) => evaluate(`(() => {
+            const visible = (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+            const control = [...document.querySelectorAll("button,a,[role=tab]")].find((element) => visible(element) && (element.innerText ?? element.textContent ?? "").trim() === ${JSON.stringify(label)});
+            return control?.closest("div[style*='margin-bottom']")?.innerText ?? "";
         })()`);
         const activeSection = (label) => evaluate(`(() => [...document.querySelectorAll('nav[aria-label=Sections] button')].some((button) => button.getClientRects().length > 0 && button.getAttribute('aria-current') === 'page' && (button.innerText ?? '').trim() === ${JSON.stringify(label)}))()`);
         await setViewport(1280, 900, "desktop");
@@ -511,18 +535,44 @@ async function main() {
                 if (!generateLabel) throw new Error("Rendered Build/Export outcome-library generation action not found.");
                 const exportLabel = await evaluate("[...document.querySelectorAll('button')].find((button) => button.getClientRects().length > 0 && button.innerText.includes('Run Stake Engine Export'))?.innerText.trim()");
                 if (!exportLabel) throw new Error("Rendered Build/Export Stake Engine export action not found.");
-                try {
-                    operation = {...await activate(generateLabel, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-generate-outcome-library"};
-                    await observeAction("Build/Export begins outcome-library generation or reports an error", operation, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
-                } catch (error) {
-                    recordFinding("P8-01-F-BUILD-GENERATE-OUTCOME-LIBRARY-NO-VISIBLE-RESULT", `Build/Export ${generateLabel}`, "P8-05", `CDP keyboard activation was delivered, but the enabled control produced no rendered loading, success, or error result within the bounded observation window: ${error.message}`, undefined, "build-generate-outcome-library");
-                }
-                try {
-                    await waitFor(() => renderedActionExists(exportLabel), "enabled Stake Engine export after outcome-library generation", 15_000);
-                    operation = {...await activate(exportLabel, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-stake-engine-export"};
-                    await observeAction("Build/Export begins Stake Engine export or reports an error", operation, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
-                } catch (error) {
-                    recordFinding("P8-01-F-BUILD-STAKE-EXPORT-NO-VISIBLE-RESULT", `Build/Export ${exportLabel}`, "P8-05", `The rendered Stake Engine export control did not become enabled after the recorded outcome-library generation attempt, so browser input cannot complete without a generated artifact: ${error.message}`, undefined, "build-stake-engine-export");
+                const outcomeLibraryCompletedOrErrored = async () => {
+                    const text = await cardTextForControl(generateLabel);
+                    return /Generated .* outcomes|error|failed|could not/i.test(text);
+                };
+                operation = {...await activate(generateLabel, outcomeLibraryCompletedOrErrored), coverageId: "build-generate-outcome-library"};
+                await observeAction("Build/Export completes outcome-library generation or reports an error", operation, outcomeLibraryCompletedOrErrored, 120_000);
+                await waitFor(() => renderedActionExists(exportLabel), "enabled Stake Engine export after completed outcome-library generation", 120_000);
+                const stakeExportCompletedOrErrored = async () => {
+                    const text = await cardTextForControl(exportLabel);
+                    return /Exported \d+ file\(s\)|error|failed|could not|replace the existing directory/i.test(text);
+                };
+                operation = {...await activate(exportLabel, stakeExportCompletedOrErrored), coverageId: "stake-engine-export"};
+                await observeAction("Build/Export completes Stake Engine export or reports an error", operation, stakeExportCompletedOrErrored, 120_000);
+
+                const artifactBuilds = [
+                    {label: "TypeScript Game Package", coverageId: "build-typescript-game-package", findingId: "P8-01-F-BUILD-TYPESCRIPT-GAME-PACKAGE-NO-VISIBLE-RESULT"},
+                    {label: "Outcome library", coverageId: "build-outcome-library", findingId: "P8-01-F-BUILD-OUTCOME-LIBRARY-NO-VISIBLE-RESULT"},
+                    {label: "Stake Engine export", coverageId: "build-stake-engine-export", findingId: "P8-01-F-BUILD-STAKE-ENGINE-EXPORT-NO-VISIBLE-RESULT"},
+                    {label: "PAR sheet (.xlsx)", coverageId: "build-par-sheet", findingId: "P8-01-F-BUILD-PAR-SHEET-NO-VISIBLE-RESULT"},
+                ];
+                for (const artifact of artifactBuilds) {
+                    const artifactLoadingSuccessOrError = async () => {
+                        const text = await cardText(artifact.label);
+                        return /Building artifact|Built to |Build cancelled\.|artifact build|error|failed|could not/i.test(text);
+                    };
+                    try {
+                        operation = {...await click("Build", artifactLoadingSuccessOrError, artifact.label), coverageId: artifact.coverageId};
+                        await observeAction(`Build/Export ${artifact.label} Build reaches a visible loading, success, or error result`, operation, artifactLoadingSuccessOrError, 15_000);
+                    } catch (error) {
+                        recordFinding(
+                            artifact.findingId,
+                            `Build/Export ${artifact.label} Build`,
+                            "P8-05",
+                            `Browser input reached the enabled Build control, but its card showed no false-to-true loading, success, or error result within the bounded observation window: ${error.message}`,
+                            undefined,
+                            artifact.coverageId,
+                        );
+                    }
                 }
             }
         }
@@ -538,40 +588,36 @@ async function main() {
         await observeAction("Home after closing a project", operation, () => renderedText("Design Your Game"));
         operation = await click("Projects", () => activeSection("Projects"));
         await observeAction("Projects registry after creating a project", operation, () => activeSection("Projects"));
-        try {
-            const managedProjectOpenedOrErrored = () => renderedActionExists("Close project") || renderedText("Couldn't open project");
-            operation = {...await click("Open", managedProjectOpenedOrErrored), coverageId: "managed-project-open"};
-            await observeAction("Managed project Open opens the project workspace or reports an error", operation, managedProjectOpenedOrErrored, 5_000);
-            operation = await click("Close project", () => renderedActionExists("Confirm"));
-            await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
-            operation = await click("Confirm", () => renderedText("Design Your Game"));
-            await observeAction("Home after closing managed project", operation, () => renderedText("Design Your Game"));
-            operation = await click("Projects", () => activeSection("Projects"));
-            await observeAction("Projects registry after opening managed project", operation, () => activeSection("Projects"));
-        } catch (error) {
-            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", `The clean rendered registry did not expose an Open-to-workspace transition that browser input could complete: ${error.message}`, undefined, "managed-project-open");
-            await snapshot("Managed project Open blocked", operation);
+        const unsavedChangesDialogVisible = () => renderedText("You have unsaved changes in Design Game. Leave and lose them?") && renderedActionExists("Stay") && renderedActionExists("Leave");
+        operation = {...await click("Open", unsavedChangesDialogVisible, "Starter Slot"), coverageId: "managed-project-open-conflict"};
+        await observeAction("Managed project Open reveals the unsaved-changes dialog", operation, unsavedChangesDialogVisible, 5_000);
+        const unsavedChangesDialogClosed = async () => !(await unsavedChangesDialogVisible());
+        operation = {...await click("Stay", unsavedChangesDialogClosed), coverageId: "managed-project-open-stay"};
+        await observeAction("Managed project Open stays in the draft after its conflict dialog", operation, unsavedChangesDialogClosed);
+        operation = await click("Open", unsavedChangesDialogVisible, "Starter Slot");
+        await observeAction("Managed project Open reopens its unsaved-changes dialog", operation, unsavedChangesDialogVisible, 5_000);
+        operation = {...await click("Leave", () => renderedActionExists("Close project")), coverageId: "managed-project-open"};
+        await observeAction("Managed project Open leaves the draft and opens the project workspace", operation, () => renderedActionExists("Close project"), 120_000);
+        if (await unsavedChangesDialogVisible()) {
+            operation = await click("Stay", unsavedChangesDialogClosed);
+            await observeAction("Managed project Open clears its completed conflict dialog", operation, unsavedChangesDialogClosed);
         }
-        try {
-            const removeConfirmationVisible = () => renderedActionExists("Cancel") || renderedText("This only forgets it here");
-            operation = {...await click("Remove", removeConfirmationVisible), coverageId: "managed-project-remove-confirm"};
-            await observeAction("Managed project Remove opens a non-destructive confirmation", operation, removeConfirmationVisible, 5_000);
-        } catch (error) {
-            recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", `The managed-project Remove confirmation was not reachable from the rendered registry without a managed project: ${error.message}`, undefined, "managed-project-remove-confirm");
-            await snapshot("Managed project Remove confirmation blocked", operation);
-        }
-        if (await renderedActionExists("Cancel")) {
-            try {
-                operation = {...await click("Cancel", () => !renderedActionExists("Cancel")), coverageId: "managed-project-remove-cancel"};
-                await observeAction("Managed project Remove is cancelled", operation, () => !renderedActionExists("Cancel"));
-            } catch (error) {
-                recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", `The rendered Remove confirmation could not be cancelled through browser input: ${error.message}`, undefined, "managed-project-remove-cancel");
-            }
-            } else {
-                recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", "Remove confirmation was not rendered, so its Cancel control could not be reached from the clean managed-project registry.", undefined, "managed-project-remove-cancel");
-            }
+        operation = await click("Close project", () => renderedActionExists("Confirm"));
+        await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
+        operation = await click("Confirm", () => renderedText("Design Your Game"));
+        await observeAction("Home after closing managed project", operation, () => renderedText("Design Your Game"));
+        operation = await click("Projects", () => activeSection("Projects"));
+        await observeAction("Projects registry after opening managed project", operation, () => activeSection("Projects"));
+        const removeConfirmationVisible = () => renderedText("This only forgets it here") && renderedActionExists("Cancel");
+        operation = {...await click("Remove", removeConfirmationVisible), coverageId: "managed-project-remove-confirm"};
+        await observeAction("Managed project Remove opens its non-destructive confirmation", operation, removeConfirmationVisible, 5_000);
+        const removeConfirmationClosed = async () => !(await removeConfirmationVisible());
+        operation = {...await click("Cancel", removeConfirmationClosed), coverageId: "managed-project-remove-cancel"};
+        await observeAction("Managed project Remove is cancelled", operation, removeConfirmationClosed);
         } catch (error) {
             const closeBoundary = `Studio could not return from the active project to the managed-project registry: ${error.message}`;
+            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-CONFLICT", "Managed project Open unsaved-changes dialog", "P8-02", closeBoundary, undefined, "managed-project-open-conflict");
+            recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-STAY", "Managed project Open Stay recovery", "P8-02", closeBoundary, undefined, "managed-project-open-stay");
             recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", closeBoundary, undefined, "managed-project-open");
             recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", closeBoundary, undefined, "managed-project-remove-confirm");
             recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CANCEL", "Managed project Remove cancellation", "P8-02", closeBoundary, undefined, "managed-project-remove-cancel");
