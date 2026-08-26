@@ -71,6 +71,17 @@ describe("ClientCommand", () => {
         );
     });
 
+    it("turns a non-port browser UI listener failure into scoped recovery guidance", async () => {
+        const command = new ClientCommand(
+            () => ({start: () => Promise.reject(new Error("bind failed at /private/runtime/socket")), stop: () => Promise.resolve()}),
+            "/fake/client/root",
+        );
+
+        await expect(command.run(["./game", "--no-open"])).rejects.toThrow(
+            /^POKIE client UI could not start its local listener\. Check the configured host and port, then retry with --port <number> \(or --port 0 for an available port\)\.$/,
+        );
+    });
+
     it("throws a descriptive error when --host has no value", async () => {
         const command = new ClientCommand();
 

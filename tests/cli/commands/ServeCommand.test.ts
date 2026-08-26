@@ -22,6 +22,7 @@ import os from "os";
 import path from "path";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
+import {passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
@@ -123,7 +124,18 @@ describe("ServeCommand", () => {
         const command = new ServeCommand(() => Promise.reject(new Error("missing pokie.entry")));
 
         await expect(command.run(["./broken-game"])).rejects.toThrow(
-            /Could not load a POKIE game package from "\.\/broken-game"\. Run `pokie validate "\.\/broken-game"` to diagnose the package, then retry\. Details: missing pokie\.entry/,
+            /^Could not load a POKIE game package from "\.\/broken-game"\. Run `pokie validate "\.\/broken-game"` to diagnose the package, then retry\.$/,
+        );
+    });
+
+    it("turns a non-port API listener failure into a scoped recovery step", async () => {
+        const command = new ServeCommand(
+            () => Promise.resolve(createFakeGame(manifest)),
+            () => ({start: () => Promise.reject(new Error("bind failed at /private/runtime/socket")), stop: () => Promise.resolve()}),
+        );
+
+        await expect(command.run(["./game"])).rejects.toThrow(
+            /^POKIE dev server could not start its local listener\. Check the configured host and port, then retry with --port <number> \(or --port 0 for an available port\)\.$/,
         );
     });
 
@@ -233,15 +245,32 @@ describe("ServeCommand runtime package materialization boundary", () => {
         expect(loadCalls).toEqual([resolvedRuntimePath]);
     });
 
-    it("propagates a materialization failure without ever loading the game or starting the server", async () => {
+    it("turns a materialization failure into recovery guidance without loading the game or starting the server", async () => {
         const resolveRuntimePackageRoot = () => Promise.reject(new Error("dependencies phase failed"));
         const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
         const stubServer = createStubServer({host: "127.0.0.1", port: 4321});
         const command = new ServeCommand(loadGame, () => stubServer, resolveRuntimePackageRoot);
 
-        await expect(command.run(["/blueprints/raw-game.json"])).rejects.toThrow(/dependencies phase failed/);
+        await expect(command.run(["/blueprints/raw-game.json"])).rejects.toThrow(
+            /^Could not load a POKIE game package from "\/blueprints\/raw-game\.json"\. Run `pokie validate "\/blueprints\/raw-game\.json"` to diagnose the package, then retry\.$/,
+        );
         expect(loadGame).not.toHaveBeenCalled();
         expect(stubServer.startCalls).toBe(0);
+    });
+
+    it("turns outcome-project resolution failures into recovery guidance without loading the game", async () => {
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const command = new ServeCommand(
+            loadGame,
+            () => createStubServer({host: "127.0.0.1", port: 4321}),
+            passthroughRuntimePackageResolver,
+            {resolve: () => Promise.reject(new Error("ENOENT /private/projects/game"))},
+        );
+
+        await expect(command.run(["/projects/game"])).rejects.toThrow(
+            /^Could not load a POKIE game package from "\/projects\/game"\. Run `pokie validate "\/projects\/game"` to diagnose the package, then retry\.$/,
+        );
+        expect(loadGame).not.toHaveBeenCalled();
     });
 });
 

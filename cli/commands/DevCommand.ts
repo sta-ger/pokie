@@ -10,7 +10,7 @@ import {
     PokieGame,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";
 import {waitForHealth} from "../waitForHealth.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -112,15 +112,7 @@ export class DevCommand implements CliCommandHandling {
             }
             throw error;
         }
-        const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
-        let game: PokieGame;
-        try {
-            game = await this.loadGame(resolution.runtimePath);
-        } catch (error) {
-            throw describeRuntimePackageLoadError(options.packageRoot, error);
-        } finally {
-            await resolution.release();
-        }
+        const game = await this.loadRuntimeGame(options.packageRoot);
 
         // If any step from here on throws — the client server failing to bind its port, or the API
         // never becoming healthy — every server already started for this run must still be stopped
@@ -233,6 +225,29 @@ export class DevCommand implements CliCommandHandling {
             } catch {
                 // Best-effort cleanup; the original startup error is what the caller of run() sees.
             }
+        }
+    }
+
+    // Resolver/materialization, package loading, and resolution cleanup are one local-runtime
+    // preparation boundary. None should leak their implementation error through the public command.
+    private async loadRuntimeGame(packageRoot: string): Promise<PokieGame> {
+        let resolution: RuntimePackageResolution | undefined;
+        try {
+            resolution = await this.resolveRuntimePackageRoot(packageRoot);
+            const game = await this.loadGame(resolution.runtimePath);
+            const release = resolution.release();
+            resolution = undefined;
+            await release;
+            return game;
+        } catch (error) {
+            if (resolution !== undefined) {
+                try {
+                    await resolution.release();
+                } catch {
+                    // The actionable package diagnostic is more useful than cleanup internals.
+                }
+            }
+            throw describeRuntimePackageLoadError(packageRoot, error);
         }
     }
 

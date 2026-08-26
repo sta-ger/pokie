@@ -7,26 +7,24 @@ export function describeLocalServerStartError(
     portOption: "--port" | "--client-port",
 ): Error {
     const candidate = error as NodeJS.ErrnoException & {address?: unknown; port?: unknown};
-    if (candidate?.code !== "EADDRINUSE") {
-        return asError(error);
+    if (candidate?.code === "EADDRINUSE") {
+        const host = typeof candidate.address === "string" ? candidate.address : "the configured host";
+        const port = typeof candidate.port === "number" ? candidate.port : "the configured port";
+        return new Error(
+            `${listenerName} could not listen on ${host}:${port} because that address is already in use. ` +
+                `Stop the process using it, or retry with ${portOption} <number> (or ${portOption} 0 for an available port).`,
+        );
     }
 
-    const host = typeof candidate.address === "string" ? candidate.address : "the configured host";
-    const port = typeof candidate.port === "number" ? candidate.port : "the configured port";
     return new Error(
-        `${listenerName} could not listen on ${host}:${port} because that address is already in use. ` +
-            `Stop the process using it, or retry with ${portOption} <number> (or ${portOption} 0 for an available port).`,
+        `${listenerName} could not start its local listener. Check the configured host and port, then retry with ` +
+            `${portOption} <number> (or ${portOption} 0 for an available port).`,
     );
 }
 
-export function describeRuntimePackageLoadError(packageRoot: string, error: unknown): Error {
+export function describeRuntimePackageLoadError(packageRoot: string, _error: unknown): Error {
     return new Error(
         `Could not load a POKIE game package from ${JSON.stringify(packageRoot)}. ` +
-            `Run \`pokie validate ${JSON.stringify(packageRoot)}\` to diagnose the package, then retry. ` +
-            `Details: ${asError(error).message}`,
+            `Run \`pokie validate ${JSON.stringify(packageRoot)}\` to diagnose the package, then retry.`,
     );
-}
-
-function asError(error: unknown): Error {
-    return error instanceof Error ? error : new Error(String(error));
 }

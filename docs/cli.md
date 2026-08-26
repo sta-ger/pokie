@@ -2793,8 +2793,11 @@ independently.
 
 - Missing `<packageRoot>`, an unknown option, a non-numeric `--port`, or a missing `--host` value throw a
   `Usage: pokie serve ...` error before the server starts (same as every other command).
-- An invalid `packageRoot` throws the same descriptive error `loadPokieGame` would throw directly — see
-  [Game Packages](game-packages.md).
+- An invalid or unavailable `packageRoot` prints a concise recovery diagnostic: run
+  `pokie validate <packageRoot>` to diagnose it, then retry. Resolver, materialization, and package-loader
+  details are intentionally not exposed.
+- If the port is already in use, stop the process using it or retry with `--port <number>` (or `--port 0` for an
+  available port). Any other listener-start failure tells you to check the configured host and port and retry.
 - Once the server is running, errors are JSON HTTP responses (`400`/`404`/`409`/`500` with `{"error": "..."}`),
   not thrown/exit codes — `pokie serve` is a long-running process, not a one-shot command. `409` is specific to
   a spin's session version going stale — see [Optimistic locking](#optimistic-locking-session-versioning) above.
@@ -2850,6 +2853,9 @@ running `pokie dev` directly.
 `"client": "pokie client ."` script always passes one — but it's **never loaded**: the browser UI is entirely
 game-agnostic, so `pokie client` doesn't call `loadPokieGame` at all.
 
+If the UI port is already in use, stop the process using it or retry with `--port <number>` (or `--port 0` for an
+available port). Any other listener-start failure tells you to check the configured host and port and retry.
+
 The client's own configured API address is served from the same origin at `GET /config`
 (`{"apiBaseUrl": "http://host:port"}`), which is how the served page knows where to `fetch()` without any
 build-time configuration — `pokie dev` (below) sets this to the API port it actually bound, so the two always
@@ -2900,6 +2906,12 @@ Opening the browser is entirely best-effort: it shells out to `open` (macOS), `s
 it never fails the command. Registering `SIGINT`/`SIGTERM` handlers to stop both servers means `pokie dev` also
 calls `process.exit()` itself once both `.stop()` calls settle (successfully or not) — Node won't exit
 automatically once a custom signal handler is registered.
+
+If the package cannot be resolved, materialized, or loaded, `pokie dev` tells you to run
+`pokie validate <packageRoot>` and retry without exposing underlying resolver or loader details. If either API or
+UI listener cannot start, use the diagnostic's matching `--port` or `--client-port` recovery option; a busy port
+can be freed or replaced with `0` for an available port, while another listener failure means checking the
+configured host and port before retrying.
 
 ## `pokie`
 

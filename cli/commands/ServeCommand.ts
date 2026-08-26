@@ -13,7 +13,7 @@ import {
     ProjectTargetResolver,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 import {describeLocalServerStartError, describeRuntimePackageLoadError} from "./internal/describeLocalRuntimeError.js";
@@ -88,21 +88,18 @@ export class ServeCommand implements CliCommandHandling {
         // export can't be served at all). A path that doesn't resolve to either of those two types --
         // including one ProjectResolving doesn't recognize as any known project at all -- falls through to
         // the original, unaffected materialize-and-load flow.
-        const project = await this.resolveProject.resolve(options.packageRoot);
+        let project: PokieProject | undefined;
+        try {
+            project = await this.resolveProject.resolve(options.packageRoot);
+        } catch (error) {
+            throw describeRuntimePackageLoadError(options.packageRoot, error);
+        }
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceServe(project, options);
             return;
         }
 
-        const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
-        let game: PokieGame;
-        try {
-            game = await this.loadGame(resolution.runtimePath);
-        } catch (error) {
-            throw describeRuntimePackageLoadError(options.packageRoot, error);
-        } finally {
-            await resolution.release();
-        }
+        const game = await this.loadRuntimeGame(options.packageRoot);
         const server = this.createServer(game, {host: options.host, port: options.port});
         let address;
         try {
@@ -179,6 +176,29 @@ export class ServeCommand implements CliCommandHandling {
 
         console.log(`POKIE outcome-source dev server listening on http://${address.host}:${address.port}`);
         console.log("Serving draws from a native outcome library — not a casino backend or RGS.");
+    }
+
+    // Both resolving/materializing and loading cross the same caller-facing package boundary. Keep
+    // cleanup within it as well: an unsuccessful release must not replace the recovery diagnostic.
+    private async loadRuntimeGame(packageRoot: string): Promise<PokieGame> {
+        let resolution: RuntimePackageResolution | undefined;
+        try {
+            resolution = await this.resolveRuntimePackageRoot(packageRoot);
+            const game = await this.loadGame(resolution.runtimePath);
+            const release = resolution.release();
+            resolution = undefined;
+            await release;
+            return game;
+        } catch (error) {
+            if (resolution !== undefined) {
+                try {
+                    await resolution.release();
+                } catch {
+                    // The actionable package diagnostic is more useful than cleanup internals.
+                }
+            }
+            throw describeRuntimePackageLoadError(packageRoot, error);
+        }
     }
 
 
