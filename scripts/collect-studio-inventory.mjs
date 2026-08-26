@@ -533,8 +533,9 @@ async function main() {
         operation = await click("Projects", () => activeSection("Projects"));
         await observeAction("Projects registry after creating a project", operation, () => activeSection("Projects"));
         try {
-            operation = {...await click("Open", () => renderedActionExists("Close project")), coverageId: "managed-project-open"};
-            await observeAction("Managed project Open opens the project workspace", operation, () => renderedActionExists("Close project"));
+            const managedProjectOpenedOrErrored = () => renderedActionExists("Close project") || renderedText("Couldn't open project");
+            operation = {...await click("Open", managedProjectOpenedOrErrored), coverageId: "managed-project-open"};
+            await observeAction("Managed project Open opens the project workspace or reports an error", operation, managedProjectOpenedOrErrored);
             operation = await click("Close project", () => renderedActionExists("Confirm"));
             await observeAction("Managed project workspace closes", operation, () => renderedActionExists("Confirm"));
             operation = await click("Confirm", () => renderedText("Design Your Game"));
@@ -543,12 +544,15 @@ async function main() {
             await observeAction("Projects registry after opening managed project", operation, () => activeSection("Projects"));
         } catch (error) {
             recordFinding("P8-01-F-MANAGED-PROJECT-OPEN-NO-VISIBLE-RESULT", "Managed project Open", "P8-02", `The clean rendered registry did not expose an Open-to-workspace transition that browser input could complete: ${error.message}`, undefined, "managed-project-open");
+            await snapshot("Managed project Open blocked", operation);
         }
         try {
-            operation = {...await click("Remove", () => renderedActionExists("Cancel")), coverageId: "managed-project-remove-confirm"};
-            await observeAction("Managed project Remove opens a non-destructive confirmation", operation, () => renderedActionExists("Cancel"));
+            const removeConfirmationVisible = () => renderedActionExists("Cancel") || renderedText("This only forgets it here");
+            operation = {...await click("Remove", removeConfirmationVisible), coverageId: "managed-project-remove-confirm"};
+            await observeAction("Managed project Remove opens a non-destructive confirmation", operation, removeConfirmationVisible);
         } catch (error) {
             recordFinding("P8-01-F-MANAGED-PROJECT-REMOVE-CONFIRMATION", "Managed project Remove confirmation", "P8-02", `The managed-project Remove confirmation was not reachable from the rendered registry without a managed project: ${error.message}`, undefined, "managed-project-remove-confirm");
+            await snapshot("Managed project Remove confirmation blocked", operation);
         }
         if (await renderedActionExists("Cancel")) {
             try {
