@@ -107,11 +107,12 @@ describe("ValidateCommand", () => {
         expect(printed).toContain("Validating package at");
         expect(printed).toContain("valid           no");
         expect(printed).toContain("Errors (1):");
-        expect(printed).toContain("pokie-game-missing-contract-methods: does not implement PokieGame");
+        expect(printed).toContain("pokie-game-missing-contract-methods: The package entry does not export a usable POKIE game.");
         expect(printed).toContain("Warnings (1):");
         expect(printed).toContain("some-warning: a warning");
         expect(printed).toContain("Suggestions:");
-        expect(printed).toContain("Export an object implementing PokieGame as the entry module's default export.");
+        expect(printed).toContain('Update "package.json#pokie.entry" so it identifies the module that exports your POKIE game, then run validate again.');
+        expect(printed).not.toContain("does not implement PokieGame");
 
         logSpy.mockRestore();
     });
@@ -142,10 +143,17 @@ describe("ValidateCommand", () => {
         const [file, contents] = writeFile.mock.calls[0];
         expect(file).toBe("report.json");
         expect(JSON.parse(contents)).toMatchObject({
-            ...invalidReport,
             schemaVersion: 1,
             project: {path: "./broken-game", kind: "package"},
-            suggestions: expect.arrayContaining(invalidReport.suggestions),
+            valid: false,
+            errors: [expect.objectContaining({
+                code: "pokie-game-missing-contract-methods",
+                path: "package.json#pokie.entry",
+                message: "The package entry does not export a usable POKIE game.",
+            })],
+            suggestions: expect.arrayContaining([
+                'Update "package.json#pokie.entry" so it identifies the module that exports your POKIE game, then run validate again.',
+            ]),
         });
 
         (console.log as jest.Mock).mockRestore();
@@ -329,15 +337,77 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         expect(JSON.stringify(deep)).not.toMatch(/Unexpected token|ENOENT|SyntaxError|Error:/);
     });
 
-    it("sanitizes a game manifest runtime failure with an entry-field location and remediation", async () => {
+    it("sanitizes every game package contract diagnostic with a public location and remediation", async () => {
+        // Each package-validator branch starts with deliberately implementation-facing text. The CLI
+        // report must instead identify an editable package artifact or manifest field and a next action.
+        const cases = [
+            {
+                code: "pokie-game-missing-contract-methods",
+                path: "package.json#pokie.entry",
+                message: "The package entry does not export a usable POKIE game.",
+                suggestion: 'Update "package.json#pokie.entry" so it identifies the module that exports your POKIE game, then run validate again.',
+            },
+            {
+                code: "pokie-game-manifest-threw",
+                path: "package.json#pokie.entry#manifest",
+                message: "The game manifest provided by this package could not be read.",
+                suggestion: "Ensure the package entry provides a manifest with non-empty id, name, and version, then run validate again.",
+            },
+            {
+                code: "pokie-game-manifest-missing",
+                path: "package.json#pokie.entry#manifest",
+                message: "The package entry does not provide a game manifest.",
+                suggestion: "Add a game manifest with non-empty id, name, and version to the package entry, then run validate again.",
+            },
+            ...(["id", "name", "version"] as const).map((field) => ({
+                code: `pokie-game-manifest-invalid-${field}`,
+                path: `package.json#pokie.entry#manifest.${field}`,
+                message: `The game manifest field "${field}" must be a non-empty string.`,
+                suggestion: `Set the game manifest field "${field}" to a non-empty string, then run validate again.`,
+            })),
+        ];
+
+        for (const expected of cases) {
+            const command = new ValidateCommand(
+                createStubValidator({
+                    ...invalidReport,
+                    game: null,
+                    errors: [{
+                        code: expected.code,
+                        severity: "error",
+                        message: "PokieGame.getManifest() threw: ResolverClass failed at /private/runtime/game.ts",
+                    }],
+                    warnings: [],
+                    suggestions: ["Export an object implementing PokieGame as the entry module's default export."],
+                }),
+            );
+
+            expect(await command.run(["./broken-game", "--format", "json"])).toBe(1);
+            const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+                schemaVersion: number;
+                deep: boolean;
+                valid: boolean;
+                project: {kind: string; path: string};
+                errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+            };
+            expect(report).toMatchObject({
+                schemaVersion: 1,
+                deep: false,
+                valid: false,
+                project: {kind: "package", path: "./broken-game"},
+                errors: [expect.objectContaining(expected)],
+            });
+            expect(JSON.stringify(report)).not.toMatch(/PokieGame|getManifest|ResolverClass|private\/runtime|threw:/);
+            (console.log as jest.Mock).mockClear();
+        }
+    });
+
+    it("reports a package entry that cannot be loaded at package.json#pokie.entry", async () => {
         const command = new ValidateCommand(
             createStubValidator({
                 ...invalidReport,
-                errors: [{
-                    code: "pokie-game-manifest-threw",
-                    severity: "error",
-                    message: "PokieGame.getManifest() threw: ResolverClass failed at /private/runtime/game.ts",
-                }],
+                game: null,
+                errors: [{code: "pokie-package-load-failed", severity: "error", message: "ENOENT: /private/missing-entry.js"}],
                 warnings: [],
                 suggestions: [],
             }),
@@ -345,16 +415,48 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
 
         expect(await command.run(["./broken-game", "--format", "json"])).toBe(1);
         const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            valid: boolean;
             errors: Array<{code: string; path: string; message: string; suggestion: string}>;
         };
+        expect(report).toMatchObject({schemaVersion: 1, valid: false});
         expect(report.errors).toContainEqual({
-            code: "pokie-game-manifest-threw",
+            code: "pokie-package-load-failed",
             severity: "error",
             path: "package.json#pokie.entry",
-            message: "The game manifest exported by this package could not be read.",
-            suggestion: 'Check the game exported by "pokie.entry" returns a manifest with id, name, and version, then run validate again.',
+            message: 'The package entry selected by "package.json#pokie.entry" could not be loaded.',
+            suggestion: 'Check "pokie.entry", its target file, and installed dependencies, then run validate again.',
         });
-        expect(JSON.stringify(report)).not.toMatch(/ResolverClass|private\/runtime|threw:/);
+        expect(JSON.stringify(report)).not.toMatch(/ENOENT|private|missing-entry/);
+    });
+
+    it("routes a directory without package.json through outcome-library validation", async () => {
+        const bundleDir = path.join(outDir, "missing-manifest");
+        fs.mkdirSync(bundleDir);
+
+        expect(await new ValidateCommand().run([bundleDir, "--format", "json"])).toBe(1);
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {
+            schemaVersion: number;
+            deep: boolean;
+            valid: boolean;
+            project: {kind: string; path: string};
+            errors: Array<{code: string; path: string; message: string; suggestion: string}>;
+            issues: unknown[];
+        };
+        expect(report).toMatchObject({
+            schemaVersion: 1,
+            deep: false,
+            valid: false,
+            project: {kind: "outcome-library", path: bundleDir},
+            issues: expect.any(Array),
+        });
+        expect(report.errors).toContainEqual({
+            code: "outcome-library-bundle-manifest-missing",
+            severity: "error",
+            path: "manifest.json",
+            message: 'The outcome-library artifact at "manifest.json" is missing.',
+            suggestion: "Repair manifest.json to match the outcome-library bundle format, then run validate again.",
+        });
     });
 
     it("returns a remedial report instead of a raw materialization failure", async () => {

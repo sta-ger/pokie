@@ -114,11 +114,14 @@ export class ValidateCommand implements CliCommandHandling {
         if (this.isBlueprintFile(packageRoot)) {
             return this.validateBlueprint(packageRoot);
         }
-        if (this.isOutcomeLibraryDirectory(packageRoot)) {
-            return this.validateOutcomeLibrary(packageRoot, deep);
-        }
         if (this.isPackageDirectory(packageRoot)) {
             return this.validatePackage(packageRoot);
+        }
+        if (this.isDirectory(packageRoot)) {
+            // A directory without package.json is an outcome-library candidate, including an incomplete
+            // bundle. Let its validator report the canonical missing-manifest diagnostic rather than
+            // misclassifying it as an unloadable package.
+            return this.validateOutcomeLibrary(packageRoot, deep);
         }
 
         const project = await this.resolveProject.resolve(packageRoot);
@@ -135,8 +138,8 @@ export class ValidateCommand implements CliCommandHandling {
         return fs.existsSync(projectPath) && fs.statSync(projectPath).isFile() && path.extname(projectPath).toLowerCase() === ".json";
     }
 
-    private isOutcomeLibraryDirectory(projectPath: string): boolean {
-        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory() && fs.existsSync(path.join(projectPath, "manifest.json"));
+    private isDirectory(projectPath: string): boolean {
+        return fs.existsSync(projectPath) && fs.statSync(projectPath).isDirectory();
     }
 
     private isPackageDirectory(projectPath: string): boolean {
@@ -186,13 +189,15 @@ export class ValidateCommand implements CliCommandHandling {
             issue.code === "pokie-package-load-failed"
                 ? {
                     ...issue,
-                    message: 'The package entry declared by "package.json" ("pokie.entry") could not be loaded.',
-                    path: "package.json",
+                    message: 'The package entry selected by "package.json#pokie.entry" could not be loaded.',
+                    path: "package.json#pokie.entry",
                     suggestion: 'Check "pokie.entry", its target file, and installed dependencies, then run validate again.',
                 }
                 : issue,
         );
-        return this.reportFromIssues(packageRoot, "package", issues, report.game, report.suggestions);
+        // Package-validator suggestions are copied from its raw diagnostics. Rebuild this public list from
+        // the normalized issues below so implementation-facing suggestion text cannot cross the CLI boundary.
+        return this.reportFromIssues(packageRoot, "package", issues, report.game);
     }
 
     private async validateOutcomeLibrary(bundleDir: string, deep: boolean): Promise<ValidateReport> {
@@ -249,15 +254,50 @@ export class ValidateCommand implements CliCommandHandling {
         if (issue.code.startsWith("outcome-library-bundle-")) {
             return this.safeOutcomeLibraryIssue(issue);
         }
+        const packageIssue = this.safePackageIssue(issue);
+        if (packageIssue !== undefined) {
+            return packageIssue;
+        }
+        return issue;
+    }
+
+    private safePackageIssue(issue: ValidationIssue): ValidationIssue | undefined {
+        const entryPath = "package.json#pokie.entry";
+        if (issue.code === "pokie-game-missing-contract-methods") {
+            return {
+                ...issue,
+                message: "The package entry does not export a usable POKIE game.",
+                path: entryPath,
+                suggestion: 'Update "package.json#pokie.entry" so it identifies the module that exports your POKIE game, then run validate again.',
+            };
+        }
         if (issue.code === "pokie-game-manifest-threw") {
             return {
                 ...issue,
-                message: "The game manifest exported by this package could not be read.",
-                path: "package.json#pokie.entry",
-                suggestion: 'Check the game exported by "pokie.entry" returns a manifest with id, name, and version, then run validate again.',
+                message: "The game manifest provided by this package could not be read.",
+                path: `${entryPath}#manifest`,
+                suggestion: "Ensure the package entry provides a manifest with non-empty id, name, and version, then run validate again.",
             };
         }
-        return issue;
+        if (issue.code === "pokie-game-manifest-missing") {
+            return {
+                ...issue,
+                message: "The package entry does not provide a game manifest.",
+                path: `${entryPath}#manifest`,
+                suggestion: "Add a game manifest with non-empty id, name, and version to the package entry, then run validate again.",
+            };
+        }
+
+        const manifestField = (/^pokie-game-manifest-invalid-(id|name|version)$/).exec(issue.code)?.[1];
+        if (manifestField !== undefined) {
+            return {
+                ...issue,
+                message: `The game manifest field "${manifestField}" must be a non-empty string.`,
+                path: `${entryPath}#manifest.${manifestField}`,
+                suggestion: `Set the game manifest field "${manifestField}" to a non-empty string, then run validate again.`,
+            };
+        }
+        return undefined;
     }
 
     // The bundle validator intentionally retains low-level causes for library authors. The CLI is a public

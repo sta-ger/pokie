@@ -763,7 +763,7 @@ pokie dev ./sample-slot
 lines, so you don't have to come back to this doc to remember the order.
 
 Each step is the same command documented elsewhere in this file, with the same options/failure modes —
-[`inspect`](#pokie-inspect-packageroot), [`validate`](#pokie-validate-packageroot),
+[`inspect`](#pokie-inspect-packageroot), [`validate`](#pokie-validate-project),
 [`sim`](#pokie-sim-packageroot)/[`report`](#pokie-report-projectorsimulationreportjson),
 [`replay`](#pokie-replay-packageroot), and [`serve`](#pokie-serve-packageroot)/
 [`dev`](#pokie-dev-packageroot) work identically whether the package came from `pokie build` or
@@ -1170,25 +1170,6 @@ the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` 
 `ValidationIssue` (an invalid outcome, a duplicate/case-colliding mode name), nothing is written and the exit
 code is non-zero.
 
-## `pokie validate <bundleDir>`
-
-Validates a bundle directory — see [Outcome Library Bundle](outcome-library-bundle.md#validation) for the full
-validation-code table.
-
-```
-pokie validate bundle
-pokie validate bundle --deep
-```
-
-Options:
-
-- `--deep` — additionally streams every outcome and fully rebuilds each mode's library, to catch corruption a
-  cheap structural check alone can't (a truncated/tampered record, a hash that no longer matches). Off by
-  default: only the manifest and each mode's own small index are checked, since the whole point of the bundle
-  format is to avoid loading everything.
-
-Exit code is non-zero if any issue is `error`-severity; warnings/info are printed either way.
-
 ## Outcome-source project workflows: `pokie report <path>` / `pokie sample <path> --mode <modeName>` / `pokie diff <leftPath> <rightPath>`
 
 Operates directly on a resolved outcome-source project — an Outcome Library Bundle written by `pokie export
@@ -1437,7 +1418,7 @@ coming from the target directory itself:
    hand-editing never clobbers your changes.
 3. **Install dependencies** (`npm install`, writing `package-lock.json`) — skip with `--no-install`.
 4. **Build** (`npm run build`, i.e. `tsc`, producing `dist/index.js`) and **verify** the result actually loads (the
-   same check [`pokie validate`](#pokie-validate-packageroot) runs) — skipped, along with step 3, by `--no-prepare`.
+   same check [`pokie validate`](#pokie-validate-project) runs) — skipped, along with step 3, by `--no-prepare`.
    A validation error or a failed build/load exits non-zero with the printed issues instead of silently leaving a
    broken package on disk.
 
@@ -2061,14 +2042,23 @@ Failure modes:
 - An invalid `packageRoot` throws the same descriptive error `loadPokieGame` would throw directly — see
   [Game Packages](game-packages.md).
 
-## `pokie validate <packageRoot>`
+## `pokie validate <project>`
 
-Loads a [game package](game-packages.md) and checks it against the `PokieGame` contract, without playing it —
-`package.json`'s `pokie.entry`, the entry module's export shape, and the manifest returned by `getManifest()`
-(non-empty `id`/`name`/`version`).
+Checks one supported POKIE project without running a game. `<project>` may be:
+
+- a [game package](game-packages.md) directory, checked through `package.json#pokie.entry` and its game
+  metadata (`id`, `name`, and `version`);
+- a Blueprint JSON file, checked for structural errors and math warnings; or
+- an [Outcome Library Bundle](outcome-library-bundle.md) directory, checked through its `manifest.json` and
+  per-mode indexes.
+
+An existing directory without `package.json` is treated as an outcome-library candidate. This means an incomplete
+bundle gets the actionable `manifest.json` diagnostic instead of a package-loading error.
 
 ```
 pokie validate ./sample-slot
+pokie validate ./game.blueprint.json
+pokie validate ./outcomes --deep
 ```
 
 ```
@@ -2080,28 +2070,53 @@ No issues found.
 
 Options:
 
+- `--deep` — for outcome-library inputs, additionally streams every outcome and rebuilds each mode's library to
+  catch corruption that a structural check cannot (for example, a tampered record or mismatched hash). It is off
+  by default so normal bundle validation reads only `manifest.json` and the small per-mode indexes. It does not
+  add checks to package or Blueprint inputs.
 - `--format json` — print the JSON report to stdout instead of the default human-readable summary.
 - `--out <file>` — write the JSON report to `<file>`. Independent of `--format json`: combine both to see the
   report and save it in the same run.
 
-The JSON report shape:
+The default summary names the project, says whether it is valid, then lists every error or warning as
+`[location] code: explanation` followed by a `Next:` remediation. It never relies on a stack trace or parser
+message for normal validation failures.
+
+`--format json` and `--out` use this schemaVersion 1 report shape:
 
 ```ts
 {
-    packageRoot: string;
+    schemaVersion: 1;
+    project: {
+        path: string;
+        kind: "package" | "blueprint" | "outcome-library" | "unknown";
+    };
+    deep: boolean;
     valid: boolean;
-    game: {id: string; name: string; version: string} | null;  // null if the manifest couldn't be read at all
-    errors: ValidationIssue[];
-    warnings: ValidationIssue[];
-    suggestions: string[];      // deduped `issue.suggestion` text pulled from any error/warning that has one
+    errors: ValidateDiagnostic[];
+    warnings: ValidateDiagnostic[];
+    suggestions: string[];  // deduplicated next actions from the diagnostics
+    packageRoot?: string;   // package inputs only
+    game?: {id: string; name: string; version: string} | null;
+    issues?: ValidateDiagnostic[];  // outcome-library inputs: errors and warnings together
 }
+
+type ValidateDiagnostic = {
+    code: string;
+    severity: "error" | "warning" | "info";
+    message: string;
+    path: string;
+    suggestion: string;
+    details?: unknown;
+};
 ```
 
-`game` is populated whenever `getManifest()` could be called and returned an object, even if some of its fields
-failed validation (e.g. an empty `id`) — so you can see what the package *does* report, not just that it's wrong.
+For a package, `game` is populated whenever its game metadata could be read, even if an individual metadata
+field is invalid. For outcome-library inputs, `issues` is the combined diagnostic list; `errors` and `warnings`
+remain available for CI to make its decision without filtering by severity itself.
 
 Exit code is `0` when `valid` is `true` and `1` when it's `false` — no thrown/printed error on top of the report,
-so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<packageRoot>`,
+so scripting against `pokie validate` doesn't have to parse stderr. Only usage mistakes (missing `<project>`,
 an unknown option, `--out`/`--format` without a value) throw the usual `Usage: pokie validate ...` error.
 
 ## `pokie inspect <packageRoot>`
@@ -2948,8 +2963,8 @@ one of **Build/Export**'s own cards. Overview is informational diagnostics only 
 alongside the rest of the project's state, with no wizard-like next-step recommendation or call to action:
 
 - **Overview** shows the game's name/id/version, the absolute `projectRoot`, its `package.json` identity (name,
-  version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints), and the same validation report
-  [`pokie validate`](#pokie-validate-packageroot) produces (errors, warnings, suggestions), refreshed
+  version — the same data [`pokie inspect`](#pokie-inspect-packageroot) prints), and its validation report
+  (errors, warnings, suggestions), refreshed
   automatically and re-runnable on demand. An **Inspect** quick action re-runs the inspection (handy after
   rebuilding without restarting Studio).
 - **Game Model** is a read-only, resolved-project-type-aware projection of the game (manifest, reels/rows,
@@ -3272,8 +3287,9 @@ client, even for a load/validation failure.
   `{"status": "error", "projectRoot": "...", "error": "..."}`.
 - `GET /api/project/inspect` — the active project's `GamePackageInspectionReport` (same shape as
   [`pokie inspect`](#pokie-inspect-packageroot)'s JSON), or `409 {"error": "No active project."}` in Home mode.
-- `GET /api/project/validate` — the active project's `PokieGamePackageValidationReport` (same shape as
-  [`pokie validate`](#pokie-validate-packageroot)'s JSON), or `409 {"error": "No active project."}` in Home mode.
+- `GET /api/project/validate` — the active project's Studio validation response (the package variant is a
+  `PokieGamePackageValidationReport`; the CLI adds its own schemaVersion 1 wrapper documented at
+  [`pokie validate`](#pokie-validate-project)), or `409 {"error": "No active project."}` in Home mode.
 - `POST /api/project/simulations` `{"rounds": number, "seed"?: string, "workers"?: number}` — starts a simulation
   for the active project and returns immediately (`202`) with the new job in `"queued"` status; the simulation
   itself runs in the background, never blocking this request. `workers` defaults to `1` when omitted. `400
@@ -3402,7 +3418,7 @@ pokie dev ./sample-slot
 
 Each step builds on the same `<packageRoot>`:
 
-- [`validate`](#pokie-validate-packageroot) needs a prepared package (`pokie init`, or `pokie build` + the
+- [`validate`](#pokie-validate-project) needs a prepared package (`pokie init`, or `pokie build` + the
   same-shaped output) — it checks the contract before anything else runs.
 - [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
   [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftreportjson-rightreportjson)
