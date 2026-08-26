@@ -2000,6 +2000,20 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
 describe("CLI command registry (cli/pokie.ts's `commands` array, mirrored here)", () => {
     const commands = registerCommands();
 
+    it("registers stakeengine in the production CLI factory", () => {
+        const productionCommands = registerCliCommands({
+            version: TEST_VERSION,
+            pokiePackageRoot: "/fake/pokie/root",
+            clientRoot: "/fake/pokie/root/dist/cli/client",
+            studioRoot: "/fake/pokie/root/dist/cli/studio-client",
+        });
+        const stakeEngine = productionCommands.filter((command) => command.getName() === "stakeengine");
+        const descriptor = CLI_COMMAND_DESCRIPTORS.find((candidate) => candidate.name === "stakeengine");
+
+        expect(stakeEngine).toHaveLength(1);
+        expect(stakeEngine[0].getDescription()).toBe(descriptor?.description);
+    });
+
     it("has exactly the names the inventory expects, in the same order, with no duplicates", () => {
         expect(commands.map((command) => command.getName())).toEqual(CLI_COMMAND_DESCRIPTORS.map((d) => d.name));
         expect(new Set(commands.map((command) => command.getName())).size).toBe(commands.length);
