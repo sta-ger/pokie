@@ -209,6 +209,10 @@ identity (including seed and mode) in `replay`; use those values with `pokie rep
 --mode ...`. A descriptor missing its artifact/state can still be inspected, but is degraded evidence, not a claim
 of exact verification.
 
+Studio follows this exact selection contract too: a seeded Outcome Library Play spin and a seeded Outcome Source
+sample return (and retain in Recent Rounds) the same full `replay` descriptor, including library id/hash, mode,
+canonical artifact, screen and payout. That object is portable input provenance, not a generated UI fixture.
+
 ## Server integration (`pokie serve`)
 
 `PokieDevServer` gains two additive, opt-in-only routes when `PokieDevServerOptions.preGeneratedOutcomeLibrary`

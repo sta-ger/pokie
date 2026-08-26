@@ -119,10 +119,11 @@ describe("StudioServer outcome-source project routes", () => {
             const {status, body} = await post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base", seed: "studio-sample-seed"});
 
             expect(status).toBe(200);
-            const result = body as {supported: boolean; selection?: {libraryId: string; outcome: {id: string}}};
+            const result = body as {supported: boolean; selection?: {libraryId: string; outcome: {id: string}}; replay?: {modeName: string; seed: string; round: number}};
             expect(result.supported).toBe(true);
             expect(result.selection?.libraryId).toBe("base-lib");
             expect(typeof result.selection?.outcome.id).toBe("string");
+            expect(result.replay).toEqual(expect.objectContaining({modeName: "base", seed: "studio-sample-seed", round: 1}));
 
             expect(loadGame).not.toHaveBeenCalled();
         });
@@ -141,6 +142,7 @@ describe("StudioServer outcome-source project routes", () => {
                 studioProjectRoot?: string;
                 studioSeed?: string | number;
                 credits?: number;
+                replay?: {modeName: string; seed: string; round: number};
             }>;
             expect(entries).toHaveLength(1);
             expect(entries[0].studioSource).toBe("outcome-source-sample");
@@ -148,6 +150,7 @@ describe("StudioServer outcome-source project routes", () => {
             expect(entries[0].studioProjectRoot).toBe(bundleDir);
             expect(entries[0].studioSeed).toBe("studio-sample-seed");
             expect(entries[0].credits).toBeUndefined();
+            expect(entries[0].replay).toEqual(expect.objectContaining({modeName: "base", seed: "studio-sample-seed", round: 1}));
         });
 
         it("rejects a sample request missing modeName with 400, without ever touching the project", async () => {

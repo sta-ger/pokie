@@ -1,4 +1,4 @@
-import type {RoundArtifactJson} from "pokie";
+import type {PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "pokie";
 
 // Studio's own session response DTO for a played/drawn round — built by StudioPlayService directly off
 // a real, in-process PokieSessionState (see its own buildSessionView() doc comment): every public field
@@ -52,6 +52,10 @@ export type StudioRuntimeSessionView = {
     studioProjectRoot?: string;
     studioSeed?: string | number;
     studioModeName?: string;
+    // The portable, exact replay identity for a seeded native outcome-library draw.  This is carried
+    // on the ordinary Play/Sample result as well as the recorded round so a user does not need to
+    // reconstruct a private descriptor just to move the round to `pokie replay`.
+    replay?: PreGeneratedRoundReplayDescriptor;
     debug?: {
         stateAfter?: unknown;
         stateBefore?: unknown;

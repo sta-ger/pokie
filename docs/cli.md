@@ -2047,6 +2047,12 @@ currently opened bundle, the exported `replayOutcomeSourceProject(..., recordedD
 tells the caller to restore the original artifact/bundle. Package replay remains best-effort; it may inspect a
 round with unavailable state, but must not claim an exact comparison.
 
+The same portable `replay` object is returned by a seeded Outcome Source sample and a seeded Studio Outcome
+Library Play spin, and is retained in Studio's Recent Rounds entry. A seeded `pokie sim <bundle> --mode <mode>
+--seed <seed>` report similarly exposes its last sampled round as `lastReplay`. These all use
+`derived-round-seed-v1`: use the recorded `seed`, `round`, and `modeName` verbatim; a default mode or a raw
+seeded-stream sample is not interchangeable provenance.
+
 The session's credit balance is set to `Number.MAX_SAFE_INTEGER` before replaying, so reaching `--round` is never
 cut short by the session running out of credits.
 

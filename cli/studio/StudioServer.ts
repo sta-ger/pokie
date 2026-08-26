@@ -12,6 +12,7 @@ import {
     PokieGamePackageValidator,
     PokieJsonRoundArtifactProjector,
     PokieProject,
+    PreGeneratedRoundReplayDescriptor,
     ProjectTargetResolver,
     readWasmComponentManifest,
     RoundArtifact,
@@ -21,6 +22,7 @@ import {
     SeededWeightedOutcomeRandomSource,
     STUDIO_OPERATION,
 } from "pokie";
+import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import fs from "fs";
 import http, {IncomingMessage, ServerResponse} from "http";
@@ -1748,13 +1750,41 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        // A seeded sample is round 1 of the portable replay sequence, matching Play, simulation,
+        // OutcomeSourceDevServer and `pokie replay`; a raw seeded stream would be deterministic but
+        // could not be reproduced by its advertised seed/round/mode identity.
         const randomSource =
-            validated.seed !== undefined ? new SeededWeightedOutcomeRandomSource(validated.seed) : new SecureWeightedOutcomeRandomSource();
+            validated.seed !== undefined
+                ? new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(validated.seed, 1))
+                : new SecureWeightedOutcomeRandomSource();
         const result = await sampleOutcomeSourceProject(this.projectDashboard.project, validated.modeName, randomSource);
+        let replay: PreGeneratedRoundReplayDescriptor | undefined;
         if (result.supported) {
-            this.recordOutcomeSourceSample(result.selection.outcome.artifact, this.currentContext.projectRoot, validated.seed, validated.modeName);
+            if (validated.seed !== undefined) {
+                const startedAt = Date.now();
+                const {selection} = result;
+                const artifact = selection.outcome.artifact;
+                replay = {
+                    libraryId: selection.libraryId,
+                    libraryHash: selection.libraryHash,
+                    modeName: validated.modeName,
+                    selectionAlgorithm: "derived-round-seed-v1",
+                    seed: validated.seed,
+                    round: 1,
+                    outcomeId: selection.outcome.id,
+                    weight: selection.outcome.weight,
+                    totalWin: artifact.totalWin,
+                    payoutMultiplier: artifact.payoutMultiplier,
+                    stake: artifact.stake,
+                    screen: artifact.screen.map((row) => [...row]),
+                    artifact,
+                    timestamp: startedAt,
+                    durationMs: 0,
+                };
+            }
+            this.recordOutcomeSourceSample(result.selection.outcome.artifact, this.currentContext.projectRoot, validated.seed, validated.modeName, replay);
         }
-        this.sendJson(res, 200, result);
+        this.sendJson(res, 200, replay === undefined ? result : {...result, replay});
     }
 
     // Records a "Sample" draw into the shared round history exactly like every other round-producing
@@ -1765,13 +1795,20 @@ export class StudioServer implements StudioServerHandling {
     // than fabricated as 0 (see StudioRuntimeSessionView.credits's own doc comment). Every other field --
     // game/bet/win/screen/artifact -- is read straight off the real, already-drawn RoundArtifact, never
     // recomputed.
-    private recordOutcomeSourceSample(artifact: RoundArtifact, projectRoot: string, seed: string | undefined, modeName: string): void {
+    private recordOutcomeSourceSample(
+        artifact: RoundArtifact,
+        projectRoot: string,
+        seed: string | undefined,
+        modeName: string,
+        replay?: PreGeneratedRoundReplayDescriptor,
+    ): void {
         const view: StudioRuntimeSessionView = {
             sessionId: crypto.randomUUID(),
             game: artifact.provenance.game,
             bet: artifact.stake,
             win: artifact.totalWin,
             screen: artifact.screen.map((row) => [...row]),
+            ...(replay === undefined ? {} : {replay}),
             debug: {artifact: new PokieJsonRoundArtifactProjector().project(artifact)},
         };
         this.roundRecorder.record(view, {source: "outcome-source-sample", operation: "outcome-source-sample", projectRoot, seed, modeName});

@@ -2,7 +2,9 @@
 
 The bounded regression path is a real native outcome-library bundle: create an outcome-source session with a seed,
 spin it, then take `replay.seed`, `replay.round`, `replay.modeName`, `replay.libraryId` and `replay.libraryHash`
-from the ordinary response. Run:
+from the ordinary response. The same `replay` object is available on a seeded Studio Play spin, seeded Studio
+Outcome Source sample, and the Studio Recent Rounds record, so the transcript does not depend on hand-constructing
+an internal descriptor. Run:
 
 ```sh
 pokie replay ./bundle --seed recorded-seed --round 1 --mode base --out replay.json
