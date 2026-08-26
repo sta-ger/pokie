@@ -45,8 +45,10 @@ const CONFIG_HINT =
     '"./bundle", "bundleModeName": "base"} ("bundleModeName" defaults to "modeName" when omitted); exactly one ' +
     "of \"libraryPath\"/\"bundleDir\" is required per mode — see docs/stake-engine-export.md for the format.";
 const STAKE_DIR_HINT =
-    '<stakeDir> is a directory previously produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
-    "CSV/books, and its own pokie-manifest.json) — see docs/stake-engine-import.md for details.";
+    '<stakeDir> must be a directory produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
+    "CSV/books, and its own pokie-manifest.json). Reconstruction does not accept a compatible foreign directory " +
+    'without that manifest; use "pokie stakeengine analyze" (including its --out report) or "pokie stakeengine diff" ' +
+    "instead — see docs/stake-engine-import.md for details.";
 const ANALYZE_STAKE_DIR_HINT =
     "<stakeDir> is any Stake Engine outcome directory (index.json, per-mode lookup CSV, per-mode zstd-compressed " +
     'JSONL books) — POKIE\'s own export or a third party\'s, with or without a pokie-manifest.json — see ' +
@@ -161,9 +163,11 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     public getDescription(): string {
         return (
-            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, import one back, " +
+            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, reconstruct only " +
+            "a POKIE-produced export with pokie-manifest.json back into libraries, " +
             "standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required, or diff " +
-            "two such directories/analyses " +
+            "two such directories/analyses. Compatible foreign directories without that manifest are for analyze/report " +
+            "or diff, not reconstruction " +
             '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>" / ' +
             '"pokie stakeengine analyze <stakeDir>" / "pokie stakeengine diff <leftStakeDir> <rightStakeDir>").'
         );
@@ -291,7 +295,10 @@ export class StakeEngineCommand implements CliCommandHandling {
 
         parent
             .command("import")
-            .description("Import a Stake Engine export directory back into WeightedOutcomeLibrary JSON files.")
+            .description(
+                "Reconstruct WeightedOutcomeLibrary JSON files only from a POKIE-produced Stake Engine export with pokie-manifest.json; " +
+                "use analyze/report or diff for compatible foreign directories.",
+            )
             .argument("<stakeDir>", STAKE_DIR_HINT)
             .argument("[excess...]", "rejected if present -- this verb takes no further positionals")
             .option("--out <dir>", "output directory (default: <stakeDir> suffixed with \"-imported\")")

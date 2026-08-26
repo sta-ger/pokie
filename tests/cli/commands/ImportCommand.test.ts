@@ -21,6 +21,9 @@ describe("ImportCommand", () => {
         await expect(command.run(["--help"])).resolves.toBe(0);
         expect(command.getName()).toBe("import");
         expect(command.getCommanderCommand().name()).toBe("import");
+        const help = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+        expect(help).toContain("POKIE-produced Stake Engine export");
+        expect(help).toContain("pokie-manifest.json");
 
         logSpy.mockRestore();
     });

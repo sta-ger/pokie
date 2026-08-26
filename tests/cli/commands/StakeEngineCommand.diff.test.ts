@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import zlib from "zlib";
 import {
     StakeEngineExportModeInput,
     StakeEngineExporter,
@@ -12,6 +13,23 @@ import {
 } from "pokie";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
 import {buildSingleOutcomeStakeEngineLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
+
+// This fixture intentionally bypasses StakeEngineExporter so the CLI's advertised foreign-input
+// path is proven against an independently supplied compatible directory, not self-readback.
+function writeForeignFixtureDirectory(dir: string, winningPayoutMultiplier: number): void {
+    fs.writeFileSync(
+        path.join(dir, "index.json"),
+        JSON.stringify({modes: [{name: "base", cost: 1, events: "vendor-books.zst", weights: "vendor-lookup.csv"}]}),
+    );
+    fs.writeFileSync(path.join(dir, "vendor-lookup.csv"), `0,900,0\n1,100,${winningPayoutMultiplier}\n`);
+    const jsonl = [
+        {id: 0, payoutMultiplier: 0, events: [{index: 0, type: "vendorAnticipation"}]},
+        {id: 1, payoutMultiplier: winningPayoutMultiplier, events: [{index: 0, type: "vendorMultiplier", value: 2}]},
+    ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "vendor-books.zst"), zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
+}
 
 function createStubReader(results: Record<string, StakeEngineOutcomeSourceReadResult>): StakeEngineOutcomeSourceReading & {calledWith: string[]} {
     return {
@@ -295,6 +313,32 @@ describe("StakeEngineCommand diff", () => {
         } finally {
             fs.rmSync(leftDir, {recursive: true, force: true});
             fs.rmSync(rightDir, {recursive: true, force: true});
+        }
+    });
+
+    it("end to end: diffs POKIE output against an independently supplied compatible Stake directory", async () => {
+        const leftDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-pokie-left-"));
+        const foreignDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-diff-cli-foreign-right-"));
+        try {
+            await new StakeEngineExporter("1.3.0").exportToDirectory(
+                [{modeName: "base", cost: 1, library: buildSingleOutcomeStakeEngineLibrary({libraryId: "left-lib", betMode: "base", stake: 1, totalWin: 5})}],
+                leftDir,
+            );
+            writeForeignFixtureDirectory(foreignDir, 1500);
+
+            const exitCode = await new StakeEngineCommand("1.3.0").run(["diff", leftDir, foreignDir, "--format", "json"]);
+
+            expect(exitCode).toBe(1);
+            const parsed = JSON.parse(logSpy.mock.calls.map((call) => call[0]).join("\n")) as {
+                issues: {left: ValidationIssue[]; right: ValidationIssue[]};
+                diff: StakeEngineStandaloneAnalysisDiff;
+            };
+            expect(parsed.issues.left.filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(parsed.issues.right.filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(parsed.diff.perMode.base.rtp).toMatchObject({left: 5, right: 1.5, delta: -3.5});
+        } finally {
+            fs.rmSync(leftDir, {recursive: true, force: true});
+            fs.rmSync(foreignDir, {recursive: true, force: true});
         }
     });
 

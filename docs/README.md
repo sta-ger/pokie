@@ -119,7 +119,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     through `ReelStripGenerator` (the same machinery `pokie build` runs silently), previewing a deterministic
     diff by default and only pinning the result back in as a literal strip with `--apply`; `pokie export
     <config.json> --to adapter`, which exports one or more `WeightedOutcomeLibrary` JSON files to the Stake Engine
-    math-sdk static file format; `pokie import <stakeDir>`, which imports one back; `pokie report <stakeDir>`,
+    math-sdk static file format; `pokie import <stakeDir>`, which imports a POKIE-produced export back; `pokie report <stakeDir>`,
     which validates and computes exact weighted statistics over any Stake Engine outcome directory with no
     `pokie-manifest.json` required; `pokie stakeengine diff <leftStakeDir> <rightStakeDir>`,
     which diffs two such directories' analyses (added/removed modes, aggregate metrics, event classification
@@ -246,7 +246,7 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
 | Canonical, hashable, storage/audit-grade record of a completed round | `RoundArtifact`, `buildRoundArtifactFromSession`, `PokieJsonRoundArtifactProjector` |
 | Exact (no Monte Carlo) RTP/volatility/payout-distribution over every possible outcome | `WeightedOutcomeLibrary`, `buildWeightedOutcomeLibrary`, `WeightedOutcomeLibraryAnalyzer` |
 | Exporting a `WeightedOutcomeLibrary` to the Stake Engine math-sdk static file format | `pokie export <config.json> --to adapter`, `StakeEngineExporter` |
-| Importing a `WeightedOutcomeLibrary` back from a Stake Engine export directory | `pokie import <stakeDir>`, `StakeEngineImporter` |
+| Importing a `WeightedOutcomeLibrary` back from a POKIE-produced Stake Engine export directory | `pokie import <stakeDir>`, `StakeEngineImporter` |
 | Validating/analyzing any Stake Engine outcome directory with no `pokie-manifest.json` required | `pokie report <stakeDir>`, `StakeEngineOutcomeSourceReader`, `StakeEngineStandaloneAnalyzer` |
 | Diffing two Stake Engine outcome directories' analyses (added/removed modes, metrics, event categories) | `pokie stakeengine diff <leftStakeDir> <rightStakeDir>`, `StakeEngineStandaloneAnalysisDiffer` |
 | Streaming, canonical on-disk persistence for a `WeightedOutcomeLibrary` (no full-library-in-memory load) | `pokie export <config.json> --to outcomes`, `OutcomeLibraryBundleWriter`/`OutcomeLibraryBundleReader` |

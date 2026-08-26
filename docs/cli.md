@@ -791,6 +791,14 @@ pokie par export examples/parsheets/starter.blueprint.json --out starter.par.xls
 pokie par import starter.par.xlsx --out starter.blueprint.json
 ```
 
+The target-oriented aliases use these same physical PAR paths: `pokie export <config.json>
+--to workbook` exports the identical workbook, and `pokie import <input.xlsx>` imports it. The
+workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR importer); the
+generic import command only routes a directory to Stake Engine reconstruction when it is a
+POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake directory,
+use `pokie report` or `pokie stakeengine analyze`/`diff`, which intentionally do not require that
+manifest and do not claim to reconstruct missing POKIE provenance.
+
 See `examples/parsheets/` for a worked example (`starter.blueprint.json` and the `starter.par.xlsx` exported from
 it).
 

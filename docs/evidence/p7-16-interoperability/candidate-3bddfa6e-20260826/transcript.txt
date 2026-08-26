@@ -1,0 +1,281 @@
+P7-16 corrected installed public-CLI interoperability rerun (machine-generated; generated inputs/outputs removed after checks)
+candidate_sha=3bddfa6edc2b917c8b1f0938b621df8061815e72
+packed_tarball_sha256=b9bdbe826afa7e663273b4abe116360a0d41a7d394b221749bdbad4292ea8164
+installed_cli=/tmp/p7-16-candidate-pack-uCfjTP/consumer/node_modules/.bin/pokie
+provenance=packed from this candidate source checkout, then npm-installed into a fresh consumer directory; all product commands invoked only installed_cli.
+commands_observed_exit_0_before_fixture-correction=installed_cli --version; par export canonical.blueprint.json --out direct.PAR.XLSX; par import direct.PAR.XLSX --out direct.readback.json --format json; export canonical.blueprint.json --to workbook --out generic.PAR.XLSX; import generic.PAR.XLSX --out generic.readback.json; unzip -t direct.PAR.XLSX; build canonical.blueprint.json --target stakeAdapter --out stake-direct; stakeengine import stake-direct --out reconstructed-direct; import stake-direct --out reconstructed-generic; stakeengine export reconstructed-direct/config.json --out stake-republished.
+commands_observed_exit_1_before_fixture-correction=par import malformed-workbook.xlsx --out malformed-output.json.
+host_fixture_correction=the first independent foreign CSV/JSONL writer emitted literal backslash-n sequences; CLI accurately returned structural diagnostics. The foreign fixture was rewritten with real newlines before the idempotent public report/analyze/diff continuation below.
+
+direct_and_generic_PAR_semantic_readback=true
+canonical_sha256=3873dde030ece1b7f96151bbac68263d2ef28e5c1db2e61c624f298eb7cd9d1b; direct_readback_sha256=b9cd4d21138deb08a42ef907eaf5b0ca89c0598277200774a988391b59b1e6f2; generic_readback_sha256=b9cd4d21138deb08a42ef907eaf5b0ca89c0598277200774a988391b59b1e6f2
+
+malformed_workbook_no_output=true
+
+direct_and_generic_Stake_reconstruction_usable=true
+direct_config_sha256=d1fa6f8610b2468fa9825da511abb4f189913e5b9cc7ed719ada0a2c3bef55b4; generic_config_sha256=d1fa6f8610b2468fa9825da511abb4f189913e5b9cc7ed719ada0a2c3bef55b4
+
+stake_republish_index.json_equal=true; sha256=57e19f4de9b88cc3e45e7a5a2f11e0940b465ff9e09a5e1553d58b384807a5d5
+stake_republish_lookup_base.csv_equal=true; sha256=9f5d0b0554372ae0418565e49697656d5d6db4fb28706148a5083e0ac7d699a2
+stake_republish_books_base.jsonl.zst_equal=true; sha256=2a97e29ddf1cfcdda47503ad81645393f687541494b09daacfc6471c03a048a3
+
+foreign_manifest_absent=true
+foreign_index_sha256=1c6ff1f518f54995cafda3d71ee3446bdf78c605e7a70a29a5f0398946b5ff7b; foreign_lookup_sha256=79f2a8e02793e86e0f414a83304999a18ac982b2604962f4bc484892b031357b; foreign_books_sha256=c1fec165650a1180776488409194c273c38b4fb1e890f69de5117856651f1990
+
+$ "/tmp/p7-16-candidate-pack-uCfjTP/consumer/node_modules/.bin/pokie" "report" "foreign-stake" "--format" "json" "--out" "foreign-report-corrected.json"
+exit=0
+{
+    "rootPath": "/tmp/p7-16-candidate-pack-uCfjTP/work-verified/foreign-stake",
+    "descriptor": {
+        "kind": "stakeEngine",
+        "streaming": false,
+        "limitations": [
+            "Reads an entire mode's own lookup CSV and books into memory at once, never a single-outcome random-access read.",
+            "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundArtifact-shaped step model or a pokie-manifest.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
+            "Never re-derives or recovers the game model/blueprint that produced these outcomes."
+        ]
+    },
+    "issues": [],
+    "modes": [
+        {
+            "modeName": "base",
+            "analysis": {
+                "modeName": "base",
+                "cost": 1,
+                "outcomeCount": 2,
+                "totalWeight": 1000,
+                "rtp": 0.15000000000000002,
+                "hitFrequency": 0.1,
+                "zeroWinFrequency": 0.9,
+                "variance": 0.20250000000000004,
+                "standardDeviation": 0.45000000000000007,
+                "maxPayoutMultiplier": 150,
+                "maxRatio": 1.5,
+                "maxWinProbability": 0.1,
+                "nonInvertibleRatioCount": 0,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "weight": 900,
+                        "ratio": 0,
+                        "probability": 0.9
+                    },
+                    {
+                        "payoutMultiplier": 150,
+                        "weight": 100,
+                        "ratio": 1.5,
+                        "probability": 0.1
+                    }
+                ],
+                "eventClassificationBreakdown": [
+                    {
+                        "category": "feature",
+                        "occurrenceFrequency": 1,
+                        "averageOccurrencesPerOutcome": 1
+                    }
+                ]
+            }
+        }
+    ]
+}
+Report written to "foreign-report-corrected.json".
+
+foreign_report_parseable_valid_artifact=true
+foreign_report_sha256=f47caae0c18532a6372304916257bb2b46fafbad04181ca5c47a98b14770206f
+
+$ "/tmp/p7-16-candidate-pack-uCfjTP/consumer/node_modules/.bin/pokie" "stakeengine" "analyze" "foreign-stake" "--format" "json" "--out" "foreign-analyze.json"
+exit=0
+{
+    "stakeDir": "foreign-stake",
+    "issues": [],
+    "analysis": {
+        "stakeDir": "foreign-stake",
+        "modes": [
+            {
+                "modeName": "base",
+                "cost": 1,
+                "outcomeCount": 2,
+                "totalWeight": 1000,
+                "rtp": 0.15000000000000002,
+                "hitFrequency": 0.1,
+                "zeroWinFrequency": 0.9,
+                "variance": 0.20250000000000004,
+                "standardDeviation": 0.45000000000000007,
+                "maxPayoutMultiplier": 150,
+                "maxRatio": 1.5,
+                "maxWinProbability": 0.1,
+                "nonInvertibleRatioCount": 0,
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "weight": 900,
+                        "ratio": 0,
+                        "probability": 0.9
+                    },
+                    {
+                        "payoutMultiplier": 150,
+                        "weight": 100,
+                        "ratio": 1.5,
+                        "probability": 0.1
+                    }
+                ],
+                "eventClassificationBreakdown": [
+                    {
+                        "category": "feature",
+                        "occurrenceFrequency": 1,
+                        "averageOccurrencesPerOutcome": 1
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+foreign_analyze_parseable_valid_artifact=true
+foreign_analyze_sha256=15b7c631e733857b77dd74019329a3729f799d98d86c572cc79ad4dcb87c20c8
+
+$ "/tmp/p7-16-candidate-pack-uCfjTP/consumer/node_modules/.bin/pokie" "stakeengine" "diff" "foreign-stake" "foreign-stake" "--format" "json" "--out" "foreign-diff.json"
+exit=0
+{
+    "stakeDir": {
+        "left": "foreign-stake",
+        "right": "foreign-stake"
+    },
+    "issues": {
+        "left": [],
+        "right": []
+    },
+    "diff": {
+        "stakeDir": {
+            "left": "foreign-stake",
+            "right": "foreign-stake"
+        },
+        "perMode": {
+            "base": {
+                "rtp": {
+                    "left": 0.15000000000000002,
+                    "right": 0.15000000000000002,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "hitFrequency": {
+                    "left": 0.1,
+                    "right": 0.1,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "zeroWinFrequency": {
+                    "left": 0.9,
+                    "right": 0.9,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "variance": {
+                    "left": 0.20250000000000004,
+                    "right": 0.20250000000000004,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "standardDeviation": {
+                    "left": 0.45000000000000007,
+                    "right": 0.45000000000000007,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "maxPayoutMultiplier": {
+                    "left": 150,
+                    "right": 150,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "maxRatio": {
+                    "left": 1.5,
+                    "right": 1.5,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "maxWinProbability": {
+                    "left": 0.1,
+                    "right": 0.1,
+                    "delta": 0,
+                    "percentDelta": 0
+                },
+                "nonInvertibleRatioCount": {
+                    "left": 0,
+                    "right": 0,
+                    "delta": 0,
+                    "percentDelta": null
+                },
+                "payoutDistribution": [
+                    {
+                        "payoutMultiplier": 0,
+                        "left": 0.9,
+                        "right": 0.9
+                    },
+                    {
+                        "payoutMultiplier": 150,
+                        "left": 0.1,
+                        "right": 0.1
+                    }
+                ],
+                "eventClassificationBreakdown": [
+                    {
+                        "category": "feature",
+                        "left": {
+                            "occurrenceFrequency": 1,
+                            "averageOccurrencesPerOutcome": 1
+                        },
+                        "right": {
+                            "occurrenceFrequency": 1,
+                            "averageOccurrencesPerOutcome": 1
+                        }
+                    }
+                ],
+                "warnings": []
+            }
+        },
+        "onlyInLeft": [],
+        "onlyInRight": []
+    }
+}
+
+foreign_diff_parseable_zero_delta_artifact=true
+foreign_diff_sha256=9241e3004d5979cf88335332782c2bbdbb1e9870906dde39fbc5ce39b3df8b44
+
+$ "/tmp/p7-16-candidate-pack-uCfjTP/consumer/node_modules/.bin/pokie" "import" "foreign-stake" "--out" "foreign-reconstruction"
+exit=1
+Could not import "foreign-stake" (3 error(s)):
+  - stakeengine-import-mode-filename-mismatch: mode "base"'s "events" filename ("vendor-books.zst") must be exactly "books_base.jsonl.zst" — Stake's own naming convention, derived from the mode's name.
+  - stakeengine-import-mode-filename-mismatch: mode "base"'s "weights" filename ("vendor-lookup.csv") must be exactly "lookup_base.csv" — Stake's own naming convention, derived from the mode's name.
+  - stakeengine-import-manifest-missing: "foreign-stake" has no pokie-manifest.json — import only ever round-trips a directory "pokie stakeengine export" itself produced.
+
+foreign_reconstruction_no_output=true
+
+$ "/tmp/p7-16-candidate-pack-uCfjTP/consumer/node_modules/.bin/pokie" "report" "malformed-foreign-stake" "--format" "json" "--out" "malformed-foreign-report.json"
+exit=0
+{
+    "rootPath": "/tmp/p7-16-candidate-pack-uCfjTP/work-verified/malformed-foreign-stake",
+    "descriptor": {
+        "kind": "stakeEngine",
+        "streaming": false,
+        "limitations": [
+            "Reads an entire mode's own lookup CSV and books into memory at once, never a single-outcome random-access read.",
+            "Normalizes verbatim Stake Engine events into StakeEngineOutcomeRecord -- never reconstructs a RoundArtifact-shaped step model or a pokie-manifest.json provenance record (see StakeEngineOutcomeRecord's own doc comment).",
+            "Never re-derives or recovers the game model/blueprint that produced these outcomes."
+        ]
+    },
+    "issues": [
+        {
+            "code": "stakeengine-standalone-index-invalid-json",
+            "severity": "error",
+            "message": "index.json is not valid JSON: Expected property name or '}' in JSON at position 1 (line 1 column 2)"
+        }
+    ],
+    "modes": []
+}
+Report written to "malformed-foreign-report.json".
+
+malformed_foreign_actionable_diagnostic=true
+malformed_foreign_report_sha256=9c4ed7a875845aeb18c4304d37ee91ad4a2e04f8aa2416f7ae0b7ce9e2475d1b
+
+retained_artifacts=none; retained proof contains this transcript only (commands, exits, provenance, semantic checks, diagnostics, and checksums).

@@ -33,8 +33,10 @@ import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {DevCommand} from "../../cli/commands/DevCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
 import {EditCommand} from "../../cli/commands/EditCommand.js";
+import {ExportCommand} from "../../cli/commands/ExportCommand.js";
 import {FairnessCommand} from "../../cli/commands/FairnessCommand.js";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
+import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {InspectCommand} from "../../cli/commands/InspectCommand.js";
 import {NameCommand} from "../../cli/commands/NameCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
@@ -79,8 +81,10 @@ function registerCommands(): CliCommandHandling[] {
         new DevCommand(),
         new DiffCommand(),
         new EditCommand(),
+        new ExportCommand(TEST_VERSION),
         new FairnessCommand(),
         new InitCommand(TEST_VERSION),
+        new ImportCommand(TEST_VERSION),
         new InspectCommand(),
         new NameCommand(),
         new OutcomeLibraryCommand(TEST_VERSION),
@@ -331,6 +335,7 @@ function reelGenerationObserver(key: string): typeof resolveReelStripGeneration 
 // else (argv parsing, control flow, console output, exit code) is the real, unstubbed command class.
 function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
     const builders: Record<string, (key: string) => CliCommandHandling> = {
+        "export::--help (public target-oriented entrypoint)": () => new ExportCommand(TEST_VERSION),
         "build::<config.json> --target tsPackage --out <path> (accepted --target/--out values, default --dry-run, writes via the injected builder)": (
             key,
         ) =>
@@ -1213,6 +1218,8 @@ function registerCommandsForValidCases(): Map<string, CliCommandHandling> {
                 },
                 () => false,
             ),
+
+        "import::--help (public generic entrypoint)": () => new ImportCommand(TEST_VERSION),
 
         "inspect::<packageRoot>": () =>
             new InspectCommand({

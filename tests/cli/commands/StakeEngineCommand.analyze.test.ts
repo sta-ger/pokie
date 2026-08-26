@@ -22,6 +22,23 @@ function writeUint64FixtureDirectory(dir: string, weights: readonly bigint[]): v
     fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
 }
 
+// Deliberately written without StakeEngineExporter: this is the smallest compatible third-party
+// math-sdk directory, with its own filenames and event vocabulary and no POKIE provenance file.
+function writeForeignFixtureDirectory(dir: string, winningPayoutMultiplier: number): void {
+    fs.writeFileSync(
+        path.join(dir, "index.json"),
+        JSON.stringify({modes: [{name: "base", cost: 1, events: "vendor-books.zst", weights: "vendor-lookup.csv"}]}),
+    );
+    fs.writeFileSync(path.join(dir, "vendor-lookup.csv"), `0,900,0\n1,100,${winningPayoutMultiplier}\n`);
+    const jsonl = [
+        {id: 0, payoutMultiplier: 0, events: [{index: 0, type: "vendorAnticipation"}]},
+        {id: 1, payoutMultiplier: winningPayoutMultiplier, events: [{index: 0, type: "vendorMultiplier", value: 2}]},
+    ]
+        .map((line) => JSON.stringify(line))
+        .join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "vendor-books.zst"), zlib.zstdCompressSync(Buffer.from(jsonl, "utf-8")));
+}
+
 function createStubReader(result: StakeEngineOutcomeSourceReadResult): StakeEngineOutcomeSourceReading & {calledWith?: string} {
     return {
         readFromDirectory(stakeDir: string) {
@@ -133,6 +150,22 @@ describe("StakeEngineCommand analyze", () => {
             expect(parsed.issues.some((issue) => issue.severity === "error")).toBe(false);
             expect(parsed.analysis?.modes[0].modeName).toBe("base");
             expect(parsed.analysis?.modes[0].rtp).toBe(5);
+        } finally {
+            fs.rmSync(dir, {recursive: true, force: true});
+        }
+    });
+
+    it("end to end: analyzes an independently supplied compatible Stake directory without POKIE filenames, manifest, or events", async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-stakeengine-analyze-cli-foreign-test-"));
+        try {
+            writeForeignFixtureDirectory(dir, 150);
+
+            const exitCode = await new StakeEngineCommand("1.3.0").run(["analyze", dir, "--format", "json"]);
+
+            expect(exitCode).toBe(0);
+            const parsed = JSON.parse(logSpy.mock.calls.map((call) => call[0]).join("\n")) as {issues: ValidationIssue[]; analysis: StakeEngineStandaloneAnalysis};
+            expect(parsed.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+            expect(parsed.analysis.modes[0]).toMatchObject({modeName: "base", outcomeCount: 2, rtp: 0.15000000000000002, hitFrequency: 0.1});
         } finally {
             fs.rmSync(dir, {recursive: true, force: true});
         }
