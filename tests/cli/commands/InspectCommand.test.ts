@@ -105,7 +105,7 @@ describe("InspectCommand", () => {
     it.each([
         [blueprintProject, "Game Blueprint", "Build a POKIE game package", "first build a POKIE game package"],
         [outcomeProject, "Outcome Library", "Simulate outcome draws", "original game logic"],
-        [stakeProject, "Stake Engine export", "Inspect exact outcome statistics", "use the compatible Outcome Library"],
+        [stakeProject, "Stake Engine export", "Render exact outcome statistics", "use the compatible Outcome Library"],
         [parWorkbookProject, "PAR workbook", "Import a Game Blueprint", "first import the workbook"],
         [wasmProject, "POKIE WASM component", "Inspect this component", "cannot build, run, simulate, or validate WASM game logic"],
     ])("explains the public kind, compatible actions, and prerequisites for %s", async (project, kind, action, prerequisite) => {
@@ -118,6 +118,23 @@ describe("InspectCommand", () => {
         expect(printed).toContain(action);
         expect(printed).toContain(prerequisite);
         expect(printed).not.toContain("capability");
+    });
+
+    it("recommends only registered public commands for Outcome Library and Stake Engine analysis", async () => {
+        const outcomeCommand = new InspectCommand(createStubResolver(outcomeProject));
+        const stakeCommand = new InspectCommand(createStubResolver(stakeProject));
+
+        expect(await outcomeCommand.run([outcomeProject.rootPath])).toBe(0);
+        const outcomePrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(outcomePrinted).toContain('pokie report "./outcomes"');
+        expect(outcomePrinted).not.toContain("pokie outcomesource");
+
+        logSpy.mockClear();
+        expect(await stakeCommand.run([stakeProject.rootPath])).toBe(0);
+        const stakePrinted = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(stakePrinted).toContain('pokie report "./stake-export"');
+        expect(stakePrinted).toContain('pokie diff "./stake-export" <otherPath>');
+        expect(stakePrinted).not.toContain("pokie outcomesource");
     });
 });
 
