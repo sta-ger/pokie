@@ -14,6 +14,8 @@ import {InitCommand} from "./commands/InitCommand.js";
 import {ImportCommand} from "./commands/ImportCommand.js";
 import {InspectCommand} from "./commands/InspectCommand.js";
 import {InternalStudioCommand} from "./commands/InternalStudioCommand.js";
+import {OutcomeLibraryCommand} from "./commands/OutcomeLibraryCommand.js";
+import {OutcomeSourceCommand} from "./commands/OutcomeSourceCommand.js";
 import {ParCommand} from "./commands/ParCommand.js";
 import {ReelCommand} from "./commands/ReelCommand.js";
 import {ReplayCommand} from "./commands/ReplayCommand.js";
@@ -70,6 +72,8 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),
         new ImportCommand(version),
         new InspectCommand(),
+        new OutcomeLibraryCommand(version),
+        new OutcomeSourceCommand(),
         new ParCommand(version),
         new ReelCommand(),
         new ReplayCommand(
