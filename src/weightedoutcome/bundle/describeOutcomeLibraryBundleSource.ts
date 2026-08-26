@@ -13,7 +13,7 @@ export function describeOutcomeLibraryBundleSource(): CanonicalOutcomeSourceDesc
         streaming: true,
         limitations: [
             "Serves already-computed outcomes exactly as built -- never re-derives or recovers the game model/blueprint that produced them.",
-            "Draws are only ever atomic against this bundle's own current on-disk content -- a rebuild mid-read surfaces as a PreGeneratedOutcomeSourceConflictError, never a silently stale result.",
+            "Draws are only ever atomic against this bundle's own current on-disk content -- a rebuild mid-read reports that the source content changed, never a silently stale result.",
         ],
     };
 }

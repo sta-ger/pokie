@@ -90,21 +90,21 @@ const key = process.argv.slice(2).join(" ");
 const root = "Usage: pokie\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  build  build\\n  export  export\\n";
 const studio = "Usage: pokie [projectRoot]\\n\\nOptions:\\n  -h, --help  help\\n  --no-open  do not open\\n";
 const build = "Usage: pokie build <project>\\n\\nOptions:\\n  -h, --help  help\\n  --target <target> one of: supported\\n  --source-type <type> one of: blueprint\\n  --format <format> one of: json\\n  --mode <mode> one of: base\\n";
-const exportHelp = "Usage: pokie export <source> [excess...]\\n\\nOptions:\\n  -h, --help help\\n  --to <artifact> outcomes, adapter, or workbook\\n";
+const exportHelp = "Usage: pokie export <source> [excess...]\\n\\nOptions:\\n  -h, --help help\\n  --to <artifact> outcomes, adapter, or workbook\\n  --dry-run validate without writing\\n";
 process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : key === "export --help" ? exportHelp : build);
 `);
         const map = JSON.parse(await readFile(coverage, "utf8"));
         map.initialInventory.rootCommands = ["build", "export"];
-        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--help", owner: "test"}, {id: "alias:export:-h", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "value:export:--to:outcomes", owner: "test"}, {id: "value:export:--to:adapter", owner: "test"}, {id: "value:export:--to:workbook", owner: "test"}, {id: "output:outcomes", owner: "test"}, {id: "output:adapter", owner: "test"}, {id: "output:workbook", owner: "test"});
+        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--help", owner: "test"}, {id: "alias:export:-h", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "option:export:--dry-run", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "value:export:--to:outcomes", owner: "test"}, {id: "value:export:--to:adapter", owner: "test"}, {id: "value:export:--to:workbook", owner: "test"}, {id: "output:outcomes", owner: "test"}, {id: "output:adapter", owner: "test"}, {id: "output:workbook", owner: "test"});
         await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 0, result.stderr);
         const mapWithoutOutputOwner = JSON.parse(await readFile(coverage, "utf8"));
-        mapWithoutOutputOwner.owners = mapWithoutOutputOwner.owners.filter((entry) => entry.id !== "value:export:--to:workbook");
+        mapWithoutOutputOwner.owners = mapWithoutOutputOwner.owners.filter((entry) => entry.id !== "option:export:--dry-run");
         await writeFile(coverage, JSON.stringify(mapWithoutOutputOwner));
         const rejected = run(cli, coverage, path.join(directory, "rejected"));
         assert.equal(rejected.status, 1);
-        assert.match(rejected.stderr, /value:export:--to:workbook/);
+        assert.match(rejected.stderr, /option:export:--dry-run/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -303,8 +303,8 @@ test("checks the freshly built production CLI against the complete public docume
         ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
         assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
         const inventory = JSON.parse(await readFile(path.join(evidenceDirectory, "inventory.json"), "utf8"));
-        assert.equal(inventory.rootCommands.length, 20);
-        assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 7);
+        assert.equal(inventory.rootCommands.length, 21);
+        assert.equal(inventory.commands.filter((command) => command.path.includes(" ")).length, 9);
         assert.match(await readFile(path.join(evidenceDirectory, "collector-transcript.txt"), "utf8"), /INDEPENDENT_RERUN/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 }, 180000);

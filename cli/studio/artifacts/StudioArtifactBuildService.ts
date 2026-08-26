@@ -40,8 +40,6 @@ function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
             return ["Stake Engine export directory"];
         case "parWorkbook":
             return ["PAR workbook (.xlsx) file"];
-        case "wasm":
-            return ["WASM artifact"];
         default:
             throw new Error(`Unknown artifact target: ${target}`);
     }

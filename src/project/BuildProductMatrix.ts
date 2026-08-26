@@ -29,17 +29,12 @@ export const BUILD_PRODUCT_MATRIX_TARGETS: readonly ArtifactTargetType[] = [
     "outcomeLibrary",
     "stakeAdapter",
     "parWorkbook",
-    "wasm",
 ];
 
-// These are the only targets a user can select in `pokie build` and Studio. WASM remains a resolved,
-// inspectable project type, but no source can build it and presenting it as a build target would be dead UX.
-export const ADVERTISED_ARTIFACT_BUILD_TARGETS: readonly ArtifactTargetType[] = [
-    "tsPackage",
-    "outcomeLibrary",
-    "stakeAdapter",
-    "parWorkbook",
-];
+// Every build target is advertised because each has a complete source-to-artifact matrix. WASM remains a
+// resolved, inspectable project type, but is deliberately absent from ArtifactTargetType and this matrix until
+// POKIE can produce and consume it as a real product.
+export const ADVERTISED_ARTIFACT_BUILD_TARGETS: readonly ArtifactTargetType[] = BUILD_PRODUCT_MATRIX_TARGETS;
 
 const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
     blueprint: "Game Blueprint",
@@ -67,10 +62,6 @@ const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequi
         missingPrerequisite: "a Game Blueprint or PAR workbook",
         nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
     },
-    wasm: {
-        missingPrerequisite: "a WASM artifact builder",
-        nextAction: "WASM builds are not available; run `pokie inspect <path>` to inspect a compatible component.",
-    },
 };
 
 const SUPPORTED_CELLS = new Set<string>([
@@ -91,9 +82,6 @@ function cellKey(source: ProjectType, target: ArtifactTargetType): string {
 }
 
 function buildCell(source: ProjectType, target: ArtifactTargetType): BuildProductMatrixCell {
-    if (target === "wasm") {
-        return {source, target, state: "hidden/unadvertised", ...TARGET_PREREQUISITES.wasm};
-    }
     if (SUPPORTED_CELLS.has(cellKey(source, target))) {
         return {source, target, state: "supported"};
     }
@@ -124,8 +112,6 @@ export function describeBuildProductMatrixDiagnostic(source: ProjectType, target
     const cell = getBuildProductMatrixCell(source, target);
     const sourceDescription = sourcePath === undefined ? `A ${PUBLIC_PROJECT_TYPE_NAMES[source]}` : `"${sourcePath}" is a ${PUBLIC_PROJECT_TYPE_NAMES[source]}`;
     const targetDescription = PUBLIC_PROJECT_TYPE_NAMES[target];
-    const prefix = cell.state === "hidden/unadvertised"
-        ? `${sourceDescription}. ${targetDescription} is hidden from build selection because POKIE has no WASM artifact builder.`
-        : `${sourceDescription}. It cannot build a ${targetDescription}. Missing prerequisite: ${cell.missingPrerequisite}.`;
+    const prefix = `${sourceDescription}. It cannot build a ${targetDescription}. Missing prerequisite: ${cell.missingPrerequisite}.`;
     return `${prefix} Next: ${cell.nextAction}`;
 }

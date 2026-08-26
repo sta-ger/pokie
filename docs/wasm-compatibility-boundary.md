@@ -7,8 +7,8 @@ and drives session/play/state through it — and **no package-to-WASM compiler**
 `tsPackage` game into a `.wasm` build. This module does not add either of those. What it does add is the
 compatibility *boundary* between POKIE and a hypothetical WASM component: a versioned metadata contract, a
 resolver that recognizes and validates a component against that contract (read-only, never executing anything),
-and an advisory preflight that names what would need to change before a package could even be considered for a
-WASM target.
+and an advisory preflight that names portability concerns in a package. WASM is inspection-only, not a build or
+export target.
 
 **Scope:** contract + validation + read-only resolution + advisory preflight. Not in scope: an execution
 backend, a compiler, or any claim that a specific package can be compiled to WASM today.
@@ -77,15 +77,15 @@ outcomes:
 
 A resolved `"wasm"` project carries exactly one capability, `WASM_MANIFEST_READ_CAPABILITY`
 (`"wasm.manifest.read"`) — never `RUNTIME_EXECUTE_CAPABILITY` (POKIE cannot load/run it) and never
-`WASM_EXPORT_CAPABILITY` (no `ProjectType` grants that; `ArtifactBuilderRegistry` still reports `"wasm"` as
-buildable from zero source types). This is the "resolve read-only" boundary:
+`WASM_EXPORT_CAPABILITY` (no `ProjectType` grants that; `ArtifactBuilderRegistry` deliberately has no `"wasm"`
+target). This is the "resolve read-only" boundary:
 `readWasmComponentManifest(project)` reads the manifest's own fields back for inspection — component id/version,
 serialization format ids, host bindings, declared capabilities — and nothing else. It never touches the `.wasm`
 bytes, and there is no operation that loads, instantiates, simulates, replays, or serves a `"wasm"` project.
 
 ## Package-to-WASM preflight — `assessWasmPackagingPreflight`
 
-Before anyone even considers targeting WASM from an existing POKIE `tsPackage`, `assessWasmPackagingPreflight`
+For an existing POKIE `tsPackage`, `assessWasmPackagingPreflight`
 runs an advisory-only scan over that package's own source: it statically finds every `import`/`require` of a
 Node.js built-in module (`fs`, `path`, `child_process`, `net`, ...) — none of which exist inside a
 WASM/component-model sandbox — and lists the package's own declared `package.json` runtime dependencies
@@ -93,10 +93,9 @@ verbatim, for a human to review (POKIE has no way to know whether any third-part
 without actually trying to bundle it).
 
 The scan is a plain regex over import/require specifiers, not a real parser — good enough to *name* a blocker,
-never a guarantee that an empty result means a package is actually portable. `report.notes` always carries
-`ArtifactBuilderRegistry.describe("wasm").unsupportedNotes` verbatim, so the report can never be read as "no
-blockers found, therefore compilation works": **no POKIE command compiles a package to WASM, regardless of what
-this scan finds.**
+never a guarantee that an empty result means a package is actually portable. `report.notes` explicitly says that
+WASM has no POKIE build/export target, so the report can never be read as "no blockers found, therefore compilation
+works": **no POKIE command compiles a package to WASM, regardless of what this scan finds.**
 
 ## What's explicitly deferred
 

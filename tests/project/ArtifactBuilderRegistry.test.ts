@@ -9,7 +9,6 @@ import {
     OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
-    WASM_EXPORT_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
 import type {PokieProject} from "../../src/project/PokieProject.js";
 
@@ -61,13 +60,6 @@ describe("ArtifactBuilderRegistry", () => {
         expect(descriptor.unsupportedNotes.join(" ")).not.toMatch(/does not derive.*blueprint/i);
     });
 
-    it("truthfully reports wasm as buildable from no source type today", () => {
-        const descriptor = registry.describe("wasm");
-
-        expect(descriptor.requiredSourceCapability).toBe(WASM_EXPORT_CAPABILITY);
-        expect(descriptor.supportedSources).toEqual([]);
-    });
-
     it("never promises reversible model recovery from an outcome-based artifact", () => {
         const outcomeLibraryNotes = registry.describe("outcomeLibrary").unsupportedNotes.join(" ");
         const stakeAdapterNotes = registry.describe("stakeAdapter").unsupportedNotes.join(" ");
@@ -76,24 +68,21 @@ describe("ArtifactBuilderRegistry", () => {
         expect(stakeAdapterNotes).toMatch(/never re-derives or recovers the game model/);
     });
 
-    it("never promises arbitrary package-to-WASM compilation", () => {
-        const wasmNotes = registry.describe("wasm").unsupportedNotes.join(" ");
+    it("does not expose WASM as an ArtifactBuilderRegistry target", () => {
         const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
 
-        expect(wasmNotes).toMatch(/no arbitrary package-to-WASM compiler/);
         expect(tsPackageNotes).toMatch(/never compiles or targets WASM/);
+        expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);
     });
 
     it("throws for a target it has no descriptor for", () => {
-        expect(() => registry.describe("bogus" as never)).toThrow(/no descriptor for target "bogus"/);
+        expect(() => registry.describe("bogus" as never)).toThrow(/Build target "bogus" is unavailable.*Next: choose a target shown by `pokie build --help`/);
     });
 
     describe("supportsConversionFrom", () => {
         it("agrees with the descriptor's own supportedSources", () => {
             expect(registry.supportsConversionFrom("tsPackage", "blueprint")).toBe(true);
             expect(registry.supportsConversionFrom("tsPackage", "tsPackage")).toBe(false);
-            expect(registry.supportsConversionFrom("wasm", "tsPackage")).toBe(false);
-            expect(registry.supportsConversionFrom("wasm", "blueprint")).toBe(false);
         });
     });
 
@@ -135,15 +124,16 @@ describe("ArtifactBuilderRegistry", () => {
             expect(builder.calls).toBe(0);
         });
 
-        it("rejects with a clear message for a target that has no registered builder ('wasm')", async () => {
+        it("does not advertise a target whose injected configuration cannot build it", async () => {
             const withoutBuilders = new ArtifactBuilderRegistry("1.3.0", new Map());
 
-            // "wasm" has no supported source at all, so this always fails the capability check first --
-            // exercised instead through a target this registry's own descriptor concedes has no source
-            // support, proving build() never crashes on a target simply because no builder is registered.
+            // A custom registry can still be incomplete, but it must not retain a dead public target.
+            // Production construction supplies every ArtifactTargetType builder.
+            expect(withoutBuilders.listTargets()).toEqual([]);
             await expect(withoutBuilders.build("tsPackage", projectOf("blueprint"), "/out/my-game")).rejects.toThrow(
-                /"tsPackage" has no builder implemented yet/,
+                /Build target "tsPackage" is unavailable.*Next: choose a target shown by `pokie build --help`/,
             );
+            expect(() => withoutBuilders.describe("tsPackage")).toThrow(/Build target "tsPackage" is unavailable/);
         });
 
         it("resolves a Blueprint's registered Outcome Library prerequisite before exporting Stake, and reuses it deterministically", async () => {
@@ -235,14 +225,12 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(stake.managedProjectRoots).toEqual([outcomeDir]);
                 expect(fs.existsSync(path.join(stakeDir, "index.json"))).toBe(true);
 
-                const alternateOutcomeDir = path.join(workDir, "requested-but-reused-outcome");
-                await expect(registry.build("outcomeLibrary", blueprintProject, alternateOutcomeDir)).resolves.toEqual({
-                    outputPath: outcomeDir,
-                    requestedDestinationPath: alternateOutcomeDir,
-                    reusedCompatibleProject: true,
-                    managedProjectRoots: [outcomeDir],
+                const secondOutcomeDir = path.join(workDir, "second-outcome");
+                await expect(registry.build("outcomeLibrary", blueprintProject, secondOutcomeDir)).resolves.toEqual({
+                    outputPath: secondOutcomeDir,
+                    managedProjectRoots: [secondOutcomeDir],
                 });
-                expect(fs.existsSync(alternateOutcomeDir)).toBe(false);
+                expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
             } finally {
                 fs.rmSync(workDir, {recursive: true, force: true});
             }
@@ -417,8 +405,5 @@ describe("ArtifactBuilderRegistry", () => {
             expect(result).toEqual({available: false, message: expect.stringMatching(/already exists/)});
         });
 
-        it("throws for a target that has no registered builder ('wasm'), the same as build() does", () => {
-            expect(() => registry.checkDestination("wasm", path.join(dir, "anything"))).toThrow(/"wasm" has no builder implemented yet/);
-        });
     });
 });

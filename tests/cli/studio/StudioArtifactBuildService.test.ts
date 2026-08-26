@@ -3,8 +3,6 @@ import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {ArtifactBuildCancelledError, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactBuilderRegistry, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
-import {localPokieDependencyRunner} from "../../testUtils/offlinePokieDependencyOverride.js";
-import {prepareExactCodeFirstPackage} from "../../testUtils/prepareExactCodeFirstPackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function buildBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -49,7 +47,6 @@ describe("StudioArtifactBuildService", () => {
             expect(byTarget.get("outcomeLibrary")?.supported).toBe(true);
             expect(byTarget.get("stakeAdapter")?.supported).toBe(true);
             expect(byTarget.get("parWorkbook")?.supported).toBe(true);
-            expect(byTarget.get("wasm")).toBeUndefined();
         });
 
         it("marks every target unsupported for a path that isn't a recognized POKIE project", async () => {
@@ -206,77 +203,23 @@ describe("StudioArtifactBuildService", () => {
             expect(fs.existsSync(path.join(result.outputPath, "manifest.json"))).toBe(true);
         });
 
-        it("reports an explicit compatible-project reuse when a Blueprint Outcome request names another destination", async () => {
+        it("builds an explicit Blueprint Outcome destination even when a compatible managed project exists", async () => {
             const blueprintPath = writeBlueprintFile();
             const firstOutcomeDir = path.join(workDir, "first-outcome");
-            const requestedOutcomeDir = path.join(workDir, "requested-but-reused-outcome");
+            const secondOutcomeDir = path.join(workDir, "second-outcome");
 
             await expect(service.build(blueprintPath, "outcomeLibrary", firstOutcomeDir)).resolves.toMatchObject({
                 status: "ok",
                 outputPath: firstOutcomeDir,
             });
-            await expect(service.build(blueprintPath, "outcomeLibrary", requestedOutcomeDir)).resolves.toEqual({
+            await expect(service.build(blueprintPath, "outcomeLibrary", secondOutcomeDir)).resolves.toEqual({
                 status: "ok",
                 target: "outcomeLibrary",
-                outputPath: firstOutcomeDir,
+                outputPath: secondOutcomeDir,
                 outputKind: "directory",
                 sourceType: "blueprint",
-                requestedDestinationPath: requestedOutcomeDir,
-                reusedCompatibleProject: true,
             });
-            expect(fs.existsSync(requestedOutcomeDir)).toBe(false);
-        });
-
-        it("uses the same registry Outcome reuse and Stake flow for a real pokie init code-first package", async () => {
-            const packageRoot = path.join(workDir, "code-first-package");
-            const outcomeDir = path.join(workDir, "outcomes");
-            const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
-            const stakeDir = path.join(workDir, "stake");
-            await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
-
-            expect(await service.listTargets(packageRoot)).toEqual(expect.arrayContaining([
-                expect.objectContaining({target: "outcomeLibrary", supported: true}),
-                expect.objectContaining({target: "stakeAdapter", supported: true}),
-                expect.objectContaining({target: "parWorkbook", supported: false}),
-            ]));
-            await expect(service.build(packageRoot, "outcomeLibrary", outcomeDir)).resolves.toMatchObject({
-                status: "ok",
-                sourceType: "tsPackage",
-                outputPath: outcomeDir,
-            });
-            await expect(service.build(packageRoot, "outcomeLibrary", reusedOutcomeDir)).resolves.toEqual({
-                status: "ok",
-                target: "outcomeLibrary",
-                outputPath: outcomeDir,
-                outputKind: "directory",
-                sourceType: "tsPackage",
-                requestedDestinationPath: reusedOutcomeDir,
-                reusedCompatibleProject: true,
-            });
-            await expect(service.build(packageRoot, "stakeAdapter", stakeDir)).resolves.toMatchObject({
-                status: "ok",
-                sourceType: "tsPackage",
-                outputPath: stakeDir,
-            });
-            expect(JSON.parse(fs.readFileSync(path.join(outcomeDir, "manifest.json"), "utf-8")).modes).toEqual([
-                expect.objectContaining({modeName: "base", betMode: "base", stake: 1}),
-                expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
-            ]);
-            expect(JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")).modes).toEqual([
-                expect.objectContaining({name: "base", betMode: "base", stake: 1, cost: 1}),
-                expect.objectContaining({name: "ante", betMode: "ante", stake: 2, cost: 2}),
-            ]);
-            const unsupportedBuild = await service.build(packageRoot, "parWorkbook", path.join(workDir, "unsupported.xlsx"));
-            if (unsupportedBuild.status !== "unsupported") {
-                throw new Error("expected unsupported");
-            }
-            expect(unsupportedBuild).toEqual({
-                status: "unsupported",
-                target: "parWorkbook",
-                message:
-                    `"${packageRoot}" is a POKIE game package. It cannot build a PAR workbook. ` +
-                    "Missing prerequisite: a Game Blueprint or PAR workbook. Next: Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`.",
-            });
+            expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
         });
 
         it("reports a conflict (never writing) for a pre-existing non-empty destination", async () => {

@@ -412,7 +412,8 @@ The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: it
 `blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
 `parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
-resolvable for inspection, but is intentionally not a build target because POKIE has no WASM artifact builder.
+resolvable for inspection, but is intentionally not a build target: it is an inspection-only compatibility boundary,
+not a POKIE artifact workflow.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
 described in full below. Blueprint → PAR Workbook freezes generated, weighted, or default reels as a deterministic
@@ -975,7 +976,21 @@ pokie reel generate game.blueprint.json --materialize --out game.materialized.js
 See [`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json)
 for a `reelStripGeneration` blueprint to try this against.
 
-## `pokie export <config.json> --to adapter`
+## Target-oriented export aliases
+
+`pokie export` names the artifact a project receives. Every target-oriented alias accepts the same preview flag:
+
+```
+pokie export outcomelibrary-config.json --to outcomes --out bundle --dry-run
+pokie export stake-config.json --to adapter --out stakeengine --dry-run
+pokie export game.blueprint.json --to workbook --out game.par.xlsx --dry-run
+```
+
+For `outcomes`, `adapter`, and `workbook`, `--dry-run` validates both the selected target's source and resolved
+destination without writing anything. It fails if either is incompatible or unavailable; remove the problem or use
+a different `--out` path, then run the command again without `--dry-run` to publish the artifact.
+
+## `pokie export <config.json> --to adapter [--out <dir>] [--dry-run]`
 
 Exports one or more canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) JSON files (one per bet
 mode) to the real [Stake Engine math-sdk static file format](https://stakeengine.github.io/math-sdk/rgs_docs/data_format/)
@@ -983,7 +998,7 @@ mode) to the real [Stake Engine math-sdk static file format](https://stakeengine
 `RoundArtifact` → Stake "events" mapping.
 
 ```
-pokie export stake-config.json --to adapter --out stakeengine
+pokie export stake-config.json --to adapter --out stakeengine [--dry-run]
 ```
 
 `<config.json>` lists one `WeightedOutcomeLibrary` JSON file per mode:
@@ -1014,6 +1029,7 @@ falls back to the existing (non-streaming) path; both produce byte-identical out
 Options:
 
 - `--out <dir>` — where to write the export (default: `<config.json>`'s directory plus `/stakeengine`).
+- `--dry-run` — validate the adapter source and destination without writing anything.
 
 Preflights the entire export before writing anything — on any error-level `ValidationIssue` (see
 [Stake Engine Export](stake-engine-export.md#validation)), nothing is written and the exit code is non-zero.
@@ -1021,12 +1037,10 @@ Every `payoutMultiplier`/amount is converted into Stake's own integer unit conve
 never rounded — see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded))
 before it's written.
 
-The whole `--out` directory is replaced atomically: built into a temporary directory first, then swapped into
-place only once everything succeeded, so a failed export never leaves `--out` partially updated. Re-running into
-the same `--out` directory overwrites cleanly (it recognizes its own prior `pokie-manifest.json`) — including
-removing a mode's `lookup_*.csv`/`books_*.jsonl.zst` when that mode is no longer part of the export. An
-unrecognized non-empty `--out` directory is refused outright, with nothing touched — see
-[Rebuild safety](stake-engine-export.md#rebuild-safety--the-whole-directory-is-replaced-atomically).
+The target-oriented adapter alias rejects an occupied destination, including a prior adapter export, without
+touching it. Choose a different unused `--out` path (or remove the destination yourself after checking it) and
+retry. A failed export never leaves a partial artifact — see [Rebuild safety](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory-atomically)
+for the writer's publish discipline.
 
 ## `pokie import <stakeDir>`
 
@@ -1114,7 +1128,7 @@ command family's usual plain 0/1:
 | `1` | Both sides read cleanly but a material difference was found (an added/removed mode, or a per-mode metric drift past the differ's own warning threshold). |
 | `2` | Either directory reported an error-level issue while reading, so no diff was computed. |
 
-## `pokie export <config.json> --to outcomes`
+## `pokie export <config.json> --to outcomes [--out <dir>] [--dry-run]`
 
 Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
 small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
@@ -1123,7 +1137,7 @@ canonical bundle format both the pre-generated runtime and `pokie export <config
 `bundleDir`/`bundleModeName`) load from.
 
 ```
-pokie export outcomelibrary-config.json --to outcomes --out bundle
+pokie export outcomelibrary-config.json --to outcomes --out bundle [--dry-run]
 ```
 
 `<config.json>` lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file (fully
@@ -1148,6 +1162,7 @@ Exactly one of `libraryPath`/`outcomesPath` is required per mode.
 Options:
 
 - `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomelibrary`).
+- `--dry-run` — validate the outcome-library source and destination without writing anything.
 
 Published atomically as a whole directory (temp-dir-then-swap, same discipline as `stakeengine export`): a write
 failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from

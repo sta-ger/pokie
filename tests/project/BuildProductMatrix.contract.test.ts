@@ -9,12 +9,12 @@ import {
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 
 describe("BuildProductMatrix", () => {
-    it("covers all six resolved sources and five artifact targets with the ten supported cells", () => {
+    it("covers all six resolved sources and four build targets with the ten supported cells", () => {
         const cells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.flatMap((source) =>
             BUILD_PRODUCT_MATRIX_TARGETS.map((target) => BUILD_PRODUCT_MATRIX[source][target]),
         );
 
-        expect(cells).toHaveLength(30);
+        expect(cells).toHaveLength(24);
         expect(cells.filter((cell) => cell.state === "supported").map((cell) => `${cell.source}:${cell.target}`)).toEqual([
             "blueprint:tsPackage",
             "blueprint:outcomeLibrary",
@@ -27,7 +27,7 @@ describe("BuildProductMatrix", () => {
             "stakeAdapter:stakeAdapter",
             "parWorkbook:parWorkbook",
         ]);
-        expect(cells.filter((cell) => cell.state === "hidden/unadvertised")).toHaveLength(6);
+        expect(cells.filter((cell) => cell.state === "hidden/unadvertised")).toHaveLength(0);
         expect(cells.filter((cell) => cell.state === "diagnostic-required")).toHaveLength(14);
     });
 
@@ -36,10 +36,8 @@ describe("BuildProductMatrix", () => {
 
         expect(ADVERTISED_ARTIFACT_BUILD_TARGETS).toEqual(["tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]);
         expect(registry.listTargets()).toEqual(ADVERTISED_ARTIFACT_BUILD_TARGETS);
-        for (const source of BUILD_PRODUCT_MATRIX_SOURCE_TYPES) {
-            expect(getBuildProductMatrixCell(source, "wasm").state).toBe("hidden/unadvertised");
-            expect(registry.supportsConversionFrom("wasm", source)).toBe(false);
-        }
+        expect(BUILD_PRODUCT_MATRIX_TARGETS).not.toContain("wasm");
+        expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);
     });
 
     it("gives every advertised diagnostic cell the same exact prerequisite and next action", () => {

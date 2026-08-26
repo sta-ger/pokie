@@ -325,8 +325,11 @@ mode reports everything it finds rather than stopping at the first kind of corru
 ## CLI usage
 
 ```
-pokie export <source> --to outcomes [--out <dir>]
+pokie export <source> --to outcomes [--out <dir>] [--dry-run]
 ```
+
+`--dry-run` validates the outcome-library source and resolved destination without writing anything. It reports an
+incompatible source or occupied destination before a bundle is published.
 
 `build`'s config.json lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file —
 `{"modes": [{"modeName": "base", "libraryPath": "./libraries/base.json"}]}` — fully loaded into memory, or a

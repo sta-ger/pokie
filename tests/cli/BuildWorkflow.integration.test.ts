@@ -183,12 +183,17 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.existsSync(path.join(outcomeDir, "manifest.json"))).toBe(true);
         expect(fs.existsSync(path.join(workDir, ".pokie", "managed-outcome-projects.json"))).toBe(true);
 
-        const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
-        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", reusedOutcomeDir])).toBe(0);
-        expect(fs.existsSync(reusedOutcomeDir)).toBe(false);
-        expect((console.log as jest.Mock).mock.calls.map((call) => call[0]).join("\n")).toContain(
-            `reused compatible Outcome Project "${outcomeDir}" instead of writing "${reusedOutcomeDir}"`,
+        const secondOutcomeDir = path.join(workDir, "second-outcomes");
+        expect(await new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", secondOutcomeDir])).toBe(0);
+        expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
+
+        const occupiedOutcomeDir = path.join(workDir, "occupied-outcomes");
+        fs.mkdirSync(occupiedOutcomeDir);
+        fs.writeFileSync(path.join(occupiedOutcomeDir, "sentinel.txt"), "preserve me");
+        await expect(new BuildCommand("1.3.0").run([finiteBlueprintPath, "--target", "outcomeLibrary", "--out", occupiedOutcomeDir])).rejects.toThrow(
+            /Cannot build target "outcomeLibrary"[\s\S]*Next: choose a different --out path/,
         );
+        expect(fs.readFileSync(path.join(occupiedOutcomeDir, "sentinel.txt"), "utf-8")).toBe("preserve me");
 
         expect(await new ValidateCommand().run([outcomeDir])).toBe(0);
         await new ReportCommand().run([outcomeDir, "--format", "json", "--out", reportFile]);
@@ -266,7 +271,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
     it("takes a real pokie init code-first package through the CLI registry's Outcome reuse and Stake flow, while preserving its runtime modes and PAR diagnostic", async () => {
         const packageRoot = path.join(workDir, "code-first-package");
         const outcomeDir = path.join(workDir, "outcomes");
-        const reusedOutcomeDir = path.join(workDir, "requested-but-reused-outcomes");
+        const secondOutcomeDir = path.join(workDir, "second-outcomes");
         const stakeDir = path.join(workDir, "stake");
         await prepareExactCodeFirstPackage(packageRoot, localPokieDependencyRunner());
 
@@ -285,8 +290,8 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
             expect.objectContaining({modeName: "ante", betMode: "ante", stake: 2}),
         ]);
 
-        expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "outcomeLibrary", "--out", reusedOutcomeDir])).toBe(0);
-        expect(fs.existsSync(reusedOutcomeDir)).toBe(false);
+        expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "outcomeLibrary", "--out", secondOutcomeDir])).toBe(0);
+        expect(fs.existsSync(path.join(secondOutcomeDir, "manifest.json"))).toBe(true);
         expect(await new BuildCommand("1.3.0").run([packageRoot, "--target", "stakeAdapter", "--out", stakeDir])).toBe(0);
         const stakeManifest = JSON.parse(fs.readFileSync(path.join(stakeDir, "pokie-manifest.json"), "utf-8")) as {modes: Array<{name: string; betMode: string; stake: number; cost: number}>};
         expect(stakeManifest.modes).toEqual([

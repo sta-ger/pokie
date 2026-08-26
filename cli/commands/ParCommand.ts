@@ -79,6 +79,16 @@ export class ParCommand implements CliCommandHandling {
         return this.buildCommand();
     }
 
+    // This is deliberately the same source preflight as executeExport, without either its
+    // destination check or exporter call, for `pokie export --to workbook --dry-run`.
+    public validateExportSource(blueprintPath: string): void {
+        const blueprint = this.loadBlueprint(blueprintPath);
+        const errors = prepareBlueprintForParSheetExport(blueprint).issues.filter((issue) => issue.severity === "error");
+        if (errors.length > 0) {
+            throw new Error("The GameBlueprint source does not satisfy the PAR workbook export contract.");
+        }
+    }
+
     // Two ordinary-word verbs ("import"/"export") sharing one parent Commander instance — real nested
     // subcommands (see cli/commands/internal/CommanderCliAdapter.ts), so Commander itself both
     // dispatches by exact verb name and validates each verb's own args/options. The messages passed
