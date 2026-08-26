@@ -1,0 +1,44 @@
+# P8-01 browser transcript
+
+- [2026-08-26T21:11:19.722Z] Fresh temporary browser profile and Studio config; public entrypoint=http://127.0.0.1:46281/
+- [2026-08-26T21:11:21.557Z] VIEWPORT name=desktop width=1280 height=900
+- [2026-08-26T21:11:21.945Z] OBSERVE goal="First-time creator arrives at Studio" url=http://127.0.0.1:46281/#/home/design latencyMs=111 controls=16 alerts=0
+- [2026-08-26T21:11:21.960Z] ACT rendered-control-click="Projects"
+- [2026-08-26T21:11:22.467Z] OBSERVE goal="First-time Projects registry empty state" url=http://127.0.0.1:46281/#/home/projects latencyMs=256 controls=9 alerts=1
+- [2026-08-26T21:11:22.508Z] ACT rendered-control-click="Design Game"
+- [2026-08-26T21:11:22.813Z] VIEWPORT name=narrow width=405 height=800
+- [2026-08-26T21:11:23.048Z] OBSERVE goal="First-time creator arrives at Studio on a narrow viewport" url=http://127.0.0.1:46281/#/home/design latencyMs=234 controls=17 alerts=0
+- [2026-08-26T21:11:23.065Z] VIEWPORT name=desktop width=1280 height=900
+- [2026-08-26T21:11:23.072Z] ACT rendered-control-activation="New Blueprint"
+- [2026-08-26T21:11:23.492Z] OBSERVE goal="Creator is warned before discarding the initial draft" url=http://127.0.0.1:46281/#/home/design latencyMs=157 controls=21 alerts=0
+- [2026-08-26T21:11:23.503Z] ACT rendered-control-activation="Discard"
+- [2026-08-26T21:11:23.906Z] OBSERVE goal="Creator chooses a new Blueprint" url=http://127.0.0.1:46281/#/home/design latencyMs=147 controls=21 alerts=0
+- [2026-08-26T21:11:24.000Z] ACT rendered-control-click="Blank"
+- [2026-08-26T21:11:24.511Z] OBSERVE goal="Blank Blueprint validation state" url=http://127.0.0.1:46281/#/home/design latencyMs=262 controls=17 alerts=1
+- [2026-08-26T21:11:24.542Z] ACT rendered-control-click="Create Project"
+- [2026-08-26T21:11:25.537Z] OBSERVE goal="Blank Blueprint rejected before project creation" url=http://127.0.0.1:46281/#/home/design latencyMs=244 controls=16 alerts=0
+- [2026-08-26T21:11:25.549Z] ACT rendered-control-activation="New Blueprint"
+- [2026-08-26T21:11:25.822Z] ACT rendered-control-activation="Discard"
+- [2026-08-26T21:11:26.174Z] ACT rendered-control-click="Recommended"
+- [2026-08-26T21:11:26.670Z] OBSERVE goal="Creator configures the recommended Blueprint" url=http://127.0.0.1:46281/#/home/design latencyMs=242 controls=17 alerts=1
+- [2026-08-26T21:11:26.697Z] ACT rendered-control-click="Create Project"
+- [2026-08-26T21:11:27.165Z] OBSERVE goal="Created project overview" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/overview latencyMs=109 controls=12 alerts=1
+- [2026-08-26T21:11:27.221Z] ACT rendered-control-click="Overview"
+- [2026-08-26T21:11:27.639Z] OBSERVE goal="Project tab: Overview" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/overview latencyMs=167 controls=12 alerts=1
+- [2026-08-26T21:11:27.676Z] ACT rendered-control-click="Game Model"
+- [2026-08-26T21:11:28.024Z] OBSERVE goal="Project tab: Game Model" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/gameModel latencyMs=98 controls=24 alerts=0
+- [2026-08-26T21:11:28.072Z] ACT rendered-control-click="Play"
+- [2026-08-26T21:11:28.473Z] OBSERVE goal="Project tab: Play" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/play latencyMs=150 controls=12 alerts=0
+- [2026-08-26T21:11:28.510Z] ACT rendered-control-click="Simulation"
+- [2026-08-26T21:11:28.924Z] OBSERVE goal="Project tab: Simulation" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/simulation latencyMs=164 controls=17 alerts=1
+- [2026-08-26T21:11:28.963Z] ACT rendered-control-click="Replay"
+- [2026-08-26T21:11:29.378Z] OBSERVE goal="Project tab: Replay" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/replay latencyMs=165 controls=13 alerts=2
+- [2026-08-26T21:11:29.424Z] ACT rendered-control-click="Build/Export"
+- [2026-08-26T21:11:29.915Z] OBSERVE goal="Project tab: Build/Export" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/exportDeploy latencyMs=240 controls=28 alerts=1
+- [2026-08-26T21:11:29.948Z] VIEWPORT name=narrow width=405 height=800
+- [2026-08-26T21:11:30.114Z] OBSERVE goal="Build/Export on a narrow viewport" url=http://127.0.0.1:46281/#/project/%2Fhome%2Fstager%2FPOKIE%20Projects%2Fstarter-slot-8%2Fblueprint.json/exportDeploy latencyMs=166 controls=29 alerts=1
+- [2026-08-26T21:11:30.139Z] VIEWPORT name=desktop width=1280 height=900
+- [2026-08-26T21:11:30.174Z] ACT rendered-control-click="Close project"
+- [2026-08-26T21:11:30.443Z] ACT rendered-control-click="Projects"
+- [2026-08-26T21:11:30.926Z] OBSERVE goal="Projects registry after creating a project" url=http://127.0.0.1:46281/#/home/projects latencyMs=232 controls=12 alerts=0
+- [2026-08-26T21:11:30.931Z] COMPLETE screens=17 consoleErrors=0 networkErrors=0

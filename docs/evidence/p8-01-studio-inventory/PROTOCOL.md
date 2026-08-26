@@ -8,7 +8,7 @@ are read before the run to state a goal, never to manufacture a route.
 For each goal, record only: the goal, the public entrypoint or rendered action
 used, the visible result, elapsed observation time, rendered controls/dialogs/
 alerts, keyboard Tab order, responsive viewport, and console/network errors.
-The collector's 12,000-character text, 160-control, and 40-focus limits keep
+The collector's 12,000-character text, 160-control, and 16-focus limits keep
 one run reviewable.  Record failures as observations; do not hide a failing
 screen by replacing it with a fixture.
 
@@ -18,7 +18,9 @@ relationship.  Link the image from the matching finding, record its viewport,
 and otherwise retain text only.  Never retain profiles, generated game trees,
 or browser caches.
 
-An independent rerun must use a separately-created profile/configuration and
+`public-documentation-claims.json` is the bounded pre-run documentation list:
+each claim names its public document, rendered goal, and roadmap owner. An
+independent rerun must use a separately-created profile/configuration and
 record its candidate commit, command, timestamp, viewport, result, and any
 console/network errors.  Compare it to the prior JSON by user goal and visible
 control labels, not by implementation route.  Public documentation claims are

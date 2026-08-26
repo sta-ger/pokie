@@ -14,13 +14,17 @@
     {"step": "P8-07", "surfaces": ["all later-discovered Studio capabilities and any finding not already mapped above"], "residual": true}
   ],
   "observedSurfaceAssignments": [
-    {"surface": "Studio public URL and first-run landing", "owner": "P8-02"},
-    {"surface": "Design Game and Create Blueprint Project dialog", "owner": "P8-03"},
-    {"surface": "Projects panel and import action", "owner": "P8-04"},
-    {"surface": "opened Blueprint project dashboard", "owner": "P8-05"},
-    {"surface": "Build/Export availability on the opened project", "owner": "P8-06"},
-    {"surface": "capability-gated Certification and Provably Fair availability", "owner": "P8-06"},
-    {"surface": "newly discovered capability", "owner": "P8-07"}
+    {"surface": "Studio public URL, Design Game landing, documentation links, initial loading observation, and desktop/narrow shell", "owner": "P8-02"},
+    {"surface": "Create Blueprint Project dirty-draft dialog, Blank/Recommended choices, blank validation error, guided editor, and Blueprint creation", "owner": "P8-03"},
+    {"surface": "Projects empty state, managed-project registry, Import Project, missing-project recovery, and restart persistence", "owner": "P8-04"},
+    {"surface": "opened-project loading, Overview, Game Model, Play, Simulation empty/failed/report states, Replay empty/failed states, rounds, and reports", "owner": "P8-05"},
+    {"surface": "Build/Export cards and disabled prerequisites, Certification/Fairness capability gating, public documentation claims, keyboard focus, and narrow responsive behavior", "owner": "P8-06"}
   ],
+  "findingProtocol": {
+    "requiredFields": ["id", "surface", "observedBy", "owner", "status"],
+    "newCapabilityRule": "Record a new capability as a finding before assigning it. P8-07 may own it only with owner=P8-07 and status=unresolved.",
+    "completionRule": "P8-07 completion requires unownedFindings to be empty and every residualFindings entry to have a non-empty id and owner."
+  },
+  "residualFindings": [],
   "unownedFindings": []
 }

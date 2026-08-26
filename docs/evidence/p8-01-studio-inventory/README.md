@@ -6,6 +6,9 @@ or source-code inventory.  The collector starts with both a fresh Chromium
 profile and a fresh Studio registry, follows rendered controls from Studio's
 public URL, and records the resulting visible screens, controls, dialogs,
 alerts, focus order, latency, and browser console/network errors.
+It embeds the pre-run public-documentation claims from
+`public-documentation-claims.json`, including the rendered goal and owner for
+each claim.
 
 Run it only after building the candidate:
 
@@ -20,6 +23,10 @@ when text cannot establish a visual relationship (for example, a focus ring,
 responsive overflow, or the relative position of an error and its action).
 Keep the written transcript and `inventory.json`; do not retain the temporary
 browser profile, Studio config, build products, or generated project.
+
+`current-run/` is the checked-in clean-profile baseline for this step. Its
+`inventory.json` records desktop and narrow observations, while its transcript
+records the command's rendered actions and completion/error counts.
 
 ## Ownership closure
 
