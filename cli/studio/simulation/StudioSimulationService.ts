@@ -7,6 +7,7 @@ import {
     OutcomeLibraryBundleReading,
     ParallelSimulationRunner,
     ParallelSimulationRunOptions,
+    PreGeneratedRoundReplayDescriptor,
     PokieGameManifest,
     PokieProject,
     resolveOutcomeLibraryModeName,
@@ -20,6 +21,7 @@ import {
     WeightedOutcomeRandomSource,
 } from "pokie";
 import crypto from "crypto";
+import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {BlueprintMaterializationError} from "../../materialize/BlueprintMaterializationError.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
@@ -77,6 +79,7 @@ export class StudioSimulationService {
     // in-process and worker-thread paths receive the current materialized runtime rather than the
     // Blueprint source path itself.
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
+    private readonly onCompleted: (record: StudioSimulationJobRecord) => void;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -97,6 +100,7 @@ export class StudioSimulationService {
         ) => ParallelSimulationRunner = (packageRoot, rounds, options) => new ParallelSimulationRunner(packageRoot, rounds, options),
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
+        onCompleted: (record: StudioSimulationJobRecord) => void = () => undefined,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -109,6 +113,7 @@ export class StudioSimulationService {
         this.createParallelSimulationRunner = createParallelSimulationRunner;
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
+        this.onCompleted = onCompleted;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -415,9 +420,9 @@ export class StudioSimulationService {
         record.status = "running";
 
         const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
-        const randomSource: WeightedOutcomeRandomSource =
-            record.seed === undefined ? new SecureWeightedOutcomeRandomSource() : new SeededWeightedOutcomeRandomSource(record.seed);
+        const randomSource: WeightedOutcomeRandomSource = new SecureWeightedOutcomeRandomSource();
         const accumulator = new SimulationAccumulator();
+        let lastReplay: PreGeneratedRoundReplayDescriptor | undefined;
 
         let roundsRemaining = record.rounds;
         try {
@@ -429,8 +434,37 @@ export class StudioSimulationService {
 
                 const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
                 for (let played = 0; played < chunkRounds; played++) {
-                    const selection = await outcomeSource.drawOutcome(randomSource);
+                    // A seeded simulation is a collection of independently addressable rounds, not a
+                    // mutable seeded stream. This is the same contract Play, the dev server and replay
+                    // use, so its final sample can be reproduced with just (seed, round, mode).
+                    const replayRound = record.roundsCompleted + played + 1;
+                    const roundRandomSource =
+                        record.seed === undefined
+                            ? randomSource
+                            : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(record.seed, replayRound));
+                    const selection = await outcomeSource.drawOutcome(roundRandomSource);
                     accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
+                    if (record.seed !== undefined) {
+                        const artifact = selection.outcome.artifact;
+                        lastReplay = {
+                            game: manifestGame,
+                            libraryId: selection.libraryId,
+                            libraryHash: selection.libraryHash,
+                            modeName,
+                            selectionAlgorithm: "derived-round-seed-v1",
+                            seed: record.seed,
+                            round: replayRound,
+                            outcomeId: selection.outcome.id,
+                            weight: selection.outcome.weight,
+                            totalWin: artifact.totalWin,
+                            payoutMultiplier: artifact.payoutMultiplier,
+                            stake: artifact.stake,
+                            screen: artifact.screen.map((row) => [...row]),
+                            artifact,
+                            timestamp: record.startedAt,
+                            durationMs: this.now() - record.startedAt,
+                        };
+                    }
                 }
 
                 record.roundsCompleted += chunkRounds;
@@ -466,7 +500,9 @@ export class StudioSimulationService {
             rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
             payoutHistogram: statistics.payoutHistogram,
         };
+        record.lastReplay = lastReplay;
         this.markTerminal(record);
+        this.onCompleted(record);
     }
 
     private fail(record: StudioSimulationJobRecord, error: unknown): void {

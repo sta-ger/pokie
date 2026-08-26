@@ -18,5 +18,6 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
         statistics: record.statistics,
         error: record.error,
         modeName: record.modeName,
+        lastReplay: record.lastReplay,
     };
 }

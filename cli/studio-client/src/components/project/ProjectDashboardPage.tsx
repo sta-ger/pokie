@@ -517,6 +517,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         status: "loaded",
                         round: job.descriptor.round,
                         seed: job.descriptor.seed ?? undefined,
+                        modeName: job.descriptor.outcomeSource?.modeName,
+                        outcomeSource: job.descriptor.outcomeSource,
                         artifact: job.descriptor.artifact,
                         artifactWarnings: [],
                         credits: job.descriptor.credits,
@@ -563,12 +565,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                   stateAfter?: unknown;
                                   sessionId?: string;
                                   timestamp?: number;
+                                  outcomeSource?: import("../../api/types").OutcomeSourceReplayDescriptorView;
                               })
                             : undefined;
                     setExpectedReplay({
                         status: "loaded",
                         round: response.round,
                         seed: response.seed,
+                        modeName: response.modeName,
+                        outcomeSource: response.outcomeSource ?? parsedDescriptor?.outcomeSource,
                         artifact: parsedDescriptor?.artifact,
                         artifactWarnings: response.artifactWarnings,
                         credits: parsedDescriptor?.credits,
@@ -595,11 +600,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
     // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
     const runReplay = useCallback(
-        (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string) => {
+        (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: import("../../api/types").OutcomeSourceReplayDescriptorView) => {
             if (!keepExpected) {
                 clearExpectedReplay();
             }
-            replay.run(round, seed, simulationId, modeName);
+            replay.run(round, seed, simulationId, modeName, outcomeSource);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [replay.run, clearExpectedReplay],

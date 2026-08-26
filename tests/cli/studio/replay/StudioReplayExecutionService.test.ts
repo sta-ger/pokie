@@ -999,7 +999,7 @@ describe("StudioReplayExecutionService with a resolved, multi-mode native outcom
         return (await new ProjectTargetResolver().resolve(bundleDir)) as PokieProject;
     }
 
-    it("replays the manifest's own first mode when no mode is explicitly requested, preserving pre-existing behavior", async () => {
+    it("rejects a missing recorded mode rather than silently selecting the manifest's first mode", async () => {
         const project = await buildMultiModeLibraryProject();
         const service = new StudioReplayExecutionService();
 
@@ -1009,9 +1009,8 @@ describe("StudioReplayExecutionService with a resolved, multi-mode native outcom
         }
         const job = await waitForTerminal(service, project.rootPath, result.job.id);
 
-        expect(job.status).toBe("completed");
-        expect(job.modeName).toBe("base");
-        expect(job.descriptor?.artifact?.roundId).toMatch(/^base-lib-/);
+        expect(job.status).toBe("failed");
+        expect(job.error).toMatch(/without its recorded mode/i);
     });
 
     it("replays an explicitly-requested non-first mode -- never silently substitutes the manifest's own first mode", async () => {
@@ -1033,7 +1032,7 @@ describe("StudioReplayExecutionService with a resolved, multi-mode native outcom
         const project = await buildMultiModeLibraryProject();
         const service = new StudioReplayExecutionService();
 
-        const result = service.start(project.rootPath, {round: 1, modeName: "bonus"}, project);
+        const result = service.start(project.rootPath, {round: 1, seed: "known-seed", modeName: "bonus"}, project);
         if (result.status !== "created") {
             throw new Error("expected job to be created");
         }
@@ -1043,6 +1042,20 @@ describe("StudioReplayExecutionService with a resolved, multi-mode native outcom
         expect(job.error).toContain('"bonus" is not a mode of this outcome library');
         expect(job.error).toContain("base");
         expect(job.error).toContain("buyFeature");
+    });
+
+    it("rejects a missing seed before drawing an outcome-library round", async () => {
+        const project = await buildMultiModeLibraryProject();
+        const service = new StudioReplayExecutionService();
+
+        const result = service.start(project.rootPath, {round: 1, modeName: "base"}, project);
+        if (result.status !== "created") {
+            throw new Error("expected job to be created");
+        }
+        const job = await waitForTerminal(service, project.rootPath, result.job.id);
+
+        expect(job.status).toBe("failed");
+        expect(job.error).toMatch(/without a seed/i);
     });
 });
 

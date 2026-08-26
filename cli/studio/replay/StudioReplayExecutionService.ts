@@ -20,7 +20,6 @@ import {
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
     RoundArtifact,
-    SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     VideoSlotSessionHandling,
     WeightedOutcomeRandomSource,
@@ -383,6 +382,14 @@ export class StudioReplayExecutionService {
             this.fail(record, new Error(diagnostic.message));
             return;
         }
+        if (record.seed === undefined) {
+            this.fail(record, new Error("Cannot exactly replay an outcome-library round without a seed. Restore the original session seed and retry."));
+            return;
+        }
+        if (record.modeName === undefined) {
+            this.fail(record, new Error("Cannot exactly replay an outcome-library round without its recorded mode. Restore the original mode and retry."));
+            return;
+        }
 
         let modeName: string;
         let manifestGame: PokieGameManifest;
@@ -423,10 +430,9 @@ export class StudioReplayExecutionService {
                 const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
                 for (let played = 0; played < chunkRounds; played++) {
                     const replayRound = record.completedRounds + played + 1;
-                    const randomSource: WeightedOutcomeRandomSource =
-                        record.seed === undefined
-                            ? new SecureWeightedOutcomeRandomSource()
-                            : new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(record.seed, replayRound));
+                    const randomSource: WeightedOutcomeRandomSource = new SeededWeightedOutcomeRandomSource(
+                        deriveDeterministicSeed(record.seed, replayRound),
+                    );
                     const selection = await outcomeSource.drawOutcome(randomSource);
                     lastArtifact = selection.outcome.artifact;
                     lastSelection = {
@@ -469,6 +475,7 @@ export class StudioReplayExecutionService {
                 ? {}
                 : {
                     outcomeSource: {
+                        game: gameIdentity,
                         ...lastSelection,
                         modeName,
                         selectionAlgorithm: "derived-round-seed-v1" as const,

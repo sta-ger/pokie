@@ -639,6 +639,8 @@ export type StudioSimulationJobView = {
     // The real outcome-library mode this job samples/sampled -- undefined for an ordinary
     // "tsPackage"/"blueprint" simulation, which has no notion of an outcome-library mode at all.
     modeName?: string;
+    // The final seeded outcome-library draw, retained by Studio simulation for exact replay.
+    lastReplay?: OutcomeSourceReplayDescriptorView;
 };
 
 // One row of GET /api/project/reports — only ever built from a "completed" job, see
@@ -723,6 +725,7 @@ export type RoundArtifactJson = RoundArtifact & {readonly hash: string};
 // Mirrors PreGeneratedRoundReplayDescriptor. It travels with ordinary outcome-library Play and
 // Sample results so consumers can hand the exact recorded seed/round/mode/provenance to `pokie replay`.
 export type OutcomeSourceReplayDescriptorView = {
+    game?: {id: string; name: string; version: string};
     libraryId: string;
     libraryHash: string;
     modeName: string;
@@ -771,6 +774,7 @@ export type ReplayDescriptor = {
     // Native outcome-library provenance. Its absence means this is package replay or an older,
     // inspection-only descriptor; a caller must not invent a mode/seed for exact comparison.
     outcomeSource?: {
+        game?: {id: string; name: string; version: string};
         libraryId: string;
         libraryHash: string;
         modeName: string;

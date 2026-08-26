@@ -71,6 +71,25 @@ describe("replayOutcomeSourceProject", () => {
         ).rejects.toThrow(/recorded.*current.*Restore\/open the original game and outcome-library artifact/i);
     });
 
+    it("fails closed for every supplied canonical game and result field", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+        const original = await replayOutcomeSourceProject(project, "base", "reproducible-seed", 4);
+        if (!original.supported) {
+            throw new Error("expected a supported outcome-library project");
+        }
+
+        await expect(
+            replayOutcomeSourceProject(project, "base", "reproducible-seed", 4, {
+                ...original.replay,
+                game: original.descriptor.game,
+                stake: original.descriptor.totalBet + 1,
+                screen: [["stale-screen"]],
+            }),
+        ).rejects.toThrow(/game:|stake:|screen:/i);
+    });
+
     it("rejects a missing seed or mode rather than silently choosing a default", async () => {
         const bundleDir = path.join(workDir, "bundle");
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);

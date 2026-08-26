@@ -18,6 +18,7 @@ import {
     RoundArtifact,
     RoundArtifactValidator,
     sampleOutcomeSourceProject,
+    replayOutcomeSourceProject,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     STUDIO_OPERATION,
@@ -80,6 +81,7 @@ import {openInFileManager} from "../openInFileManager.js";
 import {validateOpenFolderRequest, OpenFolderRequestInput} from "./home/validateOpenFolderRequest.js";
 import {buildReplayDownload} from "./replay/buildReplayDownload.js";
 import type {StudioReplayJobRecord} from "./replay/StudioReplayJobRecord.js";
+import type {StudioSimulationJobRecord} from "./simulation/StudioSimulationJobRecord.js";
 import {StudioReplayExecutionService} from "./replay/StudioReplayExecutionService.js";
 import type {StudioReplayStatus} from "./replay/StudioReplayStatus.js";
 import {validateReplayRequest, ReplayRequestInput} from "./replay/validateReplayRequest.js";
@@ -106,6 +108,40 @@ import {
 } from "./stakeengine/validateStakeEngineExportValidateRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
+
+function describeIncompleteOutcomeSourceProvenance(recorded: unknown): string | undefined {
+    if (typeof recorded !== "object" || recorded === null) {
+        return '"outcomeSource" must be a recorded outcome-library replay descriptor.';
+    }
+    const descriptor = recorded as Partial<PreGeneratedRoundReplayDescriptor>;
+    const game = descriptor.game;
+    if (
+        descriptor.selectionAlgorithm !== "derived-round-seed-v1" ||
+        typeof descriptor.libraryId !== "string" ||
+        descriptor.libraryId.length === 0 ||
+        typeof descriptor.libraryHash !== "string" ||
+        descriptor.libraryHash.length === 0 ||
+        typeof descriptor.modeName !== "string" ||
+        descriptor.modeName.length === 0 ||
+        typeof descriptor.seed !== "string" ||
+        descriptor.seed.trim().length === 0 ||
+        !(typeof descriptor.round === "number" && Number.isInteger(descriptor.round) && descriptor.round >= 1) ||
+        typeof descriptor.outcomeId !== "string" ||
+        descriptor.outcomeId.length === 0 ||
+        typeof descriptor.weight !== "number" ||
+        typeof descriptor.totalWin !== "number" ||
+        typeof descriptor.payoutMultiplier !== "number" ||
+        typeof descriptor.stake !== "number" ||
+        !Array.isArray(descriptor.screen) ||
+        game === undefined ||
+        typeof game.id !== "string" ||
+        typeof game.name !== "string" ||
+        typeof game.version !== "string"
+    ) {
+        return '"outcomeSource" is missing required exact-replay provenance. Restore the original portable descriptor and retry.';
+    }
+    return undefined;
+}
 import type {StudioServerOptions} from "./StudioServerOptions.js";
 import type {StudioToolHandling} from "./StudioToolHandling.js";
 
@@ -247,7 +283,20 @@ export class StudioServer implements StudioServerHandling {
         };
         this.simulationService =
             options.simulationService ??
-            new StudioSimulationService(undefined, this.loadGame, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, this.resolveRuntimePackageRoot);
+            new StudioSimulationService(
+                undefined,
+                this.loadGame,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                this.resolveRuntimePackageRoot,
+                (record) => this.recordOutcomeSourceSimulation(record),
+            );
         this.replayService =
             options.replayService ??
             new StudioReplayExecutionService(undefined, loadCurrentProjectGame, undefined, undefined, undefined, undefined, this.pokieVersion, (record) =>
@@ -1765,6 +1814,7 @@ export class StudioServer implements StudioServerHandling {
                 const {selection} = result;
                 const artifact = selection.outcome.artifact;
                 replay = {
+                    game: artifact.provenance.game,
                     libraryId: selection.libraryId,
                     libraryHash: selection.libraryHash,
                     modeName: validated.modeName,
@@ -1834,6 +1884,7 @@ export class StudioServer implements StudioServerHandling {
             win: descriptor.totalWin,
             ...(descriptor.screen !== null ? {screen: descriptor.screen} : {}),
             ...(descriptor.artifact !== undefined ? {debug: {artifact: descriptor.artifact}} : {}),
+            ...(descriptor.outcomeSource !== undefined ? {replay: descriptor.outcomeSource} : {}),
         };
         this.roundRecorder.record(view, {
             source: "simulation-sample",
@@ -1841,6 +1892,33 @@ export class StudioServer implements StudioServerHandling {
             projectRoot: record.projectRoot,
             seed: record.seed,
             modeName: record.modeName,
+        });
+    }
+
+    // A seeded native simulation's final sampled draw is itself a real outcome-library round. Record
+    // that settled portable descriptor immediately, rather than asking the user to manufacture a
+    // replay request just to make an ordinary simulation result discoverable in Recent Rounds.
+    private recordOutcomeSourceSimulation(record: StudioSimulationJobRecord): void {
+        const replay = record.lastReplay;
+        if (replay === undefined || replay.game === undefined) {
+            return;
+        }
+        const artifact = replay.artifact;
+        const view: StudioRuntimeSessionView = {
+            sessionId: crypto.randomUUID(),
+            game: replay.game,
+            ...(replay.stake === undefined ? {} : {bet: replay.stake}),
+            win: replay.totalWin,
+            ...(replay.screen === undefined ? {} : {screen: replay.screen}),
+            replay,
+            ...(artifact === undefined ? {} : {debug: {artifact: new PokieJsonRoundArtifactProjector().project(artifact as RoundArtifact)}}),
+        };
+        this.roundRecorder.record(view, {
+            source: "simulation-sample",
+            operation: "simulation-sample",
+            projectRoot: record.projectRoot,
+            seed: replay.seed,
+            modeName: replay.modeName,
         });
     }
 
@@ -2187,12 +2265,40 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const body = await this.readJsonBody(req);
+        const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
+        const isNativeOutcomeLibrary = outcomeSourceProject?.type === "outcomeLibrary";
         let validated;
         try {
-            validated = validateReplayRequest((body ?? {}) as ReplayRequestInput);
+            validated = validateReplayRequest((body ?? {}) as ReplayRequestInput, {
+                requireOutcomeSourceProvenance: isNativeOutcomeLibrary,
+            });
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
+        }
+
+        const recordedOutcomeSource = (body as ReplayRequestInput | undefined)?.outcomeSource;
+        if (recordedOutcomeSource !== undefined) {
+            if (!isNativeOutcomeLibrary) {
+                this.sendJson(res, 400, {error: "This outcome-library replay descriptor requires its original outcome-library project to be open before exact replay."});
+                return;
+            }
+            const incomplete = describeIncompleteOutcomeSourceProvenance(recordedOutcomeSource);
+            if (incomplete !== undefined) {
+                this.sendJson(res, 400, {error: incomplete});
+                return;
+            }
+            const recorded = recordedOutcomeSource as PreGeneratedRoundReplayDescriptor;
+            if (recorded.round !== validated.round || recorded.seed !== validated.seed || recorded.modeName !== validated.modeName) {
+                this.sendJson(res, 400, {error: "Replay request seed/round/mode does not match its outcome-library provenance. Restore the original descriptor and retry."});
+                return;
+            }
+            try {
+                await replayOutcomeSourceProject(outcomeSourceProject, recorded.modeName, recorded.seed, recorded.round, recorded);
+            } catch (error) {
+                this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+                return;
+            }
         }
 
         // A `simulationId` claims this reproduction is a genuine "Recent Simulation" sample (see
@@ -2207,7 +2313,6 @@ export class StudioServer implements StudioServerHandling {
             }
         }
 
-        const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
         const result = this.replayService.start(this.currentContext.projectRoot, validated, outcomeSourceProject);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
@@ -2242,7 +2347,12 @@ export class StudioServer implements StudioServerHandling {
         const record = body as Record<string, unknown>;
         let validated;
         try {
-            validated = validateReplayRequest({round: record.round, seed: record.seed} as ReplayRequestInput);
+            const outcomeSource = record.outcomeSource;
+            const modeName = typeof outcomeSource === "object" && outcomeSource !== null ? (outcomeSource as {modeName?: unknown}).modeName : undefined;
+            validated = validateReplayRequest(
+                {round: record.round, seed: record.seed, modeName} as ReplayRequestInput,
+                {requireOutcomeSourceProvenance: outcomeSource !== undefined},
+            );
         } catch (error) {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
@@ -2252,6 +2362,51 @@ export class StudioServer implements StudioServerHandling {
             record.artifact !== undefined
                 ? new RoundArtifactValidator().validate(record.artifact as unknown as Parameters<RoundArtifactValidator["validate"]>[0]).map((issue) => issue.message)
                 : [];
+
+        const outcomeSource = record.outcomeSource;
+        if (outcomeSource !== undefined) {
+            if (this.projectDashboard?.status !== "outcome-source" || this.projectDashboard.project.type !== "outcomeLibrary") {
+                this.sendJson(res, 400, {error: "This outcome-library replay descriptor requires its original outcome-library project to be open before exact replay."});
+                return;
+            }
+            const incomplete = describeIncompleteOutcomeSourceProvenance(outcomeSource);
+            if (incomplete !== undefined) {
+                this.sendJson(res, 400, {error: incomplete});
+                return;
+            }
+            const recorded = outcomeSource as PreGeneratedRoundReplayDescriptor;
+            if (recorded.round !== validated.round || recorded.seed !== validated.seed) {
+                this.sendJson(res, 400, {error: "Replay descriptor outer seed/round does not match its outcome-library provenance. Restore the original descriptor and retry."});
+                return;
+            }
+            const outerMismatches: string[] = [];
+            const compareOuter = (field: string, outerValue: unknown, recordedValue: unknown): void => {
+                if (outerValue !== undefined && JSON.stringify(outerValue) !== JSON.stringify(recordedValue)) {
+                    outerMismatches.push(field);
+                }
+            };
+            compareOuter("game", record.game, recorded.game);
+            compareOuter("total bet", record.totalBet, recorded.stake);
+            compareOuter("total win", record.totalWin, recorded.totalWin);
+            compareOuter("screen", record.screen, recorded.screen);
+            if (record.artifact !== undefined && recorded.artifact !== undefined) {
+                compareOuter("artifact", record.artifact, new PokieJsonRoundArtifactProjector<string | number>().project(recorded.artifact));
+            }
+            if (outerMismatches.length > 0) {
+                this.sendJson(res, 400, {
+                    error: `Replay descriptor outer result does not match its outcome-library provenance (${outerMismatches.join(", ")}). Restore the original descriptor and retry.`,
+                });
+                return;
+            }
+            try {
+                await replayOutcomeSourceProject(this.projectDashboard.project, recorded.modeName, recorded.seed, recorded.round, recorded);
+            } catch (error) {
+                this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+                return;
+            }
+            this.sendJson(res, 200, {round: validated.round, seed: validated.seed, modeName: recorded.modeName, outcomeSource: recorded, artifactWarnings});
+            return;
+        }
 
         this.sendJson(res, 200, {round: validated.round, seed: validated.seed, artifactWarnings});
     }

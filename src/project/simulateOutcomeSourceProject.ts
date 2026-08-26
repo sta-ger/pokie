@@ -67,6 +67,7 @@ export async function simulateOutcomeSourceProject(
         accumulator.addRound(selection.outcome.artifact.stake, selection.outcome.artifact.totalWin);
         if (seed !== undefined) {
             lastReplay = {
+                game: selection.outcome.artifact.provenance.game,
                 libraryId: selection.libraryId,
                 libraryHash: selection.libraryHash,
                 modeName,

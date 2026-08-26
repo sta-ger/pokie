@@ -2,7 +2,7 @@ import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, Segmen
 import {useForm} from "@mantine/form";
 import {useEffect, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
-import type {RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
+import type {OutcomeSourceReplayDescriptorView, RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
     describeLoadedReplay,
     describeReplayEntryStatus,
@@ -42,6 +42,8 @@ export type ExpectedReplayState =
           status: "loaded";
           round: number;
           seed?: string;
+          modeName?: string;
+          outcomeSource?: OutcomeSourceReplayDescriptorView;
           artifact?: RoundArtifactJson;
           artifactWarnings: string[];
           // A stored/pasted Studio replay descriptor can carry the player-facing post-round balance.
@@ -177,7 +179,7 @@ export function ReplayTab({
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
     error: string | undefined;
-    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string) => void;
+    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView) => void;
     onCancel: () => void;
     onRetry: () => void;
     listView: ReplayListView;
@@ -346,7 +348,7 @@ export function ReplayTab({
     // below (Session Spin never has one at all: there's nothing to reproduce).
     let reproduceTarget: ReplayLoadTarget | undefined;
     if (findMethod === "artifact") {
-        reproduceTarget = expected.status === "loaded" ? {round: expected.round, seed: expected.seed} : undefined;
+        reproduceTarget = expected.status === "loaded" ? {round: expected.round, seed: expected.seed, modeName: expected.modeName} : undefined;
     } else if (findMethod === "seedRound" || findMethod === "simulation") {
         reproduceTarget = target ? {round: target.round, seed: target.seed, modeName: target.modeName} : undefined;
     }
@@ -976,6 +978,7 @@ export function ReplayTab({
                                                 findMethod === "simulation" ? selectedSimEntry?.id : undefined,
                                                 findMethod === "artifact" ? true : undefined,
                                                 reproduceTarget.modeName,
+                                                findMethod === "artifact" && expected.status === "loaded" ? expected.outcomeSource : undefined,
                                             );
                                             setJobLoaded(true);
                                         }}

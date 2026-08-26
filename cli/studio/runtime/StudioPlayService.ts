@@ -521,6 +521,7 @@ export class StudioPlayService {
             artifact = selection.outcome.artifact;
             if (active.seed !== undefined) {
                 replay = {
+                    game: active.manifest,
                     libraryId: selection.libraryId,
                     libraryHash: selection.libraryHash,
                     modeName: active.modeName,

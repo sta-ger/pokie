@@ -24,6 +24,20 @@ async function post(url: string, body?: unknown): Promise<{status: number; body:
     return {status: response.status, body: await response.json()};
 }
 
+async function waitForTerminal(url: string): Promise<{status: number; body: Record<string, unknown>}> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+        const response = await get(url);
+        const body = response.body as Record<string, unknown>;
+        if (["completed", "failed", "cancelled"].includes(String(body.status))) {
+            return {status: response.status, body};
+        }
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 10);
+        });
+    }
+    throw new Error("Studio job did not reach a terminal state.");
+}
+
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
         getManifest: () => manifest,
@@ -151,6 +165,112 @@ describe("StudioServer outcome-source project routes", () => {
             expect(entries[0].studioSeed).toBe("studio-sample-seed");
             expect(entries[0].credits).toBeUndefined();
             expect(entries[0].replay).toEqual(expect.objectContaining({modeName: "base", seed: "studio-sample-seed", round: 1}));
+        });
+
+        it("uses one derived-round descriptor for seeded simulation, Recent Rounds, exact replay, and stale artifact inspection", async () => {
+            const bundleDir = await buildNativeLibraryDir();
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
+
+            const simulation = await post(`${baseUrl}/api/project/simulations`, {rounds: 4, seed: "studio-simulation-seed", modeName: "base"});
+            expect(simulation.status).toBe(202);
+            const completed = await waitForTerminal(`${baseUrl}/api/project/simulations/${(simulation.body as {id: string}).id}`);
+            expect(completed.status).toBe(200);
+            expect(completed.body.status).toBe("completed");
+            const replay = completed.body.lastReplay as {
+                game: {id: string; name: string; version: string};
+                libraryId: string;
+                libraryHash: string;
+                modeName: string;
+                selectionAlgorithm: string;
+                seed: string;
+                round: number;
+                outcomeId: string;
+                weight: number;
+                totalWin: number;
+                payoutMultiplier: number;
+                stake: number;
+                screen: unknown[][];
+            };
+            expect(replay).toEqual(
+                expect.objectContaining({
+                    game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                    modeName: "base",
+                    selectionAlgorithm: "derived-round-seed-v1",
+                    seed: "studio-simulation-seed",
+                    round: 4,
+                }),
+            );
+
+            const rounds = await get(`${baseUrl}/api/project/rounds`);
+            expect(rounds.status).toBe(200);
+            expect((rounds.body as Array<{replay?: unknown}>)[0].replay).toEqual(expect.objectContaining(replay));
+
+            const inspected = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {
+                game: replay.game,
+                round: replay.round,
+                seed: replay.seed,
+                totalBet: replay.stake,
+                totalWin: replay.totalWin,
+                screen: replay.screen,
+                outcomeSource: replay,
+            });
+            expect(inspected.status).toBe(200);
+            expect(inspected.body).toEqual(expect.objectContaining({round: replay.round, seed: replay.seed, modeName: "base"}));
+
+            const stale = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {
+                game: replay.game,
+                round: replay.round,
+                seed: replay.seed,
+                totalBet: replay.stake,
+                totalWin: replay.totalWin + 1,
+                screen: replay.screen,
+                outcomeSource: replay,
+            });
+            expect(stale.status).toBe(400);
+            expect((stale.body as {error: string}).error).toMatch(/outer result.*total win.*Restore the original descriptor/i);
+
+            const replayStarted = await post(`${baseUrl}/api/project/replays`, {
+                round: replay.round,
+                seed: replay.seed,
+                modeName: replay.modeName,
+                outcomeSource: replay,
+            });
+            expect(replayStarted.status).toBe(202);
+            const replayComplete = await waitForTerminal(`${baseUrl}/api/project/replays/${(replayStarted.body as {id: string}).id}`);
+            expect(replayComplete.body.descriptor).toEqual(
+                expect.objectContaining({
+                    totalBet: replay.stake,
+                    totalWin: replay.totalWin,
+                    outcomeSource: expect.objectContaining({
+                        libraryId: replay.libraryId,
+                        libraryHash: replay.libraryHash,
+                        outcomeId: replay.outcomeId,
+                        selectionAlgorithm: "derived-round-seed-v1",
+                    }),
+                }),
+            );
+
+            const staleStart = await post(`${baseUrl}/api/project/replays`, {
+                round: replay.round,
+                seed: replay.seed,
+                modeName: replay.modeName,
+                outcomeSource: {...replay, libraryHash: "sha256:stale"},
+            });
+            expect(staleStart.status).toBe(400);
+            expect((staleStart.body as {error: string}).error).toMatch(/library hash.*Restore\/open the original game/i);
+        });
+
+        it("rejects native exact replay when either recorded seed or mode is missing", async () => {
+            const bundleDir = await buildNativeLibraryDir();
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
+
+            const missingSeed = await post(`${baseUrl}/api/project/replays`, {round: 1, modeName: "base"});
+            expect(missingSeed.status).toBe(400);
+            expect((missingSeed.body as {error: string}).error).toMatch(/without a seed.*Restore the original session seed/i);
+
+            const missingMode = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "studio-seed"});
+            expect(missingMode.status).toBe(400);
+            expect((missingMode.body as {error: string}).error).toMatch(/without its recorded mode.*Restore the original mode/i);
         });
 
         it("rejects a sample request missing modeName with 400, without ever touching the project", async () => {

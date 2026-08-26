@@ -47,41 +47,52 @@ export async function replayOutcomeSourceProject(
     const reader = new OutcomeLibraryBundleReader();
     const library = await reader.readLibrary(project.rootPath, modeName);
     const libraryHash = computeWeightedOutcomeLibraryHash(library);
-    if (recorded !== undefined) {
-        const mismatches = [
-            ["library id", recorded.libraryId, library.libraryId],
-            ["library hash", recorded.libraryHash, libraryHash],
-            ["mode", recorded.modeName, modeName],
-            ["seed", recorded.seed, seed],
-            ["round", String(recorded.round), String(round)],
-        ].filter(([, recordedValue, currentValue]) => recordedValue !== currentValue);
-        if (mismatches.length > 0) {
-            throw new Error(
-                `Replay provenance does not match the current input (${mismatches.map(([field, oldValue, currentValue]) => `${field}: recorded "${oldValue}", current "${currentValue}"`).join("; ")}). ` +
-                    "Restore/open the original game and outcome-library artifact before requesting exact replay.",
-            );
+    const mismatches: string[] = [];
+    const compare = (field: string, recordedValue: unknown, currentValue: unknown): void => {
+        if (recordedValue !== undefined && JSON.stringify(recordedValue) !== JSON.stringify(currentValue)) {
+            mismatches.push(`${field}: recorded ${JSON.stringify(recordedValue)}, current ${JSON.stringify(currentValue)}`);
         }
+    };
+    if (recorded !== undefined) {
+        compare("library id", recorded.libraryId, library.libraryId);
+        compare("library hash", recorded.libraryHash, libraryHash);
+        compare("mode", recorded.modeName, modeName);
+        compare("selection algorithm", recorded.selectionAlgorithm, "derived-round-seed-v1");
+        compare("seed", recorded.seed, seed);
+        compare("round", recorded.round, round);
     }
     const replay = new PreGeneratedRoundReplayer().replay({library, libraryHash, modeName, seed, round});
     const outcome = library.outcomes.find((candidate) => candidate.id === replay.outcomeId);
     if (outcome === undefined) {
         throw new Error(`Replayed outcome "${replay.outcomeId}" was not present in outcome library "${replay.libraryId}".`);
     }
-    if (recorded !== undefined && (recorded.outcomeId !== replay.outcomeId || recorded.totalWin !== replay.totalWin)) {
+    const manifest = await reader.readManifest(project.rootPath);
+    if (recorded !== undefined) {
+        compare("game", recorded.game, manifest.game);
+        compare("outcome", recorded.outcomeId, replay.outcomeId);
+        compare("weight", recorded.weight, replay.weight);
+        compare("total win", recorded.totalWin, replay.totalWin);
+        compare("payout multiplier", recorded.payoutMultiplier, outcome.artifact.payoutMultiplier);
+        compare("stake", recorded.stake, outcome.artifact.stake);
+        compare("screen", recorded.screen, outcome.artifact.screen);
+        compare("artifact", recorded.artifact, outcome.artifact);
+    }
+    if (mismatches.length > 0) {
         throw new Error(
-            `Replay result does not match the recorded artifact (recorded outcome "${recorded.outcomeId}"/win ${recorded.totalWin}, current outcome "${replay.outcomeId}"/win ${replay.totalWin}). Restore the recorded bundle before exact replay.`,
+            `Replay provenance does not match the current input (${mismatches.join("; ")}). ` +
+                "Restore/open the original game and outcome-library artifact before requesting exact replay.",
         );
     }
-    const manifest = await reader.readManifest(project.rootPath);
+    const replayWithGame: PreGeneratedRoundReplayDescriptor = {...replay, game: manifest.game};
     // This is intentionally a descriptor record, not a second selection: PreGeneratedRoundReplayer above
     // is the only selector invocation, and ReplayRecorder merely normalizes that settled provenance for
     // the canonical replay product surface.
     const descriptor = new ReplayRecorder().recordPreGenerated({
         sessionId: `outcome-source:${replay.libraryId}:${seed}:${round}`,
         game: manifest.game,
-        replay,
+        replay: replayWithGame,
         totalBet: outcome.artifact.stake,
         screen: outcome.artifact.screen.map((row) => [...row]),
     });
-    return {supported: true, replay, descriptor};
+    return {supported: true, replay: replayWithGame, descriptor};
 }

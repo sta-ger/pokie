@@ -1,4 +1,4 @@
-import type {PokieProject, SimulationReport} from "pokie";
+import type {PokieProject, PreGeneratedRoundReplayDescriptor, SimulationReport} from "pokie";
 import type {StudioSimulationStatisticsView} from "./StudioSimulationJobView.js";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 
@@ -36,4 +36,6 @@ export type StudioSimulationJobRecord = {
     // ends up holding the concrete mode a completed/failed/cancelled outcome-source job actually ran
     // against. Always undefined for an ordinary "tsPackage"/"blueprint" simulation.
     modeName?: string;
+    // The final real seeded draw, retained as portable provenance for Recent Rounds/replay.
+    lastReplay?: PreGeneratedRoundReplayDescriptor;
 };
