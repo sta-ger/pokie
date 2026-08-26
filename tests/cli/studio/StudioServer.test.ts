@@ -4878,6 +4878,17 @@ describe("StudioServer", () => {
             expect(entries[0].studioRound).toBe(1);
         });
 
+        it.each(["", "   "])("rejects a blank outcome-library Play seed with a helpful 400 before an exact replay descriptor can be produced (%p)", async (seed) => {
+            const bundleDir = await buildLibraryBundle();
+            outcomeServer = createOutcomeSourceServer(bundleDir, jest.fn());
+            const address = await outcomeServer.start();
+            const baseUrl = `http://${address.host}:${address.port}`;
+
+            const response = await post(`${baseUrl}/api/project/play/session`, {seed});
+            expect(response.status).toBe(400);
+            expect(response.body).toEqual({error: expect.stringMatching(/seed.*non-empty.*best-effort/i)});
+        });
+
         it("plays an explicitly-requested non-first mode of a multi-mode outcome library through POST /api/project/play/session, and records that real mode into the shared round history", async () => {
             const bundleDir = path.join(outcomeStudioRoot, "multi-mode-library");
             await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(

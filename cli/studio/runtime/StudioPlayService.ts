@@ -468,6 +468,12 @@ export class StudioPlayService {
         if (diagnostic !== undefined) {
             return {status: "failed", error: diagnostic.message};
         }
+        if (typeof seed === "string" && seed.trim().length === 0) {
+            return {
+                status: "failed",
+                error: '"seed" must be a non-empty string for an exactly replayable outcome-library Play session. Omit it for an unseeded best-effort session.',
+            };
+        }
 
         let bundleGame: {id: string; name: string; version: string};
         let resolvedModeName: string;

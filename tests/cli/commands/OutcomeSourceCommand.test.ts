@@ -270,6 +270,16 @@ describe("OutcomeSourceCommand sample", () => {
         (console.log as jest.Mock).mockRestore();
     });
 
+    it.each(["", "   "])("rejects blank seeded samples before drawing or emitting exact replay provenance (%p)", async (seed) => {
+        const resolveProject = stubProjectResolver(outcomeLibraryProject);
+        const sample = stubSample({supported: true, selection: buildSelection()});
+        const command = new OutcomeSourceCommand(resolveProject, undefined, sample);
+
+        await expect(command.run(["sample", "/libraries/base", "--mode", "base", "--seed", seed])).rejects.toThrow(/--seed.*non-empty.*best-effort/i);
+        expect(resolveProject.calls).toEqual([]);
+        expect(sample.calls).toEqual([]);
+    });
+
     it("throws the capability diagnostic, rather than attempting package-runtime execution, for a resolved Stake Engine project", async () => {
         const resolveProject = stubProjectResolver(stakeAdapterProject);
         const sample = stubSample({

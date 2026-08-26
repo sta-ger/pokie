@@ -20,6 +20,7 @@ import {
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
 import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
@@ -327,11 +328,53 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({seed: "serve-seed"}),
         });
-        const body = (await response.json()) as {supported: boolean; selection: {libraryId: string; outcome: {id: string}}};
+        const body = (await response.json()) as {supported: boolean; selection: {libraryId: string; outcome: {id: string}}; replay?: Record<string, unknown>};
 
         expect(response.status).toBe(200);
         expect(body.supported).toBe(true);
         expect(body.selection.libraryId).toBe("base-lib");
+        expect(body.replay).toMatchObject({
+            game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+            libraryId: "base-lib",
+            modeName: "base",
+            selectionAlgorithm: "derived-round-seed-v1",
+            seed: "serve-seed",
+            round: 1,
+            outcomeId: body.selection.outcome.id,
+            weight: expect.any(Number),
+            totalWin: expect.any(Number),
+            payoutMultiplier: expect.any(Number),
+            stake: expect.any(Number),
+            artifact: expect.any(Object),
+        });
+        expect(Array.isArray(body.replay!.screen)).toBe(true);
+
+        logSpy.mockClear();
+        await new ReplayCommand().run([bundleDir, "--mode", "base", "--seed", "serve-seed", "--round", "1"]);
+        const replayed = JSON.parse(logSpy.mock.calls[0][0]) as {outcomeSource: Record<string, unknown>};
+        const withoutTiming = (provenance: Record<string, unknown>) => {
+            const canonical = {...provenance};
+            Reflect.deleteProperty(canonical, "timestamp");
+            Reflect.deleteProperty(canonical, "durationMs");
+            return canonical;
+        };
+        expect(withoutTiming(replayed.outcomeSource)).toEqual(withoutTiming(body.replay!));
+
+        const blankSample = await fetch(`http://127.0.0.1:${port}/outcome-source/sample`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: "   "}),
+        });
+        expect(blankSample.status).toBe(400);
+        expect(await blankSample.json()).toEqual({error: expect.stringMatching(/seed.*non-empty.*best-effort/i)});
+
+        const blankSession = await fetch(`http://127.0.0.1:${port}/sessions`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({seed: ""}),
+        });
+        expect(blankSession.status).toBe(400);
+        expect(await blankSession.json()).toEqual({error: expect.stringMatching(/seed.*non-empty.*server-seeded/i)});
 
         await server!.stop();
         logSpy.mockRestore();
@@ -375,7 +418,37 @@ describe("ServeCommand outcome-source routing (integration, real outcome-library
         const debugRetry = await spin("round-1", true);
 
         expect(first.response.status).toBe(200);
-        expect(first.body).toMatchObject({sessionId: createdBody.sessionId, game: {id: "sample-slot"}, requestId: "round-1", bet: 1});
+        expect(first.body).toMatchObject({
+            sessionId: createdBody.sessionId,
+            game: {id: "sample-slot"},
+            requestId: "round-1",
+            bet: 1,
+            replay: {
+                game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
+                libraryId: "base-lib",
+                modeName: "base",
+                selectionAlgorithm: "derived-round-seed-v1",
+                seed: "player-seed",
+                round: 1,
+                outcomeId: expect.any(String),
+                weight: expect.any(Number),
+                totalWin: expect.any(Number),
+                payoutMultiplier: expect.any(Number),
+                stake: expect.any(Number),
+                artifact: expect.any(Object),
+            },
+        });
+        expect(Array.isArray((first.body.replay as Record<string, unknown>).screen)).toBe(true);
+        logSpy.mockClear();
+        await new ReplayCommand().run([bundleDir, "--mode", "base", "--seed", "player-seed", "--round", "1"]);
+        const replayed = JSON.parse(logSpy.mock.calls[0][0]) as {outcomeSource: Record<string, unknown>};
+        const withoutTiming = (provenance: Record<string, unknown>) => {
+            const canonical = {...provenance};
+            Reflect.deleteProperty(canonical, "timestamp");
+            Reflect.deleteProperty(canonical, "durationMs");
+            return canonical;
+        };
+        expect(withoutTiming(replayed.outcomeSource)).toEqual(withoutTiming(first.body.replay as Record<string, unknown>));
         expect(first.body).not.toHaveProperty("internal");
         expect(retry.body).toEqual(first.body);
         expect(debugRetry.body.credits).toBe(first.body.credits);

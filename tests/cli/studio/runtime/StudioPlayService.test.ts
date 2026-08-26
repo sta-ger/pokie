@@ -486,6 +486,16 @@ describe("StudioPlayService", () => {
             expect(loadGame).not.toHaveBeenCalled();
         });
 
+        it.each(["", "   "])("rejects a blank seed before creating an exactly replayable outcome-library Play session (%p)", async (seed) => {
+            const bundleDir = await buildLibraryBundle();
+            const service = new StudioPlayService();
+
+            await expect(service.newSession(bundleDir, seed)).resolves.toEqual({
+                status: "failed",
+                error: expect.stringMatching(/seed.*non-empty.*best-effort/i),
+            });
+        });
+
         it("draws the same real outcome every time for a given seed, the same reproducibility a live game's own seed promises", async () => {
             const bundleDir = await buildLibraryBundle();
             const first = new StudioPlayService();

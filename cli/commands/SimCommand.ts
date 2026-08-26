@@ -331,6 +331,9 @@ export class SimCommand implements CliCommandHandling {
         if (!options.mode || options.mode === ALL_MODES) {
             throw new Error(`--mode <modeName> is required to simulate a native outcome-library project. ${USAGE}`);
         }
+        if (options.seed !== undefined && options.seed.trim().length === 0) {
+            throw new Error("--seed must be a non-empty string for an exactly replayable outcome-library simulation. Omit --seed for a best-effort secure simulation.");
+        }
 
         const result = await this.simulateOutcomeSource(
             project,

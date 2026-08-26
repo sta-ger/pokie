@@ -222,6 +222,9 @@ export class OutcomeSourceCommand implements CliCommandHandling {
     }
 
     private async executeSample(targetPath: string, mode: string, seed: string | undefined): Promise<number> {
+        if (seed !== undefined && seed.trim().length === 0) {
+            throw new Error("--seed must be a non-empty string for an exactly replayable outcome-library sample. Omit --seed for a best-effort secure draw.");
+        }
         const project = await this.resolveProject.resolve(targetPath);
         if (project === undefined) {
             throw new Error(`"${targetPath}" does not resolve to a recognized POKIE project.`);

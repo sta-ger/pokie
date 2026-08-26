@@ -15,6 +15,9 @@ export function validatePlaySessionRequest(input: PlaySessionRequestInput): Vali
     if (seed !== undefined && typeof seed !== "string" && typeof seed !== "number") {
         throw new Error('"seed" must be a string or number when given.');
     }
+    if (typeof seed === "string" && seed.trim().length === 0) {
+        throw new Error('"seed" must be a non-empty string when given. Omit it for an unseeded best-effort Play session.');
+    }
     if (modeName !== undefined && (typeof modeName !== "string" || modeName.trim().length === 0)) {
         throw new Error('"modeName" must be a non-empty string when given.');
     }

@@ -51,6 +51,9 @@ export async function simulateOutcomeSourceProject(
     if (diagnostic !== undefined) {
         return {supported: false, diagnostic};
     }
+    if (seed !== undefined && seed.trim().length === 0) {
+        throw new Error("Cannot exactly simulate an outcome-library round with a blank seed. Provide a non-empty seed, or omit it for a best-effort secure simulation.");
+    }
 
     const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
     const accumulator = new SimulationAccumulator();
