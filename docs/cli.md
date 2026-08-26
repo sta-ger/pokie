@@ -1116,7 +1116,8 @@ Options:
 
 - `--format json` — print the machine-readable `{stakeDir: {left, right}, issues: {left, right}, diff}` shape
   instead of a text summary.
-- `--out <file>` — also write that same JSON shape to a file.
+- `--out <file>` — also write that same JSON shape to a new file. It refuses an existing destination and any path
+  inside either input directory; choose a new unused path before retrying.
 
 `diff` is `undefined` whenever either side reports an error-level issue — the same "nothing built on error"
 contract every other stakeengine subcommand uses. Exit code follows the Unix `diff(1)` convention rather than this
