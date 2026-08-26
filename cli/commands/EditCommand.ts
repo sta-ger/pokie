@@ -23,7 +23,7 @@ const USAGE = "Usage: pokie edit <blueprint> [--out <file>]";
 
 const GUIDANCE_NOT_INTERACTIVE =
     "pokie edit needs an interactive terminal to run, and this one is not connected to one. Re-run inside a " +
-    'terminal, or edit the Blueprint Project\'s JSON file directly, then check it with "pokie validate <packageRoot>" ' +
+    'terminal, or edit the Blueprint Project\'s JSON file directly, then check that saved Blueprint with "pokie validate <project>" ' +
     'or "pokie build <blueprint> --target tsPackage --out <dir> --dry-run".';
 
 // General, capability-aware interactive editing of an existing Blueprint Project via the same

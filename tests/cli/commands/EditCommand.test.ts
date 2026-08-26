@@ -157,6 +157,7 @@ describe("EditCommand", () => {
 
         expect(exitCode).toBe(1);
         expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("needs an interactive terminal"));
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('check that saved Blueprint with "pokie validate <project>"'));
         expect(wizardFactory.calledWithDefault).toBeUndefined();
     });
 
