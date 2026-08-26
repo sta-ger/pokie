@@ -459,6 +459,29 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
         });
     });
 
+    it("validates a resolved Stake Engine export through its own export contract", async () => {
+        const stakeDir = path.join(outDir, "stake-export");
+        fs.mkdirSync(stakeDir);
+        const resolveProject = {
+            resolve: jest.fn().mockResolvedValue({
+                type: "stakeAdapter",
+                rootPath: stakeDir,
+                capabilities: ["stakeAdapter.exchange"],
+                provenance: 'recognized Stake Engine export manifest ("pokie-manifest.json")',
+            }),
+        };
+        const stakeEngineImporter = {
+            importFromDirectory: jest.fn().mockResolvedValue({stakeDir, manifest: undefined, modes: [], sourceProvenance: undefined, issues: []}),
+        };
+        const command = new ValidateCommand(undefined, undefined, undefined, resolveProject, undefined, stakeEngineImporter);
+
+        expect(await command.run([stakeDir, "--format", "json"])).toBe(0);
+
+        const report = JSON.parse((console.log as jest.Mock).mock.calls[0][0]) as {project: {kind: string; path: string}; valid: boolean};
+        expect(report).toEqual(expect.objectContaining({project: {kind: "stake-engine", path: stakeDir}, valid: true}));
+        expect(stakeEngineImporter.importFromDirectory).toHaveBeenCalledWith(stakeDir);
+    });
+
     it("returns a remedial report instead of a raw materialization failure", async () => {
         const command = new ValidateCommand(
             createStubValidator(validReport),

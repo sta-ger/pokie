@@ -4,6 +4,7 @@ import path from "path";
 import {WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "pokie";
 import {ExportCommand} from "../../../cli/commands/ExportCommand.js";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
+import {ValidateCommand} from "../../../cli/commands/ValidateCommand.js";
 
 const blueprint = {
     manifest: {id: "export-conflict", name: "Export Conflict", version: "1.0.0"},
@@ -94,6 +95,25 @@ describe("ExportCommand", () => {
         }
     });
 
+    it("exports a Blueprint Project to a Stake Engine adapter through the advertised target alias", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-blueprint-adapter-test-"));
+        const blueprintPath = path.join(workDir, "source.blueprint.json");
+        const adapterPath = path.join(workDir, "adapter");
+        const command = new ExportCommand("1.3.0");
+
+        try {
+            fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+
+            await expect(command.run([blueprintPath, "--to", "adapter", "--out", adapterPath])).resolves.toBe(0);
+
+            expect(fs.existsSync(path.join(adapterPath, "pokie-manifest.json"))).toBe(true);
+            expect(fs.existsSync(path.join(adapterPath, "index.json"))).toBe(true);
+            await expect(new ValidateCommand().run([adapterPath, "--format", "json"])).resolves.toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("previews every export alias from its valid source without writing and rejects every occupied alias destination", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-lifecycle-test-"));
         const sourcePath = path.join(workDir, "source.blueprint.json");
@@ -158,14 +178,18 @@ describe("ExportCommand", () => {
         try {
             fs.writeFileSync(malformedSource, "{not valid json");
             const validSources = writeValidSources(workDir);
-            const incompatibleSource = target === "outcomes" ? validSources.workbook : validSources.outcomes;
+            const incompatibleSource = validSources.outcomes;
             if (target === "workbook") {
                 fs.writeFileSync(destination, "sentinel");
             } else {
                 fs.mkdirSync(destination);
                 fs.writeFileSync(path.join(destination, "sentinel.txt"), "sentinel");
             }
-            for (const source of [malformedSource, incompatibleSource]) {
+            // An adapter descriptor is also a valid Outcome Library descriptor (its extra `cost`
+            // field is intentionally ignored), and every Blueprint is now a supported source for all
+            // advertised targets. Keep the incompatible-source assertion only where the contracts differ.
+            const invalidSources = target === "outcomes" ? [malformedSource] : [malformedSource, incompatibleSource];
+            for (const source of invalidSources) {
                 const error = await command.run([source, "--to", target, "--out", destination, "--dry-run"]).catch((failure: unknown) => failure);
                 expect(error).toBeInstanceOf(Error);
                 expect((error as Error).message).toMatch(
