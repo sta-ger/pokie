@@ -27,7 +27,7 @@ export class ImportCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Import a PAR workbook or POKIE Stake Engine export into POKIE artifacts.";
+        return "Import a PAR workbook or POKIE-produced Stake Engine export with pokie-manifest.json into POKIE artifacts.";
     }
 
     public getCommanderCommand(): Command {
@@ -53,7 +53,7 @@ export class ImportCommand implements CliCommandHandling {
     private command(): Command {
         return createCommanderCliCommand("import")
             .description(this.getDescription())
-            .argument("<source>", "a PAR workbook or POKIE Stake Engine export directory")
+            .argument("<source>", "a PAR workbook or POKIE-produced Stake Engine export directory with pokie-manifest.json")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--out <path>", "where to write imported artifacts")
             .option("--format <format>", 'only "json" is supported for workbook import')

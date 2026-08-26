@@ -110,6 +110,26 @@ describe("StakeEngineCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("limits reconstruction help to POKIE-produced manifests and directs foreign directories to analyze/report or diff", async () => {
+        const command = new StakeEngineCommand("1.3.0");
+
+        await expect(command.run(["--help"])).resolves.toBe(0);
+        const parentHelp = logSpy.mock.calls.map((call) => String(call[0])).join("\n");
+        expect(parentHelp).toContain("POKIE-produced export with pokie-manifest.json");
+        expect(parentHelp).toContain("analyze/report or diff");
+        expect(parentHelp).not.toContain("import one back");
+
+        logSpy.mockClear();
+        await expect(command.run(["import", "--help"])).resolves.toBe(0);
+        const importHelp = logSpy.mock.calls
+            .map((call) => String(call[0]))
+            .join("\n")
+            .replace(/\s+/g, " ");
+        expect(importHelp).toContain("only from a POKIE-produced Stake Engine export with pokie-manifest.json");
+        expect(importHelp).toContain("use analyze/report or diff for compatible foreign directories");
+        expect(importHelp).toContain("Reconstruction does not accept a compatible foreign directory");
+    });
+
     it("rejects when run with no subcommand", async () => {
         const command = new StakeEngineCommand("1.3.0");
 

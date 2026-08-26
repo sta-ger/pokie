@@ -291,6 +291,20 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         ],
     },
     {
+        name: "export",
+        description: "Export a source descriptor to a selected POKIE artifact type.",
+        // The public target-oriented entrypoint's detailed option/routing behavior is covered by
+        // ExportCommand.test.ts; this inventory pins its public name, help description, and usage.
+        verbs: [
+            {
+                verb: undefined,
+                usage: "Usage: pokie export <source> --to outcomes|adapter|workbook [--out <path>] [--dry-run]",
+                positionals: ["source"],
+                options: [],
+            },
+        ],
+    },
+    {
         name: "fairness",
         description:
             "Provably Fair commit-reveal workflow: publish a server-seed commitment, publish a round commitment " +
@@ -367,6 +381,20 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
                     "Usage: pokie init [directory] [--package-name <name>] [--game-id <id>] [--game-name <name>] " +
                     "[--version <version>] [--yes] [--no-install] [--no-prepare]",
                 positionals: ["directory (optional)"],
+                options: [],
+            },
+        ],
+    },
+    {
+        name: "import",
+        description: "Import a PAR workbook or POKIE-produced Stake Engine export with pokie-manifest.json into POKIE artifacts.",
+        // The generic source dispatch is exercised in ImportCommand.test.ts; keep this public
+        // entrypoint in the command inventory without duplicating its delegated option contract.
+        verbs: [
+            {
+                verb: undefined,
+                usage: "Usage: pokie import <source> [--out <path>] [--format json]",
+                positionals: ["source"],
                 options: [],
             },
         ],
@@ -620,9 +648,11 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     {
         name: "stakeengine",
         description:
-            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, import one back, " +
+            "Export WeightedOutcomeLibrary JSON files to the Stake Engine math-sdk static file format, reconstruct only " +
+            "a POKIE-produced export with pokie-manifest.json back into libraries, " +
             "standalone-analyze an arbitrary Stake Engine outcome directory with no pokie-manifest.json required, or diff " +
-            "two such directories/analyses " +
+            "two such directories/analyses. Compatible foreign directories without that manifest are for analyze/report " +
+            "or diff, not reconstruction " +
             '("pokie stakeengine export <config.json>" / "pokie stakeengine import <stakeDir>" / ' +
             '"pokie stakeengine analyze <stakeDir>" / "pokie stakeengine diff <leftStakeDir> <rightStakeDir>").',
         verbs: [
@@ -1187,6 +1217,24 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectStdout: "text",
     },
 
+    // --- export ---
+    {
+        command: "export",
+        kind: "invalid",
+        label: "missing <source>",
+        args: [],
+        expectedExitCode: 1,
+        expectedError: "error: required option '--to <artifact>' not specified",
+    },
+    {
+        command: "export",
+        kind: "valid",
+        label: "--help (public target-oriented entrypoint)",
+        args: ["--help"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+
     // --- fairness ---
     {
         command: "fairness",
@@ -1451,6 +1499,24 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<directory> --no-prepare (scaffolds in place, never installs/builds/verifies)",
         args: ["sample-slot", "--no-prepare"],
+        expectedExitCode: 0,
+        expectStdout: "text",
+    },
+
+    // --- import ---
+    {
+        command: "import",
+        kind: "invalid",
+        label: "missing <source>",
+        args: [],
+        expectedExitCode: 1,
+        expectedError: "Usage: pokie import <source> [--out <path>] [--format json]",
+    },
+    {
+        command: "import",
+        kind: "valid",
+        label: "--help (public generic entrypoint)",
+        args: ["--help"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
@@ -2360,8 +2426,10 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "Usage: pokie stakeengine import <stakeDir> [--out <dir>]\n" +
-            '<stakeDir> is a directory previously produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
-            "CSV/books, and its own pokie-manifest.json) — see docs/stake-engine-import.md for details.",
+            '<stakeDir> must be a directory produced by "pokie stakeengine export" (index.json, per-mode lookup ' +
+            "CSV/books, and its own pokie-manifest.json). Reconstruction does not accept a compatible foreign directory " +
+            'without that manifest; use "pokie stakeengine analyze" (including its --out report) or "pokie stakeengine diff" ' +
+            "instead — see docs/stake-engine-import.md for details.",
     },
     {
         command: "stakeengine",
