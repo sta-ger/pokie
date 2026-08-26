@@ -490,14 +490,18 @@ async function main() {
                 if (!generateLabel) throw new Error("Rendered Build/Export outcome-library generation action not found.");
                 const exportLabel = await evaluate("[...document.querySelectorAll('button')].find((button) => button.getClientRects().length > 0 && button.innerText.includes('Run Stake Engine Export'))?.innerText.trim()");
                 if (!exportLabel) throw new Error("Rendered Build/Export Stake Engine export action not found.");
-                operation = {...await activate(generateLabel, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-generate-outcome-library"};
-                await observeAction("Build/Export begins outcome-library generation or reports an error", operation, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
-                await waitFor(() => renderedActionExists(exportLabel), "enabled Stake Engine export after outcome-library generation", 120_000);
-                operation = {...await activate(exportLabel, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-stake-engine-export"};
                 try {
+                    operation = {...await activate(generateLabel, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-generate-outcome-library"};
+                    await observeAction("Build/Export begins outcome-library generation or reports an error", operation, () => renderedText("Generating outcome library") || renderedText("Generated ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
+                } catch (error) {
+                    recordFinding("P8-01-F-BUILD-GENERATE-OUTCOME-LIBRARY-NO-VISIBLE-RESULT", `Build/Export ${generateLabel}`, "P8-05", `CDP keyboard activation was delivered, but the enabled control produced no rendered loading, success, or error result within the bounded observation window: ${error.message}`, undefined, "build-generate-outcome-library");
+                }
+                try {
+                    await waitFor(() => renderedActionExists(exportLabel), "enabled Stake Engine export after outcome-library generation", 15_000);
+                    operation = {...await activate(exportLabel, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)")), coverageId: "build-stake-engine-export"};
                     await observeAction("Build/Export begins Stake Engine export or reports an error", operation, () => !renderedActionExists(exportLabel) || renderedText("Exported ") || evaluate("[...document.querySelectorAll('[role=alert]')].some((element) => element.getClientRects().length > 0)"));
                 } catch (error) {
-                    recordFinding("P8-01-F-BUILD-STAKE-EXPORT-NO-VISIBLE-RESULT", `Build/Export ${exportLabel}`, "P8-05", `CDP keyboard activation was delivered, but the enabled control produced no rendered loading, success, or error result within the bounded observation window: ${error.message}`, undefined, "build-stake-engine-export");
+                    recordFinding("P8-01-F-BUILD-STAKE-EXPORT-NO-VISIBLE-RESULT", `Build/Export ${exportLabel}`, "P8-05", `The rendered Stake Engine export control did not become enabled after the recorded outcome-library generation attempt, so browser input cannot complete without a generated artifact: ${error.message}`, undefined, "build-stake-engine-export");
                 }
             }
         }

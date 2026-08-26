@@ -50,6 +50,25 @@ test("collector contract requires exact browser-action coverage with matching ro
     assert.throws(() => validateInventory(record, true), /owner|action/i);
 });
 
+test("collector contract rejects a missing required action and a misowned action finding", () => {
+    const record = completeRecord();
+    record.actions = record.actions.filter((entry) => entry.coverageId !== "replay-load");
+    assert.throws(() => validateInventory(record, true), /primary action/i);
+
+    record.findings.push({
+        id: "P8-01-F-REPLAY-LOAD",
+        surface: "Replay Load",
+        owner: "P8-02",
+        status: "unreached",
+        observedBy: "clean-profile",
+        coverageId: "replay-load",
+    });
+    assert.throws(() => validateInventory(record, true), /primary action/i);
+
+    record.findings[0].owner = "P8-05";
+    assert.doesNotThrow(() => validateInventory(record, true));
+});
+
 test("documentation claims are observed only when every rendered goal is present", () => {
     const screens = [{goal: "Project tab: Overview"}];
     const finding = {id: "P8-01-F-DOC-04", owner: "P8-05", documentationClaimId: "DOC-04"};
